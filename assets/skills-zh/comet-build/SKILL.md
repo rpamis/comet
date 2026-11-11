@@ -11,13 +11,7 @@ description: '制定计划、实施并验收 Classic 任务。在用户调用 /c
 
 ## SDK Run 路径
 
-当前响应的 `data.checksMode: agent` 表示新内置 Run。使用平台工具执行必要检查，读取真实结果，将检查报告保存为 JSON：`{"checks":[{"name":"命令、目录与检查名称","result":"passed","note":"实际结果与日志引用"}]}`。没有适用检查时使用空 `checks` 并填写 `checksReason`；未执行项使用 `not-run` 并在 `note` 写原因，失败项修复后再验收。Runtime 不重复执行这些命令，不要求普通检查收据。旧 Run 的 `checksMode: runtime` 和固定应用继续原协议。
-
-新 Run 沿用当前批准、配置和任务计划完成实现与必要审查，再用 `comet state complete-build <change-name> --checks <checks-json-file>` 提交结果；需要记录实际 Builder 会话时加 `--session <builder-execution-ref>`。只对 full Run 执行现有配置、Design 和计划步骤，hotfix/tweak 保留自己的范围与升级决定。 沿用同次响应的 continuation；验收合格后仍等待当前用户的归档与交付决定。
-
-以下受管检查命令仅用于 `checksMode: runtime` 的旧 Run；阶段准备、批准、计划和任务完成要求也适用于新 Run。
-
-首次最终 GREEN 或完整验证按 SDK 方法参考直接通过 `comet check run <change-name> build --local -- <program> [args...]` 执行，读取真实收据后继续当前任务，不先在终端重复运行同一完整计划。TDD RED 和局部调试保留；外部状态或不可重复检查不加 `--local`。之后仍提交 complete-build 与 Guard，由 Runtime 核对证据后推进。
+先读取并执行[普通命令与检查](../comet/reference/platform-execution.md)。新旧 Run 均使用平台工具执行普通命令，在原 Run 提交实际检查报告；自动升级不恢复旧检查执行器。阶段准备、用户选择、任务完成和验收要求继续有效。
 
 首次进入当前 SDK 阶段、换 Agent 或恢复上下文时，读取[阶段入口与恢复](../comet-classic/reference/sdk-methods.md#阶段入口与恢复)及该参考的当前阶段章节；本会话已有且仍有效时直接复用。下文按当前阶段执行；`nextAction.kind` 的恢复路由只适用于没有 continuation mode 的旧响应。
 
@@ -27,11 +21,10 @@ description: '制定计划、实施并验收 Classic 任务。在用户调用 /c
 
 1. `full.build.configure` 待执行时，按 SDK 方法参考的 [Build 配置说明](../comet-classic/reference/sdk-methods.md#build)展示值、含义及确认状态，只补真正缺失、无效或用户要求更改的执行方式、TDD 和审查决定。将已确认的 `build_mode`、`tdd_mode`、`review_mode`、`subagent_dispatch` 和需要时的 `direct_override` 写入仓库内的临时 JSON；用户已明确选择这份完整配置时，运行 `comet state propose-build <change-name> --file <configuration-json> --confirmed` 一次保存提案与批准；尚未决定时运行 `comet state propose-build <change-name> --file <configuration-json>`。仅在仍有待决定 Wait 时，从返回的 `data.wait.proposalHash` 保存 `<proposalHash>`，向用户展示实际配置并按 decision-point.md 等待确认。确认或拒绝时运行 `comet state decide-build <change-name> --proposal-hash <proposalHash> --choice <approved|rejected>`；拒绝后从新配置重新提案。恢复已有待决定 Wait 时复用原提案，不重复提问或新建配置 Action。保存批准后简短回显并继续，不再增加一次继续确认。
 2. `full.build.plan` 待执行时，按 SDK 方法参考的 Build 章节创建或核对计划。计划引用当前 Design Doc 和 tasks.md，以 `<!-- comet-task-authority: <classic-task-authority-ref> -->` 及 `<!-- comet-task-ref:<task-id> -->` 映射任务，不能另建 checkbox。运行 `comet state submit-plan <change-name> --plan <plan-ref>` 提交计划及证据。只有用户明确要求写完计划暂停时加 `--pause`；恢复 `plan-ready` Wait 时，必须等用户明确继续，再用该 Wait 的当前哈希运行 `comet state continue-plan <change-name> --proposal-hash <proposalHash>`。计划或任务要求变化后不复用原批准。
-3. `full.build.execute` 待执行时，按 SDK 方法参考的 Build 章节的已选方法实施、做任务级或分段审查并运行相关检查。任务实际完成且审查合格后勾选同一 tasks.md；任务 ID、勾选和协调进度使用共享参考中的 `state tasks`、`state task-complete`、`state checkpoint`；这些命令不推进 SDK Run。SDK 不调用旧 `comet handoff --write`。核对计划、任务和工作区后运行 `comet state complete-build <change-name> --session <builder-execution-ref>`，由 Run 进入检查 Action。实现或计划与已接受证据不一致时先解决具体漂移，不绕过 SDK 校验。
-4. `full.build.check` 待执行时，以当前工作区中明确的完整构建或验收入口运行 `comet guard <change-name> build --apply -- <program> [args...]`。此处没有新的用户决定，`--apply` 会重新校验当前任务、配置、工作区和证据，再执行真实检查并向同一 Run 提交收据；仅在检查成功且证据仍有效时进入 Verify。仅在需要诊断时运行 `comet guard <change-name> build` 只读预检。若收据提交中断，先核对同一 Action 和检查记录，按 Guard 的恢复结果补交，不重新执行已完成的外部检查。失败后按返回的当前 Build Action 修复并重新验证；结果未提供 continuation 时再读 `state next --json`。
+3. `full.build.execute` 待执行时，按 SDK 方法参考的 Build 章节的已选方法实施、做任务级或分段审查并运行相关检查。任务实际完成且审查合格后勾选同一 tasks.md；任务 ID、勾选和协调进度使用共享参考中的 `state tasks`、`state task-complete`、`state checkpoint`；这些命令不推进 SDK Run。SDK 不调用旧 `comet handoff --write`。核对计划、任务和工作区后运行 `comet state complete-build <change-name> --session <builder-execution-ref> --checks <checks-json-file>`，由 Run 进入 Verify。实现或计划与已接受证据不一致时先解决具体漂移，不绕过 SDK 校验。
 
 每次推进后，优先使用同次结果的 `agent.continuation` / `data.nextAction`；状态仍有效且信息完整时，不重复 next、select 或 check。仅在冷恢复、外部状态变化或缺少必要信息时补读。只有 `action` 且指向下一阶段时才加载下一 Skill。`decision`、`evidence`、`reconcile` 均先完成当前 Run 的恢复或用户决定。
-确定性的本地检查按 SDK 方法参考在 `--` 前加 `--local`，Runtime 核对完整输入和日志后才复用；外部检查保持真实执行。SDK Build 使用稳定的 `--session <builder-execution-ref>` 关联执行；full 的 complete-build 已携带时无需再次传入。
+SDK Build 使用真实的 `--session <builder-execution-ref>` 关联执行；已经携带时无需再次传入。
 
 ## Compat 路径
 

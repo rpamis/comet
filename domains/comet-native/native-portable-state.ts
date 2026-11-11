@@ -6,7 +6,6 @@ import {
 } from './native-builder-acceptance-review.js';
 import { parseNativeChildrenContract } from './native-children-contract.js';
 import { NATIVE_BUILDER_CHECK_RESULTS, NATIVE_VERIFIER_VERDICTS } from './native-input-enum.js';
-import { parseNativeShapeSemanticSnapshot } from './native-shape-semantics.js';
 
 import { stringify } from 'yaml';
 import { parseRuntimeAction } from '../engine/runtime-action.js';
@@ -917,11 +916,7 @@ export function parseNativePortableState(value: unknown): NativePortableState {
             'Native Shape confirmation hash',
           ),
         }),
-    ...(root.shape_semantic_snapshot === undefined
-      ? {}
-      : {
-          shape_semantic_snapshot: parseNativeShapeSemanticSnapshot(root.shape_semantic_snapshot),
-        }),
+
     ...((root.children_contract_ref ?? root.children_contract_hash) === undefined
       ? {}
       : {
@@ -930,6 +925,14 @@ export function parseNativePortableState(value: unknown): NativePortableState {
             'Native children approval reference',
           ),
         }),
+    ...(root.children_contract_ref !== undefined && root.children_contract_hash !== undefined
+      ? {
+          children_contract_hash: stringValue(
+            root.children_contract_hash,
+            'Legacy children approval reference',
+          ),
+        }
+      : {}),
     ...(root.children_contract === undefined
       ? {}
       : { children_contract: parseStoredChildren(root.children_contract, acceptance) }),
@@ -971,17 +974,6 @@ export function parseNativePortableState(value: unknown): NativePortableState {
     archived: booleanValue(root.archived, 'Native archived'),
     created_at: timestamp(root.created_at, 'Native created_at'),
   };
-  if (state.shape_semantic_snapshot) {
-    const expected = [
-      'brief.md',
-      ...state.spec_changes.flatMap(({ source }) => (source ? [source] : [])),
-    ].sort();
-    const actual = state.shape_semantic_snapshot.artifacts.map(({ source }) => source).sort();
-    if (JSON.stringify(expected) !== JSON.stringify(actual))
-      throw new Error(
-        'Native Shape semantic snapshot must match the approved artifact declarations',
-      );
-  }
   assertReferences(state);
   assertLifecycle(state);
   return state;

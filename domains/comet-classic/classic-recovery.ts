@@ -285,7 +285,7 @@ export async function classicRecoveryContext(
               root,
               path.join(directory, '.comet', 'coordination.json'),
               {
-                migrate: false,
+                readOnly: true,
               },
             )
           )?.target ?? path.join(directory, '.comet', 'coordination.json'))

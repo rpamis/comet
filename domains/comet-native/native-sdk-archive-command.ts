@@ -19,7 +19,6 @@ import {
   recoverNativeSdkArchiveOutcome,
 } from './native-sdk-archive.js';
 import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
-import { reconcileNativeSdkExecutionStops } from './native-sdk-check-execution.js';
 import { nativeSdkNextAction, nativeSdkPendingActions } from './native-sdk-continuation.js';
 import { inspectNativeSdkStatus, projectNativeSdkStatus } from './native-sdk-status.js';
 import { restoreNativeSupervisorChildArchiveMaterials } from './native-sdk-supervisor-archive.js';
@@ -28,7 +27,6 @@ import {
   inspectNativeSdkSupervisorDelivery,
   recoverNativeSdkSupervisorDeliveryOutcome,
 } from './native-sdk-supervisor-deliver.js';
-
 function pendingArchiveAction(run: WorkflowRun) {
   const actions = nativeSdkPendingActions(run);
   if (actions.length !== 1) return null;
@@ -39,7 +37,6 @@ function pendingArchiveAction(run: WorkflowRun) {
   );
   return action.type === 'call_tool' && step >= 0 ? { action, step } : null;
 }
-
 /** 从公开 inspect 读取原 Parent，再补全已成功归档的来源材料。 */
 export async function backfillNativeSdkSupervisorChildArchiveMaterials(options: {
   projectRoot: string;
@@ -51,7 +48,6 @@ export async function backfillNativeSdkSupervisorChildArchiveMaterials(options: 
   const inspection = await inspectNativeSdkRun(options.projectRoot, options.parent);
   return restoreNativeSupervisorChildArchiveMaterials(options, inspection);
 }
-
 export async function archiveNativeSdkChange(
   options: Parameters<typeof archiveNativeSdkChangeValue>[0],
 ): Promise<DispatchResult> {
@@ -89,7 +85,6 @@ export async function archiveNativeSdkChange(
     };
   }
 }
-
 async function archiveNativeSdkChangeValue(options: {
   projectRoot: string;
   name: string;
@@ -121,7 +116,11 @@ async function archiveNativeSdkChangeValue(options: {
   const inspection = await inspectNativeSdkRun(options.projectRoot, options.name);
   let { run, state } = inspection;
   if (options.recover && run.status === 'completed' && state.archived) {
-    const applied = run.outputs['archive.execute']?.value as { archiveRef?: string } | undefined;
+    const applied = run.outputs['archive.execute']?.value as
+      | {
+          archiveRef?: string;
+        }
+      | undefined;
     const completed = [...run.actions]
       .reverse()
       .find((action) => action.stepId === 'archive.finalize' && action.status === 'succeeded');
@@ -152,11 +151,6 @@ async function archiveNativeSdkChangeValue(options: {
     });
   }
   if (!options.dryRun) {
-    run = await reconcileNativeSdkExecutionStops(
-      options.projectRoot,
-      run,
-      (await loadOwnedNativeSdkRuntime(options.projectRoot, options.name)).runtime,
-    );
     inspection.run = run;
   }
   if (options.legacySpecBackup) {
@@ -431,7 +425,11 @@ async function archiveNativeSdkChangeValue(options: {
     });
     state = parseNativePortableState(run.state);
   }
-  const completedActions: { id: string; stepId: string; status: string }[] = [];
+  const completedActions: {
+    id: string;
+    stepId: string;
+    status: string;
+  }[] = [];
   let previousStep = -1;
   // 每次 execute 都独立提交原 Action 和 CAS 检查点；不跨越扩展、审批或未知执行。
   for (let count = 0; count < NATIVE_SDK_ARCHIVE_STEPS.length; count += 1) {

@@ -24,9 +24,13 @@ describe('Native workspace identity', () => {
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-workspace-'));
-    await fs.mkdir(path.join(projectRoot, 'docs', 'comet', 'changes', 'example', 'runtime'), {
+    await fs.mkdir(path.join(projectRoot, 'docs', 'comet', 'changes', 'example'), {
       recursive: true,
     });
+    // SIMULATED historical sidecar data: current Native stores its workspace binding in Run state.
+    // These compatibility parser/writer tests explicitly prepare the old data's current storage.
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    await fs.mkdir(path.dirname(nativeWorkspaceFile(paths, 'example')), { recursive: true });
   });
 
   afterEach(async () => {
@@ -146,6 +150,8 @@ describe('Native workspace identity', () => {
       stdio: 'ignore',
     });
     const paths = await nativeProjectPaths(projectRoot, 'docs');
+    // Git initialization selects a different workspace namespace from the non-Git fixture.
+    await fs.mkdir(path.dirname(nativeWorkspaceFile(paths, 'example')), { recursive: true });
     await writeNativeWorkspaceIdentity({
       paths,
       name: 'example',

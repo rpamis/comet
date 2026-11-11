@@ -2,10 +2,10 @@ import { commitNativeSdkArchiveFailure } from './native-portable-archive.js';
 import { observeWorkflowRunStore } from '../workflow-application/run-trace.js';
 import {
   resolveWorkspaceRuntimeRoot,
+  ensureWorkspaceRuntimeRoot,
   resolveWorkspaceRuntimeRootSync,
 } from '../workflow-contract/workspace-runtime.js';
 import { promises as fs } from 'node:fs';
-import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import path from 'node:path';
 import { stringify } from 'yaml';
@@ -14,14 +14,12 @@ import {
   hasNativeManagedRunMarker as hasNativeManagedRunMarkerText,
   parseNativeStateDocument,
 } from './native-state-document.js';
-
 import {
   commitNativeSdkCancellation,
   settleNativeSdkCancellation,
 } from './native-sdk-cancellation-cleanup.js';
 import { settleNativeSdkCompletion } from './native-sdk-completion-cleanup.js';
 import { readNativeTextFilePrefix } from './native-bounded-file.js';
-import { withRecoverableFileLock } from '../../platform/fs/recoverable-file-lock.js';
 import {
   inspectGitWorktree,
   listGitWorktreeRoots,
@@ -30,7 +28,6 @@ import {
 import {
   createFileRuntimeStore,
   createPortableRunCheckpoint,
-  portableRunCheckpointProjectionMatches,
   encodePortableRunCheckpoint,
   PORTABLE_RUN_CHECKPOINT_KEY,
   readPortableRunCheckpoint,
@@ -44,8 +41,6 @@ import {
   registerSdkChangeOwner,
   readSdkChangeOwner,
 } from '../workflow-contract/change-runtime-owner.js';
-import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
-import { ensureProtectedProjectDirectory } from '../workflow-contract/protected-project-path.js';
 import {
   inspectProtectedProjectPath,
   readProtectedProjectFile,
@@ -61,11 +56,10 @@ import {
   nativeSupervisorIntegrationWorktree,
 } from './native-supervisor-workspace.js';
 import type { NativePortableState } from './native-portable-types.js';
+import { nativeSdkRequiresIndependentReview } from './native-sdk-review.js';
 import type { ApplicationIdentity } from '../workflow-application/index.js';
 import { hashRuntimeValue } from '../engine/runtime.js';
-
 type EncodedPortableRunCheckpoint = ReturnType<typeof encodePortableRunCheckpoint>;
-
 /** A validated portable checkpoint still requires an explicit mutating recovery. */
 export class NativeSdkRunRecoveryRequiredError extends Error {
   readonly code = 'NATIVE_SDK_RUN_RECOVERY_REQUIRED';
@@ -95,7 +89,6 @@ export class NativeSdkRunRecoveryRequiredError extends Error {
     );
   }
 }
-
 export function isNativeSdkRunRecoveryRequiredError(
   error: unknown,
 ): error is NativeSdkRunRecoveryRequiredError {
@@ -107,14 +100,15 @@ export function isNativeSdkRunRecoveryRequiredError(
     typeof (error as Partial<NativeSdkRunRecoveryRequiredError>).change === 'string'
   );
 }
-
-class NativeProjectionRepairRequiredError extends Error {}
-
 /** 外部执行及用户交接前固定可恢复状态，内部只读步骤由本地 Run 连续推进。 */
 function nativeSdkCheckpointBoundary(run: WorkflowRun): boolean {
   if (run.revision === 1 || ['completed', 'cancelled', 'failed'].includes(run.status)) return true;
   if (
-    (run.state as { phase?: string }).phase === 'shape' &&
+    (
+      run.state as {
+        phase?: string;
+      }
+    ).phase === 'shape' &&
     run.waits.some(
       (wait) =>
         ['shape.confirm', 'supervisor.shape.confirm'].includes(wait.stepId) &&
@@ -131,23 +125,17 @@ function nativeSdkCheckpointBoundary(run: WorkflowRun): boolean {
   return run.actions.some(
     (action) =>
       ['pending', 'running', 'unknown'].includes(action.status) &&
-      !['shape.prepare', 'shape.revalidate', 'verify.revalidate', 'archive.prepare'].includes(
-        action.stepId,
-      ),
+      (action.type === 'invoke_skill' ||
+        action.type === 'handoff' ||
+        Boolean(action.claim?.sessionId) ||
+        !['shape.prepare', 'shape.revalidate', 'verify.revalidate', 'archive.prepare'].includes(
+          action.stepId,
+        )),
   );
 }
-
-interface ProjectionMarker {
-  schema: 'comet.native.sdk-state-projection.v1';
-  runId: string;
-  revision: number;
-  state: NativePortableState;
-}
-
 function sameState(left: NativePortableState, right: NativePortableState): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
-
 /** A parent checkpoint records Child progress, but never copies a linked Git worktree. */
 function assertSupervisorWorkspacesAvailable(
   run: WorkflowRun,
@@ -196,7 +184,6 @@ function assertSupervisorWorkspacesAvailable(
     }
   }
 }
-
 /** Resolve only one exact archived change; a reused name must not select an arbitrary Run. */
 export async function findNativeSdkArchivedStateFile(
   paths: Awaited<ReturnType<typeof nativeProjectPaths>>,
@@ -223,17 +210,16 @@ export async function findNativeSdkArchivedStateFile(
   if (names.length > 1) throw new Error(`Native SDK Archive ${runId} is ambiguous`);
   return names.length === 1 ? path.join(archive.target, names[0], 'comet-state.yaml') : null;
 }
-
 /** Read the unprojected local record when repairing an interrupted Run creation. */
 export async function readNativeSdkRunRecord(
   projectRoot: string,
   runId: string,
 ): Promise<WorkflowRun | null> {
   return createFileRuntimeStore<WorkflowRun>({
+    singleWriter: true,
     rootDir: path.join(await resolveWorkspaceRuntimeRoot(projectRoot), 'sdk-runs', 'native'),
   }).read(runId);
 }
-
 export async function hasNativeManagedRunMarker(file: string): Promise<boolean> {
   const { text } = await readNativeTextFilePrefix({
     root: path.dirname(file),
@@ -242,7 +228,6 @@ export async function hasNativeManagedRunMarker(file: string): Promise<boolean> 
   });
   return hasNativeManagedRunMarkerText(text);
 }
-
 export async function hasNativePortableRunCheckpoint(
   file: string,
   runId: string,
@@ -252,7 +237,6 @@ export async function hasNativePortableRunCheckpoint(
   const data = parseNativeStateDocument(source, 'Native state file') as Record<string, unknown>;
   return readPortableRunCheckpoint(data[PORTABLE_RUN_CHECKPOINT_KEY], runId) !== null;
 }
-
 export async function writeNativeManagedRunState(
   file: string,
   state: NativePortableState,
@@ -270,7 +254,6 @@ export async function writeNativeManagedRunState(
     applicationIdentity,
   );
 }
-
 function serializeNativeManagedRunProjection(
   state: NativePortableState,
   checkpoint?: EncodedPortableRunCheckpoint,
@@ -287,7 +270,6 @@ function serializeNativeManagedRunProjection(
     (checkpoint ? `${PORTABLE_RUN_CHECKPOINT_KEY}: ${JSON.stringify(checkpoint)}\n` : '')
   );
 }
-
 async function writeNativeManagedRunProjection(
   file: string,
   state: NativePortableState,
@@ -302,7 +284,6 @@ async function writeNativeManagedRunProjection(
     { containedRoot },
   );
 }
-
 /** Keep the existing portable state file current when a built-in SDK Run commits. */
 export function createNativeSdkStateStore(
   projectRoot: string,
@@ -311,6 +292,7 @@ export function createNativeSdkStateStore(
     identity?: ApplicationIdentity;
     readOnly?: boolean;
     allowBranchRebind?: boolean;
+    rootRunId?: string;
   } = {},
   projectionRead = false,
 ): RuntimeStore<WorkflowRun> {
@@ -320,44 +302,19 @@ export function createNativeSdkStateStore(
     'native',
     options.store ??
       createFileRuntimeStore<WorkflowRun>({
+        singleWriter: true,
         rootDir: path.join(workspaceRuntimeRoot, 'sdk-runs', 'native'),
       }),
   );
-  let runtimePrepared = false;
-  async function assertWorkspaceRuntimeCurrent(): Promise<void> {
-    const rejectChangedRoot = (currentRoot: string) => {
-      if (currentRoot !== workspaceRuntimeRoot) {
-        throw new Error(
-          'Native SDK workspace identity changed; recreate the Runtime before continuing',
-        );
-      }
-    };
-    // 旧 handle 不能初始化新 namespace，更不能继续读写它捕获的旧 authority。
-    rejectChangedRoot(resolveWorkspaceRuntimeRootSync(projectRoot));
-    if (!options.readOnly && !runtimePrepared) {
-      rejectChangedRoot(await resolveWorkspaceRuntimeRoot(projectRoot));
-      runtimePrepared = true;
-    }
+  function assertMutationWorkspace(): void {
+    if (resolveWorkspaceRuntimeRootSync(projectRoot) !== workspaceRuntimeRoot)
+      throw new Error(
+        'Native SDK workspace identity changed; recreate the store in the current workspace',
+      );
   }
-
-  const projectionDir = 'state-projections/native';
-  // 仅复用本 store 实例中已经校验过的相同文本；每次仍重新读取完整文件。
-  // 不信任 mtime 或磁盘 marker，外部编辑及重复 YAML key 仍走完整解析。
-  let parsedProjection: { file: string; source: string; document: Record<string, unknown> } | null =
-    null;
-
-  function parseProjection(file: string, source: string): Record<string, unknown> {
-    if (parsedProjection?.file === file && parsedProjection.source === source) {
-      return parsedProjection.document;
-    }
-    const value = parseNativeStateDocument(source, 'Native portable state') as Record<
-      string,
-      unknown
-    >;
-    parsedProjection = { file, source, document: value };
-    return value;
+  function parseProjection(_file: string, source: string): Record<string, unknown> {
+    return parseNativeStateDocument(source, 'Native portable state') as Record<string, unknown>;
   }
-
   async function readPortableSource(file: string): Promise<string> {
     // 既有 portable 读取不设大小上限；保留完整内容并在恢复与普通读取中校验路径竞态。
     return (
@@ -369,10 +326,8 @@ export function createNativeSdkStateStore(
       )
     ).bytes.toString('utf8');
   }
-
   async function recoverFromPortableFile(
     runId: string,
-    marker: ProjectionMarker | null,
     interrupted?: WorkflowRun,
     readOnly = options.readOnly,
   ): Promise<WorkflowRun | null> {
@@ -408,7 +363,10 @@ export function createNativeSdkStateStore(
       throw new Error('Native portable checkpoint requires its original fixed Application package');
     }
     const state = parseNativePortableState(data);
-    const input = saved.input as { name?: unknown; artifactRootRef?: unknown } | null;
+    const input = saved.input as {
+      name?: unknown;
+      artifactRootRef?: unknown;
+    } | null;
     if (
       !sameState(parseNativePortableState(saved.state), state) ||
       input?.name !== runId ||
@@ -418,30 +376,29 @@ export function createNativeSdkStateStore(
     ) {
       throw new Error(`Native portable Run checkpoint for ${runId} does not match its state`);
     }
-    if (!options.allowBranchRebind && !(state.archived && saved.status === 'completed'))
+    if (!options.identity) {
+      const [{ nativeSdkApplicationForRun }, { upgradeNativeRun }] = await Promise.all([
+        import('./native-sdk-application.js'),
+        import('./native-sdk-run-upgrade.js'),
+      ]);
+      if (options.rootRunId === runId && saved.lineage.length > 0)
+        throw new Error('Native Child Run must be restored through its original parent');
+      const definition = nativeSdkApplicationForRun(null);
+      upgradeNativeRun(saved, definition.workflow, definition.transitionHandler);
+    }
+    // 已取消 Run 只恢复原记录并封存，不会在新分支派发任务。
+    if (
+      !options.allowBranchRebind &&
+      saved.status !== 'cancelled' &&
+      !(state.archived && saved.status === 'completed')
+    )
       assertPortableWorkspaceBindingCurrent(projectRoot, {
         isolation: state.workspace.isolation,
         changeBranch: state.workspace.change_branch,
         targetBranch: state.workspace.target_branch,
       });
     assertSupervisorWorkspacesAvailable(saved, state, projectRoot);
-    const hasSourceRevision =
-      (data[PORTABLE_RUN_CHECKPOINT_KEY] as { sourceRevision?: unknown }).sourceRevision !==
-      undefined;
-    if (
-      marker &&
-      ((hasSourceRevision && marker.revision > saved.revision) ||
-        ((!hasSourceRevision || marker.revision === saved.revision) &&
-          !sameState(
-            parseNativePortableState(marker.state),
-            parseNativePortableState(saved.state),
-          )))
-    ) {
-      throw new Error(
-        `Native SDK checkpoint and projection disagree for ${runId}; restore matching Run history and state from the same backup before continuing`,
-      );
-    }
-    const revision = hasSourceRevision ? saved.revision : (marker?.revision ?? saved.revision);
+    const revision = saved.revision;
     const restored: WorkflowRun = { ...saved, revision };
     if (
       interrupted &&
@@ -476,10 +433,12 @@ export function createNativeSdkStateStore(
     else await store.restoreCheckpoint!(runId, interrupted ? 1 : null, restored);
     return store.read(runId);
   }
-
   async function syncBoundaryCheckpoint(run: WorkflowRun, publish: boolean): Promise<WorkflowRun> {
     const state = parseNativePortableState(run.state);
-    const input = run.input as { name?: unknown; artifactRootRef?: unknown } | null;
+    const input = run.input as {
+      name?: unknown;
+      artifactRootRef?: unknown;
+    } | null;
     if (
       state.name !== run.runId ||
       input?.name !== run.runId ||
@@ -491,302 +450,86 @@ export function createNativeSdkStateStore(
       throw new Error('Native artifact root changed after Run creation');
     if (!publish || !nativeSdkCheckpointBoundary(run)) return run;
 
-    await ensureProtectedProjectDirectory(workspaceRuntimeRoot, projectionDir, {
-      label: 'Native SDK checkpoint directory',
+    const current = run;
+    const currentState = state;
+    const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef as string, {
+      change: run.runId,
     });
-    return withRecoverableFileLock(
-      path.join(workspaceRuntimeRoot, projectionDir, `${run.runId}.lock`),
-      async () => {
-        // 较晚提交可能先取得锁，始终从 SDK authority 重新读取，避免发布较旧 checkpoint。
-        const current = await store.read(run.runId);
-        if (!current) throw new Error(`Native SDK Run ${run.runId} disappeared before checkpoint`);
-        const currentState = parseNativePortableState(current.state);
-        const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef as string, {
-          change: run.runId,
-        });
-        let file = nativePortableStateFile(paths, run.runId);
-        try {
-          await fs.access(path.dirname(file));
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-          if (!currentState.archived) return current;
-          const archivedFile = await findNativeSdkArchivedStateFile(paths, run.runId);
-          if (!archivedFile)
-            throw new Error(`Native SDK Archive ${run.runId} is ambiguous`, { cause: error });
-          file = archivedFile;
-        }
-        let source: string | null = null;
-        try {
-          source = await readPortableSource(file);
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-        }
-        const archiveReceipt =
-          source && current.actions.some((action) => action.stepId === 'archive.finalize')
-            ? parseProjection(file, source).archive_receipt
-            : undefined;
-        const checkpoint = encodePortableRunCheckpoint(createPortableRunCheckpoint(current));
-        const expected = serializeNativeManagedRunProjection(
-          currentState,
-          checkpoint,
-          archiveReceipt,
-          options.identity,
-        );
-        if (source !== expected)
-          await atomicWriteText(file, expected, { containedRoot: paths.nativeRoot });
-        return current;
-      },
-      { timeoutMs: 5_000 },
+    let file = nativePortableStateFile(paths, run.runId);
+    try {
+      await fs.access(path.dirname(file));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      if (!currentState.archived) return current;
+      const archivedFile = await findNativeSdkArchivedStateFile(paths, run.runId);
+      if (!archivedFile)
+        throw new Error(`Native SDK Archive ${run.runId} is ambiguous`, { cause: error });
+      file = archivedFile;
+    }
+    let source: string | null = null;
+    try {
+      source = await readPortableSource(file);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    const archiveReceipt =
+      source && current.actions.some((action) => action.stepId === 'archive.finalize')
+        ? parseProjection(file, source).archive_receipt
+        : undefined;
+    const checkpoint = encodePortableRunCheckpoint(createPortableRunCheckpoint(current));
+    const expected = serializeNativeManagedRunProjection(
+      currentState,
+      checkpoint,
+      archiveReceipt,
+      options.identity,
     );
+    if (source !== expected)
+      await atomicWriteText(file, expected, { containedRoot: paths.nativeRoot });
+    return current;
   }
-
   async function syncStateFile(
     runId: string,
     publishCheckpoint = false,
   ): Promise<WorkflowRun | null> {
-    await assertWorkspaceRuntimeCurrent();
-    const inspect = async (readOnly = options.readOnly) => {
-      let run: WorkflowRun | null;
-      if (projectionRead) {
-        try {
-          run = (await readRuntimeProjection(store, runId)).record;
-        } catch (error) {
-          if ((error as { code?: string }).code !== 'RUN_NOT_FOUND') throw error;
-          run = null;
-        }
-      } else run = await store.read(runId);
-      if (run && ['3', '4'].includes(run.workflow.version))
-        return syncBoundaryCheckpoint(run, publishCheckpoint && !options.readOnly);
-      const markerFile = path.join(workspaceRuntimeRoot, projectionDir, `${runId}.json`);
-      let marker: ProjectionMarker | null = null;
-      let markerSource: string | null = null;
+    let run: WorkflowRun | null;
+    if (projectionRead) {
       try {
-        markerSource = (
-          await readProtectedProjectFile(
-            workspaceRuntimeRoot,
-            `${projectionDir}/${runId}.json`,
-            Number.MAX_SAFE_INTEGER,
-            { label: 'Native SDK state projection marker' },
-          )
-        ).bytes.toString('utf8');
-        marker = JSON.parse(markerSource) as ProjectionMarker;
+        run = (await readRuntimeProjection(store, runId)).record;
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        if (
+          (
+            error as {
+              code?: string;
+            }
+          ).code !== 'RUN_NOT_FOUND'
+        )
+          throw error;
+        run = null;
       }
-      if (
-        markerSource !== null &&
-        (!marker ||
-          marker.schema !== 'comet.native.sdk-state-projection.v1' ||
-          marker.runId !== runId ||
-          !Number.isSafeInteger(marker.revision) ||
-          marker.revision < 1 ||
-          parseNativePortableState(marker.state).name !== runId)
-      ) {
-        throw new Error(`Native SDK state projection marker is invalid for ${runId}`);
-      }
-      if (!run || (run.revision === 1 && marker && marker.revision > 1)) {
-        const recovered = await recoverFromPortableFile(runId, marker, run ?? undefined, readOnly);
-        if (readOnly && recovered) {
+    } else run = await store.read(runId);
+    const interrupted =
+      run?.revision === 1 && run.actions.some((action) => action.status !== 'pending')
+        ? run
+        : undefined;
+    if (!run || interrupted) {
+      const recovered = await recoverFromPortableFile(runId, interrupted, true);
+      if (!recovered) return run;
+      if (!run || recovered.revision > run.revision) {
+        if (options.readOnly)
           throw new NativeSdkRunRecoveryRequiredError(
             projectRoot,
             runId,
-            run !== null,
+            Boolean(interrupted),
             options.identity,
           );
-        }
-        if (run && !recovered) {
-          throw new Error(
-            `Native SDK Run ${runId} requires its matching portable checkpoint or original Run history before completing recovery`,
-          );
-        }
-        run = recovered;
-      }
-      if (!run) return null;
-      if (['3', '4'].includes(run.workflow.version)) return syncBoundaryCheckpoint(run, false);
-      const state = parseNativePortableState(run.state);
-      const input = run.input as { name?: unknown; artifactRootRef?: unknown } | null;
-      if (
-        state.name !== runId ||
-        input?.name !== runId ||
-        typeof input.artifactRootRef !== 'string'
-      ) {
-        throw new Error(`Native SDK Run ${runId} does not match its portable state`);
-      }
-      const config = await readProjectConfig(projectRoot);
-      if (config && config.native.artifact_root !== input.artifactRootRef) {
-        throw new Error('Native artifact root changed after Run creation');
-      }
-      if (marker && marker.revision > run.revision) {
-        throw new Error(`Native SDK state projection marker is invalid for ${runId}`);
-      }
-      const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef, {
-        ...options,
-        readOnly,
-        change: runId,
-      });
-      // 已封存取消的业务阶段保持原值；历史诊断不依赖已清理的活动文档。
-      // 这里只跳过投影同步，调用方仍须校验 Run 定义、停止证据及存储状态。
-      if (
-        !options.identity &&
-        run.status === 'cancelled' &&
-        (await readSdkChangeOwner(projectRoot, 'native', runId, { readOnly: true }))
-          ?.application === 'native' &&
-        (await createFileRuntimeStore<WorkflowRun>({
-          rootDir: path.join(workspaceRuntimeRoot, 'sdk-runs', 'native'),
-        }).readPartitionMetadata(runId)) === 'closed'
-      ) {
-        return run;
-      }
-      let file = nativePortableStateFile(paths, runId);
-      try {
-        await fs.access(path.dirname(file));
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-        if (!state.archived) {
-          // A raw SDK start can commit before creating Native documents. The Run
-          // is sufficient for read-only status when no projection was published.
-          if (readOnly && marker)
-            throw new NativeProjectionRepairRequiredError(
-              `Native SDK state projection is missing for ${runId}; run comet native doctor ${runId} --repair`,
-              {
-                cause: error,
-              },
-            );
-          return run;
-        }
-        const archivedFile = await findNativeSdkArchivedStateFile(paths, runId);
-        if (!archivedFile) {
-          throw new Error(`Native SDK Archive ${runId} is ambiguous`, { cause: error });
-        }
-        file = archivedFile;
-      }
-      const expectedCheckpoint = projectionRead ? undefined : createPortableRunCheckpoint(run);
-      // 仅在本次已校验快照内复用编码；后续读取仍重新核对磁盘和 Run。
-      const encodedCheckpoint = expectedCheckpoint
-        ? encodePortableRunCheckpoint(expectedCheckpoint)
-        : undefined;
-      let current: NativePortableState | null = null;
-      let currentSource: string | null = null;
-      let currentDocument: Record<string, unknown> | null = null;
-      try {
-        currentSource = await readPortableSource(file);
-        // 只对完整字节相等的内置活动投影复用权威状态；任何编辑或额外字段仍严格解析。
-        const canonical =
-          options.readOnly &&
-          !projectionRead &&
-          !options.identity &&
-          !state.archived &&
-          currentSource === serializeNativeManagedRunProjection(state, encodedCheckpoint);
-        currentDocument = canonical
-          ? {
-              ...state,
-              [PORTABLE_RUN_CHECKPOINT_KEY]: encodedCheckpoint,
-            }
-          : parseProjection(file, currentSource);
-        current = parseNativePortableState(currentDocument);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-      }
-      if (current && !sameState(current, state)) {
-        const recoveryHash = (run.input as { recoverySourceHash?: unknown } | null)
-          ?.recoverySourceHash;
-        const matchesRecoverySource =
-          marker === null &&
-          run.revision === 1 &&
-          typeof recoveryHash === 'string' &&
-          currentSource !== null &&
-          createHash('sha256').update(currentSource).digest('hex') === recoveryHash;
-        if (
-          !matchesRecoverySource &&
-          (!marker || !sameState(current, parseNativePortableState(marker.state)))
-        ) {
-          throw new Error(`Native state file ${file} differs from SDK Run ${runId}`);
-        }
-      }
-      const currentCheckpoint = currentDocument?.[PORTABLE_RUN_CHECKPOINT_KEY];
-      let checkpointMatches: boolean;
-      if (projectionRead) {
-        // 同时校验实际 portable 正文与权威 Run 的规范化身份，不能只信可编辑 marker。
-        checkpointMatches = portableRunCheckpointProjectionMatches(currentCheckpoint, run);
-        if (
-          hashRuntimeValue((currentDocument?.application_checkpoint ?? null) as never) !==
-          hashRuntimeValue((options.identity ?? null) as never)
-        )
-          throw new Error('Native portable 投影与原固定应用身份不一致');
-      } else {
-        checkpointMatches =
-          isDeepStrictEqual(currentCheckpoint, expectedCheckpoint) ||
-          isDeepStrictEqual(currentCheckpoint, encodedCheckpoint);
-      }
-      const committedArchiveReceipt =
-        !options.identity && state.archived && run.status === 'completed'
-          ? run.outputs['archive.finalize']?.value
-          : undefined;
-      const archiveReceipt =
-        currentDocument?.['archive_receipt'] === undefined
-          ? committedArchiveReceipt
-          : currentDocument['archive_receipt'];
-      const missingArchiveReceipt =
-        committedArchiveReceipt !== undefined && currentDocument?.['archive_receipt'] === undefined;
-      const unresolvedFinalization = run.actions.some(
-        (action) => action.stepId === 'archive.finalize',
-      );
-      if (
-        !current ||
-        !sameState(current, state) ||
-        !hasNativeManagedRunMarkerText(currentSource ?? '') ||
-        !checkpointMatches ||
-        missingArchiveReceipt
-      ) {
-        if (readOnly)
-          throw new NativeProjectionRepairRequiredError(
-            `Native SDK state projection needs recovery for ${runId}; run comet native doctor ${runId} --repair`,
-          );
-        await writeNativeManagedRunProjection(
-          file,
-          state,
-          paths.nativeRoot,
-          encodedCheckpoint,
-          unresolvedFinalization ? archiveReceipt : undefined,
-          options.identity,
-        );
-      }
-      const projection: ProjectionMarker = {
-        schema: 'comet.native.sdk-state-projection.v1',
-        runId,
-        revision: run.revision,
-        state,
-      };
-      const projectionSource = JSON.stringify(projection) + '\n';
-      if (markerSource !== projectionSource) {
-        if (readOnly)
-          throw new NativeProjectionRepairRequiredError(
-            `Native SDK state projection marker needs recovery for ${runId}; run comet native doctor ${runId} --repair`,
-          );
-        await atomicWriteContainedText(markerFile, projectionSource, {
-          containedRoot: workspaceRuntimeRoot,
-        });
-      }
-      return run;
-    };
-    if (options.readOnly) return inspect(true);
-    try {
-      return await inspect(true);
-    } catch (error) {
-      if (
-        !(error instanceof NativeProjectionRepairRequiredError) &&
-        !(error instanceof NativeSdkRunRecoveryRequiredError)
-      )
-        throw error;
-      // Recheck a required projection repair under the writer lock.
-    }
-    await ensureProtectedProjectDirectory(workspaceRuntimeRoot, projectionDir, {
-      label: 'Native SDK state projection directory',
-    });
-    const lockFile = path.join(workspaceRuntimeRoot, projectionDir, `${runId}.lock`);
-    return withRecoverableFileLock(lockFile, () => inspect(false), { timeoutMs: 5_000 });
-  }
+        assertMutationWorkspace();
+        await ensureWorkspaceRuntimeRoot(projectRoot);
 
+        run = await recoverFromPortableFile(runId, interrupted, false);
+      }
+    }
+    return run ? syncBoundaryCheckpoint(run, publishCheckpoint && !options.readOnly) : null;
+  }
   return {
     queryScope: store.queryScope,
     read: syncStateFile,
@@ -796,29 +539,29 @@ export function createNativeSdkStateStore(
       ),
     async compareAndSwap(runId, expectedRevision, next) {
       if (options.readOnly) throw new Error('Native SDK diagnostic store is read-only');
-      await assertWorkspaceRuntimeCurrent();
+      assertMutationWorkspace();
       const state = parseNativePortableState(next.state);
-      const verifier = next.actions.find(
-        (action) =>
-          action.stepId === 'verify.verifier' &&
-          action.status === 'running' &&
-          action.claim?.sessionId === state.builder_handoff?.builder_execution_ref,
-      );
-      if (
-        next.workflow.version === '1' &&
-        verifier?.claim?.sessionId &&
-        expectedRevision !== null
-      ) {
+      for (const action of next.actions) {
+        if (
+          action.status !== 'running' ||
+          !['verify.verifier', 'supervisor.child.verifier'].includes(action.stepId) ||
+          !nativeSdkRequiresIndependentReview(next, action)
+        )
+          continue;
+        const activation = (action.input as { activation?: { builderSessionId?: string } })
+          .activation;
+        const builderSessionId =
+          activation?.builderSessionId ?? state.builder_handoff?.builder_execution_ref;
+        if (!builderSessionId || action.claim?.sessionId !== builderSessionId) continue;
         const previous = await store.read(runId);
+        const original = previous?.actions.find((entry) => entry.id === action.id);
         if (
           previous?.revision === expectedRevision &&
-          previous.actions.some(
-            (action) => action.id === verifier.id && action.status === 'pending',
-          )
+          (original?.status !== 'running' || !isDeepStrictEqual(original.claim, action.claim))
         ) {
           throw new RuntimeProtocolError(
             'VERIFIER_SESSION_NOT_INDEPENDENT',
-            'Verifier session matches the Builder. The Action remains pending: use the actual independent Agent task or session reference and retry this claim. An inherited environment session ID may belong to the Builder.',
+            'Native Verifier requires an independent session; use a different sessionId from the Builder.',
           );
         }
       }
@@ -852,23 +595,8 @@ export function createNativeSdkStateStore(
                 isDeepStrictEqual(action.claim, original.claim),
             ),
         );
-        const acknowledgesStop = previous?.actions.some(
-          (original) =>
-            original.claim &&
-            !original.executionStop &&
-            next.actions.some(
-              (action) =>
-                action.id === original.id &&
-                action.executionStop &&
-                isDeepStrictEqual(action.claim, original.claim),
-            ),
-        );
-        // 分支变化不能阻止原领取回报结果或停止事实；接管前仍禁止领取新执行。
-        if (
-          newlyClaimed ||
-          (next.status !== 'cancelled' && !reconcilesOriginal && !acknowledgesStop)
-        )
-          throw error;
+        // 分支变化不能阻止原领取回报实际结果；接管前仍禁止领取新执行。
+        if (newlyClaimed || (next.status !== 'cancelled' && !reconcilesOriginal)) throw error;
       }
       const commit = () => store.compareAndSwap(runId, expectedRevision, next);
       const failedArchive = [...next.actions]
@@ -893,8 +621,7 @@ export function createNativeSdkStateStore(
               })
             : await commit();
       if (committed) {
-        if (['3', '4'].includes(next.workflow.version)) await syncBoundaryCheckpoint(next, true);
-        else await syncStateFile(runId, true);
+        await syncBoundaryCheckpoint(next, true);
         if (next.status === 'cancelled') {
           await settleNativeSdkCancellation({ projectRoot, run: next });
         }

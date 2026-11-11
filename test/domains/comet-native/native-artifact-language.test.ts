@@ -27,7 +27,6 @@ import {
   defaultProjectConfig,
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
-import { renderNativeEvidenceProjectionMarkdown } from '../../../domains/comet-native/native-evidence-projection.js';
 
 describe('Native artifact language', () => {
   const roots: string[] = [];
@@ -156,22 +155,5 @@ describe('Native artifact language', () => {
         'utf8',
       ),
     ).resolves.toContain('# 目标\n');
-  });
-
-  it('localizes the human-readable evidence projection', () => {
-    const projection = renderNativeEvidenceProjectionMarkdown({
-      change: 'zh-change',
-      phase: 'shape',
-      revision: 1,
-      language: 'zh-CN',
-      scope: null,
-      envelope: null,
-      receipts: [],
-      generatedAt: '2026-08-15T00:00:00.000Z',
-    });
-
-    expect(projection).toContain('# Comet Native 证据概览\n');
-    expect(projection).toContain('## 实现范围\n');
-    expect(projection).not.toContain('# Comet Native Evidence Projection\n');
   });
 });

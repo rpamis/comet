@@ -55,11 +55,16 @@ async function invocation(event = 'PreToolUse', platform = 'codex') {
   const config = JSON.parse(await fs.readFile(file, 'utf8'));
   return readNodeHookArguments(config.hooks[event][0].hooks[0].command)!;
 }
-function execute(args: string[], file = 'src/feature.ts') {
+function execute(args: string[], file = 'src/feature.ts', payload: Record<string, unknown> = {}) {
   return spawnSync(process.execPath, args, {
     cwd: root,
     env: { ...process.env, HOME: root, USERPROFILE: root, CODEX_HOME: configRoot },
-    input: JSON.stringify({ tool_name: 'Write', tool_input: { file_path: file }, cwd: project }),
+    input: JSON.stringify({
+      tool_name: 'Write',
+      tool_input: { file_path: file },
+      cwd: project,
+      ...payload,
+    }),
     encoding: 'utf8',
     windowsHide: true,
   });
@@ -108,6 +113,57 @@ it('runs the packaged router in the event project and provides rules without ini
     permissionDecisionReason: expect.stringContaining("belongs to Classic change 'other'"),
   });
   expect(execute(args).status).toBe(0);
+});
+
+it.each(['codex', 'dsh'] as const)(
+  'provides a reusable Rule pointer instead of repeating the full Rule on startup and compact (%s)',
+  async (platform) => {
+    await activeChange();
+    const args = await invocation('SessionStart', platform);
+    const rulePath = path.join(plugin, 'rules/comet-workflow-guard.md');
+    const rule = await fs.readFile(rulePath, 'utf8');
+    for (const source of ['startup', 'resume', 'compact']) {
+      const result = execute(args, 'src/feature.ts', {
+        session_id: 'same-real-platform-session',
+        source,
+      });
+      expect(result.status, result.stderr).toBe(0);
+      const context = JSON.parse(result.stdout).hookSpecificOutput.additionalContext;
+      expect(context).toContain(rulePath);
+      expect(context).toContain('.comet/current-change.json');
+      expect(context).toContain('压缩');
+      expect(context).toContain('必须读取并执行');
+      expect(context).not.toContain(rule);
+      expect(Buffer.byteLength(context)).toBeLessThan(Buffer.byteLength(rule) / 4);
+      if (source === 'startup')
+        console.info({
+          platform,
+          ruleBytes: Buffer.byteLength(rule),
+          contextBytes: Buffer.byteLength(context),
+        });
+    }
+    const denied = execute(
+      await invocation('PreToolUse', platform),
+      'openspec/changes/other/tasks.md',
+    );
+    expect(JSON.parse(denied.stdout).hookSpecificOutput.permissionDecision).toBe('deny');
+  },
+);
+
+it('delivers the English Rule pointer with the same read and recovery requirements', async () => {
+  await buildPluginIntegration(plugin, 'en');
+  await preparePluginIntegration({
+    platform: 'codex',
+    pluginRoot: plugin,
+    env: { CODEX_HOME: configRoot },
+  });
+  const result = execute(await invocation('SessionStart'));
+  expect(result.status, result.stderr).toBe(0);
+  const context = JSON.parse(result.stdout).hookSpecificOutput.additionalContext;
+  expect(context).toContain('read and follow the complete Rule');
+  expect(context).toContain('reread it after compaction');
+  expect(context).toContain(path.join(plugin, 'rules/comet-workflow-guard.md'));
+  expect(context).not.toContain('# Comet Current-Change Phase Rule');
 });
 
 it('enforces native Codex command patches through the packaged router and preserves legitimate writes', async () => {

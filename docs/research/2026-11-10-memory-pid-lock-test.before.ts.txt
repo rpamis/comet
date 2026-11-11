@@ -1,0 +1,22 @@
+  it('recovers the personal-memory lock left by a terminated process', async () => {
+    await withTempRepository(async (root) => {
+      const runtimeRoot = path.join(root, '.comet', 'runtime');
+      const lock = path.join(runtimeRoot, '.memory.lock');
+      await mkdir(runtimeRoot, { recursive: true });
+      await writeFile(
+        lock,
+        JSON.stringify({ pid: 2_147_483_647, nonce: 'terminated', createdAt: 1 }),
+        'utf8',
+      );
+
+      await expect(
+        service(root).remember({
+          scope: 'global',
+          category: '沟通偏好',
+          text: '使用中文回复',
+        }),
+      ).resolves.toMatchObject({ text: '使用中文回复' });
+      await expect(readFile(lock, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+  });
+

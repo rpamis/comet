@@ -32,7 +32,7 @@ import { configuredHookWritePath } from '../workflow-contract/hook-write-policy.
 import type { CometHookDecision, CometHookRequest } from './hook-types.js';
 import type { CometWorkflow } from './types.js';
 import { collectCometHookContext, collectCometPluginContext } from './plugin-context.js';
-import { readSelectedWorkflowApplication } from '../workflow-application/index.js';
+import { readSelectedWorkflowApplication } from '../workflow-application/application.js';
 
 export interface ActiveHookChange {
   workflow: CometWorkflow;

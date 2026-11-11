@@ -1,0 +1,235 @@
+{
+  "source": "report:2026-11-10-agent-platform-execution",
+  "declarations": [
+    {
+      "title": "routes a configured Native project only through the permanent Native entry",
+      "unchanged": true
+    },
+    {
+      "title": "does not auto-resume a Classic state file after its local Run records are lost",
+      "unchanged": true
+    },
+    {
+      "title": "does not auto-resume a Classic change with ownership but no Run record",
+      "unchanged": true
+    },
+    {
+      "title": "resumes a Classic SDK change while retaining its state file",
+      "unchanged": true
+    },
+    {
+      "title": "auto-resumes an untouched Classic SDK state file without creating its Run during probing",
+      "unchanged": true
+    },
+    {
+      "title": "uses the Classic Run phase when its state file projection is one revision behind",
+      "unchanged": true
+    },
+    {
+      "title": "auto-resumes a portable v4 change without a local execution overlay",
+      "unchanged": true
+    },
+    {
+      "title": "auto-resumes an SDK-owned Native change with no legacy state file",
+      "unchanged": true
+    },
+    {
+      "title": "does not initialize Runtime storage for an empty Native resume probe",
+      "unchanged": true
+    },
+    {
+      "title": "does not repair a missing Native SDK Run during a resume probe",
+      "unchanged": true
+    },
+    {
+      "title": "directs a named missing Native Run to a read-only diagnosis",
+      "unchanged": false
+    },
+    {
+      "title": "continues the sole active Native Run when an unrelated closed Run is corrupt",
+      "unchanged": true
+    },
+    {
+      "title": "retains an unreadable active Native Run as an ambiguous candidate",
+      "unchanged": true
+    },
+    {
+      "title": "resumes a named Native Run despite an unrelated damaged active owner",
+      "unchanged": true
+    },
+    {
+      "title": "inspects only the explicitly named SDK target and retains unscoped corruption diagnostics",
+      "unchanged": true
+    },
+    {
+      "title": "auto-resumes an untouched SDK state file without creating its Run during probing",
+      "unchanged": true
+    },
+    {
+      "title": "does not auto-resume a cancelled Native SDK Run",
+      "unchanged": true
+    },
+    {
+      "title": "routes configured Classic through its permanent entry and rejects missing config",
+      "unchanged": true
+    },
+    {
+      "title": "preserves the Classic dirty-worktree confirmation rule behind the v2 facade",
+      "unchanged": true
+    },
+    {
+      "title": "fails closed with structured Classic output when legacy change state is malformed",
+      "unchanged": true
+    },
+    {
+      "title": "fails closed with a structured result when project config is malformed",
+      "unchanged": true
+    },
+    {
+      "title": "returns none when the configured Native workflow has no active changes",
+      "unchanged": true
+    },
+    {
+      "title": "returns none when a stale Native selection has no active replacement",
+      "unchanged": true
+    },
+    {
+      "title": "uses Native selection for multiple changes without guessing from content",
+      "unchanged": true
+    },
+    {
+      "title": "does not inspect Runtime artifacts for non-target Native changes",
+      "unchanged": true
+    },
+    {
+      "title": "falls back from a stale selection only when one active Native change is unambiguous",
+      "unchanged": true
+    },
+    {
+      "title": "always resumes every valid Native phase through the permanent Native entry",
+      "unchanged": true
+    },
+    {
+      "title": "does not attach an unrelated request to the only Native change",
+      "unchanged": true
+    },
+    {
+      "title": "does not return a resume command for a corrupt Native target",
+      "unchanged": true
+    },
+    {
+      "title": "does not resume while a Native artifact-root move is incomplete",
+      "unchanged": true
+    },
+    {
+      "title": "does not make a dirty worktree a Native resume blocker",
+      "unchanged": true
+    },
+    {
+      "title": "discovers a custom Native root from a nested path and remains read-only",
+      "unchanged": true
+    }
+  ],
+  "behaviors": [
+    {
+      "title": "directs a named missing Native Run to a read-only diagnosis",
+      "before": "Substring searched a JSON-encoded commandArgs array as a shell command.",
+      "after": "Exit 0 and complete exact six-argument public recovery array; original project+runtime byte snapshots after probe/select/diagnosis, explicit repair original Run and Actions all retained.",
+      "id": "manual-recovery-named-native-checkpoint",
+      "retired": []
+    },
+    {
+      "title": "always resumes every valid Native phase through the permanent Native entry",
+      "before": "Cold runtime failed while preserving the old verification report.",
+      "after": "Same unchanged test: simulated Agent/User real current transitions Shape→Build→Verify→Archive, all four permanent /comet-native routing and empty findings. Production proposal only lazily ensures runtime inside actual original-report-preservation write.",
+      "retired": []
+    }
+  ],
+  "registryScope": [
+    {
+      "origin": "current",
+      "id": "manual-recovery-named-native-checkpoint",
+      "tests": [
+        {
+          "file": "test/domains/comet-entry/resume-probe.test.ts",
+          "namePattern": "directs a named missing Native Run to a read-only diagnosis",
+          "requiredNames": [
+            "Comet entry resume probe v2 directs a named missing Native Run to a read-only diagnosis"
+          ]
+        }
+      ],
+      "hasMigration": false
+    },
+    {
+      "origin": "current",
+      "id": "manual-recovery-closed-native-history",
+      "tests": [
+        {
+          "file": "test/domains/comet-entry/resume-probe.test.ts",
+          "namePattern": "continues the sole active Native Run when an unrelated closed Run is corrupt",
+          "requiredNames": [
+            "Comet entry resume probe v2 continues the sole active Native Run when an unrelated closed Run is corrupt"
+          ]
+        }
+      ],
+      "hasMigration": false
+    },
+    {
+      "origin": "current",
+      "id": "manual-recovery-damaged-native-owner",
+      "tests": [
+        {
+          "file": "test/domains/comet-entry/resume-probe.test.ts",
+          "namePattern": "resumes a named Native Run despite an unrelated damaged active owner",
+          "requiredNames": [
+            "Comet entry resume probe v2 resumes a named Native Run despite an unrelated damaged active owner"
+          ]
+        }
+      ],
+      "hasMigration": false
+    },
+    {
+      "origin": "historical",
+      "id": "issue-172-ambient-resume",
+      "tests": [
+        {
+          "file": "test/domains/comet-entry/resume-probe.test.ts",
+          "namePattern": "auto-resumes an untouched SDK state file without creating its Run during probing",
+          "requiredNames": [
+            "auto-resumes an untouched SDK state file without creating its Run during probing"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-resume-probe.test.ts",
+          "namePattern": "returns out_of_scope for pure questions|honors explicit opt-out wording",
+          "requiredNames": [
+            "returns out_of_scope for pure questions",
+            "honors explicit opt-out wording"
+          ]
+        }
+      ],
+      "hasMigration": false
+    },
+    {
+      "origin": "historical",
+      "id": "issue-337-lock-recovery",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+          "namePattern": "does not steal an uncertain lock during ordinary repair and requires its exact confirmed token",
+          "requiredNames": [
+            "does not steal an uncertain lock during ordinary repair and requires its exact confirmed token"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-resume-probe.test.ts",
+          "namePattern": "asks the user when a single active change exists but the request is a new topic",
+          "requiredNames": [
+            "asks the user when a single active change exists but the request is a new topic"
+          ]
+        }
+      ],
+      "hasMigration": false
+    }
+  ]
+}

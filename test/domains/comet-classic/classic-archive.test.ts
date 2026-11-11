@@ -5,7 +5,6 @@ import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as runStore from '../../../domains/comet-classic/classic-run-store.js';
-import * as checkSnapshots from '../../../domains/comet-classic/classic-check-snapshot.js';
 import { parse } from 'yaml';
 import { annotatedMarkdown } from '../../../domains/comet-classic/classic-archive.js';
 import { ensureClassicRuntimeRun } from '../../../domains/comet-classic/classic-runtime-run.js';

@@ -1,0 +1,16 @@
+{
+  "schemaAndEvidence": true,
+  "caseIds": [
+    "native-invalid-completed-check-recovery",
+    "native-invalid-completed-check-guidance"
+  ],
+  "originalFieldsAndChainPreserved": true,
+  "sourceTwoVariantFrozen": true,
+  "requiredNames": [
+    "continues published 0.5.2 Build checks pending at the original Builder without a stop receipt or fabricated candidate",
+    "continues published 0.5.2 Build checks claimed at the original Builder without a stop receipt or fabricated candidate",
+    "continues published 0.5.2 Build checks completed-invalid at the original Builder without a stop receipt or fabricated candidate"
+  ],
+  "patchCaptured": true,
+  "actualFinalTests": 3
+}

@@ -1,3 +1,6 @@
+import '../../helpers/isolated-agent-home.js';
+// SIMULATED historical document fixture for pure artifact/diagnostic readers; no old workflow creation.
+import { storedNativeChangeFixture } from '../../helpers/native-change-document.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { promises as fs } from 'fs';
 import os from 'os';
@@ -12,10 +15,7 @@ import {
   validateNativeSpecChanges,
   validateNativeVerification,
 } from '../../../domains/comet-native/native-artifacts.js';
-import {
-  createNativeChange,
-  nativeChangeDir,
-} from '../../../domains/comet-native/native-change.js';
+import { nativeChangeDir } from '../../../domains/comet-native/native-change.js';
 import { sha256Text } from '../../../domains/comet-native/native-hash.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import type {
@@ -64,7 +64,7 @@ describe('Native artifact validation', () => {
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-artifacts-'));
     paths = await nativeProjectPaths(projectRoot, '.');
-    state = await createNativeChange({
+    state = await storedNativeChangeFixture({
       paths,
       name: 'auth-change',
       language: 'en',

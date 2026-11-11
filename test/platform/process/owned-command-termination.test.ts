@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
+import { build } from 'esbuild';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -17,6 +18,78 @@ const systemRoot = process.env.SystemRoot;
 let directory: string;
 const processes: ChildProcess[] = [];
 const descendants = new Set<number>();
+
+it('keeps its deadline when the owner event loop cannot run its timeout timer', async () => {
+  const marker = path.join(directory, 'timer-heartbeat'),
+    started = path.join(directory, 'timer-started'),
+    blocked = path.join(directory, 'owner-blocked'),
+    resumed = path.join(directory, 'owner-resumed'),
+    result = path.join(directory, 'owner-result.json'),
+    bundle = path.join(directory, 'blocked-owner.cjs');
+  const heartbeat =
+    "setInterval(() => require('node:fs').appendFileSync(process.argv[1], 'tick\\n'), 40)";
+  const command = `const child=require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(heartbeat)},process.argv[2]],{stdio:'ignore',windowsHide:true});require('node:fs').writeFileSync(process.argv[1],JSON.stringify({command:process.pid,descendant:child.pid}));setInterval(()=>{},1000)`;
+  await build({
+    stdin: {
+      contents: `const fs=require('node:fs');const {runOwnedCommand}=require('./platform/process/run-owned-command.ts');let confirmed;runOwnedCommand(process.execPath,['-e',${JSON.stringify(command)},process.env.COMET_TEST_STARTED,process.env.COMET_TEST_MARKER],{cwd:process.env.COMET_TEST_ROOT,timeoutMs:5000,onTerminated:async(_instance,value)=>{confirmed=value}}).then(()=>fs.writeFileSync(process.env.COMET_TEST_RESULT,JSON.stringify({completed:true,confirmed})),error=>fs.writeFileSync(process.env.COMET_TEST_RESULT,JSON.stringify({error:error.message,confirmed})));const poll=setInterval(()=>{if(fs.existsSync(process.env.COMET_TEST_STARTED)){clearInterval(poll);fs.writeFileSync(process.env.COMET_TEST_BLOCKED,'blocked');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10000);fs.writeFileSync(process.env.COMET_TEST_RESUMED,'resumed')}},25);`,
+      resolveDir: process.cwd(),
+    },
+    outfile: bundle,
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    logLevel: 'silent',
+  });
+  const owner = spawn(process.execPath, [bundle], {
+    stdio: 'ignore',
+    windowsHide: true,
+    env: {
+      ...process.env,
+      COMET_TEST_ROOT: directory,
+      COMET_TEST_STARTED: started,
+      COMET_TEST_MARKER: marker,
+      COMET_TEST_BLOCKED: blocked,
+      COMET_TEST_RESUMED: resumed,
+      COMET_TEST_RESULT: result,
+    },
+  });
+  processes.push(owner);
+  const deadline = Date.now() + 5000;
+  while (!(await fs.stat(started).catch(() => null))) {
+    if (Date.now() > deadline) throw new Error('owned command did not start');
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  const pids = JSON.parse(await fs.readFile(started, 'utf8')) as {
+    command: number;
+    descendant: number;
+  };
+  descendants.add(pids.command);
+  descendants.add(pids.descendant);
+  expect(await alive(pids.command)).toBe(true);
+  expect(await alive(pids.descendant)).toBe(true);
+  const cleanupDeadline = Date.now() + 8000;
+  while ((await alive(pids.command)) || (await alive(pids.descendant))) {
+    if (Date.now() > cleanupDeadline)
+      throw new Error('command tree survived its deadline while the owner was blocked');
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  expect(await fs.readFile(blocked, 'utf8')).toBe('blocked');
+  expect(await fs.stat(resumed).catch(() => null)).toBeNull();
+  const stoppedHeartbeat = await fs.readFile(marker, 'utf8');
+  expect(stoppedHeartbeat).toContain('tick');
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  expect(await fs.readFile(marker, 'utf8')).toBe(stoppedHeartbeat);
+  await Promise.race([
+    owner.exitCode !== null ? Promise.resolve() : once(owner, 'exit'),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('owner did not finish after timeout')), 10000),
+    ),
+  ]);
+  expect(JSON.parse(await fs.readFile(result, 'utf8'))).toEqual({
+    error: 'timeout',
+    confirmed: true,
+  });
+}, 25000);
 
 async function alive(pid: number): Promise<boolean> {
   try {
@@ -80,6 +153,31 @@ afterEach(async () => {
 });
 
 describe('受管命令的整树终止证明', () => {
+  it('并行命令超时后均能确认整树停止，不与监管器的子树清理竞争', async () => {
+    for (let round = 0; round < 3; round++) {
+      const outcomes = await Promise.all(
+        Array.from({ length: 4 }, async () => {
+          let confirmed: boolean | undefined;
+          let error: string | undefined;
+          try {
+            await runOwnedCommand(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+              cwd: directory,
+              env: process.env,
+              timeoutMs: 1500,
+              onTerminated: async (_instance, stopped) => {
+                confirmed = stopped;
+              },
+            });
+          } catch (failure) {
+            error = (failure as Error).message;
+          }
+          return { confirmed, error };
+        }),
+      );
+      for (const outcome of outcomes)
+        expect(outcome).toEqual({ confirmed: true, error: 'timeout' });
+    }
+  }, 30000);
   it('无限时命令仍需登记，并可确认停止其进程树', async () => {
     const owned = spawnOwnedCommand(
       process.execPath,

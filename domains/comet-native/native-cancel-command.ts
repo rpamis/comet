@@ -1,15 +1,10 @@
-import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
 import { randomUUID } from 'node:crypto';
+import { readCometCurrentSelection } from '../workflow-contract/current-selection.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { readNativePortableTransaction } from './native-portable-transactions.js';
-
-import { readCometCurrentSelection } from '../workflow-contract/current-selection.js';
-import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
-import {
-  inspectNativeSdkCheckExecutions,
-  reconcileNativeSdkExecutionStops,
-} from './native-sdk-check-execution.js';
 import { inspectNativeSdkRun, loadOwnedNativeSdkRuntime } from './native-runtime-ownership.js';
+import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
+import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
 import {
   assertNoArguments,
   NativeUsageError,
@@ -19,147 +14,80 @@ import {
   type DispatchResult,
 } from './native-cli-shared.js';
 
-const DEFAULT_CANCEL_REASON = 'Cancelled by the user without completing the change';
-
-/**
- * Cancel an unfinished SDK Native change without verifying or archiving it.
- * Business code, commits, and the workspace are retained; the Runtime stops
- * dispatching, managed check executions are terminated, and the current
- * selection is released once the original executions are quiet.
- */
+/** 取消业务调度；原平台任务的取消、超时和进程清理由 Agent 平台负责。 */
 export async function nativeCancelCommand(
   args: string[],
   projectRoot: string,
 ): Promise<DispatchResult> {
   const name = args.shift();
   if (!name || name.startsWith('--')) throw new NativeUsageError('cancel requires a change name');
-  const reason = takeOption(args, '--reason') ?? DEFAULT_CANCEL_REASON;
-  const dryRun = takeFlag(args, '--dry-run');
+  const reason =
+      takeOption(args, '--reason') ?? 'Cancelled by the user without completing the change',
+    dryRun = takeFlag(args, '--dry-run');
   assertNoArguments(args);
-
-  let inspection: Awaited<ReturnType<typeof inspectNativeSdkRun>>;
-  try {
-    inspection = await inspectNativeSdkRun(projectRoot, name);
-  } catch (error) {
+  const { run, state, artifactRootRef } = await inspectNativeSdkRun(projectRoot, name);
+  if (run.status === 'completed')
+    throw new Error('Completed changes retain their Archive and delivery history');
+  const paths = await nativeProjectPaths(projectRoot, artifactRootRef, { readOnly: true });
+  if (
+    (await readNativePortableTransaction(paths, { kind: 'archive', change: name })) ||
+    run.actions.some(
+      (action) =>
+        action.stepId.startsWith('archive.') && ['running', 'unknown'].includes(action.status),
+    )
+  )
     throw new Error(
-      `Native change ${name} is not owned by an SDK Run. Cancellation applies to SDK Native changes; legacy 0.4 runtime changes keep their original lifecycle, and unknown names cannot be cancelled. ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error },
+      'Finish or recover the original Archive transaction before cancelling: comet native archive ' +
+        name +
+        ' --recover',
     );
-  }
-  const { run, state } = inspection;
-
-  if (run.status === 'completed') {
-    throw new Error(
-      `Native change ${name} is completed; use comet native archive instead of cancelling it`,
-    );
-  }
-
-  const alreadyCancelled = run.status === 'cancelled';
-  if (alreadyCancelled) {
-    let settled = run;
-    if (!dryRun) {
-      await settleNativeSdkCancellation({ projectRoot, run });
-      settled = await reconcileNativeSdkExecutionStops(
-        projectRoot,
-        run,
-        (await loadOwnedNativeSdkRuntime(projectRoot, name)).runtime,
-      );
-    }
-    const cancellation = await inspectNativeSdkCancellation({ projectRoot, run: settled });
-    return success(
-      'cancel',
-      {
-        change: name,
-        runId: run.runId,
-        alreadyCancelled: true,
-        cancelled: true,
-        status: cancellation?.status ?? 'cancelled',
-        reason: run.reason ?? null,
-        codeRetained: true,
-        workspaceRetained: true,
-        cancellation,
-      },
-      `Native change ${name} is already cancelled. Existing code, history, and receipts are retained. Follow the outstanding acknowledgements in cancellation if any remain.\n`,
-    );
-  }
-
-  const executions = await inspectNativeSdkCheckExecutions({ projectRoot, run });
-  const activeExecutions = executions.filter((execution) => !execution.quiescent);
-  const pendingAcknowledgements = run.actions
-    .filter((action) => ['running', 'unknown'].includes(action.status))
+  const platformTasks = run.actions
+    .filter((action) => ['running', 'unknown'].includes(action.status) && action.type === 'handoff')
     .map((action) => ({
       actionId: action.id,
-      stepId: action.stepId,
-      attempt: action.attempt,
+      sessionId: action.claim?.sessionId,
       status: action.status,
-      note: 'The original host must confirm this execution and its child tasks stopped after cancellation',
     }));
-  const selected = await readCometCurrentSelection(projectRoot);
-  const selectionTargetsChange =
-    selected.status === 'selected' && selected.selection.change === run.runId;
-
   if (dryRun) {
-    const transaction = await readNativePortableTransaction(
-      await nativeProjectPaths(projectRoot, inspection.artifactRootRef, { readOnly: true }),
-      { kind: 'archive', change: run.runId },
-    );
-    if (
-      transaction ||
-      run.actions.some(
-        (action) =>
-          action.stepId.startsWith('archive.') && ['running', 'unknown'].includes(action.status),
-      )
-    ) {
-      throw new Error(
-        `Native Archive must finish or recover before cancellation; inspect comet native archive ${name} --recover`,
-      );
-    }
-    return success(
-      'cancel',
-      {
-        change: name,
-        runId: run.runId,
-        dryRun: true,
-        willCancel: true,
-        phase: state.phase,
-        status: state.status,
-        stateVersion: state.state_version,
-        reason,
-        managedExecutions: activeExecutions,
-        pendingAcknowledgements,
-        selectionRelease: { currentlySelected: selectionTargetsChange },
-        retained: { code: true, commits: true, workspace: true, branches: true },
-      },
-      `Dry-run: cancelling Native change ${name} keeps all code, commits, branches, and its workspace; the Run stops dispatching, ${activeExecutions.length} managed check execution(s) are terminated, and the current selection ${selectionTargetsChange ? 'is released' : 'is untouched'}.\n`,
-    );
-  }
-
-  const { runtime } = await loadOwnedNativeSdkRuntime(projectRoot, name);
-  let cancelled = await runtime.cancel({
-    runId: run.runId,
-    expectedRevision: run.revision,
-    reason,
-    context: { requestId: randomUUID(), projectRoot },
-  });
-  cancelled = await reconcileNativeSdkExecutionStops(projectRoot, cancelled, runtime);
-  // The state-store hook settles the cancellation: managed executions stop and
-  // the current selection is released once the original executions are quiet.
-  const cancellation = await inspectNativeSdkCancellation({ projectRoot, run: cancelled });
-  return success(
-    'cancel',
-    {
+    const selected = await readCometCurrentSelection(projectRoot);
+    return success('cancel', {
       change: name,
-      runId: cancelled.runId,
-      cancelled: true,
-      status: cancellation?.status ?? 'cancelled',
+      runId: run.runId,
+      dryRun: true,
+      willCancel: true,
+      phase: state.phase,
       reason,
-      codeRetained: true,
-      workspaceRetained: true,
-      cancellation,
-      ...(cancellation && !cancellation.quiescent
-        ? { nextCommand: 'comet native next ' + name + ' --json' }
-        : {}),
-    },
-    `Cancelled Native change ${name}. Code, commits, branches, and the workspace are retained; the change no longer counts as active once its outstanding acknowledgements are settled.\n`,
-  );
+      platformTasks,
+      selectionRelease: {
+        currentlySelected: selected.status === 'selected' && selected.selection.change === name,
+      },
+      retained: { code: true, commits: true, workspace: true, branches: true },
+    });
+  }
+  const cancelled =
+    run.status === 'cancelled'
+      ? run
+      : await (
+          await loadOwnedNativeSdkRuntime(projectRoot, name)
+        ).runtime.cancel({
+          runId: run.runId,
+          expectedRevision: run.revision,
+          reason,
+          context: { requestId: randomUUID(), projectRoot },
+        });
+  await settleNativeSdkCancellation({ projectRoot, run: cancelled });
+  return success('cancel', {
+    change: name,
+    runId: cancelled.runId,
+    cancelled: true,
+    ...(run.status === 'cancelled' ? { alreadyCancelled: true } : {}),
+    status:
+      (await inspectNativeSdkCancellation({ projectRoot, run: cancelled }))?.status ?? 'cancelled',
+    reason: cancelled.reason,
+    codeRetained: true,
+    workspaceRetained: true,
+    platformTasks,
+    instruction:
+      'Comet 已取消后续调度。请使用 Agent 平台取消或核对原平台任务；进程清理由平台负责。代码、批准、任务记录和已有结果保留。',
+  });
 }

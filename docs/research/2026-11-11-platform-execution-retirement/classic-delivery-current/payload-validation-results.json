@@ -1,0 +1,24 @@
+{
+  "scope": [
+    "classic-527-archived-worktree-routing",
+    "classic-527-archived-copy-integrity",
+    "classic-527-missing-original-history",
+    "classic-preexisting-workspace-delivery-scope"
+  ],
+  "cas": "passed",
+  "schema": "passed",
+  "allPriorAndNewEvidence": "passed",
+  "reversePatch": {
+    "status": 0,
+    "error": ""
+  },
+  "preservedOriginalFiles": [
+    "test/domains/comet-classic/classic-sdk-archive-preflight.test.ts",
+    "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+    "test/domains/comet-classic/classic-sdk-delivery-inputs.test.ts"
+  ],
+  "forwardOriginalPatch": {
+    "status": 0,
+    "error": ""
+  }
+}

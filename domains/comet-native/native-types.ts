@@ -3,7 +3,6 @@ import type {
   WorkflowNativePendingRootMove,
   WorkflowNativeRootMoveCleanup,
   WorkflowNativeRootMoveCleanupKind,
-  WorkflowNativeSnapshotConfig,
 } from '../workflow-contract/types.js';
 
 export type NativePhase = 'shape' | 'build' | 'verify' | 'archive';
@@ -25,14 +24,6 @@ export const NATIVE_LEGACY_TRANSITION_SCHEMA = 'comet.native.transition.v1' as c
 export type NativeRootMoveCleanupKind = WorkflowNativeRootMoveCleanupKind;
 export type NativeRootMoveCleanup = WorkflowNativeRootMoveCleanup;
 export type NativePendingRootMove = WorkflowNativePendingRootMove;
-export type NativeSnapshotConfig = WorkflowNativeSnapshotConfig;
-
-export interface NativeSnapshotPolicy {
-  schema: 'comet.native.snapshot-policy.v1';
-  include: string[];
-  exclude: string[];
-  hash: string;
-}
 
 export type CometProjectConfig = WorkflowNativeEnabledProjectConfig;
 export type NativeArchiveConfirmation =
@@ -50,7 +41,6 @@ export interface NativeProjectPaths {
   workspaceRuntimeRoot: string;
   runtimeDir: string;
   changesRuntimeDir: string;
-  locksDir: string;
   transactionsDir: string;
 }
 
@@ -125,129 +115,6 @@ export interface NativeChangeSchemaInspection {
   message?: string;
 }
 
-export interface NativeSnapshotEntry {
-  path: string;
-  hash: string;
-  size: number;
-  type: 'file';
-  /**
-   * Git blob object id recorded when the entry was captured from a Git-tracked
-   * file. Used by the incremental snapshot path to decide whether a file's
-   * content is unchanged since baseline (same object id ⇒ same content ⇒ same
-   * Comet hash) without re-reading the file. Absent for non-Git projects,
-   * legacy manifests, and physically-captured entries.
-   */
-  gitObjectId?: string;
-}
-
-export interface NativeSnapshotOmission {
-  path: string;
-  size: number | null;
-  type: 'file' | 'directory' | 'other';
-  reason:
-    | 'file-size'
-    | 'file-count'
-    | 'total-size'
-    | 'manifest-size'
-    | 'changed-during-read'
-    | 'unreadable'
-    | 'gitlink-unavailable'
-    | 'gitlink-dirty'
-    | 'gitlink-changed'
-    | 'legacy-gitlink-boundary'
-    | 'git-enumeration-limit'
-    | 'git-selection-changed'
-    | 'physical-enumeration-limit'
-    | 'physical-selection-changed';
-}
-
-export interface NativeSnapshotOmissionOverflow {
-  ref: string;
-  hash: string;
-  count: number;
-}
-
-export interface NativeGitSelectionStreamEvidence {
-  hash: string;
-  recordCount: number;
-  storedRecordCount: number;
-  stdoutBytes: number;
-  overflow: boolean;
-}
-
-export interface NativeGitSelectionEvidence {
-  schema: 'comet.native.git-selection.v1';
-  status: 'overflow' | 'changed' | 'overflow-and-changed';
-  stageBefore: NativeGitSelectionStreamEvidence;
-  combined: NativeGitSelectionStreamEvidence;
-  stageAfter: NativeGitSelectionStreamEvidence;
-  finalStageBefore: NativeGitSelectionStreamEvidence;
-  finalCombined: NativeGitSelectionStreamEvidence;
-  finalStageAfter: NativeGitSelectionStreamEvidence;
-}
-
-export interface NativePhysicalSelectionStreamEvidence {
-  hash: string;
-  visitedNodeCount: number;
-  recordCount: number;
-  storedRecordCount: number;
-  encodedBytes: number;
-  overflow: boolean;
-  unstable: boolean;
-}
-
-export interface NativePhysicalSelectionEvidence {
-  schema: 'comet.native.physical-selection.v1';
-  status: 'overflow' | 'changed' | 'overflow-and-changed';
-  before: NativePhysicalSelectionStreamEvidence;
-  after: NativePhysicalSelectionStreamEvidence;
-}
-
-export interface NativeGitProjectionEvidence {
-  provider: 'git';
-  selection?: NativeGitSelectionEvidence;
-}
-
-export type NativeContentSnapshotCapture =
-  | {
-      provider: 'git';
-      gitSelection?: NativeGitSelectionEvidence;
-      physicalSelection?: never;
-      projection?: never;
-    }
-  | {
-      provider: 'physical-tree';
-      gitSelection?: never;
-      physicalSelection?: NativePhysicalSelectionEvidence;
-      projection?: never;
-    }
-  | {
-      provider: 'physical-tree';
-      gitSelection?: never;
-      physicalSelection?: never;
-      projection: NativeGitProjectionEvidence;
-    };
-
-export interface NativeContentSnapshotManifest {
-  schema: 'comet.native.content-snapshot.v1';
-  origin: 'change-created' | 'legacy-migration' | 'explicit';
-  capture?: NativeContentSnapshotCapture;
-  createdAt: string;
-  complete: boolean;
-  limits: {
-    maxFiles: number;
-    maxFileBytes: number;
-    maxTotalBytes: number;
-    maxManifestBytes: number;
-    maxDurationMs?: number;
-  };
-  policy?: NativeSnapshotPolicy;
-  entries: NativeSnapshotEntry[];
-  omitted: NativeSnapshotOmission[];
-  omittedCount: number;
-  omissionOverflow?: NativeSnapshotOmissionOverflow;
-}
-
 export interface NativeFinding {
   code: string;
   message: string;
@@ -306,93 +173,6 @@ export interface NativeContinuation {
   requiresUserDecision: boolean;
   requiredInputs: string[];
   inputOptions: NativeContinuationInputOption[];
-}
-
-export interface NativeCheckpointArtifact {
-  path: string;
-  hash: string;
-  size: number;
-}
-
-export interface NativeCheckpointManifest {
-  schema: 'comet.native.checkpoint-manifest.v1';
-  change: string;
-  artifacts: NativeCheckpointArtifact[];
-  totalBytes: number;
-}
-
-export interface NativeProgressCheckpoint {
-  schema: 'comet.native.progress-checkpoint.v1';
-  id: string;
-  change: string;
-  phase: NativePhase;
-  previousRevision: number;
-  stateRevision: number;
-  summary: string;
-  nextAction: string;
-  inputHash: string;
-  manifestHash: string;
-  manifestRef: string;
-  artifactCount: number;
-  createdAt: string;
-}
-
-export interface NativeCheckpointJournal {
-  schema: 'comet.native.checkpoint-journal.v1';
-  id: string;
-  change: string;
-  inputHash: string;
-  createdAt: string;
-  previousState: NativeChangeState;
-  nextState: NativeChangeState;
-  checkpoint: NativeProgressCheckpoint;
-  manifest: NativeCheckpointManifest;
-}
-
-export interface NativeCheckpointHooks {
-  afterPrepared?: (journal: NativeCheckpointJournal) => void | Promise<void>;
-  afterStateWritten?: (journal: NativeCheckpointJournal) => void | Promise<void>;
-  afterProgressWritten?: (journal: NativeCheckpointJournal) => void | Promise<void>;
-}
-
-export interface NativeCheckpointResult {
-  change: NativeChangeState;
-  checkpoint: NativeProgressCheckpoint;
-  idempotent: boolean;
-  expectedRevision: number;
-  previousRevision: number;
-  revision: number;
-  outcome: 'recorded' | 'idempotent';
-  continuation: NativeContinuation;
-}
-
-export interface NativeCheckpointCompactView {
-  id: string;
-  createdAt: string;
-  phase: NativePhase;
-  stateRevision: number;
-  summary: string;
-  nextAction: string;
-  artifactCount: number;
-}
-
-export interface NativeCheckpointDetailView extends NativeCheckpointCompactView {
-  manifestHash: string;
-  manifestRef: string;
-  artifacts: NativeCheckpointArtifact[];
-  totalBytes: number;
-}
-
-export interface NativeInspectionView {
-  freshness: 'fresh' | 'stale';
-  codes: string[];
-  reasonCount: number;
-  codesTruncated: boolean;
-}
-
-export interface NativeInspectionDetailView extends NativeInspectionView {
-  reasons: string[];
-  reasonsTruncated: boolean;
 }
 
 export interface NativeArtifactValidation {
@@ -551,6 +331,7 @@ export interface NativeTransitionHooks {
   afterChangeStateWritten?: (journal: NativeTransitionJournal) => void | Promise<void>;
 }
 
+/** 旧业务文档的只读诊断；不读取或创建 progress 内容快照。 */
 export interface NativeStatusProjection {
   name: string;
   artifacts?: NativeChangeArtifactPaths;
@@ -562,10 +343,15 @@ export interface NativeStatusProjection {
   selected: boolean;
   nextCommand: string | null;
   archiveReady: boolean;
-  inspection: NativeInspectionView;
+  inspection: {
+    freshness: 'fresh' | 'stale';
+    codes: string[];
+    reasonCount: number;
+    codesTruncated: boolean;
+  };
   findingSummary: NativeFindingSummary;
   detailsCommand: string | null;
-  checkpoint: NativeCheckpointCompactView | null;
+  checkpoint: null;
   continuation: NativeContinuation | null;
   workspace: NativeWorkspaceProjection;
   runtime: {
@@ -577,16 +363,6 @@ export interface NativeStatusProjection {
   repair?: NativeRepairStatusProjection | null;
   acceptancePage?: NativeAcceptancePageProjection;
   findings?: NativeStructuredFinding[];
-  inspectionDetails?: NativeInspectionDetailView;
-  checkpointDetails?: NativeCheckpointDetailView | null;
-  budgets?: {
-    maxFindings: number;
-    maxInspectionReasons: number;
-    maxCheckpointArtifacts: number;
-    findingsTruncated: boolean;
-    inspectionReasonsTruncated: boolean;
-    checkpointArtifactsTruncated: boolean;
-  };
   schema?: string;
   migrationRequired?: boolean;
   minimumRuntimeVersion?: number | null;

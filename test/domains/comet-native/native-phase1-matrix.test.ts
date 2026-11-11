@@ -1,16 +1,14 @@
+import '../../helpers/isolated-agent-home.js';
 import { promises as fs } from 'fs';
 import { execFileSync } from 'node:child_process';
 import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  createNativeChange,
-  nativeChangeDir,
-} from '../../../domains/comet-native/native-change.js';
+import { nativeChangeDir } from '../../../domains/comet-native/native-change.js';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
-import { inspectNativeChangeConflicts } from '../../../domains/comet-native/native-conflict-inspection.js';
 import { readProjectConfig } from '../../../domains/comet-native/native-config.js';
-import { doctorNativeProject } from '../../../domains/comet-native/native-doctor.js';
+import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
+import { storedNativeChangeFixture } from '../../helpers/native-change-document.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import {
   moveNativeRoot,
@@ -134,7 +132,7 @@ describe('Comet Native Phase 1 behavior matrix', () => {
       path.join(projectRoot, 'openspec', 'changes', 'should-not-read', 'secret.md'),
       'not Native state\n',
     );
-    await createNativeChange({
+    await storedNativeChangeFixture({
       paths,
       name: 'malformed-state',
       language: 'en',
@@ -169,7 +167,7 @@ describe('Comet Native Phase 1 behavior matrix', () => {
         ])
       ).exitCode,
     ).toBe(65);
-    expect((await doctorNativeProject({ paths })).healthy).toBe(false);
+    expect((await nativeDoctorCommand([], projectRoot)).data).toMatchObject({ healthy: false });
     expect(observed.some((target) => target.includes(`${path.sep}openspec${path.sep}`))).toBe(
       false,
     );

@@ -1,6 +1,5 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { withRecoverableFileLock } from '../../platform/fs/recoverable-file-lock.js';
 import { hashRuntimeValue, RuntimeProtocolError } from '../engine/runtime.js';
 import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
 import {
@@ -114,21 +113,7 @@ async function writeInventory(root: string, body: Inventory) {
   );
 }
 
-/** 锁顺序固定为工作区、应用、Run；只协调受控写入者，不替代 Run 的执行权威。 */
-export async function withWorkspaceApplicationScopeLock<T>(
-  root: string,
-  applicationId: string,
-  operation: () => Promise<T>,
-): Promise<T> {
-  const directory = await ensureProtectedProjectDirectory(root, 'application-scope-locks', {
-    label: '工作区应用写入范围锁',
-  });
-  return withRecoverableFileLock(path.join(directory, '_workspace.lock'), () =>
-    withRecoverableFileLock(path.join(directory, `${applicationId}.lock`), operation),
-  );
-}
-
-/** 调用者持有工作区锁。恢复只放行当前应用的目录，不放行任何普通领取。 */
+/** 调用方串行提交。恢复只放行当前应用的目录，不放行任何普通领取。 */
 export async function workspaceApplicationIds(
   root: string,
   currentId: string,

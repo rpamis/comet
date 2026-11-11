@@ -65,7 +65,7 @@ export async function ensureCliBuilt(
 ): Promise<void> {
   const lockPath = path.join(repositoryRoot, '.comet-test-build.lock');
   if ((await cliBuildIsFresh(repositoryRoot)) && !(await pathExists(lockPath))) return;
-  // 复用进程身份锁；活跃或无法确认退出的 owner 不能按文件年龄被夺取。
+  // 复用共享事务锁；未知旧记录需要确认恢复，不能按文件年龄夺取。
   await withRecoverableFileLock(
     lockPath,
     async () => {

@@ -22,18 +22,18 @@ afterEach(async () => {
 });
 
 it.each(['full', 'hotfix', 'tweak'] as const)(
-  'compiles Classic %s Agent checks without changing the legacy definition',
+  'compiles Classic %s with platform reports and an explicit Archive approval',
   (profile) => {
     const legacy = defineWorkflow(defineClassicWorkflowApplication(profile).workflow);
     const current = defineWorkflow(defineClassicAgentWorkflowApplication(profile).workflow);
-    expect(legacy.version).toBe('1');
+    expect(legacy.version).toBe('2');
     expect(current.version).toBe('2');
     expect(
       Object.keys(current.steps).filter((id) =>
         /\.(build|verify)\.check(?:\.evidence)?$/u.test(id),
       ),
     ).toEqual([]);
-    expect(Object.keys(legacy.steps).some((id) => id.endsWith('.verify.check'))).toBe(true);
+    expect(Object.keys(legacy.steps).some((id) => id.endsWith('.verify.check'))).toBe(false);
     expect(current.steps[`${profile}.archive.confirm`]).toMatchObject({ type: 'ask_user' });
   },
 );
@@ -96,7 +96,11 @@ it('continues a new Classic Run with platform check reports and rejects failed r
     '-e',
     'process.exit(0)',
   );
-  expect(managed.exitCode).not.toBe(0);
+  expect(managed.exitCode).toBe(0);
+  expect(managed.data).toMatchObject({
+    status: 'platform-execution-required',
+    checksExecuted: false,
+  });
   expect((await inspectClassicSdkRun(root, 'demo')).run).toEqual(before);
   const rejected = await cli('state', 'complete-build', 'demo', '--checks', 'checks.json');
   expect(rejected.exitCode).not.toBe(0);

@@ -1,0 +1,2923 @@
+{
+  "currentAssociated": [
+    {
+      "id": "native-delta-shape-materialization",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native SDK Workflow Application materializes a Delta target before Shape and refuses independent target edits$",
+          "requiredNames": [
+            "Native SDK Workflow Application materializes a Delta target before Shape and refuses independent target edits"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "requiredNames": [
+            "Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure",
+            "Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation"
+          ],
+          "namePattern": "^(?:Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure|Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation)$"
+        }
+      ]
+    },
+    {
+      "id": "native-supervisor-referenced-acceptance",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native SDK Workflow Application confirms a Supervisor child plan and coordination mode in the same SDK Run''$",
+          "requiredNames": [
+            "Native SDK Workflow Application confirms a Supervisor child plan and coordination mode in the same SDK Run''"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native SDK Workflow Application confirms a Supervisor child plan and coordination mode in the same SDK Run' with referenced acceptance'$",
+          "requiredNames": [
+            "Native SDK Workflow Application confirms a Supervisor child plan and coordination mode in the same SDK Run' with referenced acceptance'"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-rejected-apply-recovery",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-rejected-finalize-recovery",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^recovers a returned but rejected archive\\.finalize(-before-move)? through the public Archive command$",
+          "requiredNames": [
+            "recovers a returned but rejected archive.finalize through the public Archive command",
+            "recovers a returned but rejected archive.finalize-before-move through the public Archive command"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-bugfree-formal-edit-preflight",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "local-native-check-refresh-fixture-order",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "local-native-one-shot-reverify-proof",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "local-native-reverify-fixture-order",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "local-native-missing-report-fixture-order",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "generates a missing report without overwriting a user-moved file or inventing a backup",
+          "requiredNames": [
+            "generates a missing report without overwriting a user-moved file or inventing a backup"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-archive-preflight-recovery",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "records a failed read-only preflight without resampling its transient diagnostic|recovers a rejected running preflight through public archive without rebuilding accepted work",
+          "requiredNames": [
+            "Native protocol simplification records a failed read-only preflight without resampling its transient diagnostic",
+            "Native protocol simplification recovers a rejected running preflight through public archive without rebuilding accepted work"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-transient-snapshot-preserves-acceptance",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-accepted-decision-idempotency",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "returns the original accepted decision after recovery without clearing acceptance or advancing Archive",
+          "requiredNames": [
+            "Native protocol simplification returns the original accepted decision after recovery without clearing acceptance or advancing Archive"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-declared-check-outputs",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-509-environment-candidate-binding",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-509-environment-archive",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-509-capture-failure-diagnostics",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-user-input-filename-hashing",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-claim-template-direct-use",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "binds a separate Verifier handoff and accepts its filled outcome template",
+          "requiredNames": [
+            "Native SDK Workflow Application binds a separate Verifier handoff and accepts its filled outcome template"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-archive-json-task-wait",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "waits for the original Archive task before parsing complete stdout JSON",
+          "requiredNames": [
+            "Native SDK Workflow Application waits for the original Archive task before parsing complete stdout JSON"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-successor-scoped-check-reuse",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-successor-reuse-evidence-guards",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-builder-shape-drift-recovery",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "requiredNames": [
+            "Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure",
+            "Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation"
+          ],
+          "namePattern": "^(?:Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure|Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation)$"
+        }
+      ]
+    },
+    {
+      "id": "native-dirty-gitlink-archive",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-request-transport-inputs",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-builder-submitted-at-diagnostic",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native protocol simplification records a Runtime submission time without requiring Agent metadata \\(undefined\\)$",
+          "requiredNames": [
+            "Native protocol simplification records a Runtime submission time without requiring Agent metadata (undefined)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native protocol simplification records a Runtime submission time without requiring Agent metadata \\(local-time-without-a-format\\)$",
+          "requiredNames": [
+            "Native protocol simplification records a Runtime submission time without requiring Agent metadata (local-time-without-a-format)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native protocol simplification records a Runtime submission time without requiring Agent metadata \\(2026-11-05T10:30:00Z\\)$",
+          "requiredNames": [
+            "Native protocol simplification records a Runtime submission time without requiring Agent metadata (2026-11-05T10:30:00Z)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native protocol simplification records a Runtime submission time without requiring Agent metadata \\(2026-10-23T01:00:00\\.00Z\\)$",
+          "requiredNames": [
+            "Native protocol simplification records a Runtime submission time without requiring Agent metadata (2026-10-23T01:00:00.00Z)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-builder-check-result-diagnostic",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:Native Agent platform verification reports reports the exact invalid Builder field without misleading claim diagnostics: checks\\.result)$",
+          "requiredNames": [
+            "Native Agent platform verification reports reports the exact invalid Builder field without misleading claim diagnostics: checks.result"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-builder-review-evidence-diagnostic",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:Native Agent platform verification reports reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview\\.evidence)$",
+          "requiredNames": [
+            "Native Agent platform verification reports reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview.evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-builder-review-note-diagnostic",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:Native Agent platform verification reports reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview\\.note)$",
+          "requiredNames": [
+            "Native Agent platform verification reports reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview.note"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-verifier-position-diagnostic",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:diagnoses a stale Verifier iteration and attempt and preserves correction on the original claim)$",
+          "requiredNames": [
+            "diagnoses a stale Verifier iteration and attempt and preserves correction on the original claim"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-awaits-accepted-revalidation",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-archive-command.test.ts",
+          "namePattern": "^(?:Native Archive command stop boundaries does not advance accepted-result revalidation past a pending approval boundary|Native Archive command stop boundaries does not advance accepted-result revalidation past a pending evidence boundary)$",
+          "requiredNames": [
+            "Native Archive command stop boundaries does not advance accepted-result revalidation past a pending approval boundary",
+            "Native Archive command stop boundaries does not advance accepted-result revalidation past a pending evidence boundary"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-gitlink-generated-input-binding",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-next-git-query-budget",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "bounds Git work for public next and archive without skipping candidate validation",
+          "requiredNames": [
+            "bounds Git work for public next and archive without skipping candidate validation (source)",
+            "bounds Git work for public next and archive without skipping candidate validation (bundle)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-git-query-budget",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "bounds Git work for public next and archive without skipping candidate validation",
+          "requiredNames": [
+            "bounds Git work for public next and archive without skipping candidate validation (source)",
+            "bounds Git work for public next and archive without skipping candidate validation (bundle)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-generated-input-literal-query-scope",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-single-character-dirty-input-snapshot",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-applied-comment",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-implementation",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:continues an authorized implementation edit without requesting the same decision again)$",
+          "requiredNames": [
+            "continues an authorized implementation edit without requesting the same decision again"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-repeat-edit",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-large-crlf",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-compat-edit",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-build-edit",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-archive-ready",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-archive-report-edit",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-archive-requirements-edit",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-archive-check-history",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "preserves an Agent-selected one-shot report while explicitly revising Archive-ready code without replay",
+          "requiredNames": [
+            "preserves an Agent-selected one-shot report while explicitly revising Archive-ready code without replay"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-revision-interruption",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "reconciles a unknown read-only implementation revision using the original claim",
+          "requiredNames": [
+            "reconciles a unknown read-only implementation revision using the original claim"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "reconciles a rejected read-only implementation revision using the original claim",
+          "requiredNames": [
+            "reconciles a rejected read-only implementation revision using the original claim"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-user-report-preserved",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "retains the user-edited verification report when the successor report is generated",
+          "requiredNames": [
+            "retains the user-edited verification report when the successor report is generated"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-moved-report",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "offers revalidation when the user moved the report before archive.prepare",
+          "requiredNames": [
+            "offers revalidation when the user moved the report before archive.prepare"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "offers revalidation when the user moved the report before archive.execute",
+          "requiredNames": [
+            "offers revalidation when the user moved the report before archive.execute"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "generates a missing report without overwriting a user-moved file or inventing a backup",
+          "requiredNames": [
+            "generates a missing report without overwriting a user-moved file or inventing a backup"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-unreadable-report",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:preserves the completed Run and warns when its archived report view is not a file \\(route=archive-ready\\)|preserves the completed Run and warns when its archived report view is not a file \\(route=verification-wait\\))$",
+          "requiredNames": [
+            "preserves the completed Run and warns when its archived report view is not a file (route=archive-ready)",
+            "preserves the completed Run and warns when its archived report view is not a file (route=verification-wait)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-archive-formal-comment",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-running-revision",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "continues a read-only revision after its claiming process exits without reporting an outcome",
+          "requiredNames": [
+            "continues a read-only revision after its claiming process exits without reporting an outcome"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-reviewed-requirements",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-ignored-parent-generated-input-binding",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-missing-shape-fingerprint-recovery",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-preview-applied-specs",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "completes Archive from persisted checkpoint",
+          "requiredNames": [
+            "Native SDK Workflow Application completes Archive from persisted checkpoint 0 without replaying completed Actions",
+            "Native SDK Workflow Application completes Archive from persisted checkpoint 1 without replaying completed Actions",
+            "Native SDK Workflow Application completes Archive from persisted checkpoint 2 without replaying completed Actions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-legacy-archive-drift-repair-wait",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "continues an authorized implementation edit without requesting the same decision again|recovers a returned but rejected archive\\.execute through the public Archive command",
+          "requiredNames": [
+            "continues an authorized implementation edit without requesting the same decision again",
+            "recovers a returned but rejected archive.execute through the public Archive command"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-ignored-cache-link-boundary",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ci-python-loader-environment-isolation",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-approved-original-git-path-alias",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-runner-request-parent-alias",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-language-neutral-raw-edit-observation",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-current-agent-edit-judgment",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-approved-selective-check-refresh",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-raw-final-cache-directory-fence",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-check-no-alias-replay",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:Native Agent platform verification reports rejects a retired checker alias request without replaying a one-shot platform operation)$",
+          "requiredNames": [
+            "Native Agent platform verification reports rejects a retired checker alias request without replaying a one-shot platform operation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-authorized-implementation-continuation",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:A4 continues an Agent-reviewed behavior change from verify and retains only the unaffected one-shot check|A4 continues an Agent-reviewed behavior change from archive and retains only the unaffected one-shot check)$",
+          "requiredNames": [
+            "A4 continues an Agent-reviewed behavior change from verify and retains only the unaffected one-shot check",
+            "A4 continues an Agent-reviewed behavior change from archive and retains only the unaffected one-shot check"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-explicit-git-dependent-refresh",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:observes a selected Git-index failure after byte-identical staging and preserves one-time history through explicit repair)$",
+          "requiredNames": [
+            "observes a selected Git-index failure after byte-identical staging and preserves one-time history through explicit repair"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-refresh-failed-preflight-recovery",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:observes a selected Git-index failure after byte-identical staging and preserves one-time history through explicit repair)$",
+          "requiredNames": [
+            "observes a selected Git-index failure after byte-identical staging and preserves one-time history through explicit repair"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "edit-review-preserve-completed-successive-judgments",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-formal-requirements-judgment-route",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "edit-review-raw-git-successive-identity-chain",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-rejected-check-proof-original-claim-correction",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects a foreign Verifier candidate and accepts correction on the original claim)$",
+          "requiredNames": [
+            "rejects a foreign Verifier candidate and accepts correction on the original claim"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "agent-edit-review-check-evidence-versus-implementation",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "agent-edit-review-no-unauthorized-revision",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-successive-refresh-original-execution",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-refresh-selected-check-scope",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "edit-review-supplement-retained-checks",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "agent-edit-review-formal-check-retention",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-517-utf8-bom-check-receipt",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-528-applied-archive-recovery",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-528-recovery-original-evidence-guards",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-528-legacy-archive-recovery",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-builder-runtime-submission-time",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "records a Runtime submission time without requiring Agent metadata \\(undefined\\)",
+          "requiredNames": [
+            "Native protocol simplification records a Runtime submission time without requiring Agent metadata (undefined)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "records a Runtime submission time without requiring Agent metadata \\(local-time-without-a-format\\)",
+          "requiredNames": [
+            "Native protocol simplification records a Runtime submission time without requiring Agent metadata (local-time-without-a-format)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native protocol simplification records a Runtime submission time without requiring Agent metadata \\(2026-11-05T10:30:00Z\\)$",
+          "requiredNames": [
+            "Native protocol simplification records a Runtime submission time without requiring Agent metadata (2026-11-05T10:30:00Z)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native protocol simplification records a Runtime submission time without requiring Agent metadata \\(2026-10-23T01:00:00\\.00Z\\)$",
+          "requiredNames": [
+            "Native protocol simplification records a Runtime submission time without requiring Agent metadata (2026-10-23T01:00:00.00Z)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-next-drain-internal-actions",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "drains authorized internal Archive actions through public next without repeating them \\((source|bundle)\\)",
+          "requiredNames": [
+            "Native protocol simplification drains authorized internal Archive actions through public next without repeating them (source)",
+            "Native protocol simplification drains authorized internal Archive actions through public next without repeating them (bundle)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "stops public next at result confirmation without starting Archive",
+          "requiredNames": [
+            "Native protocol simplification stops public next at result confirmation without starting Archive"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "stops public next at an independent Verifier handoff",
+          "requiredNames": [
+            "Native protocol simplification stops public next at an independent Verifier handoff"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "preserves an unknown Verifier execution without claiming or replaying it",
+          "requiredNames": [
+            "Native protocol simplification preserves an unknown Verifier execution without claiming or replaying it"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^keeps Archive next pending on a renamed branch and resumes the original Run after restoration$",
+          "requiredNames": [
+            "keeps Archive next pending on a renamed branch and resumes the original Run after restoration"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-observe-formal-originals",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-builder-optional-iteration-focus",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "records a Runtime submission time without requiring Agent metadata \\(undefined\\)",
+          "requiredNames": [
+            "Native protocol simplification records a Runtime submission time without requiring Agent metadata (undefined)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-verifier-delegation-header",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "binds a separate Verifier handoff and accepts its filled outcome template",
+          "requiredNames": [
+            "Native SDK Workflow Application binds a separate Verifier handoff and accepts its filled outcome template"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-current-session-acceptance",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native streamlined verification uses the current session for v2 acceptance through the public continuation)$",
+          "requiredNames": [
+            "Native streamlined verification uses the current session for v2 acceptance through the public continuation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-single-result-template",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:omits unused recovery and failure templates for a healthy v3 Verifier)$",
+          "requiredNames": [
+            "omits unused recovery and failure templates for a healthy v3 Verifier"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-shared-input-observation",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-structured-verification",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native SDK v2 Archive simplification accepts structured evidence after the reading report is edited before confirmation|Native SDK v2 Archive simplification archives the accepted structured result with a edited report view|Native SDK v2 Archive simplification archives the accepted structured result with a missing report view)$",
+          "requiredNames": [
+            "Native SDK v2 Archive simplification accepts structured evidence after the reading report is edited before confirmation",
+            "Native SDK v2 Archive simplification archives the accepted structured result with a edited report view",
+            "Native SDK v2 Archive simplification archives the accepted structured result with a missing report view"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-actual-spec-conflict",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native SDK v2 Archive simplification archives a current Spec while another active SDK change declares the same capability|Native SDK v2 Archive simplification refuses an actual canonical Spec conflict after preflight without overwriting it)$",
+          "requiredNames": [
+            "Native SDK v2 Archive simplification archives a current Spec while another active SDK change declares the same capability",
+            "Native SDK v2 Archive simplification refuses an actual canonical Spec conflict after preflight without overwriting it"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-v3-boundary-checkpoints",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native SDK v3 checkpoint and report boundaries combines approved report validation with preflight and checkpoints only the next external boundary|Native SDK v3 checkpoint and report boundaries reads the SDK authority without portable repairs and guards its newer phase|Native SDK v3 checkpoint and report boundaries recovers an external claim as unknown from its boundary checkpoint)$",
+          "requiredNames": [
+            "Native SDK v3 checkpoint and report boundaries combines approved report validation with preflight and checkpoints only the next external boundary",
+            "Native SDK v3 checkpoint and report boundaries reads the SDK authority without portable repairs and guards its newer phase",
+            "Native SDK v3 checkpoint and report boundaries recovers an external claim as unknown from its boundary checkpoint"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-v3-archive-report-failure",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "(?:completes v3 Archive with a missing report when view rendering fails and preserves its receipt|completes v3 Archive with a edited report when view rendering fails and preserves its receipt)",
+          "requiredNames": [
+            "completes v3 Archive with a missing report when view rendering fails and preserves its receipt",
+            "completes v3 Archive with a edited report when view rendering fails and preserves its receipt"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "requiredNames": [
+            "Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure",
+            "Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation"
+          ],
+          "namePattern": "^(?:Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure|Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation)$"
+        }
+      ]
+    },
+    {
+      "id": "native-task-combined-continuation",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task continuation submits Build and claims same-session Verify in one call, then completes authorized Archive in one result call|Native high-level task safeguards waits for acceptance without delegated approval and replays the same result without duplicate progression|Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session|Native high-level task safeguards rejects a wrong result session and candidate drift before accepting Verify|Native high-level task safeguards keeps complete acceptance content while reducing normal output below full SDK details)$",
+          "requiredNames": [
+            "Native high-level task continuation submits Build and claims same-session Verify in one call, then completes authorized Archive in one result call",
+            "Native high-level task safeguards waits for acceptance without delegated approval and replays the same result without duplicate progression",
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session",
+            "Native high-level task safeguards rejects a wrong result session and candidate drift before accepting Verify",
+            "Native high-level task safeguards keeps complete acceptance content while reducing normal output below full SDK details"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-task-recovery-boundaries",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:skips unrelated recovery handlers while the ordinary Verifier is running|keeps non-Git result transport outside candidate inputs through the high-level task path|rejects incomplete or forged high-level results without completing the original Verify task|keeps the selected independent review when the next claim omits review options|completes Archive on the returned third call after the user accepts the current result)$",
+          "requiredNames": [
+            "skips unrelated recovery handlers while the ordinary Verifier is running",
+            "keeps non-Git result transport outside candidate inputs through the high-level task path",
+            "rejects incomplete or forged high-level results without completing the original Verify task",
+            "keeps the selected independent review when the next claim omits review options",
+            "completes Archive on the returned third call after the user accepts the current result"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native SDK Workflow Application records a claimed Builder handoff as a candidate before scheduling acceptance|Native SDK v3 checkpoint and report boundaries commits acceptance without report Actions and retries a failed view without changing the decision)$",
+          "requiredNames": [
+            "Native SDK Workflow Application records a claimed Builder handoff as a candidate before scheduling acceptance",
+            "Native SDK v3 checkpoint and report boundaries commits acceptance without report Actions and retries a failed view without changing the decision"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-supervisor-adaptive-review",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:preserves Supervisor review policy and archived assurance \\('2', required=false, session='child-builder'\\)|preserves Supervisor review policy and archived assurance \\('3', required=false, session='child-builder'\\)|preserves Supervisor review policy and archived assurance \\('3', required=true, session='child-builder'\\)|preserves Supervisor review policy and archived assurance \\('3', required=true, session='actual-child-reviewer'\\))$",
+          "requiredNames": [
+            "preserves Supervisor review policy and archived assurance ('2', required=false, session='child-builder')",
+            "preserves Supervisor review policy and archived assurance ('3', required=false, session='child-builder')",
+            "preserves Supervisor review policy and archived assurance ('3', required=true, session='child-builder')",
+            "preserves Supervisor review policy and archived assurance ('3', required=true, session='actual-child-reviewer')"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-ci539-mixed-write-review",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-ci539-executed-input-binding",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-ci539-readonly-revision-recovery",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:continues a read-only revision after its claiming process exits without reporting an outcome|reconciles a rejected read-only implementation revision using the original claim)$",
+          "requiredNames": [
+            "continues a read-only revision after its claiming process exits without reporting an outcome",
+            "reconciles a rejected read-only implementation revision using the original claim"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-ci539-applied-review-supersession",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-portable-generated-input-revalidation",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-portable-current-check-input-fingerprint",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-portable-reviewed-raw-candidate-binding",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-generated-input-metadata-concurrency",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-542-cancelled-history-projection",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects cancellation before committing when applied Archive Specs still have a transaction|rejects cancellation of a claimed Archive writer before it creates its transaction)$",
+          "requiredNames": [
+            "rejects cancellation before committing when applied Archive Specs still have a transaction",
+            "rejects cancellation of a claimed Archive writer before it creates its transaction"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t23-formal-observe",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-agent-supervisor-integration",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^integrates two agent-managed children and retains the complete parent acceptance without Runtime checks \\(interrupted merge: (?:false|true)\\)$",
+          "requiredNames": [
+            "integrates two agent-managed children and retains the complete parent acceptance without Runtime checks (interrupted merge: false)",
+            "integrates two agent-managed children and retains the complete parent acceptance without Runtime checks (interrupted merge: true)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-create-canonical-conflict-after-preflight",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native SDK v2 Archive simplification (?:refuses an actual canonical Spec conflict after preflight without overwriting it|archives a current Spec while another active SDK change declares the same capability)$",
+          "requiredNames": [
+            "Native SDK v2 Archive simplification refuses an actual canonical Spec conflict after preflight without overwriting it",
+            "Native SDK v2 Archive simplification archives a current Spec while another active SDK change declares the same capability"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-optional-archive-view-render-failure",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "completes v3 Archive with a missing report when view rendering fails and preserves its receipt|completes v3 Archive with a edited report when view rendering fails and preserves its receipt",
+          "requiredNames": [
+            "completes v3 Archive with a missing report when view rendering fails and preserves its receipt",
+            "completes v3 Archive with a edited report when view rendering fails and preserves its receipt"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-optional-archived-view-path-warning",
+      "currentTests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:preserves the completed Run and warns when its archived report view is not a file \\(route=archive-ready\\)|preserves the completed Run and warns when its archived report view is not a file \\(route=verification-wait\\))$",
+          "requiredNames": [
+            "preserves the completed Run and warns when its archived report view is not a file (route=archive-ready)",
+            "preserves the completed Run and warns when its archived report view is not a file (route=verification-wait)"
+          ]
+        }
+      ]
+    }
+  ],
+  "historicalEffectiveAssociated": [
+    {
+      "id": "issue-209-bounded-loop",
+      "issue": 209,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "keeps a stalled Verify Run waiting so the user can revise requirements or implementation|returns a stalled Verify Run to Build only after the matching user decision",
+          "requiredNames": [
+            "keeps a stalled Verify Run waiting so the user can revise requirements or implementation",
+            "returns a stalled Verify Run to Build only after the matching user decision"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-232-sdk-git-delivery",
+      "issue": 232,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-skill.test.ts",
+          "namePattern": "separates SDK archival from authorized Git delivery and checks observed results before retrying",
+          "requiredNames": [
+            "separates SDK archival from authorized Git delivery and checks observed results before retrying"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "archives a real Git candidate through canonical writes and directory relocation",
+          "requiredNames": [
+            "archives a real Git candidate through canonical writes and directory relocation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-238-final-approval",
+      "issue": 238,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "requires user confirmation before Archiving an independently verified Skill-coordinated pass \\(",
+          "requiredNames": [
+            "requires user confirmation before Archiving an independently verified Skill-coordinated pass ("
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-240-archive-freshness",
+      "issue": 240,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "recovers a returned but rejected archive\\.execute through the public Archive command|Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure|Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation",
+          "requiredNames": [
+            "recovers a returned but rejected archive.execute through the public Archive command",
+            "Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure",
+            "Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-242-repair-loop",
+      "issue": 242,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "returns a failed independent Verifier result to Build for a new candidate|accepts an independent Verifier for a new candidate after the prior candidate failed",
+          "requiredNames": [
+            "returns a failed independent Verifier result to Build for a new candidate",
+            "accepts an independent Verifier for a new candidate after the prior candidate failed"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-280-cancel-change",
+      "issue": 280,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-cancel.test.ts",
+          "namePattern": "cancels an SDK change, keeps its code, and clears the current selection|is idempotent: cancelling an already cancelled change reports the retained state",
+          "requiredNames": [
+            "cancels an SDK change, keeps its code, and clears the current selection",
+            "is idempotent: cancelling an already cancelled change reports the retained state"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-299-real-integration-parent-verify",
+      "issue": 299,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(normal\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(partial-recovery\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(branch-lock-recovery\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(delivery-recovery\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(delivery-ref-lock\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(target-drift\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(child-builder-failure\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(parent-builder-failure\\))$",
+          "requiredNames": [
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (normal)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (partial-recovery)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (branch-lock-recovery)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (delivery-recovery)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (delivery-ref-lock)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (target-drift)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (child-builder-failure)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (parent-builder-failure)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-302-explicit-parallel-no-reask",
+      "issue": 302,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-skill.test.ts",
+          "namePattern": "uses an explicit parallel request as the worktree choice without bypassing other approvals",
+          "requiredNames": [
+            "uses an explicit parallel request as the worktree choice without bypassing other approvals"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-314-integration-target-fence",
+      "issue": 314,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(",
+          "requiredNames": [
+            "handles parent repair, delivery, and cleanup after Supervisor DAG restart ("
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-323-verify-to-shape",
+      "issue": 323,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "returns Verify to Shape through a persisted requirements revision command",
+          "requiredNames": [
+            "returns Verify to Shape through a persisted requirements revision command"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-323-archive-cutoff-stale",
+      "issue": 323,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "allows requirements revision before Archive applies Specs but rejects it afterwards",
+          "requiredNames": [
+            "allows requirements revision before Archive applies Specs but rejects it afterwards"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-348-bom-input",
+      "issue": 348,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-input-contract.test.ts",
+          "namePattern": "accepts UTF-8 BOM JSON written by Windows tools",
+          "requiredNames": [
+            "accepts UTF-8 BOM JSON written by Windows tools"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-360-archive-revise",
+      "issue": 360,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "allows requirements revision before Archive applies Specs but rejects it afterwards",
+          "requiredNames": [
+            "allows requirements revision before Archive applies Specs but rejects it afterwards"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-371-loop-stop-decision",
+      "issue": 371,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "keeps a stalled Verify Run waiting so the user can revise requirements or implementation|returns a stalled Verify Run to Build only after the matching user decision",
+          "requiredNames": [
+            "keeps a stalled Verify Run waiting so the user can revise requirements or implementation",
+            "returns a stalled Verify Run to Build only after the matching user decision"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-396-monitor-pause",
+      "issue": 396,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-skill.test.ts",
+          "namePattern": "defines Chinese Supervisor monitoring pause and recovery boundaries|defines English Supervisor monitoring pause and recovery boundaries",
+          "requiredNames": [
+            "defines Chinese Supervisor monitoring pause and recovery boundaries",
+            "defines English Supervisor monitoring pause and recovery boundaries"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-429-runtime-check-reuse",
+      "issue": 429,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "executes the Builder-bound check plan before dispatching an independent Verifier|reuses a completed non-repeatable Runtime check requested by the Verifier",
+          "requiredNames": [
+            "executes the Builder-bound check plan before dispatching an independent Verifier",
+            "reuses a completed non-repeatable Runtime check requested by the Verifier"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-430-joint-shape",
+      "issue": 430,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native SDK Workflow Application confirms a Supervisor child plan and coordination mode in the same SDK Run''$",
+          "requiredNames": [
+            "Native SDK Workflow Application confirms a Supervisor child plan and coordination mode in the same SDK Run''"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-455-protocol-input-noise",
+      "issue": 455,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-455-repair-checks",
+      "issue": 455,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-483-cancel-with-code",
+      "issue": 483,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-cancel.test.ts",
+          "namePattern": "cancels an SDK change, keeps its code, and clears the current selection|dry-run reports the plan without changing the Run|removes a quiet cancelled change from the discovered status page",
+          "requiredNames": [
+            "cancels an SDK change, keeps its code, and clears the current selection",
+            "dry-run reports the plan without changing the Run",
+            "removes a quiet cancelled change from the discovered status page"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-486-ordinary-comments",
+      "issue": 486,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-490-input-enums",
+      "issue": 490,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-input-contract.test.ts",
+          "namePattern": "returns Verifier templates that parse once enum placeholders are filled|names every legal enum value when an enumerated input is rejected",
+          "requiredNames": [
+            "returns Verifier templates that parse once enum placeholders are filled",
+            "names every legal enum value when an enumerated input is rejected"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-500-cross-shell",
+      "issue": 500,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:keeps original published check history across shells without re-execution or content-proof authority|Native Agent platform verification reports accepts a final result from another shell with a different HTTP_PROXY and unchanged inputs|Native Agent platform verification reports accepts a final result from another shell with a different PATH and unchanged inputs|Native Agent platform verification reports accepts a final result from another shell with a different TEMP and unchanged inputs|Native Agent platform verification reports records an actual nonzero source-changing platform check as failed and returns to Build|A4 continues an Agent-reviewed behavior change from verify and retains only the unaffected one-shot check|A4 continues an Agent-reviewed behavior change from archive and retains only the unaffected one-shot check)$",
+          "requiredNames": [
+            "keeps original published check history across shells without re-execution or content-proof authority",
+            "Native Agent platform verification reports accepts a final result from another shell with a different HTTP_PROXY and unchanged inputs",
+            "Native Agent platform verification reports accepts a final result from another shell with a different PATH and unchanged inputs",
+            "Native Agent platform verification reports accepts a final result from another shell with a different TEMP and unchanged inputs",
+            "Native Agent platform verification reports records an actual nonzero source-changing platform check as failed and returns to Build",
+            "A4 continues an Agent-reviewed behavior change from verify and retains only the unaffected one-shot check",
+            "A4 continues an Agent-reviewed behavior change from archive and retains only the unaffected one-shot check"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-504-acceptance-boundary",
+      "issue": 504,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-acceptance-boundaries.test.ts",
+          "namePattern": "does not append a later block|retains nested criterion",
+          "requiredNames": [
+            "does not append a later block",
+            "retains nested criterion"
+          ]
+        }
+      ]
+    }
+  ],
+  "needsAppend": [],
+  "reason": "Only renamed declaration is the retired legacy checker seam, which has no current direct registry selector. All effective diagnostic/Archive/main target selectors remain unchanged; original body and protocol splits are fully frozen here. Main-file unrelated targets were not rerun in this selected batch. #542 is delivered through its separate CAS payload."
+}

@@ -9,7 +9,7 @@ import type {
 } from '../engine/runtime.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import { readProjectConfig } from './native-config.js';
-import { withNativeMutationLock } from './native-mutation-lock.js';
+import { withNativeMutation } from './native-mutation.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { parseNativePortableState } from './native-portable-state.js';
 
@@ -51,14 +51,10 @@ export const nativeSdkDisassociateExecutor: RuntimeExecutor = {
       throw new Error('Native SDK capability revocation references a stale Shape');
     }
     const bound = await association(run, context.projectRoot);
-    await withNativeMutationLock(
-      bound.paths,
-      `disassociate SDK capability ${state.name}`,
-      async () => {
-        const current = await association(run, context.projectRoot!);
-        if (current.inspected.exists) await fs.rm(current.file);
-      },
-    );
+    await withNativeMutation(bound.paths, async () => {
+      const current = await association(run, context.projectRoot!);
+      if (current.inspected.exists) await fs.rm(current.file);
+    });
     return { status: 'succeeded', output: { removed: true } };
   },
 };

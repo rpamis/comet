@@ -88,9 +88,23 @@ describe('complete disk application public entry', () => {
     const endpoint = `http://127.0.0.1:${(service.address() as { port: number }).port}`;
     await fs.writeFile(path.join(app.skillRoot, 'reference/endpoint.txt'), endpoint);
     await fs.writeFile(path.join(app.packageRoot, 'endpoint.txt'), endpoint);
+    // OS 分配的端口可能在 Fetch 的禁止端口表中；这里验证真实 HTTP 和批准边界。
+    const httpClient = `import {request as httpRequest} from 'node:http';
+const fixtureRequest = (url, method = 'GET', body) => new Promise((resolve, reject) => {
+  const request = httpRequest(url, {method}, response => {
+    let text = '';
+    response.setEncoding('utf8');
+    response.on('data', chunk => text += chunk);
+    response.once('error', reject);
+    response.once('end', () => resolve(text));
+  });
+  request.once('error', reject);
+  request.end(body);
+});
+`;
     await fs.writeFile(
       path.join(app.skillRoot, 'scripts/run.mjs'),
-      `import {readFileSync} from 'node:fs';\nawait fetch(readFileSync(new URL('../reference/endpoint.txt',import.meta.url),'utf8'), {method:'POST',body:process.argv[2]});\nconsole.log(JSON.stringify({title:JSON.parse(process.argv[2]).input.topic+readFileSync(new URL('../reference/suffix.txt',import.meta.url),'utf8')}));\n`,
+      `import {readFileSync} from 'node:fs';\n${httpClient}\nawait fixtureRequest(readFileSync(new URL('../reference/endpoint.txt',import.meta.url),'utf8'), 'POST', process.argv[2]);\nconsole.log(JSON.stringify({title:JSON.parse(process.argv[2]).input.topic+readFileSync(new URL('../reference/suffix.txt',import.meta.url),'utf8')}));\n`,
     );
     const inspected = await inspectApplicationSkill(app.skillRoot);
     app.manifest.skills[0].contentHash = inspected.contentHash;
@@ -99,10 +113,12 @@ describe('complete disk application public entry', () => {
     const moduleFile = path.join(app.packageRoot, 'application.mjs');
     let source = await fs.readFile(moduleFile, 'utf8');
     if (rejectedRoute) source = source.replace('"on":"single-session"', '"on":"rejected"');
-    source = source.replace(
-      'authorize: async () => true,',
-      `authorize: async ({context}) => context?.environment?.COMET_TEST_DECLINED_AUTH !== '1', ${reconcile ? "reconcile: async () => {const result=await (await fetch(readFileSync(new URL('./endpoint.txt', import.meta.url),'utf8'))).json(); return {resolution:'not-executed',evidence:'Isolated service operations='+result.operations};}," : ''}`,
-    );
+    source =
+      httpClient +
+      source.replace(
+        'authorize: async () => true,',
+        `authorize: async ({context}) => context?.environment?.COMET_TEST_DECLINED_AUTH !== '1', ${reconcile ? "reconcile: async () => {const result=JSON.parse(await fixtureRequest(readFileSync(new URL('./endpoint.txt', import.meta.url),'utf8'))); return {resolution:'not-executed',evidence:'Isolated service operations='+result.operations};}," : ''}`,
+      );
     await fs.writeFile(moduleFile, source);
     return project;
   }

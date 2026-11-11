@@ -1,6 +1,6 @@
+import { ensureWorkspaceRuntimeRoot } from './workspace-runtime.js';
 import { promises as fs, type BigIntStats } from 'node:fs';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { randomUUID } from 'node:crypto';
 import {
   invalidateHookReadCache,
   memoizedHookRead,
@@ -8,7 +8,6 @@ import {
   runWithoutHookReadCache,
   runWithHookReadCache,
 } from '../../platform/process/hook-read-cache.js';
-import { withRecoverableFileLock } from '../../platform/fs/recoverable-file-lock.js';
 import path from 'node:path';
 
 import {
@@ -79,7 +78,7 @@ function ownerRef(
   return `${partition === 'active' ? 'change-owners' : 'change-owner-history'}/${workflow}/${change}.json`;
 }
 
-function parseOwner(
+export function parseChangeRuntimeOwner(
   value: unknown,
   workflow: CometProjectWorkflow,
   change: string,
@@ -132,7 +131,7 @@ async function readOwnerFile(
   } catch {
     throw new Error(`Invalid change runtime owner JSON for ${workflow}/${change}`);
   }
-  return parseOwner(value, workflow, change);
+  return parseChangeRuntimeOwner(value, workflow, change);
 }
 
 interface CanonicalOwnerRecord {
@@ -186,7 +185,7 @@ async function readCanonicalOwnerRecord(
     throw new Error(`Invalid canonical Runtime owner for ${workflow}/${change}`);
   }
   return {
-    owner: parseOwner(value, workflow, change),
+    owner: parseChangeRuntimeOwner(value, workflow, change),
     identity: ownerFileIdentity(observed.stat as BigIntStats),
   };
 }
@@ -255,58 +254,11 @@ async function readBoundCanonicalOwner(
     throw error;
   }
   if (!record?.identity) return null;
-  const inherited = ownerReadBatches.getStore();
-  // 批量发现已有外层代次检查；具名快路仍拒绝中断 token，但文件身份足以绑定当前 owner。
-  if (!inherited?.active || !inherited.roots.has(root)) {
-    const token = await readPartitionToken(root);
-    if (token?.state === 'writing')
-      throw new Error(
-        'Change owner partition move is incomplete or in progress; use explicit Doctor recovery',
-      );
-  }
   const current = await ownerPartitionBindings(root, workflow, change);
   return (current.active === record.identity && current.history === null) ||
     (current.history === record.identity && current.active === null)
     ? record
     : null;
-}
-
-const PARTITION_TOKEN_REF = '.change-owner-partitions.json';
-const PARTITION_TOKEN_SCHEMA = 'comet.change-owner-partitions.v1';
-interface PartitionToken {
-  schema: typeof PARTITION_TOKEN_SCHEMA;
-  token: string;
-  state: 'writing' | 'stable';
-}
-
-async function readPartitionToken(root: string): Promise<PartitionToken | null> {
-  return runWithoutHookReadCache(async () => {
-    let bytes: Buffer;
-    try {
-      ({ bytes } = await readProtectedProjectFile(root, PARTITION_TOKEN_REF, 1024, {
-        label: 'change owner partition token',
-      }));
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
-      throw error;
-    }
-    let value: PartitionToken;
-    try {
-      value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as PartitionToken;
-    } catch {
-      throw new Error('Invalid change owner partition token');
-    }
-    if (
-      !value ||
-      Object.keys(value).length !== 3 ||
-      value.schema !== PARTITION_TOKEN_SCHEMA ||
-      typeof value.token !== 'string' ||
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(value.token) ||
-      (value.state !== 'writing' && value.state !== 'stable')
-    )
-      throw new Error('Invalid change owner partition token');
-    return value;
-  });
 }
 
 interface OwnerReadBatch {
@@ -318,7 +270,7 @@ interface OwnerReadBatch {
 }
 const ownerReadBatches = new AsyncLocalStorage<OwnerReadBatch | null>();
 
-// 仅在已有请求缓存作用域内保存通过整批代次校验的结果；无作用域时每次返回新 Map。
+// 仅在已有请求缓存作用域内保存本批读取结果；无作用域时每次返回新 Map。
 const verifiedOwnerBatchResults = memoizedHookReadSync(
   'verifiedOwnerBatchResults',
   () => new Map<string, SdkChangeOwner | null | Promise<SdkChangeOwner | null>>(),
@@ -332,64 +284,34 @@ async function ownerRuntimeRoots(projectRoot: string): Promise<string[]> {
   return known ?? readOnlyRuntimeRoots(projectRoot);
 }
 
-async function withStableOwnerPartitions<T>(
+async function readOwnerPartitions<T>(
   roots: readonly string[],
   read: () => Promise<T>,
   freshReadBatch = false,
 ): Promise<T> {
   const inherited = ownerReadBatches.getStore();
   if (inherited?.active && roots.every((root) => inherited.roots.has(root))) return read();
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const before = await Promise.all(roots.map(readPartitionToken));
-    if (before.some((token) => token?.state === 'writing'))
-      throw new Error(
-        'Change owner partition move is incomplete or in progress; use explicit Doctor recovery',
-      );
-    const batch: OwnerReadBatch = {
-      roots: new Set(roots),
-      runtimeRoots: new Map(),
-      owners: new Map(),
-      projects: new Set(),
-      active: true,
-    };
-    let result: PromiseSettledResult<T>;
-    try {
-      const attemptRead = async (): Promise<PromiseSettledResult<T>> => {
-        try {
-          return { status: 'fulfilled', value: await read() };
-        } catch (reason) {
-          return { status: 'rejected', reason };
-        }
-      };
-      result = await ownerReadBatches.run(batch, () =>
-        runWithoutHookReadCache(() =>
-          freshReadBatch ? runWithHookReadCache(attemptRead) : attemptRead(),
-        ),
-      );
-    } finally {
-      batch.active = false;
+  const batch: OwnerReadBatch = {
+    roots: new Set(roots),
+    runtimeRoots: new Map(),
+    owners: new Map(),
+    projects: new Set(),
+    active: true,
+  };
+  try {
+    const value = await ownerReadBatches.run(batch, () =>
+      runWithoutHookReadCache(() => (freshReadBatch ? runWithHookReadCache(read) : read())),
+    );
+    const published = verifiedOwnerBatchResults();
+    for (const key of published.keys()) {
+      if ([...batch.projects].some((project) => key.startsWith(project + '\u0000')))
+        published.delete(key);
     }
-    // 批量读取会收齐所有 worker，之后才验证代次；重试不会继承上次正文缓存。
-    const after = await Promise.all(roots.map(readPartitionToken));
-    if (
-      after.every(
-        (token, index) => token?.state !== 'writing' && token?.token === before[index]?.token,
-      )
-    ) {
-      if (result.status === 'rejected') throw result.reason;
-      const published = verifiedOwnerBatchResults();
-      // 新快照发布前移除同项目旧命中，删除或转 compat 的 owner 不能借旧缓存复活。
-      for (const key of published.keys()) {
-        if ([...batch.projects].some((project) => key.startsWith(`${project}\u0000`)))
-          published.delete(key);
-      }
-      for (const [key, owner] of batch.owners) published.set(key, owner);
-      return result.value;
-    }
+    for (const [key, owner] of batch.owners) published.set(key, owner);
+    return value;
+  } finally {
+    batch.active = false;
   }
-  throw new Error(
-    'Change owner partitions changed during discovery; retry after the writer completes',
-  );
 }
 
 async function readPartitionedOwner(
@@ -399,7 +321,7 @@ async function readPartitionedOwner(
 ): Promise<ChangeRuntimeOwner | null> {
   const canonical = await readBoundCanonicalOwner(root, workflow, change);
   if (canonical) return canonical.owner;
-  return withStableOwnerPartitions([root], async () => {
+  return readOwnerPartitions([root], async () => {
     const active = await readOwnerFile(root, ownerRef(workflow, change), workflow, change);
     const history = await readOwnerFile(
       root,
@@ -497,7 +419,7 @@ export async function readSdkChangeOwners(
   if (requested.length === 0) return new Map();
   try {
     const roots = await ownerRuntimeRoots(projectRoot);
-    return await withStableOwnerPartitions(
+    return await readOwnerPartitions(
       roots,
       async () => {
         ownerReadBatches.getStore()?.runtimeRoots.set(projectRoot, roots);
@@ -541,7 +463,7 @@ export async function inspectSdkChangeOwnerPartitions<T>(
   if (requested.length === 0) return new Map();
   try {
     const roots = await ownerRuntimeRoots(projectRoot);
-    return await withStableOwnerPartitions(
+    return await readOwnerPartitions(
       roots,
       async () => {
         ownerReadBatches.getStore()?.runtimeRoots.set(projectRoot, roots);
@@ -665,7 +587,7 @@ async function discoverOwnerPartitions(
     }
     return discovered;
   };
-  return recovery ? discover() : withStableOwnerPartitions(roots, discover);
+  return recovery ? discover() : readOwnerPartitions(roots, discover);
 }
 
 const cachedOwnerPartitions = memoizedHookRead('changeOwnerPartitions', discoverOwnerPartitions);
@@ -688,7 +610,7 @@ export async function listSdkChangeNames(
   const roots = options.readOnly
     ? await ownerRuntimeRoots(projectRoot)
     : [await resolveWorkspaceRuntimeRoot(projectRoot)];
-  return withStableOwnerPartitions(
+  return readOwnerPartitions(
     roots,
     async () => {
       if (options.readOnly) ownerReadBatches.getStore()?.runtimeRoots.set(projectRoot, roots);
@@ -745,7 +667,7 @@ export async function listSdkChangePartitions(
   const roots = options.readOnly
     ? await ownerRuntimeRoots(projectRoot)
     : [await resolveWorkspaceRuntimeRoot(projectRoot)];
-  return withStableOwnerPartitions(
+  return readOwnerPartitions(
     roots,
     async () => {
       if (options.readOnly) ownerReadBatches.getStore()?.runtimeRoots.set(projectRoot, roots);
@@ -770,7 +692,7 @@ export async function listSdkResumeCandidates(
   workflow: CometProjectWorkflow,
 ): Promise<{ active: string[]; history: string[] }> {
   const roots = await ownerRuntimeRoots(projectRoot);
-  return withStableOwnerPartitions(
+  return readOwnerPartitions(
     roots,
     async () => {
       const partitions = await ownerPartitions(projectRoot, workflow, { readOnly: true });
@@ -799,7 +721,7 @@ function sameOwner(left: ChangeRuntimeOwner, right: ChangeRuntimeOwner): boolean
   );
 }
 
-async function withOwnerLock<T>(
+async function withOwnerMutation<T>(
   projectRoot: string,
   owner: Pick<ChangeRuntimeOwner, 'workflow' | 'change'>,
   work: (runtimeRoot: string) => Promise<T>,
@@ -807,33 +729,9 @@ async function withOwnerLock<T>(
   invalidateHookReadCache();
   return ownerReadBatches.run(null, () =>
     runWithoutHookReadCache(async () => {
-      const runtimeRoot = await resolveWorkspaceRuntimeRoot(projectRoot);
+      const runtimeRoot = await ensureWorkspaceRuntimeRoot(projectRoot);
       ownerRef(owner.workflow, owner.change);
-      return withRecoverableFileLock(
-        path.join(runtimeRoot, '.change-owner-partitions.lock'),
-        async () => {
-          // 旧 token 可以为 writing：持锁已证明旧写入者不再运行；只有显式写入口可恢复。
-          await readPartitionToken(runtimeRoot);
-          const token: PartitionToken = {
-            schema: PARTITION_TOKEN_SCHEMA,
-            token: randomUUID(),
-            state: 'writing',
-          };
-          const publish = () =>
-            atomicWriteContainedText(
-              path.join(runtimeRoot, PARTITION_TOKEN_REF),
-              `${JSON.stringify(token)}\n`,
-              { containedRoot: runtimeRoot },
-            );
-          await publish();
-          try {
-            return await work(runtimeRoot);
-          } finally {
-            token.state = 'stable';
-            await publish();
-          }
-        },
-      );
+      return work(runtimeRoot);
     }),
   );
 }
@@ -843,7 +741,7 @@ async function moveSdkChangeOwner(
   owner: SdkChangeOwner,
   destination: OwnerPartition,
 ): Promise<void> {
-  const validated = parseOwner(owner, owner.workflow, owner.change);
+  const validated = parseChangeRuntimeOwner(owner, owner.workflow, owner.change);
   if (
     validated.format !== 'sdk' ||
     validated.workflow !== 'native' ||
@@ -851,8 +749,8 @@ async function moveSdkChangeOwner(
   ) {
     throw new Error('Only builtin Native owners can enter or leave history');
   }
-  await withOwnerLock(projectRoot, validated, (runtimeRoot) =>
-    moveOwnerWithinLock(runtimeRoot, validated, destination),
+  await withOwnerMutation(projectRoot, validated, (runtimeRoot) =>
+    moveOwnerPartition(runtimeRoot, validated, destination),
   );
 }
 
@@ -878,7 +776,7 @@ async function syncOwnerDirectoryChain(runtimeRoot: string, reference: string): 
   }
 }
 
-async function moveOwnerWithinLock(
+async function moveOwnerPartition(
   runtimeRoot: string,
   owner: SdkChangeOwner,
   destination: OwnerPartition,
@@ -955,7 +853,7 @@ export async function listSdkChangeOwnerRecoveryNames(
   projectRoot: string,
   workflow: CometProjectWorkflow,
 ): Promise<string[]> {
-  return withOwnerLock(projectRoot, { workflow, change: 'partition-recovery' }, async () => {
+  return withOwnerMutation(projectRoot, { workflow, change: 'partition-recovery' }, async () => {
     const partitions = await discoverOwnerPartitions(projectRoot, workflow, {}, true);
     return [...new Set([...partitions.active, ...partitions.history])].sort((a, b) =>
       a.localeCompare(b, 'en'),
@@ -963,13 +861,13 @@ export async function listSdkChangeOwnerRecoveryNames(
   });
 }
 
-/** 不依赖普通读取，允许在中断 token 或相同双份 owner 下保守恢复 active 身份。 */
+/** 不依赖普通读取，允许在相同双份 owner 下恢复 active 身份。 */
 export async function recoverSdkChangeOwnerToActive(
   projectRoot: string,
   workflow: CometProjectWorkflow,
   change: string,
 ): Promise<ChangeRuntimeOwner> {
-  return withOwnerLock(projectRoot, { workflow, change }, async (runtimeRoot) => {
+  return withOwnerMutation(projectRoot, { workflow, change }, async (runtimeRoot) => {
     const active = await readOwnerFile(runtimeRoot, ownerRef(workflow, change), workflow, change);
     const history = await readOwnerFile(
       runtimeRoot,
@@ -989,7 +887,7 @@ export async function recoverSdkChangeOwnerToActive(
       owner.application !== 'native'
     )
       throw new Error('Only builtin Native owners can be recovered from history');
-    await moveOwnerWithinLock(runtimeRoot, owner, 'active', true);
+    await moveOwnerPartition(runtimeRoot, owner, 'active', true);
     return owner;
   });
 }
@@ -1000,8 +898,8 @@ async function registerChangeRuntimeOwner<T extends ChangeRuntimeOwner>(
   options: { canonical?: boolean } = {},
 ): Promise<T> {
   const ref = ownerRef(owner.workflow, owner.change);
-  const validated = parseOwner(owner, owner.workflow, owner.change) as T;
-  return withOwnerLock(projectRoot, validated, async (runtimeRoot) => {
+  const validated = parseChangeRuntimeOwner(owner, owner.workflow, owner.change) as T;
+  return withOwnerMutation(projectRoot, validated, async (runtimeRoot) => {
     const history = await readOwnerFile(
       runtimeRoot,
       ownerRef(owner.workflow, owner.change, 'history'),

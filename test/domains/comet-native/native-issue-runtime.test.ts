@@ -102,7 +102,7 @@ describe('packaged Runtime issue regressions', () => {
     await fs.rm(external, { recursive: true, force: true });
   });
 
-  it('rejects incomplete Build and reuses checks across retained in-repository protocol files', async () => {
+  it('rejects incomplete Build and preserves platform check results across retained protocol files', async () => {
     const before = invoke(['show', name]).data.state;
     expect(
       (await input({ ...handoff(), acceptance_review: fixtureAcceptanceReview(['A1']) }, true))
@@ -111,19 +111,38 @@ describe('packaged Runtime issue regressions', () => {
     expect(invoke(['show', name]).data.state).toEqual(before);
     const rejectedInput = path.join(root, `input-${sequence}.json`);
     const counter = path.join(resolveWorkspaceRuntimeRootSync(root), 'count.txt');
-    const plan = {
-      id: 'fixture',
-      name: 'Fixture',
-      executable: process.execPath,
-      argv: ['-e', `require('fs').appendFileSync(${JSON.stringify(counter)}, 'run\\n')`],
-      cwdRef: '.',
-      timeoutMs: 10_000,
-      repeatable: true,
-      reusable: true,
-    };
-    const handedOff = await input({ ...handoff(), verification_checks: [plan] }, true);
+    await fs.mkdir(path.dirname(counter), { recursive: true });
+    execFileSync(
+      process.execPath,
+      [
+        '-e',
+        `require('fs').appendFileSync(${JSON.stringify(counter)},String.fromCharCode(114,117,110,10))`,
+      ],
+      { cwd: root },
+    );
+    const handedOff = await input(
+      {
+        ...handoff(),
+        checks: [{ name: `node fixture in ${root}`, result: 'passed', note: counter }],
+      },
+      true,
+    );
     expect(handedOff.exitCode).toBe(0);
-    const d = handedOff.data.verifierDispatch;
+    const dispatched = await input({ kind: 'dispatch-verifier' }, true);
+    expect(dispatched.exitCode).toBe(0);
+    const d = dispatched.data.verifierDispatch;
+    expect(
+      (
+        await input(
+          {
+            kind: 'verifier-started',
+            candidateId: d.candidateId,
+            verifierExecutionRef: d.verifierExecutionRef,
+          },
+          true,
+        )
+      ).exitCode,
+    ).toBe(0);
     await fs.rm(rejectedInput);
     expect(
       await input(
@@ -132,10 +151,19 @@ describe('packaged Runtime issue regressions', () => {
           candidateId: d.candidateId,
           verifierExecutionRef: d.verifierExecutionRef,
           response: {
-            kind: 'request-checks',
-            iteration: d.iteration,
-            attempt: d.attempt,
-            checks: [plan],
+            kind: 'final-result',
+            result: {
+              iteration: d.iteration,
+              attempt: d.attempt,
+              verdict: 'pass',
+              acceptance: ['A1', 'A2'].map((id) => ({
+                id,
+                result: 'passed',
+                reason: 'Actual fixture command passed.',
+              })),
+              risks: [],
+              summary: 'Platform fixture command passed once.',
+            },
           },
         },
         true,
@@ -143,8 +171,8 @@ describe('packaged Runtime issue regressions', () => {
     ).toMatchObject({
       exitCode: 0,
       data: {
-        requestChecks: { reusedCheckIds: [plan.id], executedCheckIds: [] },
-        continuation: { action: 'await-verifier' },
+        state: { verification_result: 'pass' },
+        continuation: { action: 'confirm-skill-coordinated-pass', requiresUserDecision: true },
       },
     });
     expect(await fs.readFile(counter, 'utf8')).toBe('run\n');

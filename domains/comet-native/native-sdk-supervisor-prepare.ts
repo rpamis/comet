@@ -94,7 +94,7 @@ async function currentChildPreparation(
   const input = childPreparationInput(action);
   if (
     !plan.contract.children.some(({ name }) => name === input.child) ||
-    nativeSupervisorContractRef(input) !== plan.state.children_contract_ref ||
+    nativeSupervisorContractRef(input, run) !== plan.state.children_contract_ref ||
     input.integrationBranch !== nativeSupervisorIntegrationBranch(plan.state.name) ||
     !samePath(
       input.integrationWorktree,
@@ -176,7 +176,7 @@ export const nativeSdkSupervisorPrepareValidator: RuntimeValidator = {
       const retained = nativeSupervisorRevisionWorkspace(run, expectedWorktree, expectedBranch);
       if (
         !output ||
-        nativeSupervisorContractRef(output) !== plan.state.children_contract_ref ||
+        nativeSupervisorContractRef(output, run, action) !== plan.state.children_contract_ref ||
         output.integrationBranch !== expectedBranch ||
         typeof output.integrationWorktree !== 'string' ||
         !samePath(output.integrationWorktree, expectedWorktree) ||
@@ -271,7 +271,7 @@ export const nativeSdkSupervisorChildPrepareValidator: RuntimeValidator = {
       if (
         !output ||
         output.child !== plan.input.child ||
-        nativeSupervisorContractRef(output) !== nativeSupervisorContractRef(plan.input) ||
+        nativeSupervisorContractRef(output, run) !== nativeSupervisorContractRef(plan.input, run) ||
         typeof output.worktree !== 'string' ||
         !samePath(output.worktree, worktree) ||
         output.branch !== branch ||

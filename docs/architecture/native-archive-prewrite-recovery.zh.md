@@ -43,3 +43,9 @@
 
 - `native-archive-prewrite-recovery-commit-race` → `rejects Archive prewrite recovery when a transaction appears before its commit`：在校验与 CAS 之间写入真实事务，阻止失败提交，并继续恢复原成功结果。
 - `native-cancelled-archive-recovery-change-name` → `recovers a cancelled Archive transaction by change name when the Run ID differs`：旧取消流程留下的事务按 change 名称收尾，重复恢复返回原收据。
+
+## 与当前 053 精简实现合并后的验证
+
+本地 053 与 PR #549 合并时，归档失败提交改用现有 `withNativeMutation` 业务事务边界，不恢复已移除的进程锁。提交前仍重新读取原 Run revision 和事务；原“校验后出现事务”的反例保留并通过。Builder 修复续行使用平台实际检查报告，不恢复 Runtime 检查执行器；取消事务恢复沿用已取消 Run，不调用已移除的停止握手。
+
+新增的七项回归在合并后全部通过；完整构建、lint / architecture 和 Runtime 生成物检查通过。历史测试移除沿用此前已登记的迁移映射，没有重新恢复其已退休的旧定义生成器。合并后整个 Native SDK application 文件的检查结果另外记录在本次提交说明中；没有重新运行仓库全量测试、模型 Eval、真实平台 Hook 或完整安装验收。

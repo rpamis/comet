@@ -829,21 +829,22 @@ describe('architecture lint', () => {
     );
   });
 
-  it('registers the Native stop-evidence transaction without allowing unreviewed lock callers', async () => {
+  it('registers Native Archive transactions without allowing retired or unreviewed mutation callers', async () => {
     const repositoryLayout = JSON.parse(
       await fs.readFile(path.resolve('config/repository-layout.json'), 'utf8'),
     ) as DependencyTestLayout;
-    const target = 'domains/comet-native/native-mutation-lock.ts';
-    const importer = 'domains/comet-native/native-check-stop-evidence.ts';
+    const target = 'domains/comet-native/native-mutation.ts';
+    const importer = 'domains/comet-native/native-portable-archive.ts';
     const rule = repositoryLayout.dependencyRules.restrictedDependencies.find(
       (entry) => entry.target === target,
     );
     expect(rule?.importers).toContain(importer);
+    expect(rule?.importers).not.toContain('domains/comet-native/native-check-stop-evidence.ts');
 
     const root = await makeMinimalRepository();
     await writeFile(root, '.gitignore', '\n');
-    await writeFile(root, target, 'export const lock = true;\n');
-    const content = "import { lock } from './native-mutation-lock.js';\nexport { lock };\n";
+    await writeFile(root, target, 'export const mutation = true;\n');
+    const content = "import { mutation } from './native-mutation.js';\nexport { mutation };\n";
     await writeFile(root, importer, content);
     const layoutPath = path.join(root, 'config/repository-layout.json');
     const layout = JSON.parse(await fs.readFile(layoutPath, 'utf8')) as DependencyTestLayout;

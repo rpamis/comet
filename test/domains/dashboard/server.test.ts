@@ -1,3 +1,6 @@
+// SIMULATED multiple historical Native documents exercise read-only pagination, not concurrent current workflow creation.
+import { storedNativeChangeFixture } from '../../helpers/native-change-document.js';
+import { createNativePortableChange } from '../../../domains/comet-native/native-portable-runtime.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import http from 'http';
@@ -13,10 +16,7 @@ import {
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
-import {
-  createNativeChange,
-  nativeChangeDir,
-} from '../../../domains/comet-native/native-change.js';
+import { nativeChangeDir } from '../../../domains/comet-native/native-change.js';
 
 interface HttpResult {
   status: number;
@@ -442,7 +442,7 @@ describe('startDashboardServer', () => {
     await writeProjectConfig(projectDir, defaultProjectConfig('docs'));
     const paths = await nativeProjectPaths(projectDir, 'docs');
     for (let index = 0; index < 6; index += 1) {
-      const state = await createNativeChange({
+      const state = await storedNativeChangeFixture({
         paths,
         name: `native-server-${index}`,
         language: 'en',
@@ -598,4 +598,46 @@ describe('startDashboardServer', () => {
       await new Promise<void>((resolve) => blocker.close(() => resolve()));
     }
   });
+});
+
+it('serves one actual current Native Shape through Dashboard pagination without rewriting its state', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'dashboard-current-native-')),
+    web = await fs.mkdtemp(path.join(os.tmpdir(), 'dashboard-current-web-'));
+  let handle: Awaited<ReturnType<typeof startDashboardServer>> | undefined;
+  try {
+    await fs.writeFile(path.join(web, 'index.html'), '<title>SIMULATED Dashboard fixture</title>');
+    await writeProjectConfig(root, defaultProjectConfig('docs'));
+    const paths = await nativeProjectPaths(root, 'docs');
+    await createNativePortableChange({ paths, name: 'current-shape', language: 'en' });
+    const stateFile = path.join(nativeChangeDir(paths, 'current-shape'), 'comet-state.yaml'),
+      stateBytes = await fs.readFile(stateFile);
+    handle = await startDashboardServer({ projectPath: root, webRoot: web, port: 0 });
+    const directory = JSON.parse((await request(handle.port, '/api/dashboard/projects')).body);
+    const base = '/api/dashboard/projects/' + directory.currentProjectId;
+    const response = await request(handle.port, base + '/native-changes?status=active&limit=5');
+    expect(response.status).toBe(200);
+    const page = JSON.parse(response.body);
+    expect(page).toMatchObject({
+      total: 1,
+      items: [{ name: 'current-shape', status: 'active' }],
+      nextCursor: null,
+    });
+    expect(page.items[0]).not.toHaveProperty('artifacts');
+    const detail = await request(
+      handle.port,
+      base +
+        '/native-change?status=active&changeLocator=' +
+        encodeURIComponent(page.items[0].locator),
+    );
+    expect(detail.status).toBe(200);
+    expect(JSON.parse(detail.body)).toMatchObject({
+      name: 'current-shape',
+      artifacts: expect.arrayContaining([expect.objectContaining({ key: 'comet-state.yaml' })]),
+    });
+    expect(await fs.readFile(stateFile)).toEqual(stateBytes);
+  } finally {
+    await handle?.close();
+    await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(web, { recursive: true, force: true });
+  }
 });

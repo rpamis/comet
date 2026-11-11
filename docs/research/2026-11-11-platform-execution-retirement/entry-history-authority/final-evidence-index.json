@@ -1,0 +1,70 @@
+{
+  "hook": {
+    "report": "hook-business-final-results.json",
+    "passed": 18
+  },
+  "symlink": {
+    "report": "migration-first-results.json",
+    "selectedFile": "hook-allow-path-symlinks.test.ts",
+    "passed": 16,
+    "originalPlatformSkipped": 23
+  },
+  "status": {
+    "fullPrevious": "status-proposal-results.json",
+    "passed": 23,
+    "originalPlatformSkipped": 1,
+    "latestChangedGroup": "status-history-compat-results.json",
+    "latestPassed": 10
+  },
+  "learning": {
+    "report": "baseline-four-results.json",
+    "selectedFile": "workflow-learning-receipt.test.ts",
+    "passed": 8,
+    "originalPlatformSkipped": 1,
+    "reportedOriginalFailureReproduced": false,
+    "modified": false
+  },
+  "mcp": {
+    "readonly": "mcp-npm-readonly-observation.json",
+    "report": "mcp-safe-results.json",
+    "passed": 1,
+    "allInstallationWithinExactFixturePrefix": true
+  },
+  "recovery": {
+    "report": "history-recovery-frozen-red-green-results.json",
+    "tests": [
+      {
+        "file": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/entry-projection-five/native-cancelled-portable-recovery.final.test.ts",
+        "tests": [
+          {
+            "name": "restores a real current cancelled portable Run through public Doctor repair without replacing original evidence",
+            "status": "passed"
+          },
+          {
+            "name": "restores a real published-052 cancelled portable Run through public Doctor repair without replacing original evidence",
+            "status": "passed"
+          }
+        ]
+      },
+      {
+        "file": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/entry-projection-five/native-cancelled-portable-recovery.red.test.ts",
+        "tests": [
+          {
+            "name": "restores a real current cancelled portable Run through public Doctor repair without replacing original evidence",
+            "status": "passed"
+          },
+          {
+            "name": "restores a real published-052 cancelled portable Run through public Doctor repair without replacing original evidence",
+            "status": "failed"
+          }
+        ]
+      }
+    ],
+    "currentStandaloneGreen": "history-recovery-frozen-final-results.json",
+    "passed": 2,
+    "fixture": "repository-ready/test/fixtures/native-052-cancelled-portable-history/cancelled.json"
+  },
+  "sourceWritesToRepository": false,
+  "testsWrittenToRepository": false,
+  "evalExecuted": false
+}

@@ -25,7 +25,6 @@ import { advanceNativeSdkChange } from './native-sdk-next.js';
 import { nativeSdkRequiresIndependentReview } from './native-sdk-review.js';
 import { projectNativeSdkStatus, projectNativeSdkTaskStatus } from './native-sdk-status.js';
 import { supervisorAcceptanceScope } from './native-supervisor-model.js';
-
 interface NativeTaskOptions {
   projectRoot: string;
   name: string;
@@ -36,7 +35,6 @@ interface NativeTaskOptions {
   acceptOnPass?: string;
   details?: boolean;
 }
-
 function ordinaryTask(action: RuntimeAction): boolean {
   return (
     (action.type === 'call_tool' && action.stepId === 'shape.prepare') ||
@@ -51,7 +49,6 @@ function ordinaryTask(action: RuntimeAction): boolean {
       ].includes(action.stepId))
   );
 }
-
 function verifierTask(action: RuntimeAction) {
   return ['verify.verifier', 'supervisor.child.verifier'].includes(action.stepId);
 }
@@ -68,7 +65,11 @@ function activation(action: RuntimeAction) {
         worktree?: string;
         integrationWorktree?: string;
         builderSessionId?: string;
-        acceptance?: Array<{ id: string; source: string; text: string }>;
+        acceptance?: Array<{
+          id: string;
+          source: string;
+          text: string;
+        }>;
       };
     }
   ).activation;
@@ -92,8 +93,11 @@ function taskScope(run: WorkflowRun, action: RuntimeAction, projectRoot: string)
         : input?.worktree) ??
       input?.integrationWorktree ??
       (parent
-        ? (run.outputs['supervisor.prepare']?.value as { integrationWorktree?: string })
-            ?.integrationWorktree
+        ? (
+            run.outputs['supervisor.prepare']?.value as {
+              integrationWorktree?: string;
+            }
+          )?.integrationWorktree
         : undefined) ??
       projectRoot,
     acceptance:
@@ -103,7 +107,6 @@ function taskScope(run: WorkflowRun, action: RuntimeAction, projectRoot: string)
         : state.acceptance),
   };
 }
-
 async function readTaskResult(
   file: string,
 ): Promise<Pick<RuntimeOutcome, 'status' | 'output' | 'summary' | 'artifacts' | 'event'>> {
@@ -129,7 +132,6 @@ async function readTaskResult(
     'status' | 'output' | 'summary' | 'artifacts' | 'event'
   >;
 }
-
 function taskCommand(options: NativeTaskOptions, action: RuntimeAction, claimed: boolean) {
   return [
     'comet',
@@ -147,7 +149,6 @@ function taskCommand(options: NativeTaskOptions, action: RuntimeAction, claimed:
     '--json',
   ];
 }
-
 async function projectTaskResult(
   options: NativeTaskOptions,
   run: WorkflowRun,
@@ -155,9 +156,20 @@ async function projectTaskResult(
   observedStatus?: Awaited<ReturnType<typeof projectNativeSdkTaskStatus>>,
 ): Promise<DispatchResult> {
   const state = parseNativePortableState(run.state);
-  const artifactRootRef = (run.input as { artifactRootRef: string }).artifactRootRef;
+  const artifactRootRef = (
+    run.input as {
+      artifactRootRef: string;
+    }
+  ).artifactRootRef;
   const priorStatus = advanced?.data as
-    { schema?: string; warning?: { code: string; message: string } } | undefined;
+    | {
+        schema?: string;
+        warning?: {
+          code: string;
+          message: string;
+        };
+      }
+    | undefined;
   const status = options.details
     ? await projectNativeSdkStatus(
         { projectRoot: options.projectRoot, name: options.name, details: true },
@@ -183,6 +195,7 @@ async function projectTaskResult(
     available[0];
   const claimed = action?.status === 'running' && action.claim?.sessionId === options.sessionId;
   const continuation = status.continuation;
+  const awaitingUser = continuation.mode === 'ask';
   const blocked =
     (advanced?.exitCode !== undefined && advanced.exitCode !== 0) ||
     continuation.mode === 'reconcile' ||
@@ -205,7 +218,13 @@ async function projectTaskResult(
     : undefined;
   const verificationOutput = [...run.actions].reverse().find((entry) => {
     const output = entry.outcome?.output as
-      { candidateId?: string; response?: { kind?: string } } | undefined;
+      | {
+          candidateId?: string;
+          response?: {
+            kind?: string;
+          };
+        }
+      | undefined;
     return (
       entry.stepId === 'verify.verifier' &&
       entry.status === 'succeeded' &&
@@ -217,7 +236,10 @@ async function projectTaskResult(
         response?: {
           result?: {
             summary: string;
-            acceptance: Array<{ id: string; reason: string }>;
+            acceptance: Array<{
+              id: string;
+              reason: string;
+            }>;
             risks: string[];
             requestReview?: unknown;
           };
@@ -238,29 +260,13 @@ async function projectTaskResult(
               : '实现结果已保存，请交给实际验收会话领取。'
             : currentTask && builderTask(currentTask)
               ? '继续实现当前已批准的需求。'
-              : continuation.userCommunication.agentInstruction;
-  const checks = new Map<string, Record<string, unknown>>();
-  for (const entry of run.actions) {
-    const output = entry.outcome?.output as
-      { candidateId?: string; checks?: Array<Record<string, unknown>> } | undefined;
-    if (
-      entry.type !== 'call_tool' ||
-      output?.candidateId !== state.builder_handoff?.candidate_id ||
-      !Array.isArray(output?.checks)
-    )
-      continue;
-    for (const check of output.checks) {
-      if (typeof check.id !== 'string') continue;
-      checks.set(check.id, {
-        id: check.id,
-        name: check.name,
-        status: check.status,
-        logRef: check.logRef,
-        exitCode: check.exitCode,
-        reused: Boolean(check.reusedFrom),
-      });
-    }
-  }
+              : currentTask?.stepId === 'shape.prepare'
+                ? '继续澄清当前需求。'
+                : awaitingUser
+                  ? '等待用户确认当前提案。'
+                  : continuation.mode === 'wait'
+                    ? '等待当前任务返回。'
+                    : '按返回的下一步继续当前任务。';
   const task = currentTask
     ? {
         ...taskScope(run, currentTask, options.projectRoot),
@@ -290,14 +296,23 @@ async function projectTaskResult(
               ),
             }
           : {}),
-        ...(run.workflow.version === '4' && currentTask.stepId === 'supervisor.child.verifier'
+        ...(currentTask.stepId === 'supervisor.child.verifier'
           ? {
               checks:
-                (currentTask.input as { activation?: { checks?: unknown } }).activation?.checks ??
-                [],
+                (
+                  currentTask.input as {
+                    activation?: {
+                      checks?: unknown;
+                    };
+                  }
+                ).activation?.checks ?? [],
             }
           : {}),
-        originalRequest: (run.input as { task?: string }).task,
+        originalRequest: (
+          run.input as {
+            task?: string;
+          }
+        ).task,
         artifacts: {
           brief: path.posix.join(artifactRootRef, 'comet', 'changes', state.name, 'brief.md'),
           specs: state.spec_changes.flatMap((change) =>
@@ -309,14 +324,11 @@ async function projectTaskResult(
         ...(state.builder_handoff
           ? {
               candidateId: state.builder_handoff.candidate_id,
-              checks:
-                run.workflow.version === '4'
-                  ? state.builder_handoff.checks.map((check) => ({
-                      name: check.name.text,
-                      result: check.result,
-                      note: check.note?.text ?? null,
-                    }))
-                  : [...checks.values()],
+              checks: state.builder_handoff.checks.map((check) => ({
+                name: check.name.text,
+                result: check.result,
+                note: check.note?.text ?? null,
+              })),
             }
           : {}),
         instruction:
@@ -327,16 +339,10 @@ async function projectTaskResult(
               : verifierTask(currentTask)
                 ? '对照原始请求、Spec、实现和全部验收项，复用当前有效检查，只补缺失证据。用户要求独立审查时交给独立会话。用实际观察填写结果，存在未解决问题时报告 fail 或 blocked。'
                 : currentTask.stepId === 'supervisor.child.builder'
-                  ? run.workflow.version === '4'
-                    ? '在当前 Child 工作区完成实现，用平台工具运行必要检查并读取实际结果。提交真实 candidateCommit、实现摘要和 checks 报告，再继续本子任务验收。'
-                    : '在当前 Child 工作区完成本任务的验收范围并提交实际 Git commit；将 candidateCommit 和必要 verificationChecks 写入结果。Runtime 执行所选命令后继续验收，不为进入下一步编造检查。'
+                  ? '在当前 Child 工作区完成实现，用平台工具运行必要检查并读取实际结果。提交真实 candidateCommit、实现摘要和 checks 报告，再继续本子任务验收。'
                   : currentTask.stepId === 'supervisor.parent.builder'
-                    ? run.workflow.version === '4'
-                      ? '在集成工作区覆盖全部验收项，复用适用的子结果并用平台工具补足集成检查。提交真实 candidateCommit、实现摘要和 checks 报告，再完成父级验收。'
-                      : '在集成工作区核对全部已确认验收项，复用适用的子任务结果并补足集成缺口。提交实际 candidateCommit、实现总结和所选 verificationChecks，再完成父级的完整验收。'
-                    : run.workflow.version === '4'
-                      ? '按已批准的需求完成实现，用平台工具执行必要检查并等待真实结果。将命令、目录、结果和日志引用写入 checks 的 name/result/note，提交实现和实际报告后直接验收；不提交 Runtime 检查计划或收据。'
-                      : '按已批准的 brief、Spec 和全部验收项完成实现。TDD RED 与局部调试照常；首次最终 GREEN 或完整验证直接在结果中提交 request-checks，不先在终端重复同一完整计划。收到真实检查结果后继续 Build，沿用模板中的原检查计划；最终提交仍由 Runtime 核对证据。',
+                    ? '在集成工作区覆盖全部验收项，复用适用的子结果并用平台工具补足集成检查。提交真实 candidateCommit、实现摘要和 checks 报告，再完成父级验收。'
+                    : '按已批准的需求完成实现，用平台工具执行必要检查并等待真实结果。将命令、目录、结果和日志引用写入 checks 的 name/result/note，提交实现和实际报告后直接验收；不提交 Runtime 检查计划或收据。',
       }
     : undefined;
   const data = {
@@ -393,9 +399,21 @@ async function projectTaskResult(
     ...(currentTask && claimed
       ? { resultTemplate: nativeSdkTaskResultTemplate(run, currentTask) }
       : {}),
-    next: waitingForAcceptance
-      ? { askUser: continuation.userCommunication.message, commandArgs: acceptanceCommand }
-      : { commandArgs, instruction: summary },
+    next: {
+      ...(awaitingUser
+        ? {
+            askUser: continuation.userCommunication.message,
+            commandArgs: waitingForAcceptance ? acceptanceCommand : commandArgs,
+            instruction: continuation.userCommunication.agentInstruction,
+          }
+        : {
+            commandArgs,
+            instruction: currentTask ? summary : continuation.userCommunication.agentInstruction,
+          }),
+      ...(continuation.commandAlternatives?.length
+        ? { commandAlternatives: continuation.commandAlternatives }
+        : {}),
+    },
     ...('warning' in status
       ? { warning: status.warning }
       : priorStatus?.warning
@@ -419,7 +437,7 @@ async function projectTaskResult(
     ...(advanced?.error ? { exitCode: advanced.exitCode, error: advanced.error } : {}),
     envelope: {
       summary,
-      ...(waitingForAcceptance
+      ...(awaitingUser
         ? { next: { ask_user: continuation.userCommunication.message ?? '是否接受当前验收结果？' } }
         : commandArgs
           ? { next: { command: formatCliCommandArgs(commandArgs) } }
@@ -427,7 +445,6 @@ async function projectTaskResult(
     },
   };
 }
-
 /** 合并正常任务回报、内部推进和真实会话领取；所有推进仍由原 SDK Run 提交。 */
 export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<DispatchResult> {
   if (!options.sessionId.trim() || options.sessionId.includes('<'))
@@ -443,7 +460,7 @@ export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<
     ...(await projectTaskResult(...args)),
     workflowCompleted: hasNativeCompletedWork(originalRun, args[1]),
   });
-  if (!['3', '4'].includes(run.workflow.version) || owned.application)
+  if (owned.application)
     throw new NativeUsageError(
       '当前高层任务入口适用于新建内置 SDK Run；此需求请继续使用原响应中的命令。',
     );
@@ -459,7 +476,10 @@ export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<
   let reportedByIndependentVerifier = false;
   let repeated = false;
   let advancementObservation:
-    | { run: WorkflowRun; status: Awaited<ReturnType<typeof projectNativeSdkTaskStatus>> }
+    | {
+        run: WorkflowRun;
+        status: Awaited<ReturnType<typeof projectNativeSdkTaskStatus>>;
+      }
     | undefined;
   const advance = async (
     decision?: Parameters<typeof advanceNativeSdkChange>[2],
@@ -472,7 +492,11 @@ export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<
         {
           run,
           state: parseNativePortableState(run.state),
-          artifactRootRef: (run.input as { artifactRootRef: string }).artifactRootRef,
+          artifactRootRef: (
+            run.input as {
+              artifactRootRef: string;
+            }
+          ).artifactRootRef,
           application: owned.application,
         },
         true,
@@ -509,8 +533,12 @@ export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<
       verifierTask(action) && builderSession(run, action) !== options.sessionId;
     const file = path.resolve(options.projectRoot, options.resultFile);
     const original = await readTaskResult(file);
-    const previousOutput = action.outcome?.output as { requireIndependentReview?: boolean } | null;
-    const shapeInput = original.output as { acceptance?: unknown };
+    const previousOutput = action.outcome?.output as {
+      requireIndependentReview?: boolean;
+    } | null;
+    const shapeInput = original.output as {
+      acceptance?: unknown;
+    };
     if (
       action.stepId === 'shape.prepare' &&
       original.status === 'succeeded' &&
@@ -519,7 +547,12 @@ export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<
       throw new NativeUsageError('Shape 结果需要填写 acceptance 条目的 source 和 text。');
     const savedShape =
       action.stepId === 'shape.prepare' && action.status === 'succeeded'
-        ? (action.outcome?.output as { acceptance: Array<{ source: string; text: string }> })
+        ? (action.outcome?.output as {
+            acceptance: Array<{
+              source: string;
+              text: string;
+            }>;
+          })
         : undefined;
     if (
       savedShape &&
@@ -541,7 +574,11 @@ export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<
               (await collectNativeSdkShapeProposal({
                 paths: await nativeProjectPaths(
                   options.projectRoot,
-                  (run.input as { artifactRootRef: string }).artifactRootRef,
+                  (
+                    run.input as {
+                      artifactRootRef: string;
+                    }
+                  ).artifactRootRef,
                   { change: options.name },
                 ),
                 state: parseNativePortableState(run.state),
@@ -596,7 +633,15 @@ export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<
       (entry) => entry.stepId === 'verify.confirm' && entry.status === 'pending',
     );
     const result = reported.outcome?.output as
-      { response?: { kind?: string; result?: { verdict?: string } } } | undefined;
+      | {
+          response?: {
+            kind?: string;
+            result?: {
+              verdict?: string;
+            };
+          };
+        }
+      | undefined;
     const latestVerifier = run.actions.filter((entry) => entry.stepId === 'verify.verifier').at(-1);
     if (
       wait &&
@@ -641,7 +686,14 @@ export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<
       ? undefined
       : nextTask;
   const continuation = (
-    advanced?.data as { continuation?: { mode?: string; action?: string } } | undefined
+    advanced?.data as
+      | {
+          continuation?: {
+            mode?: string;
+            action?: string;
+          };
+        }
+      | undefined
   )?.continuation;
   const claimAllowed =
     !continuation || (continuation.mode === 'execute' && continuation.action !== 'review-edit');

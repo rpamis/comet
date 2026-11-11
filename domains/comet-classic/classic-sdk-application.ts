@@ -1,3 +1,16 @@
+const classicAgentCheckReportsSchema = {
+  type: 'array',
+  items: {
+    type: 'object',
+    required: ['name', 'result'],
+    additionalProperties: false,
+    properties: {
+      name: { type: 'string', minLength: 1 },
+      result: { enum: ['passed', 'failed', 'not-run'] },
+      note: { type: 'string', minLength: 1 },
+    },
+  },
+};
 import { readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
@@ -19,7 +32,6 @@ import {
   type WorkflowRun,
   type WorkflowTransitionHandler,
 } from '../engine/runtime.js';
-import { type EditReviewScope } from '../workflow-contract/edit-review.js';
 import { normalizeWorkflowRelativePath } from '../workflow-contract/project-config.js';
 import {
   inspectProtectedProjectPath,
@@ -45,8 +57,6 @@ import {
   assertClassicArchiveExecutionReceipt,
   readClassicArchiveManifest,
 } from './classic-sdk-archive-manifest.js';
-import { assertClassicSdkCheckReceipt } from './classic-sdk-check-record.js';
-import { assertClassicSdkCheckCommandBinding } from './classic-sdk-check.js';
 import { readClassicSdkDeliveryCheckpoint } from './classic-sdk-delivery-checkpoint.js';
 import {
   assertClassicSdkDeliveryFileInputs,
@@ -63,7 +73,6 @@ import type { ClassicProfile, ClassicState } from './classic-state.js';
 import { parseClassicTasks } from './classic-tasks.js';
 import { applyClassicTransition } from './classic-transitions.js';
 import { classicVerificationReportReceipt } from './classic-verification-report.js';
-
 export interface ClassicWorkflowApplication {
   workflow: DefineWorkflowOptions;
   transitionHandler: WorkflowTransitionHandler;
@@ -71,7 +80,6 @@ export interface ClassicWorkflowApplication {
   executors: readonly RuntimeExecutor[];
   validators: readonly RuntimeValidator[];
 }
-
 const openRevalidationExecutor: RuntimeExecutor = {
   id: 'comet-classic-open-revalidate',
   capabilities: [],
@@ -81,7 +89,6 @@ const openRevalidationExecutor: RuntimeExecutor = {
     return { status: 'succeeded', output: { contentHash: action.inputHash } };
   },
 };
-
 const openRevalidationValidator: RuntimeValidator = {
   id: 'comet-classic-open-revalidation',
   version: '1',
@@ -93,7 +100,9 @@ const openRevalidationValidator: RuntimeValidator = {
         wait.status === 'resolved' &&
         wait.decision?.choice === 'approved',
     );
-    const output = outcome.output as { contentHash?: string } | null;
+    const output = outcome.output as {
+      contentHash?: string;
+    } | null;
     return confirmation &&
       context?.projectRoot &&
       action.claim?.executorId === openRevalidationExecutor.id &&
@@ -102,20 +111,28 @@ const openRevalidationValidator: RuntimeValidator = {
       : { accepted: false, reason: 'Classic Open has no approval for its current SDK request' };
   },
 };
-
 const designHandoffValidator: RuntimeValidator = {
   id: 'comet-classic-design-handoff',
   version: '1',
   async validate({ run, outcome, context }) {
     if (outcome.status === 'failed') return { accepted: true };
-    const input = run.input as { change?: unknown; changeDir?: unknown };
+    const input = run.input as {
+      change?: unknown;
+      changeDir?: unknown;
+    };
     const state = run.state as unknown as ClassicState;
     const output = outcome.output as {
       proposal?: unknown;
       handoffContext?: unknown;
       handoffHash?: unknown;
-      sourceEvidence?: { ref: string; contentHash: string };
-      requirementsEvidence?: { ref: string; contentHash: string };
+      sourceEvidence?: {
+        ref: string;
+        contentHash: string;
+      };
+      requirementsEvidence?: {
+        ref: string;
+        contentHash: string;
+      };
     } | null;
     if (
       !context?.projectRoot ||
@@ -163,7 +180,6 @@ const designHandoffValidator: RuntimeValidator = {
     }
   },
 };
-
 const buildConfigurationValidator: RuntimeValidator = {
   id: 'comet-classic-build-configuration',
   version: '1',
@@ -198,15 +214,20 @@ const buildConfigurationValidator: RuntimeValidator = {
     return { accepted: true };
   },
 };
-
 const archiveOutcomeValidator: RuntimeValidator = {
   id: 'comet-classic-archive-outcome',
   version: '1',
   async validate({ run, action, outcome, context }) {
     if (outcome.status === 'failed') return { accepted: true };
     const root = context?.projectRoot;
-    const input = action.input as { input?: { changeDir?: unknown } };
-    const output = outcome.output as { archiveDirectory?: unknown } | null;
+    const input = action.input as {
+      input?: {
+        changeDir?: unknown;
+      };
+    };
+    const output = outcome.output as {
+      archiveDirectory?: unknown;
+    } | null;
     if (
       !root ||
       action.claim?.executorId !== 'comet-classic-archive' ||
@@ -270,7 +291,6 @@ const archiveOutcomeValidator: RuntimeValidator = {
     }
   },
 };
-
 async function onlyRuntimeCheckpointChanged(
   root: string,
   archiveRef: string,
@@ -309,7 +329,6 @@ async function onlyRuntimeCheckpointChanged(
   delete afterData[PORTABLE_RUN_CHECKPOINT_KEY];
   return isDeepStrictEqual(beforeData, afterData);
 }
-
 const deliveryOutcomeValidator: RuntimeValidator = {
   id: 'comet-classic-delivery-outcome',
   version: '1',
@@ -318,7 +337,9 @@ const deliveryOutcomeValidator: RuntimeValidator = {
     const root = context?.projectRoot;
     const profile = action.stepId.split('.')[0];
     const actionInput = action.input as {
-      input?: { changeDir?: unknown };
+      input?: {
+        changeDir?: unknown;
+      };
       outputs?: Record<string, unknown>;
     };
     const outputs = classicDeliveryActionContext(run, action)?.outputs ?? actionInput.outputs;
@@ -333,7 +354,10 @@ const deliveryOutcomeValidator: RuntimeValidator = {
         }
       | undefined;
     const archive = outputs?.[`${profile}.archive.execute`] as
-      { archiveDirectory?: unknown } | undefined;
+      | {
+          archiveDirectory?: unknown;
+        }
+      | undefined;
     const delivered = outcome.output as {
       action?: unknown;
       targetBranch?: unknown;
@@ -448,12 +472,20 @@ const deliveryOutcomeValidator: RuntimeValidator = {
       const acceptedPlan = documentOutputs['full.build.plan'] as
         | {
             plan?: unknown;
-            designEvidence?: { ref?: unknown; contentHash?: unknown };
+            designEvidence?: {
+              ref?: unknown;
+              contentHash?: unknown;
+            };
           }
         | undefined;
       const designDoc =
-        (documentOutputs['full.design.document'] as { designDoc?: unknown } | undefined)
-          ?.designDoc ?? acceptedPlan?.designEvidence?.ref;
+        (
+          documentOutputs['full.design.document'] as
+            | {
+                designDoc?: unknown;
+              }
+            | undefined
+        )?.designDoc ?? acceptedPlan?.designEvidence?.ref;
       const plan = acceptedPlan?.plan;
       if (profile === 'full' && (typeof designDoc !== 'string' || typeof plan !== 'string')) {
         return { accepted: false, reason: 'Classic Archive documents are missing' };
@@ -592,7 +624,6 @@ const deliveryOutcomeValidator: RuntimeValidator = {
     }
   },
 };
-
 /** Check a host-observed delivery before claiming its SDK Action. */
 export async function validateClassicSdkDeliveryCandidate(
   run: WorkflowRun,
@@ -605,7 +636,10 @@ export async function validateClassicSdkDeliveryCandidate(
     prUrl?: string;
   },
   projectRoot: string,
-): Promise<{ accepted: boolean; reason?: string }> {
+): Promise<{
+  accepted: boolean;
+  reason?: string;
+}> {
   return deliveryOutcomeValidator.validate({
     run,
     action,
@@ -621,7 +655,6 @@ export async function validateClassicSdkDeliveryCandidate(
     context: { requestId: 'delivery-candidate', projectRoot },
   });
 }
-
 /** Capture the current required Open artifacts without trusting a caller-supplied digest. */
 export async function classicOpenEvidenceReceipt(
   projectRoot: string,
@@ -630,30 +663,35 @@ export async function classicOpenEvidenceReceipt(
     designRequirements?: boolean;
     presetRequirements?: boolean;
     taskCheckboxes?: 'include' | 'ignore';
-    captureOriginals?: EditReviewScope;
-    captureForEvidenceHash?: string;
-    observation?: { scope: EditReviewScope; originalEvidenceHash: string };
     run?: Readonly<WorkflowRun>;
   } = {},
-): Promise<{ ref: string }> {
+): Promise<{
+  ref: string;
+}> {
   const inspected = await inspectProtectedProjectPath(projectRoot, changeDirRef, {
     label: 'Classic change',
     expected: 'directory',
   });
   if (
     !inspected.exists ||
-    (options.run && (options.run.input as { changeDir?: string }).changeDir !== inspected.relative)
+    (options.run &&
+      (
+        options.run.input as {
+          changeDir?: string;
+        }
+      ).changeDir !== inspected.relative)
   )
     throw new Error('Classic artifacts do not belong to the current change');
   const requirements = await readClassicArtifactRequirements(projectRoot, inspected.target);
   if (requirements.problems.length) throw new Error(requirements.problems.join('\n'));
   return { ref: inspected.relative };
 }
-
 export async function classicDesignEvidenceReceipt(
   projectRoot: string,
   designDocRef: string,
-): Promise<{ ref: string }> {
+): Promise<{
+  ref: string;
+}> {
   const ref = normalizeWorkflowRelativePath(designDocRef, 'Classic Design document');
   const file = await readProtectedProjectFile(projectRoot, ref, Number.MAX_SAFE_INTEGER, {
     label: 'Classic Design document',
@@ -661,7 +699,6 @@ export async function classicDesignEvidenceReceipt(
   if (!file.bytes.length) throw new Error('Classic Design document is empty');
   return { ref };
 }
-
 /** Reuse only the document accepted by the latest Design evidence. */
 export async function classicAcceptedDesignEvidence(projectRoot: string, run: WorkflowRun) {
   const state = run.state as unknown as ClassicState;
@@ -682,13 +719,13 @@ export async function classicAcceptedDesignEvidence(projectRoot: string, run: Wo
   });
   return { ref: expected.ref };
 }
-
 export async function classicPlanEvidenceReceipt(
   projectRoot: string,
   planRef: string,
   changeDirRef: string,
-  _observation: { scope?: EditReviewScope; captureForEvidenceHash?: string } = {},
-): Promise<{ ref: string }> {
+): Promise<{
+  ref: string;
+}> {
   const readiness = await inspectClassicPlanReadiness(projectRoot, planRef);
   if (readiness.status !== 'ready') throw new Error('Classic Build plan is not ready');
   const plan = await inspectProtectedProjectPath(projectRoot, planRef, {
@@ -702,7 +739,6 @@ export async function classicPlanEvidenceReceipt(
   if (!plan.exists || !change.exists) throw new Error('Classic Build plan or change is missing');
   return { ref: plan.relative };
 }
-
 export async function assertClassicSdkDesignRequirementsCurrent(
   projectRoot: string,
   changeDirRef: string,
@@ -723,10 +759,17 @@ export async function assertClassicSdkDesignRequirementsCurrent(
     .slice()
     .reverse()
     .find((action) => action.stepId === 'full.design.handoff' && action.status === 'succeeded');
-  if (!open || !handoff || (run.input as { changeDir?: string }).changeDir !== changeDirRef)
+  if (
+    !open ||
+    !handoff ||
+    (
+      run.input as {
+        changeDir?: string;
+      }
+    ).changeDir !== changeDirRef
+  )
     throw new Error('Classic Design requires its approved Open and completed handoff');
 }
-
 export async function assertClassicBuildReady(
   projectRoot: string,
   changeDirRef: string,
@@ -799,7 +842,6 @@ export async function assertClassicBuildReady(
   );
   if (autonomousProblems.length > 0) throw new Error(autonomousProblems.join('\n'));
 }
-
 /** 预设以已批准的需求为准；勾选完成任务不会改变需求摘要。 */
 export async function assertClassicPresetRequirementsCurrent(
   projectRoot: string,
@@ -823,13 +865,16 @@ export async function assertClassicPresetRequirementsCurrent(
     .find((action) => action.stepId === state.workflow + '.open' && action.status === 'succeeded');
   if (!accepted || !open) throw new Error('Classic preset requires its accepted Open step');
 }
-
 const openEvidenceValidator: RuntimeEvidenceValidator = {
   id: 'comet-classic-open-artifacts',
   version: '1',
   async validate({ run, ref, contentHash, context }) {
     const state = run.state as unknown as ClassicState;
-    const expected = (run.input as { changeDir?: string }).changeDir;
+    const expected = (
+      run.input as {
+        changeDir?: string;
+      }
+    ).changeDir;
     const action = run.actions
       .slice()
       .reverse()
@@ -855,7 +900,6 @@ const openEvidenceValidator: RuntimeEvidenceValidator = {
     }
   },
 };
-
 const designEvidenceValidator: RuntimeEvidenceValidator = {
   id: 'comet-classic-design-document',
   version: '1',
@@ -884,7 +928,6 @@ const designEvidenceValidator: RuntimeEvidenceValidator = {
     }
   },
 };
-
 const planEvidenceValidator: RuntimeEvidenceValidator = {
   id: 'comet-classic-build-plan',
   version: '1',
@@ -909,7 +952,13 @@ const planEvidenceValidator: RuntimeEvidenceValidator = {
       await classicPlanEvidenceReceipt(
         context.projectRoot,
         ref,
-        String((run.input as { changeDir: string }).changeDir),
+        String(
+          (
+            run.input as {
+              changeDir: string;
+            }
+          ).changeDir,
+        ),
       );
       return { accepted: true, actualHash: action.inputHash };
     } catch (error) {
@@ -917,7 +966,6 @@ const planEvidenceValidator: RuntimeEvidenceValidator = {
     }
   },
 };
-
 const verificationReportEvidenceValidator: RuntimeEvidenceValidator = {
   id: 'comet-classic-verification-report',
   version: '1',
@@ -947,56 +995,6 @@ const verificationReportEvidenceValidator: RuntimeEvidenceValidator = {
     }
   },
 };
-
-function classicCheckEvidenceValidator(scope: 'build' | 'verify'): RuntimeEvidenceValidator {
-  return {
-    id: 'comet-classic-' + scope + '-check',
-    version: '1',
-    async validate({ run, ref, contentHash, context }) {
-      const state = run.state as ClassicState | undefined;
-      const action = run.actions
-        .slice()
-        .reverse()
-        .find((entry) => entry.stepId === state?.workflow + '.' + scope + '.check');
-      const check = action?.outcome?.output as Record<string, RuntimeValue> | undefined;
-      if (
-        !context?.projectRoot ||
-        state?.phase !== scope ||
-        !action ||
-        action.status !== 'succeeded' ||
-        action.claim?.executorId !== 'comet-classic-check' ||
-        !check ||
-        check.scope !== scope ||
-        check.receiptRef !== ref ||
-        contentHash !== action.inputHash ||
-        check.exitCode !== 0 ||
-        check.tier !== 'full' ||
-        check.checkEpoch !== (state.checkEpoch ?? 0)
-      ) {
-        return {
-          accepted: false,
-          actualHash: '',
-          reason: 'Classic check lacks a successful execution for the current step',
-        };
-      }
-      try {
-        await assertClassicSdkCheckReceipt(context.projectRoot, run, action, {
-          status: action.outcome!.status,
-          output: action.outcome!.output,
-        });
-        if ((run.input as { checkCommands?: unknown }).checkCommands !== undefined)
-          await assertClassicSdkCheckCommandBinding(run, action, context.projectRoot, check);
-        return { accepted: true, actualHash: action.inputHash };
-      } catch (error) {
-        return { accepted: false, actualHash: '', reason: String(error) };
-      }
-    },
-  };
-}
-
-const buildCheckEvidenceValidator = classicCheckEvidenceValidator('build');
-const verifyCheckEvidenceValidator = classicCheckEvidenceValidator('verify');
-
 const requiredStateFields: Array<keyof ClassicState> = [
   'workflow',
   'language',
@@ -1028,15 +1026,16 @@ const requiredStateFields: Array<keyof ClassicState> = [
   'classicProfile',
   'classicMigration',
 ];
-
 const nullableString = { type: ['string', 'null'] };
 const nullableBoolean = { type: ['boolean', 'null'] };
-
 const presetScopeValidator: RuntimeValidator = {
   id: 'comet-classic-preset-scope',
   version: '1',
   async validate({ run, outcome, context }) {
-    const output = outcome.output as { event?: unknown; requirementsEvidence?: unknown } | null;
+    const output = outcome.output as {
+      event?: unknown;
+      requirementsEvidence?: unknown;
+    } | null;
     if (
       outcome.status !== 'succeeded' ||
       output?.event !== 'escalation-requested' ||
@@ -1048,15 +1047,22 @@ const presetScopeValidator: RuntimeValidator = {
     try {
       const current = await classicOpenEvidenceReceipt(
         context.projectRoot,
-        (run.input as { changeDir: string }).changeDir,
+        (
+          run.input as {
+            changeDir: string;
+          }
+        ).changeDir,
         {
           presetRequirements: true,
-          captureForEvidenceHash: (output.requirementsEvidence as { contentHash?: string })
-            .contentHash,
         },
       );
       return {
-        accepted: (output.requirementsEvidence as { ref?: unknown }).ref === current.ref,
+        accepted:
+          (
+            output.requirementsEvidence as {
+              ref?: unknown;
+            }
+          ).ref === current.ref,
         reason: 'Classic preset scope changed before the proposal was recorded',
       };
     } catch (error) {
@@ -1064,7 +1070,6 @@ const presetScopeValidator: RuntimeValidator = {
     }
   },
 };
-
 /** Classic owns phase rules; the SDK owns Action acceptance, scheduling, and Run commits. */
 export function defineClassicWorkflowApplication(
   profile: ClassicProfile,
@@ -1073,7 +1078,7 @@ export function defineClassicWorkflowApplication(
   const openStep = `${profile}.open`;
   const evidenceStep = `${profile}.open.evidence`;
   const followingStep = profile === 'full' ? 'full.design.handoff' : `${profile}.build.execute`;
-  const transitionRef = { id: `comet-classic-${profile}-transition`, version: '1' };
+  const transitionRef = { id: `comet-classic-${profile}-transition`, version: '2' };
   const evidenceRef = { id: 'comet-classic-open-artifacts', version: '1' };
   return {
     executors: profile === 'full' ? [openRevalidationExecutor] : fullApplication!.executors,
@@ -1092,19 +1097,12 @@ export function defineClassicWorkflowApplication(
             openEvidenceValidator,
             designEvidenceValidator,
             planEvidenceValidator,
-            buildCheckEvidenceValidator,
             verificationReportEvidenceValidator,
-            verifyCheckEvidenceValidator,
           ]
-        : [
-            openEvidenceValidator,
-            buildCheckEvidenceValidator,
-            verificationReportEvidenceValidator,
-            verifyCheckEvidenceValidator,
-          ]),
+        : [openEvidenceValidator, verificationReportEvidenceValidator]),
     workflow: {
       id: `comet-classic-${profile}`,
-      version: '1',
+      version: '2',
       entry: openStep,
       stateSchema: {
         type: 'object',
@@ -1220,6 +1218,8 @@ export function defineClassicWorkflowApplication(
                       },
                       additionalProperties: false,
                     },
+                    checks: classicAgentCheckReportsSchema,
+                    checksReason: { type: 'string', minLength: 1 },
                   },
                   additionalProperties: false,
                 },
@@ -1312,26 +1312,12 @@ export function defineClassicWorkflowApplication(
                 outputSchema: {
                   type: 'object',
                   required: ['event'],
-                  properties: { event: { enum: ['build-complete'] } },
-                },
-              },
-              'full.build.check': {
-                type: 'call_tool' as const,
-                ref: 'classic-check',
-                outputSchema: {
-                  type: 'object',
-                  required: ['scope', 'receiptRef', 'contentHash'],
                   properties: {
-                    scope: { enum: ['build'] },
-                    receiptRef: { type: 'string', minLength: 1 },
-                    contentHash: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+                    event: { enum: ['build-complete'] },
+                    checks: classicAgentCheckReportsSchema,
+                    checksReason: { type: 'string', minLength: 1 },
                   },
                 },
-              },
-              'full.build.check.evidence': {
-                type: 'await_evidence' as const,
-                kind: 'classic-build-check',
-                validator: { id: 'comet-classic-build-check', version: '1' },
               },
               'full.verify.run': {
                 type: 'invoke_skill' as const,
@@ -1343,6 +1329,8 @@ export function defineClassicWorkflowApplication(
                     event: { enum: ['verification-ready', 'verify-fail'] },
                     verificationReport: { type: 'string', minLength: 1 },
                     reason: { type: 'string', minLength: 1 },
+                    checks: classicAgentCheckReportsSchema,
+                    checksReason: { type: 'string', minLength: 1 },
                   },
                   additionalProperties: false,
                 },
@@ -1351,24 +1339,6 @@ export function defineClassicWorkflowApplication(
                 type: 'await_evidence' as const,
                 kind: 'classic-verification-report',
                 validator: { id: 'comet-classic-verification-report', version: '1' },
-              },
-              'full.verify.check': {
-                type: 'call_tool' as const,
-                ref: 'classic-check',
-                outputSchema: {
-                  type: 'object',
-                  required: ['scope', 'receiptRef', 'contentHash'],
-                  properties: {
-                    scope: { enum: ['verify'] },
-                    receiptRef: { type: 'string', minLength: 1 },
-                    contentHash: { type: 'string', pattern: '^[a-f0-9]{64}$' },
-                  },
-                },
-              },
-              'full.verify.check.evidence': {
-                type: 'await_evidence' as const,
-                kind: 'classic-verify-check',
-                validator: { id: 'comet-classic-verify-check', version: '1' },
               },
               'full.archive.prepare': {
                 type: 'invoke_skill' as const,
@@ -1381,6 +1351,7 @@ export function defineClassicWorkflowApplication(
                     remote: { type: 'string', minLength: 1 },
                     prBaseBranch: { type: 'string', minLength: 1 },
                     summary: { type: 'string', minLength: 1 },
+                    deliveryPaths: { type: 'array', items: { type: 'string', minLength: 1 } },
                   },
                   additionalProperties: false,
                 },
@@ -1404,6 +1375,7 @@ export function defineClassicWorkflowApplication(
                     remote: { type: 'string', minLength: 1 },
                     remoteIdentity: { type: 'string', pattern: '^[0-9a-f]{64}$' },
                     prBaseBranch: { type: 'string', minLength: 1 },
+                    deliveryPaths: { type: 'array', items: { type: 'string', minLength: 1 } },
                   },
                   additionalProperties: false,
                 },
@@ -1445,24 +1417,6 @@ export function defineClassicWorkflowApplication(
               },
             }
           : {
-              [`${profile}.build.check`]: {
-                type: 'call_tool' as const,
-                ref: 'classic-check',
-                outputSchema: {
-                  type: 'object',
-                  required: ['scope', 'receiptRef', 'contentHash'],
-                  properties: {
-                    scope: { enum: ['build'] },
-                    receiptRef: { type: 'string', minLength: 1 },
-                    contentHash: { type: 'string', pattern: '^[a-f0-9]{64}$' },
-                  },
-                },
-              },
-              [`${profile}.build.check.evidence`]: {
-                type: 'await_evidence' as const,
-                kind: 'classic-build-check',
-                validator: { id: 'comet-classic-build-check', version: '1' },
-              },
               [`${profile}.verify.run`]: {
                 type: 'invoke_skill' as const,
                 ref: 'comet-verify',
@@ -1473,6 +1427,8 @@ export function defineClassicWorkflowApplication(
                     event: { enum: ['verification-ready', 'verify-fail'] },
                     verificationReport: { type: 'string', minLength: 1 },
                     reason: { type: 'string', minLength: 1 },
+                    checks: classicAgentCheckReportsSchema,
+                    checksReason: { type: 'string', minLength: 1 },
                   },
                   additionalProperties: false,
                 },
@@ -1481,24 +1437,6 @@ export function defineClassicWorkflowApplication(
                 type: 'await_evidence' as const,
                 kind: 'classic-verification-report',
                 validator: { id: 'comet-classic-verification-report', version: '1' },
-              },
-              [`${profile}.verify.check`]: {
-                type: 'call_tool' as const,
-                ref: 'classic-check',
-                outputSchema: {
-                  type: 'object',
-                  required: ['scope', 'receiptRef', 'contentHash'],
-                  properties: {
-                    scope: { enum: ['verify'] },
-                    receiptRef: { type: 'string', minLength: 1 },
-                    contentHash: { type: 'string', pattern: '^[a-f0-9]{64}$' },
-                  },
-                },
-              },
-              [`${profile}.verify.check.evidence`]: {
-                type: 'await_evidence' as const,
-                kind: 'classic-verify-check',
-                validator: { id: 'comet-classic-verify-check', version: '1' },
               },
               [`${profile}.archive.prepare`]: {
                 type: 'invoke_skill' as const,
@@ -1511,6 +1449,7 @@ export function defineClassicWorkflowApplication(
                     remote: { type: 'string', minLength: 1 },
                     prBaseBranch: { type: 'string', minLength: 1 },
                     summary: { type: 'string', minLength: 1 },
+                    deliveryPaths: { type: 'array', items: { type: 'string', minLength: 1 } },
                   },
                   additionalProperties: false,
                 },
@@ -1534,6 +1473,7 @@ export function defineClassicWorkflowApplication(
                     remote: { type: 'string', minLength: 1 },
                     remoteIdentity: { type: 'string', pattern: '^[0-9a-f]{64}$' },
                     prBaseBranch: { type: 'string', minLength: 1 },
+                    deliveryPaths: { type: 'array', items: { type: 'string', minLength: 1 } },
                   },
                   additionalProperties: false,
                 },
@@ -1588,7 +1528,6 @@ export function defineClassicWorkflowApplication(
               { from: 'full.open.revalidate', to: openStep },
             ]
           : [
-              { from: followingStep, to: `${profile}.build.check` },
               { from: followingStep, to: `${profile}.build.escalation-confirm` },
               {
                 from: `${profile}.build.escalation-confirm`,
@@ -1600,16 +1539,8 @@ export function defineClassicWorkflowApplication(
                 to: 'full.design.handoff',
                 on: 'upgrade',
               },
-              { from: `${profile}.build.check`, to: `${profile}.build.check.evidence` },
-              { from: `${profile}.build.check`, to: followingStep, on: 'failed' },
-              { from: `${profile}.build.check.evidence`, to: `${profile}.verify.run` },
-              { from: `${profile}.build.check.evidence`, to: followingStep, on: 'invalidated' },
               { from: `${profile}.verify.run`, to: `${profile}.verify.report.evidence` },
               { from: `${profile}.verify.run`, to: `${profile}.build.execute` },
-              { from: `${profile}.verify.report.evidence`, to: `${profile}.verify.check` },
-              { from: `${profile}.verify.check`, to: `${profile}.verify.check.evidence` },
-              { from: `${profile}.verify.check`, to: `${profile}.build.execute`, on: 'failed' },
-              { from: `${profile}.verify.check.evidence`, to: `${profile}.archive.prepare` },
               { from: `${profile}.archive.prepare`, to: `${profile}.archive.confirm` },
               {
                 from: `${profile}.archive.confirm`,
@@ -1641,17 +1572,8 @@ export function defineClassicWorkflowApplication(
               { from: 'full.build.plan.evidence', to: 'full.build.execute' },
               { from: 'full.build.plan.evidence', to: 'full.build.plan-ready' },
               { from: 'full.build.plan-ready', to: 'full.build.plan.evidence', on: 'continue' },
-              { from: 'full.build.execute', to: 'full.build.check' },
-              { from: 'full.build.check', to: 'full.build.check.evidence' },
-              { from: 'full.build.check', to: 'full.build.execute', on: 'failed' },
-              { from: 'full.build.check.evidence', to: 'full.verify.run' },
-              { from: 'full.build.check.evidence', to: 'full.build.execute', on: 'invalidated' },
               { from: 'full.verify.run', to: 'full.verify.report.evidence' },
               { from: 'full.verify.run', to: 'full.build.plan' },
-              { from: 'full.verify.report.evidence', to: 'full.verify.check' },
-              { from: 'full.verify.check', to: 'full.verify.check.evidence' },
-              { from: 'full.verify.check', to: 'full.build.plan', on: 'failed' },
-              { from: 'full.verify.check.evidence', to: 'full.archive.prepare' },
               { from: 'full.archive.prepare', to: 'full.archive.confirm' },
               { from: 'full.archive.confirm', to: 'full.archive.preflight', on: 'local' },
               { from: 'full.archive.confirm', to: 'full.archive.preflight', on: 'push' },
@@ -1667,11 +1589,39 @@ export function defineClassicWorkflowApplication(
               (edge) => edge.from.startsWith('full.') && !edge.from.startsWith('full.open'),
             ) ?? [])
           : []),
+        { from: `${profile}.build.execute`, to: `${profile}.verify.run` },
+        { from: `${profile}.verify.report.evidence`, to: `${profile}.archive.prepare` },
       ],
     },
     transitionHandler: {
       ...transitionRef,
       apply({ run, event }) {
+        if (
+          event.kind === 'action-outcome' &&
+          event.outcome.status === 'succeeded' &&
+          (event.stepId.endsWith('.build.execute') || event.stepId.endsWith('.verify.run'))
+        ) {
+          const output = event.outcome.output as {
+            event?: string;
+            checks?: Array<{
+              name: string;
+              result: string;
+              note?: string;
+            }>;
+            checksReason?: string;
+          };
+          if (['build-complete', 'verification-ready'].includes(output.event ?? '')) {
+            const accepted = run.actions.find((action) => action.id === event.outcome.actionId);
+            if (
+              accepted?.executionOrigin?.workflow.version !== '1' ||
+              accepted.status !== 'succeeded' ||
+              run.outputs[event.stepId]?.sequence !== run.actionContexts[accepted.id]?.sequence ||
+              !isDeepStrictEqual(run.outputs[event.stepId]?.value, accepted.outcome?.output) ||
+              !isDeepStrictEqual(accepted.outcome, event.outcome)
+            )
+              assertClassicAgentCheckReports(output);
+          }
+        }
         if (event.kind === 'action-outcome' && event.outcome.status === 'failed') {
           const interrupted = run.actions.find((action) => action.id === event.outcome.actionId);
           if (interrupted?.type === 'invoke_skill') return { state: run.state!, next: [] };
@@ -1704,7 +1654,10 @@ export function defineClassicWorkflowApplication(
           event.kind === 'action-outcome' &&
           event.stepId === followingStep
         ) {
-          const output = event.outcome.output as { event?: unknown; proposal?: unknown };
+          const output = event.outcome.output as {
+            event?: unknown;
+            proposal?: unknown;
+          };
           if (
             event.outcome.status === 'succeeded' &&
             output.event === 'escalation-requested' &&
@@ -1716,35 +1669,9 @@ export function defineClassicWorkflowApplication(
           if (event.outcome.status !== 'succeeded' || output.event !== 'build-complete') {
             throw new Error('Classic preset Build result does not match its declared transition');
           }
-          return { state: run.state!, next: [`${profile}.build.check`] };
-        }
-        if (
-          profile !== 'full' &&
-          event.kind === 'action-outcome' &&
-          event.stepId === `${profile}.build.check`
-        ) {
-          if (event.outcome.status === 'failed') {
-            return { state: run.state!, next: [followingStep] };
-          }
-          if ((event.outcome.output as { scope?: unknown })?.scope !== 'build') {
-            throw new Error('Classic preset Build check did not complete');
-          }
-          return { state: run.state!, next: [`${profile}.build.check.evidence`] };
-        }
-        if (
-          profile !== 'full' &&
-          event.kind === 'evidence-recorded' &&
-          event.stepId === `${profile}.build.check.evidence`
-        ) {
-          if (event.evidenceKind !== 'classic-build-check') {
-            throw new Error('Classic preset Build check evidence kind does not match');
-          }
-          const state = applyClassicTransition(
-            run.state as unknown as ClassicState,
-            'build-complete',
-          );
           return {
-            state: state.classic as unknown as RuntimeValue,
+            state: applyClassicTransition(run.state as unknown as ClassicState, 'build-complete')
+              .classic as unknown as RuntimeValue,
             next: [`${profile}.verify.run`],
           };
         }
@@ -1794,42 +1721,9 @@ export function defineClassicWorkflowApplication(
           if (event.ref !== (run.state as unknown as ClassicState).verificationReport) {
             throw new Error('Classic preset Verify report evidence does not match');
           }
-          return { state: run.state!, next: [`${profile}.verify.check`] };
-        }
-        if (
-          profile !== 'full' &&
-          event.kind === 'action-outcome' &&
-          event.stepId === `${profile}.verify.check`
-        ) {
-          if (event.outcome.status === 'failed') {
-            if ((event.outcome.output as { scope?: unknown })?.scope !== 'verify') {
-              throw new Error('Classic preset Verify check failure scope does not match');
-            }
-            const state = applyClassicTransition(
-              run.state as unknown as ClassicState,
-              'verify-fail',
-            );
-            return {
-              state: state.classic as unknown as RuntimeValue,
-              next: [`${profile}.build.execute`],
-            };
-          }
-          if ((event.outcome.output as { scope?: unknown })?.scope !== 'verify') {
-            throw new Error('Classic preset Verify check did not complete');
-          }
-          return { state: run.state!, next: [`${profile}.verify.check.evidence`] };
-        }
-        if (
-          profile !== 'full' &&
-          event.kind === 'evidence-recorded' &&
-          event.stepId === `${profile}.verify.check.evidence`
-        ) {
-          if (event.evidenceKind !== 'classic-verify-check') {
-            throw new Error('Classic preset Verify check evidence kind does not match');
-          }
-          const state = applyClassicTransition(run.state as unknown as ClassicState, 'verify-pass');
           return {
-            state: state.classic as unknown as RuntimeValue,
+            state: applyClassicTransition(run.state as unknown as ClassicState, 'verify-pass')
+              .classic as unknown as RuntimeValue,
             next: [`${profile}.archive.prepare`],
           };
         }
@@ -1846,7 +1740,11 @@ export function defineClassicWorkflowApplication(
         if (event.kind === 'action-outcome' && event.stepId === openStep) {
           if (
             event.outcome.status !== 'succeeded' ||
-            (event.outcome.output as { event?: unknown })?.event !== 'open-complete'
+            (
+              event.outcome.output as {
+                event?: unknown;
+              }
+            )?.event !== 'open-complete'
           ) {
             throw new Error('Classic Open result does not match its declared transition');
           }
@@ -1927,7 +1825,11 @@ export function defineClassicWorkflowApplication(
           if (event.outcome.status !== 'succeeded') {
             throw new Error('Classic Design document work did not succeed');
           }
-          const designDoc = (event.outcome.output as { designDoc: string }).designDoc;
+          const designDoc = (
+            event.outcome.output as {
+              designDoc: string;
+            }
+          ).designDoc;
           return {
             state: { ...(run.state as object), designDoc } as RuntimeValue,
             next: ['full.design.evidence'],
@@ -1954,7 +1856,12 @@ export function defineClassicWorkflowApplication(
                   ['build', 'verify', 'archive'].includes(
                     (
                       run.actions.find((action) => action.id === command.actionId)?.input as
-                        { activation?: { fromPhase?: string } } | undefined
+                        | {
+                            activation?: {
+                              fromPhase?: string;
+                            };
+                          }
+                        | undefined
                     )?.activation?.fromPhase ?? '',
                   ),
               )
@@ -1988,7 +1895,11 @@ export function defineClassicWorkflowApplication(
               wait.proposalHash === event.proposalHash,
           );
           const proposed = (
-            decision?.proposal as { outputs?: Record<string, RuntimeValue> } | undefined
+            decision?.proposal as
+              | {
+                  outputs?: Record<string, RuntimeValue>;
+                }
+              | undefined
           )?.outputs?.['full.build.configure'];
           const recorded = run.outputs['full.build.configure']?.value;
           if (
@@ -2081,47 +1992,19 @@ export function defineClassicWorkflowApplication(
         ) {
           if (
             event.outcome.status !== 'succeeded' ||
-            (event.outcome.output as { event?: unknown })?.event !== 'build-complete'
+            (
+              event.outcome.output as {
+                event?: unknown;
+              }
+            )?.event !== 'build-complete'
           ) {
             throw new Error('Classic Build work did not complete');
           }
-          return { state: run.state!, next: ['full.build.check'] };
-        }
-        if (
-          profile === 'full' &&
-          event.kind === 'action-outcome' &&
-          event.stepId === 'full.build.check'
-        ) {
-          if (event.outcome.status === 'failed') {
-            return { state: run.state!, next: ['full.build.execute'] };
-          }
-          if ((event.outcome.output as { scope?: unknown })?.scope !== 'build') {
-            throw new Error('Classic Build check did not complete');
-          }
-          return { state: run.state!, next: ['full.build.check.evidence'] };
-        }
-        if (
-          profile === 'full' &&
-          event.kind === 'evidence-recorded' &&
-          event.stepId === 'full.build.check.evidence'
-        ) {
-          if (event.evidenceKind !== 'classic-build-check') {
-            throw new Error('Classic Build check evidence kind does not match');
-          }
-          const state = applyClassicTransition(
-            run.state as unknown as ClassicState,
-            'build-complete',
-          );
           return {
-            state: state.classic as unknown as RuntimeValue,
-            next: ['full.verify.run'],
+            state: applyClassicTransition(run.state as unknown as ClassicState, 'build-complete')
+              .classic as unknown as RuntimeValue,
+            next: [`${profile}.verify.run`],
           };
-        }
-        if (
-          event.kind === 'evidence-invalidated' &&
-          event.stepId === `${profile}.build.check.evidence`
-        ) {
-          return { state: run.state!, next: [`${profile}.build.execute`] };
         }
         if (
           profile === 'full' &&
@@ -2165,40 +2048,10 @@ export function defineClassicWorkflowApplication(
           if (event.ref !== (run.state as unknown as ClassicState).verificationReport) {
             throw new Error('Classic Verify evidence does not match the selected report');
           }
-          return { state: run.state!, next: ['full.verify.check'] };
-        }
-        if (
-          profile === 'full' &&
-          event.kind === 'action-outcome' &&
-          event.stepId === 'full.verify.check'
-        ) {
-          if (event.outcome.status === 'failed') {
-            if ((event.outcome.output as { scope?: unknown })?.scope !== 'verify') {
-              throw new Error('Classic Verify check failure scope does not match');
-            }
-            const state = applyClassicTransition(
-              run.state as unknown as ClassicState,
-              'verify-fail',
-            );
-            return { state: state.classic as unknown as RuntimeValue, next: ['full.build.plan'] };
-          }
-          if ((event.outcome.output as { scope?: unknown })?.scope !== 'verify') {
-            throw new Error('Classic Verify check scope does not match');
-          }
-          return { state: run.state!, next: ['full.verify.check.evidence'] };
-        }
-        if (
-          profile === 'full' &&
-          event.kind === 'evidence-recorded' &&
-          event.stepId === 'full.verify.check.evidence'
-        ) {
-          if (event.evidenceKind !== 'classic-verify-check') {
-            throw new Error('Classic Verify check evidence kind does not match');
-          }
-          const state = applyClassicTransition(run.state as unknown as ClassicState, 'verify-pass');
           return {
-            state: state.classic as unknown as RuntimeValue,
-            next: ['full.archive.prepare'],
+            state: applyClassicTransition(run.state as unknown as ClassicState, 'verify-pass')
+              .classic as unknown as RuntimeValue,
+            next: [`${profile}.archive.prepare`],
           };
         }
         if (
@@ -2232,7 +2085,11 @@ export function defineClassicWorkflowApplication(
               wait.proposalHash === event.proposalHash,
           );
           const proposed = (
-            decision?.proposal as { outputs?: Record<string, RuntimeValue> } | undefined
+            decision?.proposal as
+              | {
+                  outputs?: Record<string, RuntimeValue>;
+                }
+              | undefined
           )?.outputs?.[`${profile}.archive.prepare`];
           const recorded = run.outputs[`${profile}.archive.prepare`]?.value;
           if (
@@ -2277,9 +2134,17 @@ export function defineClassicWorkflowApplication(
                 ['local', 'push', 'pr'].includes(wait.decision?.choice ?? ''),
             );
           const proposal = (
-            approval?.proposal as { outputs?: Record<string, RuntimeValue> } | undefined
+            approval?.proposal as
+              | {
+                  outputs?: Record<string, RuntimeValue>;
+                }
+              | undefined
           )?.outputs?.[`${profile}.archive.prepare`] as
-            { targetBranch?: string; prBaseBranch?: string } | undefined;
+            | {
+                targetBranch?: string;
+                prBaseBranch?: string;
+              }
+            | undefined;
           const output = event.outcome.output as {
             deliveryAction?: string;
             targetBranch?: string;
@@ -2304,9 +2169,15 @@ export function defineClassicWorkflowApplication(
             return { state: run.state!, next: [] };
           }
           const archived = applyClassicTransition(run.state as unknown as ClassicState, 'archived');
-          const activeRef = (run.input as { changeDir: string }).changeDir.replaceAll('\\', '/');
+          const activeRef = (
+            run.input as {
+              changeDir: string;
+            }
+          ).changeDir.replaceAll('\\', '/');
           const archiveRef = (
-            event.outcome.output as { archiveDirectory: string }
+            event.outcome.output as {
+              archiveDirectory: string;
+            }
           ).archiveDirectory.replaceAll('\\', '/');
           return {
             state: {
@@ -2358,7 +2229,6 @@ export function defineClassicWorkflowApplication(
     },
   };
 }
-
 /** 通用 SDK 证据接口沿用原 Action 请求身份；不读取或摘要文件内容。 */
 export function classicSdkEvidenceInputHash(run: Readonly<WorkflowRun>, stepId: string): string {
   const action = run.actions
@@ -2368,132 +2238,13 @@ export function classicSdkEvidenceInputHash(run: Readonly<WorkflowRun>, stepId: 
   if (!action) throw new Error('Classic evidence has no originating Action');
   return action.inputHash;
 }
-
-/** New built-in Runs accept checks executed and reported by the Agent platform. */
-export function defineClassicAgentWorkflowApplication(
-  profile: ClassicProfile,
-): ClassicWorkflowApplication {
-  const base = defineClassicWorkflowApplication(profile);
-  const steps = { ...base.workflow.steps };
-  const removed = new Set(
-    Object.keys(steps).filter((id) => /\.(build|verify)\.check(?:\.evidence)?$/u.test(id)),
-  );
-  for (const id of removed) delete steps[id];
-  const checks = {
-    type: 'array',
-    items: {
-      type: 'object',
-      required: ['name', 'result'],
-      additionalProperties: false,
-      properties: {
-        name: { type: 'string', minLength: 1 },
-        result: { enum: ['passed', 'failed', 'not-run'] },
-        note: { type: 'string', minLength: 1 },
-      },
-    },
-  };
-  for (const [id, step] of Object.entries(steps)) {
-    if (id.endsWith('.archive.preflight')) {
-      const schema = step.outputSchema as { properties?: Record<string, RuntimeValue> };
-      steps[id] = {
-        ...step,
-        outputSchema: {
-          ...schema,
-          properties: {
-            ...schema.properties,
-            deliveryPaths: { type: 'array', items: { type: 'string', minLength: 1 } },
-          },
-        },
-      };
-    }
-    if (!id.endsWith('.build.execute') && !id.endsWith('.verify.run')) continue;
-    const schema = step.outputSchema as {
-      required?: string[];
-      properties?: Record<string, unknown>;
-    };
-    steps[id] = {
-      ...step,
-      outputSchema: {
-        ...schema,
-        required: schema.required ?? [],
-        properties: {
-          ...schema.properties,
-          checks,
-          checksReason: { type: 'string', minLength: 1 },
-        },
-      },
-    };
-  }
-  const transitionHandler: WorkflowTransitionHandler = {
-    ...base.transitionHandler,
-    version: '2',
-    apply(context) {
-      const { run, event } = context;
-      if (
-        event.kind === 'action-outcome' &&
-        event.outcome.status === 'succeeded' &&
-        (event.stepId.endsWith('.build.execute') || event.stepId.endsWith('.verify.run'))
-      ) {
-        const output = event.outcome.output as {
-          event?: string;
-          checks?: Array<{ name: string; result: string; note?: string }>;
-          checksReason?: string;
-        };
-        if (['build-complete', 'verification-ready'].includes(output.event ?? '')) {
-          assertClassicAgentCheckReports(output);
-        }
-        if (output.event === 'build-complete') {
-          const state = applyClassicTransition(
-            run.state as unknown as ClassicState,
-            'build-complete',
-          );
-          return {
-            state: state.classic as unknown as RuntimeValue,
-            next: [event.stepId.replace('.build.execute', '.verify.run')],
-          };
-        }
-      }
-      if (event.kind === 'evidence-recorded' && event.stepId.endsWith('.verify.report.evidence')) {
-        if (event.ref !== (run.state as unknown as ClassicState).verificationReport)
-          throw new Error('Classic Verify evidence does not match the selected report');
-        const state = applyClassicTransition(run.state as unknown as ClassicState, 'verify-pass');
-        return {
-          state: state.classic as unknown as RuntimeValue,
-          next: [event.stepId.replace('.verify.report.evidence', '.archive.prepare')],
-        };
-      }
-      return base.transitionHandler.apply(context);
-    },
-  };
-  return {
-    ...base,
-    transitionHandler,
-    workflow: {
-      ...base.workflow,
-      version: '2',
-      steps,
-      transitionHandler: { id: transitionHandler.id, version: transitionHandler.version },
-      transitions: [
-        ...(base.workflow.transitions ?? []).filter(
-          (edge) => !removed.has(edge.from) && !removed.has(edge.to),
-        ),
-        ...Object.keys(steps)
-          .filter((id) => id.endsWith('.build.execute'))
-          .map((from) => ({ from, to: from.replace('.build.execute', '.verify.run') })),
-        ...Object.keys(steps)
-          .filter((id) => id.endsWith('.verify.report.evidence'))
-          .map((from) => ({
-            from,
-            to: from.replace('.verify.report.evidence', '.archive.prepare'),
-          })),
-      ],
-    },
-  };
-}
-
 /** Reports are validated when submitted, and bound to the accepted Verify Action. */
 export function assertClassicAgentCheckReports(output: {
-  checks?: Array<{ name: string; result: string; note?: string }>;
+  checks?: Array<{
+    name: string;
+    result: string;
+    note?: string;
+  }>;
   checksReason?: string;
 }): void {
   if (
@@ -2511,7 +2262,6 @@ export function assertClassicAgentCheckReports(output: {
     );
   }
 }
-
 export async function readClassicAgentCheckReports(projectRoot: string, ref: string) {
   const value = JSON.parse(
     (
@@ -2519,7 +2269,14 @@ export async function readClassicAgentCheckReports(projectRoot: string, ref: str
         label: 'Classic check reports',
       })
     ).bytes.toString('utf8'),
-  ) as { checks?: Array<{ name: string; result: string; note?: string }>; checksReason?: string };
+  ) as {
+    checks?: Array<{
+      name: string;
+      result: string;
+      note?: string;
+    }>;
+    checksReason?: string;
+  };
   if (
     !value ||
     typeof value !== 'object' ||
@@ -2546,3 +2303,6 @@ export async function readClassicAgentCheckReports(projectRoot: string, ref: str
     ...(value.checksReason === undefined ? {} : { checksReason: value.checksReason }),
   };
 }
+
+/** 保留既有工厂名称；两者都只构造当前业务图。 */
+export const defineClassicAgentWorkflowApplication = defineClassicWorkflowApplication;

@@ -70,19 +70,15 @@ async function fixture(
   };
   return { disk, loaded, runtime, run, action, request };
 }
-it('serializes simultaneous cross-application claims including identical Run IDs', async () => {
+it('rejects the next serial cross-application claim including identical Run IDs', async () => {
   const project = await root();
   const alpha = await fixture(project, 'alpha');
   const beta = await fixture(project, 'beta');
-  const outcomes = await Promise.allSettled([
-    alpha.runtime.claim(alpha.request),
-    beta.runtime.claim(beta.request),
-  ]);
-  expect(outcomes.filter((outcome) => outcome.status === 'fulfilled')).toHaveLength(1);
-  const rejected = outcomes.find(
-    (outcome) => outcome.status === 'rejected',
-  ) as PromiseRejectedResult;
-  expect(rejected.reason).toMatchObject({ code: 'SCOPE_HELD', blockedRunIds: ['same-run'] });
+  await alpha.runtime.claim(alpha.request);
+  await expect(beta.runtime.claim(beta.request)).rejects.toMatchObject({
+    code: 'SCOPE_HELD',
+    blockedRunIds: ['same-run'],
+  });
   expect(
     [await alpha.runtime.inspect('same-run'), await beta.runtime.inspect('same-run')]
       .flatMap((run) => run.actions)
@@ -109,29 +105,20 @@ it('uses each pinned application manifest and canonical paths rather than curren
     'running',
   );
 });
-it('retains cancelled ownership across cold application reload until exact stop acknowledgement', async () => {
+it('releases a cancelled platform Skill scope across cold application reload without a stop acknowledgement', async () => {
   const project = await root();
   const alpha = await fixture(project, 'alpha');
   const beta = await fixture(project, 'beta');
   const claimed = await alpha.runtime.claim({ ...alpha.request, claimToken: 'original' });
-  const action = claimed.actions.at(-1)!;
-  await alpha.runtime.cancel({ runId: claimed.runId, reason: 'cancel scheduling only' });
+  const cancelled = await alpha.runtime.cancel({
+    runId: claimed.runId,
+    reason: 'user cancellation',
+  });
   const reload = await loadWorkflowApplication({ file: beta.disk.file, projectRoot: project });
   const runtime = createRuntime({ ...reload.implementation, store: reload.store });
-  await expect(runtime.claim(beta.request)).rejects.toMatchObject({ code: 'SCOPE_HELD' });
-  await alpha.runtime.acknowledgeStopped({
-    runId: claimed.runId,
-    stoppedActions: [
-      {
-        actionId: action.id,
-        attempt: action.attempt,
-        inputHash: action.inputHash,
-        claimToken: 'original',
-        evidence: 'The original executor and all child processes have exited.',
-      },
-    ],
-  });
   expect((await runtime.claim(beta.request)).actions.at(-1)?.status).toBe('running');
+  expect(await alpha.runtime.inspect(claimed.runId)).toEqual(cancelled);
+  expect(cancelled.actions.at(-1)?.claim).toEqual(claimed.actions.at(-1)?.claim);
 });
 it('does not forget an active app when its complete Store directory disappears', async () => {
   const project = await root();
@@ -204,7 +191,7 @@ it('keeps unknown executions occupied across applications and protects fixed man
   await expect(beta.runtime.claim(beta.request)).rejects.toThrow();
   expect((await beta.runtime.inspect(beta.run.runId)).actions.at(-1)?.status).toBe('pending');
 });
-it('does not confuse an application named workspace with the workspace lock', async () => {
+it('keeps an application named workspace independent of retired scope lock filenames', async () => {
   const project = await root();
   const app = await fixture(project, 'workspace');
   expect((await app.runtime.claim(app.request)).actions.at(-1)?.status).toBe('running');

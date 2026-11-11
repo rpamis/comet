@@ -1,0 +1,33 @@
+diff --git a/test/domains/comet-classic/classic-sdk-application.test.ts b/test/domains/comet-classic/classic-sdk-application.test.ts
+index 5bd866a0..1e53dc42 100644
+--- a/test/domains/comet-classic/classic-sdk-application.test.ts
++++ b/test/domains/comet-classic/classic-sdk-application.test.ts
+@@ -98,17 +98,18 @@ it('captures implementation for the first commit without including installation
+     path.join(root, '.comet/config.yaml'),
+     'schema: comet.project.v1\ndefault_workflow: classic\nworkflows: [classic]\nclassic:\n  artifact_layout: docs\n',
+   );
+-  await fs.writeFile(path.join(root, 'source.js'), 'export const ready = true;\n');
++  const source = 'export const ready = true;\n';
++  const metadata = 'SIMULATED package manager installation metadata\n';
++  await fs.writeFile(path.join(root, 'source.js'), source);
++  await fs.mkdir(path.join(root, 'node_modules'));
++  await fs.writeFile(path.join(root, 'node_modules/.modules.yaml'), metadata);
+   execFileSync('git', ['init', '-b', 'main'], { cwd: root });
+-  const manifest = [
+-    { p: 'source.js', h: 'a'.repeat(64), s: 27, m: null },
+-    { p: 'node_modules/.modules.yaml', h: 'b'.repeat(64), s: 1, m: null },
+-  ]
+-    .map((entry) => JSON.stringify(entry))
+-    .join('\n');
+-  expect(
+-    await collectClassicSdkDeliveryInputs(root, manifest, { argv: [process.execPath], cwd: '.' }),
+-  ).toEqual(['source.js']);
++  expect(await collectClassicSdkDeliveryInputs(root)).toEqual(['source.js']);
++  await expect(
++    collectClassicSdkDeliveryInputs(root, undefined, ['source.js', 'node_modules/.modules.yaml']),
++  ).rejects.toThrow('workflow metadata or another change');
++  expect(await fs.readFile(path.join(root, 'source.js'), 'utf8')).toBe(source);
++  expect(await fs.readFile(path.join(root, 'node_modules/.modules.yaml'), 'utf8')).toBe(metadata);
+ });
+ 
+ afterEach(async () => {

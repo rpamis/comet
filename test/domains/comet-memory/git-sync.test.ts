@@ -87,7 +87,11 @@ describe('real memory Git synchronization', () => {
         commands.push([...args]);
         budgets.push(options?.timeoutMs ?? Infinity);
         now += 40;
-        if (args[0] === 'rev-parse') return { stdout: root, stderr: '' };
+        if (args[0] === 'rev-parse')
+          return {
+            stdout: args.includes('--git-path') ? path.join(root, '.git/info/exclude') : root,
+            stderr: '',
+          };
         if (args[0] === 'remote') return { stdout: remote, stderr: '' };
         return { stdout: '', stderr: '' };
       },
@@ -229,6 +233,28 @@ new GitMemorySync(${JSON.stringify(memory.directory)}).sync().then(result =>
     expect(git(parent.directory, 'status', '--porcelain')).toBe('');
     expect(git(memory.directory, 'status', '--porcelain')).toBe('');
     expect(git(root, '--git-dir', remote, 'show', 'main:profile.md')).toBe('Updated memory\n');
+    const exclude = path.resolve(
+      memory.directory,
+      git(memory.directory, 'rev-parse', '--git-path', 'info/exclude').trim(),
+    );
+    await fs.appendFile(exclude, 'user-private.txt\n');
+    await memory.sync.sync();
+    const rules = await fs.readFile(exclude, 'utf8');
+    expect(rules).toContain('user-private.txt');
+    expect(
+      rules.split('\n').filter((line) => line === '/.comet/runtime/.memory.lock*'),
+    ).toHaveLength(1);
+    expect(
+      rules.split('\n').filter((line) => line === '/.comet/runtime/.git-sync.lock*'),
+    ).toHaveLength(1);
+    await fs.writeFile(path.join(memory.directory, '.comet/runtime/memory-state.json'), '{}');
+    await fs.writeFile(path.join(memory.directory, 'unrelated.txt'), 'keep visible');
+    expect(
+      git(memory.directory, 'status', '--porcelain', '--', '.comet/runtime/memory-state.json'),
+    ).toContain('memory-state.json');
+    expect(git(memory.directory, 'status', '--porcelain', '--', 'unrelated.txt')).toContain(
+      'unrelated.txt',
+    );
   });
 
   it('isolates memory inside a parent repository without changing or pushing parent history', async () => {

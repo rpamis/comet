@@ -168,12 +168,31 @@ describe('Native document constraints', () => {
       force: true,
     });
     await writeSpec('replacement-capability');
+    const pending = await readNativePortableChange(paths, 'retarget-change');
+    const stateFile = path.join(changeDir, 'comet-state.yaml');
+    const pendingBytes = await fs.readFile(stateFile);
+    await expect(
+      nativeNextCommand(
+        [
+          'retarget-change',
+          '--revise-requirements',
+          '--summary',
+          'SIMULATED user changes the unapproved target',
+        ],
+        projectRoot,
+      ),
+    ).rejects.toThrow('User decisions require --expected-state-version and --expected-action');
+    expect(await fs.readFile(stateFile)).toEqual(pendingBytes);
     const revision = await nativeNextCommand(
       [
         'retarget-change',
         '--revise-requirements',
         '--summary',
-        'Replace the proposed target before approval',
+        'SIMULATED user replaces the proposed target before approval',
+        '--expected-state-version',
+        String(pending.state_version),
+        '--expected-action',
+        'revise-requirements',
       ],
       projectRoot,
     );
@@ -184,6 +203,12 @@ describe('Native document constraints', () => {
     );
     expect(retargeted.exitCode).toBe(0);
     const prepared = await readNativePortableChange(paths, 'retarget-change');
+    await expect(
+      fs.access(path.join(changeDir, 'specs/original-capability')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(
+      await fs.readFile(path.join(changeDir, 'specs/replacement-capability/spec.md'), 'utf8'),
+    ).toContain('The replacement-capability behavior is complete.');
     expect(prepared).toMatchObject({
       phase: 'shape',
       status: 'await-user',

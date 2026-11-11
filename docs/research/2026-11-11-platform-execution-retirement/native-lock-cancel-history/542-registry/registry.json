@@ -1,0 +1,40 @@
+{
+  "cases": [
+    {
+      "id": "issue-542-cancelled-history-projection",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/542"
+      ],
+      "behavior": "Doctor reads closed cancelled legacy Native history after active document cleanup.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Reproduced on npm 0.5.2 and pre-fix 00a47ebc in isolated projects; see docs/architecture/issue-540-542-and-dashboard-settings.zh.md.",
+      "expected": "Named doctor, repair, project doctor and generated bundle succeed without changing the Run or recreating documents.",
+      "forbidden": "Reactivating history, changing revision, or hiding missing active projections and unresolved cancellation.",
+      "rootCause": "Projection sync treated archived=false as active without considering closed cancelled history.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-cancelled-history.test.ts",
+          "namePattern": "diagnoses closed cancelled v1 history without active documents",
+          "requiredNames": [
+            "diagnoses closed cancelled v1 history without active documents (linked=false)",
+            "diagnoses closed cancelled v1 history without active documents (linked=true)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-cancelled-history.test.ts",
+          "namePattern": "still rejects missing active projections and unfinished cancellation history",
+          "requiredNames": [
+            "still rejects missing active projections and unfinished cancellation history"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-cancelled-history.test.ts",
+          "namePattern": "does not skip projection checks for fixed application readers of closed cancelled history",
+          "requiredNames": [
+            "does not skip projection checks for fixed application readers of closed cancelled history"
+          ]
+        }
+      ]
+    }
+  ]
+}

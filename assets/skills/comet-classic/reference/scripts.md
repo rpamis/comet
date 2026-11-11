@@ -27,10 +27,10 @@ comet state sync-plan <change-name>
 comet state delivery <change-name>
 comet state delivery <change-name> --verify
 comet state delivery <change-name> --file <json-path>
-comet check run <change-name> <build|verify> --local -- <program> [args...]
-# Declare the report path before the first complete SDK Verify check; then write the report and submit Guard.
-comet check run <change-name> verify --report <report-ref> --local -- <program> [args...]
-comet check rerun <change-name> <build|verify>
+comet state complete-build <change-name> --checks <checks-json-file>
+comet guard <change-name> verify --report <report-ref> --apply --checks <checks-json-file>
+# Compat: record the actual platform result without executing command text.
+comet state record-check <change-name> <build|verify> --command "<actual command>" --exit-code <actual exit code>
 comet guard <change-name> <phase> --apply
 comet handoff <change-name> design --write
 comet archive <change-name>
@@ -78,11 +78,7 @@ Archive through `comet archive <change-name>`. OpenSpec first moves the change i
 
 ## Check Commands and Result Reuse
 
-The Agent selects necessary commands, working directories, and scope, and judges whether previous results remain applicable. Guard and status read results without detecting or starting Build. When results are missing, choose a command and execute `comet check run <change-name> <build|verify> --local -- <program> [args...]`. SDK can also execute an explicit command through the current Guard template.
-
-`--local` allows reuse of applicable original Runtime results across phases and ordinary edits. Follow current responses for failures, interruptions, unknown results, one-time operations, and actual cwd constraints. Use `comet check rerun <change-name> <build|verify>` for the recorded original command, without substituting another detected build. Manual declarations do not replace execution.
-
-`--incremental` remains for phase-local checks and does not establish complete phase acceptance. The Agent selects complete scope from requirements. Legacy `.comet/check-policy.json` may retain command cwd compatibility information; file, environment, and content-proof configuration no longer determines invalidation.
+Follow [ordinary commands and checks](../../comet/reference/platform-execution.md): use platform tools, inspect original tasks and side effects, judge result applicability, and submit actual reports. Comet does not repeat checks or maintain ordinary-command content snapshots, process supervision, or recovery. Guard and status do not start builds or tests.
 
 ## Resolving the Next Step
 

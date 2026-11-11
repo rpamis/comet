@@ -1,0 +1,138 @@
+[
+  {
+    "file": "test/app/native-runtime-dispatch.test.ts",
+    "namePattern": "^Claim context delivery delivers real memory once per receiver and restores it explicitly through the public CLI$",
+    "requiredNames": [
+      "Claim context delivery delivers real memory once per receiver and restores it explicitly through the public CLI"
+    ],
+    "report": "C:/Users/BENYM/AppData/Local/Temp/comet-app-dispatch-prototype-20261111/memory-final-results.json"
+  },
+  {
+    "file": "test/app/native-runtime-dispatch.test.ts",
+    "namePattern": "^Claim context delivery delivers context to the actual receiver without changing the claimed input or SDK response$",
+    "requiredNames": [
+      "Claim context delivery delivers context to the actual receiver without changing the claimed input or SDK response"
+    ],
+    "report": "C:/Users/BENYM/AppData/Local/Temp/comet-app-dispatch-prototype-20261111/final-results.json"
+  },
+  {
+    "file": "test/app/native-runtime-dispatch.test.ts",
+    "namePattern": "^Claim context delivery keeps a successful claim usable when context retrieval is unavailable$",
+    "requiredNames": [
+      "Claim context delivery keeps a successful claim usable when context retrieval is unavailable"
+    ],
+    "report": "C:/Users/BENYM/AppData/Local/Temp/comet-app-dispatch-prototype-20261111/final-results.json"
+  },
+  {
+    "file": "test/app/native-runtime-dispatch.test.ts",
+    "namePattern": "^Native dispatch CLI presentation reports actual platform Build checks through public receipt dispatch without scheduling a managed check$",
+    "requiredNames": [
+      "Native dispatch CLI presentation reports actual platform Build checks through public receipt dispatch without scheduling a managed check"
+    ],
+    "report": "C:/Users/BENYM/AppData/Local/Temp/comet-app-dispatch-prototype-20261111/final-results.json"
+  },
+  {
+    "file": "test/app/native-runtime-dispatch.test.ts",
+    "namePattern": "^Native dispatch CLI presentation uses one result protocol and omits duplicate Builder review for a new public v4 Run$",
+    "requiredNames": [
+      "Native dispatch CLI presentation uses one result protocol and omits duplicate Builder review for a new public v4 Run"
+    ],
+    "report": "C:/Users/BENYM/AppData/Local/Temp/comet-app-dispatch-prototype-20261111/final-results.json"
+  },
+  {
+    "file": "test/app/native-runtime-dispatch.test.ts",
+    "namePattern": "^Native dispatch CLI presentation waits for acceptance directly after a v4 Verifier result without a report Action$",
+    "requiredNames": [
+      "Native dispatch CLI presentation waits for acceptance directly after a v4 Verifier result without a report Action"
+    ],
+    "report": "C:/Users/BENYM/AppData/Local/Temp/comet-app-dispatch-prototype-20261111/final-results.json"
+  },
+  {
+    "file": "test/app/native-runtime-dispatch.test.ts",
+    "namePattern": "^Native dispatch CLI presentation preserves v4 acceptance when the report view fails and retries it on next$",
+    "requiredNames": [
+      "Native dispatch CLI presentation preserves v4 acceptance when the report view fails and retries it on next"
+    ],
+    "report": "C:/Users/BENYM/AppData/Local/Temp/comet-app-dispatch-prototype-20261111/final-results.json"
+  },
+  {
+    "file": "test/app/native-runtime-dispatch.test.ts",
+    "namePattern": "^Native dispatch CLI presentation diagnoses malformed business Builder fields and accepts corrected content only with a new outcomeId$",
+    "requiredNames": [
+      "Native dispatch CLI presentation diagnoses malformed business Builder fields and accepts corrected content only with a new outcomeId"
+    ],
+    "report": "C:/Users/BENYM/AppData/Local/Temp/comet-app-dispatch-prototype-20261111/final-results.json"
+  },
+  {
+    "file": "test/app/native-runtime-dispatch.test.ts",
+    "namePattern": "^Native dispatch CLI presentation submits a Native candidate through its returned receipt without manual identity fields$",
+    "requiredNames": [
+      "Native dispatch CLI presentation submits a Native candidate through its returned receipt without manual identity fields"
+    ],
+    "report": "C:/Users/BENYM/AppData/Local/Temp/comet-app-dispatch-prototype-20261111/final-results.json"
+  },
+  {
+    "file": "test/app/native-runtime-dispatch.test.ts",
+    "namePattern": "^Native dispatch CLI presentation rejects a Builder identity before claiming a Verifier and accepts an independent retry$",
+    "requiredNames": [
+      "Native dispatch CLI presentation rejects a Builder identity before claiming a Verifier and accepts an independent retry"
+    ],
+    "report": "C:/Users/BENYM/AppData/Local/Temp/comet-app-dispatch-prototype-20261111/final-results.json"
+  },
+  {
+    "file": "test/app/native-runtime-dispatch.test.ts",
+    "namePattern": "^Native dispatch CLI presentation diagnoses misplaced outcome fields without changing the original claim$",
+    "requiredNames": [
+      "Native dispatch CLI presentation diagnoses misplaced outcome fields without changing the original claim"
+    ],
+    "report": "C:/Users/BENYM/AppData/Local/Temp/comet-app-dispatch-prototype-20261111/final-results.json"
+  },
+  {
+    "file": "test/app/native-runtime-dispatch.test.ts",
+    "namePattern": "^Native dispatch CLI presentation does not disclose a Builder failure receipt to a rejected outcome with another claim$",
+    "requiredNames": [
+      "Native dispatch CLI presentation does not disclose a Builder failure receipt to a rejected outcome with another claim"
+    ],
+    "report": "C:/Users/BENYM/AppData/Local/Temp/comet-app-dispatch-prototype-20261111/final-results.json"
+  },
+  {
+    "file": "test/app/native-runtime-dispatch.test.ts",
+    "namePattern": "^Native dispatch CLI presentation generates the report after a CLI Verifier outcome but still requires explicit acceptance$",
+    "requiredNames": [
+      "Native dispatch CLI presentation generates the report after a CLI Verifier outcome but still requires explicit acceptance"
+    ],
+    "report": "C:/Users/BENYM/AppData/Local/Temp/comet-app-dispatch-prototype-20261111/final-results.json"
+  },
+  {
+    "file": "test/app/native-runtime-dispatch.test.ts",
+    "namePattern": "^Native dispatch CLI presentation preserves the SDK single-operation default and also completes report views in CLI details mode$",
+    "requiredNames": [
+      "Native dispatch CLI presentation preserves the SDK single-operation default and also completes report views in CLI details mode"
+    ],
+    "report": "C:/Users/BENYM/AppData/Local/Temp/comet-app-dispatch-prototype-20261111/final-results.json"
+  },
+  {
+    "file": "test/app/native-runtime-dispatch.test.ts",
+    "namePattern": "^Native dispatch CLI presentation keeps an accepted Verifier result successful when report view writing fails$",
+    "requiredNames": [
+      "Native dispatch CLI presentation keeps an accepted Verifier result successful when report view writing fails"
+    ],
+    "report": "C:/Users/BENYM/AppData/Local/Temp/comet-app-dispatch-prototype-20261111/final-results.json"
+  },
+  {
+    "file": "test/app/native-runtime-dispatch.test.ts",
+    "namePattern": "^Native dispatch CLI presentation preserves complete claimed inputs, state, identity and result template without repeating the Run history$",
+    "requiredNames": [
+      "Native dispatch CLI presentation preserves complete claimed inputs, state, identity and result template without repeating the Run history"
+    ],
+    "report": "C:/Users/BENYM/AppData/Local/Temp/comet-app-dispatch-prototype-20261111/final-results.json"
+  },
+  {
+    "file": "test/app/native-runtime-dispatch.test.ts",
+    "namePattern": "^Native dispatch CLI presentation returns the submitted outcome receipt and explicit user decision from the same committed Run$",
+    "requiredNames": [
+      "Native dispatch CLI presentation returns the submitted outcome receipt and explicit user decision from the same committed Run"
+    ],
+    "report": "C:/Users/BENYM/AppData/Local/Temp/comet-app-dispatch-prototype-20261111/final-results.json"
+  }
+]

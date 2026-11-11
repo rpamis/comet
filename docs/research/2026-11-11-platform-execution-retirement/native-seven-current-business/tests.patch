@@ -1,0 +1,3272 @@
+diff --git a/test/domains/comet-native/native-supervisor.test.ts b/test/domains/comet-native/native-supervisor.test.ts
+--- a/test/domains/comet-native/native-supervisor.test.ts
++++ b/test/domains/comet-native/native-supervisor.test.ts
+@@ -19,9 +19,6 @@ import {
+   integrateNativeSupervisorChild,
+   nativeSupervisorRuntimeDir,
+   nativeSupervisorStateFile,
+-  integrateNativeSupervisorChildWorkspace,
+-  finalizeNativeSupervisorDelivery,
+-  recordNativeSupervisorFinalVerification,
+   reconcileNativeSupervisorState,
+   rebuildNativeSupervisorStateFromFacts,
+   nativeSupervisorIntegrationBranch,
+@@ -50,6 +47,7 @@ import {
+   nativePortableChangeDir,
+   readNativePortableChange,
+   inspectNativeSupervisorParentReviewReadiness,
++  confirmNativePortableSkillCoordinatedPass,
+   returnNativePortableChangeToShape,
+ } from '../../../domains/comet-native/native-portable-runtime.js';
+ import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
+@@ -104,6 +102,62 @@ Run the focused Supervisor checks.
+ `;
+ }
+ 
++async function recordActualPlatformChildIntegration(options: {
++  paths: Awaited<ReturnType<typeof nativeProjectPaths>>;
++  state: ReturnType<typeof createNativeSupervisorState>;
++  name: string;
++  checks: Array<{ name: string; status: 'passed' }>;
++}) {
++  const { paths, state, name } = options;
++  const exists = await fs
++    .stat(path.join(nativePortableChangeDir(paths, state.parent), 'comet-state.yaml'))
++    .then(
++      () => true,
++      (error: NodeJS.ErrnoException) => {
++        if (error.code === 'ENOENT') return false;
++        throw error;
++      },
++    );
++  if (!exists)
++    await createNativePortableChange({
++      paths,
++      name: state.parent,
++      language: 'en',
++    });
++  const candidate = state.children.find((c) => c.name === name)!.verifiedCommit!;
++  const cwd = state.integration.worktree;
++  execFileSync('git', ['merge', '--no-ff', '--no-edit', candidate], {
++    cwd,
++    stdio: 'ignore',
++  });
++  const report = execFileSync(
++    process.execPath,
++    [
++      '-e',
++      'require("node:assert/strict").ok(require("node:fs").existsSync("README.md"));console.log("Actual integration check passed")',
++    ],
++    { cwd, encoding: 'utf8' },
++  );
++  expect(report).toContain('Actual integration check passed');
++  const integrationCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
++    cwd,
++    encoding: 'utf8',
++  }).trim();
++  await writeNativeSupervisorState(paths, state);
++  const recorded = await applyNativeRunnerInput({
++    paths,
++    name: state.parent,
++    maxVerifyFailures: 5,
++    input: parseNativeRunnerInput({
++      kind: 'supervisor-integrate',
++      child: name,
++      integrationCommit,
++      checks: options.checks,
++    }),
++  });
++  return recorded.supervisorState!;
++}
++
+ describe('Native Supervisor v2 state', () => {
+   it('advances a parent without a mandatory review and keeps verification in its integration workspace', async () => {
+     const repository = await fs.mkdtemp(path.join(process.cwd(), '.tmp-supervisor-auto-advance-'));
+@@ -138,7 +192,9 @@ describe('Native Supervisor v2 state', () => {
+         path.join(changeDir, 'brief.md'),
+         supervisorBrief('The integrated behavior is available.'),
+       );
+-      await fs.mkdir(path.join(changeDir, 'specs', 'supervisor'), { recursive: true });
++      await fs.mkdir(path.join(changeDir, 'specs', 'supervisor'), {
++        recursive: true,
++      });
+       await fs.writeFile(
+         path.join(changeDir, 'specs', 'supervisor', 'spec.md'),
+         '# Requirement\n\nThe integrated behavior MUST be available.\n',
+@@ -147,7 +203,10 @@ describe('Native Supervisor v2 state', () => {
+         path.join(changeDir, 'children.yaml'),
+         'schema: comet.native.children.v2\nchildren:\n  - name: core\n    summary: Core behavior.\n    depends_on: []\n',
+       );
+-      const shaped = await confirmNativePortableShape({ paths, name: 'parent' });
++      const shaped = await confirmNativePortableShape({
++        paths,
++        name: 'parent',
++      });
+       const supervisor = await readNativeSupervisorState(paths, 'parent');
+       expect(supervisor).not.toBeNull();
+       const targetCommit = git(['rev-parse', 'main']);
+@@ -168,10 +227,16 @@ describe('Native Supervisor v2 state', () => {
+       const integrationRoot = supervisor!.integration.worktree;
+       await fs.writeFile(path.join(integrationRoot, 'parent-fix.txt'), 'parent fix\n');
+       execFileSync('git', ['add', 'parent-fix.txt'], { cwd: integrationRoot });
+-      execFileSync('git', ['commit', '-m', 'fix parent candidate'], { cwd: integrationRoot });
++      execFileSync('git', ['commit', '-m', 'fix parent candidate'], {
++        cwd: integrationRoot,
++      });
+       await fs.writeFile(path.join(integrationRoot, 'parent-follow-up.txt'), 'follow-up\n');
+-      execFileSync('git', ['add', 'parent-follow-up.txt'], { cwd: integrationRoot });
+-      execFileSync('git', ['commit', '-m', 'fix parent follow-up'], { cwd: integrationRoot });
++      execFileSync('git', ['add', 'parent-follow-up.txt'], {
++        cwd: integrationRoot,
++      });
++      execFileSync('git', ['commit', '-m', 'fix parent follow-up'], {
++        cwd: integrationRoot,
++      });
+       const verifiedIntegrationHead = execFileSync('git', ['rev-parse', 'HEAD'], {
+         cwd: integrationRoot,
+         encoding: 'utf8',
+@@ -188,8 +253,27 @@ describe('Native Supervisor v2 state', () => {
+         message:
+           'All Children are complete; the Supervisor parent candidate can be submitted for verification.',
+       });
+-      expect(advanced.state).toMatchObject({ phase: 'build', status: 'active' });
++      expect(advanced.state).toMatchObject({
++        phase: 'build',
++        status: 'active',
++      });
+ 
++      const output = execFileSync(
++        process.execPath,
++        [
++          '-e',
++          'const assert=require("node:assert/strict"); assert.equal(process.cwd(),' +
++            JSON.stringify(integrationRoot) +
++            '); assert.equal(require("node:fs").readFileSync("README.md","utf8").trim(),"seed");console.log("Actual integrated candidate checks passed")',
++        ],
++        { cwd: integrationRoot, encoding: 'utf8' },
++      );
++      expect(output).toContain('Actual integrated candidate checks passed');
++      const check = {
++        name: 'Check the integrated candidate',
++        result: 'passed' as const,
++        note: output.trim(),
++      };
+       const submitted = await applyNativeRunnerInput({
+         paths,
+         name: 'parent',
+@@ -199,7 +283,7 @@ describe('Native Supervisor v2 state', () => {
+           summary: 'Submitted the integrated parent candidate.',
+           addressed_acceptance_ids: ['A1'],
+           acceptance_review: fixtureAcceptanceReview(['A1']),
+-          checks: [],
++          checks: [check],
+           known_limits: [],
+         }),
+       });
+@@ -216,88 +300,22 @@ describe('Native Supervisor v2 state', () => {
+       expect(repeated.parentAdvance.advanced).toBe(false);
+       expect(repeated.state.state_version).toBe(submitted.state.state_version);
+ 
+-      const check = {
+-        id: 'integration-root',
+-        name: 'Check the integrated candidate',
+-        executable: process.execPath,
+-        argv: [
+-          '-e',
+-          `require('node:assert/strict').equal(process.cwd(), ${JSON.stringify(integrationRoot)})`,
+-        ],
+-        cwdRef: '.',
+-        timeoutMs: 120000,
+-        repeatable: true,
+-      };
+       const dispatched = await applyNativeRunnerInput({
+         paths,
+         name: 'parent',
+         maxVerifyFailures: 5,
+         input: { kind: 'dispatch-verifier', checks: [check] },
+       });
+-      const location = {
+-        projectRoot: paths.projectRoot,
++      // Formal materials and the integration cwd remain business requirements; no content fingerprint or managed check receipt is needed.
++      expect(dispatched.verifierDispatch).toMatchObject({
+         verificationRoot: integrationRoot,
+-        changeDir,
+-        supervisorStateRef: nativeSupervisorStateFile(paths, 'parent'),
+-        detailsPageArgs: [
+-          'comet',
+-          'native',
+-          'status',
+-          'parent',
+-          '--details',
+-          '--json',
+-          '--project-root',
+-          paths.projectRoot,
+-        ],
+-      };
+-      expect(dispatched.verifierDispatch).toMatchObject(location);
+-      expect(dispatched.checks).toMatchObject([{ id: check.id, status: 'passed' }]);
+-      expect(
+-        await fs.readFile(path.join(changeDir, dispatched.verifierDispatch!.briefRef), 'utf8'),
+-      ).toContain('integrated behavior');
+-      expect(dispatched.verifierDispatch!.specRefs).toMatchObject([
+-        { ref: 'specs/supervisor/spec.md' },
+-      ]);
+-
+-      const requested = await applyNativeRunnerInput({
+-        paths,
+-        name: 'parent',
+-        maxVerifyFailures: 5,
+-        input: {
+-          kind: 'verifier-response',
+-          candidateId: dispatched.verifierDispatch!.candidateId,
+-          verifierExecutionRef: dispatched.verifierDispatch!.verifierExecutionRef,
+-          response: {
+-            kind: 'request-checks',
+-            iteration: dispatched.state.loop.iteration,
+-            attempt: dispatched.state.loop.attempt,
+-            checks: [
+-              {
+-                ...check,
+-                id: 'integration-readme',
+-                argv: [
+-                  '-e',
+-                  `${check.argv[1]}; require('node:assert/strict').equal(require('node:fs').readFileSync('README.md', 'utf8').trim(), 'seed')`,
+-                ],
+-              },
+-            ],
+-          },
+-        },
+-      });
+-      expect(requested.checks).toMatchObject([
+-        { id: 'integration-root', status: 'passed' },
+-        { id: 'integration-readme', status: 'passed' },
+-      ]);
+-      expect(requested.verifierDispatch).toMatchObject({
+-        ...location,
+-        verifierExecutionRef: dispatched.verifierDispatch!.verifierExecutionRef,
+       });
++      const requested = dispatched;
+       expect(await readNativeSupervisorState(paths, 'parent')).toMatchObject({
+-        integration: { headCommit: targetCommit },
++        integration: { headCommit: verifiedIntegrationHead },
+         finalVerification: { status: 'pending' },
+       });
+       expect(requested.continuation.action).toBe('await-verifier');
+-
+       expect(
+         execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], {
+           cwd: integrationRoot,
+@@ -333,74 +351,84 @@ describe('Native Supervisor v2 state', () => {
+         status: 'await-user',
+         verification_result: 'pass',
+       });
+-      expect(await readNativeSupervisorState(paths, 'parent')).toMatchObject({
+-        integration: { headCommit: verifiedIntegrationHead },
+-        finalVerification: {
+-          status: 'passed',
+-          layers: { childVerification: 'complete', parentIntegration: 'complete' },
++      expect(verifiedParent.state.verification?.reported_checks).toMatchObject([
++        {
++          name: { text: check.name },
++          result: 'passed',
++          note: { text: output.trim() },
+         },
+-      });
+-      const interruptedSupervisor = (await readNativeSupervisorState(paths, 'parent'))!;
+-      interruptedSupervisor.integration.headCommit = targetCommit;
+-      interruptedSupervisor.finalVerification = { status: 'pending', summary: null };
+-      await writeNativeSupervisorState(paths, interruptedSupervisor);
+-
++      ]);
++      const approvedBefore = await readNativePortableChange(paths, 'parent');
+       await fs.writeFile(path.join(integrationRoot, 'uncommitted-recovery.txt'), 'dirty\n');
+       await expect(
+-        nativeNextCommand(['parent', '--summary', 'Resume with a dirty workspace.'], repository),
++        confirmNativePortableSkillCoordinatedPass({ paths, name: 'parent' }),
+       ).rejects.toThrow('integration worktree must be clean');
++      expect(await readNativePortableChange(paths, 'parent')).toEqual(approvedBefore);
+       await fs.rm(path.join(integrationRoot, 'uncommitted-recovery.txt'));
+-
+       const integrationBranch = execFileSync('git', ['branch', '--show-current'], {
+         cwd: integrationRoot,
+         encoding: 'utf8',
+       }).trim();
+-      execFileSync('git', ['switch', '-c', 'recovery-wrong-branch'], { cwd: integrationRoot });
++      execFileSync('git', ['switch', '-c', 'wrong-parent-branch'], {
++        cwd: integrationRoot,
++      });
+       await expect(
+-        nativeNextCommand(['parent', '--summary', 'Resume from the wrong branch.'], repository),
++        confirmNativePortableSkillCoordinatedPass({ paths, name: 'parent' }),
+       ).rejects.toThrow('integration branch mismatch');
+-      execFileSync('git', ['switch', integrationBranch], { cwd: integrationRoot });
+-
+-      const divergentSupervisor = (await readNativeSupervisorState(paths, 'parent'))!;
+-      divergentSupervisor.integration.headCommit = verifiedIntegrationHead;
+-      await writeNativeSupervisorState(paths, divergentSupervisor);
+-      execFileSync('git', ['reset', '--hard', targetCommit], { cwd: integrationRoot });
+-      await fs.writeFile(path.join(integrationRoot, 'divergent-recovery.txt'), 'divergent\n');
+-      execFileSync('git', ['add', 'divergent-recovery.txt'], { cwd: integrationRoot });
+-      execFileSync('git', ['commit', '-m', 'create divergent recovery candidate'], {
++      expect(await readNativePortableChange(paths, 'parent')).toEqual(approvedBefore);
++      execFileSync('git', ['switch', integrationBranch], {
++        cwd: integrationRoot,
++      });
++      execFileSync('git', ['reset', '--hard', targetCommit], {
++        cwd: integrationRoot,
++      });
++      await fs.writeFile(path.join(integrationRoot, 'divergent.txt'), 'divergent\n');
++      execFileSync('git', ['add', 'divergent.txt'], { cwd: integrationRoot });
++      execFileSync('git', ['commit', '-m', 'divergent candidate'], {
+         cwd: integrationRoot,
+       });
+       await expect(
+-        nativeNextCommand(['parent', '--summary', 'Resume a divergent workspace.'], repository),
++        confirmNativePortableSkillCoordinatedPass({ paths, name: 'parent' }),
+       ).rejects.toThrow('is not a descendant of the recorded integration head');
+-      execFileSync('git', ['reset', '--hard', verifiedIntegrationHead], { cwd: integrationRoot });
+-
+-      await writeNativeSupervisorState(paths, interruptedSupervisor);
+-      const resumed = await nativeNextCommand(
+-        ['parent', '--summary', 'Continue the interrupted workflow.'],
+-        repository,
++      expect(await readNativePortableChange(paths, 'parent')).toEqual(approvedBefore);
++      execFileSync('git', ['reset', '--hard', verifiedIntegrationHead], {
++        cwd: integrationRoot,
++      });
++      await fs.writeFile(
++        path.join(integrationRoot, 'fresh-parent-change.txt'),
++        'new candidate change\n',
+       );
+-      expect(resumed).toMatchObject({
+-        exitCode: 0,
+-        data: {
+-          state: {
+-            phase: 'verify',
+-            status: 'active',
+-            verification_result: 'pending',
+-            loop: { stage: 'verify-ready', next_action: 'run-final-full-verification' },
+-          },
+-          continuation: { action: 'dispatch-verifier' },
+-        },
++      execFileSync('git', ['add', 'fresh-parent-change.txt'], {
++        cwd: integrationRoot,
+       });
+-      expect(await readNativeSupervisorState(paths, 'parent')).toMatchObject({
+-        integration: { headCommit: targetCommit },
+-        finalVerification: { status: 'pending' },
++      execFileSync('git', ['commit', '-m', 'advance parent after verification'], {
++        cwd: integrationRoot,
++      });
++      const returned = await confirmNativePortableSkillCoordinatedPass({
++        paths,
++        name: 'parent',
+       });
++      expect(returned).toMatchObject({
++        phase: 'verify',
++        status: 'active',
++        verification: null,
++        verification_result: 'pending',
++        loop: { stage: 'verify-ready' },
++      });
++      const actualRecheck = execFileSync(
++        process.execPath,
++        [
++          '-e',
++          'require("node:assert/strict").ok(require("node:fs").existsSync("fresh-parent-change.txt"));console.log("Actual fresh parent check passed")',
++        ],
++        { cwd: integrationRoot, encoding: 'utf8' },
++      );
++      expect(actualRecheck).toContain('Actual fresh parent check passed');
+       const redispatched = await applyNativeRunnerInput({
+         paths,
+         name: 'parent',
+         maxVerifyFailures: 5,
+-        input: { kind: 'dispatch-verifier', checks: [check] },
++        input: { kind: 'dispatch-verifier' },
+       });
+       await applyNativeRunnerInput({
+         paths,
+@@ -419,18 +447,23 @@ describe('Native Supervisor v2 state', () => {
+               acceptance: redispatched.state.acceptance.map(({ id }) => ({
+                 id,
+                 result: 'passed',
+-                reason: 'The integrated behavior was reverified.',
++                reason: 'Observed the complete fresh parent candidate',
+               })),
+               risks: [],
+-              summary: 'Recovered parent integration verification passed.',
++              summary: 'Fresh parent fully reverified',
+             },
+           },
+         },
+       });
+-      expect(await readNativeSupervisorState(paths, 'parent')).toMatchObject({
+-        integration: { headCommit: verifiedIntegrationHead },
+-        finalVerification: { status: 'passed' },
++      const accepted = await confirmNativePortableSkillCoordinatedPass({
++        paths,
++        name: 'parent',
+       });
++      expect(accepted).toMatchObject({
++        phase: 'archive',
++        verification_result: 'pass',
++      });
++      expect(accepted.acceptance.every((a) => a.result === 'passed')).toBe(true);
+     } finally {
+       try {
+         execFileSync(
+@@ -449,11 +482,16 @@ describe('Native Supervisor v2 state', () => {
+       } catch {
+         // Preserve the assertion failure when setup did not reach a worktree.
+       }
+-      await fs.rm(repository, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
++      await fs.rm(repository, {
++        recursive: true,
++        force: true,
++        maxRetries: 5,
++        retryDelay: 100,
++      });
+     }
+   });
+ 
+-  it('parses persisted coordination recovery inputs with strict run identity', () => {
++  it('parses persisted coordination recovery inputs with strict run identity', async () => {
+     expect(
+       parseNativeRunnerInput({
+         kind: 'supervisor-reconnect',
+@@ -478,14 +516,58 @@ describe('Native Supervisor v2 state', () => {
+       runId: 'run-1',
+       reason: 'worker exited',
+     });
+-    expect(() =>
++    expect(
+       parseNativeRunnerInput({
+         kind: 'supervisor-cancel',
+         child: 'integration-core',
+         runId: 'run-1',
+         reason: '',
+       }),
+-    ).toThrow(/reason/iu);
++    ).toMatchObject({ runId: 'run-1' });
++    const root = await fs.mkdtemp(path.join(process.cwd(), '.tmp-cancel-result-'));
++    try {
++      await writeProjectConfig(root, defaultProjectConfig('docs', 'en'));
++      const paths = await nativeProjectPaths(root, 'docs');
++      await createNativePortableChange({
++        paths,
++        name: 'parent',
++        language: 'en',
++      });
++      const initial = createNativeSupervisorState({
++        parent: 'parent',
++        targetBranch: 'main',
++        targetCommit: 'a'.repeat(40),
++        integrationBranch: 'comet/supervisor/parent/integration',
++        integrationWorktree: root,
++        contract: CONTRACT,
++      });
++      const dispatched = createNativeSupervisorTask(initial, {
++        role: 'builder',
++        child: 'integration-core',
++        projectRoot: root,
++        runId: 'run-1',
++      });
++      await writeNativeSupervisorState(paths, dispatched.state);
++      const before = await fs.readFile(nativeSupervisorStateFile(paths, 'parent'), 'utf8');
++      const original = await readNativePortableChange(paths, 'parent');
++      await expect(
++        applyNativeRunnerInput({
++          paths,
++          name: 'parent',
++          input: parseNativeRunnerInput({
++            kind: 'supervisor-cancel',
++            child: 'integration-core',
++            runId: 'run-1',
++            reason: '',
++          }),
++          maxVerifyFailures: 5,
++        }),
++      ).rejects.toThrow(/Task failure/iu);
++      expect(await fs.readFile(nativeSupervisorStateFile(paths, 'parent'), 'utf8')).toBe(before);
++      expect(await readNativePortableChange(paths, 'parent')).toEqual(original);
++    } finally {
++      await fs.rm(root, { recursive: true, force: true });
++    }
+   });
+ 
+   it('persists a multi-child coordination choice for recovery', async () => {
+@@ -582,7 +664,12 @@ children:
+       } catch {
+         // Preserve the assertion failure when setup did not reach a worktree.
+       }
+-      await fs.rm(repository, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
++      await fs.rm(repository, {
++        recursive: true,
++        force: true,
++        maxRetries: 5,
++        retryDelay: 100,
++      });
+     }
+   });
+   it('keeps machine state under the central Native Runtime directory', () => {
+@@ -645,10 +732,15 @@ children:
+         contract: CONTRACT,
+       });
+       expect(rebuilt?.integration.headCommit).toBe(git(['rev-parse', 'main']).trim());
+-      expect(rebuilt?.children[0]).toMatchObject({ name: 'integration-core', status: 'ready' });
++      expect(rebuilt?.children[0]).toMatchObject({
++        name: 'integration-core',
++        status: 'ready',
++      });
+       await fs.writeFile(path.join(prepared.projectRoot, 'integration-only.txt'), 'change\n');
+       execFileSync('git', ['add', '.'], { cwd: prepared.projectRoot });
+-      execFileSync('git', ['commit', '-m', 'integration-only'], { cwd: prepared.projectRoot });
++      execFileSync('git', ['commit', '-m', 'integration-only'], {
++        cwd: prepared.projectRoot,
++      });
+       const rebuiltAfterProgress = await rebuildNativeSupervisorStateFromFacts({
+         paths,
+         parent: 'parent',
+@@ -735,7 +827,11 @@ children:
+       },
+       children: [
+         { name: 'integration-core', status: 'ready', dependsOn: [] },
+-        { name: 'dashboard', status: 'pending', dependsOn: ['integration-core'] },
++        {
++          name: 'dashboard',
++          status: 'pending',
++          dependsOn: ['integration-core'],
++        },
+       ],
+     });
+   });
+@@ -824,7 +920,10 @@ children:
+     });
+ 
+     expect(integrated.children).toEqual([
+-      expect.objectContaining({ name: 'integration-core', status: 'integrated' }),
++      expect.objectContaining({
++        name: 'integration-core',
++        status: 'integrated',
++      }),
+       expect.objectContaining({ name: 'dashboard', status: 'ready' }),
+     ]);
+     expect(integrated.integration.headCommit).toBe('c'.repeat(40));
+@@ -1156,7 +1255,12 @@ children:
+           // Preserve the assertion failure when setup did not reach a worktree.
+         }
+       }
+-      await fs.rm(repository, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
++      await fs.rm(repository, {
++        recursive: true,
++        force: true,
++        maxRetries: 5,
++        retryDelay: 100,
++      });
+     }
+   });
+ 
+@@ -1191,7 +1295,9 @@ children:
+       });
+       await fs.writeFile(path.join(childPrepared.projectRoot, 'feature.txt'), 'feature\n');
+       execFileSync('git', ['add', '.'], { cwd: childPrepared.projectRoot });
+-      execFileSync('git', ['commit', '-m', 'child'], { cwd: childPrepared.projectRoot });
++      execFileSync('git', ['commit', '-m', 'child'], {
++        cwd: childPrepared.projectRoot,
++      });
+       const candidateCommit = git([
+         '--git-dir',
+         path.join(repository, '.git'),
+@@ -1234,7 +1340,7 @@ children:
+         stdio: 'ignore',
+       });
+       const paths = await nativeProjectPaths(repository, 'docs');
+-      const integrated = await integrateNativeSupervisorChildWorkspace({
++      const integrated = await recordActualPlatformChildIntegration({
+         paths,
+         state: verified,
+         name: 'integration-core',
+@@ -1262,7 +1368,12 @@ children:
+           // Preserve the assertion failure when setup did not reach a worktree.
+         }
+       }
+-      await fs.rm(repository, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
++      await fs.rm(repository, {
++        recursive: true,
++        force: true,
++        maxRetries: 5,
++        retryDelay: 100,
++      });
+     }
+   });
+ 
+@@ -1297,7 +1408,9 @@ children:
+       });
+       await fs.writeFile(path.join(upstream.projectRoot, 'upstream.txt'), 'upstream\n');
+       execFileSync('git', ['add', '.'], { cwd: upstream.projectRoot });
+-      execFileSync('git', ['commit', '-m', 'upstream'], { cwd: upstream.projectRoot });
++      execFileSync('git', ['commit', '-m', 'upstream'], {
++        cwd: upstream.projectRoot,
++      });
+       const candidateCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+         cwd: upstream.projectRoot,
+         encoding: 'utf8',
+@@ -1327,8 +1440,13 @@ children:
+         evidence: { summary: 'upstream verified', checks: ['child test'] },
+       });
+       const paths = await nativeProjectPaths(repository, 'docs');
++      await createNativePortableChange({
++        paths,
++        name: 'parent',
++        language: 'en',
++      });
+       await writeNativeSupervisorState(paths, verified);
+-      const integrated = await integrateNativeSupervisorChildWorkspace({
++      const integrated = await recordActualPlatformChildIntegration({
+         paths,
+         state: verified,
+         name: 'upstream',
+@@ -1353,159 +1471,6 @@ children:
+           // Preserve the assertion failure when setup did not reach a worktree.
+         }
+       }
+-      await fs.rm(repository, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+-    }
+-  });
+-
+-  it('delivers a fully verified integration branch once and archives children together', async () => {
+-    const repository = await fs.mkdtemp(path.join(process.cwd(), '.tmp-supervisor-delivery-'));
+-    try {
+-      const git = (args: string[]) =>
+-        execFileSync('git', args, { cwd: repository, encoding: 'utf8' }).trim();
+-      git(['init', '-b', 'main']);
+-      git(['config', 'user.email', 'native@example.test']);
+-      git(['config', 'user.name', 'Native Test']);
+-      const config = defaultProjectConfig('docs', 'en');
+-      config.workflows = ['native'];
+-      config.default_workflow = 'native';
+-      await writeProjectConfig(repository, config);
+-      await fs.writeFile(path.join(repository, '.gitignore'), '.comet/runtime/\n');
+-      await fs.writeFile(path.join(repository, 'README.md'), 'seed\n');
+-      git(['add', '.']);
+-      git(['commit', '-m', 'seed']);
+-      const targetCommit = git(['rev-parse', 'main']);
+-      const targetRoot = path.join(repository, '.worktrees', 'main-target');
+-      git(['switch', '-c', 'comet/parent']);
+-      git(['worktree', 'add', targetRoot, 'main']);
+-      const prepared = await prepareNativeSupervisorIntegrationWorkspace({
+-        projectRoot: repository,
+-        parent: 'parent',
+-        targetBranch: 'main',
+-        sourceConfig: config,
+-      });
+-      const childPrepared = await prepareNativeSupervisorChildWorkspace({
+-        projectRoot: repository,
+-        parent: 'parent',
+-        child: 'integration-core',
+-        targetBranch: prepared.binding.changeBranch!,
+-        sourceConfig: config,
+-      });
+-      const contract = parseNativeChildrenContract(`
+-schema: comet.native.children.v2
+-children:
+-  - name: integration-core
+-    summary: Owns the integrated result.
+-    depends_on: []
+-`);
+-      const initial = createNativeSupervisorState({
+-        parent: 'parent',
+-        targetBranch: 'main',
+-        targetCommit,
+-        integrationBranch: prepared.binding.changeBranch!,
+-        integrationWorktree: prepared.projectRoot,
+-        contract,
+-      });
+-      const verified = markNativeSupervisorChildVerified(initial, {
+-        name: 'integration-core',
+-        baseCommit: targetCommit,
+-        verifiedCommit: targetCommit,
+-        evidence: { summary: 'verified', checks: ['child test'] },
+-      });
+-      await fs.writeFile(path.join(prepared.projectRoot, 'feature.txt'), 'feature\n');
+-      execFileSync('git', ['add', '.'], { cwd: prepared.projectRoot });
+-      execFileSync('git', ['commit', '-m', 'integrated feature'], {
+-        cwd: prepared.projectRoot,
+-      });
+-      const integrationCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+-        cwd: prepared.projectRoot,
+-        encoding: 'utf8',
+-      }).trim();
+-      const integrated = integrateNativeSupervisorChild(verified, {
+-        name: 'integration-core',
+-        integrationCommit,
+-        checks: [{ name: 'integration test', status: 'passed' }],
+-      });
+-      const finalVerified = recordNativeSupervisorFinalVerification(integrated, {
+-        status: 'passed',
+-        summary: 'parent checks passed',
+-        headCommit: integrationCommit,
+-        layers: {
+-          childVerification: 'complete',
+-          parentIntegration: 'complete',
+-          parentChecks: ['parent test'],
+-          notRerun: ['child test'],
+-          incomplete: [],
+-        },
+-      });
+-      const paths = await nativeProjectPaths(repository, 'docs');
+-      await fs.writeFile(path.join(targetRoot, 'target-update.txt'), 'target moved\n');
+-      execFileSync('git', ['add', '.'], { cwd: targetRoot });
+-      execFileSync('git', ['commit', '-m', 'target moved'], { cwd: targetRoot });
+-      await expect(
+-        finalizeNativeSupervisorDelivery({ paths, state: finalVerified }),
+-      ).rejects.toThrow(/target changed|rerun/i);
+-      const refreshed = await readNativeSupervisorState(paths, 'parent');
+-      expect(refreshed).toMatchObject({
+-        finalVerification: { status: 'pending' },
+-      });
+-      const reverified = recordNativeSupervisorFinalVerification(refreshed!, {
+-        status: 'passed',
+-        summary: 'parent checks rerun after target refresh',
+-        headCommit: refreshed!.integration.headCommit,
+-        layers: {
+-          childVerification: 'complete',
+-          parentIntegration: 'complete',
+-          parentChecks: ['parent test'],
+-          notRerun: ['child test'],
+-          incomplete: [],
+-        },
+-      });
+-      await writeNativeSupervisorState(paths, reverified);
+-      const expectedChildBranch = 'comet/supervisor/parent/integration-core';
+-      const targetBeforeDelivery = git(['rev-parse', 'main']);
+-      execFileSync('git', ['switch', '-c', 'comet/supervisor/parent/unrelated'], {
+-        cwd: childPrepared.projectRoot,
+-        stdio: 'ignore',
+-      });
+-      await expect(finalizeNativeSupervisorDelivery({ paths, state: reverified })).rejects.toThrow(
+-        /unexpected branch/iu,
+-      );
+-      expect(git(['rev-parse', 'main'])).toBe(targetBeforeDelivery);
+-      execFileSync('git', ['switch', expectedChildBranch], {
+-        cwd: childPrepared.projectRoot,
+-        stdio: 'ignore',
+-      });
+-      const delivered = await finalizeNativeSupervisorDelivery({ paths, state: reverified });
+-      expect(delivered.state.children[0]).toMatchObject({ status: 'archived' });
+-      expect(delivered.state.integration.headCommit).toBe(reverified.integration.headCommit);
+-      expect(git(['rev-parse', 'main'])).toBe(reverified.integration.headCommit);
+-      expect(git(['branch', '--list', reverified.integration.branch])).toBe('');
+-      expect(git(['branch', '--list', expectedChildBranch])).toBe('');
+-      const redelivered = await finalizeNativeSupervisorDelivery({
+-        paths,
+-        state: delivered.state,
+-      });
+-      expect(redelivered.state.children[0]).toMatchObject({ status: 'archived' });
+-      expect(git(['rev-parse', 'main'])).toBe(reverified.integration.headCommit);
+-    } finally {
+-      try {
+-        for (const worktree of [
+-          path.join(repository, '.worktrees', 'parent-integration'),
+-          path.join(repository, '.worktrees', 'parent-integration-core'),
+-          path.join(repository, '.worktrees', 'main-target'),
+-        ]) {
+-          try {
+-            execFileSync('git', ['worktree', 'remove', '--force', worktree], {
+-              cwd: repository,
+-              stdio: 'ignore',
+-            });
+-          } catch {
+-            // Preserve the assertion failure when setup did not reach a worktree.
+-          }
+-        }
+-      } catch {
+-        // Preserve the assertion failure when setup did not reach a worktree.
+-      }
+       await fs.rm(repository, {
+         recursive: true,
+         force: true,
+@@ -1592,11 +1557,16 @@ children:
+           // Preserve the assertion failure when setup did not reach a worktree.
+         }
+       }
+-      await fs.rm(repository, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
++      await fs.rm(repository, {
++        recursive: true,
++        force: true,
++        maxRetries: 5,
++        retryDelay: 100,
++      });
+     }
+   });
+ 
+-  it('persists a blocker when reconnecting a diverged Builder worktree', async () => {
++  it('keeps the original Builder task readable and rejects an orphan candidate at result submission', async () => {
+     const repository = await fs.mkdtemp(
+       path.join(process.cwd(), '.tmp-supervisor-reconnect-builder-'),
+     );
+@@ -1649,30 +1619,66 @@ children:
+       });
+       const paths = await nativeProjectPaths(repository, 'docs');
+       await ensureNativeDirectories(paths);
+-      await createNativePortableChange({ paths, name: 'parent', language: 'en' });
++      await createNativePortableChange({
++        paths,
++        name: 'parent',
++        language: 'en',
++      });
+       await writeNativeSupervisorState(paths, dispatched.state);
+-      execFileSync('git', ['checkout', '--orphan', 'unrelated'], { cwd: child.projectRoot });
+-      execFileSync('git', ['rm', '-rf', '.'], { cwd: child.projectRoot, stdio: 'ignore' });
++      execFileSync('git', ['checkout', '--orphan', 'unrelated'], {
++        cwd: child.projectRoot,
++      });
++      execFileSync('git', ['rm', '-rf', '.'], {
++        cwd: child.projectRoot,
++        stdio: 'ignore',
++      });
+       await fs.writeFile(path.join(child.projectRoot, 'unrelated.txt'), 'unrelated\n');
+       execFileSync('git', ['add', '.'], { cwd: child.projectRoot });
+-      execFileSync('git', ['commit', '-m', 'unrelated'], { cwd: child.projectRoot });
++      execFileSync('git', ['commit', '-m', 'unrelated'], {
++        cwd: child.projectRoot,
++      });
+       execFileSync('git', ['branch', '-M', 'comet/supervisor/parent/core'], {
+         cwd: child.projectRoot,
+       });
+ 
++      const original = await readNativeSupervisorState(paths, 'parent');
++      const connected = await applyNativeRunnerInput({
++        paths,
++        name: 'parent',
++        input: {
++          kind: 'supervisor-reconnect',
++          child: 'core',
++          runId: 'builder-run',
++        },
++        maxVerifyFailures: 5,
++      });
++      expect(connected.supervisorTask).toMatchObject({
++        role: 'builder',
++        runId: 'builder-run',
++      });
++      const before = await fs.readFile(nativeSupervisorStateFile(paths, 'parent'), 'utf8');
++      const candidateCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
++        cwd: child.projectRoot,
++        encoding: 'utf8',
++      }).trim();
+       await expect(
+         applyNativeRunnerInput({
+           paths,
+           name: 'parent',
+-          input: { kind: 'supervisor-reconnect', child: 'core', runId: 'builder-run' },
++          input: parseNativeRunnerInput({
++            kind: 'supervisor-builder-result',
++            child: 'core',
++            runId: 'builder-run',
++            candidateCommit,
++            checks: [],
++          }),
+           maxVerifyFailures: 5,
+         }),
+       ).rejects.toThrow(/base commit is not an ancestor/iu);
+-      const blocked = await readNativeSupervisorState(paths, 'parent');
+-      expect(blocked?.children[0]).toMatchObject({
+-        blocker: expect.stringMatching(/base commit is not an ancestor/iu),
+-        task: { role: 'builder', runId: 'builder-run' },
+-      });
++      expect(await fs.readFile(nativeSupervisorStateFile(paths, 'parent'), 'utf8')).toBe(before);
++      expect((await readNativeSupervisorState(paths, 'parent'))?.children[0].task).toEqual(
++        original?.children[0].task,
++      );
+     } finally {
+       for (const worktree of [
+         path.join(repository, '.worktrees', 'parent-core'),
+@@ -1687,11 +1693,16 @@ children:
+           // Preserve the assertion failure when setup did not reach a worktree.
+         }
+       }
+-      await fs.rm(repository, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
++      await fs.rm(repository, {
++        recursive: true,
++        force: true,
++        maxRetries: 5,
++        retryDelay: 100,
++      });
+     }
+   });
+ 
+-  it('persists a blocker when reconnecting a dirty Verifier worktree', async () => {
++  it('keeps the original Verifier task readable and rejects a pass from its dirty candidate workspace', async () => {
+     const repository = await fs.mkdtemp(
+       path.join(process.cwd(), '.tmp-supervisor-reconnect-verifier-'),
+     );
+@@ -1724,7 +1735,9 @@ children:
+       });
+       await fs.writeFile(path.join(child.projectRoot, 'candidate.txt'), 'candidate\n');
+       execFileSync('git', ['add', '.'], { cwd: child.projectRoot });
+-      execFileSync('git', ['commit', '-m', 'candidate'], { cwd: child.projectRoot });
++      execFileSync('git', ['commit', '-m', 'candidate'], {
++        cwd: child.projectRoot,
++      });
+       const candidateCommit = git([
+         '--git-dir',
+         path.join(repository, '.git'),
+@@ -1764,23 +1777,59 @@ children:
+       });
+       const paths = await nativeProjectPaths(repository, 'docs');
+       await ensureNativeDirectories(paths);
+-      await createNativePortableChange({ paths, name: 'parent', language: 'en' });
++      await createNativePortableChange({
++        paths,
++        name: 'parent',
++        language: 'en',
++      });
+       await writeNativeSupervisorState(paths, verifier.state);
+       await fs.writeFile(path.join(child.projectRoot, 'dirty.txt'), 'dirty\n');
+ 
++      const original = await readNativeSupervisorState(paths, 'parent');
++      const connected = await applyNativeRunnerInput({
++        paths,
++        name: 'parent',
++        input: {
++          kind: 'supervisor-reconnect',
++          child: 'core',
++          runId: 'verifier-run',
++        },
++        maxVerifyFailures: 5,
++      });
++      expect(connected.supervisorTask).toMatchObject({
++        role: 'verifier',
++        runId: 'verifier-run',
++        baseCommit: candidateCommit,
++      });
++      const before = await fs.readFile(nativeSupervisorStateFile(paths, 'parent'), 'utf8');
+       await expect(
+         applyNativeRunnerInput({
+           paths,
+           name: 'parent',
+-          input: { kind: 'supervisor-reconnect', child: 'core', runId: 'verifier-run' },
++          input: parseNativeRunnerInput({
++            kind: 'supervisor-verifier-result',
++            child: 'core',
++            runId: 'verifier-run',
++            verdict: 'pass',
++            evidence: {
++              summary: 'Actual candidate must be clean',
++              checks: ['candidate review'],
++              acceptance: [
++                {
++                  id: 'child:core',
++                  result: 'passed',
++                  reason: 'Reviewed the original scoped candidate',
++                },
++              ],
++            },
++          }),
+           maxVerifyFailures: 5,
+         }),
+-      ).rejects.toThrow(/Verifier task worktree is not at its candidate commit/iu);
+-      const blocked = await readNativeSupervisorState(paths, 'parent');
+-      expect(blocked?.children[0]).toMatchObject({
+-        blocker: expect.stringMatching(/Verifier task worktree is not at its candidate commit/iu),
+-        task: { role: 'verifier', runId: 'verifier-run', baseCommit: candidateCommit },
+-      });
++      ).rejects.toThrow(/Verifier worktree is not clean/iu);
++      expect(await fs.readFile(nativeSupervisorStateFile(paths, 'parent'), 'utf8')).toBe(before);
++      expect((await readNativeSupervisorState(paths, 'parent'))?.children[0].task).toEqual(
++        original?.children[0].task,
++      );
+     } finally {
+       for (const worktree of [
+         path.join(repository, '.worktrees', 'parent-core'),
+@@ -1795,131 +1844,12 @@ children:
+           // Preserve the assertion failure when setup did not reach a worktree.
+         }
+       }
+-      await fs.rm(repository, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+-    }
+-  });
+-
+-  it('preflights every cleanup target and preserves integrated state on a blocker', async () => {
+-    const repository = await fs.mkdtemp(path.join(process.cwd(), '.tmp-supervisor-cleanup-'));
+-    try {
+-      const git = (args: string[]) =>
+-        execFileSync('git', args, { cwd: repository, encoding: 'utf8' }).trim();
+-      git(['init', '-b', 'main']);
+-      git(['config', 'user.email', 'native@example.test']);
+-      git(['config', 'user.name', 'Native Test']);
+-      const config = defaultProjectConfig('docs', 'en');
+-      config.workflows = ['native'];
+-      config.default_workflow = 'native';
+-      await writeProjectConfig(repository, config);
+-      await fs.writeFile(path.join(repository, 'README.md'), 'seed\n');
+-      git(['add', '.']);
+-      git(['commit', '-m', 'seed']);
+-      const targetCommit = git(['rev-parse', 'main']);
+-      const prepared = await prepareNativeSupervisorIntegrationWorkspace({
+-        projectRoot: repository,
+-        parent: 'parent',
+-        targetBranch: 'main',
+-        sourceConfig: config,
+-      });
+-      const core = await prepareNativeSupervisorChildWorkspace({
+-        projectRoot: repository,
+-        parent: 'parent',
+-        child: 'integration-core',
+-        targetBranch: prepared.binding.changeBranch!,
+-        sourceConfig: config,
+-      });
+-      const dashboard = await prepareNativeSupervisorChildWorkspace({
+-        projectRoot: repository,
+-        parent: 'parent',
+-        child: 'dashboard',
+-        targetBranch: prepared.binding.changeBranch!,
+-        sourceConfig: config,
+-      });
+-      await fs.writeFile(path.join(prepared.projectRoot, 'integrated.txt'), 'done\n');
+-      execFileSync('git', ['add', '.'], { cwd: prepared.projectRoot });
+-      execFileSync('git', ['commit', '-m', 'integrated'], { cwd: prepared.projectRoot });
+-      const integrationCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+-        cwd: prepared.projectRoot,
+-        encoding: 'utf8',
+-      }).trim();
+-      const contract = parseNativeChildrenContract(`
+-schema: comet.native.children.v2
+-children:
+-  - name: integration-core
+-    summary: Core integration.
+-    depends_on: []
+-  - name: dashboard
+-    summary: Dashboard integration.
+-    depends_on: []
+-`);
+-      let state = createNativeSupervisorState({
+-        parent: 'parent',
+-        targetBranch: 'main',
+-        targetCommit,
+-        integrationBranch: prepared.binding.changeBranch!,
+-        integrationWorktree: prepared.projectRoot,
+-        contract,
+-      });
+-      for (const child of ['integration-core', 'dashboard']) {
+-        state = markNativeSupervisorChildVerified(state, {
+-          name: child,
+-          baseCommit: state.integration.headCommit,
+-          verifiedCommit: targetCommit,
+-          evidence: { summary: `${child} verified`, checks: ['child test'] },
+-        });
+-        state = integrateNativeSupervisorChild(state, {
+-          name: child,
+-          integrationCommit,
+-          checks: [{ name: 'integration test', status: 'passed' }],
+-        });
+-      }
+-      state = recordNativeSupervisorFinalVerification(state, {
+-        status: 'passed',
+-        summary: 'parent checks passed',
+-        headCommit: integrationCommit,
+-        layers: {
+-          childVerification: 'complete',
+-          parentIntegration: 'complete',
+-          parentChecks: ['parent test'],
+-          notRerun: ['child test'],
+-          incomplete: [],
+-        },
++      await fs.rm(repository, {
++        recursive: true,
++        force: true,
++        maxRetries: 5,
++        retryDelay: 100,
+       });
+-      const paths = await nativeProjectPaths(repository, 'docs');
+-      await writeNativeSupervisorState(paths, state);
+-      await fs.writeFile(path.join(dashboard.projectRoot, 'uncommitted.txt'), 'keep me\n');
+-
+-      await expect(finalizeNativeSupervisorDelivery({ paths, state })).rejects.toThrow(
+-        /clean worktree|cleanup/i,
+-      );
+-      expect(git(['rev-parse', 'main'])).toBe(targetCommit);
+-      await expect(fs.stat(path.join(core.projectRoot, 'README.md'))).resolves.toBeDefined();
+-      await expect(fs.stat(path.join(prepared.projectRoot, 'README.md'))).resolves.toBeDefined();
+-      await expect(
+-        fs.stat(path.join(dashboard.projectRoot, 'uncommitted.txt')),
+-      ).resolves.toBeDefined();
+-      expect((await readNativeSupervisorState(paths, 'parent'))?.children).toEqual(
+-        expect.arrayContaining([
+-          expect.objectContaining({ name: 'integration-core', status: 'integrated' }),
+-          expect.objectContaining({ name: 'dashboard', status: 'integrated' }),
+-        ]),
+-      );
+-    } finally {
+-      for (const worktree of [
+-        path.join(repository, '.worktrees', 'parent-dashboard'),
+-        path.join(repository, '.worktrees', 'parent-integration-core'),
+-        path.join(repository, '.worktrees', 'parent-integration'),
+-      ]) {
+-        try {
+-          execFileSync('git', ['worktree', 'remove', '--force', worktree], {
+-            cwd: repository,
+-            stdio: 'ignore',
+-          });
+-        } catch {
+-          // Preserve the assertion failure when setup did not reach a worktree.
+-        }
+-      }
+-      await fs.rm(repository, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+     }
+   });
+ 
+@@ -1956,7 +1886,9 @@ children:
+         path.join(changeDir, 'brief.md'),
+         supervisorBrief('The parent integration is complete.'),
+       );
+-      await fs.mkdir(path.join(changeDir, 'specs', 'repair'), { recursive: true });
++      await fs.mkdir(path.join(changeDir, 'specs', 'repair'), {
++        recursive: true,
++      });
+       await fs.writeFile(
+         path.join(changeDir, 'specs', 'repair', 'spec.md'),
+         `# Requirement: Repair
+@@ -2033,23 +1965,19 @@ children:
+           },
+         }),
+       });
++      const actualParentCheck = execFileSync(
++        process.execPath,
++        ['-e', 'console.log("Actual parent check completed")'],
++        { cwd: supervisor.integration.worktree, encoding: 'utf8' },
++      );
++      expect(actualParentCheck).toContain('Actual parent check completed');
+       const dispatched = await applyNativeRunnerInput({
+         paths,
+         name: 'parent',
+         maxVerifyFailures: 5,
+         input: {
+           kind: 'dispatch-verifier',
+-          checks: [
+-            {
+-              id: 'parent-check',
+-              name: 'Check the integrated parent',
+-              executable: process.execPath,
+-              argv: ['-e', 'process.exit(0)'],
+-              cwdRef: '.',
+-              timeoutMs: 120_000,
+-              repeatable: true,
+-            },
+-          ],
++          checks: [],
+         },
+       });
+       expect(
+@@ -2087,7 +2015,10 @@ children:
+       expect(failed.state).toMatchObject({
+         phase: 'build',
+         verification_result: 'fail',
+-        loop: { stage: 'repairing', previous_unresolved_ids: [specAcceptance!.id] },
++        loop: {
++          stage: 'repairing',
++          previous_unresolved_ids: [specAcceptance!.id],
++        },
+       });
+ 
+       await returnNativePortableChangeToShape({
+@@ -2144,6 +2075,8 @@ children:
+             String(repairedConfirmationState.state_version),
+             '--expected-action',
+             'confirm-shape',
++            '--coordination-mode',
++            repairedConfirmationState.coordination_mode ?? 'single-session',
+           ],
+           repository,
+         ),
+@@ -2151,14 +2084,28 @@ children:
+         exitCode: 0,
+         data: {
+           state: { phase: 'build' },
+-          readyChildren: ['parent-integration-repair'],
++          supervisor: {
++            tasks: [
++              expect.objectContaining({
++                child: 'parent-integration-repair',
++                role: 'builder',
++              }),
++            ],
++          },
+         },
+       });
+       await expect(readNativeSupervisorState(paths, 'parent')).resolves.toMatchObject({
+         children: [
+           expect.objectContaining({ name: 'core', status: 'integrated' }),
+           expect.objectContaining({ name: 'support', status: 'integrated' }),
+-          expect.objectContaining({ name: 'parent-integration-repair', status: 'ready' }),
++          expect.objectContaining({
++            name: 'parent-integration-repair',
++            status: 'active',
++            task: expect.objectContaining({
++              child: 'parent-integration-repair',
++              role: 'builder',
++            }),
++          }),
+         ],
+       });
+     } finally {
+@@ -2176,7 +2123,12 @@ children:
+       } catch {
+         // Preserve the assertion failure when setup did not reach the integration worktree.
+       }
+-      await fs.rm(repository, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
++      await fs.rm(repository, {
++        recursive: true,
++        force: true,
++        maxRetries: 5,
++        retryDelay: 100,
++      });
+     }
+   });
+ 
+@@ -2218,7 +2170,10 @@ children:
+     summary: Fixes the confirmed integration failure.
+     depends_on: [integration-core]
+ `);
+-    const repaired = reconcileNativeSupervisorState({ state: integrated, contract: expanded });
++    const repaired = reconcileNativeSupervisorState({
++      state: integrated,
++      contract: expanded,
++    });
+     expect(repaired.children).toEqual([
+       expect.objectContaining({
+         name: 'integration-core',
+@@ -2228,48 +2183,4 @@ children:
+       expect.objectContaining({ name: 'repair-core', status: 'ready' }),
+     ]);
+   });
+-
+-  it('rejects a passed parent verification with no executed parent checks', () => {
+-    const initial = createNativeSupervisorState({
+-      parent: 'parent',
+-      targetBranch: 'beta20',
+-      targetCommit: 'a'.repeat(40),
+-      integrationBranch: 'comet/supervisor/parent/integration',
+-      integrationWorktree: 'D:/worktrees/parent-integration',
+-      contract: parseNativeChildrenContract(`
+-schema: comet.native.children.v2
+-children:
+-  - name: integration-core
+-    summary: Core integration.
+-    depends_on: []
+-`),
+-    });
+-    const integrated = integrateNativeSupervisorChild(
+-      markNativeSupervisorChildVerified(initial, {
+-        name: 'integration-core',
+-        baseCommit: 'a'.repeat(40),
+-        verifiedCommit: 'b'.repeat(40),
+-        evidence: { summary: 'verified', checks: ['child'] },
+-      }),
+-      {
+-        name: 'integration-core',
+-        integrationCommit: 'c'.repeat(40),
+-        checks: [{ name: 'integration', status: 'passed' }],
+-      },
+-    );
+-    expect(() =>
+-      recordNativeSupervisorFinalVerification(integrated, {
+-        status: 'passed',
+-        summary: 'claimed pass',
+-        headCommit: 'c'.repeat(40),
+-        layers: {
+-          childVerification: 'complete',
+-          parentIntegration: 'complete',
+-          parentChecks: [],
+-          notRerun: ['child'],
+-          incomplete: [],
+-        },
+-      }),
+-    ).toThrow(/parent.*checks/iu);
+-  });
+ });
+diff --git a/test/domains/comet-native/native-children.test.ts b/test/domains/comet-native/native-children.test.ts
+--- a/test/domains/comet-native/native-children.test.ts
++++ b/test/domains/comet-native/native-children.test.ts
+@@ -8,7 +8,6 @@ import { afterEach, describe, expect, it } from 'vitest';
+ 
+ import { nativeArchiveCommand } from '../../../domains/comet-native/native-archive-command.js';
+ import {
+-  findNativeV1SupervisorParents,
+   inspectNativeChildren,
+   parseNativeChildrenContract,
+ } from '../../../domains/comet-native/native-children.js';
+@@ -27,16 +26,11 @@ import {
+ import {
+   confirmNativePortableSkillCoordinatedPass,
+   dispatchNativePortableVerifier,
+-  executeNativePortableCheckPlan,
+   nativePortableChangeDir,
+   readNativePortableChange,
+   submitNativePortableBuilderCandidate,
+   submitNativePortableVerifierResult,
+ } from '../../../domains/comet-native/native-portable-runtime.js';
+-import {
+-  readNativePortableState,
+-  writeNativePortableState,
+-} from '../../../domains/comet-native/native-portable-state.js';
+ import { inspectNativePortableStatus } from '../../../domains/comet-native/native-portable-status.js';
+ import type {
+   NativePortableAcceptanceState,
+@@ -246,16 +240,19 @@ async function verifyChild(options: {
+       },
+     },
+   });
+-  const executed = await executeNativePortableCheckPlan({ paths, name, plans: [] });
++  const checkOutput = execFileSync(
++    process.execPath,
++    ['-e', 'console.log("Actual child platform check passed")'],
++    { cwd: paths.projectRoot, encoding: 'utf8' },
++  );
++  expect(checkOutput).toContain('Actual child platform check passed');
+   const dispatched = await dispatchNativePortableVerifier({
+     paths,
+     name,
+-    checks: executed.checks,
+   });
+   await submitNativePortableVerifierResult({
+     paths,
+     name,
+-    checks: executed.checks,
+     maxVerifyFailures: 3,
+     envelope: runner.envelopeVerifierResponse({
+       candidateId,
+@@ -283,30 +280,6 @@ async function verifyChild(options: {
+   return confirmNativePortableSkillCoordinatedPass({ paths, name });
+ }
+ 
+-async function writeMergedChildProjection(options: {
+-  paths: NativeProjectPaths;
+-  source: NativePortableState;
+-  name: string;
+-  parentBranch: string;
+-}): Promise<void> {
+-  const directory = path.join(options.paths.archiveDir, `2026-08-11-${options.name}`);
+-  await fs.mkdir(directory, { recursive: true });
+-  const projection = {
+-    ...options.source,
+-    name: options.name,
+-    workspace: {
+-      isolation: 'worktree' as const,
+-      change_branch: `comet/${options.name}`,
+-      target_branch: options.parentBranch,
+-      finish: 'merge' as const,
+-    },
+-  };
+-  delete projection.verifier_action;
+-  await writeNativePortableState(path.join(directory, 'comet-state.yaml'), projection, {
+-    containedRoot: options.paths.nativeRoot,
+-  });
+-}
+-
+ describe('Native parent and child changes', () => {
+   const repositories: string[] = [];
+   const linkedWorktrees: Array<{ repository: string; root: string }> = [];
+@@ -332,8 +305,18 @@ describe('Native parent and child changes', () => {
+ 
+   it('validates declared dependency structure while allowing parent-only acceptance', () => {
+     const acceptance: NativePortableAcceptanceState[] = [
+-      { id: 'A1', source: 'brief.md', text: 'First behavior.', result: 'pending' },
+-      { id: 'A2', source: 'brief.md', text: 'Second behavior.', result: 'pending' },
++      {
++        id: 'A1',
++        source: 'brief.md',
++        text: 'First behavior.',
++        result: 'pending',
++      },
++      {
++        id: 'A2',
++        source: 'brief.md',
++        text: 'Second behavior.',
++        result: 'pending',
++      },
+     ];
+     const parsed = parseNativeChildrenContract(
+       CHILDREN,
+@@ -381,7 +364,10 @@ children:
+         ),
+         message: /dependency cycle/iu,
+       },
+-      { source: CHILDREN.replace('covers: [A2]', 'covers: [A3]'), message: /unknown acceptance/iu },
++      {
++        source: CHILDREN.replace('covers: [A2]', 'covers: [A3]'),
++        message: /unknown acceptance/iu,
++      },
+     ];
+     for (const invalid of invalidContracts) {
+       expect(() =>
+@@ -426,8 +412,16 @@ children:
+ 
+   it('accepts a readable v2 acceptance index while retaining the v1 contract', () => {
+     const acceptance = [
+-      { id: 'A1', source: 'brief.md', text: 'The integrated result contains the first behavior.' },
+-      { id: 'A2', source: 'brief.md', text: 'The integrated result contains the second behavior.' },
++      {
++        id: 'A1',
++        source: 'brief.md',
++        text: 'The integrated result contains the first behavior.',
++      },
++      {
++        id: 'A2',
++        source: 'brief.md',
++        text: 'The integrated result contains the second behavior.',
++      },
+     ];
+ 
+     expect(
+@@ -460,7 +454,11 @@ children:
+     const acceptanceCatalog = [
+       { id: 'A1', source: 'brief.md', text: 'First approved behavior.' },
+       { id: 'A2', source: 'brief.md', text: 'Second approved behavior.' },
+-      { id: 'A3', source: 'specs/demo/spec.md', text: 'Not authorized for a repair child.' },
++      {
++        id: 'A3',
++        source: 'specs/demo/spec.md',
++        text: 'Not authorized for a repair child.',
++      },
+     ];
+     const options = { acceptanceCatalog, requiredAcceptanceIds: ['A1', 'A2'] };
+     expect(parseNativeChildrenContract(source, ['A1', 'A2'], options).acceptance_index).toEqual({
+@@ -479,7 +477,10 @@ children:
+       parseNativeChildrenContract(source, ['A1', 'A2'], {
+         ...options,
+         acceptanceCatalog: [
+-          { ...acceptanceCatalog[0], text: 'Changed behavior requires a new Shape.' },
++          {
++            ...acceptanceCatalog[0],
++            text: 'Changed behavior requires a new Shape.',
++          },
+           acceptanceCatalog[1],
+         ],
+       }).acceptance_index?.A1.text,
+@@ -575,7 +576,10 @@ children:
+ 
+     // child-b has no candidate and its new dependency is not integrated, so the
+     // reconciled state must stay pending instead of becoming dispatch-ready.
+-    const reconciled = reconcileNativeSupervisorState({ state, contract: revised });
++    const reconciled = reconcileNativeSupervisorState({
++      state,
++      contract: revised,
++    });
+     const reconciledB = reconciled.children.find(({ name }) => name === 'child-b');
+     expect(reconciledB?.status).toBe('pending');
+     expect(reconciledB?.blocker).toBeNull();
+@@ -612,13 +616,19 @@ children:
+ `,
+       ['A1', 'A2', 'A3'],
+     );
+-    const promoted = reconcileNativeSupervisorState({ state: reconciled, contract: revised2 });
++    const promoted = reconcileNativeSupervisorState({
++      state: reconciled,
++      contract: revised2,
++    });
+     const promotedB = promoted.children.find(({ name }) => name === 'child-b');
+     expect(promotedB?.status).toBe('ready');
+     expect(promoted.children.find(({ name }) => name === 'child-new')?.status).toBe('integrated');
+ 
+     // Prose changes do not invalidate a recorded candidate.
+-    const withCandidate = reconcileNativeSupervisorState({ state, contract: revised });
++    const withCandidate = reconcileNativeSupervisorState({
++      state,
++      contract: revised,
++    });
+     const candidateB = withCandidate.children.find(({ name }) => name === 'child-b');
+     candidateB!.candidateCommit = 'b'.repeat(40);
+     const reverified = reconcileNativeSupervisorState({
+@@ -705,7 +715,7 @@ children:
+     }
+   });
+ 
+-  it('preserves parent child progress while blocking a mismatched workspace', async () => {
++  it('reads original parent child progress without modifying it after a workspace branch change', async () => {
+     const repository = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-parent-recovery-'));
+     repositories.push(repository);
+     git(repository, ['init', '-b', 'integration']);
+@@ -722,28 +732,16 @@ children:
+     await fs.writeFile(path.join(directory, 'brief.md'), PARENT_BRIEF);
+     await fs.writeFile(path.join(directory, 'children.yaml'), CHILDREN);
+     const prepared = await nativeNextCommand(['parent', '--summary', 'Prepare parent'], repository);
+-    const previous = prepared.data as {
+-      childSummary: Record<string, number>;
+-      readyChildren: string[];
+-    };
+-    expect(previous.childSummary.total).toBe(3);
+-    expect(previous.readyChildren).toBeInstanceOf(Array);
++    const original = await readNativePortableChange(paths, 'parent');
++    const previous = await inspectNativeChildren({ paths, state: original });
++    expect(previous?.children).toHaveLength(3);
++    expect(previous?.readyChildren).toBeInstanceOf(Array);
+     git(repository, ['switch', '-c', 'wrong-parent-workspace']);
+-    const blocked = await nativeNextCommand(['parent', '--summary', 'Resume parent'], repository);
+-    expect(blocked).toMatchObject({
+-      exitCode: 0,
+-      data: {
+-        childSummary: previous.childSummary,
+-        readyChildren: previous.readyChildren,
+-        recovery: { reason: 'workspace-mismatch' },
+-        continuation: {
+-          disposition: 'blocked',
+-          action: 'repair',
+-          commandArgs: null,
+-          commandAlternatives: [],
+-        },
+-      },
+-    });
++    const observed = await nativeNextCommand(['parent'], repository);
++    expect(observed.exitCode).toBe(0);
++    expect(await readNativePortableChange(paths, 'parent')).toEqual(original);
++    const after = await inspectNativeChildren({ paths, state: original });
++    expect(after).toEqual(previous);
+   });
+ 
+   it('retains approval after a children edit and leaves its meaning to the Agent', async () => {
+@@ -775,7 +773,10 @@ children:
+       ['parent', '--summary', 'Prepare the parent contract confirmation'],
+       repository,
+     );
+-    expect(data(parentPrepared).state).toMatchObject({ phase: 'shape', status: 'await-user' });
++    expect(data(parentPrepared).state).toMatchObject({
++      phase: 'shape',
++      status: 'await-user',
++    });
+     const parentConfirmed = await nativeNextCommand(
+       await guardedShapeConfirmationArgs(parentPaths, 'parent', 'Confirm the parent contract'),
+       repository,
+@@ -793,7 +794,10 @@ children:
+       path.join(parentDir, 'children.yaml'),
+       CHILDREN.replace('covers: [A2]', 'covers: [A3]'),
+     );
+-    const drifted = await inspectNativeChildren({ paths: parentPaths, state: parentState });
++    const drifted = await inspectNativeChildren({
++      paths: parentPaths,
++      state: parentState,
++    });
+     expect(drifted?.confirmed).toBe(true);
+     expect(
+       drifted?.children.some(({ message }) =>
+@@ -827,7 +831,11 @@ children:
+     await fs.writeFile(path.join(parentDir, 'children.yaml'), READABLE_CHILDREN);
+ 
+     expect(await readNativePortableChange(parentPaths, 'parent')).toMatchObject({
+-      workspace: { isolation: 'current', change_branch: null, target_branch: null },
++      workspace: {
++        isolation: 'current',
++        change_branch: null,
++        target_branch: null,
++      },
+     });
+     await expect(
+       nativeNextCommand(['parent', '--summary', 'Prepare the parent contract'], repository),
+@@ -836,7 +844,11 @@ children:
+       exitCode: 65,
+       data: {
+         healthy: false,
+-        findings: [expect.objectContaining({ code: 'portable-supervisor-git-binding-missing' })],
++        findings: [
++          expect.objectContaining({
++            code: 'portable-supervisor-git-binding-missing',
++          }),
++        ],
+       },
+     });
+ 
+@@ -870,22 +882,12 @@ children:
+     expect(recovered.data).toMatchObject({
+       state: {
+         phase: 'shape',
+-        status: 'active',
+-        workspace: { change_branch: null, target_branch: null },
++        status: 'await-user',
++        workspace: { change_branch: 'main', target_branch: 'main' },
+       },
+-      recovery: { reason: 'missing', action: 'resume-stable-boundary' },
+     });
+ 
+-    const parentPrepared = await nativeNextCommand(
+-      [
+-        'parent',
+-        '--summary',
+-        'Prepare the parent contract confirmation',
+-        '--coordination-mode',
+-        'multi-session',
+-      ],
+-      repository,
+-    );
++    const parentPrepared = recovered;
+     expect(data(parentPrepared).state).toMatchObject({
+       phase: 'shape',
+       status: 'await-user',
+@@ -899,7 +901,15 @@ children:
+     ).toBe(true);
+ 
+     const parentConfirmed = await nativeNextCommand(
+-      await guardedShapeConfirmationArgs(parentPaths, 'parent', 'Confirm the parent contract'),
++      [
++        ...(await guardedShapeConfirmationArgs(
++          parentPaths,
++          'parent',
++          'Confirm the parent contract',
++        )),
++        '--coordination-mode',
++        'multi-session',
++      ],
+       repository,
+     );
+     expect(data(parentConfirmed).state).toMatchObject({
+@@ -935,11 +945,13 @@ children:
+     await ensureCometProjectGitignore(repository);
+     git(repository, ['add', '.']);
+     git(repository, ['commit', '-m', 'seed after the change exists']);
+-    const recovered = await nativeNextCommand(
+-      ['parent', '--summary', 'Recover the portable Shape in the new Git workspace'],
+-      repository,
+-    );
+-    expect(recovered.data).toMatchObject({ recovery: { reason: 'missing' } });
++    const recovered = await nativeNextCommand(['parent'], repository);
++    expect(recovered.data).toMatchObject({
++      state: {
++        phase: 'shape',
++        workspace: { change_branch: null, target_branch: null },
++      },
++    });
+     await fs.writeFile(path.join(repository, 'uncommitted.txt'), 'not part of the baseline\n');
+ 
+     await expect(nativeDoctorCommand(['parent'], repository)).resolves.toMatchObject({
+@@ -990,11 +1002,13 @@ children:
+     git(repository, ['add', '.']);
+     git(repository, ['commit', '-m', 'seed after the change exists']);
+     const currentPaths = await nativeProjectPaths(repository, 'docs');
+-    const recovered = await nativeNextCommand(
+-      ['parent', '--summary', 'Recover the portable Shape in the new Git workspace'],
+-      repository,
+-    );
+-    expect(recovered.data).toMatchObject({ recovery: { reason: 'missing' } });
++    const recovered = await nativeNextCommand(['parent'], repository);
++    expect(recovered.data).toMatchObject({
++      state: {
++        phase: 'shape',
++        workspace: { change_branch: null, target_branch: null },
++      },
++    });
+     const head = git(repository, ['rev-parse', 'HEAD']);
+     const supervisor = createNativeSupervisorState({
+       parent: 'parent',
+@@ -1016,7 +1030,9 @@ children:
+       exitCode: 65,
+       data: {
+         findings: [
+-          expect.objectContaining({ message: expect.stringMatching(/active child tasks/iu) }),
++          expect.objectContaining({
++            message: expect.stringMatching(/active child tasks/iu),
++          }),
+         ],
+       },
+     });
+@@ -1036,510 +1052,127 @@ children:
+       workspace: { change_branch: null, target_branch: null },
+     });
+   });
+-
+-  it('gates the parent on real child merges and starts dependents from the integrated HEAD', async () => {
+-    const repository = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-children-'));
++  it('continues the approved v1 parent from actual merged Child archives at its explicit root', async () => {
++    const repository = await fs.mkdtemp(path.join(os.tmpdir(), 'native-v1-explicit-parent-'));
+     repositories.push(repository);
+     git(repository, ['init', '-b', 'integration']);
+     git(repository, ['config', 'user.email', 'native@example.test']);
+     git(repository, ['config', 'user.name', 'Native Test']);
+-
+     const config = defaultProjectConfig('docs', 'en');
+-    config.workflows = ['native', 'classic'];
+-    config.default_workflow = 'native';
+     await writeProjectConfig(repository, config);
+     await ensureCometProjectGitignore(repository);
+     await fs.mkdir(path.join(repository, 'src'), { recursive: true });
+-    await fs.writeFile(path.join(repository, 'src', 'base.ts'), 'export const base = true;\n');
+-    await fs.mkdir(path.join(repository, 'openspec', 'changes', 'child-a'), { recursive: true });
+-    await fs.writeFile(
+-      path.join(repository, 'openspec', 'changes', 'child-a', '.comet.yaml'),
+-      'phase: build\n',
+-    );
++    await fs.writeFile(path.join(repository, 'src/base.ts'), 'export const base=true;\n');
+     git(repository, ['add', '.']);
+-    git(repository, ['commit', '-m', 'seed parent integration branch']);
+-
+-    const parentCreated = await nativeNewCommand(['parent', '--runtime', 'compat'], repository);
+-    expect(parentCreated.exitCode).toBe(0);
+-    const parentPaths = await nativeProjectPaths(repository, 'docs');
+-    await ensureNativeDirectories(parentPaths);
+-    const parentDir = nativePortableChangeDir(parentPaths, 'parent');
++    git(repository, ['commit', '-m', 'seed explicit parent']);
++    expect((await nativeNewCommand(['parent', '--runtime', 'compat'], repository)).exitCode).toBe(
++      0,
++    );
++    const parentPaths = await nativeProjectPaths(repository, 'docs'),
++      parentDir = nativePortableChangeDir(parentPaths, 'parent');
+     await fs.writeFile(path.join(parentDir, 'brief.md'), PARENT_BRIEF);
+     await fs.writeFile(path.join(parentDir, 'children.yaml'), CHILDREN);
+-    const parentPrepared = await nativeNextCommand(
+-      ['parent', '--summary', 'Prepare the parent contract confirmation'],
+-      repository,
+-    );
+-    expect(data(parentPrepared).state).toMatchObject({ phase: 'shape', status: 'await-user' });
+-    const parentConfirmed = await nativeNextCommand(
+-      await guardedShapeConfirmationArgs(parentPaths, 'parent', 'Confirm the parent contract'),
+-      repository,
+-    );
+-    expect(data(parentConfirmed).state).toMatchObject({ phase: 'build' });
+-    const parentState = await readNativePortableChange(parentPaths, 'parent');
+-    expect(parentState).toMatchObject({
+-      phase: 'build',
+-      workspace: { change_branch: 'integration' },
+-      children_contract_ref: expect.stringMatching(/^parent:shape:\d+$/u),
+-    });
+-
+-    const initialChildren = await inspectNativeChildren({ paths: parentPaths, state: parentState });
+-    expect(initialChildren?.children.map(({ name, status }) => ({ name, status }))).toEqual([
+-      { name: 'child-a', status: 'ready' },
+-      { name: 'child-b', status: 'pending' },
+-      { name: 'child-c', status: 'ready' },
+-    ]);
+-    expect(initialChildren?.readyChildren).toEqual(['child-a', 'child-c']);
+-    await expect(
+-      inspectNativePortableStatus({ paths: parentPaths, name: 'parent' }),
+-    ).resolves.toMatchObject({
+-      childSummary: { total: 3, ready: 2, pending: 1 },
+-      readyChildren: ['child-a', 'child-c'],
+-    });
+-
+-    const gated = await nativeNextCommand(
+-      ['parent', '--summary', 'Advance the ready children'],
+-      repository,
+-    );
+-    expect(data(gated)).toMatchObject({
+-      state: { phase: 'build' },
+-      readyChildren: ['child-a', 'child-c'],
+-      continuation: { action: 'advance-children', runnerAction: { kind: 'none' } },
+-    });
+-    await expect(nativeShowCommand(['parent'], repository)).resolves.toMatchObject({
+-      data: {
+-        continuation: { action: 'advance-children', runnerAction: { kind: 'none' } },
+-      },
+-    });
+-    await expect(nativeDoctorCommand(['parent', '--repair'], repository)).resolves.toMatchObject({
+-      data: {
+-        continuation: { action: 'advance-children', runnerAction: { kind: 'none' } },
+-      },
++    const approved = await confirmNativePortableShape({
++      paths: parentPaths,
++      name: 'parent',
+     });
+-    const parentRunner = createNativeRunnerChannel();
+-    await expect(
+-      submitNativePortableBuilderCandidate({
+-        paths: parentPaths,
+-        name: 'parent',
+-        input: {
+-          identity: parentRunner.captureExecutionIdentity({
+-            identityProvider: 'test-host',
+-            executionRef: 'parent-builder',
+-          }),
+-          summary: 'A parent Builder must not run.',
+-          addressedAcceptanceIds: parentState.acceptance.map(({ id }) => id),
+-          acceptanceReview: fixtureAcceptanceReview(parentState.acceptance.map(({ id }) => id)),
+-          review: {
+-            status: 'passed',
+-            summary: 'Independent parent review passed.',
+-            reviewerExecutionRef: 'parent-reviewer-early',
+-          },
+-        },
+-      }),
+-    ).rejects.toThrow(/parent Build advances child changes/iu);
+-
++    expect(approved.children_contract?.schema).toBe('comet.native.children.v1');
++    const approval = approved.children_contract_ref,
++      originalContract = approved.children_contract;
+     git(repository, ['add', 'docs/comet/changes/parent']);
+-    git(repository, ['commit', '-m', 'confirm parent child plan']);
+-    expect(git(repository, ['status', '--short'])).toBe('');
+-
+-    const earlyDependentCreated = await nativeNewCommand(
+-      [
+-        'child-b',
+-        '--isolation',
+-        'worktree',
+-        '--target-branch',
+-        'integration',
+-        '--runtime',
+-        'compat',
+-      ],
+-      repository,
+-    );
+-    const earlyDependentRoot = data(earlyDependentCreated).preparation?.projectRoot;
+-    expect(earlyDependentCreated.exitCode).toBe(0);
+-    expect(earlyDependentRoot).toBeTruthy();
+-    linkedWorktrees.push({ repository, root: earlyDependentRoot! });
+-    await expect(
+-      inspectNativeChildren({
++    git(repository, ['commit', '-m', 'fixture user approved v1 parent scope']);
++    let expectedBase = git(repository, ['rev-parse', 'HEAD']);
++    for (const name of ['child-a', 'child-b', 'child-c']) {
++      const created = await nativeNewCommand(
++        [name, '--runtime', 'compat', '--isolation', 'worktree', '--target-branch', 'integration'],
++        repository,
++      );
++      expect(created.exitCode).toBe(0);
++      const childRoot = data(created).preparation!.projectRoot;
++      linkedWorktrees.push({ repository, root: childRoot });
++      expect(git(childRoot, ['rev-parse', 'HEAD'])).toBe(expectedBase);
++      if (name === 'child-b')
++        expect(await fs.readFile(path.join(childRoot, 'src/child-a.ts'), 'utf8')).toContain(
++          'child-a',
++        );
++      const childPaths = await nativeProjectPaths(childRoot, 'docs'),
++        childDir = nativePortableChangeDir(childPaths, name);
++      await fs.writeFile(path.join(childDir, 'brief.md'), CHILD_BRIEF);
++      const shaped = await confirmNativePortableShape({
++        paths: childPaths,
++        name,
++      });
++      await fs.writeFile(
++        path.join(childRoot, 'src', name + '.ts'),
++        'export const value=' + JSON.stringify(name) + ';\n',
++      );
++      await verifyChild({ paths: childPaths, state: shaped });
++      expect(
++        (await nativeArchiveCommand([name, '--dry-run', '--finish', 'merge'], childRoot)).exitCode,
++      ).toBe(0);
++      git(childRoot, ['add', '-A']);
++      git(childRoot, ['commit', '-m', 'actual verified ' + name]);
++      const archived = await nativeArchiveCommand([name, '--confirmed'], childRoot);
++      expect(archived.exitCode).toBe(0);
++      expect(data(archived).workspaceFinishResult).toMatchObject({
++        merged: true,
++      });
++      expect(await fs.readFile(path.join(repository, 'src', name + '.ts'), 'utf8')).toContain(name);
++      const index = linkedWorktrees.findIndex((e) => e.root === childRoot);
++      if (index >= 0) linkedWorktrees.splice(index, 1);
++      await expect(fs.stat(childRoot)).rejects.toMatchObject({
++        code: 'ENOENT',
++      });
++      expectedBase = git(repository, ['rev-parse', 'HEAD']);
++      const parent = await readNativePortableChange(parentPaths, 'parent');
++      expect(parent.children_contract_ref).toBe(approval);
++      expect(parent.children_contract).toEqual(originalContract);
++      // All evidence used here is already committed at this explicitly supplied parent root.
++      const local = await inspectNativeChildren({
+         paths: parentPaths,
+-        state: await readNativePortableState(path.join(parentDir, 'comet-state.yaml')),
+-      }),
+-    ).resolves.toMatchObject({
+-      children: expect.arrayContaining([
+-        expect.objectContaining({
+-          name: 'child-b',
+-          status: 'blocked',
+-          message: expect.stringMatching(/started before its dependencies merged/iu),
+-        }),
+-      ]),
++        state: parent,
++      });
++      expect(local?.children.find((c) => c.name === name)?.status).toBe('done');
++      if (name === 'child-a')
++        expect(local?.children.find((c) => c.name === 'child-b')?.status).toBe('ready');
++    }
++    const completedChildren = await inspectNativeChildren({
++      paths: parentPaths,
++      state: await readNativePortableChange(parentPaths, 'parent'),
+     });
+-
+-    const childCreated = await nativeNewCommand(
++    expect(completedChildren?.allDone).toBe(true);
++    const report = execFileSync(
++      process.execPath,
+       [
+-        'child-a',
+-        '--isolation',
+-        'worktree',
+-        '--target-branch',
+-        'integration',
+-        '--runtime',
+-        'compat',
++        '-e',
++        'const fs=require("node:fs"),assert=require("node:assert/strict");for(const n of ["child-a","child-b","child-c"])assert.ok(fs.readFileSync("src/"+n+".ts","utf8").includes(n));console.log("Actual complete parent integration passed")',
+       ],
+-      repository,
+-    );
+-    const childRoot = data(childCreated).preparation?.projectRoot;
+-    expect(childCreated.exitCode).toBe(0);
+-    expect(childRoot).toBeTruthy();
+-    linkedWorktrees.push({ repository, root: childRoot! });
+-    const childConfig = await readProjectConfig(childRoot!);
+-    const childPaths = await nativeProjectPaths(childRoot!, childConfig!.native.artifact_root);
+-    const childDir = nativePortableChangeDir(childPaths, 'child-a');
+-    await fs.writeFile(path.join(childDir, 'brief.md'), CHILD_BRIEF);
+-    const childShaped = await confirmNativePortableShape({ paths: childPaths, name: 'child-a' });
+-    await fs.writeFile(path.join(childRoot!, 'src', 'a.ts'), 'export const childA = true;\n');
+-    await verifyChild({ paths: childPaths, state: childShaped });
+-
+-    const archivePreview = await nativeArchiveCommand(
+-      ['child-a', '--dry-run', '--finish', 'merge'],
+-      childRoot!,
++      { cwd: repository, encoding: 'utf8' },
+     );
+-    expect(archivePreview.exitCode).toBe(0);
+-    git(childRoot!, ['add', '-A']);
+-    git(childRoot!, ['commit', '-m', 'implement verified child a']);
+-    expect(git(repository, ['status', '--short'])).toBe('');
+-
+-    const archived = await nativeArchiveCommand(['child-a', '--confirmed'], childRoot!);
+-    expect(archived.exitCode).toBe(0);
+-    expect(data(archived).workspaceFinishResult).toMatchObject({ merged: true });
+-    await expect(fs.readFile(path.join(repository, 'src', 'a.ts'), 'utf8')).resolves.toContain(
+-      'export const childA = true;',
+-    );
+-
+-    const parentAfterMerge = await readNativePortableState(
+-      path.join(parentDir, 'comet-state.yaml'),
+-    );
+-    const afterA = await inspectNativeChildren({ paths: parentPaths, state: parentAfterMerge });
+-    expect(afterA?.children.map(({ name, status }) => ({ name, status }))).toEqual([
+-      { name: 'child-a', status: 'done' },
+-      { name: 'child-b', status: 'blocked' },
+-      { name: 'child-c', status: 'ready' },
+-    ]);
+-    expect(afterA?.children[1]?.message).toMatch(/does not include merged dependencies: child-a/iu);
+-    expect(afterA?.readyChildren).toEqual(['child-c']);
+-
+-    execFileSync('git', ['worktree', 'remove', '--force', earlyDependentRoot!], {
+-      cwd: repository,
+-      stdio: 'ignore',
+-    });
+-    await fs.rm(earlyDependentRoot!, { recursive: true, force: true });
+-    const earlyIndex = linkedWorktrees.findIndex(({ root }) => root === earlyDependentRoot);
+-    if (earlyIndex >= 0) linkedWorktrees.splice(earlyIndex, 1);
+-    git(repository, ['branch', '-D', 'comet/child-b']);
+-    await expect(
+-      inspectNativeChildren({ paths: parentPaths, state: parentAfterMerge }),
+-    ).resolves.toMatchObject({
+-      children: expect.arrayContaining([
+-        expect.objectContaining({ name: 'child-b', status: 'ready' }),
+-      ]),
+-      readyChildren: ['child-b', 'child-c'],
+-    });
+-
+-    const parentHeadAfterA = git(repository, ['rev-parse', 'HEAD']);
+-    const dependentCreated = await nativeNewCommand(
+-      [
+-        'child-b',
+-        '--isolation',
+-        'worktree',
+-        '--target-branch',
+-        'integration',
+-        '--runtime',
+-        'compat',
+-      ],
+-      repository,
+-    );
+-    const dependentRoot = data(dependentCreated).preparation?.projectRoot;
+-    expect(dependentCreated.exitCode).toBe(0);
+-    expect(dependentRoot).toBeTruthy();
+-    linkedWorktrees.push({ repository, root: dependentRoot! });
+-    expect(git(dependentRoot!, ['rev-parse', 'HEAD'])).toBe(parentHeadAfterA);
+-    await expect(fs.readFile(path.join(dependentRoot!, 'src', 'a.ts'), 'utf8')).resolves.toContain(
+-      'export const childA = true;',
+-    );
+-    await expect(
+-      inspectNativeChildren({ paths: parentPaths, state: parentAfterMerge }),
+-    ).resolves.toMatchObject({
+-      children: expect.arrayContaining([
+-        expect.objectContaining({ name: 'child-b', status: 'active' }),
+-      ]),
+-    });
+-
+-    const archivedDirectory = path.join(
+-      parentPaths.archiveDir,
+-      path.basename(data(archived).archiveDir!),
+-    );
+-    const archivedA = await readNativePortableState(
+-      path.join(archivedDirectory, 'comet-state.yaml'),
+-    );
+-    await writeMergedChildProjection({
+-      paths: parentPaths,
+-      source: archivedA,
+-      name: 'child-b',
+-      parentBranch: 'integration',
+-    });
+-    await writeMergedChildProjection({
+-      paths: parentPaths,
+-      source: archivedA,
+-      name: 'child-c',
+-      parentBranch: 'integration',
+-    });
+-    const uncommittedProjection = await inspectNativeChildren({
+-      paths: parentPaths,
+-      state: parentAfterMerge,
+-    });
+-    expect(uncommittedProjection?.allDone).toBe(false);
+-    git(repository, ['add', 'docs/comet/archive']);
+-    git(repository, ['commit', '-m', 'record merged child projections']);
+-    const allDone = await inspectNativeChildren({ paths: parentPaths, state: parentAfterMerge });
+-    expect(allDone?.allDone).toBe(true);
+-    const discoveredParent = await findNativeV1SupervisorParents({
+-      paths: parentPaths,
+-      childName: 'child-c',
+-      targetBranch: 'integration',
+-    });
+-    expect(discoveredParent.candidate?.state.name).toBe('parent');
+-
+-    const pendingParentName = 'parent-pending';
+-    const pendingParentDir = nativePortableChangeDir(parentPaths, pendingParentName);
+-    await fs.cp(parentDir, pendingParentDir, { recursive: true });
+-    const pendingParentState = await readNativePortableState(
+-      path.join(pendingParentDir, 'comet-state.yaml'),
+-    );
+-    pendingParentState.name = pendingParentName;
+-    const pendingChildrenSource = `${CHILDREN}  - name: child-pending\n    depends_on: []\n    covers: []\n`;
+-    await fs.writeFile(path.join(pendingParentDir, 'children.yaml'), pendingChildrenSource);
+-    // 模拟旧格式父级记录的分叉；当前存储引用与声明，不生成内容证明。
+-    pendingParentState.children_contract_ref ??= 'children.yaml';
+-    delete pendingParentState.children_contract_hash;
+-    pendingParentState.children_contract = parseNativeChildrenContract(
+-      pendingChildrenSource,
+-      pendingParentState.acceptance.map(({ id }) => id),
+-    );
+-    await writeNativePortableState(
+-      path.join(pendingParentDir, 'comet-state.yaml'),
+-      pendingParentState,
+-    );
+-    const ambiguousParent = await findNativeV1SupervisorParents({
+-      paths: parentPaths,
+-      childName: 'child-c',
+-      targetBranch: 'integration',
+-    });
+-    expect(ambiguousParent.candidate).toBeNull();
+-    expect(ambiguousParent.blockers.join('\n')).toMatch(
+-      /multiple active parents|parent-pending is not ready to advance/iu,
+-    );
+-    pendingParentState.workspace.target_branch = 'other';
+-    await writeNativePortableState(
+-      path.join(pendingParentDir, 'comet-state.yaml'),
+-      pendingParentState,
+-    );
+-    const mismatchedParent = await findNativeV1SupervisorParents({
+-      paths: parentPaths,
+-      childName: 'child-c',
+-      targetBranch: 'integration',
+-    });
+-    expect(mismatchedParent.candidate).toBeNull();
+-    expect(mismatchedParent.blockers.join('\n')).toMatch(/targets other, not integration/iu);
+-    const missingParent = await findNativeV1SupervisorParents({
+-      paths: parentPaths,
+-      childName: 'unknown-child',
+-      targetBranch: 'integration',
+-    });
+-    expect(missingParent.candidate).toBeNull();
+-    expect(missingParent.blockers.join('\n')).toMatch(/no active v1 parent declaring it/iu);
+-
+-    const parentReviewInput = path.join(repository, 'parent-review-input.json');
++    expect(report).toContain('Actual complete parent integration passed');
++    const input = path.join(repository, 'parent-result.json');
+     await fs.writeFile(
+-      parentReviewInput,
++      input,
+       JSON.stringify({
+         kind: 'builder-handoff',
+-        summary: 'Reviewed the final integrated parent result.',
+-        addressed_acceptance_ids: parentState.acceptance.map(({ id }) => id),
+-        acceptance_review: fixtureAcceptanceReview(parentState.acceptance.map(({ id }) => id)),
+-        checks: [],
+-        known_limits: [],
+-        review: {
+-          status: 'passed',
+-          summary: 'Independent parent code review passed.',
+-          reviewer_execution_ref: 'parent-reviewer',
+-        },
+-      }),
+-    );
+-    const integrated = await nativeNextCommand(
+-      ['parent', '--runner-input', parentReviewInput],
+-      repository,
+-    );
+-    expect(data(integrated).state).toMatchObject({ phase: 'verify' });
+-    const integratedState = await readNativePortableChange(parentPaths, 'parent');
+-    expect(integratedState).toMatchObject({
+-      phase: 'verify',
+-      builder_handoff: {
+-        addressed_acceptance_ids: parentState.acceptance.map(({ id }) => id),
+-        acceptance_review: fixtureAcceptanceReview(parentState.acceptance.map(({ id }) => id)),
+-        review: { reviewer_execution_ref: 'parent-reviewer' },
+-      },
+-    });
+-    expect(integratedState.acceptance.map(({ id, text }) => ({ id, text }))).toEqual(
+-      parentState.acceptance.map(({ id, text }) => ({ id, text })),
+-    );
+-
+-    const parentChecks = await executeNativePortableCheckPlan({
+-      paths: parentPaths,
+-      name: 'parent',
+-      plans: [],
+-    });
+-    const parentDispatched = await dispatchNativePortableVerifier({
+-      paths: parentPaths,
+-      name: 'parent',
+-      checks: parentChecks.checks,
+-    });
+-    const verifier = createNativeRunnerChannel();
+-    const failed = await submitNativePortableVerifierResult({
+-      paths: parentPaths,
+-      name: 'parent',
+-      checks: parentChecks.checks,
+-      maxVerifyFailures: 3,
+-      envelope: verifier.envelopeVerifierResponse({
+-        candidateId: parentDispatched.builder_handoff!.candidate_id,
+-        identity: verifier.captureExecutionIdentity({
+-          identityProvider: 'test-host',
+-          executionRef: 'parent-verifier',
+-        }),
+-        payload: {
+-          kind: 'final-result',
+-          result: {
+-            iteration: parentDispatched.loop.iteration,
+-            attempt: parentDispatched.loop.attempt,
+-            verdict: 'fail',
+-            acceptance: parentDispatched.acceptance.map(({ id }, index) => ({
+-              id,
+-              result: index === 0 ? 'failed' : 'passed',
+-              reason: index === 0 ? 'The integrated behavior needs repair.' : 'Passed.',
+-            })),
+-            risks: [],
+-            summary: 'The parent integration needs a repair child.',
+-          },
+-        },
+-      }),
+-    });
+-    expect(failed.state).toMatchObject({
+-      phase: 'build',
+-      verification_result: 'fail',
+-      loop: { stage: 'repairing' },
+-    });
+-
+-    const repairRequired = await nativeNextCommand(
+-      ['parent', '--summary', 'Plan the failed parent acceptance repair'],
+-      repository,
+-    );
+-    expect(data(repairRequired).continuation).toMatchObject({
+-      action: 'builder-handoff',
+-      requiredInputs: ['builder-handoff-json-file'],
+-      runnerAction: { kind: 'builder-handoff' },
+-    });
+-    await fs.writeFile(path.join(parentDir, 'children.yaml'), REORDERED_CHILDREN);
+-    await expect(
+-      inspectNativePortableStatus({ paths: parentPaths, name: 'parent' }),
+-    ).resolves.toMatchObject({
+-      continuation: { action: 'builder-handoff', requiredInputs: ['builder-handoff-json-file'] },
+-    });
+-    const unchanged = await nativeNextCommand(
+-      ['parent', '--summary', 'Inspect edits without withdrawing approval'],
+-      repository,
+-    );
+-    expect(data(unchanged).state).toMatchObject({ phase: 'build', verification_result: 'fail' });
+-    const parentRepair = await nativeNextCommand(
+-      ['parent', '--runner-input', parentReviewInput],
+-      repository,
+-    );
+-    expect(data(parentRepair).state).toMatchObject({ phase: 'verify' });
+-    const repairChecks = await executeNativePortableCheckPlan({
+-      paths: parentPaths,
+-      name: 'parent',
+-      plans: [],
+-    });
+-    const repairDispatch = await dispatchNativePortableVerifier({
+-      paths: parentPaths,
+-      name: 'parent',
+-      checks: repairChecks.checks,
+-    });
+-    const failedRepair = await submitNativePortableVerifierResult({
+-      paths: parentPaths,
+-      name: 'parent',
+-      checks: repairChecks.checks,
+-      maxVerifyFailures: 3,
+-      envelope: verifier.envelopeVerifierResponse({
+-        candidateId: repairDispatch.builder_handoff!.candidate_id,
+-        identity: verifier.captureExecutionIdentity({
+-          identityProvider: 'test-host',
+-          executionRef: 'parent-repair-verifier',
+-        }),
+-        payload: {
+-          kind: 'final-result',
+-          result: {
+-            iteration: repairDispatch.loop.iteration,
+-            attempt: repairDispatch.loop.attempt,
+-            verdict: 'fail',
+-            acceptance: repairDispatch.acceptance.map(({ id }, index) => ({
+-              id,
+-              result: index === 0 ? 'failed' : 'passed',
+-              reason: 'Actual parent verification result.',
+-            })),
+-            risks: [],
+-            summary: 'The Agent chooses to replan after another actual failure.',
++        summary: 'All actual Child outputs are integrated at the explicit parent root.',
++        addressed_acceptance_ids: approved.acceptance.map((a) => a.id),
++        acceptance_review: fixtureAcceptanceReview(approved.acceptance.map((a) => a.id)),
++        checks: [
++          {
++            name: 'Actual complete parent integration',
++            result: 'passed',
++            note: report.trim(),
+           },
+-        },
++        ],
++        known_limits: [],
+       }),
+-    });
+-    const replanning = await nativeNextCommand(
+-      ['parent', '--revise-requirements', '--summary', 'Explicitly revise the repair child plan'],
+-      repository,
+     );
+-    expect(data(replanning).state).toMatchObject({ phase: 'shape', acceptance: { total: 0 } });
+-    expect(
+-      (await readNativePortableChange(parentPaths, 'parent')).loop.failed_iteration_count,
+-    ).toBe(failedRepair.state.loop.failed_iteration_count);
+-    await expect(
+-      nativeNextCommand(
+-        ['parent', '--summary', 'Prepare the incomplete repair plan for confirmation'],
+-        repository,
+-      ),
+-    ).resolves.toMatchObject({
+-      exitCode: 0,
+-      data: { state: { phase: 'shape', status: 'await-user' } },
+-    });
+-    const replanned = await nativeNextCommand(
+-      await guardedShapeConfirmationArgs(
+-        parentPaths,
+-        'parent',
+-        'Confirm parent-owned integration repair',
+-      ),
+-      repository,
+-    );
+-    expect(data(replanned)).toMatchObject({ state: { phase: 'build' } });
+-    const confirmedRepair = await readNativePortableChange(parentPaths, 'parent');
+-    expect(confirmedRepair.loop.failed_iteration_count).toBe(
+-      failedRepair.state.loop.failed_iteration_count,
++    const submitted = await nativeNextCommand(['parent', '--runner-input', input], repository);
++    expect(submitted.exitCode).toBe(0);
++    expect(data(submitted).state).toMatchObject({ phase: 'verify' });
++    expect((await readNativePortableChange(parentPaths, 'parent')).children_contract_ref).toBe(
++      approval,
+     );
+-    expect(confirmedRepair.children_contract?.children.map(({ name }) => name).sort()).toEqual([
+-      'child-a',
+-      'child-b',
+-      'child-c',
+-    ]);
+-    const repairedCandidate = await nativeNextCommand(
+-      ['parent', '--runner-input', parentReviewInput],
+-      repository,
+-    );
+-    expect(data(repairedCandidate).state).toMatchObject({ phase: 'verify' });
+-    expect(
+-      (await readNativePortableChange(parentPaths, 'parent')).acceptance.map(({ id }) => id),
+-    ).toEqual(parentState.acceptance.map(({ id }) => id));
+-  }, 300_000);
++  }, 120000);
+ });
+diff --git a/test/domains/comet-native/native-portable-delta.test.ts b/test/domains/comet-native/native-portable-delta.test.ts
+--- a/test/domains/comet-native/native-portable-delta.test.ts
++++ b/test/domains/comet-native/native-portable-delta.test.ts
+@@ -1,3 +1,4 @@
++import { execFileSync } from 'node:child_process';
+ import { rebaseNativePortableDeltas } from '../../../domains/comet-native/native-portable-delta-rebase.js';
+ import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
+ import { createHash } from 'node:crypto';
+@@ -17,7 +18,6 @@ import {
+   confirmNativePortableSkillCoordinatedPass,
+   createNativePortableChange,
+   dispatchNativePortableVerifier,
+-  executeNativePortableCheckPlan,
+   nativePortableChangeDir,
+   readNativePortableChange,
+   submitNativePortableBuilderCandidate,
+@@ -98,22 +98,26 @@ describe('Native portable delta integration', () => {
+       });
+     }
+     const current = await readNativePortableChange(paths, name);
+-    const executed = await executeNativePortableCheckPlan({
+-      paths,
+-      name,
+-      plans: [
++    const checkOutput = execFileSync(
++      process.execPath,
++      ['-e', 'console.log("Actual platform Delta check passed")'],
++      { cwd: paths.projectRoot, encoding: 'utf8' },
++    );
++    expect(checkOutput).toContain('Actual platform Delta check passed');
++    const executed = {
++      checks: [
+         {
+-          id: 'delta-test',
+           name: 'Delta test',
+-          executable: process.execPath,
+-          argv: ['-e', 'process.exit(0)'],
+-          cwdRef: '.',
+-          timeoutMs: 10_000,
+-          repeatable: true,
++          result: 'passed' as const,
++          note: checkOutput.trim(),
+         },
+       ],
++    };
++    const ready = await dispatchNativePortableVerifier({
++      paths,
++      name,
++      checks: executed.checks,
+     });
+-    const ready = await dispatchNativePortableVerifier({ paths, name, checks: executed.checks });
+     await submitNativePortableVerifierResult({
+       paths,
+       name,
+@@ -150,7 +154,9 @@ describe('Native portable delta integration', () => {
+     deltaText: string,
+     independentRequirements: Readonly<Record<string, string | null>> = {},
+   ): Promise<Awaited<ReturnType<typeof confirmNativePortableShape>>> {
+-    await fs.mkdir(path.join(paths.specsDir, 'authentication'), { recursive: true });
++    await fs.mkdir(path.join(paths.specsDir, 'authentication'), {
++      recursive: true,
++    });
+     await fs.writeFile(path.join(paths.specsDir, 'authentication', 'spec.md'), baseline);
+     await createNativePortableChange({ paths, name, language: 'en' });
+     const changeDir = nativePortableChangeDir(paths, name);
+@@ -158,7 +164,9 @@ describe('Native portable delta integration', () => {
+       path.join(changeDir, 'brief.md'),
+       '# Acceptance examples\n- The delta is applied.\n',
+     );
+-    await fs.mkdir(path.join(changeDir, 'specs', 'authentication'), { recursive: true });
++    await fs.mkdir(path.join(changeDir, 'specs', 'authentication'), {
++      recursive: true,
++    });
+     const parsedDelta = parseNativeDelta(deltaText);
+     const preparedDelta = {
+       ...parsedDelta,
+@@ -188,7 +196,9 @@ describe('Native portable delta integration', () => {
+     name: string,
+     target: string,
+   ): Promise<Awaited<ReturnType<typeof confirmNativePortableShape>>> {
+-    await fs.mkdir(path.join(paths.specsDir, 'authentication'), { recursive: true });
++    await fs.mkdir(path.join(paths.specsDir, 'authentication'), {
++      recursive: true,
++    });
+     await fs.writeFile(path.join(paths.specsDir, 'authentication', 'spec.md'), baseline);
+     await createNativePortableChange({ paths, name, language: 'en' });
+     const changeDir = nativePortableChangeDir(paths, name);
+@@ -196,7 +206,9 @@ describe('Native portable delta integration', () => {
+       path.join(changeDir, 'brief.md'),
+       '# Acceptance examples\n- The complete target Spec is applied.\n',
+     );
+-    await fs.mkdir(path.join(changeDir, 'specs', 'authentication'), { recursive: true });
++    await fs.mkdir(path.join(changeDir, 'specs', 'authentication'), {
++      recursive: true,
++    });
+     await fs.writeFile(path.join(changeDir, 'specs', 'authentication', 'spec.md'), target);
+     return confirmNativePortableShape({ paths, name });
+   }
+@@ -261,7 +273,9 @@ describe('Native portable delta integration', () => {
+   it('explicitly rebases a passed Delta and returns only that requested change to Verify', async () => {
+     const name = 'add-profile';
+     const deltaText = `schema: comet.native.delta.v1\ncapability: authentication\nbase_hash: ${sha256(baseline)}\nbase_version: 1\nlegacy_hash: ${nativeLegacySectionHash(baseline)}\noperations:\n  - id: authentication.sms\n    operation: add\n    title: SMS login\n    body: SMS login MUST be available.\n`;
+-    const shaped = await prepareChange(name, deltaText, { 'authentication.profile': null });
++    const shaped = await prepareChange(name, deltaText, {
++      'authentication.profile': null,
++    });
+     await verify(name, shaped);
+     await fs.writeFile(
+       path.join(paths.specsDir, 'authentication', 'spec.md'),
+@@ -273,7 +287,10 @@ describe('Native portable delta integration', () => {
+       phase: 'verify',
+       verification_result: 'pending',
+       verification: null,
+-      loop: { stage: 'verify-ready', next_action: 'run-final-full-verification' },
++      loop: {
++        stage: 'verify-ready',
++        next_action: 'run-final-full-verification',
++      },
+     });
+ 
+     const rebasedDelta = await fs.readFile(
+@@ -293,7 +310,9 @@ describe('Native portable delta integration', () => {
+   it('keeps Archive dry-run preview-only after an independent canonical Delta edit', async () => {
+     const name = 'dry-run-rebase-preview';
+     const deltaText = `schema: comet.native.delta.v1\ncapability: authentication\nbase_hash: ${sha256(baseline)}\nbase_version: 1\nlegacy_hash: ${nativeLegacySectionHash(baseline)}\noperations:\n  - id: authentication.sms\n    operation: add\n    title: SMS login\n    body: SMS login MUST be available.\n`;
+-    const shaped = await prepareChange(name, deltaText, { 'authentication.profile': null });
++    const shaped = await prepareChange(name, deltaText, {
++      'authentication.profile': null,
++    });
+     await verify(name, shaped);
+     await fs.writeFile(
+       path.join(paths.specsDir, 'authentication', 'spec.md'),
+@@ -330,7 +349,9 @@ describe('Native portable delta integration', () => {
+     const passwordSection =
+       '## Requirement: authentication.password Password login\n\nPassword behavior.\n\n';
+     const deltaText = `schema: comet.native.delta.v1\ncapability: authentication\nbase_hash: ${sha256(baseline)}\nbase_version: 1\nlegacy_hash: ${nativeLegacySectionHash(baseline)}\noperations:\n  - id: authentication.password\n    operation: modify\n    expected_hash: ${nativeRequirementSectionHash(passwordSection)}\n    body: Password behavior with a session check.\n`;
+-    const shaped = await prepareChange(name, deltaText, { 'authentication.profile': null });
++    const shaped = await prepareChange(name, deltaText, {
++      'authentication.profile': null,
++    });
+     await verify(name, shaped);
+     const preparedDeltaText = await fs.readFile(
+       path.join(paths.changesDir, name, 'specs', 'authentication', 'delta.yaml'),
+@@ -402,7 +423,9 @@ describe('Native portable delta integration', () => {
+   it('explicitly rebases an already applied Delta with an independent canonical addition', async () => {
+     const name = 'add-profile-after-replay';
+     const deltaText = `schema: comet.native.delta.v1\ncapability: authentication\nbase_hash: ${sha256(baseline)}\nbase_version: 1\nlegacy_hash: ${nativeLegacySectionHash(baseline)}\noperations:\n  - id: authentication.sms\n    operation: add\n    title: SMS login\n    body: SMS login MUST be available.\n`;
+-    const shaped = await prepareChange(name, deltaText, { 'authentication.profile': null });
++    const shaped = await prepareChange(name, deltaText, {
++      'authentication.profile': null,
++    });
+     await verify(name, shaped);
+     const merged = applyNativeDelta({
+       baselineMarkdown: baseline,
+diff --git a/test/domains/comet-native/native-shape-incremental.test.ts b/test/domains/comet-native/native-shape-incremental.test.ts
+--- a/test/domains/comet-native/native-shape-incremental.test.ts
++++ b/test/domains/comet-native/native-shape-incremental.test.ts
+@@ -142,7 +142,6 @@ async function fixture(
+           knownLimits: [],
+           review: null,
+           submittedAt: new Date().toISOString(),
+-          verificationChecks: [],
+         },
+       },
+       context: { requestId: randomUUID(), projectRoot: root },
+@@ -153,7 +152,10 @@ async function fixture(
+   };
+   const request = (file: string, content: string) =>
+     parseCometHookRequest(
+-      JSON.stringify({ tool_name: 'Write', tool_input: { file_path: file, content } }),
++      JSON.stringify({
++        tool_name: 'Write',
++        tool_input: { file_path: file, content },
++      }),
+     );
+   return {
+     base,
+@@ -257,7 +259,6 @@ describe('Native Shape incremental contract', () => {
+           knownLimits: [],
+           review: null,
+           submittedAt: new Date().toISOString(),
+-          verificationChecks: [],
+         },
+       },
+       context: { projectRoot: f.root, requestId: randomUUID() },
+@@ -276,7 +277,7 @@ describe('Native Shape incremental contract', () => {
+     });
+   });
+ 
+-  it('reads valid historical Shape fields and rejects malformed historical state', async () => {
++  it('ignores retired historical Shape snapshot fields without changing business state', async () => {
+     const f = await fixture();
+     const state = await f.state();
+     const digest = 'a'.repeat(64);
+@@ -298,9 +299,7 @@ describe('Native Shape incremental contract', () => {
+         })),
+       },
+     };
+-    expect(parseNativePortableState(historical).shape_semantic_snapshot).toEqual(
+-      historical.shape_semantic_snapshot,
+-    );
++    expect(parseNativePortableState(historical)).toEqual(state);
+     const invalid = {
+       ...historical,
+       shape_semantic_snapshot: {
+@@ -313,6 +312,7 @@ describe('Native Shape incremental contract', () => {
+         ],
+       },
+     };
+-    expect(() => parseNativePortableState(invalid)).toThrow('snapshot');
++    expect(parseNativePortableState(invalid)).toEqual(state);
++    expect(() => parseNativePortableState({ ...historical, phase: 'invalid' })).toThrow('phase');
+   });
+ });
+diff --git a/test/domains/comet-native/native-supervisor-legacy-diagnostics.test.ts b/test/domains/comet-native/native-supervisor-legacy-diagnostics.test.ts
+--- a/test/domains/comet-native/native-supervisor-legacy-diagnostics.test.ts
++++ b/test/domains/comet-native/native-supervisor-legacy-diagnostics.test.ts
+@@ -1,3 +1,7 @@
++import {
++  readNativePortableState,
++  writeNativePortableState,
++} from '../../../domains/comet-native/native-portable-state.js';
+ import { execFileSync } from 'node:child_process';
+ import { promises as fs } from 'node:fs';
+ import os from 'node:os';
+@@ -34,7 +38,11 @@ async function legacySupervisor() {
+   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-legacy-diagnostics-'));
+   roots.push(root);
+   const git = (...args: string[]) =>
+-    execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: 'pipe' }).trim();
++    execFileSync('git', args, {
++      cwd: root,
++      encoding: 'utf8',
++      stdio: 'pipe',
++    }).trim();
+   git('init', '-b', 'main');
+   git('config', 'user.email', 'native@example.test');
+   git('config', 'user.name', 'Native Test');
+@@ -51,7 +59,11 @@ async function legacySupervisor() {
+     paths,
+     name: 'parent',
+     language: 'en',
+-    workspaceBinding: { isolation: 'current', changeBranch: 'main', targetBranch: 'main' },
++    workspaceBinding: {
++      isolation: 'current',
++      changeBranch: 'main',
++      targetBranch: 'main',
++    },
+   });
+   const changeDir = nativePortableChangeDir(paths, 'parent');
+   await fs.writeFile(
+@@ -64,7 +76,17 @@ async function legacySupervisor() {
+     'schema: comet.native.children.v2\nchildren:\n  - name: core\n    summary: Core behavior.\n    depends_on: []\n',
+   );
+   await confirmNativePortableShape({ paths, name: 'parent' });
+-  await dispatchNativeSupervisorReadyTasks({ paths, parent: 'parent', maxParallel: 1 });
++  await dispatchNativeSupervisorReadyTasks({
++    paths,
++    parent: 'parent',
++    maxParallel: 1,
++  });
++  // This old overlay predates the persisted children contract. Current approved contracts remain authoritative.
++  const portableFile = path.join(changeDir, 'comet-state.yaml');
++  const portable = await readNativePortableState(portableFile);
++  delete portable.children_contract;
++  await writeNativePortableState(portableFile, portable);
++
+   const stateFile = nativeSupervisorStateFile(paths, 'parent');
+   const legacy = JSON.parse(await fs.readFile(stateFile, 'utf8'));
+   // Model a persisted pre-upgrade overlay, after the real Runtime confirmed Shape.
+@@ -88,12 +110,12 @@ describe('legacy Supervisor diagnostic recovery', () => {
+       if (problem === 'missing') await fs.unlink(childrenFile);
+       else await fs.writeFile(childrenFile, 'schema: [');
+       const before = await fs.readFile(stateFile, 'utf8');
++      const portableFile = path.join(nativePortableChangeDir(paths, 'parent'), 'comet-state.yaml');
++      const portableBefore = await fs.readFile(portableFile, 'utf8');
+       for (const command of ['status', 'show', 'doctor']) {
+         const result = await runNativeCli([command, 'parent', '--json', '--project-root', root]);
+         if (command === 'doctor') {
+-          expect(JSON.parse(result.stdout!), result.stdout!).toHaveProperty(
+-            'data.result.continuation',
+-          );
++          expect(JSON.parse(result.stdout!), result.stdout!).toHaveProperty('data.continuation');
+         } else {
+           expect(JSON.parse(result.stdout!)).not.toHaveProperty('error');
+           expect(result.exitCode).toBe(0);
+@@ -101,13 +123,20 @@ describe('legacy Supervisor diagnostic recovery', () => {
+       }
+       expect(await fs.readFile(stateFile, 'utf8')).toBe(before);
+       await expect(readNativeSupervisorState(paths, 'parent')).rejects.toThrow();
+-      const diagnostics = await readNativeSupervisorState(paths, 'parent', { diagnostics: true });
++      const diagnostics = await readNativeSupervisorState(paths, 'parent', {
++        diagnostics: true,
++      });
+       expect(diagnostics?.children[0].task?.runId).toBe(JSON.parse(before).children[0].task.runId);
+       expect(projectNativeSupervisorChildren(diagnostics!)).toMatchObject({
+         confirmed: false,
+         readyChildren: [],
+         allDone: false,
+-        children: [{ covers: [], message: expect.stringContaining('restore children.yaml') }],
++        children: [
++          {
++            covers: [],
++            message: expect.stringContaining('restore children.yaml'),
++          },
++        ],
+       });
+       const next = await runNativeCli([
+         'next',
+@@ -118,15 +147,16 @@ describe('legacy Supervisor diagnostic recovery', () => {
+         '--project-root',
+         root,
+       ]);
+-      if (problem === 'missing') {
+-        expect(next.exitCode, next.stdout).toBe(65);
+-        expect(JSON.parse(next.stdout!).error.message).toContain('confirmed children contract');
+-      } else {
+-        expect(next.exitCode, next.stdout).toBe(0);
+-        expect(JSON.parse(next.stdout!)).not.toHaveProperty('error');
+-        expect(next.stdout).toContain('restore children.yaml and retry next');
+-      }
++      expect(next.exitCode, next.stdout).toBe(0);
++      expect(JSON.parse(next.stdout!).data.continuation).toMatchObject({
++        disposition: 'blocked',
++        action: 'repair',
++        commandArgs: null,
++        requiredInputs: [],
++      });
++      expect(next.stdout).toContain('restore children.yaml and retry next');
+       expect(await fs.readFile(stateFile, 'utf8')).toBe(before);
++      expect(await fs.readFile(portableFile, 'utf8')).toBe(portableBefore);
+       await fs.writeFile(
+         childrenFile,
+         'schema: comet.native.children.v2\nchildren:\n  - name: core\n    summary: Core behavior.\n    depends_on: []\n',
+diff --git a/test/domains/comet-native/native-supervisor-current-delivery-boundaries.test.ts b/test/domains/comet-native/native-supervisor-current-delivery-boundaries.test.ts
+new file mode 100644
+--- /dev/null
++++ b/test/domains/comet-native/native-supervisor-current-delivery-boundaries.test.ts
+@@ -0,0 +1,653 @@
++import { execFileSync, spawnSync } from 'node:child_process';
++import { promises as fs } from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import { afterEach, expect, it, vi } from 'vitest';
++import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
++import * as gitWorktree from '../../../platform/paths/git-worktree.js';
++import { defineNativeWorkflowApplication } from '../../../domains/comet-native/native-sdk-application.js';
++import { nativeSdkSupervisorIntegrateExecutor } from '../../../domains/comet-native/native-sdk-supervisor-integrate.js';
++import { inspectNativeSdkRun } from '../../../domains/comet-native/native-runtime-ownership.js';
++
++it('keeps the parent Builder unavailable until the original dependent Child graph is integrated', async () => {
++  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-current-parent-frontier-'));
++  roots.push(root);
++  execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'ignore' });
++  execFileSync(
++    'git',
++    [
++      '-c',
++      'user.name=Fixture',
++      '-c',
++      'user.email=fixture@example.test',
++      'commit',
++      '--allow-empty',
++      '-m',
++      'seed',
++    ],
++    { cwd: root, stdio: 'ignore' },
++  );
++  const name = 'frontier';
++  const cli = async (...args: string[]) => {
++    const r = await runNativeCli([...args, '--project-root', root, '--json']);
++    expect(r.exitCode, r.stdout).toBe(0);
++    return JSON.parse(r.stdout!).data;
++  };
++  await cli('new', name);
++  const change = path.join(root, 'docs/comet/changes', name);
++  await fs.writeFile(path.join(change, 'brief.md'), 'Deliver the complete API and UI result.\n');
++  await fs.writeFile(
++    path.join(change, 'children.yaml'),
++    'schema: comet.native.children.v2\nchildren:\n  - name: api\n    depends_on: []\n    covers: [A1]\n  - name: ui\n    depends_on: [api]\n    covers: [A2]\n',
++  );
++  const shape = await cli('next', name, '--session', 'shape-fixture-agent');
++  const result = path.join(root, 'shape-result.json');
++  await fs.writeFile(
++    result,
++    JSON.stringify({
++      status: 'succeeded',
++      output: {
++        acceptance: [
++          { source: 'brief.md', text: 'API works.' },
++          { source: 'brief.md', text: 'UI works.' },
++        ],
++      },
++    }),
++  );
++  await cli(
++    'next',
++    name,
++    '--session',
++    'shape-fixture-agent',
++    '--action',
++    shape.task.actionId,
++    '--result',
++    result,
++  );
++  const proposed = await inspectNativeSdkRun(root, name);
++  execFileSync('git', ['add', '-A'], { cwd: root });
++  execFileSync(
++    'git',
++    [
++      '-c',
++      'user.name=Fixture',
++      '-c',
++      'user.email=fixture@example.test',
++      'commit',
++      '-m',
++      'fixture scope',
++    ],
++    { cwd: root, stdio: 'ignore' },
++  );
++  await cli(
++    'next',
++    name,
++    '--confirmed',
++    '--coordination-mode',
++    'multi-session',
++    '--summary',
++    'Fixture user approved the full child scope',
++    '--expected-state-version',
++    String(proposed.state.state_version),
++    '--expected-action',
++    'confirm-shape',
++  );
++  const task = await cli('next', name, '--session', 'actual-api-fixture-session');
++  expect(task.task).toMatchObject({
++    role: 'build',
++    child: 'api',
++    session: 'actual-api-fixture-session',
++  });
++  const run = (await inspectNativeSdkRun(root, name)).run;
++  expect(
++    run.actions.some(
++      (action) =>
++        action.stepId === 'supervisor.parent.builder' &&
++        ['pending', 'running'].includes(action.status),
++    ),
++  ).toBe(false);
++  expect(
++    run.actions.some(
++      (action) =>
++        action.stepId === 'supervisor.child.builder' &&
++        (action.input as { activation?: { child?: string } }).activation?.child === 'ui' &&
++        ['pending', 'running'].includes(action.status),
++    ),
++  ).toBe(false);
++  expect(run.waits.find((wait) => wait.stepId === 'supervisor.shape.confirm')).toMatchObject({
++    status: 'resolved',
++    decision: { choice: 'multi-session' },
++  });
++});
++
++const roots: string[] = [];
++afterEach(async () => {
++  vi.unstubAllEnvs();
++  await Promise.all(
++    roots.splice(0).map((root) =>
++      fs.rm(root, {
++        recursive: true,
++        force: true,
++        maxRetries: 5,
++        retryDelay: 100,
++      }),
++    ),
++  );
++});
++
++it.each(['complete', 'target-drift', 'dirty-child', 'wrong-child-branch'] as const)(
++  'preserves real Supervisor delivery and all cleanup targets through the current public CLI: %s',
++  async (variant) => {
++    const entry = 'source' as const;
++    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'native-supervisor-business-'));
++    roots.push(base);
++    const root = path.join(base, 'project'),
++      home = path.join(base, 'home');
++    await fs.mkdir(root);
++    await fs.mkdir(home);
++    vi.stubEnv('HOME', home);
++    vi.stubEnv('USERPROFILE', home);
++    vi.stubEnv('XDG_DATA_HOME', path.join(home, '.local/share'));
++    const git = (cwd: string, ...args: string[]) =>
++      execFileSync('git', args, {
++        cwd,
++        encoding: 'utf8',
++        stdio: ['ignore', 'pipe', 'pipe'],
++      }).trim();
++    git(root, 'init', '-b', 'main');
++    git(root, 'config', 'core.autocrlf', 'false');
++    git(root, 'config', 'user.name', 'Fixture');
++    git(root, 'config', 'user.email', 'fixture@example.invalid');
++    await fs.writeFile(path.join(root, 'README.md'), 'Supervisor business fixture\n');
++    git(root, 'add', 'README.md');
++    git(root, 'commit', '-m', 'baseline');
++    const invoke = async (...args: string[]) => {
++      const input = [...args, '--project-root', root, '--json'];
++      if (entry === 'source') return runNativeCli(input);
++      const r = spawnSync(
++        process.execPath,
++        [path.resolve('assets/skills/comet-native/scripts/comet-native-runtime.mjs'), ...input],
++        { cwd: root, encoding: 'utf8', windowsHide: true },
++      );
++      return { exitCode: r.status ?? 1, stdout: r.stdout, stderr: r.stderr };
++    };
++    const cli = async (...args: string[]) => {
++      const r = await invoke(...args);
++      expect(r.exitCode, r.stdout ?? r.stderr).toBe(0);
++      return JSON.parse(r.stdout!).data;
++    };
++    const name = 'agent-supervisor',
++      resultFile = path.join(base, 'result.json');
++    await cli('new', name, '--runtime', 'sdk', '--isolation', 'current');
++    const change = path.join(root, 'docs/comet/changes', name);
++    await fs.writeFile(
++      path.join(change, 'brief.md'),
++      'Implement API and UI output and verify the complete result.\n',
++    );
++    await fs.writeFile(
++      path.join(change, 'children.yaml'),
++      'schema: comet.native.children.v2\nchildren:\n  - name: api\n    depends_on: []\n    covers: [A1]\n  - name: ui\n    depends_on: ' +
++        (entry === 'source' ? '[api]' : '[]') +
++        '\n    covers: [A2]\n',
++    );
++    let task = await cli('next', name, '--session', 'shape-agent');
++    await fs.writeFile(
++      resultFile,
++      JSON.stringify({
++        status: 'succeeded',
++        output: {
++          acceptance: [
++            { source: 'brief.md', text: 'API output is available.' },
++            { source: 'brief.md', text: 'UI output is available.' },
++            {
++              source: 'brief.md',
++              text: 'The integrated result retains both outputs.',
++            },
++          ],
++        },
++      }),
++    );
++    await cli(
++      'next',
++      name,
++      '--session',
++      'shape-agent',
++      '--action',
++      task.task.actionId,
++      '--result',
++      resultFile,
++    );
++    const shaped = await inspectNativeSdkRun(root, name);
++    const runId = shaped.run.runId;
++    git(root, 'add', '-A');
++    git(root, 'commit', '-m', 'confirmed Shape materials');
++    // 本测试的批准仅属于隔离夹具，不代表真实用户批准。
++    await cli(
++      'next',
++      name,
++      '--confirmed',
++      '--coordination-mode',
++      'multi-session',
++      '--summary',
++      'Fixture user approved the complete scope and coordination.',
++      '--expected-state-version',
++      String(shaped.state.state_version),
++      '--expected-action',
++      'confirm-shape',
++    );
++    for (const child of ['api', 'ui']) {
++      task = await cli('next', name, '--session', child + '-builder');
++      if (task.task.session !== child + '-builder') {
++        const selected = task.availableTasks.find(
++          (item: { child?: string }) => item.child === child,
++        );
++        task = await cli(
++          'next',
++          name,
++          '--session',
++          child + '-builder',
++          '--action',
++          selected.actionId,
++        );
++      }
++      expect(task.task).toMatchObject({
++        role: 'build',
++        child,
++        session: child + '-builder',
++      });
++      const worktree = task.workspace.projectRoot;
++      await fs.writeFile(path.join(worktree, child + '.txt'), child + ' output\n');
++      await fs.mkdir(path.join(worktree, child + '-checks'));
++      await fs.writeFile(
++        path.join(worktree, child + '-checks', 'README.md'),
++        'Child-local check directory\n',
++      );
++      git(worktree, 'add', child + '.txt', child + '-checks');
++      git(worktree, 'commit', '-m', child + ' implementation');
++      if (entry === 'source') {
++        const { run } = await inspectNativeSdkRun(root, name);
++        const action = run.actions.find((item) => item.id === task.task.actionId)!;
++        const validator = defineNativeWorkflowApplication('4').validators.find(
++          (item) => item.id === 'native-supervisor-builder-outcome',
++        )!;
++        const refs = vi.spyOn(gitWorktree, 'resolveGitRef');
++        const validated = await validator.validate({
++          run,
++          action,
++          outcome: {
++            outcomeId: 'validation-budget',
++            actionId: action.id,
++            attempt: action.attempt,
++            inputHash: action.inputHash,
++            claimToken: action.claim!.token,
++            status: 'succeeded',
++            output: {
++              candidateCommit: git(worktree, 'rev-parse', 'HEAD'),
++              verificationChecks: [],
++            },
++          },
++          context: { requestId: 'validation-budget', projectRoot: root },
++        });
++        expect(validated).toMatchObject({ accepted: true });
++        expect(
++          refs.mock.calls.filter(([cwd]) => path.resolve(cwd) === path.resolve(root)),
++        ).toHaveLength(0);
++        refs.mockRestore();
++      }
++      await fs.writeFile(
++        resultFile,
++        JSON.stringify({
++          status: 'succeeded',
++          output: {
++            candidateCommit: git(worktree, 'rev-parse', 'HEAD'),
++            verificationChecks: [],
++            requireIndependentReview: child === 'ui',
++          },
++        }),
++      );
++      task = await cli(
++        'next',
++        name,
++        '--session',
++        child + '-builder',
++        '--action',
++        task.task.actionId,
++        '--result',
++        resultFile,
++      );
++      const reviewSession = child === 'ui' ? 'actual-ui-reviewer' : child + '-builder';
++      if (child === 'ui') {
++        expect(task.task).toMatchObject({
++          role: 'verify',
++          child,
++          readOnly: true,
++          session: null,
++          requireIndependentReview: true,
++        });
++        const before = await inspectNativeSdkRun(root, name);
++        expect(
++          (
++            await invoke(
++              'next',
++              name,
++              '--session',
++              child + '-builder',
++              '--action',
++              task.task.actionId,
++            )
++          ).exitCode,
++        ).not.toBe(0);
++        expect((await inspectNativeSdkRun(root, name)).run).toEqual(before.run);
++        task = await cli('next', name, '--session', reviewSession, '--action', task.task.actionId);
++      }
++      expect(task.task).toMatchObject({
++        role: 'verify',
++        child,
++        readOnly: true,
++        session: reviewSession,
++      });
++      expect(task.task.acceptance).toHaveLength(1);
++      const repairExpected = child === (entry === 'source' ? 'api' : 'ui');
++      const checks: Array<{ name: string; result: 'passed' | 'failed' }> = [];
++      const output = {
++        candidateCommit: task.resultTemplate.output.candidateCommit,
++        verdict: 'pass',
++        evidence: {
++          summary: 'Observed the requested child output.',
++          checks,
++          acceptance: task.task.acceptance.map((item: { id: string }) => ({
++            id: item.id,
++            result: 'passed',
++            reason: 'Observed ' + child + '.txt.',
++          })),
++        },
++      };
++      if (repairExpected) {
++        const marker = path.join(base, child + '-integration-ready');
++        const checkArgs = [
++          '-e',
++          'process.exit(require("node:fs").existsSync(' + JSON.stringify(marker) + ')?0:7)',
++        ];
++        expect(spawnSync(process.execPath, checkArgs, { cwd: worktree }).status).toBe(7);
++        checks.push({
++          name: 'Actual platform integration readiness',
++          result: 'failed',
++        });
++        await fs.writeFile(resultFile, JSON.stringify({ status: 'succeeded', output }));
++        const before = (await inspectNativeSdkRun(root, name)).run;
++        const rejected = await invoke(
++          'next',
++          name,
++          '--session',
++          reviewSession,
++          '--action',
++          task.task.actionId,
++          '--result',
++          resultFile,
++        );
++        expect(rejected.exitCode).not.toBe(0);
++        const afterRejected = (await inspectNativeSdkRun(root, name)).run;
++        expect(afterRejected.state).toEqual(before.state);
++        expect(afterRejected.waits).toEqual(before.waits);
++        expect(afterRejected.actions.map((action) => action.id)).toEqual(
++          before.actions.map((action) => action.id),
++        );
++        const original = before.actions.find((action) => action.id === task.task.actionId)!;
++        const retained = afterRejected.actions.find((action) => action.id === original.id)!;
++        expect(retained).toMatchObject({
++          id: original.id,
++          attempt: original.attempt,
++          inputHash: original.inputHash,
++          status: 'running',
++          claim: original.claim,
++        });
++        expect(retained.outcome).toBeUndefined();
++        expect(retained.rejectedOutcomes?.at(-1)?.outcome).toMatchObject({
++          actionId: original.id,
++          attempt: original.attempt,
++          inputHash: original.inputHash,
++          output: { evidence: { checks: [{ result: 'failed' }] } },
++        });
++        await fs.writeFile(marker, 'Platform condition repaired\n');
++        expect(spawnSync(process.execPath, checkArgs, { cwd: worktree }).status).toBe(0);
++        checks[0].result = 'passed';
++      }
++      if (entry === 'source' && child === 'api') {
++        const originalPreflight = nativeSdkSupervisorIntegrateExecutor.preflight!;
++        vi.spyOn(nativeSdkSupervisorIntegrateExecutor, 'preflight').mockImplementationOnce(
++          async function (action, context, run) {
++            const integration = path.join(root, '.worktrees', name + '-integration');
++            const head = git(integration, 'rev-parse', 'HEAD');
++            const status = git(integration, 'status', '--porcelain');
++            const target = git(root, 'rev-parse', 'main');
++            await originalPreflight.call(this, action, context, run);
++            try {
++              git(root, 'update-ref', '-d', 'refs/heads/main');
++              await expect(originalPreflight.call(this, action, context, run)).rejects.toThrow(
++                'target branch has no commit',
++              );
++              expect(git(integration, 'rev-parse', 'HEAD')).toBe(head);
++              expect(git(integration, 'status', '--porcelain')).toBe(status);
++              git(root, 'update-ref', 'refs/heads/main', target);
++              const divergent = git(
++                root,
++                'commit-tree',
++                target + '^{tree}',
++                '-m',
++                'isolated divergent target',
++              );
++              git(root, 'update-ref', 'refs/heads/main', divergent);
++              await expect(originalPreflight.call(this, action, context, run)).rejects.toThrow();
++              expect(git(integration, 'rev-parse', 'HEAD')).toBe(head);
++              expect(git(integration, 'status', '--porcelain')).toBe(status);
++              expect((await inspectNativeSdkRun(root, name)).run.revision).toBe(run!.revision);
++            } finally {
++              git(root, 'update-ref', 'refs/heads/main', target);
++            }
++            await originalPreflight.call(this, action, context, run);
++          },
++        );
++      }
++      await fs.writeFile(resultFile, JSON.stringify({ status: 'succeeded', output }));
++      await cli(
++        'next',
++        name,
++        '--session',
++        reviewSession,
++        '--action',
++        task.task.actionId,
++        '--result',
++        resultFile,
++      );
++    }
++    task = await cli('next', name, '--session', 'parent-agent');
++    expect(task.task).toMatchObject({ role: 'build', scope: 'parent' });
++    expect(task.task.acceptance).toHaveLength(3);
++    const worktree = task.workspace.projectRoot;
++    for (const child of ['api', 'ui'])
++      expect(await fs.readFile(path.join(worktree, child + '.txt'), 'utf8')).toBe(
++        child + ' output\n',
++      );
++    await fs.writeFile(
++      resultFile,
++      JSON.stringify({
++        status: 'succeeded',
++        output: {
++          summary: 'The complete integrated result satisfies all three criteria.',
++          addressedAcceptanceIds: task.task.acceptance.map((item: { id: string }) => item.id),
++          checks: [],
++          knownLimits: [],
++          verificationChecks: [],
++          requireIndependentReview: false,
++          candidateCommit: git(worktree, 'rev-parse', 'HEAD'),
++        },
++      }),
++    );
++    task = await cli(
++      'next',
++      name,
++      '--session',
++      'parent-agent',
++      '--action',
++      task.task.actionId,
++      '--result',
++      resultFile,
++    );
++    expect(task.task).toMatchObject({
++      role: 'verify',
++      readOnly: true,
++      session: 'parent-agent',
++    });
++    expect(task.task.acceptance).toHaveLength(3);
++    await fs.writeFile(
++      resultFile,
++      JSON.stringify({
++        status: 'succeeded',
++        output: {
++          candidateId: task.task.candidateId,
++          verifierExecutionRef: 'parent-agent',
++          response: {
++            kind: 'final-result',
++            result: {
++              iteration: task.resultTemplate.output.response.result.iteration,
++              attempt: task.resultTemplate.output.response.result.attempt,
++              verdict: 'pass',
++              acceptance: task.task.acceptance.map((item: { id: string }) => ({
++                id: item.id,
++                result: 'passed',
++                reason: 'Observed both integrated outputs.',
++              })),
++              risks: [],
++              summary: 'All parent criteria passed.',
++            },
++          },
++        },
++      }),
++    );
++    const completeResult = JSON.parse(await fs.readFile(resultFile, 'utf8'));
++    const incompleteResult = structuredClone(completeResult);
++    incompleteResult.output.response.result.acceptance.pop();
++    await fs.writeFile(resultFile, JSON.stringify(incompleteResult));
++    const before = await inspectNativeSdkRun(root, name);
++    expect(
++      (
++        await invoke(
++          'next',
++          name,
++          '--session',
++          'parent-agent',
++          '--action',
++          task.task.actionId,
++          '--result',
++          resultFile,
++        )
++      ).exitCode,
++    ).not.toBe(0);
++    const rejected = await inspectNativeSdkRun(root, name);
++    expect(rejected.state).toEqual(before.state);
++    const originalAction = before.run.actions.find((action) => action.id === task.task.actionId)!;
++    const currentAction = rejected.run.actions.find((action) => action.id === task.task.actionId)!;
++    expect(currentAction).toMatchObject({
++      status: 'running',
++      claim: originalAction.claim,
++    });
++    expect(currentAction.outcome).toEqual(originalAction.outcome);
++    expect(currentAction.rejectedOutcomes).toHaveLength(1);
++    await fs.writeFile(resultFile, JSON.stringify(completeResult));
++    const expectedDelivery = git(worktree, 'rev-parse', 'HEAD');
++    const childRoots = ['api', 'ui'].map((child) =>
++      path.join(root, '.worktrees', name + '-' + child),
++    );
++    if (variant !== 'complete') {
++      if (variant === 'target-drift') {
++        await fs.writeFile(
++          path.join(root, 'independent-target.txt'),
++          'Independent target change\n',
++        );
++        git(root, 'add', 'independent-target.txt');
++        git(root, 'commit', '-m', 'independent target change');
++      } else if (variant === 'dirty-child')
++        await fs.writeFile(
++          path.join(childRoots[1], 'keep-user-work.txt'),
++          'User work must survive\n',
++        );
++      else git(childRoots[1], 'switch', '-c', 'protected-wrong-child-branch');
++      const targetBefore = git(root, 'rev-parse', 'main');
++      const finalAttempt = await invoke(
++        'next',
++        name,
++        '--session',
++        'parent-agent',
++        '--action',
++        task.task.actionId,
++        '--result',
++        resultFile,
++        '--accept-on-pass',
++        'Fixture user delegated acceptance and Archive after all criteria pass.',
++      );
++      const after = await inspectNativeSdkRun(root, name);
++      expect(after.run.status, finalAttempt.stdout).not.toBe('completed');
++      expect(git(root, 'rev-parse', 'main')).toBe(targetBefore);
++      for (const childRoot of childRoots) expect(await fs.stat(childRoot)).toBeDefined();
++      expect(await fs.stat(worktree)).toBeDefined();
++      expect(
++        after.run.waits.filter(
++          (w) => w.stepId === 'shape.confirm' || w.stepId === 'supervisor.shape.confirm',
++        ),
++      ).toEqual(
++        before.run.waits.filter(
++          (w) => w.stepId === 'shape.confirm' || w.stepId === 'supervisor.shape.confirm',
++        ),
++      );
++      if (variant === 'dirty-child')
++        expect(await fs.readFile(path.join(childRoots[1], 'keep-user-work.txt'), 'utf8')).toBe(
++          'User work must survive\n',
++        );
++      if (variant === 'wrong-child-branch')
++        expect(git(childRoots[1], 'branch', '--show-current')).toBe('protected-wrong-child-branch');
++      const repeat = await invoke('archive', name);
++      expect((await inspectNativeSdkRun(root, name)).run.status, repeat.stdout).not.toBe(
++        'completed',
++      );
++      expect(git(root, 'rev-parse', 'main')).toBe(targetBefore);
++      for (const childRoot of childRoots) expect(await fs.stat(childRoot)).toBeDefined();
++      expect(await fs.stat(worktree)).toBeDefined();
++      return;
++    }
++    const accepted = await cli(
++      'next',
++      name,
++      '--session',
++      'parent-agent',
++      '--action',
++      task.task.actionId,
++      '--result',
++      resultFile,
++      '--accept-on-pass',
++      'Fixture user delegated acceptance and Archive after all criteria pass.',
++    );
++    expect(accepted.status, JSON.stringify(accepted)).toBe('completed');
++    const final = await inspectNativeSdkRun(root, name);
++    expect(final.run.runId).toBe(runId);
++    expect(final.run.status).toBe('completed');
++    expect(final.state.acceptance.every((item) => item.result === 'passed')).toBe(true);
++    expect(
++      final.run.actions.filter(
++        (action) => action.stepId === 'supervisor.child.archive' && action.status === 'succeeded',
++      ),
++    ).toHaveLength(2);
++    expect(git(root, 'rev-parse', 'main')).toBe(expectedDelivery);
++    for (const childRoot of childRoots)
++      await expect(fs.stat(childRoot)).rejects.toMatchObject({
++        code: 'ENOENT',
++      });
++    await expect(fs.stat(worktree)).rejects.toMatchObject({ code: 'ENOENT' });
++    for (const branch of ['integration', 'api', 'ui'])
++      expect(git(root, 'branch', '--list', 'comet/supervisor/' + name + '/' + branch)).toBe('');
++    const repeated = await invoke('archive', name);
++    expect(repeated.exitCode, repeated.stdout).toBe(0);
++    expect((await inspectNativeSdkRun(root, name)).run).toEqual(final.run);
++    expect(git(root, 'rev-parse', 'main')).toBe(expectedDelivery);
++  },
++  240000,
++);

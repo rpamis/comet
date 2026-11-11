@@ -1,3 +1,7 @@
+import {
+  nativePortableSupervisorCleanupBinding,
+  nativeSupervisorCleanupComplete,
+} from './native-supervisor-workspace.js';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
@@ -5,12 +9,9 @@ import {
   hasNativePortableArchiveRecovery,
   inspectNativePortableArchive,
   nativePortableArchiveDirectory,
-  NativePortableArchiveOrderRequiredError,
   NativePortableArchiveRequiresReverificationError,
 } from './native-portable-archive.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
-import { migrateNativeLegacyChangeToPortable } from './native-portable-migration-runtime.js';
-import { recoverNativePortableChange } from './native-portable-recovery.js';
 import { readNativePortableTransaction } from './native-portable-transactions.js';
 import {
   isNativePortableChange,
@@ -45,11 +46,12 @@ import {
   takeOption,
   type DispatchResult,
 } from './native-cli-shared.js';
-
 function withArchiveMessageOptions<
   T extends {
     commandArgs?: string[] | null;
-    commandAlternatives?: Array<{ commandArgs: string[] | null }>;
+    commandAlternatives?: Array<{
+      commandArgs: string[] | null;
+    }>;
   },
 >(continuation: T, options: string[]): T {
   if (options.length === 0) return continuation;
@@ -70,7 +72,6 @@ function withArchiveMessageOptions<
       : {}),
   };
 }
-
 export async function nativeArchiveCommand(
   args: string[],
   projectRoot: string,
@@ -248,6 +249,13 @@ export async function nativeArchiveCommand(
     }
     assertNoArguments(args);
     const archivedRecord = await readNativeWorkspaceFinishArchive(configured.paths, finishJournal);
+    const cleanup = await nativePortableSupervisorCleanupBinding(
+      configured.paths,
+      archivedRecord.state,
+    );
+    if (cleanup && !nativeSupervisorCleanupComplete(cleanup))
+      await archiveNativePortableChange({ paths: configured.paths, name });
+
     const archiveDir = finishJournal.archiveDir!;
     let finishPlan;
     try {
@@ -303,7 +311,6 @@ export async function nativeArchiveCommand(
           workspaceFinishResult: blockedResult,
           continuation: {
             disposition: 'blocked',
-
             mode: 'reconcile',
             reason: message,
             commandArgs: blockedResult.recoveryArgs,
@@ -361,7 +368,6 @@ export async function nativeArchiveCommand(
             workspaceFinishResult: error.result,
             continuation: {
               disposition: 'blocked',
-
               mode: 'reconcile',
               reason: error.message,
               commandArgs: error.result.recoveryArgs,
@@ -401,13 +407,7 @@ export async function nativeArchiveCommand(
       throw new NativeUsageError('--finish without --dry-run requires --confirmed');
     }
     assertNoArguments(args);
-    const recovery =
-      portableActive && !dryRun && activeArchiveTransaction?.kind !== 'archive'
-        ? await recoverNativePortableChange({ paths: configured.paths, name })
-        : null;
-    let state =
-      recovery?.state ??
-      (portableActive ? await readNativePortableChange(configured.paths, name) : null);
+    let state = portableActive ? await readNativePortableChange(configured.paths, name) : null;
     if (
       expectedStateVersion !== undefined &&
       (state?.state_version !== expectedStateVersion || state.workspace.finish !== null)
@@ -438,18 +438,6 @@ export async function nativeArchiveCommand(
         expectedStateVersion,
       });
     }
-    if (recovery?.action === 'reverify' || recovery?.action === 'await-user') {
-      return success(
-        dryRun ? 'archive --dry-run' : 'archive',
-        {
-          archived: false,
-          state: recovery.state,
-          recovery,
-          continuation: nativePortableContinuation(recovery.state),
-        },
-        `${recovery.message}\n`,
-      );
-    }
     if (dryRun) {
       if (!state) {
         return success(
@@ -460,7 +448,6 @@ export async function nativeArchiveCommand(
             archiveRecovery: true,
             continuation: {
               disposition: 'continue',
-
               mode: 'execute',
               reason: 'Resume the interrupted Native Archive transaction.',
               commandArgs: ['comet', 'native', 'archive', name, '--confirmed', ...messageOptions],
@@ -499,10 +486,7 @@ export async function nativeArchiveCommand(
           'Native Archive preview requires fresh verification after delta remerge; no rebase was written during dry-run\n',
         );
       }
-      const capabilityBlockerPrefix = 'capabilities are also declared by:';
-      const blockers = preview.blockers.filter(
-        (blocker) => !blocker.startsWith(capabilityBlockerPrefix),
-      );
+      const blockers = [...preview.blockers];
       const workspaceFinishBlockers: Array<{
         message: string;
         paths: string[];
@@ -543,63 +527,13 @@ export async function nativeArchiveCommand(
           });
         }
       }
-      const orderRequired = preview.capabilityPeers.length > 0 && serialFirstOption !== name;
-      const previewContinuation =
-        orderRequired && blockers.length === 0
-          ? nativePortableContinuation(state, null, { archiveMode: 'preview' })
-          : null;
-      const continuation = previewContinuation
-        ? {
-            ...previewContinuation,
-            disposition: 'await-user' as const,
-
-            mode: 'ask' as const,
-            action: 'none' as const,
-            commandArgs: null,
-            requiredInputs: ['choose-first-archive'],
-            requiresUserDecision: true,
-            userCommunication: {
-              required: true,
-              message:
-                state.language === 'zh-CN'
-                  ? `当前规格也由 ${preview.capabilityPeers.join(', ')} 修改。是否先归档 ${name}？其他 change 随后需要对齐最新规格。`
-                  : `The same specifications are changed by ${preview.capabilityPeers.join(', ')}. Archive ${name} first? The other changes must then align with the latest specifications.`,
-              suggestedReply:
-                state.language === 'zh-CN' ? `先归档 ${name}` : `Archive ${name} first`,
-              agentInstruction:
-                'Wait for the ordering decision, then execute the matching dry-run commandAlternative.',
-            },
-            commandAlternatives: [
-              {
-                name: 'archive-this-change-first',
-                commandArgs: [
-                  'comet',
-                  'native',
-                  'archive',
-                  name,
-                  '--dry-run',
-                  '--serial-first',
-                  name,
-                ],
-                description: `Archive ${name} before ${preview.capabilityPeers.join(', ')}`,
-                inputOptions: [],
-                requiredInputs: [],
-              },
-            ],
-            runnerAction: { ...previewContinuation.runnerAction, kind: 'none' as const },
-          }
-        : finishRequired
-          ? nativePortableContinuation(state)
-          : nativePortableContinuation(state, null, {
-              archiveMode: 'preview',
-              archiveBlockers: blockers,
-            });
-      const allBlockers = [
-        ...blockers,
-        ...(orderRequired
-          ? [`${capabilityBlockerPrefix} ${preview.capabilityPeers.join(', ')}`]
-          : []),
-      ];
+      const continuation = finishRequired
+        ? nativePortableContinuation(state)
+        : nativePortableContinuation(state, null, {
+            archiveMode: 'preview',
+            archiveBlockers: blockers,
+          });
+      const allBlockers = blockers;
       return success(
         'archive --dry-run',
         {
@@ -739,7 +673,6 @@ export async function nativeArchiveCommand(
       result = await archiveNativePortableChange({
         paths: configured.paths,
         name,
-        ...(serialFirstOption ? { serialFirstChange: serialFirstOption } : {}),
       });
     } catch (error) {
       if (error instanceof NativePortableArchiveRequiresReverificationError) {
@@ -766,35 +699,7 @@ export async function nativeArchiveCommand(
           'Native Archive requires fresh verification after delta remerge\n',
         );
       }
-      if (!(error instanceof NativePortableArchiveOrderRequiredError)) throw error;
-      if (finishJournalWritten || finishJournal) {
-        await clearNativeWorkspaceFinishJournal(configured.paths, name);
-      }
-      if (!state) throw error;
-      const preview = await inspectNativePortableArchive({ paths: configured.paths, name });
-      const commandArgs =
-        error.peers.length > 0
-          ? ['comet', 'native', 'archive', name, '--confirmed', '--serial-first', name]
-          : ['comet', 'native', 'archive', name, '--confirmed'];
-      return {
-        command: 'archive',
-        exitCode: 73,
-        data: {
-          ...preview,
-          workspaceFinish: state.workspace.finish,
-          workspaceFinishResult: null,
-          continuation: {
-            disposition: 'await-user',
-
-            mode: 'ask',
-            reason: error.message,
-            commandArgs: [...commandArgs, ...messageOptions],
-            inputOptions: error.peers.length > 0 ? ['serial-first-change'] : [],
-            runnerAction: null,
-          },
-        },
-        error: { code: 'conflict', message: error.message },
-      };
+      throw error;
     }
     state = result.state;
     if (!finishPlan && state) {
@@ -859,7 +764,6 @@ export async function nativeArchiveCommand(
             workspaceFinishResult,
             continuation: {
               disposition: 'blocked',
-
               mode: 'reconcile',
               reason: message,
               commandArgs: workspaceFinishResult.recoveryArgs,
@@ -917,7 +821,6 @@ export async function nativeArchiveCommand(
             workspaceFinishResult: error.result,
             continuation: {
               disposition: 'blocked',
-
               mode: 'reconcile',
               reason: error.message,
               commandArgs: error.result.recoveryArgs,
@@ -964,32 +867,17 @@ export async function nativeArchiveCommand(
     throw new NativeUsageError('--finish without --dry-run requires --confirmed');
   }
   assertNoArguments(args);
-  if (dryRun) {
-    return {
-      command: 'archive --dry-run',
-      exitCode: 65,
-      data: {
-        change: name,
-        migrationRequired: true,
-        repairCommand: `comet native doctor ${name} --repair`,
-      },
-      error: {
-        code: 'invalid-data',
-        message: `Native active change ${name} must migrate before Archive preview`,
-      },
-    };
-  }
-  const state = await migrateNativeLegacyChangeToPortable({
-    paths: configured.paths,
-    name,
-  });
-  return success(
-    'archive',
-    {
-      migration: { from: 'legacy', to: state.schema, completed: true },
-      state,
-      continuation: nativePortableContinuation(state),
+  return {
+    command: dryRun ? 'archive --dry-run' : 'archive',
+    exitCode: 65,
+    data: {
+      change: name,
+      migrationRequired: true,
+      repairCommand: `comet native doctor ${name} --repair`,
     },
-    `Migrated Native change ${name}; follow the returned portable continuation before Archive\n`,
-  );
+    error: {
+      code: 'invalid-data',
+      message: `Native active change ${name} requires explicit business import; run comet native doctor ${name} --repair`,
+    },
+  };
 }

@@ -1,6 +1,6 @@
 # Classic SDK 执行方法
 
-新内置 Run 的 `checksMode: agent` 使用平台检查报告与 `--checks <checks-json-file>`，按当前 Build/Verify Skill 执行；本参考中的受管命令和收据只适用于旧 Run 的 `checksMode: runtime`。方法、批准、计划和完整验收要求继续适用。
+按[普通命令与检查](../../comet/reference/platform-execution.md)使用平台工具执行普通命令、核对原任务与副作用、判断结果是否适用，并提交实际报告。Comet 不重复执行检查，不维护普通命令的内容快照、进程监管或恢复机制。 用户选择的方法、批准、计划和完整验收要求继续有效。
 
 仅在 `runtimeFormat: sdk` 时读取当前阶段的章节。阶段命令、Action、Wait 和输入模板以主 Skill 与最新 continuation 为准；本参考说明实际工作和完成条件。
 
@@ -47,7 +47,7 @@ SDK 新 change 使用 `comet-state.yaml`，历史 `.comet.yaml` 原地保留。�
 
 ## Build
 
-首次最终 GREEN 或完整验证开始前，执行[检查复用](#检查复用)中的首次受管检查安排；full、hotfix 和 tweak 均适用，TDD RED 与局部调试保留。
+Build 的 TDD、调试和最终检查均使用平台工具，保留可复核的结果。
 
 已选配置要求的实施、TDD 或审查能力，按[宿主能力核对](../../comet/reference/host-check.md) 在开始实现前确认；已有仍有效的核对直接复用。
 
@@ -111,9 +111,7 @@ review_mode 为 standard 或 thorough 时，由独立 reviewer 对最终 diff �
 
 ## 检查复用
 
-TDD 的 RED 与局部调试照常执行。首次最终 GREEN 或完整验证直接运行 `comet check run <change> build --local -- <program> [args...]`；Verify 阶段使用 `comet check run <change> verify --report <report-ref> --local -- <program> [args...]`，先声明最终报告路径，读取真实收据后再写报告。这些命令回到原实施或验收任务，不提前推进阶段；随后仍执行主 Skill 的 complete-build 和 Guard 提交。后继 continuation 已带原 argv、cwd、超时和复用选项时直接沿用，只补报告等缺失输入，不重新拼写计划。
-
-确定性的本地检查使用主 Skill 的 Guard 命令并在 `--` 前加 `--local`。Runtime 只有在 argv、cwd、输入、环境、超时、原始收据和日志匹配时才返回 reused；Build 与 Verify 可复用同一完整命令。外部服务或不可重复检查不加该参数。恢复时沿用原执行及收据，结果未知先核对，不重发副作用。输入发生变化时由 Runtime 重跑，不能用旧对话里的通过结论替代检查。
+按[普通命令与检查](../../comet/reference/platform-execution.md)使用平台工具执行普通命令、核对原任务与副作用、判断结果是否适用，并提交实际报告。Comet 不重复执行检查，不维护普通命令的内容快照、进程监管或恢复机制。 TDD 的 RED 与局部调试照常执行。结果复用不改变用户选择的审查要求，也不代替全部验收项。
 
 ## 预设范围复核
 

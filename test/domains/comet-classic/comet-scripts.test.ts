@@ -7,6 +7,45 @@ import { parseDocument } from 'yaml';
 import { resolveClassicRunDirectory } from '../../../domains/comet-classic/classic-runtime-paths.js';
 import { runNode, CLASSIC_SCRIPT_COMMAND_TIMEOUT } from '../../helpers/comet-test-utils.js';
 
+// SIMULATED Agent executes the actual platform command and submits the observed result.
+function runPlatformCheck(
+  cwd: string,
+  _retiredScript: string,
+  args: string[],
+  env: NodeJS.ProcessEnv = {},
+  timeout?: number,
+) {
+  runNode(cwd, path.join(scriptsDir, 'comet-guard.mjs'), [args[1], args[2]]);
+  const divider = args.indexOf('--');
+  if (divider < 0) throw new Error('Actual argv required');
+  const argv = args.slice(divider + 1);
+  const executed = spawnSync(argv[0], argv.slice(1), {
+    cwd,
+    encoding: 'utf8',
+    env: { ...process.env, ...env },
+    timeout,
+  });
+  if (executed.error || executed.status === null)
+    throw executed.error ?? new Error('Platform command has no exit code');
+  const recorded = runNode(
+    cwd,
+    path.join(scriptsDir, 'comet-state.mjs'),
+    [
+      'record-check',
+      args[1],
+      args[2],
+      '--command',
+      JSON.stringify(argv),
+      '--exit-code',
+      String(executed.status),
+    ],
+    env,
+    timeout,
+  );
+  expect(recorded.status, recorded.stderr).toBe(0);
+  return { ...recorded, status: executed.status };
+}
+
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
 const classicRuntimeRoot = path.resolve('assets', 'skills', 'comet', 'runtime', 'classic');
 const classicSkillRoot = classicRuntimeRoot;
@@ -63,6 +102,7 @@ function hookStdin(filePath: string): string {
   });
 }
 
+// SIMULATED historical Compat document fixture; no accepted execution receipt is fabricated.
 async function createChange(
   tmpDir: string,
   name: string,
@@ -79,7 +119,7 @@ async function createChange(
 }
 
 function recordSuccessfulBuild(tmpDir: string, name: string) {
-  const checked = runNode(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
+  const checked = runPlatformCheck(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
     'run',
     name,
     'build',
@@ -2527,7 +2567,7 @@ describe('comet scripts', () => {
     expect(result.stderr).toContain('[PASS] Build passes');
   });
 
-  it('rejects removed project verify_command instead of silently skipping it', async () => {
+  it('does not execute removed project verify_command or infer verification without a report', async () => {
     await createChange(
       tmpDir,
       'project-verify-command',
@@ -2570,7 +2610,9 @@ describe('comet scripts', () => {
     const result = runNode(tmpDir, guardScript, ['project-verify-command', 'verify']);
 
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('verify_command has been removed');
+    expect(result.stderr).toContain('没有本阶段的完整检查报告');
+    expect(result.stderr).not.toContain('legacy verify failed');
+    expect(result.stderr).not.toContain('guard auto-ran');
     expect(result.stderr).not.toContain('[PASS] Verification passes');
   });
 
@@ -3474,7 +3516,7 @@ describe('comet scripts', () => {
       path.join(tmpDir, 'openspec', 'changes', 'verify-change', 'tasks.md'),
       '- [x] verified implementation\n',
     );
-    const check = runNode(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
+    const check = runPlatformCheck(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
       'run',
       'verify-change',
       'verify',
@@ -3726,7 +3768,7 @@ describe('comet scripts', () => {
       JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
     );
     expect(runNode(tmpDir, guardScript, ['guard-verify', 'verify']).status).not.toBe(0);
-    const recorded = runNode(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
+    const recorded = runPlatformCheck(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
       'run',
       'guard-verify',
       'verify',

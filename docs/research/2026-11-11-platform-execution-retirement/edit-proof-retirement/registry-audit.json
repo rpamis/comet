@@ -1,0 +1,9 @@
+{
+  "effectiveDirectCases": [],
+  "frozenHistoricalDirectCases": [],
+  "action": "No current effective registry selector targets either retired file. Earlier migration chain provenance remains unchanged; no append needed merely for a historical link.",
+  "oldTests": [
+    "test/domains/workflow-contract/edit-review.test.ts",
+    "test/domains/workflow-contract/edit-impact.test.ts"
+  ]
+}

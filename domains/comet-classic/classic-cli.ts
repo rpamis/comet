@@ -1,6 +1,4 @@
 import { withClassicStateProjections } from './classic-sdk-state-store.js';
-import { withWorkspaceRuntimePreparation } from '../workflow-contract/workspace-runtime.js';
-import { withClassicRuntimePreparation } from './classic-runtime-paths.js';
 import { compactCliStdout } from '../workflow-contract/compact-output.js';
 import { pathToFileURL } from 'url';
 import { withCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
@@ -281,10 +279,7 @@ export async function runClassicCli(
       },
       handlers,
     );
-  const prepared = () =>
-    withWorkspaceRuntimePreparation(() =>
-      withClassicRuntimePreparation(() => withClassicStateProjections(invoke)),
-    );
+  const prepared = () => withClassicStateProjections(invoke);
   const result =
     command === 'hook-guard' ? await prepared() : await withCometRuntimeProgress(prepared);
   const projected = withSdkContinuation(result);

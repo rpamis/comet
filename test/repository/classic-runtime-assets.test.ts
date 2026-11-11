@@ -102,6 +102,7 @@ describe('Classic runtime release assets', () => {
       'comet/reference/change-walkthrough.md',
       'comet/reference/edit-review.md',
       'comet/reference/host-check.md',
+      'comet/reference/platform-execution.md',
       'comet/reference/task-learning.md',
     ]);
     for (const root of ['skills', 'skills-zh']) {

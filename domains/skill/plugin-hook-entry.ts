@@ -124,7 +124,43 @@ export async function runPluginHook(
       ? `Comet 原有安装迁移：已处理 ${migration.changed.length} 项，保留 ${migration.preserved.length} 项。${migration.reportPath ? `备份与保留原因见 ${migration.reportPath}` : ''}`
       : '';
   if (event === 'SessionStart') {
-    const rule = await fs.readFile(path.join(pluginRoot, 'rules/comet-workflow-guard.md'), 'utf8');
+    if (
+      request.cwd &&
+      (await fs.lstat(path.join(request.cwd, '.comet', 'config.yaml')).catch(() => null))
+    ) {
+      const { resolveWorkspaceRuntimeRootSync } =
+        await import('../workflow-contract/workspace-runtime.js');
+      const current = resolveWorkspaceRuntimeRootSync(request.cwd);
+      if (
+        !(await fs.lstat(current).catch(() => null)) &&
+        (
+          await fs.lstat(path.join(request.cwd, '.comet', 'runtime')).catch(() => null)
+        )?.isDirectory()
+      ) {
+        const { importLegacyWorkspaceRuntimeData } =
+          await import('../workflow-contract/legacy-runtime-import.js');
+        const { importClassicLegacyRuntimeData } =
+          await import('../comet-classic/classic-legacy-runtime-import.js');
+        await importLegacyWorkspaceRuntimeData(request.cwd);
+        await importClassicLegacyRuntimeData(request.cwd);
+      }
+    }
+    const rulePath = path.join(pluginRoot, 'rules/comet-workflow-guard.md');
+    const rule = await fs.readFile(rulePath, 'utf8');
+    const chinese = rule.startsWith('# Comet 当前');
+    const context = chinese
+      ? [
+          'Comet 插件已接入。普通任务正常执行，不自动初始化 Comet 或启动 Eval。',
+          '任务开始、恢复或切换工作区/change 时，先只读 .comet/config.yaml 和 .comet/current-change.json，复用仍有效的所有权。selection 决定当前需求，default_workflow 只决定默认入口。selection 缺失或失效时，只读发现活跃需求：无候选继续普通任务，唯一候选核对恢复，多个候选请用户选择；配置或状态无效时停止相关 Comet 动作，不猜测归属。',
+          '用户调用 Comet 或当前需求属于 Native、Classic、应用 Run 时，推进或写入前必须读取并执行下方完整 Rule，再加载当前 Skill；应用 Run 沿用固定包 Rule 和原 Run。当前上下文已读取且仍适用时直接复用；压缩或恢复后缺少规则时重新读取。写入拒绝后按 Runtime 最新恢复命令核对原执行，不重发结果未知的工作。',
+          `完整 Rule：${rulePath}`,
+        ]
+      : [
+          'Comet is available. Continue ordinary tasks without initializing Comet or starting Eval.',
+          'At task start, recovery or workspace/change switches, read .comet/config.yaml and .comet/current-change.json once and reuse valid ownership. The selection identifies the current request; default_workflow only selects an entry point. If selection is missing or stale, discover active requests read-only: continue ordinary work with none, inspect and recover a unique candidate, or ask the user to choose among several. Stop affected Comet actions on invalid config/state rather than guessing ownership.',
+          'When the user invokes Comet or the current request belongs to Native, Classic or an application Run, read and follow the complete Rule below before advancing or writing, then load the current Skill. Application Runs retain their pinned Rule and original Run. Reuse a Rule already present and still applicable; reread it after compaction or recovery if missing. After a write denial, follow the latest Runtime recovery command and reconcile the original execution without replaying unknown work.',
+          `Complete Rule: ${rulePath}`,
+        ];
     const cli = args.get('--cli-entry');
     return {
       exitCode: 0,
@@ -134,8 +170,7 @@ export async function runPluginHook(
           hookSpecificOutput: {
             hookEventName: 'SessionStart',
             additionalContext: [
-              'Comet 插件已接入。以下规则仅约束已启动的 Comet 工作流；普通任务正常执行，不自动初始化项目或启动 Eval。',
-              rule,
+              ...context,
               cli ? `Comet CLI 入口：node ${JSON.stringify(cli)}` : '',
               migrationContext,
             ]

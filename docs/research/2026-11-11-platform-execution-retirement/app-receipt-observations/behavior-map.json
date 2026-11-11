@@ -1,0 +1,103 @@
+{
+  "source": "report:2026-11-10-agent-platform-execution",
+  "originalDeclarations": [
+    {
+      "file": "test/app/native-verification-cli.test.ts",
+      "title": "submits the typed receipt template through the public CLI without rebuilding identity fields",
+      "body": "it('submits the typed receipt template through the public CLI without rebuilding identity fields', async () => {\n  await ensureCliBuilt(path.resolve('.'));\n  const binary = path.resolve('bin/comet.js');\n  const originalTask = 'Produce the expected value without changing the public interface.';\n  const fixture = await nativeVerificationFixture((root) => roots.push(root), binary, originalTask);\n  const pending = await fixture.invoke('next', 'verification-test');\n  const requestFile = path.join(path.dirname(fixture.root), 'opaque-result.json');\n  const dispatch = async (request: unknown) => {\n    await fs.writeFile(requestFile, JSON.stringify(request));\n    return JSON.parse(\n      execFileSync(\n        process.execPath,\n        [\n          binary,\n          'runtime',\n          'dispatch',\n          '--application',\n          'native',\n          '--project-root',\n          fixture.root,\n          '--request',\n          requestFile,\n          '--json',\n        ],\n        { encoding: 'utf8', windowsHide: true, timeout: 30000 },\n      ),\n    );\n  };\n  const claimed = await dispatch({\n    ...pending.data.pendingAction.claimRequest,\n    sessionId: 'public-builder',\n  });\n  const request = claimed.data.resultRequest;\n  expect(claimed.data.originalRequest).toEqual({ source: 'run.input.task', text: originalTask });\n  expect(request.result.output).toMatchObject({\n    verificationChecks: [expect.any(Object)],\n    acceptanceReview: [{ id: 'A1' }],\n  });\n  expect(claimed.data.checkRequestTemplate).toMatchObject({\n    executable: expect.any(String),\n    argv: expect.any(Array),\n  });\n  await fs.writeFile(path.join(fixture.root, 'value.txt'), 'expected\\n');\n  request.result.output = {\n    ...request.result.output,\n    summary: 'Implemented the expected value.',\n    acceptanceReview: fixtureAcceptanceReview(['A1']),\n    checks: [],\n    knownLimits: [],\n    verificationChecks: [\n      {\n        id: 'read-value',\n        name: 'Read the final value',\n        executable: process.execPath,\n        argv: ['-e', \"process.stdout.write(require('node:fs').readFileSync('value.txt','utf8'))\"],\n        cwdRef: '.',\n        timeoutMs: 10000,\n        repeatable: true,\n      },\n    ],\n  };\n  await dispatch(request);\n  const accepted = await fixture.inspect();\n  expect(accepted.actions.at(-1)).toMatchObject({ stepId: 'verify.checks', status: 'pending' });\n  await dispatch(request);\n  expect(await fixture.inspect()).toEqual(accepted);\n  const review = await fixture.invoke('next', 'verification-test');\n  const reviewer = await dispatch({\n    ...review.data.pendingAction.claimRequest,\n    sessionId: 'public-reviewer',\n  });\n  expect(reviewer.data.resultRequest.result.output.response.result.requestReview).toMatchObject({\n    result: '<aligned|conflict|blocked>',\n  });\n  await dispatch(reviewer.data.refreshChecksResultRequest);\n  await fixture.invoke('next', 'verification-test');\n  const refreshed = await fixture.inspect();\n  expect(refreshed.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });\n  expect(\n    refreshed.actions.filter((action) => action.stepId === 'verify.requested-checks'),\n  ).toHaveLength(1);\n  const continuation = await fixture.invoke('next', 'verification-test');\n  const resumed = await dispatch({\n    ...continuation.data.pendingAction.claimRequest,\n    sessionId: 'public-reviewer',\n  });\n  const finalRequest = resumed.data.resultRequest;\n  finalRequest.result.output.response.result = {\n    ...finalRequest.result.output.response.result,\n    verdict: 'pass',\n    acceptance: [\n      { id: 'A1', result: 'passed', reason: 'The final value meets the original requirement.' },\n    ],\n    risks: [],\n    summary: 'The original request, Spec and current value agree.',\n    requestReview: {\n      result: 'aligned',\n      reason: 'The expected value is implemented and the public interface remains unchanged.',\n    },\n  };\n  await dispatch(finalRequest);\n  expect((await fixture.inspect()).state).toMatchObject({ verification_result: 'pass' });\n}, 90000)",
+      "assertions": [
+        "expect(claimed.data.originalRequest).toEqual({ source: 'run.input.task', text: originalTask });",
+        "expect(request.result.output).toMatchObject({\n    verificationChecks: [expect.any(Object)],\n    acceptanceReview: [{ id: 'A1' }],\n  });",
+        "expect(claimed.data.checkRequestTemplate).toMatchObject({\n    executable: expect.any(String),\n    argv: expect.any(Array),\n  });",
+        "expect(accepted.actions.at(-1)).toMatchObject({ stepId: 'verify.checks', status: 'pending' });",
+        "expect(await fixture.inspect()).toEqual(accepted);",
+        "expect(reviewer.data.resultRequest.result.output.response.result.requestReview).toMatchObject({\n    result: '<aligned|conflict|blocked>',\n  });",
+        "expect(refreshed.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });",
+        "expect(\n    refreshed.actions.filter((action) => action.stepId === 'verify.requested-checks'),\n  ).toHaveLength(1);",
+        "expect((await fixture.inspect()).state).toMatchObject({ verification_result: 'pass' });"
+      ]
+    },
+    {
+      "file": "test/app/workflow-handoffs.test.ts",
+      "title": "reports live command progress before a Classic CLI check finishes",
+      "body": "it('reports live command progress before a Classic CLI check finishes', async () => {\n  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-cli-handoffs-'));\n  roots.push(base);\n  const root = path.join(base, 'project'),\n    home = path.join(base, 'home');\n  await fs.mkdir(home);\n  await prepareClassicLegacyProject(root);\n  await fs.appendFile(path.join(root, '.comet/config.yaml'), '  document_evidence: strict\\n');\n  const env = {\n    ...process.env,\n    HOME: home,\n    USERPROFILE: home,\n    APPDATA: path.join(home, 'AppData/Roaming'),\n    LOCALAPPDATA: path.join(home, 'AppData/Local'),\n    XDG_DATA_HOME: path.join(home, '.local/share'),\n    XDG_CONFIG_HOME: path.join(home, '.config'),\n    XDG_CACHE_HOME: path.join(home, '.cache'),\n    GIT_CONFIG_GLOBAL: path.join(home, '.gitconfig'),\n    GIT_CONFIG_SYSTEM: path.join(home, 'git-system'),\n    COMET_DAEMON: 'off',\n    COMET_SKIP_UPDATE_CHECK: '1',\n    NODE_OPTIONS: '',\n    COMET_TASK: '',\n    COMET_TASK_PHASE: '',\n    COMET_TASK_PATH: '',\n  };\n  const runProcess = (program: string, args: string[], input?: string) =>\n    spawnSync(program, args, {\n      cwd: root,\n      env,\n      encoding: 'utf8',\n      input,\n      timeout: 90_000,\n      windowsHide: true,\n    });\n  expect(runProcess('git', ['init', '-b', 'main']).status).toBe(0);\n  expect(\n    runProcess('git', [\n      '-c',\n      'user.name=Test',\n      '-c',\n      'user.email=test@example.invalid',\n      'commit',\n      '--allow-empty',\n      '-m',\n      'fixture',\n    ]).status,\n  ).toBe(0);\n  const node = globalThis.process.execPath;\n  const cli = (...args: string[]) =>\n    runProcess(node, [path.join(repository, 'bin/comet.js'), ...args]);\n  const checked = (...args: string[]) => {\n    const result = cli(...args);\n    expect(result.status, result.stderr || result.stdout).toBe(0);\n    return { result, body: JSON.parse(result.stdout) };\n  };\n  checked(\n    'state',\n    'init',\n    'demo',\n    'tweak',\n    '--isolation',\n    'current',\n    '--runtime',\n    'compat',\n    '--json',\n  );\n  checked('state', 'select', 'demo', '--json');\n  const change = path.join(root, 'openspec/changes/demo');\n  for (const [name, source] of Object.entries({\n    'proposal.md': '# Proposal\\nPreserve the worker.\\n',\n    'design.md': '# Design\\nKeep output one.\\n',\n    'tasks.md': '- [x] Keep worker behavior\\n',\n  }))\n    await fs.writeFile(path.join(change, name), source);\n  await fs.writeFile(path.join(root, 'worker.py'), 'value = 1\\n');\n  checked('guard', 'demo', 'open', '--apply', '--json');\n  const marker = path.join(base, 'executions');\n  const argv = [\n    node,\n    '-e',\n    \"setTimeout(()=>require('node:fs').appendFileSync(process.argv[1],'checked\\\\n'),8000)\",\n    marker,\n  ];\n  await fs.writeFile(\n    path.join(root, '.comet/check-policy.json'),\n    JSON.stringify({ version: 2, commands: [{ argv, cwd: '.', files: ['worker.py'] }] }),\n  );\n  const live = await new Promise<{\n    status: number | null;\n    stdout: string;\n    stderr: string;\n    progressBeforeFinish: boolean;\n  }>((resolve, reject) => {\n    const child = spawn(\n      node,\n      [\n        path.join(repository, 'bin/comet.js'),\n        'check',\n        'run',\n        'demo',\n        'build',\n        '--json',\n        '--',\n        ...argv,\n      ],\n      { cwd: root, env, timeout: 90_000, windowsHide: true },\n    );\n    let stdout = '',\n      stderr = '',\n      progressBeforeFinish = false;\n    child.stdout.on('data', (chunk) => {\n      stdout += String(chunk);\n    });\n    child.stderr.on('data', (chunk) => {\n      stderr += String(chunk);\n      if (stderr.includes('[Comet]') && !existsSync(marker)) progressBeforeFinish = true;\n    });\n    child.on('error', reject);\n    child.on('close', (status) => resolve({ status, stdout, stderr, progressBeforeFinish }));\n  });\n  expect(live.status, live.stderr || live.stdout).toBe(0);\n  expect(live.progressBeforeFinish).toBe(true);\n  const build = { body: JSON.parse(live.stdout), result: live };\n  expect(build.body.data.exitCode).toBe(0);\n  expect(await fs.readFile(marker, 'utf8')).toBe('checked\\n');\n  expect(build.result.stderr).toContain('[Comet]');\n})",
+      "assertions": [
+        "expect(runProcess('git', ['init', '-b', 'main']).status).toBe(0);",
+        "expect(\n    runProcess('git', [\n      '-c',\n      'user.name=Test',\n      '-c',\n      'user.email=test@example.invalid',\n      'commit',\n      '--allow-empty',\n      '-m',\n      'fixture',\n    ]).status,\n  ).toBe(0);",
+        "expect(result.status, result.stderr || result.stdout).toBe(0);",
+        "expect(live.status, live.stderr || live.stdout).toBe(0);",
+        "expect(live.progressBeforeFinish).toBe(true);",
+        "expect(build.body.data.exitCode).toBe(0);",
+        "expect(await fs.readFile(marker, 'utf8')).toBe('checked\\n');",
+        "expect(build.result.stderr).toContain('[Comet]');"
+      ]
+    }
+  ],
+  "registeredCaseIds": [
+    "native-handoff-typed-result-template",
+    "native-original-request-review"
+  ],
+  "classicProgress": {
+    "decision": "retire-entire-unregistered-mechanism-file-after-full-archive",
+    "registryRefs": {
+      "current": [],
+      "historical": []
+    },
+    "reason": "All original assertions require the retired Classic managed check to execute, emit live progress, store exitCode and write the once marker. Setup Git/guard calls do not assert another independent business contract.",
+    "separateCurrentEvidence": [
+      "classic-public-guidance-result.json",
+      "current-classic-platform-progress-result.json"
+    ],
+    "notEquivalentClaim": "The current non-executing Classic guide and generic progress infrastructure are distinct contracts; they do not prove the old managed runner still exists. No counter/receipt/runner or replacement progress framework was added."
+  },
+  "nativeReceipt": {
+    "decision": "split-and-preserve-business",
+    "oldToCurrent": [
+      {
+        "old": "claimed.data.originalRequest equals original task",
+        "current": "Current public Builder and Verifier claims both preserve originalRequest; domain companion rejects missing/conflicting/blocked requestReview and accepts aligned."
+      },
+      {
+        "old": "verificationChecks plan and checkRequestTemplate executable/argv exposed",
+        "retired": "Managed command plan/request/checker/timeout/repeatable scaffolding",
+        "current": "Current structured platform report template has addressed acceptance IDs and checks name/result/note. Agent test directly runs an ordinary Node read and submits its actual stdout as a report."
+      },
+      {
+        "old": "acceptanceReview template A1",
+        "current": "Current v4 exposes addressedAcceptanceIds A1; test explicitly provides and records optional Builder acceptanceReview A1. Complete independent Verifier A1 is mandatory; not a claim that old v1 template field placement is unchanged."
+      },
+      {
+        "old": "Builder result schedules verify.checks, then duplicate request is idempotent",
+        "retired": "The managed check Action only",
+        "current": "The same opaque receipt schedules one pending Verifier directly; checks/report retained, no managed-check Action, identical Builder receipt replay leaves the whole Run equal."
+      },
+      {
+        "old": "requestReview template, requested checks and refresh receipt flow",
+        "retired": "Comet requested-check execution/refresh protocol",
+        "current": "Original-request review template retained and filled; no refreshChecksResultRequest; real platform check ran outside Comet."
+      },
+      {
+        "old": "full pass result is accepted",
+        "current": "Full A1 + aligned requestReview yields pass but waits for the original user proposal. Verifier receipt replay leaves Run equal; ordinary next cannot Archive. Explicit original proposalHash/stateVersion user decision resolves the same Wait, with exactly one Verifier."
+      }
+    ],
+    "sharedHelper": {
+      "file": "test/helpers/native-verification-fixture.ts",
+      "changes": "Current factory4 start; explicit independent review fixture option in the candidate report; remove unused old verificationChecks argument; isolate Agent HOME.",
+      "callers": [
+        "test/app/native-verification-cli.test.ts",
+        "test/domains/comet-native/native-verifier-context.test.ts"
+      ],
+      "companionBodyUnchanged": true
+    },
+    "compactStatusNotEquivalent": true,
+    "actualResult": "current-app-business-final-result.json (2 passed, 0 failed)",
+    "initialPrototypeFailure": "One test driver omitted required proposalHash from its simulated user decision; preserved initial 1pass/1fail. Added the original returned Wait hash, not a product fix or product RED."
+  },
+  "notExecuted": [
+    "Eval (no authorization; existing model additionalAcceptance stays pending)",
+    "Full test suite",
+    "Reinstallation/new package distribution",
+    "The retired 8-second Classic managed process and old progress callback"
+  ]
+}

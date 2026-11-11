@@ -1,0 +1,47 @@
+{
+  "temporary": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-receipt-conflict-review-fnWMdr",
+  "root": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-receipt-conflict-review-fnWMdr\\project",
+  "source": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-receipt-conflict-review-fnWMdr\\project\\.git\\comet\\classic-deliveries\\c4e7ddc7485732d10dfccfc4b6b1b4fba7fe626371959dc6447b07a19db377a9.json",
+  "target": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-receipt-conflict-review-fnWMdr\\data\\workspaces\\694987dc081845d80fd3b2aa6058c33a6370b6e92cd33eddee11921bbd3a907b\\runtime\\classic-delivery-receipts\\c4e7ddc7485732d10dfccfc4b6b1b4fba7fe626371959dc6447b07a19db377a9.json",
+  "authorization": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-receipt-conflict-review-fnWMdr\\project\\openspec\\changes\\demo\\.comet\\delivery.json",
+  "auth": {
+    "action": "local",
+    "targetBranch": "main",
+    "schemaVersion": 1,
+    "changeIdentity": "run:legacy-document-run",
+    "authorizationId": "9465edc8-7b9f-4efc-a1e4-a9b66325f792",
+    "commit": "b022e66995b584b9344732a40f6fb4f4302e0f84"
+  },
+  "legacy": {
+    "schemaVersion": 1,
+    "changeIdentity": "run:legacy-document-run",
+    "authorizationId": "9465edc8-7b9f-4efc-a1e4-a9b66325f792",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "error": "Error: Classic delivery receipt conflicts with authorization evidence",
+  "after": {
+    "delivery": {
+      "action": "local",
+      "targetBranch": "main",
+      "commit": "b022e66995b584b9344732a40f6fb4f4302e0f84",
+      "schemaVersion": 1,
+      "changeIdentity": "run:legacy-document-run",
+      "authorizationId": "9465edc8-7b9f-4efc-a1e4-a9b66325f792"
+    },
+    "verification": {
+      "status": "needsVerification",
+      "currentBranch": null,
+      "commitExists": false,
+      "archiveCommitted": false,
+      "observedCommit": null,
+      "observedPrUrl": null,
+      "remoteVerified": false,
+      "prVerified": false,
+      "remoteStatus": "notChecked",
+      "prStatus": "notChecked"
+    }
+  },
+  "targetExists": false,
+  "authorizationUnchanged": true,
+  "sourceUnchanged": true
+}

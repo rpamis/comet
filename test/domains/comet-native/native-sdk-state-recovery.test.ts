@@ -1,3 +1,4 @@
+import '../../helpers/isolated-agent-home.js';
 import {
   resolveWorkspaceRuntimeRoot,
   resolveWorkspaceRuntimeRootSync,
@@ -7,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { parse, stringify } from 'yaml';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createFileRuntimeStore,
   createRuntime,
@@ -157,13 +158,14 @@ async function fixture(custom = false, { initializeGit = true, completeShape = t
 
 describe('Native trusted checkpoint recovery', () => {
   it.each(['initialize-git', 'replace-git'])(
-    'rejects stale store reads and CAS after %s without modifying the captured home',
+    'keeps bound historical reads but rejects cross-namespace mutations after %s',
     async (mutation) => {
       const f = await fixture();
       if (mutation === 'initialize-git') {
         await fs.rename(path.join(f.root, '.git'), path.join(f.root, '.git-before-initialization'));
       }
       const previousRoot = await resolveWorkspaceRuntimeRoot(f.root);
+      await fs.mkdir(previousRoot, { recursive: true });
       await fs.writeFile(path.join(previousRoot, 'preserved.txt'), 'Keep the old authority.');
       const store = createNativeSdkStateStore(f.root);
       const readOnlyStore = createNativeSdkStateStore(f.root, { readOnly: true });
@@ -192,13 +194,17 @@ describe('Native trusted checkpoint recovery', () => {
       const currentRoot = resolveWorkspaceRuntimeRootSync(f.root);
       expect(currentRoot).not.toBe(previousRoot);
 
-      await expect(store.read(f.name)).rejects.toThrow(/workspace identity changed.*recreate/u);
-      await expect(readOnlyStore.read(f.name)).rejects.toThrow(
-        /workspace identity changed.*recreate/u,
-      );
+      if (mutation === 'initialize-git') {
+        await expect(store.read(f.name)).rejects.toThrow(/workspace identity changed/);
+        await expect(readOnlyStore.read(f.name)).rejects.toThrow(/checkpoint recovery/);
+      } else {
+        const bound = await store.read(f.name);
+        expect(bound).toEqual(f.run);
+        expect(await readOnlyStore.read(f.name)).toEqual(bound);
+      }
       await expect(
         store.compareAndSwap(f.name, f.run.revision, { ...f.run, revision: f.run.revision + 1 }),
-      ).rejects.toThrow(/workspace identity changed.*recreate/u);
+      ).rejects.toThrow(/workspace identity changed/u);
       expect(await snapshot(previousRoot)).toEqual(previous);
       await expect(fs.stat(currentRoot)).rejects.toMatchObject({ code: 'ENOENT' });
     },
@@ -213,21 +219,28 @@ describe('Native trusted checkpoint recovery', () => {
       const checkpoint = await f.checkpoint();
       execFileSync('git', ['init', '-b', 'main'], { cwd: f.root, stdio: 'ignore' });
       expect(resolveWorkspaceRuntimeRootSync(f.root)).not.toBe(previousRoot);
-      await expect(f.store.read(f.name)).rejects.toThrow(/workspace identity changed/u);
+      expect(await f.store.read(f.name)).toEqual(previous);
 
       const restored = await createNativeSdkStateStore(f.root).read(f.name);
       expect(restored).toEqual(checkpoint);
       expect(restored!.actions[0]).toMatchObject({
         id: previous!.actions[0].id,
         inputHash: previous!.actions[0].inputHash,
-        status: completeShape ? 'succeeded' : 'unknown',
+        status: checkpoint!.actions[0].status,
       });
+      if (!completeShape) {
+        expect(checkpoint!.actions[0].status).toBe('pending');
+        expect(previous!.actions[0]).toMatchObject({
+          status: 'running',
+          claim: { token: 'shape-token' },
+        });
+      }
       expect(restored!.waits).toEqual(previous!.waits);
       expect(await f.raw.read(f.name)).toEqual(previous);
     },
   );
 
-  it.each(['run', 'projection', 'runtime'])(
+  it.each(['run', 'retired-marker', 'runtime'])(
     'recovers missing %s at the saved Shape revision and keeps its decision pending',
     async (missing) => {
       const f = await fixture();
@@ -238,15 +251,15 @@ describe('Native trusted checkpoint recovery', () => {
         await fs.rm(
           path.join(
             resolveWorkspaceRuntimeRootSync(f.root),
-            missing === 'projection' ? 'state-projections' : '.',
+            missing === 'retired-marker' ? 'state-projections' : '.',
           ),
-          { recursive: true },
+          { recursive: true, force: true },
         );
       const restored = await createNativeSdkStateStore(f.root).read(f.name);
-      expect(restored).toEqual(missing === 'projection' ? f.run : saved);
+      expect(restored).toEqual(missing === 'retired-marker' ? f.run : saved);
       expect(restored!.waits[0].status).toBe('pending');
       expect(await createNativeSdkStateStore(f.root).read(f.name)).toEqual(restored);
-      expect(JSON.parse(await fs.readFile(f.markerFile, 'utf8')).revision).toBe(saved!.revision);
+      await expect(fs.access(f.markerFile)).rejects.toMatchObject({ code: 'ENOENT' });
       expect(await f.raw.compareAndSwap(f.name, 1, { ...saved!, revision: 2 })).toBe(false);
       expect((await advanceNativeSdkChange(f.root, f.name)).exitCode).toBe(0);
     },
@@ -331,19 +344,22 @@ describe('Native trusted checkpoint recovery', () => {
           summary: 'Implemented the recovery fixture.',
           addressedAcceptanceIds: ['A1'],
           acceptanceReview: fixtureAcceptanceReview(['A1']),
-          checks: [],
+          checks: [
+            {
+              name: 'Actual platform Node probe',
+              result: 'passed',
+              note: execFileSync(
+                process.execPath,
+                ['-e', "process.stdout.write('platform probe passed')"],
+                { encoding: 'utf8' },
+              ).trim(),
+            },
+          ],
           knownLimits: [],
           review: null,
           submittedAt: '2026-10-07T00:00:00.000Z',
-          verificationChecks: [],
         },
       },
-    });
-    run = await f.runtime.execute({
-      runId: f.name,
-      actionId: run.actions.at(-1)!.id,
-      executorId: 'comet-native-checks',
-      context: { requestId: 'checks', projectRoot: f.root },
     });
     expect(run.state).toMatchObject({ phase: 'verify' });
     expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
@@ -358,18 +374,26 @@ describe('Native trusted checkpoint recovery', () => {
   });
 
   it.each([false, true])(
-    'supports legacy checkpoints with a retained projection and partial import=%s',
+    'restores legacy normalized checkpoints without requiring a marker and partial import=%s',
     async (partial) => {
       const f = await fixture();
       const document = parse(await fs.readFile(f.stateFile, 'utf8'));
       delete document.run_checkpoint.sourceRevision;
       delete document.run_checkpoint.sourceHash;
       await fs.writeFile(f.stateFile, '# comet-execution: managed-run\n' + stringify(document));
+      const saved = await f.checkpoint();
       await f.loseRun();
-      if (partial) await f.raw.compareAndSwap(f.name, null, document.run_checkpoint.run);
+      if (partial) await f.raw.compareAndSwap(f.name, null, saved!);
       const restored = await createNativeSdkStateStore(f.root).read(f.name);
-      expect(restored).toEqual({ ...document.run_checkpoint.run, revision: f.run.revision });
-      expect(await f.raw.compareAndSwap(f.name, 1, { ...restored!, revision: 2 })).toBe(false);
+      expect(restored).toEqual(saved);
+      expect(restored!.state).toEqual(f.run.state);
+      expect(restored!.waits).toEqual(f.run.waits);
+      expect(
+        await f.raw.compareAndSwap(f.name, restored!.revision + 1, {
+          ...restored!,
+          revision: restored!.revision + 2,
+        }),
+      ).toBe(false);
       expect(await createNativeSdkStateStore(f.root).read(f.name)).toEqual(restored);
     },
   );
@@ -378,7 +402,7 @@ describe('Native trusted checkpoint recovery', () => {
     const f = await fixture();
     const saved = await f.checkpoint();
     await f.loseRun();
-    await fs.rm(f.markerFile);
+    await fs.rm(f.markerFile, { force: true });
     const interrupted = createNativeSdkStateStore(f.root, {
       store: {
         ...f.raw,
@@ -391,21 +415,16 @@ describe('Native trusted checkpoint recovery', () => {
     await expect(interrupted.read(f.name)).rejects.toThrow(/projection interruption/);
     expect(await f.raw.read(f.name)).toEqual(saved);
     expect(await createNativeSdkStateStore(f.root).read(f.name)).toEqual(saved);
-    expect(JSON.parse(await fs.readFile(f.markerFile, 'utf8')).revision).toBe(saved!.revision);
+    await expect(fs.access(f.markerFile)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it.each(['checkpoint', 'source-revision', 'marker', 'future-marker', 'state', 'branch'])(
+  it.each(['checkpoint', 'source-revision', 'state', 'branch'])(
     'rejects %s drift before creating a replacement Run',
     async (damage) => {
       const f = await fixture();
       if (damage === 'branch')
         execFileSync('git', ['symbolic-ref', 'HEAD', 'refs/heads/other'], { cwd: f.root });
-      else if (damage.includes('marker')) {
-        const marker = JSON.parse(await fs.readFile(f.markerFile, 'utf8'));
-        if (damage === 'future-marker') marker.revision += 1;
-        else marker.state.language = 'zh-CN';
-        await fs.writeFile(f.markerFile, JSON.stringify(marker));
-      } else {
+      else {
         const document = parse(await fs.readFile(f.stateFile, 'utf8'));
         if (damage === 'checkpoint') document.run_checkpoint.hash = '0'.repeat(64);
         else if (damage === 'source-revision') document.run_checkpoint.sourceRevision += 20;
@@ -442,5 +461,100 @@ describe('Native trusted checkpoint recovery', () => {
     expect(await createNativeSdkStateStore(f.root, { identity: f.identity }).read(f.name)).toEqual(
       saved,
     );
+  });
+  it.each([false, true])(
+    'restores only matching bound sourceRevision partial data (drift=%s)',
+    async (drift) => {
+      const f = await fixture(),
+        saved = (await f.checkpoint())!;
+      expect(saved.revision).toBeGreaterThan(1);
+      const bytes = await fs.readFile(f.stateFile),
+        partial = {
+          ...saved,
+          revision: 1,
+          state: drift ? { ...(saved.state as object), language: 'zh-CN' } : saved.state,
+        };
+      await f.loseRun();
+      expect(await f.raw.compareAndSwap(f.name, null, partial)).toBe(true);
+      if (drift) {
+        await expect(createNativeSdkStateStore(f.root).read(f.name)).rejects.toThrow(
+          /interrupted checkpoint import/,
+        );
+        expect(await f.raw.read(f.name)).toEqual(partial);
+      } else {
+        await expect(
+          createNativeSdkStateStore(f.root, { readOnly: true }).read(f.name),
+        ).rejects.toThrow(/checkpoint recovery/);
+        expect(await f.raw.read(f.name)).toEqual(partial);
+        expect(await createNativeSdkStateStore(f.root).read(f.name)).toEqual(saved);
+        expect(await f.raw.read(f.name)).toEqual(saved);
+        expect(await createNativeSdkStateStore(f.root).read(f.name)).toEqual(saved);
+      }
+      expect(await fs.readFile(f.stateFile)).toEqual(bytes);
+    },
+  );
+
+  it.each(['marker', 'future-marker'])(
+    'ignores retired %s bytes while preserving the actual portable recovery evidence',
+    async (marker) => {
+      const f = await fixture(),
+        saved = await f.checkpoint(),
+        bytes = await fs.readFile(f.stateFile),
+        source = JSON.stringify({
+          schema: 'SIMULATED-retired-projection',
+          revision: marker === 'future-marker' ? f.run.revision + 10 : f.run.revision,
+          state: { language: 'zh-CN' },
+        });
+      await fs.mkdir(path.dirname(f.markerFile), { recursive: true });
+      await fs.writeFile(f.markerFile, source);
+      await f.loseRun();
+      expect(await createNativeSdkStateStore(f.root).read(f.name)).toEqual(saved);
+      expect(await fs.readFile(f.stateFile)).toEqual(bytes);
+      expect(await fs.readFile(f.markerFile, 'utf8')).toBe(source);
+    },
+  );
+
+  it('retains a real public Shape Agent claim in its portable checkpoint before workspace recreation', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-shape-agent-checkpoint-'));
+    roots.push(root);
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'ignore' });
+    const { runNativeCli } = await import('../../../domains/comet-native/native-cli.js'),
+      name = 'shape-agent',
+      cli = async (args: string[]) => {
+        const r = await runNativeCli([...args, '--project-root', root, '--json']);
+        expect(r.exitCode, r.stdout).toBe(0);
+        return r;
+      };
+    await cli(['new', name]);
+    await cli(['next', name, '--session', 'SIMULATED-original-shape-agent']);
+    const oldRoot = resolveWorkspaceRuntimeRootSync(root),
+      raw = createFileRuntimeStore<WorkflowRun>({ rootDir: path.join(oldRoot, 'sdk-runs/native') }),
+      original = (await raw.read(name))!,
+      action = original.actions.find((a) => a.stepId === 'shape.prepare')!;
+    expect(action).toMatchObject({
+      status: 'running',
+      claim: { sessionId: 'SIMULATED-original-shape-agent', executorId: 'native-host' },
+    });
+    const file = path.join(root, 'docs/comet/changes', name, 'comet-state.yaml'),
+      bytes = await fs.readFile(file),
+      saved = readPortableRunCheckpoint(parse(bytes.toString()).run_checkpoint, name, {
+        preserveSourceRevision: true,
+      })!;
+    expect(saved.revision).toBe(original.revision);
+    expect(saved.actions.find((a) => a.id === action.id)).toMatchObject({
+      id: action.id,
+      inputHash: action.inputHash,
+      status: 'unknown',
+      claim: {
+        sessionId: action.claim!.sessionId,
+        executorId: 'native-host',
+        token: expect.stringMatching(/^portable-/),
+      },
+    });
+    await fs.rename(path.join(root, '.git'), path.join(root, '.git-original'));
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'ignore' });
+    expect(await createNativeSdkStateStore(root).read(name)).toEqual(saved);
+    expect(await raw.read(name)).toEqual(original);
+    expect(await fs.readFile(file)).toEqual(bytes);
   });
 });

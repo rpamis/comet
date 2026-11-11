@@ -1,3 +1,6 @@
+import '../../helpers/isolated-agent-home.js';
+import { inspectNativePortableStatus } from '../../../domains/comet-native/native-portable-status.js';
+import { ensureNativePortableReport } from '../../../domains/comet-native/native-portable-verification.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -12,23 +15,19 @@ import {
   ensureNativeDirectories,
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
-import { recoverNativePortableChange } from '../../../domains/comet-native/native-portable-recovery.js';
+
 import { applyNativeRunnerInput } from '../../../domains/comet-native/native-runner-input.js';
 import {
   createNativePortableChange,
   dispatchNativePortableVerifier,
-  executeNativePortableCheckPlan,
-  nativeLocalExecutionFile,
   nativePortableChangeDir,
-  nativePortableStateFile,
   readNativePortableChange,
   submitNativePortableBuilderCandidate,
   submitNativePortableVerifierResult,
 } from '../../../domains/comet-native/native-portable-runtime.js';
 import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
 import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
-import { compareAndSwapNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
-import { toNativePortableText } from '../../../domains/comet-native/native-portable-text.js';
+
 import type { NativePortableState } from '../../../domains/comet-native/native-portable-types.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 
@@ -56,118 +55,6 @@ describe('Native portable recovery', () => {
     return confirmNativePortableShape({ paths, name });
   }
 
-  it.each(['shape', 'build'] as const)(
-    'rebuilds a missing local overlay at the %s boundary without changing semantic state',
-    async (phase) => {
-      const name = `recover-${phase}`;
-      const before =
-        phase === 'shape'
-          ? await createNativePortableChange({ paths, name, language: 'en' })
-          : await createBuild(name);
-      await fs.rm(path.dirname(nativeLocalExecutionFile(paths, name)), {
-        recursive: true,
-        force: true,
-      });
-      const recovered = await recoverNativePortableChange({ paths, name });
-      expect(recovered).toMatchObject({
-        action: 'resume-stable-boundary',
-        reason: 'missing',
-        state: { phase, state_version: before.state_version },
-      });
-    },
-  );
-
-  it.each(['missing', 'stale'] as const)(
-    'does not inherit an Archive-ready pass when the local Runtime is %s',
-    async (localState) => {
-      const state = await createBuild('recover-archive');
-      const archiveReady: NativePortableState = {
-        ...state,
-        phase: 'archive',
-        state_version: state.state_version + 1,
-        verification_result: 'pass',
-        verification_report: 'verification.md',
-        acceptance: state.acceptance.map((entry) => ({
-          ...entry,
-          result: 'passed',
-          reason: toNativePortableText('Passed before transfer.'),
-        })),
-        builder_handoff: {
-          candidate_id: 'candidate',
-          identity_provider: 'host',
-          builder_execution_ref: 'builder',
-          iteration: 1,
-          summary: toNativePortableText('Built.'),
-          addressed_acceptance_ids: state.acceptance.map(({ id }) => id),
-          acceptance_review: fixtureAcceptanceReview(state.acceptance.map(({ id }) => id)),
-          checks: [],
-          checks_truncated: false,
-          known_limits: [],
-          known_limits_truncated: false,
-          review: {
-            status: 'passed',
-            summary: toNativePortableText('Read-only review passed.'),
-            reviewer_execution_ref: 'reviewer',
-          },
-          submitted_at: new Date().toISOString(),
-        },
-        verification: {
-          candidate_id: 'candidate',
-          identity_provider: 'host',
-          verifier_execution_ref: 'verifier',
-          iteration: 1,
-          attempt: 1,
-          verdict: 'pass',
-          checks: [
-            {
-              id: 'test',
-              name: toNativePortableText('Tests'),
-              argv_display: [],
-              argv_truncated: false,
-              cwd_ref: '.',
-              status: 'passed',
-              exit_code: 0,
-              duration_ms: 1,
-            },
-          ],
-          summary: toNativePortableText('Passed.'),
-          risks: [],
-          risks_truncated: false,
-          completed_at: new Date().toISOString(),
-        },
-        loop: { ...state.loop, stage: 'archive-ready', attempt: 1, next_action: 'archive' },
-      };
-      await compareAndSwapNativePortableState({
-        file: nativePortableStateFile(paths, state.name),
-        expectedStateVersion: state.state_version,
-        next: archiveReady,
-        containedRoot: paths.nativeRoot,
-      });
-      if (localState === 'missing') {
-        await fs.rm(path.dirname(nativeLocalExecutionFile(paths, state.name)), {
-          recursive: true,
-          force: true,
-        });
-      }
-
-      const recovered = await recoverNativePortableChange({ paths, name: state.name });
-      expect(recovered).toMatchObject({
-        action: 'reverify',
-        state: {
-          phase: 'verify',
-          verification_result: 'pending',
-          verification: null,
-          loop: { stage: 'verify-ready', iteration: 1, attempt: 1 },
-        },
-      });
-      expect(recovered.state.loop.failed_iteration_count).toBe(0);
-      expect(recovered.state.loop.no_progress_count).toBe(0);
-      expect((await readNativePortableChange(paths, state.name)).state_version).toBe(
-        archiveReady.state_version + 1,
-      );
-    },
-  );
-
   it('preserves a running Verifier until its host reports an explicit execution error', async () => {
     let state = await createBuild('recover-verifier');
     const runner = createNativeRunnerChannel();
@@ -190,21 +77,16 @@ describe('Native portable recovery', () => {
         },
       },
     });
-    const resolved = await executeNativePortableCheckPlan({
-      paths,
-      name: state.name,
-      plans: [],
-    });
+
     state = await dispatchNativePortableVerifier({
       paths,
       name: state.name,
-      checks: resolved.checks,
       verifierExecutionId: 'lost-verifier',
     });
-    await expect(recoverNativePortableChange({ paths, name: state.name })).resolves.toMatchObject({
-      action: 'await-user',
-      reason: 'execution-active',
+    await expect(inspectNativePortableStatus({ paths, name: state.name })).resolves.toMatchObject({
+      continuation: { action: 'await-verifier', requiresUserDecision: false },
     });
+    expect(await readNativePortableChange(paths, state.name)).toEqual(state);
     const failed = await applyNativeRunnerInput({
       paths,
       name: state.name,
@@ -236,14 +118,16 @@ describe('Native portable recovery', () => {
     expect(rebound).toMatchObject({
       state: {
         phase: 'verify',
-        builder_handoff: { candidate_id: 'candidate', identity_provider: 'skill-coordinated' },
+        builder_handoff: {
+          candidate_id: 'candidate',
+          identity_provider: 'skill-coordinated',
+        },
         loop: { stage: 'verify-ready', iteration: 1, attempt: 2 },
       },
       verifierDispatch: {
         candidateId: 'candidate',
         iteration: 1,
         attempt: 2,
-        coordination: 'skill-coordinated',
       },
     });
   });
@@ -276,18 +160,16 @@ describe('Native portable recovery', () => {
         },
       },
     });
-    const checks = await executeNativePortableCheckPlan({ paths, name, plans: [] });
+
     state = await dispatchNativePortableVerifier({
       paths,
       name,
-      checks: checks.checks,
       verifierExecutionId: 'initial-verifier',
     });
     state = (
       await submitNativePortableVerifierResult({
         paths,
         name,
-        checks: checks.checks,
         maxVerifyFailures: 5,
         envelope: runner.envelopeVerifierResponse({
           candidateId: state.builder_handoff!.candidate_id,
@@ -331,11 +213,10 @@ describe('Native portable recovery', () => {
         },
       },
     });
-    const repairChecks = await executeNativePortableCheckPlan({ paths, name, plans: [] });
+
     state = await dispatchNativePortableVerifier({
       paths,
       name,
-      checks: repairChecks.checks,
       verifierExecutionId: 'lost-repair-verifier',
     });
     expect(state.acceptance.map(({ id, result }) => ({ id, result }))).toEqual([
@@ -389,21 +270,16 @@ describe('Native portable recovery', () => {
         },
       },
     });
-    const resolved = await executeNativePortableCheckPlan({
-      paths,
-      name: state.name,
-      plans: [],
-    });
+
     state = await dispatchNativePortableVerifier({
       paths,
       name: state.name,
-      checks: resolved.checks,
+      verifierExecutionId: 'report-verifier',
     });
     state = (
       await submitNativePortableVerifierResult({
         paths,
         name: state.name,
-        checks: resolved.checks,
         maxVerifyFailures: 5,
         envelope: runner.envelopeVerifierResponse({
           candidateId: state.builder_handoff!.candidate_id,
@@ -432,70 +308,17 @@ describe('Native portable recovery', () => {
     const report = path.join(nativePortableChangeDir(paths, state.name), 'verification.md');
     await fs.rm(report, { force: true });
 
-    const recovered = await recoverNativePortableChange({ paths, name: state.name });
-    expect(recovered).toMatchObject({
-      action: 'resume-stable-boundary',
-      reason: 'available',
-      state: { state_version: state.state_version, verification_result: 'pass' },
-    });
+    const before = await fs.readFile(
+      path.join(nativePortableChangeDir(paths, state.name), 'comet-state.yaml'),
+    );
+    await inspectNativePortableStatus({ paths, name: state.name });
+    await expect(fs.stat(report)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await ensureNativePortableReport({ paths, state })).toBe('rebuilt');
+    expect(
+      await fs.readFile(path.join(nativePortableChangeDir(paths, state.name), 'comet-state.yaml')),
+    ).toEqual(before);
     await expect(fs.readFile(report, 'utf8')).resolves.toContain(
       `generated_from_state_version: ${state.state_version}`,
     );
-  });
-
-  it('discards a stale non-repeatable check without changing newer portable state', async () => {
-    const state = await createBuild('recover-stale-check');
-    const file = nativeLocalExecutionFile(paths, state.name);
-    const local = JSON.parse(await fs.readFile(file, 'utf8')) as Record<string, unknown>;
-    const startedAt = new Date().toISOString();
-    await fs.writeFile(
-      file,
-      `${JSON.stringify(
-        {
-          ...local,
-          basedOnStateVersion: state.state_version - 1,
-          execution: {
-            operationId: 'stale-operation',
-            stage: 'checking',
-            actor: 'runtime',
-            executionId: null,
-            status: 'interrupted',
-            startedAt,
-            requestCheckRounds: 0,
-          },
-          checks: [
-            {
-              id: 'non-repeatable',
-              name: 'Non-repeatable check',
-              operationId: 'stale-operation',
-              status: 'interrupted',
-              repeatable: false,
-              timeoutMs: 10_000,
-              executionCount: 1,
-              argv: [process.execPath, '-e', 'process.exit(0)'],
-              cwd: root,
-              exitCode: null,
-              startedAt,
-              completedAt: null,
-              log: 'logs/checks/stale-operation-non-repeatable.log',
-            },
-          ],
-        },
-        null,
-        2,
-      )}\n`,
-    );
-
-    const recovered = await recoverNativePortableChange({ paths, name: state.name });
-    expect(recovered).toMatchObject({
-      action: 'resume-stable-boundary',
-      reason: 'stale',
-      state: {
-        phase: 'build',
-        status: 'active',
-        state_version: state.state_version,
-        blockers: [],
-      },
-    });
   });
 });

@@ -1,0 +1,4279 @@
+{
+  "currentAndCoveredHistoricalCases": 725,
+  "fileReferences": [
+    {
+      "registry": "current",
+      "id": "classic-archive-prepared-input-recovery",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-archive-prepared-input-recovery",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-archive-prepared-input-recovery",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-archive-prepared-input-recovery",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-archive-prepared-input-recovery",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-archive-prepared-input-recovery",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-archive-prepared-input-recovery",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-archive-prepared-input-recovery",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-archive-prepared-input-recovery",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-delivery-repair-baseline-input-drift",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-delivery-repair-baseline-input-drift",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-delivery-repair-baseline-input-drift",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-delivery-repair-baseline-input-drift",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-delivery-repair-baseline-input-drift",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-delivery-repair-baseline-input-drift",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-delivery-repair-baseline-input-drift",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-delivery-repair-baseline-input-drift",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-delivery-repair-baseline-input-drift",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-delivery-repair-checkpoint-read-race",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-delivery-repair-checkpoint-read-race",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-delivery-repair-checkpoint-read-race",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-delivery-repair-checkpoint-read-race",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-delivery-repair-checkpoint-read-race",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-delivery-repair-checkpoint-read-race",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-delivery-repair-checkpoint-read-race",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-delivery-repair-checkpoint-read-race",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-delivery-repair-checkpoint-read-race",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "manual-recovery-classic-stale-build",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "manual-recovery-classic-stale-build",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "manual-recovery-classic-stale-build",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "manual-recovery-classic-stale-build",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "manual-recovery-classic-stale-build",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "manual-recovery-classic-stale-build",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "manual-recovery-classic-stale-build",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "manual-recovery-classic-stale-build",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "manual-recovery-classic-stale-build",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "manual-recovery-classic-stale-verify",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "manual-recovery-classic-stale-verify",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "manual-recovery-classic-stale-verify",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "manual-recovery-classic-stale-verify",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "manual-recovery-classic-stale-verify",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "manual-recovery-classic-stale-verify",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "manual-recovery-classic-stale-verify",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "manual-recovery-classic-stale-verify",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "manual-recovery-classic-stale-verify",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-formal-edit-continuation",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-formal-edit-continuation",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-formal-edit-continuation",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-formal-edit-continuation",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-formal-edit-continuation",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-formal-edit-continuation",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-formal-edit-continuation",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-formal-edit-continuation",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-formal-edit-continuation",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-raw-clean-git-inputs",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-raw-clean-git-inputs",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-raw-clean-git-inputs",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-raw-clean-git-inputs",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-raw-clean-git-inputs",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-raw-clean-git-inputs",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-raw-clean-git-inputs",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-raw-clean-git-inputs",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-raw-clean-git-inputs",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-raw-batch-parent-containment",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-raw-batch-parent-containment",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-raw-batch-parent-containment",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-raw-batch-parent-containment",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-raw-batch-parent-containment",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-raw-batch-parent-containment",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-raw-batch-parent-containment",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-raw-batch-parent-containment",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-raw-batch-parent-containment",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-accepted-candidate-input-binding",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-accepted-candidate-input-binding",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-accepted-candidate-input-binding",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-accepted-candidate-input-binding",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-accepted-candidate-input-binding",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-accepted-candidate-input-binding",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-accepted-candidate-input-binding",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-accepted-candidate-input-binding",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-accepted-candidate-input-binding",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-proven-prelaunch-retry",
+      "level": 0,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "retries only a proven prelaunch failure in the same check Action",
+        "requiredNames": [
+          "Classic command check evidence retries only a proven prelaunch failure in the same check Action without replaying a process"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-proven-prelaunch-retry",
+      "level": 1,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence retries only a proven prelaunch failure in the same check Action without replaying a process)$",
+        "requiredNames": [
+          "Classic command check evidence retries only a proven prelaunch failure in the same check Action without replaying a process"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-unknown-check-no-replay",
+      "level": 0,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "refuses both old and new request IDs when the process ran but its completion receipt is unknown",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-formal-review-source-retirement",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-formal-review-source-retirement",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-formal-review-source-retirement",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-formal-review-source-retirement",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-formal-review-source-retirement",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-formal-review-source-retirement",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-formal-review-source-retirement",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-formal-review-source-retirement",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-formal-review-source-retirement",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-formal-negative-review-reapproval",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-formal-negative-review-reapproval",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-formal-negative-review-reapproval",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-formal-negative-review-reapproval",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-formal-negative-review-reapproval",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-formal-negative-review-reapproval",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-formal-negative-review-reapproval",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-formal-negative-review-reapproval",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-formal-negative-review-reapproval",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-implementation-revision-not-acceptance",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-implementation-revision-not-acceptance",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-implementation-revision-not-acceptance",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-implementation-revision-not-acceptance",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-implementation-revision-not-acceptance",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-implementation-revision-not-acceptance",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-implementation-revision-not-acceptance",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-implementation-revision-not-acceptance",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-implementation-revision-not-acceptance",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-canonical-source-edit-continuation",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-canonical-source-edit-continuation",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-canonical-source-edit-continuation",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-canonical-source-edit-continuation",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-canonical-source-edit-continuation",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-canonical-source-edit-continuation",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-canonical-source-edit-continuation",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-canonical-source-edit-continuation",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-canonical-source-edit-continuation",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-preset-source-reapproval",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-preset-source-reapproval",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-preset-source-reapproval",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-preset-source-reapproval",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-preset-source-reapproval",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-preset-source-reapproval",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-preset-source-reapproval",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-preset-source-reapproval",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-preset-source-reapproval",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-plan-source-edit-continuation",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-plan-source-edit-continuation",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-plan-source-edit-continuation",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-plan-source-edit-continuation",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-plan-source-edit-continuation",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-plan-source-edit-continuation",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-plan-source-edit-continuation",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-plan-source-edit-continuation",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-plan-source-edit-continuation",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-design-source-edit-continuation",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-design-source-edit-continuation",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-design-source-edit-continuation",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-design-source-edit-continuation",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-design-source-edit-continuation",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-design-source-edit-continuation",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-design-source-edit-continuation",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-design-source-edit-continuation",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-design-source-edit-continuation",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-plan-source-edit-continuation",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-plan-source-edit-continuation",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-plan-source-edit-continuation",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-plan-source-edit-continuation",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-plan-source-edit-continuation",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-plan-source-edit-continuation",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-plan-source-edit-continuation",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-plan-source-edit-continuation",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-plan-source-edit-continuation",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-preset-open-source-capture",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-preset-open-source-capture",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-preset-open-source-capture",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-preset-open-source-capture",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-preset-open-source-capture",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-preset-open-source-capture",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-preset-open-source-capture",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-preset-open-source-capture",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-compat-preset-open-source-capture",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-revision-report-input-isolation",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-revision-report-input-isolation",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-revision-report-input-isolation",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-revision-report-input-isolation",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-revision-report-input-isolation",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-revision-report-input-isolation",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-revision-report-input-isolation",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-revision-report-input-isolation",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-revision-report-input-isolation",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-refresh-byte-identical-restoration",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-refresh-byte-identical-restoration",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-refresh-byte-identical-restoration",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-refresh-byte-identical-restoration",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-refresh-byte-identical-restoration",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-refresh-byte-identical-restoration",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-refresh-byte-identical-restoration",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-refresh-byte-identical-restoration",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-refresh-byte-identical-restoration",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-preserve-completed-successive-judgments",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-preserve-completed-successive-judgments",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-preserve-completed-successive-judgments",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-preserve-completed-successive-judgments",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-preserve-completed-successive-judgments",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-preserve-completed-successive-judgments",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-preserve-completed-successive-judgments",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-preserve-completed-successive-judgments",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-preserve-completed-successive-judgments",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-raw-git-successive-identity-chain",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-raw-git-successive-identity-chain",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-raw-git-successive-identity-chain",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-raw-git-successive-identity-chain",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-raw-git-successive-identity-chain",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-raw-git-successive-identity-chain",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-raw-git-successive-identity-chain",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-raw-git-successive-identity-chain",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-raw-git-successive-identity-chain",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-check-evidence-versus-implementation",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-check-evidence-versus-implementation",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-check-evidence-versus-implementation",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-check-evidence-versus-implementation",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-check-evidence-versus-implementation",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-check-evidence-versus-implementation",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-check-evidence-versus-implementation",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-check-evidence-versus-implementation",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-check-evidence-versus-implementation",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-no-unauthorized-revision",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-no-unauthorized-revision",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-no-unauthorized-revision",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-no-unauthorized-revision",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-no-unauthorized-revision",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-no-unauthorized-revision",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-no-unauthorized-revision",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-no-unauthorized-revision",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-no-unauthorized-revision",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-supplement-retained-checks",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-supplement-retained-checks",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-supplement-retained-checks",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-supplement-retained-checks",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-supplement-retained-checks",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-supplement-retained-checks",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-supplement-retained-checks",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-supplement-retained-checks",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "edit-review-supplement-retained-checks",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-formal-check-retention",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-formal-check-retention",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-formal-check-retention",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-formal-check-retention",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-formal-check-retention",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-formal-check-retention",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-formal-check-retention",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-formal-check-retention",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "agent-edit-review-formal-check-retention",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-recover-original-input-manifest",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-recover-original-input-manifest",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-recover-original-input-manifest",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-recover-original-input-manifest",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-recover-original-input-manifest",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-recover-original-input-manifest",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-recover-original-input-manifest",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-recover-original-input-manifest",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-recover-original-input-manifest",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-archive-reverification-guidance",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-archive-reverification-guidance",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-archive-reverification-guidance",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-archive-reverification-guidance",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-archive-reverification-guidance",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-archive-reverification-guidance",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-archive-reverification-guidance",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-archive-reverification-guidance",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "classic-sdk-archive-reverification-guidance",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-simplification-t21-handoff-sources",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-simplification-t21-handoff-sources",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-simplification-t21-handoff-sources",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-simplification-t21-handoff-sources",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-simplification-t21-handoff-sources",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-simplification-t21-handoff-sources",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-simplification-t21-handoff-sources",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-simplification-t21-handoff-sources",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-simplification-t21-handoff-sources",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-simplification-t23-formal-observe",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-simplification-t23-formal-observe",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-simplification-t23-formal-observe",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-simplification-t23-formal-observe",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-simplification-t23-formal-observe",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-simplification-t23-formal-observe",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-simplification-t23-formal-observe",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-simplification-t23-formal-observe",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "current",
+      "id": "workflow-simplification-t23-formal-observe",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 324,
+      "id": "issue-324-spec-patch-handoff",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 324,
+      "id": "issue-324-spec-patch-handoff",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 324,
+      "id": "issue-324-spec-patch-handoff",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 324,
+      "id": "issue-324-spec-patch-handoff",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 324,
+      "id": "issue-324-spec-patch-handoff",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 324,
+      "id": "issue-324-spec-patch-handoff",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 324,
+      "id": "issue-324-spec-patch-handoff",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 324,
+      "id": "issue-324-spec-patch-handoff",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 324,
+      "id": "issue-324-spec-patch-handoff",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 436,
+      "id": "issue-436-large-check-input",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 436,
+      "id": "issue-436-large-check-input",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 436,
+      "id": "issue-436-large-check-input",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 436,
+      "id": "issue-436-large-check-input",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 436,
+      "id": "issue-436-large-check-input",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 436,
+      "id": "issue-436-large-check-input",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 436,
+      "id": "issue-436-large-check-input",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 436,
+      "id": "issue-436-large-check-input",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 436,
+      "id": "issue-436-large-check-input",
+      "level": 3,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 502,
+      "id": "issue-502-timeout-and-inputs",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 502,
+      "id": "issue-502-timeout-and-inputs",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 502,
+      "id": "issue-502-timeout-and-inputs",
+      "level": 1,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 502,
+      "id": "issue-502-timeout-and-inputs",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 502,
+      "id": "issue-502-timeout-and-inputs",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 502,
+      "id": "issue-502-timeout-and-inputs",
+      "level": 2,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 502,
+      "id": "issue-502-timeout-and-inputs",
+      "level": 3,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 502,
+      "id": "issue-502-timeout-and-inputs",
+      "level": 3,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 502,
+      "id": "issue-502-timeout-and-inputs",
+      "level": 3,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 502,
+      "id": "issue-502-timeout-and-inputs",
+      "level": 4,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+        "requiredNames": [
+          "Classic command check evidence does not resurrect an older execution over a newer start"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 502,
+      "id": "issue-502-timeout-and-inputs",
+      "level": 4,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+        "requiredNames": [
+          "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+        ]
+      },
+      "changedDeclarationMatches": []
+    },
+    {
+      "registry": "historical",
+      "issue": 502,
+      "id": "issue-502-timeout-and-inputs",
+      "level": 4,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+        "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+        "requiredNames": [
+          "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+        ]
+      },
+      "changedDeclarationMatches": []
+    }
+  ],
+  "effectiveChanged": [],
+  "appendRequired": false
+}

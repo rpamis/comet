@@ -132,10 +132,6 @@ async function preparedSupervisorBuilder() {
     decisionId: 'multi-session',
     choice: 'multi-session',
   });
-  await completeShape(
-    await collectNativeSdkShapeProposal({ paths, state: run.state as typeof initialState }),
-    'shape-revalidated',
-  );
   run = await runtime.execute({
     runId: run.runId,
     actionId: run.actions.at(-1)!.id,

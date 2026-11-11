@@ -1,9 +1,9 @@
+import { createNativePortableChange } from '../../domains/comet-native/native-portable-runtime.js';
 import { spawnSync } from 'child_process';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
-import { createNativeChange } from '../../domains/comet-native/native-change.js';
 import { nativeProjectPaths } from '../../domains/comet-native/native-paths.js';
 import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
 
@@ -164,11 +164,10 @@ describe('built CLI smoke', () => {
 
   it('runs the Native facade without changing root status and doctor commands', async () => {
     const initialized = runCli('native', 'init', '--project-root', projectRoot, '--json');
-    await createNativeChange({
+    await createNativePortableChange({
       paths: await nativeProjectPaths(projectRoot, 'docs'),
       name: 'smoke-change',
       language: 'en',
-      verificationProtocol: 'legacy-v1',
     });
     const status = runCli(
       'native',

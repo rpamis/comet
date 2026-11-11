@@ -1,0 +1,53 @@
+diff --git a/test/domains/workflow-application/application-hook.test.ts b/test/domains/workflow-application/application-hook.test.ts
+index e0de289f..1e8eda81 100644
+--- a/test/domains/workflow-application/application-hook.test.ts
++++ b/test/domains/workflow-application/application-hook.test.ts
+@@ -347,7 +347,7 @@ it('rejects nested default write scopes when repair-cycle reachability does not
+   );
+ });
+ 
+-it('serializes competing claims across sibling Runs and retains unknown write ownership', async () => {
++it('rejects a conflicting sibling claim after serial submission and retains unknown write ownership', async () => {
+   const disk = await createScopeCycleApplication(root, true);
+   disk.manifest.skills[0].adapter.inputSchema = { type: 'object' };
+   await fs.writeFile(disk.file, JSON.stringify(disk.manifest));
+@@ -394,18 +394,32 @@ it('serializes competing claims across sibling Runs and retains unknown write ow
+       claimToken: run.runId + '-claim',
+     });
+   }
+-  const results = await Promise.allSettled(claims.map((claim) => runtime.claim(claim)));
+-  expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+-  const rejected = results.find((result) => result.status === 'rejected') as PromiseRejectedResult;
+-  expect(rejected.reason).toMatchObject({ code: 'SCOPE_HELD' });
++  const siblingBefore = await runtime.inspect(claims[1].runId);
++  const parentBefore = await runtime.inspect(parent.runId);
++  const first = await runtime.claim(claims[0]);
++  expect(first.actions.find((action) => action.id === claims[0].actionId)).toMatchObject({
++    status: 'running',
++    claim: { token: claims[0].claimToken, executorId: 'local-skill' },
++  });
++  await expect(runtime.claim(claims[1])).rejects.toMatchObject({ code: 'SCOPE_HELD' });
++  expect(await runtime.inspect(claims[1].runId)).toEqual(siblingBefore);
++  expect(await runtime.inspect(claims[0].runId)).toEqual(first);
++  expect(await runtime.inspect(parent.runId)).toEqual(parentBefore);
+   expect(
+     await loaded.implementation.inspectHook!(parent, { intent: 'write', targets: ['shared.txt'] }),
+   ).toMatchObject({ allowed: true });
+-  const winner = results.findIndex((result) => result.status === 'fulfilled');
+-  await runtime.markUnknown({ ...claims[winner], reason: 'lost executor' });
+-  await expect(runtime.claim(claims[1 - winner])).rejects.toMatchObject({
++  const unknown = await runtime.markUnknown({ ...claims[0], reason: 'lost executor' });
++  const originalAction = first.actions.find((action) => action.id === claims[0].actionId)!;
++  expect(unknown.actions.find((action) => action.id === originalAction.id)).toMatchObject({
++    status: 'unknown',
++    claim: originalAction.claim,
++  });
++  await expect(runtime.claim(claims[1])).rejects.toMatchObject({
+     code: 'SCOPE_HELD',
+   });
++  expect(await runtime.inspect(claims[1].runId)).toEqual(siblingBefore);
++  expect(await runtime.inspect(claims[0].runId)).toEqual(unknown);
++  expect(await runtime.inspect(parent.runId)).toEqual(parentBefore);
+   expect(
+     await loaded.implementation.inspectHook!(parent, { intent: 'write', targets: ['shared.txt'] }),
+   ).toMatchObject({ allowed: false });

@@ -106,11 +106,10 @@ const HISTORY_LABELS = localized({
   recovery: '恢复',
 });
 const LOCAL_REASON_LABELS = localized({
-  current: '与当前 YAML 一致',
-  idle: '当前无执行任务',
-  missing: '可从 YAML 恢复',
-  'version-mismatch': '本机状态已过期，可从 YAML 恢复',
-  invalid: '本机状态不可读，可从 YAML 恢复',
+  current: '业务任务已领取',
+  idle: '当前无待领取任务',
+  platform: '任务由 Agent 平台执行',
+  invalid: '业务任务状态不可读',
   archived: '归档只读',
 });
 const MIGRATION_LABELS = localized({
@@ -1054,7 +1053,7 @@ function NativeLoopRecoveryCard({ change }) {
           }
         >
           {local?.status === 'running'
-            ? t('正在执行')
+            ? t('已领取任务')
             : (LOCAL_REASON_LABELS[local?.reason] ?? t('状态未知'))}
         </Pill>
       </div>
@@ -1064,7 +1063,6 @@ function NativeLoopRecoveryCard({ change }) {
           <SideFact label="Goal cycle" value={`${loop.goalCycle}`} />
           <SideFact label={t('轮次 / 尝试')} value={`${loop.iteration} / ${loop.attempt}`} />
           <SideFact label={t('执行者')} value={ACTOR_LABELS[loop.actor] ?? t('当前无执行者')} />
-          <SideFact label={t('检查请求轮次')} value={`${local?.requestCheckRounds ?? 0}`} />
         </dl>
       ) : (
         <p className="text-sm leading-relaxed text-muted">
@@ -1074,11 +1072,7 @@ function NativeLoopRecoveryCard({ change }) {
       <div className="mt-4 rounded-lg bg-surface-warm px-3 py-3">
         <div className="text-[13px] font-medium text-meta">{t('恢复依据与下一步')}</div>
         <div className="mt-1 text-xs font-medium leading-relaxed text-fg-2">
-          {local?.recoverableFromStage
-            ? t('可从 YAML 的 {0} 阶段恢复。', [
-                LOOP_STAGE_LABELS[local.recoverableFromStage] ?? local.recoverableFromStage,
-              ])
-            : (loop?.nextAction ?? LOCAL_REASON_LABELS[local?.reason] ?? t('无后续动作。'))}
+          {loop?.nextAction ?? LOCAL_REASON_LABELS[local?.reason] ?? t('无后续动作。')}
         </div>
       </div>
       {change.builderHandoff && (
@@ -1486,14 +1480,14 @@ function NativeSidePanel({ change, git }) {
     <aside className="space-y-5">
       <section className="rounded-lg bg-bg p-5 shadow-raised">
         <div className="flex items-center justify-between gap-3">
-          <h3 className="text-lg font-semibold">{t('恢复状态')}</h3>
+          <h3 className="text-lg font-semibold">{t('任务状态')}</h3>
           <Pill tone={local?.status === 'running' ? 'info' : 'neutral'}>
-            {local?.status === 'running' ? t('执行中') : t('YAML 稳定边界')}
+            {local?.status === 'running' ? t('已领取任务') : t('业务检查点')}
           </Pill>
         </div>
         <dl className="mt-4 space-y-3 text-sm">
           <SideFact
-            label={t('本机状态')}
+            label={t('任务来源')}
             value={LOCAL_REASON_LABELS[local?.reason] ?? t('状态未知')}
           />
           <SideFact
@@ -1501,14 +1495,6 @@ function NativeSidePanel({ change, git }) {
             value={local?.stage ? (LOCAL_STAGE_LABELS[local.stage] ?? local.stage) : '—'}
           />
           <SideFact label={t('执行者')} value={ACTOR_LABELS[local?.actor] ?? '—'} />
-          <SideFact
-            label={t('可恢复阶段')}
-            value={
-              local?.recoverableFromStage
-                ? (LOOP_STAGE_LABELS[local.recoverableFromStage] ?? local.recoverableFromStage)
-                : '—'
-            }
-          />
         </dl>
       </section>
       <section className="rounded-lg bg-bg p-5 shadow-raised">

@@ -1,0 +1,80 @@
+{
+  "source": "https://github.com/rpamis/comet/issues/545",
+  "caseIds": [
+    "native-invalid-completed-check-recovery",
+    "native-invalid-completed-check-guidance"
+  ],
+  "record": "docs/research/2026-11-11-platform-execution-retirement/545-completed-invalid/README.zh.md",
+  "selector": {
+    "file": "test/domains/comet-native/native-published-build-frontier.test.ts",
+    "namePattern": "^continues published 0\\.5\\.2 Build checks completed-invalid at the original Builder without a stop receipt or fabricated candidate$",
+    "requiredNames": [
+      "continues published 0.5.2 Build checks completed-invalid at the original Builder without a stop receipt or fabricated candidate"
+    ]
+  },
+  "oldExperiment": {
+    "package": "@rpamis/comet@0.5.2",
+    "factory": "defineNativeWorkflowApplication(3)",
+    "graphUnmodified": true,
+    "actualExecutorCalls": 1,
+    "actualCount": "once\n",
+    "actualCompletion": {
+      "phase": "completed",
+      "terminationUnconfirmed": false,
+      "status": "succeeded",
+      "checkStatus": "passed",
+      "logRef": "native/sdk-checks/e90df55f8cbc942aa236d2602f54904b205a9c8a6835cc093bfb81a8a972e53b/logs/checks/7c1f678614621247c7915ff24e4268e8456354168d38369639b3967e1a0425c1-once.log"
+    },
+    "beforeValidation": {
+      "accepted": true
+    },
+    "afterValidation": {
+      "accepted": false,
+      "reason": "Native check receipt does not match the bound plan"
+    },
+    "onlyCorruption": {
+      "path": "outcome.output.checks[0].name",
+      "before": "Current Build check",
+      "after": "Previous plan"
+    },
+    "unknownViaPublishedRuntime": true
+  },
+  "originalRootGreen": {
+    "nextDoctorNext": true,
+    "originalAbsoluteCounterUnchanged": true,
+    "invalidSidecarUnchanged": true,
+    "logUnchanged": true,
+    "preserved": [
+      "Run ID",
+      "input",
+      "Shape Wait and approval",
+      "Action input/inputHash/claim/outcome/rejectedOutcomes/receipts",
+      "history"
+    ],
+    "noFabricatedPassOrStop": true,
+    "oneBuilderNoVerifierNoCandidate": true,
+    "repeatedRunEqual": true
+  },
+  "materializedPublicCli": {
+    "rawRunEqual": true,
+    "restoration": "SDK restoreCheckpoint",
+    "bindingNotRewritten": true,
+    "legacyCacheFiles": 4,
+    "legacyRuntimeRelativeRefsPreserved": true,
+    "cacheAndRelativeCounterBytesUnchanged": true,
+    "originalAbsoluteArgvPreserved": true,
+    "counterProofLimit": "The copied relative counter proves byte preservation only: immutable old argv still names the original absolute counter. No-command-replay evidence comes from the original-root experiment, not from rebinding this copied count."
+  },
+  "retired": [
+    "Comet check sidecar validation",
+    "confirmed/stopped-actions handshake",
+    "managed check rerun"
+  ],
+  "notExecuted": [
+    "old public Doctor stopped-actions repair handshake",
+    "Eval",
+    "full suite",
+    "model/container"
+  ],
+  "registryPlan": "Retain both existing case IDs, all original fields and current frozen feature-removed node. Append an independent node selecting this completed-invalid public-CLI regression only if changing the effective selector; never rewrite or rehash main-worker-registry evidence. This evidence strengthens automatic business-Run upgrade and does not claim the retired repair handshake was fixed."
+}

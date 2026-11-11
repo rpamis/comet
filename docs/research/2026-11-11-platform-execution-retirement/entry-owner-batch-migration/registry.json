@@ -1,0 +1,17 @@
+{
+  "sourceCatalog": [
+    {
+      "file": "config/workflow-regressions.json",
+      "sha256": "1330e732285d706fa1aaae7f34ac93764321463fe0df8ff4b68156a95217947f"
+    },
+    {
+      "file": "config/historical-workflow-regressions.json",
+      "sha256": "fb090b0be6071526ceefa05fde3d4c7059fb20ed00b283dc2ebfbc484a87b70f"
+    }
+  ],
+  "scanned": "cases and historicalTestMigrations; terminal supersededBy.tests (otherwise original tests)",
+  "effectiveCaseIds": [],
+  "activeHits": [],
+  "provenanceHits": [],
+  "action": "No append or ID changes; effective or historical selector references to this file absent."
+}

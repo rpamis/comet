@@ -1,0 +1,82 @@
+[
+  {
+    "title": "migrates only the named legacy runtime without enumerating unrelated changes",
+    "line": 37,
+    "body": "it('migrates only the named legacy runtime without enumerating unrelated changes', async () => {\n    const legacy = path.join(projectRoot, 'comet', 'changes', 'target', 'runtime');\n    await fs.mkdir(legacy, { recursive: true });\n    await fs.writeFile(path.join(legacy, 'record.json'), '{\"saved\":true}');\n    const reads = vi.spyOn(fs, 'readdir');\n    const paths = await nativeProjectPaths(projectRoot, '.', { change: 'target' });\n    expect(\n      await fs.readFile(\n        path.join(nativePreferredChangeRuntimeDir(paths, 'target'), 'record.json'),\n        'utf8',\n      ),\n    ).toBe('{\"saved\":true}');\n    expect(await isWorkspaceRuntimeMigrationFence(legacy)).toBe(true);\n    reads.mockClear();\n    await nativeProjectPaths(projectRoot, '.', { change: 'target' });\n    expect(reads.mock.calls.some(([file]) => String(file) === paths.changesDir)).toBe(false);\n  })"
+  },
+  {
+    "title": "normalizes %s to %s",
+    "line": 55,
+    "body": "it.each([\n    ['.', '.'],\n    ['docs', 'docs'],\n    ['docs\\\\specs', 'docs/specs'],\n  ])('normalizes %s to %s', (input, expected) => {\n    expect(normalizeArtifactRootRef(input)).toBe(expected);\n  })"
+  },
+  {
+    "title": "rejects %s",
+    "line": 63,
+    "body": "it.each(['../docs', '/tmp/docs', 'C:\\\\docs', '~/.docs', ''])('rejects %s', (input) => {\n    expect(() => normalizeArtifactRootRef(input)).toThrow();\n  })"
+  },
+  {
+    "title": "accepts an in-project directory junction",
+    "line": 67,
+    "body": "it('accepts an in-project directory junction', async () => {\n    const actual = path.join(projectRoot, 'actual');\n    const link = path.join(projectRoot, 'linked');\n    await fs.mkdir(actual);\n    await fs.symlink(actual, link, process.platform === 'win32' ? 'junction' : 'dir');\n\n    expect(await resolveArtifactRoot(projectRoot, 'linked')).toBe(link);\n  })"
+  },
+  {
+    "title": "rejects a junction that escapes the project",
+    "line": 76,
+    "body": "it('rejects a junction that escapes the project', async () => {\n    const link = path.join(projectRoot, 'escaped');\n    await fs.symlink(outside, link, process.platform === 'win32' ? 'junction' : 'dir');\n\n    await expect(resolveArtifactRoot(projectRoot, 'escaped')).rejects.toThrow(\n      'resolves outside the project root',\n    );\n  })"
+  },
+  {
+    "title": "rejects a configured comet root that is itself a junction",
+    "line": 85,
+    "body": "it('rejects a configured comet root that is itself a junction', async () => {\n    const linkedRoot = path.join(projectRoot, 'comet');\n    await fs.symlink(outside, linkedRoot, process.platform === 'win32' ? 'junction' : 'dir');\n\n    await expect(nativeProjectPaths(projectRoot, '.')).rejects.toThrow(\n      'Native comet root must not be a symbolic link',\n    );\n  })"
+  },
+  {
+    "title": "rejects a .comet parent junction that redirects Runtime outside the project",
+    "line": 94,
+    "body": "it('rejects a .comet parent junction that redirects Runtime outside the project', async () => {\n    await fs.symlink(\n      outside,\n      path.join(projectRoot, '.comet'),\n      process.platform === 'win32' ? 'junction' : 'dir',\n    );\n\n    await expect(nativeProjectPaths(projectRoot, 'docs')).rejects.toThrow();\n  })"
+  },
+  {
+    "title": "keeps Runtime user-local when the document artifact root changes",
+    "line": 104,
+    "body": "it('keeps Runtime user-local when the document artifact root changes', async () => {\n    const rootPaths = await nativeProjectPaths(projectRoot, '.');\n    const docsPaths = await nativeProjectPaths(projectRoot, 'docs');\n\n    expect(rootPaths.runtimeDir).toBe(\n      path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'native'),\n    );\n    expect(docsPaths.runtimeDir).toBe(rootPaths.runtimeDir);\n    expect(nativePreferredChangeRuntimeDir(docsPaths, 'focused-change')).toBe(\n      path.join(\n        resolveWorkspaceRuntimeRootSync(projectRoot),\n        'native',\n        'changes',\n        'focused-change',\n      ),\n    );\n  })"
+  },
+  {
+    "title": "reports preferred, legacy, missing, and conflicting Runtime storage",
+    "line": 122,
+    "body": "it('reports preferred, legacy, missing, and conflicting Runtime storage', async () => {\n    const paths = await nativeProjectPaths(projectRoot, 'docs');\n    const name = 'runtime-health';\n    const preferred = nativePreferredChangeRuntimeDir(paths, name);\n    const legacy = nativeLegacyChangeRuntimeDir(paths, name);\n\n    await expect(inspectNativeRuntimeStorage(paths, name)).resolves.toMatchObject({\n      status: 'missing',\n      layout: 'missing',\n      path: preferred,\n    });\n    expect(nativeChangeRuntimeDir(paths, name)).toBe(preferred);\n\n    await fs.mkdir(preferred, { recursive: true });\n    await expect(inspectNativeRuntimeStorage(paths, name)).resolves.toMatchObject({\n      status: 'available',\n      layout: 'user-local',\n      path: preferred,\n    });\n    expect(nativeChangeRuntimeDir(paths, name)).toBe(preferred);\n\n    await fs.rm(preferred, { recursive: true });\n    await fs.mkdir(legacy, { recursive: true });\n    await expect(inspectNativeRuntimeStorage(paths, name)).resolves.toMatchObject({\n      status: 'available',\n      layout: 'legacy',\n      path: legacy,\n    });\n    expect(() => nativeChangeRuntimeDir(paths, name)).toThrow('requires migration');\n\n    await fs.mkdir(preferred, { recursive: true });\n    await expect(inspectNativeRuntimeStorage(paths, name)).resolves.toMatchObject({\n      status: 'invalid',\n      layout: 'user-local',\n      message: 'Both user-local and legacy Native Runtime directories exist',\n    });\n\n    await fs.rm(legacy, { recursive: true });\n    await fs.rm(preferred, { recursive: true });\n    await fs.writeFile(preferred, 'not a directory');\n    await expect(inspectNativeRuntimeStorage(paths, name)).resolves.toMatchObject({\n      status: 'invalid',\n      layout: 'user-local',\n      message: 'Native Runtime path must be a real directory',\n    });\n  })"
+  },
+  {
+    "title": "reports linked legacy Runtime as invalid without opening the target",
+    "line": 169,
+    "body": "it('reports linked legacy Runtime as invalid without opening the target', async () => {\n    const paths = await nativeProjectPaths(projectRoot, 'docs');\n    const legacy = nativeLegacyChangeRuntimeDir(paths, 'linked-legacy');\n    await fs.mkdir(path.dirname(legacy), { recursive: true });\n    await fs.symlink(outside, legacy, process.platform === 'win32' ? 'junction' : 'dir');\n    await expect(inspectNativeRuntimeStorage(paths, 'linked-legacy')).resolves.toMatchObject({\n      status: 'invalid',\n      layout: 'legacy',\n    });\n    expect(() => nativeChangeRuntimeDir(paths, 'linked-legacy')).toThrow('requires migration');\n  })"
+  },
+  {
+    "title": "migrates change-local evidence before returning paths and fences the old writer",
+    "line": 181,
+    "body": "it('migrates change-local evidence before returning paths and fences the old writer', async () => {\n    const legacy = path.join(projectRoot, 'docs/comet/changes/migrate-me/runtime');\n    await fs.mkdir(path.join(legacy, 'evidence'), { recursive: true });\n    await fs.writeFile(path.join(legacy, 'evidence/receipt.json'), '{\"preserved\":true}');\n    const paths = await nativeProjectPaths(projectRoot, 'docs');\n    const runtime = nativeChangeRuntimeDir(paths, 'migrate-me');\n    expect(runtime).toBe(nativePreferredChangeRuntimeDir(paths, 'migrate-me'));\n    expect(await fs.readFile(path.join(runtime, 'evidence/receipt.json'), 'utf8')).toBe(\n      '{\"preserved\":true}',\n    );\n    expect(await isWorkspaceRuntimeMigrationFence(legacy, runtime)).toBe(true);\n    expect((await inspectNativeRuntimeStorage(paths, 'migrate-me')).layout).toBe('user-local');\n    await expect(fs.mkdir(legacy, { recursive: true })).rejects.toThrow();\n    expect((await nativeProjectPaths(projectRoot, 'docs')).runtimeDir).toBe(paths.runtimeDir);\n  })"
+  },
+  {
+    "title": "rescans legacy directories created after a previous successful path resolution",
+    "line": 197,
+    "body": "it('rescans legacy directories created after a previous successful path resolution', async () => {\n    const initial = await nativeProjectPaths(projectRoot, 'docs');\n    const legacy = nativeLegacyChangeRuntimeDir(initial, 'late-runtime');\n    await fs.mkdir(legacy, { recursive: true });\n    await fs.writeFile(path.join(legacy, 'trajectory.jsonl'), '{\"type\":\"history-preserved\"}\\n');\n\n    const refreshed = await nativeProjectPaths(projectRoot, 'docs');\n    const runtime = nativeChangeRuntimeDir(refreshed, 'late-runtime');\n    expect(refreshed.workspaceRuntimeRoot).toBe(initial.workspaceRuntimeRoot);\n    expect(await fs.readFile(path.join(runtime, 'trajectory.jsonl'), 'utf8')).toBe(\n      '{\"type\":\"history-preserved\"}\\n',\n    );\n    expect(await isWorkspaceRuntimeMigrationFence(legacy, runtime)).toBe(true);\n    await expect(fs.mkdir(legacy, { recursive: true })).rejects.toThrow();\n  })"
+  },
+  {
+    "title": "retains legacy execution evidence when migration cannot prove it stopped",
+    "line": 213,
+    "body": "it('retains legacy execution evidence when migration cannot prove it stopped', async () => {\n    const legacy = path.join(projectRoot, 'docs/comet/changes/still-running/runtime');\n    await fs.mkdir(legacy, { recursive: true });\n    const evidence = JSON.stringify({\n      actions: [{ status: 'running', claim: { token: 'fixture' } }],\n    });\n    await fs.writeFile(path.join(legacy, 'state.json'), evidence);\n    await expect(nativeProjectPaths(projectRoot, 'docs')).rejects.toThrow();\n    expect(await fs.readFile(path.join(legacy, 'state.json'), 'utf8')).toBe(evidence);\n    await expect(\n      fs.stat(\n        path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'native/changes/still-running'),\n      ),\n    ).rejects.toMatchObject({ code: 'ENOENT' });\n  })"
+  },
+  {
+    "title": "does not follow a copied workspace fence when reconstructing a portable checkout",
+    "line": 229,
+    "body": "it('does not follow a copied workspace fence when reconstructing a portable checkout', async () => {\n    const legacy = path.join(projectRoot, 'docs/comet/changes/copied-change/runtime');\n    await fs.mkdir(legacy, { recursive: true });\n    await fs.writeFile(path.join(legacy, 'source-evidence.json'), '{}');\n    const source = await nativeProjectPaths(projectRoot, 'docs');\n    await fs.cp(path.join(projectRoot, 'docs'), path.join(outside, 'docs'), { recursive: true });\n    const copy = await nativeProjectPaths(outside, 'docs');\n    const target = nativeChangeRuntimeDir(copy, 'copied-change');\n    expect(target).not.toBe(nativeChangeRuntimeDir(source, 'copied-change'));\n    await expect(fs.stat(target)).rejects.toMatchObject({ code: 'ENOENT' });\n    expect((await inspectNativeRuntimeStorage(copy, 'copied-change')).status).toBe('missing');\n  })"
+  },
+  {
+    "title": "isolates equal change names in separate workspaces and rejects linked runtime roots",
+    "line": 242,
+    "body": "it('isolates equal change names in separate workspaces and rejects linked runtime roots', async () => {\n    const first = await nativeProjectPaths(projectRoot, 'docs');\n    const second = await nativeProjectPaths(outside, 'docs');\n    expect(first.workspaceRuntimeRoot).not.toBe(second.workspaceRuntimeRoot);\n    expect(nativePreferredChangeRuntimeDir(first, 'same-name')).not.toBe(\n      nativePreferredChangeRuntimeDir(second, 'same-name'),\n    );\n    await fs.symlink(outside, first.runtimeDir, process.platform === 'win32' ? 'junction' : 'dir');\n    await expect(nativeProjectPaths(projectRoot, 'docs')).rejects.toThrow();\n  })"
+  },
+  {
+    "title": "keeps Runtime references and storage roots contained",
+    "line": 253,
+    "body": "it('keeps Runtime references and storage roots contained', async () => {\n    const paths = await nativeProjectPaths(projectRoot, 'docs');\n\n    expect(nativeRuntimeRefFile(paths.runtimeDir, 'runtime/changes/example/state.json')).toBe(\n      path.join(paths.runtimeDir, 'changes', 'example', 'state.json'),\n    );\n    expect(() => nativeRuntimeRefFile(paths.runtimeDir, '../outside.json')).toThrow(\n      'Invalid Native Runtime ref',\n    );\n    expect(nativeStorageRoot(paths, paths.runtimeDir)).toBe(paths.runtimeDir);\n    expect(nativeStorageRoot(paths, paths.nativeRoot)).toBe(paths.nativeRoot);\n    expect(() => nativeStorageRoot(paths, projectRoot)).toThrow(\n      'outside Native document and Runtime roots',\n    );\n  })"
+  }
+]

@@ -30,7 +30,7 @@ afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
 });
 
-it('shares Runtime discovery only inside one read request and rechecks changed fences', async () => {
+it('shares current Runtime discovery only inside one read request without creating legacy fences', async () => {
   const discovery = vi.spyOn(runtime, 'readWorkspaceRuntimeRoots');
   await runWithHookReadCache(async () => {
     expect(await listSdkChangeNames(root, 'native', { readOnly: true })).toEqual(['first']);
@@ -40,24 +40,27 @@ it('shares Runtime discovery only inside one read request and rechecks changed f
     expect(discovery).toHaveBeenCalledTimes(1);
   });
   const fence = path.join(root, '.comet/runtime');
-  const original = await fs.readFile(fence);
-  await fs.writeFile(fence, '{invalid');
-  await expect(
-    runWithHookReadCache(() => listSdkChangeNames(root, 'native', { readOnly: true })),
-  ).rejects.toThrow();
+  await expect(fs.stat(fence)).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(
+    await runWithHookReadCache(() => listSdkChangeNames(root, 'native', { readOnly: true })),
+  ).toEqual(['first']);
   expect(discovery).toHaveBeenCalledTimes(2);
-  await fs.writeFile(fence, original);
   expect(
     await runWithHookReadCache(() => listSdkChangeNames(root, 'native', { readOnly: true })),
   ).toEqual(['first']);
   expect(discovery).toHaveBeenCalledTimes(3);
 });
 
-it('does not reuse read-only fence discovery for a mutation in the same scope', async () => {
+it('keeps current ownership authoritative without touching an obsolete Runtime path', async () => {
   await runWithHookReadCache(async () => {
     await listSdkChangeNames(root, 'native', { readOnly: true });
-    await fs.writeFile(path.join(root, '.comet/runtime'), '{invalid');
-    await expect(readChangeRuntimeOwner(root, 'native', 'first')).rejects.toThrow();
+    await fs.mkdir(path.join(root, '.comet'), { recursive: true });
+    const obsolete = path.join(root, '.comet/runtime');
+    await fs.writeFile(obsolete, '{invalid');
+    expect(await readChangeRuntimeOwner(root, 'native', 'first')).toMatchObject({
+      change: 'first',
+    });
+    expect(await fs.readFile(obsolete, 'utf8')).toBe('{invalid');
   });
 });
 

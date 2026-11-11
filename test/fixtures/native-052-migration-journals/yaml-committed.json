@@ -1,0 +1,33 @@
+{
+  "source": {
+    "package": "@rpamis/comet@0.5.2",
+    "entry": "dist/domains/comet-native/native-portable-migration-runtime.js",
+    "input": "published native-052-transition-journal/remove-after-recovery.json materials only; original Shape, no transition WAL/run/check",
+    "captureScript": "capture-published-052-migration-journals.mjs",
+    "captureCommand": "node capture-published-052-migration-journals.mjs <output-directory>"
+  },
+  "boundary": "yaml-committed",
+  "simulatedFault": "Error: SIMULATED crash after published YAML commit before cleanup",
+  "root": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-migration-journal-capture-EkafZP\\yaml-committed",
+  "name": "remove-after-recovery",
+  "transaction": {
+    "schema": "comet.native.portable-migration.v1",
+    "id": "f5dfab12-b3ab-4e12-a413-09355a945fbe",
+    "change": "remove-after-recovery",
+    "fromSchema": "comet.native.v3",
+    "status": "yaml-committed",
+    "createdAt": "2026-11-10T20:39:48.943Z"
+  },
+  "transactionText": "{\n  \"schema\": \"comet.native.portable-migration.v1\",\n  \"id\": \"f5dfab12-b3ab-4e12-a413-09355a945fbe\",\n  \"change\": \"remove-after-recovery\",\n  \"fromSchema\": \"comet.native.v3\",\n  \"status\": \"yaml-committed\",\n  \"createdAt\": \"2026-11-10T20:39:48.943Z\"\n}\n",
+  "stateText": "schema: comet.native.v4\nname: remove-after-recovery\nlanguage: en\nphase: shape\nstatus: active\nstate_version: 1\nbrief: brief.md\nspec_changes: []\nworkspace:\n  isolation: current\n  change_branch: null\n  target_branch: null\n  finish: null\nloop:\n  stage: shape\n  goal_cycle: 1\n  iteration: 0\n  attempt: 0\n  retry_epoch: 0\n  failed_iteration_count: 0\n  no_progress_count: 0\n  execution_failure_count: 0\n  previous_unresolved_ids: []\n  next_action: Continue clarification and confirm acceptance\nacceptance:\n  - id: A1\n    source: brief.md\n    text: The behavior works.\n    result: pending\n    reason: null\nbuilder_handoff: null\nblockers: []\nverification: null\nhistory:\n  - goal_cycle: 1\n    iteration: 0\n    attempt: 0\n    outcome: recovery\n    unresolved_ids:\n      - A1\n    summary:\n      text: Recovered from legacy comet.native.v3 shape state; prior Loop,\n        verification results, and execution records were not inherited.\n      truncated: false\n    completed_at: 2026-11-10T00:00:00.000Z\nhistory_overflow:\n  dropped_entries: 0\n  first_dropped_at: null\n  last_dropped_at: null\n  outcome_counts:\n    pass: 0\n    fail: 0\n    blocked: 0\n    execution-error: 0\n    recovery: 0\nverification_result: pending\nverification_report: null\narchived: false\ncreated_at: 2026-11-10T00:00:00.000Z\n",
+  "changeFiles": [
+    {
+      "ref": "brief.md",
+      "bytesBase64": "IyBPdXRjb21lClNoaXAgYSBmb2N1c2VkIGZpeHR1cmUgb3V0Y29tZS4KIyBTY29wZQpPbmUgY2FwYWJpbGl0eS4KIyBOb24tZ29hbHMKTm8gbW9kZWwsIEV2YWwgb3IgcHVzaC4KIyBBY2NlcHRhbmNlIGV4YW1wbGVzCi0gVGhlIGJlaGF2aW9yIHdvcmtzLgojIENvbnN0cmFpbnRzIGFuZCBpbnZhcmlhbnRzCktlZXAgY29tcGF0aWJpbGl0eS4KIyBEZWNpc2lvbnMKVXNlIE5hdGl2ZSBzdGF0ZS4KIyBPcGVuIHF1ZXN0aW9ucwpOb25lLgojIFZlcmlmaWNhdGlvbiBleHBlY3RhdGlvbnMKVGhpcyBpcyBhbiBpc29sYXRlZCB0cmFuc2l0aW9uIHJlY292ZXJ5IHByb3RvY29sIGZpeHR1cmUuCg=="
+    },
+    {
+      "ref": "comet-state.yaml",
+      "bytesBase64": "c2NoZW1hOiBjb21ldC5uYXRpdmUudjQKbmFtZTogcmVtb3ZlLWFmdGVyLXJlY292ZXJ5Cmxhbmd1YWdlOiBlbgpwaGFzZTogc2hhcGUKc3RhdHVzOiBhY3RpdmUKc3RhdGVfdmVyc2lvbjogMQpicmllZjogYnJpZWYubWQKc3BlY19jaGFuZ2VzOiBbXQp3b3Jrc3BhY2U6CiAgaXNvbGF0aW9uOiBjdXJyZW50CiAgY2hhbmdlX2JyYW5jaDogbnVsbAogIHRhcmdldF9icmFuY2g6IG51bGwKICBmaW5pc2g6IG51bGwKbG9vcDoKICBzdGFnZTogc2hhcGUKICBnb2FsX2N5Y2xlOiAxCiAgaXRlcmF0aW9uOiAwCiAgYXR0ZW1wdDogMAogIHJldHJ5X2Vwb2NoOiAwCiAgZmFpbGVkX2l0ZXJhdGlvbl9jb3VudDogMAogIG5vX3Byb2dyZXNzX2NvdW50OiAwCiAgZXhlY3V0aW9uX2ZhaWx1cmVfY291bnQ6IDAKICBwcmV2aW91c191bnJlc29sdmVkX2lkczogW10KICBuZXh0X2FjdGlvbjogQ29udGludWUgY2xhcmlmaWNhdGlvbiBhbmQgY29uZmlybSBhY2NlcHRhbmNlCmFjY2VwdGFuY2U6CiAgLSBpZDogQTEKICAgIHNvdXJjZTogYnJpZWYubWQKICAgIHRleHQ6IFRoZSBiZWhhdmlvciB3b3Jrcy4KICAgIHJlc3VsdDogcGVuZGluZwogICAgcmVhc29uOiBudWxsCmJ1aWxkZXJfaGFuZG9mZjogbnVsbApibG9ja2VyczogW10KdmVyaWZpY2F0aW9uOiBudWxsCmhpc3Rvcnk6CiAgLSBnb2FsX2N5Y2xlOiAxCiAgICBpdGVyYXRpb246IDAKICAgIGF0dGVtcHQ6IDAKICAgIG91dGNvbWU6IHJlY292ZXJ5CiAgICB1bnJlc29sdmVkX2lkczoKICAgICAgLSBBMQogICAgc3VtbWFyeToKICAgICAgdGV4dDogUmVjb3ZlcmVkIGZyb20gbGVnYWN5IGNvbWV0Lm5hdGl2ZS52MyBzaGFwZSBzdGF0ZTsgcHJpb3IgTG9vcCwKICAgICAgICB2ZXJpZmljYXRpb24gcmVzdWx0cywgYW5kIGV4ZWN1dGlvbiByZWNvcmRzIHdlcmUgbm90IGluaGVyaXRlZC4KICAgICAgdHJ1bmNhdGVkOiBmYWxzZQogICAgY29tcGxldGVkX2F0OiAyMDI2LTExLTEwVDAwOjAwOjAwLjAwMFoKaGlzdG9yeV9vdmVyZmxvdzoKICBkcm9wcGVkX2VudHJpZXM6IDAKICBmaXJzdF9kcm9wcGVkX2F0OiBudWxsCiAgbGFzdF9kcm9wcGVkX2F0OiBudWxsCiAgb3V0Y29tZV9jb3VudHM6CiAgICBwYXNzOiAwCiAgICBmYWlsOiAwCiAgICBibG9ja2VkOiAwCiAgICBleGVjdXRpb24tZXJyb3I6IDAKICAgIHJlY292ZXJ5OiAwCnZlcmlmaWNhdGlvbl9yZXN1bHQ6IHBlbmRpbmcKdmVyaWZpY2F0aW9uX3JlcG9ydDogbnVsbAphcmNoaXZlZDogZmFsc2UKY3JlYXRlZF9hdDogMjAyNi0xMS0xMFQwMDowMDowMC4wMDBaCg=="
+    }
+  ]
+}

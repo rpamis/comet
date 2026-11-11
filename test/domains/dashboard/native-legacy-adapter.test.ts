@@ -35,7 +35,7 @@ describe('Native legacy Dashboard adapter', () => {
       workspace: { id: 'local', current: true },
       phase: 'verify',
       migration: { status: 'required' },
-      localExecution: { reason: 'missing' },
+      localExecution: { reason: 'platform' },
     });
     expect(archived).toMatchObject({
       status: 'archived',
@@ -88,7 +88,7 @@ describe('Native legacy Dashboard adapter', () => {
     expect(invalidNativeDashboardChange({ name: 'broken', status: 'active' })).toMatchObject({
       phase: 'invalid',
       specs: { total: 0, capabilitiesTruncated: false },
-      localExecution: { reason: 'missing' },
+      localExecution: { reason: 'platform' },
     });
   });
 });

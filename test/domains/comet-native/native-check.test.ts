@@ -35,12 +35,20 @@ describe('Native check public seam (legacy)', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
-  it('rejects the retired legacy content-proof check command', async () => {
+  it('returns platform guidance without executing the retired content-proof checker', async () => {
     const result = json(await runNativeCli(['check', name, '--json', ...projectArgs()]));
     expect(result).toMatchObject({
       command: 'check',
-      exitCode: 64,
-      error: { code: 'usage', message: expect.stringContaining('内容证明检查已移除') },
+      exitCode: 0,
+      data: {
+        name,
+        status: 'platform-execution-required',
+        checksExecuted: false,
+        next: expect.stringContaining('Agent 平台工具'),
+      },
     });
+    await expect(
+      fs.access(path.join(projectRoot, 'docs/comet/changes', name)),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 });

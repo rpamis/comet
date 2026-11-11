@@ -1,0 +1,8 @@
+{
+  "root": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-partial-checkpoint-red-UqVswb\\project",
+  "error": "Error: Classic SDK Run demo differs from the interrupted checkpoint import; preserve the local records and restore matching Run history before continuing",
+  "originalYamlBytesPreserved": true,
+  "originalPartialRecordPreserved": true,
+  "phaseNotPromoted": true,
+  "boundary": "Temp current-source patched RuntimeStore on the original public-CLI RED root; product source and dist unchanged. Root product public CLI GREEN still requires applying patch/build."
+}

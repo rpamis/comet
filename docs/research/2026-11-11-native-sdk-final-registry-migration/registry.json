@@ -1,0 +1,373 @@
+{
+  "cases": [
+    {
+      "id": "native-builder-check-result-diagnostic",
+      "behavior": "Builder 检查结果枚举错误必须定位检查下标并显示允许值和实际值。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/506"
+      ],
+      "coverageLevel": "runtime",
+      "reproduction": "checks[0].result 为 pass，修复前只报 check summary invalid。",
+      "expected": "输出 checks[0].result、passed/failed/not-run 与实际 pass。",
+      "forbidden": "放行无效字段或继续输出误导的会话领取错误。",
+      "rootCause": "检查摘要结构与枚举错误共用泛化错误。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: checks\\.result",
+          "requiredNames": [
+            "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: checks.result"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-builder-review-evidence-diagnostic",
+      "behavior": "Builder 验收证据必须是具体字符串数组；错误定位验收项 ID、下标和字段。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/506"
+      ],
+      "coverageLevel": "runtime",
+      "reproduction": "A1 的 evidence 传单个字符串，修复前没有验收项 ID 或具体元素要求。",
+      "expected": "报错包含 A1、evidence、字符串数组及每条 4000 字符限制。",
+      "forbidden": "放行无效字段或继续输出误导的会话领取错误。",
+      "rootCause": "校验器只输出数组下标和 array，未说明具体验收项与元素类型。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview\\.evidence",
+          "requiredNames": [
+            "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview.evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-builder-review-note-diagnostic",
+      "behavior": "Builder 自审 note 保持必填，并在空值错误中定位验收项 ID 和字段。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/506"
+      ],
+      "coverageLevel": "runtime",
+      "reproduction": "A1 的 note 为空，修复前只显示数组下标，报告者误认为它可选。",
+      "expected": "拒绝空 note，提示具体说明及长度上限，保留 A1 定位。",
+      "forbidden": "放行无效字段或继续输出误导的会话领取错误。",
+      "rootCause": "自审必填契约没有在字段诊断中关联验收项身份。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview\\.note",
+          "requiredNames": [
+            "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview.note"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-explicit-git-dependent-refresh",
+      "behavior": "相同字节仅暂存时，Agent 可显式补 Git index 检查，新失败遮蔽旧成功且保留一次性检查及批准",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "coverageLevel": "runtime",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^refreshes an explicitly selected Git check after byte-identical staging and preserves one-time evidence and approval$",
+          "requiredNames": [
+            "refreshes an explicitly selected Git check after byte-identical staging and preserves one-time evidence and approval"
+          ]
+        }
+      ],
+      "reproduction": "临时 Git 项目原 HEAD/index 为 0、working tree 为 1；原 cached diff 通过，接受候选后只暂存相同文件，再由 Agent 选择补查 git diff --cached --quiet。",
+      "expected": "原始 changes 为空，Git index 变化可见；补查真实退出 1，B/once 的原日志和来源、Shape、报告和原接受决定保持不变，归档拒绝新失败。",
+      "forbidden": "将暂存误判为实现修改、继续采用旧 Git 检查成功归档，或重放一次性 B。",
+      "rootCause": "字节候选与 Git 元数据须分别观察；显式选择的 Git 检查必须产生新真实收据并优先于旧成功。",
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户明确撤下 Native/Classic 文件内容证明和由此强制的编辑复核、自动失效及重验。原测试全文和来源保留；替代测试保留真实失败、原 SDK 身份/批准、显式修订、单次执行及归档恢复。逐行为边界见 safety-map.json，未把模型或耗时验证记为通过。",
+        "authorization": "report:2026-11-08-agent-managed-workflow-content",
+        "record": "docs/research/2026-11-08-agent-managed-workflow-content.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+            "namePattern": "^(?:refreshes an explicitly selected Git check after byte-identical staging and preserves one-time evidence and approval)$",
+            "requiredNames": [
+              "refreshes an explicitly selected Git check after byte-identical staging and preserves one-time evidence and approval"
+            ]
+          }
+        ],
+        "evidence": {
+          "mapping": {
+            "file": "docs/research/2026-11-08-content-proof-removal-mapping.json",
+            "sha256": "4d4fceaf8d69164e27ee1fa1163e2cd488187592e765fbb172479385599cd287"
+          },
+          "registry": {
+            "file": "docs/research/2026-11-08-content-proof-removal-registry.json",
+            "sha256": "28cb98097f37ca727590fb95bc653d0234652a58d97195d2c98b055ef5a397a3"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-08-content-proof-removal-tests.json",
+            "sha256": "192387c785246ee07e2b5feb504c7bfcc993855ec74214530c4f5d20fd8fbefe"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-08-content-proof-removal-patch.patch",
+            "sha256": "637ee45889440f7d80dcad71c6b349047572bfa332e7782be1993797e680c885"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-sdk-refresh-failed-preflight-recovery",
+      "behavior": "接受后补检查失败的真实归档预检保存失败收据；修复后沿同 Run 重试、仅补原检查并完成一次归档",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "coverageLevel": "runtime",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^refreshes an explicitly selected Git check after byte-identical staging and preserves one-time evidence and approval$",
+          "requiredNames": [
+            "refreshes an explicitly selected Git check after byte-identical staging and preserves one-time evidence and approval"
+          ]
+        }
+      ],
+      "reproduction": "0f0861fc 上运行同一 A9 案例：补查退出 1 后真实执行 archive.prepare，旧路径抛出 PROPOSAL_INPUT_MISSING: verify.verifier。",
+      "expected": "预检明确 failed 并保留原状态、报告、批准和检查失败；取消暂存后重试原只读 Action，显式补 Git 检查通过，B/once 不重跑，归档只执行一次。",
+      "forbidden": "丢失真实失败收据、产生缺 Verifier 提案的协议异常、伪造新批准、重建 Run 或重复归档/副作用。",
+      "rootCause": "refresh-checks 的后继上下文没有新的 verify.verifier 提案，不能将预检失败送入依赖该提案的 verify.stop；应保留原批准并使用既有只读预检恢复入口。",
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户明确撤下 Native/Classic 文件内容证明和由此强制的编辑复核、自动失效及重验。原测试全文和来源保留；替代测试保留真实失败、原 SDK 身份/批准、显式修订、单次执行及归档恢复。逐行为边界见 safety-map.json，未把模型或耗时验证记为通过。",
+        "authorization": "report:2026-11-08-agent-managed-workflow-content",
+        "record": "docs/research/2026-11-08-agent-managed-workflow-content.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+            "namePattern": "^(?:refreshes an explicitly selected Git check after byte-identical staging and preserves one-time evidence and approval)$",
+            "requiredNames": [
+              "refreshes an explicitly selected Git check after byte-identical staging and preserves one-time evidence and approval"
+            ]
+          }
+        ],
+        "evidence": {
+          "mapping": {
+            "file": "docs/research/2026-11-08-content-proof-removal-mapping.json",
+            "sha256": "4d4fceaf8d69164e27ee1fa1163e2cd488187592e765fbb172479385599cd287"
+          },
+          "registry": {
+            "file": "docs/research/2026-11-08-content-proof-removal-registry.json",
+            "sha256": "28cb98097f37ca727590fb95bc653d0234652a58d97195d2c98b055ef5a397a3"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-08-content-proof-removal-tests.json",
+            "sha256": "192387c785246ee07e2b5feb504c7bfcc993855ec74214530c4f5d20fd8fbefe"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-08-content-proof-removal-patch.patch",
+            "sha256": "637ee45889440f7d80dcad71c6b349047572bfa332e7782be1993797e680c885"
+          }
+        }
+      }
+    },
+    {
+      "id": "issue-389-child-evidence-retry",
+      "behavior": "Child验证失败后保留真实检查回执，日志变更不能复用，未知执行不另启重复任务。",
+      "status": "covered",
+      "reason": "0.5.0 保留此行为；所列确定性测试直接断言该契约。covered 表示已映射，不表示本次清单审计已执行。",
+      "coverageLayer": "sdk",
+      "evidence": [
+        "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+          "namePattern": "refuses a verifier retry after its successful check log has changed|keeps an unknown verifier bound to its original task and creates no retry Wait",
+          "requiredNames": [
+            "refuses a verifier retry after its successful check log has changed",
+            "keeps an unknown verifier bound to its original task and creates no retry Wait"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户要求清理不必要测试；保留原登记与完整旧测试，撤下内容字节自动失效、补充证明和PID推断策略。替代覆盖保留原Run/Action/批准、真实失败、一次性检查不重放、未知执行不重试及实际事务恢复。",
+        "authorization": "report:2026-11-10-runtime-remaining-failures",
+        "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+            "namePattern": "preserves a real custom application failure and receipts, advances its sibling, and retries only its review|keeps an unknown verifier bound to its original task and creates no retry Wait",
+            "requiredNames": [
+              "preserves a real custom application failure and receipts, advances its sibling, and retries only its review",
+              "keeps an unknown verifier bound to its original task and creates no retry Wait"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/registry.json",
+            "sha256": "e6d702047aec141307700160678ed08b49244c8bc35c2f5f128018648206ed06"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/tests.json",
+            "sha256": "a3efabe9ea2def260224301a176b44f5948a4d9f9910c1a7ea2be0fc49ee087d"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/mapping.json",
+            "sha256": "3a5e285a24256e181f3bda43825826fb6010cbf77491f723bbdf081910793df2"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/patch.patch",
+            "sha256": "238e8ab4e60fa6cadae98a3e3a041574eb70bc5a10f01de7d578625d87ececcf"
+          }
+        }
+      }
+    },
+    {
+      "id": "issue-500-cross-shell",
+      "behavior": "检查与Verifier提交换shell仍可验收，保留原执行环境并拒绝真实源码变化。",
+      "status": "covered",
+      "reason": "0.5.0 保留此行为；所列确定性测试直接断言该契约。covered 表示已映射，不表示本次清单审计已执行。",
+      "coverageLayer": "sdk",
+      "evidence": [
+        "test/domains/comet-native/native-sdk-verification-inputs.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "upgrades a persisted 0\\.5\\.0 receipt once through refreshChecks before accepting another shell|rejects source-changing checks and recovers to Build only after the repair approval",
+          "requiredNames": [
+            "upgrades a persisted 0.5.0 receipt once through refreshChecks before accepting another shell",
+            "rejects source-changing checks and recovers to Build only after the repair approval"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "检查后切换代理和临时目录仍接受原 Runtime 结果并归档；旧证明字段故意过期也只作历史读取，原执行不重放。",
+        "authorization": "report:2026-11-08-agent-managed-workflow-content",
+        "record": "docs/research/2026-11-08-agent-managed-workflow-content.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+            "namePattern": "^(?:Native SDK verification input binding accepts original Runtime checks across shells while reading legacy content-proof fields as history)$",
+            "requiredNames": [
+              "Native SDK verification input binding accepts original Runtime checks across shells while reading legacy content-proof fields as history"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-08-content-proof-removal-registry.json",
+            "sha256": "28cb98097f37ca727590fb95bc653d0234652a58d97195d2c98b055ef5a397a3"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-08-content-proof-removal-patch.patch",
+            "sha256": "637ee45889440f7d80dcad71c6b349047572bfa332e7782be1993797e680c885"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-08-content-proof-removal-mapping.json",
+            "sha256": "4d4fceaf8d69164e27ee1fa1163e2cd488187592e765fbb172479385599cd287"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-08-content-proof-removal-tests.json",
+            "sha256": "192387c785246ee07e2b5feb504c7bfcc993855ec74214530c4f5d20fd8fbefe"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-check-no-alias-replay",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "Native SDK 与 Compat 不因检查改名或 repeatable 标记变化而重放原不可重复执行。",
+      "coverageLevel": "runtime",
+      "reproduction": "运行隔离真实 Runtime 回归，核对候选、报告、原执行与副作用计数。",
+      "expected": "原调用身份独立于展示 ID 和后来的可重复标记，原执行结果与副作用保持一次。",
+      "forbidden": "重命名后重跑已完成的一次性命令。",
+      "rootCause": "原执行身份或事务来源未贯穿编辑后的续行边界。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "Native SDK verification input binding does not replay a one-shot SDK command after the Verifier changes its ID and repeatable flag",
+          "requiredNames": [
+            "Native SDK verification input binding does not replay a one-shot SDK command after the Verifier changes its ID and repeatable flag"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-awaits-accepted-revalidation",
+      "behavior": "SDK 接受结果后仍 pending 的 revalidate 由 Archive 完成，不额外消耗验证失败次数。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/506"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "用公开 resolve-wait 接受结果并立即 archive，修复前返回无 pending Archive Action。",
+      "expected": "执行原 verify.revalidate 一次后完成归档，failed_iteration_count 保持不变。",
+      "forbidden": "跳过重验、复用未知或活跃 Action、回退 Verify 或因等待而烧失败预算。",
+      "rootCause": "Archive 只识别 archive 阶段，没有接续已获批准的重验。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "blocked Verifier recovery command contract finishes pending accepted-result revalidation before Archive without consuming another Verify failure",
+          "requiredNames": [
+            "blocked Verifier recovery command contract finishes pending accepted-result revalidation before Archive without consuming another Verify failure"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-archive-command.test.ts",
+          "namePattern": "does not advance accepted-result revalidation past a pending (approval|evidence) boundary",
+          "requiredNames": [
+            "Native Archive command stop boundaries does not advance accepted-result revalidation past a pending approval boundary",
+            "Native Archive command stop boundaries does not advance accepted-result revalidation past a pending evidence boundary"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "local-native-supervisor-auto-preparation",
+      "sources": [
+        "report:2026-11-04-local-test-failures",
+        "report:2026-11-05-pr539-ci-failures",
+        "https://github.com/rpamis/comet/actions/runs/42025240642/job/127238366855?pr=539"
+      ],
+      "behavior": "扩展 Native Supervisor 测试读取公开 CLI 已完成的准备动作，不再次寻找或执行已完成的 pending Action。",
+      "coverageLevel": "runtime",
+      "reproduction": "原 transfer 和 reverse Child 测试在 next 自动准备父级及两个 Child 后，读取不存在的 pending supervisor.prepare 并访问 id 失败。",
+      "expected": "断言父级和两个 Child 准备均成功且只出现一次，再完整执行迁移、反向验收、集成修复及未知执行保护场景。",
+      "forbidden": "重放已完成准备、手工改写正常状态、跳过迁移或父级验收，以及丢弃未知 Child。",
+      "rootCause": "共享夹具已经通过公开 next 自动推进，调用方仍假设准备步骤尚未执行。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-application.test.ts",
+          "namePattern": "transfers a custom Supervisor through public CLI with fixed identity and an interrupted Child|binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate|does not discard an unknown Child when another review requires Shape revision",
+          "requiredNames": [
+            "transfers a custom Supervisor through public CLI with fixed identity and an interrupted Child",
+            "binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate",
+            "does not discard an unknown Child when another review requires Shape revision"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+          "namePattern": "preserves a real custom application failure and receipts, advances its sibling, and retries only its review|uses the same recovery Wait for the built-in Native Supervisor|transfers an old fixed custom definition without changing its hash or losing dirty Child work",
+          "requiredNames": [
+            "Supervisor Child Verifier execution failure preserves a real custom application failure and receipts, advances its sibling, and retries only its review",
+            "Supervisor Child Verifier execution failure uses the same recovery Wait for the built-in Native Supervisor",
+            "fixed older custom Supervisor Runs transfers an old fixed custom definition without changing its hash or losing dirty Child work"
+          ]
+        }
+      ]
+    }
+  ]
+}

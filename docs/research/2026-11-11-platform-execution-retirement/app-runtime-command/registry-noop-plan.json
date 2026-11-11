@@ -1,0 +1,8 @@
+{
+  "source": "config/workflow-regressions.json",
+  "effectiveSelector": "last testMigration.supersededBy.tests or original tests",
+  "effectiveAffectedLinks": [],
+  "append": [],
+  "originalDeclarationArchive": "original-nine-declarations-twelve-cases.json",
+  "reason": "No current registered selector references any renamed declaration or its 12 expansions. Preserve all other registry records and historical chains."
+}

@@ -3,15 +3,11 @@ import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import {
-  archiveNativeChange,
-  recoverArchiveTransaction,
-} from '../../../domains/comet-native/native-archive.js';
-import {
-  createNativeChange,
-  readNativeChangeFile,
-} from '../../../domains/comet-native/native-change.js';
-import { sha256File } from '../../../domains/comet-native/native-hash.js';
+import { recoverArchiveTransaction } from '../../../domains/comet-native/native-archive.js';
+import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
+import { readNativeChangeFile } from '../../../domains/comet-native/native-change.js';
+import { createNativeSdkChange } from '../../../domains/comet-native/native-sdk-create.js';
+import { copyNativeProtectedFile } from '../../../domains/comet-native/native-protected-file.js';
 import {
   nativePreferredChangeRuntimeDir,
   nativeProjectPaths,
@@ -23,21 +19,21 @@ import {
   readNativeTransactionEvents,
 } from '../../../domains/comet-native/native-transaction.js';
 import {
+  applyNativeArchiveTransactionV2,
+  finalizeNativeArchiveTransactionV2,
   nativeArchiveTransactionPaths,
   readNativeArchiveTransactionV2,
 } from '../../../domains/comet-native/native-archive-transaction.js';
-import type {
-  NativeProjectPaths,
-  NativeSpecChange,
-} from '../../../domains/comet-native/native-types.js';
+import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 import {
-  prepareNativeArchiveFixture,
-  readyNativeArchivePreflight,
-} from '../../helpers/native-archive.js';
+  loadPreparedNativeArchive,
+  type FrozenNativeArchive,
+} from '../../helpers/native-archive-wal.js';
 
 describe('Native archive recovery', () => {
   let projectRoot: string;
   let paths: NativeProjectPaths;
+  let fixture: FrozenNativeArchive;
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-recovery-'));
@@ -48,33 +44,12 @@ describe('Native archive recovery', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
-  async function preparedChange(name: string): Promise<{
-    changeDir: string;
-    canonical: string;
-    specChanges: NativeSpecChange[];
-  }> {
-    const canonical = path.join(paths.specsDir, 'authentication', 'spec.md');
-    await fs.mkdir(path.dirname(canonical), { recursive: true });
-    await fs.writeFile(canonical, 'old auth\n');
-    const specChanges: NativeSpecChange[] = [
-      {
-        capability: 'authentication',
-        operation: 'replace',
-        source: 'specs/authentication.md',
-        base_hash: await sha256File(canonical),
-      },
-      { capability: 'sessions', operation: 'create', source: 'specs/sessions.md', base_hash: null },
-    ];
-    const { changeDir } = await prepareNativeArchiveFixture({
-      paths,
-      name,
-      specChanges,
-      proposedSpecs: {
-        'specs/authentication.md': 'new auth\n',
-        'specs/sessions.md': 'new sessions\n',
-      },
-    });
-    return { changeDir, canonical, specChanges };
+  async function preparedChange(_name: string) {
+    fixture = await loadPreparedNativeArchive(paths, 'replace-create');
+    return {
+      changeDir: path.join(paths.changesDir, fixture.state.name),
+      canonical: path.join(paths.specsDir, 'authentication/spec.md'),
+    };
   }
 
   async function truncateLastTransactionEvent(transactionId: string): Promise<void> {
@@ -85,38 +60,53 @@ describe('Native archive recovery', () => {
     await fs.writeFile(eventsFile, `${lines.join('\n')}\n${last.slice(0, -2)}`);
   }
 
+  it.each(['project', 'named'] as const)(
+    'diagnoses a prepared published Archive transaction without mutation (%s)',
+    async (scope) => {
+      await preparedChange('doctor-prepared');
+      const journal = nativeArchiveTransactionPaths(paths, fixture.journal.id).journal;
+      const stateFile = path.join(paths.changesDir, fixture.state.name, 'comet-state.yaml');
+      const before = {
+        journal: await fs.readFile(journal),
+        state: await fs.readFile(stateFile),
+        stat: await fs.stat(journal, { bigint: true }),
+      };
+      const observed = await nativeDoctorCommand(
+        scope === 'named' ? [fixture.state.name] : [],
+        projectRoot,
+      );
+      expect(observed.exitCode).toBe(0);
+      expect(observed.data).toMatchObject({
+        healthy: false,
+        repaired: false,
+        transactions: [
+          expect.objectContaining({
+            id: fixture.journal.id,
+            change: fixture.state.name,
+            status: 'prepared',
+          }),
+        ],
+      });
+      expect(await fs.readFile(journal)).toEqual(before.journal);
+      expect(await fs.readFile(stateFile)).toEqual(before.state);
+      expect((await fs.stat(journal, { bigint: true })).mtimeNs).toBe(before.stat.mtimeNs);
+    },
+  );
+
   it('continues after all staged specs were prepared', async () => {
     const { changeDir, canonical } = await preparedChange('prepared-crash');
-    const now = new Date('2026-07-17T00:00:00.000Z');
-    const expectedPreflightHash = await readyNativeArchivePreflight({
-      paths,
-      name: 'prepared-crash',
-      now,
-    });
-    let transactionId = '';
-    await expect(
-      archiveNativeChange({
-        paths,
-        name: 'prepared-crash',
-        expectedPreflightHash,
-        now,
-        hooks: {
-          afterPrepared(journal) {
-            transactionId = journal.id;
-            throw new Error('crash after prepared');
-          },
-        },
-      }),
-    ).rejects.toThrow('crash after prepared');
+
+    const transactionId = fixture.journal.id;
+
     expect((await readNativeTransaction(paths, transactionId)).status).toBe('prepared');
     expect(await fs.readFile(canonical, 'utf8')).toBe('old auth\n');
     expect(await fs.stat(changeDir)).toBeTruthy();
     await expect(
-      createNativeChange({
+      createNativeSdkChange({
         paths,
         name: 'blocked-by-recovery',
         language: 'en',
-        verificationProtocol: 'legacy-v1',
+        workspaceBinding: { isolation: 'current', changeBranch: null, targetBranch: null },
       }),
     ).rejects.toThrow('transaction recovery is required');
 
@@ -131,29 +121,10 @@ describe('Native archive recovery', () => {
 
   it('continues after a legacy append crash truncated operation-started', async () => {
     const { canonical } = await preparedChange('partial-start-continue');
-    const now = new Date('2026-07-17T00:00:00.000Z');
-    const expectedPreflightHash = await readyNativeArchivePreflight({
-      paths,
-      name: 'partial-start-continue',
-      now,
-    });
-    let transactionId = '';
+
+    const transactionId = fixture.journal.id;
     let firstOperationId = '';
-    await expect(
-      archiveNativeChange({
-        paths,
-        name: 'partial-start-continue',
-        expectedPreflightHash,
-        now,
-        hooks: {
-          afterPrepared(journal) {
-            transactionId = journal.id;
-            firstOperationId = journal.operations[0].id;
-            throw new Error('crash after prepared');
-          },
-        },
-      }),
-    ).rejects.toThrow('crash after prepared');
+    firstOperationId = fixture.journal.operations[0].id;
     const partial = JSON.stringify({
       sequence: 2,
       timestamp: '2026-07-17T00:00:01.000Z',
@@ -186,38 +157,34 @@ describe('Native archive recovery', () => {
 
   it('fails closed when a proposed-spec parent is replaced during staging', async () => {
     const { changeDir, canonical } = await preparedChange('stage-parent-race');
-    const sourceParent = path.join(changeDir, 'specs');
-    const displaced = path.join(changeDir, 'specs-original');
-    const now = new Date('2026-07-17T00:00:00.000Z');
-    const expectedPreflightHash = await readyNativeArchivePreflight({
-      paths,
-      name: 'stage-parent-race',
-      now,
-    });
-    let injected = false;
-
+    const sourceParent = path.join(changeDir, 'specs', 'authentication');
+    const displaced = sourceParent + '-original';
+    const targetRoot = nativeArchiveTransactionPaths(paths, fixture.journal.id).staged;
+    const target = path.join(targetRoot, 'unpublished-spec.md');
     await expect(
-      archiveNativeChange({
-        paths,
-        name: 'stage-parent-race',
-        expectedPreflightHash,
-        now,
+      copyNativeProtectedFile({
+        sourceRoot: changeDir,
+        source: path.join(sourceParent, 'spec.md'),
+        targetRoot,
+        target,
+        maxBytes: 1024,
+        label: 'proposed specification',
+        expectedTargetHash: null,
+        exclusive: true,
         hooks: {
-          async afterProtectedCopySourceParentCaptured(kind) {
-            if (kind !== 'stage' || injected) return;
-            injected = true;
+          afterParentChainCaptured: async () => {
             await fs.rename(sourceParent, displaced);
             await fs.mkdir(sourceParent);
-            await fs.writeFile(path.join(sourceParent, 'authentication.md'), 'replacement auth\n');
+            await fs.writeFile(path.join(sourceParent, 'spec.md'), 'replacement auth\n');
           },
         },
       }),
     ).rejects.toThrow(/parent changed during I\/O/u);
-
-    expect(await fs.readFile(path.join(displaced, 'authentication.md'), 'utf8')).toBe('new auth\n');
-    expect(await fs.readFile(path.join(sourceParent, 'authentication.md'), 'utf8')).toBe(
+    expect(await fs.readFile(path.join(displaced, 'spec.md'), 'utf8')).toBe('new auth\n');
+    expect(await fs.readFile(path.join(sourceParent, 'spec.md'), 'utf8')).toBe(
       'replacement auth\n',
     );
+    await expect(fs.access(target)).rejects.toMatchObject({ code: 'ENOENT' });
     expect(await fs.readFile(canonical, 'utf8')).toBe('old auth\n');
   });
 
@@ -225,32 +192,18 @@ describe('Native archive recovery', () => {
     const { canonical } = await preparedChange('backup-parent-race');
     const canonicalParent = path.dirname(canonical);
     const displaced = path.join(paths.specsDir, 'authentication-original');
-    const now = new Date('2026-07-17T00:00:00.000Z');
-    const expectedPreflightHash = await readyNativeArchivePreflight({
-      paths,
-      name: 'backup-parent-race',
-      now,
-    });
-    let transactionId = '';
+
+    const transactionId = fixture.journal.id;
     let injected = false;
 
     await expect(
-      archiveNativeChange({
-        paths,
-        name: 'backup-parent-race',
-        expectedPreflightHash,
-        now,
-        hooks: {
-          afterPrepared(journal) {
-            transactionId = journal.id;
-          },
-          async afterProtectedCopySourceParentCaptured(kind) {
-            if (kind !== 'backup' || injected) return;
-            injected = true;
-            await fs.rename(canonicalParent, displaced);
-            await fs.mkdir(canonicalParent);
-            await fs.writeFile(canonical, 'replacement canonical\n');
-          },
+      applyNativeArchiveTransactionV2(paths, fixture.journal, {
+        async afterProtectedCopySourceParentCaptured(kind) {
+          if (kind !== 'backup' || injected) return;
+          injected = true;
+          await fs.rename(canonicalParent, displaced);
+          await fs.mkdir(canonicalParent);
+          await fs.writeFile(canonical, 'replacement canonical\n');
         },
       }),
     ).rejects.toThrow(/parent changed during I\/O/u);
@@ -268,26 +221,12 @@ describe('Native archive recovery', () => {
 
   it('rolls back after one canonical spec was replaced', async () => {
     const { changeDir, canonical } = await preparedChange('replace-crash');
-    const now = new Date('2026-07-17T00:00:00.000Z');
-    const expectedPreflightHash = await readyNativeArchivePreflight({
-      paths,
-      name: 'replace-crash',
-      now,
-    });
-    let transactionId = '';
+
+    const transactionId = fixture.journal.id;
     await expect(
-      archiveNativeChange({
-        paths,
-        name: 'replace-crash',
-        expectedPreflightHash,
-        now,
-        hooks: {
-          afterPrepared(journal) {
-            transactionId = journal.id;
-          },
-          afterOperation(_operation, completed) {
-            if (completed === 1) throw new Error('crash after replace');
-          },
+      applyNativeArchiveTransactionV2(paths, fixture.journal, {
+        afterOperation(_operation, completed) {
+          if (completed === 1) throw new Error('crash after replace');
         },
       }),
     ).rejects.toThrow('crash after replace');
@@ -308,26 +247,12 @@ describe('Native archive recovery', () => {
 
   it('rolls back after operation-completed was truncated after the operation applied', async () => {
     const { changeDir, canonical } = await preparedChange('partial-completed-rollback');
-    const now = new Date('2026-07-17T00:00:00.000Z');
-    const expectedPreflightHash = await readyNativeArchivePreflight({
-      paths,
-      name: 'partial-completed-rollback',
-      now,
-    });
-    let transactionId = '';
+
+    const transactionId = fixture.journal.id;
     await expect(
-      archiveNativeChange({
-        paths,
-        name: 'partial-completed-rollback',
-        expectedPreflightHash,
-        now,
-        hooks: {
-          afterPrepared(journal) {
-            transactionId = journal.id;
-          },
-          afterOperation(_operation, completed) {
-            if (completed === 1) throw new Error('crash after first operation');
-          },
+      applyNativeArchiveTransactionV2(paths, fixture.journal, {
+        afterOperation(_operation, completed) {
+          if (completed === 1) throw new Error('crash after first operation');
         },
       }),
     ).rejects.toThrow('crash after first operation');
@@ -354,26 +279,12 @@ describe('Native archive recovery', () => {
 
   it('continues when canonical specs are complete but the active change still exists', async () => {
     const { changeDir } = await preparedChange('specs-complete-crash');
-    const now = new Date('2026-07-18T00:00:00.000Z');
-    const expectedPreflightHash = await readyNativeArchivePreflight({
-      paths,
-      name: 'specs-complete-crash',
-      now,
-    });
-    let transactionId = '';
+
+    const transactionId = fixture.journal.id;
     await expect(
-      archiveNativeChange({
-        paths,
-        name: 'specs-complete-crash',
-        expectedPreflightHash,
-        now,
-        hooks: {
-          afterPrepared(journal) {
-            transactionId = journal.id;
-          },
-          afterOperation(_operation, completed) {
-            if (completed === 2) throw new Error('crash before move');
-          },
+      applyNativeArchiveTransactionV2(paths, fixture.journal, {
+        afterOperation(_operation, completed) {
+          if (completed === 2) throw new Error('crash before move');
         },
       }),
     ).rejects.toThrow('crash before move');
@@ -391,27 +302,13 @@ describe('Native archive recovery', () => {
 
   it('finalizes when the active change moved before the journal committed', async () => {
     const { changeDir } = await preparedChange('move-crash');
-    const now = new Date('2026-07-19T00:00:00.000Z');
-    const expectedPreflightHash = await readyNativeArchivePreflight({
-      paths,
-      name: 'move-crash',
-      now,
-    });
-    let transactionId = '';
-    const archiveDir = path.join(paths.archiveDir, '2026-07-19-move-crash');
+
+    const transactionId = fixture.journal.id;
+    const archiveDir = path.join(paths.archiveDir, '2026-07-24-archive-fixture');
     await expect(
-      archiveNativeChange({
-        paths,
-        name: 'move-crash',
-        expectedPreflightHash,
-        now,
-        hooks: {
-          afterPrepared(journal) {
-            transactionId = journal.id;
-          },
-          afterOperation(operation) {
-            if (operation.id === 'archive-change') throw new Error('crash after move');
-          },
+      applyNativeArchiveTransactionV2(paths, fixture.journal, {
+        afterOperation(operation) {
+          if (operation.id === 'archive-change') throw new Error('crash after move');
         },
       }),
     ).rejects.toThrow('crash after move');
@@ -433,32 +330,18 @@ describe('Native archive recovery', () => {
 
   it('validates moved Run content before crossing the no-rollback marker', async () => {
     const { changeDir } = await preparedChange('invalid-before-finalize');
-    const now = new Date('2026-07-19T12:00:00.000Z');
-    const expectedPreflightHash = await readyNativeArchivePreflight({
-      paths,
-      name: 'invalid-before-finalize',
-      now,
-    });
-    let transactionId = '';
+
+    const transactionId = fixture.journal.id;
     await expect(
-      archiveNativeChange({
-        paths,
-        name: 'invalid-before-finalize',
-        expectedPreflightHash,
-        now,
-        hooks: {
-          afterPrepared(journal) {
-            transactionId = journal.id;
-          },
-          afterOperation(operation) {
-            if (operation.id === 'archive-change') throw new Error('crash after move');
-          },
+      applyNativeArchiveTransactionV2(paths, fixture.journal, {
+        afterOperation(operation) {
+          if (operation.id === 'archive-change') throw new Error('crash after move');
         },
       }),
     ).rejects.toThrow('crash after move');
-    const archiveDir = path.join(paths.archiveDir, '2026-07-19-invalid-before-finalize');
+    const archiveDir = path.join(paths.archiveDir, '2026-07-24-archive-fixture');
     const runFile = path.join(
-      nativePreferredChangeRuntimeDir(paths, 'invalid-before-finalize'),
+      nativePreferredChangeRuntimeDir(paths, fixture.state.name),
       'run-state.json',
     );
     const originalRun = await fs.readFile(runFile);
@@ -485,29 +368,14 @@ describe('Native archive recovery', () => {
 
   it('continues idempotently after the irreversible marker is durable', async () => {
     await preparedChange('finalization-marker-crash');
-    const now = new Date('2026-07-19T13:00:00.000Z');
-    const expectedPreflightHash = await readyNativeArchivePreflight({
+
+    const transactionId = fixture.journal.id;
+    await applyNativeArchiveTransactionV2(paths, fixture.journal);
+    await finalizeNativeArchiveTransactionV2(
       paths,
-      name: 'finalization-marker-crash',
-      now,
-    });
-    let transactionId = '';
-    await expect(
-      archiveNativeChange({
-        paths,
-        name: 'finalization-marker-crash',
-        expectedPreflightHash,
-        now,
-        hooks: {
-          afterPrepared(journal) {
-            transactionId = journal.id;
-          },
-          afterFinalizationStarted() {
-            throw new Error('crash after finalization marker');
-          },
-        },
-      }),
-    ).rejects.toThrow('crash after finalization marker');
+      await readNativeArchiveTransactionV2(paths, transactionId),
+      'archive-finalization-started',
+    );
     expect(
       (await readNativeTransactionEvents(paths, transactionId)).filter(
         (event) => event.type === 'archive-finalization-started',
@@ -529,29 +397,14 @@ describe('Native archive recovery', () => {
 
   it('restarts continuation when the irreversible marker append was truncated', async () => {
     await preparedChange('partial-finalization-restart');
-    const now = new Date('2026-07-19T14:00:00.000Z');
-    const expectedPreflightHash = await readyNativeArchivePreflight({
+
+    const transactionId = fixture.journal.id;
+    await applyNativeArchiveTransactionV2(paths, fixture.journal);
+    await finalizeNativeArchiveTransactionV2(
       paths,
-      name: 'partial-finalization-restart',
-      now,
-    });
-    let transactionId = '';
-    await expect(
-      archiveNativeChange({
-        paths,
-        name: 'partial-finalization-restart',
-        expectedPreflightHash,
-        now,
-        hooks: {
-          afterPrepared(journal) {
-            transactionId = journal.id;
-          },
-          afterFinalizationStarted() {
-            throw new Error('crash after finalization marker');
-          },
-        },
-      }),
-    ).rejects.toThrow('crash after finalization marker');
+      await readNativeArchiveTransactionV2(paths, transactionId),
+      'archive-finalization-started',
+    );
     await truncateLastTransactionEvent(transactionId);
     expect(
       (await readNativeTransactionEvents(paths, transactionId)).some(
@@ -575,27 +428,9 @@ describe('Native archive recovery', () => {
 
   it('fails closed when staged content changes before the first operation', async () => {
     const { canonical, changeDir } = await preparedChange('staged-drift');
-    const now = new Date('2026-07-20T00:00:00.000Z');
-    const expectedPreflightHash = await readyNativeArchivePreflight({
-      paths,
-      name: 'staged-drift',
-      now,
-    });
-    let transactionId = '';
-    await expect(
-      archiveNativeChange({
-        paths,
-        name: 'staged-drift',
-        expectedPreflightHash,
-        now,
-        hooks: {
-          afterPrepared(journal) {
-            transactionId = journal.id;
-            throw new Error('crash after prepared');
-          },
-        },
-      }),
-    ).rejects.toThrow('crash after prepared');
+
+    const transactionId = fixture.journal.id;
+
     const journal = await readNativeArchiveTransactionV2(paths, transactionId);
     const write = journal.operations.find((operation) => operation.type === 'write');
     expect(write?.staged).toBeTruthy();
@@ -615,26 +450,12 @@ describe('Native archive recovery', () => {
 
   it('preserves the journal and refuses rollback over externally changed canonical content', async () => {
     const { canonical } = await preparedChange('rollback-drift');
-    const now = new Date('2026-07-21T00:00:00.000Z');
-    const expectedPreflightHash = await readyNativeArchivePreflight({
-      paths,
-      name: 'rollback-drift',
-      now,
-    });
-    let transactionId = '';
+
+    const transactionId = fixture.journal.id;
     await expect(
-      archiveNativeChange({
-        paths,
-        name: 'rollback-drift',
-        expectedPreflightHash,
-        now,
-        hooks: {
-          afterPrepared(journal) {
-            transactionId = journal.id;
-          },
-          afterOperation(_operation, completed) {
-            if (completed === 1) throw new Error('crash after replace');
-          },
+      applyNativeArchiveTransactionV2(paths, fixture.journal, {
+        afterOperation(_operation, completed) {
+          if (completed === 1) throw new Error('crash after replace');
         },
       }),
     ).rejects.toThrow('crash after replace');
@@ -651,30 +472,16 @@ describe('Native archive recovery', () => {
 
   it('refuses to finalize an archive directory that changed after its move', async () => {
     await preparedChange('moved-content-drift');
-    const now = new Date('2026-07-22T00:00:00.000Z');
-    const expectedPreflightHash = await readyNativeArchivePreflight({
-      paths,
-      name: 'moved-content-drift',
-      now,
-    });
-    let transactionId = '';
+
+    const transactionId = fixture.journal.id;
     await expect(
-      archiveNativeChange({
-        paths,
-        name: 'moved-content-drift',
-        expectedPreflightHash,
-        now,
-        hooks: {
-          afterPrepared(journal) {
-            transactionId = journal.id;
-          },
-          afterOperation(operation) {
-            if (operation.id === 'archive-change') throw new Error('crash after move');
-          },
+      applyNativeArchiveTransactionV2(paths, fixture.journal, {
+        afterOperation(operation) {
+          if (operation.id === 'archive-change') throw new Error('crash after move');
         },
       }),
     ).rejects.toThrow('crash after move');
-    const archiveDir = path.join(paths.archiveDir, '2026-07-22-moved-content-drift');
+    const archiveDir = path.join(paths.archiveDir, '2026-07-24-archive-fixture');
     await fs.writeFile(path.join(archiveDir, 'unexpected.txt'), 'external content\n');
 
     await expect(
@@ -688,10 +495,8 @@ describe('Native archive recovery', () => {
   });
 
   it('continues legacy v1 Archive journals without weakening v2 writes', async () => {
-    const { changeDir } = await prepareNativeArchiveFixture({
-      paths,
-      name: 'legacy-v1-recovery',
-    });
+    fixture = await loadPreparedNativeArchive(paths, 'no-spec', { createTransaction: false });
+    const changeDir = path.join(paths.changesDir, fixture.state.name);
     const transactionId = 'a1b2c3d4-1e9ac';
     const archiveDir = path.join(paths.archiveDir, '2026-07-23-legacy-v1-recovery');
     await createNativeTransaction(paths, {
@@ -701,7 +506,7 @@ describe('Native archive recovery', () => {
       status: 'prepared',
       projectRoot: paths.projectRoot,
       nativeRoot: paths.nativeRoot,
-      change: 'legacy-v1-recovery',
+      change: fixture.state.name,
       createdAt: '2026-07-23T00:00:00.000Z',
       operations: [
         {

@@ -1,3 +1,4 @@
+import { resolveNpmCommand } from '../../../platform/process/node-cli-command.js';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
@@ -85,21 +86,52 @@ it('automatically installs the CLI on MCP activation before any setup tool call'
       '@rpamis/comet/package.json',
     );
     await expect(fs.access(installed)).rejects.toThrow();
+    const childEnv: NodeJS.ProcessEnv = {
+      ...process.env,
+      HOME: root,
+      USERPROFILE: root,
+      CODEX_HOME: path.join(root, 'codex'),
+      npm_config_prefix: prefix,
+      COMET_PLUGIN_SKIP_CLI_INSTALL: '0',
+      COMET_DAEMON: 'off',
+    };
+    // Windows child creation treats environment keys case-insensitively; make the explicit Temp npm configuration authoritative before spawning MCP.
+    const overrides: NodeJS.ProcessEnv = {
+      HOME: root,
+      USERPROFILE: root,
+      APPDATA: path.join(root, 'AppData/Roaming'),
+      LOCALAPPDATA: path.join(root, 'AppData/Local'),
+      CODEX_HOME: path.join(root, 'codex'),
+      COMET_DATA_DIR: path.join(root, 'comet-data'),
+      npm_config_prefix: prefix,
+      npm_config_userconfig: path.join(root, 'npm-user.npmrc'),
+      npm_config_globalconfig: path.join(root, 'npm-global.npmrc'),
+      npm_config_cache: path.join(root, 'npm-cache'),
+    };
+    for (const [key, value] of Object.entries(overrides)) {
+      if (process.platform === 'win32')
+        for (const existing of Object.keys(childEnv))
+          if (existing.toLowerCase() === key.toLowerCase()) delete childEnv[existing];
+      childEnv[key] = value;
+    }
+    await fs.writeFile(childEnv.npm_config_userconfig!, '');
+    await fs.writeFile(childEnv.npm_config_globalconfig!, '');
     const transport = new StdioClientTransport({
       command: process.execPath,
       args: [server],
       cwd: root,
-      env: {
-        ...process.env,
-        HOME: root,
-        USERPROFILE: root,
-        CODEX_HOME: path.join(root, 'codex'),
-        npm_config_prefix: prefix,
-        COMET_PLUGIN_SKIP_CLI_INSTALL: '0',
-        COMET_DAEMON: 'off',
-      },
+      env: childEnv,
       stderr: 'pipe',
     });
+    const npmLaunch = resolveNpmCommand(['root', '--global'], { cwd: root, env: childEnv });
+    const npmProbe = execFileSync(npmLaunch.command, npmLaunch.args, {
+      env: npmLaunch.env ?? childEnv,
+      encoding: 'utf8',
+      windowsHide: true,
+    }).trim();
+    expect(path.resolve(npmProbe)).toBe(
+      path.join(prefix, process.platform === 'win32' ? 'node_modules' : 'lib/node_modules'),
+    );
     let stderr = '';
     transport.stderr?.on('data', (data) => {
       stderr += data;

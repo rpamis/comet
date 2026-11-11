@@ -1,0 +1,1640 @@
+{
+  "schema": "comet.fixture.published-native-build-frontier.v1",
+  "kind": "completed-invalid",
+  "provenance": {
+    "package": "@rpamis/comet@0.5.2",
+    "packageRoot": "C:/Users/BENYM/AppData/Local/Temp/comet-052-cli-package-626acda290b5479fb72b05334de5c0e5/package",
+    "simulation": "Only User/Agent messages and the explicit one-field durable corruption are simulated; published factory/Runtime/actual Node checker/markUnknown are real.",
+    "graphUnmodified": true,
+    "actualCheckExecutedOnce": true,
+    "noModelOrEval": true,
+    "originalRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project",
+    "originalCounter": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\actual-node-count",
+    "materialization": "The actual frozen Run input/claim/proposal and all four legacy cache bytes are unchanged. SDK store restoration places the same business Run in fresh test storage; runtime-relative legacy paths are preserved. The auxiliary counter keeps its original relative position outside the project. Absolute original command arguments remain immutable and are never executed by this regression."
+  },
+  "run": {
+    "protocolVersion": 1,
+    "schemaVersion": 1,
+    "runId": "published-completed-invalid",
+    "revision": 10,
+    "workflow": {
+      "id": "comet-native",
+      "version": "3",
+      "hash": "2ad17ce994b28ee081494a62e7f68eeae671bf8cc9c7af893940a5920db43dbd"
+    },
+    "definitionHashes": {
+      "[\"comet-native\",\"3\"]": "2ad17ce994b28ee081494a62e7f68eeae671bf8cc9c7af893940a5920db43dbd"
+    },
+    "initialStateHash": "441345a3b53a3fb7ea4e68992b2bf01c3ca87c0cd6f0f0bab372ec2c77309230",
+    "input": {
+      "artifactRootRef": "docs",
+      "name": "published-completed-invalid",
+      "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+    },
+    "state": {
+      "acceptance": [
+        {
+          "id": "A1",
+          "reason": null,
+          "result": "pending",
+          "source": "brief.md",
+          "text": "The original Build business Run resumes."
+        }
+      ],
+      "archived": false,
+      "blockers": [],
+      "brief": "brief.md",
+      "builder_handoff": null,
+      "created_at": "2026-11-10T23:26:31.210Z",
+      "document_constraints_version": 3,
+      "history": [],
+      "history_overflow": {
+        "dropped_entries": 0,
+        "first_dropped_at": null,
+        "last_dropped_at": null,
+        "outcome_counts": {
+          "blocked": 0,
+          "execution-error": 0,
+          "fail": 0,
+          "pass": 0,
+          "recovery": 0
+        }
+      },
+      "language": "en",
+      "loop": {
+        "attempt": 0,
+        "execution_failure_count": 0,
+        "failed_iteration_count": 0,
+        "goal_cycle": 1,
+        "iteration": 1,
+        "next_action": "submit-builder-candidate",
+        "no_progress_count": 0,
+        "previous_unresolved_ids": [],
+        "retry_epoch": 0,
+        "stage": "building"
+      },
+      "name": "published-completed-invalid",
+      "phase": "build",
+      "schema": "comet.native.v4",
+      "shape_confirmation_hash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+      "shape_semantic_snapshot": {
+        "artifacts": [
+          {
+            "auxiliary": [],
+            "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+            "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+            "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+            "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+            "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+            "source": "brief.md"
+          },
+          {
+            "auxiliary": [],
+            "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+            "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+            "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+            "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+            "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+            "source": "specs/workflow/spec.md"
+          }
+        ],
+        "schema": "comet.native.shape-semantics.v1"
+      },
+      "spec_changes": [
+        {
+          "capability": "workflow",
+          "operation": "create",
+          "source": "specs/workflow/spec.md"
+        }
+      ],
+      "state_version": 3,
+      "status": "active",
+      "verification": null,
+      "verification_report": null,
+      "verification_result": "pending",
+      "workspace": {
+        "change_branch": null,
+        "finish": null,
+        "isolation": "current",
+        "target_branch": null
+      }
+    },
+    "status": "running",
+    "sequence": 5,
+    "actions": [
+      {
+        "protocolVersion": 1,
+        "id": "published-completed-invalid:1",
+        "runId": "published-completed-invalid",
+        "stepId": "shape.prepare",
+        "type": "call_tool",
+        "ref": "native-shape-prepare",
+        "attempt": 1,
+        "input": {
+          "input": {
+            "artifactRootRef": "docs",
+            "name": "published-completed-invalid",
+            "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+          },
+          "outputs": {}
+        },
+        "inputHash": "67e5b858b6feb4ebe9cdd756314d22580bba8b56cac8d21104119174b025a8f2",
+        "status": "succeeded",
+        "retry": "manual",
+        "requiredCapabilities": [],
+        "receipts": [
+          {
+            "outcomeId": "SIMULATED-AGENT-OUTCOME-published-completed-invalid:1",
+            "hash": "1641a812b46dc71dc6ebfa5993938c0f2bd6ff00cf847d9d888a89cac224090d"
+          }
+        ],
+        "reconciliations": [],
+        "claim": {
+          "executorId": "actual-pure-proposal",
+          "token": "SIMULATED-CLAIM-published-completed-invalid:1",
+          "sessionId": "actual-pure-proposal"
+        },
+        "executionOrigin": {
+          "workflow": {
+            "id": "comet-native",
+            "version": "3",
+            "hash": "2ad17ce994b28ee081494a62e7f68eeae671bf8cc9c7af893940a5920db43dbd"
+          }
+        },
+        "outcome": {
+          "actionId": "published-completed-invalid:1",
+          "attempt": 1,
+          "claimToken": "SIMULATED-CLAIM-published-completed-invalid:1",
+          "inputHash": "67e5b858b6feb4ebe9cdd756314d22580bba8b56cac8d21104119174b025a8f2",
+          "outcomeId": "SIMULATED-AGENT-OUTCOME-published-completed-invalid:1",
+          "output": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "The original Build business Run resumes."
+              }
+            ],
+            "children": null,
+            "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+            "semanticSnapshot": {
+              "artifacts": [
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                  "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                  "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                  "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                  "source": "brief.md"
+                },
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                  "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                  "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                  "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                  "source": "specs/workflow/spec.md"
+                }
+              ],
+              "schema": "comet.native.shape-semantics.v1"
+            },
+            "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+            "specChanges": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ]
+          },
+          "status": "succeeded"
+        }
+      },
+      {
+        "protocolVersion": 1,
+        "id": "published-completed-invalid:3",
+        "runId": "published-completed-invalid",
+        "stepId": "shape.revalidate",
+        "type": "call_tool",
+        "ref": "native-shape-revalidate",
+        "attempt": 1,
+        "input": {
+          "input": {
+            "artifactRootRef": "docs",
+            "name": "published-completed-invalid",
+            "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+          },
+          "outputs": {
+            "shape.prepare": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The original Build business Run resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                    "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                    "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                    "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                    "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                    "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                    "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            },
+            "shape.confirm": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "name": "published-completed-invalid",
+                  "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "The original Build business Run resumes."
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+                    "semanticSnapshot": {
+                      "artifacts": [
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                          "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                          "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                          "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                          "source": "brief.md"
+                        },
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                          "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                          "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                          "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                          "source": "specs/workflow/spec.md"
+                        }
+                      ],
+                      "schema": "comet.native.shape-semantics.v1"
+                    },
+                    "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+                    "specChanges": [
+                      {
+                        "capability": "workflow",
+                        "operation": "create",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "inputHash": "eec941dbc535bc6cab29b3830b68323e1fe45fad2809b8a8707190961cb02335",
+        "status": "succeeded",
+        "retry": "manual",
+        "requiredCapabilities": [],
+        "receipts": [
+          {
+            "outcomeId": "SIMULATED-AGENT-OUTCOME-published-completed-invalid:3",
+            "hash": "41e9aea50e9de0cf191d6e9194874561a867b22280101eb4b7c05733adde9fc1"
+          }
+        ],
+        "reconciliations": [],
+        "claim": {
+          "executorId": "actual-pure-proposal",
+          "token": "SIMULATED-CLAIM-published-completed-invalid:3",
+          "sessionId": "actual-pure-proposal"
+        },
+        "executionOrigin": {
+          "workflow": {
+            "id": "comet-native",
+            "version": "3",
+            "hash": "2ad17ce994b28ee081494a62e7f68eeae671bf8cc9c7af893940a5920db43dbd"
+          }
+        },
+        "outcome": {
+          "actionId": "published-completed-invalid:3",
+          "attempt": 1,
+          "claimToken": "SIMULATED-CLAIM-published-completed-invalid:3",
+          "inputHash": "eec941dbc535bc6cab29b3830b68323e1fe45fad2809b8a8707190961cb02335",
+          "outcomeId": "SIMULATED-AGENT-OUTCOME-published-completed-invalid:3",
+          "output": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "The original Build business Run resumes."
+              }
+            ],
+            "children": null,
+            "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+            "semanticSnapshot": {
+              "artifacts": [
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                  "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                  "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                  "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                  "source": "brief.md"
+                },
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                  "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                  "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                  "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                  "source": "specs/workflow/spec.md"
+                }
+              ],
+              "schema": "comet.native.shape-semantics.v1"
+            },
+            "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+            "specChanges": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ]
+          },
+          "status": "succeeded"
+        }
+      },
+      {
+        "protocolVersion": 1,
+        "id": "published-completed-invalid:4",
+        "runId": "published-completed-invalid",
+        "stepId": "build.builder",
+        "type": "handoff",
+        "ref": "native-builder",
+        "attempt": 1,
+        "input": {
+          "input": {
+            "artifactRootRef": "docs",
+            "name": "published-completed-invalid",
+            "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+          },
+          "outputs": {
+            "shape.prepare": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The original Build business Run resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                    "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                    "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                    "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                    "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                    "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                    "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            },
+            "shape.confirm": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "name": "published-completed-invalid",
+                  "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "The original Build business Run resumes."
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+                    "semanticSnapshot": {
+                      "artifacts": [
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                          "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                          "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                          "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                          "source": "brief.md"
+                        },
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                          "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                          "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                          "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                          "source": "specs/workflow/spec.md"
+                        }
+                      ],
+                      "schema": "comet.native.shape-semantics.v1"
+                    },
+                    "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+                    "specChanges": [
+                      {
+                        "capability": "workflow",
+                        "operation": "create",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "shape.revalidate": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The original Build business Run resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                    "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                    "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                    "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                    "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                    "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                    "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          }
+        },
+        "inputHash": "65e7703fc78d4a26982d577e0a1589637d1da779654989abfb70b7fb0e7aef1e",
+        "status": "succeeded",
+        "retry": "manual",
+        "requiredCapabilities": [],
+        "receipts": [
+          {
+            "outcomeId": "SIMULATED-AGENT-OUTCOME-published-completed-invalid:4",
+            "hash": "a34fe52e97e4d6ba179c3bc52b35011a87629cb6dc959ac6b7e3b0b938e0608a"
+          }
+        ],
+        "reconciliations": [],
+        "claim": {
+          "executorId": "SIMULATED-BUILDER",
+          "token": "SIMULATED-CLAIM-published-completed-invalid:4",
+          "sessionId": "SIMULATED-BUILDER"
+        },
+        "executionOrigin": {
+          "workflow": {
+            "id": "comet-native",
+            "version": "3",
+            "hash": "2ad17ce994b28ee081494a62e7f68eeae671bf8cc9c7af893940a5920db43dbd"
+          }
+        },
+        "outcome": {
+          "actionId": "published-completed-invalid:4",
+          "attempt": 1,
+          "claimToken": "SIMULATED-CLAIM-published-completed-invalid:4",
+          "inputHash": "65e7703fc78d4a26982d577e0a1589637d1da779654989abfb70b7fb0e7aef1e",
+          "outcomeId": "SIMULATED-AGENT-OUTCOME-published-completed-invalid:4",
+          "output": {
+            "response": {
+              "checks": [
+                {
+                  "argv": [
+                    "-e",
+                    "const fs=require('node:fs');fs.appendFileSync(process.argv[1],'once\\n');process.stdout.write('actual-legacy-check-completed\\n')",
+                    "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\actual-node-count"
+                  ],
+                  "cwdRef": ".",
+                  "executable": "D:\\nodejs\\node.exe",
+                  "id": "once",
+                  "name": "Current Build check",
+                  "repeatable": true,
+                  "timeoutMs": 15000
+                }
+              ],
+              "kind": "request-checks"
+            }
+          },
+          "status": "succeeded"
+        }
+      },
+      {
+        "protocolVersion": 1,
+        "id": "published-completed-invalid:5",
+        "runId": "published-completed-invalid",
+        "stepId": "build.checks",
+        "type": "call_tool",
+        "ref": "native-build-checks",
+        "attempt": 1,
+        "input": {
+          "input": {
+            "artifactRootRef": "docs",
+            "name": "published-completed-invalid",
+            "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+          },
+          "outputs": {
+            "shape.prepare": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The original Build business Run resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                    "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                    "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                    "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                    "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                    "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                    "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            },
+            "shape.confirm": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "name": "published-completed-invalid",
+                  "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "The original Build business Run resumes."
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+                    "semanticSnapshot": {
+                      "artifacts": [
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                          "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                          "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                          "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                          "source": "brief.md"
+                        },
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                          "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                          "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                          "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                          "source": "specs/workflow/spec.md"
+                        }
+                      ],
+                      "schema": "comet.native.shape-semantics.v1"
+                    },
+                    "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+                    "specChanges": [
+                      {
+                        "capability": "workflow",
+                        "operation": "create",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "shape.revalidate": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The original Build business Run resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                    "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                    "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                    "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                    "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                    "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                    "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            },
+            "build.builder": {
+              "response": {
+                "checks": [
+                  {
+                    "argv": [
+                      "-e",
+                      "const fs=require('node:fs');fs.appendFileSync(process.argv[1],'once\\n');process.stdout.write('actual-legacy-check-completed\\n')",
+                      "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\actual-node-count"
+                    ],
+                    "cwdRef": ".",
+                    "executable": "D:\\nodejs\\node.exe",
+                    "id": "once",
+                    "name": "Current Build check",
+                    "repeatable": true,
+                    "timeoutMs": 15000
+                  }
+                ],
+                "kind": "request-checks"
+              }
+            }
+          },
+          "activation": {
+            "checks": [
+              {
+                "argv": [
+                  "-e",
+                  "const fs=require('node:fs');fs.appendFileSync(process.argv[1],'once\\n');process.stdout.write('actual-legacy-check-completed\\n')",
+                  "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\actual-node-count"
+                ],
+                "cwdRef": ".",
+                "executable": "D:\\nodejs\\node.exe",
+                "id": "once",
+                "name": "Current Build check",
+                "repeatable": true,
+                "timeoutMs": 15000
+              }
+            ]
+          }
+        },
+        "inputHash": "e7b192b27bd97ebb63bcf1f9694c1fe291014aaa91f6d2312427a45094de774b",
+        "status": "unknown",
+        "retry": "manual",
+        "requiredCapabilities": [],
+        "receipts": [],
+        "reconciliations": [],
+        "claim": {
+          "executorId": "comet-native-checks",
+          "token": "SIMULATED-CLAIM-published-completed-invalid:5",
+          "sessionId": "comet-native-checks"
+        },
+        "executionOrigin": {
+          "workflow": {
+            "id": "comet-native",
+            "version": "3",
+            "hash": "2ad17ce994b28ee081494a62e7f68eeae671bf8cc9c7af893940a5920db43dbd"
+          }
+        },
+        "reason": "Actual old check and descendants completed; durable result now has the reported mismatched plan name."
+      }
+    ],
+    "actionContexts": {
+      "published-completed-invalid:1": {
+        "sequence": 1,
+        "results": {}
+      },
+      "published-completed-invalid:3": {
+        "sequence": 3,
+        "results": {
+          "shape.prepare": {
+            "sequence": 1,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The original Build business Run resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                    "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                    "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                    "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                    "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                    "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                    "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          },
+          "shape.confirm": {
+            "sequence": 2,
+            "value": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "name": "published-completed-invalid",
+                  "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "The original Build business Run resumes."
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+                    "semanticSnapshot": {
+                      "artifacts": [
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                          "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                          "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                          "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                          "source": "brief.md"
+                        },
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                          "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                          "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                          "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                          "source": "specs/workflow/spec.md"
+                        }
+                      ],
+                      "schema": "comet.native.shape-semantics.v1"
+                    },
+                    "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+                    "specChanges": [
+                      {
+                        "capability": "workflow",
+                        "operation": "create",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "published-completed-invalid:4": {
+        "sequence": 4,
+        "results": {
+          "shape.prepare": {
+            "sequence": 1,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The original Build business Run resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                    "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                    "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                    "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                    "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                    "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                    "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          },
+          "shape.confirm": {
+            "sequence": 2,
+            "value": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "name": "published-completed-invalid",
+                  "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "The original Build business Run resumes."
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+                    "semanticSnapshot": {
+                      "artifacts": [
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                          "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                          "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                          "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                          "source": "brief.md"
+                        },
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                          "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                          "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                          "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                          "source": "specs/workflow/spec.md"
+                        }
+                      ],
+                      "schema": "comet.native.shape-semantics.v1"
+                    },
+                    "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+                    "specChanges": [
+                      {
+                        "capability": "workflow",
+                        "operation": "create",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "shape.revalidate": {
+            "sequence": 3,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The original Build business Run resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                    "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                    "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                    "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                    "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                    "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                    "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "published-completed-invalid:5": {
+        "sequence": 5,
+        "results": {
+          "shape.prepare": {
+            "sequence": 1,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The original Build business Run resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                    "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                    "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                    "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                    "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                    "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                    "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          },
+          "shape.confirm": {
+            "sequence": 2,
+            "value": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "name": "published-completed-invalid",
+                  "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "The original Build business Run resumes."
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+                    "semanticSnapshot": {
+                      "artifacts": [
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                          "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                          "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                          "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                          "source": "brief.md"
+                        },
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                          "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                          "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                          "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                          "source": "specs/workflow/spec.md"
+                        }
+                      ],
+                      "schema": "comet.native.shape-semantics.v1"
+                    },
+                    "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+                    "specChanges": [
+                      {
+                        "capability": "workflow",
+                        "operation": "create",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "shape.revalidate": {
+            "sequence": 3,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The original Build business Run resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                    "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                    "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                    "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                    "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                    "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                    "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          },
+          "build.builder": {
+            "sequence": 4,
+            "value": {
+              "response": {
+                "checks": [
+                  {
+                    "argv": [
+                      "-e",
+                      "const fs=require('node:fs');fs.appendFileSync(process.argv[1],'once\\n');process.stdout.write('actual-legacy-check-completed\\n')",
+                      "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\actual-node-count"
+                    ],
+                    "cwdRef": ".",
+                    "executable": "D:\\nodejs\\node.exe",
+                    "id": "once",
+                    "name": "Current Build check",
+                    "repeatable": true,
+                    "timeoutMs": 15000
+                  }
+                ],
+                "kind": "request-checks"
+              }
+            }
+          }
+        }
+      }
+    },
+    "waits": [
+      {
+        "id": "published-completed-invalid:2",
+        "stepId": "shape.confirm",
+        "sequence": 2,
+        "status": "resolved",
+        "proposal": {
+          "input": {
+            "artifactRootRef": "docs",
+            "name": "published-completed-invalid",
+            "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+          },
+          "outputs": {
+            "shape.prepare": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The original Build business Run resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                    "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                    "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                    "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                    "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                    "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                    "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          }
+        },
+        "proposalHash": "885a7a3847ef17985333a27d1513643671c0af1b86f37b5f703375e3558db2e7",
+        "choices": [
+          "approved",
+          "rejected"
+        ],
+        "results": {
+          "shape.prepare": {
+            "sequence": 1,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The original Build business Run resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                    "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                    "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                    "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                    "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                    "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                    "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          }
+        },
+        "decision": {
+          "id": "SIMULATED-USER-APPROVED-SHAPE",
+          "choice": "approved",
+          "proposalHash": "885a7a3847ef17985333a27d1513643671c0af1b86f37b5f703375e3558db2e7",
+          "reason": "SIMULATED USER approval only for the isolated protocol fixture"
+        }
+      }
+    ],
+    "ready": [],
+    "joins": {},
+    "outputs": {
+      "shape.prepare": {
+        "sequence": 1,
+        "value": {
+          "acceptance": [
+            {
+              "id": "A1",
+              "source": "brief.md",
+              "text": "The original Build business Run resumes."
+            }
+          ],
+          "children": null,
+          "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+          "semanticSnapshot": {
+            "artifacts": [
+              {
+                "auxiliary": [],
+                "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                "source": "brief.md"
+              },
+              {
+                "auxiliary": [],
+                "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                "source": "specs/workflow/spec.md"
+              }
+            ],
+            "schema": "comet.native.shape-semantics.v1"
+          },
+          "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+          "specChanges": [
+            {
+              "capability": "workflow",
+              "operation": "create",
+              "source": "specs/workflow/spec.md"
+            }
+          ]
+        }
+      },
+      "shape.confirm": {
+        "sequence": 2,
+        "value": {
+          "choice": "approved",
+          "proposal": {
+            "input": {
+              "artifactRootRef": "docs",
+              "name": "published-completed-invalid",
+              "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+            },
+            "outputs": {
+              "shape.prepare": {
+                "acceptance": [
+                  {
+                    "id": "A1",
+                    "source": "brief.md",
+                    "text": "The original Build business Run resumes."
+                  }
+                ],
+                "children": null,
+                "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+                "semanticSnapshot": {
+                  "artifacts": [
+                    {
+                      "auxiliary": [],
+                      "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                      "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                      "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                      "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                      "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                      "source": "brief.md"
+                    },
+                    {
+                      "auxiliary": [],
+                      "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                      "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                      "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                      "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                      "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                      "source": "specs/workflow/spec.md"
+                    }
+                  ],
+                  "schema": "comet.native.shape-semantics.v1"
+                },
+                "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+                "specChanges": [
+                  {
+                    "capability": "workflow",
+                    "operation": "create",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "shape.revalidate": {
+        "sequence": 3,
+        "value": {
+          "acceptance": [
+            {
+              "id": "A1",
+              "source": "brief.md",
+              "text": "The original Build business Run resumes."
+            }
+          ],
+          "children": null,
+          "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+          "semanticSnapshot": {
+            "artifacts": [
+              {
+                "auxiliary": [],
+                "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                "source": "brief.md"
+              },
+              {
+                "auxiliary": [],
+                "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                "source": "specs/workflow/spec.md"
+              }
+            ],
+            "schema": "comet.native.shape-semantics.v1"
+          },
+          "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+          "specChanges": [
+            {
+              "capability": "workflow",
+              "operation": "create",
+              "source": "specs/workflow/spec.md"
+            }
+          ]
+        }
+      },
+      "build.builder": {
+        "sequence": 4,
+        "value": {
+          "response": {
+            "checks": [
+              {
+                "argv": [
+                  "-e",
+                  "const fs=require('node:fs');fs.appendFileSync(process.argv[1],'once\\n');process.stdout.write('actual-legacy-check-completed\\n')",
+                  "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\actual-node-count"
+                ],
+                "cwdRef": ".",
+                "executable": "D:\\nodejs\\node.exe",
+                "id": "once",
+                "name": "Current Build check",
+                "repeatable": true,
+                "timeoutMs": 15000
+              }
+            ],
+            "kind": "request-checks"
+          }
+        }
+      }
+    },
+    "children": [],
+    "lineage": []
+  },
+  "projectMaterials": [
+    {
+      "ref": ".comet/config.yaml",
+      "bytesBase64": "c2NoZW1hOiBjb21ldC5wcm9qZWN0LnYxCmRlZmF1bHRfd29ya2Zsb3c6IG5hdGl2ZQphbWJpZW50X3Jlc3VtZTogdHJ1ZQpjaGFuZ2Vfd2Fsa3Rocm91Z2g6IHRydWUKbWVtb3J5OgogIGxlYXJuaW5nOiB0cnVlCiAgcmV0cmlldmFsOiB0cnVlCmtub3dsZWRnZToKICBwcm92aWRlcjogbG9jYWwKbmF0aXZlOgogIGFydGlmYWN0X3Jvb3Q6IGRvY3MKICBsYW5ndWFnZTogZW4KICBjbGFyaWZpY2F0aW9uX21vZGU6IGJhdGNoCiAgYXJjaGl2ZV9jb25maXJtYXRpb246IGF1dG9tYXRpYwogIG1heF92ZXJpZnlfZmFpbHVyZXM6IDUKICBzbmFwc2hvdDoKICAgIGluY2x1ZGU6CiAgICAgIC0gIioqLyoiCiAgICBleGNsdWRlOgogICAgICAtIC5hZ2VudHMvc2tpbGxzLyoqCiAgICAgIC0gLmFtYXpvbnEvc2tpbGxzLyoqCiAgICAgIC0gLmF1Z21lbnQvc2tpbGxzLyoqCiAgICAgIC0gLmJvYi9za2lsbHMvKioKICAgICAgLSAuY2xhdWRlL3NraWxscy8qKgogICAgICAtIC5jbGluZS9za2lsbHMvKioKICAgICAgLSAuY29kZWJ1ZGR5L3NraWxscy8qKgogICAgICAtIC5jb2RleC9za2lsbHMvKioKICAgICAgLSAuY29udGludWUvc2tpbGxzLyoqCiAgICAgIC0gLmNvc3BlYy9za2lsbHMvKioKICAgICAgLSAuY3J1c2gvc2tpbGxzLyoqCiAgICAgIC0gLmN1cnNvci9za2lsbHMvKioKICAgICAgLSAuZGV2aW4vc2tpbGxzLyoqCiAgICAgIC0gLmRzaC9za2lsbHMvKioKICAgICAgLSAuZmFjdG9yeS9za2lsbHMvKioKICAgICAgLSAuZm9yZ2Uvc2tpbGxzLyoqCiAgICAgIC0gLmdlbWluaS9za2lsbHMvKioKICAgICAgLSAuZ2l0aHViL3NraWxscy8qKgogICAgICAtIC5ncm9rL3NraWxscy8qKgogICAgICAtIC5pZmxvdy9za2lsbHMvKioKICAgICAgLSAuanVuaWUvc2tpbGxzLyoqCiAgICAgIC0gLmtpbG9jb2RlL3NraWxscy8qKgogICAgICAtIC5raW1pLWNvZGUvc2tpbGxzLyoqCiAgICAgIC0gLmtpcm8vc2tpbGxzLyoqCiAgICAgIC0gLmxpbmdtYS9za2lsbHMvKioKICAgICAgLSAubWltb2NvZGUvc2tpbGxzLyoqCiAgICAgIC0gLm1pbmltYXgvc2tpbGxzLyoqCiAgICAgIC0gLm9tcC9za2lsbHMvKioKICAgICAgLSAub3BlbmNvZGUvc2tpbGxzLyoqCiAgICAgIC0gLnBpL3NraWxscy8qKgogICAgICAtIC5wcmltZS9hZ2VudC9za2lsbHMvKioKICAgICAgLSAucW9kZXIvc2tpbGxzLyoqCiAgICAgIC0gLnF3ZW4vc2tpbGxzLyoqCiAgICAgIC0gLnJvby9za2lsbHMvKioKICAgICAgLSAudHJhZS1jbi9za2lsbHMvKioKICAgICAgLSAudHJhZS9za2lsbHMvKioKICAgICAgLSAud2luZHN1cmYvc2tpbGxzLyoqCiAgICAgIC0gLndvcmtidWRkeS9za2lsbHMvKioKICAgICAgLSAuemNvZGUvc2tpbGxzLyoqCiAgICAgIC0gIioqL19fcHljYWNoZV9fLyoqIgogICAgICAtICIqKi8uY2FjaGUvKioiCiAgICAgIC0gIioqLy5jeHgvKioiCiAgICAgIC0gIioqLy5EU19TdG9yZSIKICAgICAgLSAiKiovLmV4dGVybmFsTmF0aXZlQnVpbGQvKioiCiAgICAgIC0gIioqLy5ncmFkbGUvKioiCiAgICAgIC0gIioqLy5pZGVhLyoqIgogICAgICAtICIqKi8ubXlweV9jYWNoZS8qKiIKICAgICAgLSAiKiovLm5leHQvKioiCiAgICAgIC0gIioqLy5ub3gvKioiCiAgICAgIC0gIioqLy5udXh0LyoqIgogICAgICAtICIqKi8ubngvY2FjaGUvKioiCiAgICAgIC0gIioqLy5ueWNfb3V0cHV0LyoqIgogICAgICAtICIqKi8ub3V0cHV0LyoqIgogICAgICAtICIqKi8ucGFyY2VsLWNhY2hlLyoqIgogICAgICAtICIqKi8ucHl0ZXN0X2NhY2hlLyoqIgogICAgICAtICIqKi8ucnVmZl9jYWNoZS8qKiIKICAgICAgLSAiKiovLnN2ZWx0ZS1raXQvKioiCiAgICAgIC0gIioqLy50b3gvKioiCiAgICAgIC0gIioqLy50dXJiby8qKiIKICAgICAgLSAiKiovLnZlbnYvKioiCiAgICAgIC0gIioqLy52aXRlLyoqIgogICAgICAtICIqKi8udnNjb2RlLyoqIgogICAgICAtICIqKi8qLmxvZyIKICAgICAgLSAiKiovKi50c2J1aWxkaW5mbyIKICAgICAgLSAiKiovYnVpbGQvKioiCiAgICAgIC0gIioqL2NhcHR1cmVzLyoqIgogICAgICAtICIqKi9jbWFrZS1idWlsZC0qLyoqIgogICAgICAtICIqKi9DTWFrZUZpbGVzLyoqIgogICAgICAtICIqKi9jb3ZlcmFnZS8qKiIKICAgICAgLSAiKiovZGlzdC8qKiIKICAgICAgLSAiKiovbG9ncy8qKiIKICAgICAgLSAiKiovbm9kZV9tb2R1bGVzLyoqIgogICAgICAtICIqKi9vYmovKioiCiAgICAgIC0gIioqL291dC8qKiIKICAgICAgLSAiKiovdGFyZ2V0LyoqIgogICAgICAtICIqKi90ZW1wLyoqIgogICAgICAtICIqKi9UaHVtYnMuZGIiCiAgICAgIC0gIioqL3RtcC8qKiIKICAgICAgLSAiKiovdmVudi8qKiIKICAgIG1heF9maWxlczogMTAwMDAKICAgIG1heF90b3RhbF9ieXRlczogMTA3Mzc0MTgyNAogICAgbWF4X2R1cmF0aW9uX21zOiA2MDAwMAogICAgbWF4X3NlbGVjdGlvbl9yZWNvcmRzOiAyMDAwMAogIGRvY3VtZW50X3dyaXRlczogYWxsb3cK"
+    },
+    {
+      "ref": "docs/comet/changes/published-completed-invalid/brief.md",
+      "bytesBase64": "IyBPdXRjb21lCkluc3BlY3QgdGhlIHJlYWwgcHVibGlzaGVkIGludmFsaWQtY29tcGxldGVkIEJ1aWxkIGNoZWNrIHJlY292ZXJ5IGJvdW5kYXJ5LgojIFNjb3BlClByZXNlcnZlIG9yaWdpbmFsIFNoYXBlIGFuZCB1bmZpbmlzaGVkIEJ1aWxkZXIgd29yay4KIyMgRGlyZWN0b3J5IHN0cnVjdHVyZQojIyMgTW9kaWZpZWQKLSBleGFtcGxlLnRzOiBTSU1VTEFURUQgQWdlbnQgd29yayBvbmx5LgojIE5vbi1nb2FscwpObyBtb2RlbCBvciBjb250YWluZXIgRXZhbC4gTm8gaW1wbGVtZW50YXRpb24gY29tbWFuZC4KIyBBY2NlcHRhbmNlIGV4YW1wbGVzCi0gVGhlIG9yaWdpbmFsIEJ1aWxkIGJ1c2luZXNzIFJ1biByZXN1bWVzLgojIENvbnN0cmFpbnRzIGFuZCBpbnZhcmlhbnRzCkV4ZWN1dGUgdGhlIGV4cGxpY2l0bHkgYXV0aG9yaXplZCBoYXJtbGVzcyBOb2RlIGNvdW50ZXIgb25jZS4KIyBEZWNpc2lvbnMKTm9uZS4KIyBPcGVuIHF1ZXN0aW9ucwpOb25lLgojIFZlcmlmaWNhdGlvbiBleHBlY3RhdGlvbnMKT25seSBhIGhhcm1sZXNzIE5vZGUgY291bnQvc3Rkb3V0IGNoZWNrLgo="
+    },
+    {
+      "ref": "docs/comet/changes/published-completed-invalid/comet-state.yaml",
+      "bytesBase64": "IyBjb21ldC1leGVjdXRpb246IG1hbmFnZWQtcnVuCnNjaGVtYTogY29tZXQubmF0aXZlLnY0Cm5hbWU6IHB1Ymxpc2hlZC1jb21wbGV0ZWQtaW52YWxpZApsYW5ndWFnZTogZW4KcGhhc2U6IGJ1aWxkCnN0YXR1czogYWN0aXZlCnN0YXRlX3ZlcnNpb246IDMKYnJpZWY6IGJyaWVmLm1kCmRvY3VtZW50X2NvbnN0cmFpbnRzX3ZlcnNpb246IDMKc2hhcGVfY29uZmlybWF0aW9uX2hhc2g6IDBhMzE4ODY3YmRjOTRjMjdhYzQyMDcxOTdkZDE3Y2IxZTExMWE5YmFkOTQxM2MzM2JlNzZhODA4NzU1NmMzNzgKc2hhcGVfc2VtYW50aWNfc25hcHNob3Q6CiAgYXJ0aWZhY3RzOgogICAgLSBhdXhpbGlhcnk6IFtdCiAgICAgIGNvbW1lbnRzSGFzaDogY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MgogICAgICBjb250ZW50SGFzaDogZjU0MTQwMTU2ZWJhMTEyNTA0ZDQzNjAwZjI0ZTRhMzZlOGVjNjVmZjkzNjlmZGFhZDEwNTZmM2ZmYTY2OGQ4OAogICAgICBjb250cmFjdEhhc2g6IGI4Y2I1Y2YwNjhmYTIzOGQ5ZTRjMDdjZWZiNTEzM2QyNzNkMGNmMzlkYzYxNDZlYTdjMzU3M2UyYjAzMDZjMjkKICAgICAgaW5wdXRIYXNoOiBmZWUzODk1NTI0YjFiYTllZGRhYjE3NzQxZTFiNDAyNmEzYmQ2ZGRlZmFkYmUyNDVhMjljZjgzMThmYWYzMmRhCiAgICAgIGxlZ2FjeUZpbmdlcnByaW50OiAxN2U4NjJlMWYzNmQ3ZGQyYzU4NjM0NTZhNmU1NTc3M2Y5M2YzYzNhYWQ0NDk3MDU1OTA2YzRhMjE2YjFhYmJlCiAgICAgIHNvdXJjZTogYnJpZWYubWQKICAgIC0gYXV4aWxpYXJ5OiBbXQogICAgICBjb21tZW50c0hhc2g6IGNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIKICAgICAgY29udGVudEhhc2g6IGRlOWI3NDA0NjQzNDY2MTVhYWMwNzUzNmViMjBkNGNlNmM5NWJjNDg4NWMzZjFlNDNmNDQ5YTMwY2U4YzJlOGYKICAgICAgY29udHJhY3RIYXNoOiBlOGY4NWJmZTU0NGQxYjlhYzA0ZTlmNDQ3MDUzMWQzNWIzNGE4ZmMyYmZjZTFkODU1OTVmNGFjN2M0N2NlYzgwCiAgICAgIGlucHV0SGFzaDogZDEyNGQ5YTA2MDRiNTNjMDc4YWU3MGY1NmEzMGUyZjdiMWQ5NGMyYWQwOGJhZWIzMDVlNjQyYTQwNjBhZWQxOAogICAgICBsZWdhY3lGaW5nZXJwcmludDogODBhN2Q1NGY1MmY2NjFkZmU1Y2VkOTM1OGM1NWQxMWVmOGIyMTI5ZGE5Njk5ZGNmYjdiOTk0MTM0MDQ1NzFjNgogICAgICBzb3VyY2U6IHNwZWNzL3dvcmtmbG93L3NwZWMubWQKICBzY2hlbWE6IGNvbWV0Lm5hdGl2ZS5zaGFwZS1zZW1hbnRpY3MudjEKc3BlY19jaGFuZ2VzOgogIC0gY2FwYWJpbGl0eTogd29ya2Zsb3cKICAgIG9wZXJhdGlvbjogY3JlYXRlCiAgICBzb3VyY2U6IHNwZWNzL3dvcmtmbG93L3NwZWMubWQKd29ya3NwYWNlOgogIGlzb2xhdGlvbjogY3VycmVudAogIGNoYW5nZV9icmFuY2g6IG51bGwKICB0YXJnZXRfYnJhbmNoOiBudWxsCiAgZmluaXNoOiBudWxsCmxvb3A6CiAgc3RhZ2U6IGJ1aWxkaW5nCiAgZ29hbF9jeWNsZTogMQogIGl0ZXJhdGlvbjogMQogIGF0dGVtcHQ6IDAKICByZXRyeV9lcG9jaDogMAogIGZhaWxlZF9pdGVyYXRpb25fY291bnQ6IDAKICBub19wcm9ncmVzc19jb3VudDogMAogIGV4ZWN1dGlvbl9mYWlsdXJlX2NvdW50OiAwCiAgcHJldmlvdXNfdW5yZXNvbHZlZF9pZHM6IFtdCiAgbmV4dF9hY3Rpb246IHN1Ym1pdC1idWlsZGVyLWNhbmRpZGF0ZQphY2NlcHRhbmNlOgogIC0gaWQ6IEExCiAgICBzb3VyY2U6IGJyaWVmLm1kCiAgICB0ZXh0OiBUaGUgb3JpZ2luYWwgQnVpbGQgYnVzaW5lc3MgUnVuIHJlc3VtZXMuCiAgICByZXN1bHQ6IHBlbmRpbmcKICAgIHJlYXNvbjogbnVsbApidWlsZGVyX2hhbmRvZmY6IG51bGwKYmxvY2tlcnM6IFtdCnZlcmlmaWNhdGlvbjogbnVsbApoaXN0b3J5OiBbXQpoaXN0b3J5X292ZXJmbG93OgogIGRyb3BwZWRfZW50cmllczogMAogIGZpcnN0X2Ryb3BwZWRfYXQ6IG51bGwKICBsYXN0X2Ryb3BwZWRfYXQ6IG51bGwKICBvdXRjb21lX2NvdW50czoKICAgIHBhc3M6IDAKICAgIGZhaWw6IDAKICAgIGJsb2NrZWQ6IDAKICAgIGV4ZWN1dGlvbi1lcnJvcjogMAogICAgcmVjb3Zlcnk6IDAKdmVyaWZpY2F0aW9uX3Jlc3VsdDogcGVuZGluZwp2ZXJpZmljYXRpb25fcmVwb3J0OiBudWxsCmFyY2hpdmVkOiBmYWxzZQpjcmVhdGVkX2F0OiAyMDI2LTExLTEwVDIzOjI2OjMxLjIxMFoKcnVuX2NoZWNrcG9pbnQ6IHsic2NoZW1hIjoiY29tZXQud29ya2Zsb3ctcnVuLWNoZWNrcG9pbnQudjEiLCJoYXNoIjoiMDdmOGVlYzhhOTVhNmY1M2IwN2IxYzY3YjMxNTk0NmFlZTI4ODZlNzYwODc4ZDViZTU1NTZkOWE2ZTJjZGUxZiIsInJ1biI6eyJwcm90b2NvbFZlcnNpb24iOjEsInNjaGVtYVZlcnNpb24iOjEsInJ1bklkIjoicHVibGlzaGVkLWNvbXBsZXRlZC1pbnZhbGlkIiwicmV2aXNpb24iOjEsIndvcmtmbG93Ijp7ImlkIjoiY29tZXQtbmF0aXZlIiwidmVyc2lvbiI6IjMiLCJoYXNoIjoiMmFkMTdjZTk5NGIyOGVlMDgxNDk0YTYyZTdmNjhlZWFlNjcxYmY4Y2M5YzdhZjg5Mzk0MGE1OTIwZGI0M2RiZCJ9LCJkZWZpbml0aW9uSGFzaGVzIjp7IltcImNvbWV0LW5hdGl2ZVwiLFwiM1wiXSI6IjJhZDE3Y2U5OTRiMjhlZTA4MTQ5NGE2MmU3ZjY4ZWVhZTY3MWJmOGNjOWM3YWY4OTM5NDBhNTkyMGRiNDNkYmQifSwiaW5pdGlhbFN0YXRlSGFzaCI6IjQ0MTM0NWEzYjUzYTNmYjdlYTRlNjg5OTJiMmJmMDFjM2NhODdjMGNkNmYwZjBiYWIzNzJlYzJjNzczMDkyMzAiLCJpbnB1dCI6eyJhcnRpZmFjdFJvb3RSZWYiOiJkb2NzIiwibmFtZSI6InB1Ymxpc2hlZC1jb21wbGV0ZWQtaW52YWxpZCIsInByb2plY3RSb290IjoiQzpcXFVzZXJzXFxCRU5ZTVxcQXBwRGF0YVxcTG9jYWxcXFRlbXBcXG5hdGl2ZS0wNTItNTQ1LWNvbXBsZXRlZC1pbnZhbGlkLTEwUVFtUFxccHJvamVjdCJ9LCJzdGF0ZSI6eyJhY2NlcHRhbmNlIjpbeyJpZCI6IkExIiwicmVhc29uIjpudWxsLCJyZXN1bHQiOiJwZW5kaW5nIiwic291cmNlIjoiYnJpZWYubWQiLCJ0ZXh0IjoiVGhlIG9yaWdpbmFsIEJ1aWxkIGJ1c2luZXNzIFJ1biByZXN1bWVzLiJ9XSwiYXJjaGl2ZWQiOmZhbHNlLCJibG9ja2VycyI6W10sImJyaWVmIjoiYnJpZWYubWQiLCJidWlsZGVyX2hhbmRvZmYiOm51bGwsImNyZWF0ZWRfYXQiOiIyMDI2LTExLTEwVDIzOjI2OjMxLjIxMFoiLCJkb2N1bWVudF9jb25zdHJhaW50c192ZXJzaW9uIjozLCJoaXN0b3J5IjpbXSwiaGlzdG9yeV9vdmVyZmxvdyI6eyJkcm9wcGVkX2VudHJpZXMiOjAsImZpcnN0X2Ryb3BwZWRfYXQiOm51bGwsImxhc3RfZHJvcHBlZF9hdCI6bnVsbCwib3V0Y29tZV9jb3VudHMiOnsiYmxvY2tlZCI6MCwiZXhlY3V0aW9uLWVycm9yIjowLCJmYWlsIjowLCJwYXNzIjowLCJyZWNvdmVyeSI6MH19LCJsYW5ndWFnZSI6ImVuIiwibG9vcCI6eyJhdHRlbXB0IjowLCJleGVjdXRpb25fZmFpbHVyZV9jb3VudCI6MCwiZmFpbGVkX2l0ZXJhdGlvbl9jb3VudCI6MCwiZ29hbF9jeWNsZSI6MSwiaXRlcmF0aW9uIjoxLCJuZXh0X2FjdGlvbiI6InN1Ym1pdC1idWlsZGVyLWNhbmRpZGF0ZSIsIm5vX3Byb2dyZXNzX2NvdW50IjowLCJwcmV2aW91c191bnJlc29sdmVkX2lkcyI6W10sInJldHJ5X2Vwb2NoIjowLCJzdGFnZSI6ImJ1aWxkaW5nIn0sIm5hbWUiOiJwdWJsaXNoZWQtY29tcGxldGVkLWludmFsaWQiLCJwaGFzZSI6ImJ1aWxkIiwic2NoZW1hIjoiY29tZXQubmF0aXZlLnY0Iiwic2hhcGVfY29uZmlybWF0aW9uX2hhc2giOiIwYTMxODg2N2JkYzk0YzI3YWM0MjA3MTk3ZGQxN2NiMWUxMTFhOWJhZDk0MTNjMzNiZTc2YTgwODc1NTZjMzc4Iiwic2hhcGVfc2VtYW50aWNfc25hcHNob3QiOnsiYXJ0aWZhY3RzIjpbeyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiJmNTQxNDAxNTZlYmExMTI1MDRkNDM2MDBmMjRlNGEzNmU4ZWM2NWZmOTM2OWZkYWFkMTA1NmYzZmZhNjY4ZDg4IiwiY29udHJhY3RIYXNoIjoiYjhjYjVjZjA2OGZhMjM4ZDllNGMwN2NlZmI1MTMzZDI3M2QwY2YzOWRjNjE0NmVhN2MzNTczZTJiMDMwNmMyOSIsImlucHV0SGFzaCI6ImZlZTM4OTU1MjRiMWJhOWVkZGFiMTc3NDFlMWI0MDI2YTNiZDZkZGVmYWRiZTI0NWEyOWNmODMxOGZhZjMyZGEiLCJsZWdhY3lGaW5nZXJwcmludCI6IjE3ZTg2MmUxZjM2ZDdkZDJjNTg2MzQ1NmE2ZTU1NzczZjkzZjNjM2FhZDQ0OTcwNTU5MDZjNGEyMTZiMWFiYmUiLCJzb3VyY2UiOiJicmllZi5tZCJ9LHsiYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiZGU5Yjc0MDQ2NDM0NjYxNWFhYzA3NTM2ZWIyMGQ0Y2U2Yzk1YmM0ODg1YzNmMWU0M2Y0NDlhMzBjZThjMmU4ZiIsImNvbnRyYWN0SGFzaCI6ImU4Zjg1YmZlNTQ0ZDFiOWFjMDRlOWY0NDcwNTMxZDM1YjM0YThmYzJiZmNlMWQ4NTU5NWY0YWM3YzQ3Y2VjODAiLCJpbnB1dEhhc2giOiJkMTI0ZDlhMDYwNGI1M2MwNzhhZTcwZjU2YTMwZTJmN2IxZDk0YzJhZDA4YmFlYjMwNWU2NDJhNDA2MGFlZDE4IiwibGVnYWN5RmluZ2VycHJpbnQiOiI4MGE3ZDU0ZjUyZjY2MWRmZTVjZWQ5MzU4YzU1ZDExZWY4YjIxMjlkYTk2OTlkY2ZiN2I5OTQxMzQwNDU3MWM2Iiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XSwic2NoZW1hIjoiY29tZXQubmF0aXZlLnNoYXBlLXNlbWFudGljcy52MSJ9LCJzcGVjX2NoYW5nZXMiOlt7ImNhcGFiaWxpdHkiOiJ3b3JrZmxvdyIsIm9wZXJhdGlvbiI6ImNyZWF0ZSIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV0sInN0YXRlX3ZlcnNpb24iOjMsInN0YXR1cyI6ImFjdGl2ZSIsInZlcmlmaWNhdGlvbiI6bnVsbCwidmVyaWZpY2F0aW9uX3JlcG9ydCI6bnVsbCwidmVyaWZpY2F0aW9uX3Jlc3VsdCI6InBlbmRpbmciLCJ3b3Jrc3BhY2UiOnsiY2hhbmdlX2JyYW5jaCI6bnVsbCwiZmluaXNoIjpudWxsLCJpc29sYXRpb24iOiJjdXJyZW50IiwidGFyZ2V0X2JyYW5jaCI6bnVsbH19LCJzdGF0dXMiOiJydW5uaW5nIiwic2VxdWVuY2UiOjUsImFjdGlvbnMiOlt7ImF0dGVtcHQiOjEsImNsYWltIjp7ImV4ZWN1dG9ySWQiOiJhY3R1YWwtcHVyZS1wcm9wb3NhbCIsInNlc3Npb25JZCI6ImFjdHVhbC1wdXJlLXByb3Bvc2FsIiwidG9rZW4iOiJwb3J0YWJsZS00YzJiMzllYTg3NDQzZWYyZjM1YzhmYjYyNDM0NzY0MmY0ZWVlNTdjZWRkMWU4OWZlNWY5YjdjYzExODQ5Y2YxIn0sImV4ZWN1dGlvbk9yaWdpbiI6eyJ3b3JrZmxvdyI6eyJoYXNoIjoiMmFkMTdjZTk5NGIyOGVlMDgxNDk0YTYyZTdmNjhlZWFlNjcxYmY4Y2M5YzdhZjg5Mzk0MGE1OTIwZGI0M2RiZCIsImlkIjoiY29tZXQtbmF0aXZlIiwidmVyc2lvbiI6IjMifX0sImlkIjoicHVibGlzaGVkLWNvbXBsZXRlZC1pbnZhbGlkOjEiLCJpbnB1dCI6eyJpbnB1dCI6eyJhcnRpZmFjdFJvb3RSZWYiOiJkb2NzIiwibmFtZSI6InB1Ymxpc2hlZC1jb21wbGV0ZWQtaW52YWxpZCIsInByb2plY3RSb290IjoiQzpcXFVzZXJzXFxCRU5ZTVxcQXBwRGF0YVxcTG9jYWxcXFRlbXBcXG5hdGl2ZS0wNTItNTQ1LWNvbXBsZXRlZC1pbnZhbGlkLTEwUVFtUFxccHJvamVjdCJ9LCJvdXRwdXRzIjp7fX0sImlucHV0SGFzaCI6IjY3ZTViODU4YjZmZWI0ZWJlOWNkZDc1NjMxNGQyMjU4MGJiYThiNTZjYWM4ZDIxMTA0MTE5MTc0YjAyNWE4ZjIiLCJvdXRjb21lIjp7ImFjdGlvbklkIjoicHVibGlzaGVkLWNvbXBsZXRlZC1pbnZhbGlkOjEiLCJhdHRlbXB0IjoxLCJjbGFpbVRva2VuIjoicG9ydGFibGUtNGMyYjM5ZWE4NzQ0M2VmMmYzNWM4ZmI2MjQzNDc2NDJmNGVlZTU3Y2VkZDFlODlmZTVmOWI3Y2MxMTg0OWNmMSIsImlucHV0SGFzaCI6IjY3ZTViODU4YjZmZWI0ZWJlOWNkZDc1NjMxNGQyMjU4MGJiYThiNTZjYWM4ZDIxMTA0MTE5MTc0YjAyNWE4ZjIiLCJvdXRjb21lSWQiOiJTSU1VTEFURUQtQUdFTlQtT1VUQ09NRS1wdWJsaXNoZWQtY29tcGxldGVkLWludmFsaWQ6MSIsIm91dHB1dCI6eyJhY2NlcHRhbmNlIjpbeyJpZCI6IkExIiwic291cmNlIjoiYnJpZWYubWQiLCJ0ZXh0IjoiVGhlIG9yaWdpbmFsIEJ1aWxkIGJ1c2luZXNzIFJ1biByZXN1bWVzLiJ9XSwiY2hpbGRyZW4iOm51bGwsImZvcm1hbEhhc2giOiIxNTY2ZWYwNWRjMGEzNTM2N2M3OWEwYTdkOGM4ZmI4MDA0YjU2MTJkM2JkNzQ3MGUyZmYzNWYxNjgxMzJkM2QyIiwic2VtYW50aWNTbmFwc2hvdCI6eyJhcnRpZmFjdHMiOlt7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6ImY1NDE0MDE1NmViYTExMjUwNGQ0MzYwMGYyNGU0YTM2ZThlYzY1ZmY5MzY5ZmRhYWQxMDU2ZjNmZmE2NjhkODgiLCJjb250cmFjdEhhc2giOiJiOGNiNWNmMDY4ZmEyMzhkOWU0YzA3Y2VmYjUxMzNkMjczZDBjZjM5ZGM2MTQ2ZWE3YzM1NzNlMmIwMzA2YzI5IiwiaW5wdXRIYXNoIjoiZmVlMzg5NTUyNGIxYmE5ZWRkYWIxNzc0MWUxYjQwMjZhM2JkNmRkZWZhZGJlMjQ1YTI5Y2Y4MzE4ZmFmMzJkYSIsImxlZ2FjeUZpbmdlcnByaW50IjoiMTdlODYyZTFmMzZkN2RkMmM1ODYzNDU2YTZlNTU3NzNmOTNmM2MzYWFkNDQ5NzA1NTkwNmM0YTIxNmIxYWJiZSIsInNvdXJjZSI6ImJyaWVmLm1kIn0seyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiJkZTliNzQwNDY0MzQ2NjE1YWFjMDc1MzZlYjIwZDRjZTZjOTViYzQ4ODVjM2YxZTQzZjQ0OWEzMGNlOGMyZThmIiwiY29udHJhY3RIYXNoIjoiZThmODViZmU1NDRkMWI5YWMwNGU5ZjQ0NzA1MzFkMzViMzRhOGZjMmJmY2UxZDg1NTk1ZjRhYzdjNDdjZWM4MCIsImlucHV0SGFzaCI6ImQxMjRkOWEwNjA0YjUzYzA3OGFlNzBmNTZhMzBlMmY3YjFkOTRjMmFkMDhiYWViMzA1ZTY0MmE0MDYwYWVkMTgiLCJsZWdhY3lGaW5nZXJwcmludCI6IjgwYTdkNTRmNTJmNjYxZGZlNWNlZDkzNThjNTVkMTFlZjhiMjEyOWRhOTY5OWRjZmI3Yjk5NDEzNDA0NTcxYzYiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dLCJzY2hlbWEiOiJjb21ldC5uYXRpdmUuc2hhcGUtc2VtYW50aWNzLnYxIn0sInNoYXBlQ29uZmlybWF0aW9uSGFzaCI6IjBhMzE4ODY3YmRjOTRjMjdhYzQyMDcxOTdkZDE3Y2IxZTExMWE5YmFkOTQxM2MzM2JlNzZhODA4NzU1NmMzNzgiLCJzcGVjQ2hhbmdlcyI6W3siY2FwYWJpbGl0eSI6IndvcmtmbG93Iiwib3BlcmF0aW9uIjoiY3JlYXRlIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XX0sInN0YXR1cyI6InN1Y2NlZWRlZCJ9LCJwcm90b2NvbFZlcnNpb24iOjEsInJlY2VpcHRzIjpbeyJoYXNoIjoiYjgzNDg5MjczZTExMTJmOTIyN2I3M2Y4OGE5YjRmNjc1MmIzMGViYThmNzc5M2VhMmVlYTQyZTkxMjY4YzQ1OSIsIm91dGNvbWVJZCI6IlNJTVVMQVRFRC1BR0VOVC1PVVRDT01FLXB1Ymxpc2hlZC1jb21wbGV0ZWQtaW52YWxpZDoxIn1dLCJyZWNvbmNpbGlhdGlvbnMiOltdLCJyZWYiOiJuYXRpdmUtc2hhcGUtcHJlcGFyZSIsInJlcXVpcmVkQ2FwYWJpbGl0aWVzIjpbXSwicmV0cnkiOiJtYW51YWwiLCJydW5JZCI6InB1Ymxpc2hlZC1jb21wbGV0ZWQtaW52YWxpZCIsInN0YXR1cyI6InN1Y2NlZWRlZCIsInN0ZXBJZCI6InNoYXBlLnByZXBhcmUiLCJ0eXBlIjoiY2FsbF90b29sIn0seyJhdHRlbXB0IjoxLCJjbGFpbSI6eyJleGVjdXRvcklkIjoiYWN0dWFsLXB1cmUtcHJvcG9zYWwiLCJzZXNzaW9uSWQiOiJhY3R1YWwtcHVyZS1wcm9wb3NhbCIsInRva2VuIjoicG9ydGFibGUtNTY3MGI1MzM4NWQxNTJhZDIxOWY4MDg1NTVlNDdiYzdhNDRlYzUyNWNiZDZjZDY5YmYzYjFiNDExMTFjZjcxNSJ9LCJleGVjdXRpb25PcmlnaW4iOnsid29ya2Zsb3ciOnsiaGFzaCI6IjJhZDE3Y2U5OTRiMjhlZTA4MTQ5NGE2MmU3ZjY4ZWVhZTY3MWJmOGNjOWM3YWY4OTM5NDBhNTkyMGRiNDNkYmQiLCJpZCI6ImNvbWV0LW5hdGl2ZSIsInZlcnNpb24iOiIzIn19LCJpZCI6InB1Ymxpc2hlZC1jb21wbGV0ZWQtaW52YWxpZDozIiwiaW5wdXQiOnsiaW5wdXQiOnsiYXJ0aWZhY3RSb290UmVmIjoiZG9jcyIsIm5hbWUiOiJwdWJsaXNoZWQtY29tcGxldGVkLWludmFsaWQiLCJwcm9qZWN0Um9vdCI6IkM6XFxVc2Vyc1xcQkVOWU1cXEFwcERhdGFcXExvY2FsXFxUZW1wXFxuYXRpdmUtMDUyLTU0NS1jb21wbGV0ZWQtaW52YWxpZC0xMFFRbVBcXHByb2plY3QifSwib3V0cHV0cyI6eyJzaGFwZS5jb25maXJtIjp7ImNob2ljZSI6ImFwcHJvdmVkIiwicHJvcG9zYWwiOnsiaW5wdXQiOnsiYXJ0aWZhY3RSb290UmVmIjoiZG9jcyIsIm5hbWUiOiJwdWJsaXNoZWQtY29tcGxldGVkLWludmFsaWQiLCJwcm9qZWN0Um9vdCI6IkM6XFxVc2Vyc1xcQkVOWU1cXEFwcERhdGFcXExvY2FsXFxUZW1wXFxuYXRpdmUtMDUyLTU0NS1jb21wbGV0ZWQtaW52YWxpZC0xMFFRbVBcXHByb2plY3QifSwib3V0cHV0cyI6eyJzaGFwZS5wcmVwYXJlIjp7ImFjY2VwdGFuY2UiOlt7ImlkIjoiQTEiLCJzb3VyY2UiOiJicmllZi5tZCIsInRleHQiOiJUaGUgb3JpZ2luYWwgQnVpbGQgYnVzaW5lc3MgUnVuIHJlc3VtZXMuIn1dLCJjaGlsZHJlbiI6bnVsbCwiZm9ybWFsSGFzaCI6IjE1NjZlZjA1ZGMwYTM1MzY3Yzc5YTBhN2Q4YzhmYjgwMDRiNTYxMmQzYmQ3NDcwZTJmZjM1ZjE2ODEzMmQzZDIiLCJzZW1hbnRpY1NuYXBzaG90Ijp7ImFydGlmYWN0cyI6W3siYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiZjU0MTQwMTU2ZWJhMTEyNTA0ZDQzNjAwZjI0ZTRhMzZlOGVjNjVmZjkzNjlmZGFhZDEwNTZmM2ZmYTY2OGQ4OCIsImNvbnRyYWN0SGFzaCI6ImI4Y2I1Y2YwNjhmYTIzOGQ5ZTRjMDdjZWZiNTEzM2QyNzNkMGNmMzlkYzYxNDZlYTdjMzU3M2UyYjAzMDZjMjkiLCJpbnB1dEhhc2giOiJmZWUzODk1NTI0YjFiYTllZGRhYjE3NzQxZTFiNDAyNmEzYmQ2ZGRlZmFkYmUyNDVhMjljZjgzMThmYWYzMmRhIiwibGVnYWN5RmluZ2VycHJpbnQiOiIxN2U4NjJlMWYzNmQ3ZGQyYzU4NjM0NTZhNmU1NTc3M2Y5M2YzYzNhYWQ0NDk3MDU1OTA2YzRhMjE2YjFhYmJlIiwic291cmNlIjoiYnJpZWYubWQifSx7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6ImRlOWI3NDA0NjQzNDY2MTVhYWMwNzUzNmViMjBkNGNlNmM5NWJjNDg4NWMzZjFlNDNmNDQ5YTMwY2U4YzJlOGYiLCJjb250cmFjdEhhc2giOiJlOGY4NWJmZTU0NGQxYjlhYzA0ZTlmNDQ3MDUzMWQzNWIzNGE4ZmMyYmZjZTFkODU1OTVmNGFjN2M0N2NlYzgwIiwiaW5wdXRIYXNoIjoiZDEyNGQ5YTA2MDRiNTNjMDc4YWU3MGY1NmEzMGUyZjdiMWQ5NGMyYWQwOGJhZWIzMDVlNjQyYTQwNjBhZWQxOCIsImxlZ2FjeUZpbmdlcnByaW50IjoiODBhN2Q1NGY1MmY2NjFkZmU1Y2VkOTM1OGM1NWQxMWVmOGIyMTI5ZGE5Njk5ZGNmYjdiOTk0MTM0MDQ1NzFjNiIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV0sInNjaGVtYSI6ImNvbWV0Lm5hdGl2ZS5zaGFwZS1zZW1hbnRpY3MudjEifSwic2hhcGVDb25maXJtYXRpb25IYXNoIjoiMGEzMTg4NjdiZGM5NGMyN2FjNDIwNzE5N2RkMTdjYjFlMTExYTliYWQ5NDEzYzMzYmU3NmE4MDg3NTU2YzM3OCIsInNwZWNDaGFuZ2VzIjpbeyJjYXBhYmlsaXR5Ijoid29ya2Zsb3ciLCJvcGVyYXRpb24iOiJjcmVhdGUiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dfX19fSwic2hhcGUucHJlcGFyZSI6eyJhY2NlcHRhbmNlIjpbeyJpZCI6IkExIiwic291cmNlIjoiYnJpZWYubWQiLCJ0ZXh0IjoiVGhlIG9yaWdpbmFsIEJ1aWxkIGJ1c2luZXNzIFJ1biByZXN1bWVzLiJ9XSwiY2hpbGRyZW4iOm51bGwsImZvcm1hbEhhc2giOiIxNTY2ZWYwNWRjMGEzNTM2N2M3OWEwYTdkOGM4ZmI4MDA0YjU2MTJkM2JkNzQ3MGUyZmYzNWYxNjgxMzJkM2QyIiwic2VtYW50aWNTbmFwc2hvdCI6eyJhcnRpZmFjdHMiOlt7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6ImY1NDE0MDE1NmViYTExMjUwNGQ0MzYwMGYyNGU0YTM2ZThlYzY1ZmY5MzY5ZmRhYWQxMDU2ZjNmZmE2NjhkODgiLCJjb250cmFjdEhhc2giOiJiOGNiNWNmMDY4ZmEyMzhkOWU0YzA3Y2VmYjUxMzNkMjczZDBjZjM5ZGM2MTQ2ZWE3YzM1NzNlMmIwMzA2YzI5IiwiaW5wdXRIYXNoIjoiZmVlMzg5NTUyNGIxYmE5ZWRkYWIxNzc0MWUxYjQwMjZhM2JkNmRkZWZhZGJlMjQ1YTI5Y2Y4MzE4ZmFmMzJkYSIsImxlZ2FjeUZpbmdlcnByaW50IjoiMTdlODYyZTFmMzZkN2RkMmM1ODYzNDU2YTZlNTU3NzNmOTNmM2MzYWFkNDQ5NzA1NTkwNmM0YTIxNmIxYWJiZSIsInNvdXJjZSI6ImJyaWVmLm1kIn0seyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiJkZTliNzQwNDY0MzQ2NjE1YWFjMDc1MzZlYjIwZDRjZTZjOTViYzQ4ODVjM2YxZTQzZjQ0OWEzMGNlOGMyZThmIiwiY29udHJhY3RIYXNoIjoiZThmODViZmU1NDRkMWI5YWMwNGU5ZjQ0NzA1MzFkMzViMzRhOGZjMmJmY2UxZDg1NTk1ZjRhYzdjNDdjZWM4MCIsImlucHV0SGFzaCI6ImQxMjRkOWEwNjA0YjUzYzA3OGFlNzBmNTZhMzBlMmY3YjFkOTRjMmFkMDhiYWViMzA1ZTY0MmE0MDYwYWVkMTgiLCJsZWdhY3lGaW5nZXJwcmludCI6IjgwYTdkNTRmNTJmNjYxZGZlNWNlZDkzNThjNTVkMTFlZjhiMjEyOWRhOTY5OWRjZmI3Yjk5NDEzNDA0NTcxYzYiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dLCJzY2hlbWEiOiJjb21ldC5uYXRpdmUuc2hhcGUtc2VtYW50aWNzLnYxIn0sInNoYXBlQ29uZmlybWF0aW9uSGFzaCI6IjBhMzE4ODY3YmRjOTRjMjdhYzQyMDcxOTdkZDE3Y2IxZTExMWE5YmFkOTQxM2MzM2JlNzZhODA4NzU1NmMzNzgiLCJzcGVjQ2hhbmdlcyI6W3siY2FwYWJpbGl0eSI6IndvcmtmbG93Iiwib3BlcmF0aW9uIjoiY3JlYXRlIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XX19fSwiaW5wdXRIYXNoIjoiZWVjOTQxZGJjNTM1YmM2Y2FiMjliMzgzMGI2ODMyM2UxZmU0NWZhZDI4MDliOGE4NzA3MTkwOTYxY2IwMjMzNSIsIm91dGNvbWUiOnsiYWN0aW9uSWQiOiJwdWJsaXNoZWQtY29tcGxldGVkLWludmFsaWQ6MyIsImF0dGVtcHQiOjEsImNsYWltVG9rZW4iOiJwb3J0YWJsZS01NjcwYjUzMzg1ZDE1MmFkMjE5ZjgwODU1NWU0N2JjN2E0NGVjNTI1Y2JkNmNkNjliZjNiMWI0MTExMWNmNzE1IiwiaW5wdXRIYXNoIjoiZWVjOTQxZGJjNTM1YmM2Y2FiMjliMzgzMGI2ODMyM2UxZmU0NWZhZDI4MDliOGE4NzA3MTkwOTYxY2IwMjMzNSIsIm91dGNvbWVJZCI6IlNJTVVMQVRFRC1BR0VOVC1PVVRDT01FLXB1Ymxpc2hlZC1jb21wbGV0ZWQtaW52YWxpZDozIiwib3V0cHV0Ijp7ImFjY2VwdGFuY2UiOlt7ImlkIjoiQTEiLCJzb3VyY2UiOiJicmllZi5tZCIsInRleHQiOiJUaGUgb3JpZ2luYWwgQnVpbGQgYnVzaW5lc3MgUnVuIHJlc3VtZXMuIn1dLCJjaGlsZHJlbiI6bnVsbCwiZm9ybWFsSGFzaCI6IjE1NjZlZjA1ZGMwYTM1MzY3Yzc5YTBhN2Q4YzhmYjgwMDRiNTYxMmQzYmQ3NDcwZTJmZjM1ZjE2ODEzMmQzZDIiLCJzZW1hbnRpY1NuYXBzaG90Ijp7ImFydGlmYWN0cyI6W3siYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiZjU0MTQwMTU2ZWJhMTEyNTA0ZDQzNjAwZjI0ZTRhMzZlOGVjNjVmZjkzNjlmZGFhZDEwNTZmM2ZmYTY2OGQ4OCIsImNvbnRyYWN0SGFzaCI6ImI4Y2I1Y2YwNjhmYTIzOGQ5ZTRjMDdjZWZiNTEzM2QyNzNkMGNmMzlkYzYxNDZlYTdjMzU3M2UyYjAzMDZjMjkiLCJpbnB1dEhhc2giOiJmZWUzODk1NTI0YjFiYTllZGRhYjE3NzQxZTFiNDAyNmEzYmQ2ZGRlZmFkYmUyNDVhMjljZjgzMThmYWYzMmRhIiwibGVnYWN5RmluZ2VycHJpbnQiOiIxN2U4NjJlMWYzNmQ3ZGQyYzU4NjM0NTZhNmU1NTc3M2Y5M2YzYzNhYWQ0NDk3MDU1OTA2YzRhMjE2YjFhYmJlIiwic291cmNlIjoiYnJpZWYubWQifSx7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6ImRlOWI3NDA0NjQzNDY2MTVhYWMwNzUzNmViMjBkNGNlNmM5NWJjNDg4NWMzZjFlNDNmNDQ5YTMwY2U4YzJlOGYiLCJjb250cmFjdEhhc2giOiJlOGY4NWJmZTU0NGQxYjlhYzA0ZTlmNDQ3MDUzMWQzNWIzNGE4ZmMyYmZjZTFkODU1OTVmNGFjN2M0N2NlYzgwIiwiaW5wdXRIYXNoIjoiZDEyNGQ5YTA2MDRiNTNjMDc4YWU3MGY1NmEzMGUyZjdiMWQ5NGMyYWQwOGJhZWIzMDVlNjQyYTQwNjBhZWQxOCIsImxlZ2FjeUZpbmdlcnByaW50IjoiODBhN2Q1NGY1MmY2NjFkZmU1Y2VkOTM1OGM1NWQxMWVmOGIyMTI5ZGE5Njk5ZGNmYjdiOTk0MTM0MDQ1NzFjNiIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV0sInNjaGVtYSI6ImNvbWV0Lm5hdGl2ZS5zaGFwZS1zZW1hbnRpY3MudjEifSwic2hhcGVDb25maXJtYXRpb25IYXNoIjoiMGEzMTg4NjdiZGM5NGMyN2FjNDIwNzE5N2RkMTdjYjFlMTExYTliYWQ5NDEzYzMzYmU3NmE4MDg3NTU2YzM3OCIsInNwZWNDaGFuZ2VzIjpbeyJjYXBhYmlsaXR5Ijoid29ya2Zsb3ciLCJvcGVyYXRpb24iOiJjcmVhdGUiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dfSwic3RhdHVzIjoic3VjY2VlZGVkIn0sInByb3RvY29sVmVyc2lvbiI6MSwicmVjZWlwdHMiOlt7Imhhc2giOiI2MTQzYTYwNTMxMzBhMGZiMTdmYjY4MzY5MTcyMGJlMWFmMjJjNjcyNDM3NmJhOTg2MmE5MmIzMTdlNmMyZjEwIiwib3V0Y29tZUlkIjoiU0lNVUxBVEVELUFHRU5ULU9VVENPTUUtcHVibGlzaGVkLWNvbXBsZXRlZC1pbnZhbGlkOjMifV0sInJlY29uY2lsaWF0aW9ucyI6W10sInJlZiI6Im5hdGl2ZS1zaGFwZS1yZXZhbGlkYXRlIiwicmVxdWlyZWRDYXBhYmlsaXRpZXMiOltdLCJyZXRyeSI6Im1hbnVhbCIsInJ1bklkIjoicHVibGlzaGVkLWNvbXBsZXRlZC1pbnZhbGlkIiwic3RhdHVzIjoic3VjY2VlZGVkIiwic3RlcElkIjoic2hhcGUucmV2YWxpZGF0ZSIsInR5cGUiOiJjYWxsX3Rvb2wifSx7ImF0dGVtcHQiOjEsImNsYWltIjp7ImV4ZWN1dG9ySWQiOiJTSU1VTEFURUQtQlVJTERFUiIsInNlc3Npb25JZCI6IlNJTVVMQVRFRC1CVUlMREVSIiwidG9rZW4iOiJwb3J0YWJsZS0wOWJmM2U0YjY5YjJkZjk3YjJkNjZlMDE5YmQ2Y2RlOWEzNGRkNTJiOTdjZWU2ODAwOGU0NTdlYWUzMmUxMWFjIn0sImV4ZWN1dGlvbk9yaWdpbiI6eyJ3b3JrZmxvdyI6eyJoYXNoIjoiMmFkMTdjZTk5NGIyOGVlMDgxNDk0YTYyZTdmNjhlZWFlNjcxYmY4Y2M5YzdhZjg5Mzk0MGE1OTIwZGI0M2RiZCIsImlkIjoiY29tZXQtbmF0aXZlIiwidmVyc2lvbiI6IjMifX0sImlkIjoicHVibGlzaGVkLWNvbXBsZXRlZC1pbnZhbGlkOjQiLCJpbnB1dCI6eyJpbnB1dCI6eyJhcnRpZmFjdFJvb3RSZWYiOiJkb2NzIiwibmFtZSI6InB1Ymxpc2hlZC1jb21wbGV0ZWQtaW52YWxpZCIsInByb2plY3RSb290IjoiQzpcXFVzZXJzXFxCRU5ZTVxcQXBwRGF0YVxcTG9jYWxcXFRlbXBcXG5hdGl2ZS0wNTItNTQ1LWNvbXBsZXRlZC1pbnZhbGlkLTEwUVFtUFxccHJvamVjdCJ9LCJvdXRwdXRzIjp7InNoYXBlLmNvbmZpcm0iOnsiY2hvaWNlIjoiYXBwcm92ZWQiLCJwcm9wb3NhbCI6eyJpbnB1dCI6eyJhcnRpZmFjdFJvb3RSZWYiOiJkb2NzIiwibmFtZSI6InB1Ymxpc2hlZC1jb21wbGV0ZWQtaW52YWxpZCIsInByb2plY3RSb290IjoiQzpcXFVzZXJzXFxCRU5ZTVxcQXBwRGF0YVxcTG9jYWxcXFRlbXBcXG5hdGl2ZS0wNTItNTQ1LWNvbXBsZXRlZC1pbnZhbGlkLTEwUVFtUFxccHJvamVjdCJ9LCJvdXRwdXRzIjp7InNoYXBlLnByZXBhcmUiOnsiYWNjZXB0YW5jZSI6W3siaWQiOiJBMSIsInNvdXJjZSI6ImJyaWVmLm1kIiwidGV4dCI6IlRoZSBvcmlnaW5hbCBCdWlsZCBidXNpbmVzcyBSdW4gcmVzdW1lcy4ifV0sImNoaWxkcmVuIjpudWxsLCJmb3JtYWxIYXNoIjoiMTU2NmVmMDVkYzBhMzUzNjdjNzlhMGE3ZDhjOGZiODAwNGI1NjEyZDNiZDc0NzBlMmZmMzVmMTY4MTMyZDNkMiIsInNlbWFudGljU25hcHNob3QiOnsiYXJ0aWZhY3RzIjpbeyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiJmNTQxNDAxNTZlYmExMTI1MDRkNDM2MDBmMjRlNGEzNmU4ZWM2NWZmOTM2OWZkYWFkMTA1NmYzZmZhNjY4ZDg4IiwiY29udHJhY3RIYXNoIjoiYjhjYjVjZjA2OGZhMjM4ZDllNGMwN2NlZmI1MTMzZDI3M2QwY2YzOWRjNjE0NmVhN2MzNTczZTJiMDMwNmMyOSIsImlucHV0SGFzaCI6ImZlZTM4OTU1MjRiMWJhOWVkZGFiMTc3NDFlMWI0MDI2YTNiZDZkZGVmYWRiZTI0NWEyOWNmODMxOGZhZjMyZGEiLCJsZWdhY3lGaW5nZXJwcmludCI6IjE3ZTg2MmUxZjM2ZDdkZDJjNTg2MzQ1NmE2ZTU1NzczZjkzZjNjM2FhZDQ0OTcwNTU5MDZjNGEyMTZiMWFiYmUiLCJzb3VyY2UiOiJicmllZi5tZCJ9LHsiYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiZGU5Yjc0MDQ2NDM0NjYxNWFhYzA3NTM2ZWIyMGQ0Y2U2Yzk1YmM0ODg1YzNmMWU0M2Y0NDlhMzBjZThjMmU4ZiIsImNvbnRyYWN0SGFzaCI6ImU4Zjg1YmZlNTQ0ZDFiOWFjMDRlOWY0NDcwNTMxZDM1YjM0YThmYzJiZmNlMWQ4NTU5NWY0YWM3YzQ3Y2VjODAiLCJpbnB1dEhhc2giOiJkMTI0ZDlhMDYwNGI1M2MwNzhhZTcwZjU2YTMwZTJmN2IxZDk0YzJhZDA4YmFlYjMwNWU2NDJhNDA2MGFlZDE4IiwibGVnYWN5RmluZ2VycHJpbnQiOiI4MGE3ZDU0ZjUyZjY2MWRmZTVjZWQ5MzU4YzU1ZDExZWY4YjIxMjlkYTk2OTlkY2ZiN2I5OTQxMzQwNDU3MWM2Iiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XSwic2NoZW1hIjoiY29tZXQubmF0aXZlLnNoYXBlLXNlbWFudGljcy52MSJ9LCJzaGFwZUNvbmZpcm1hdGlvbkhhc2giOiIwYTMxODg2N2JkYzk0YzI3YWM0MjA3MTk3ZGQxN2NiMWUxMTFhOWJhZDk0MTNjMzNiZTc2YTgwODc1NTZjMzc4Iiwic3BlY0NoYW5nZXMiOlt7ImNhcGFiaWxpdHkiOiJ3b3JrZmxvdyIsIm9wZXJhdGlvbiI6ImNyZWF0ZSIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV19fX19LCJzaGFwZS5wcmVwYXJlIjp7ImFjY2VwdGFuY2UiOlt7ImlkIjoiQTEiLCJzb3VyY2UiOiJicmllZi5tZCIsInRleHQiOiJUaGUgb3JpZ2luYWwgQnVpbGQgYnVzaW5lc3MgUnVuIHJlc3VtZXMuIn1dLCJjaGlsZHJlbiI6bnVsbCwiZm9ybWFsSGFzaCI6IjE1NjZlZjA1ZGMwYTM1MzY3Yzc5YTBhN2Q4YzhmYjgwMDRiNTYxMmQzYmQ3NDcwZTJmZjM1ZjE2ODEzMmQzZDIiLCJzZW1hbnRpY1NuYXBzaG90Ijp7ImFydGlmYWN0cyI6W3siYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiZjU0MTQwMTU2ZWJhMTEyNTA0ZDQzNjAwZjI0ZTRhMzZlOGVjNjVmZjkzNjlmZGFhZDEwNTZmM2ZmYTY2OGQ4OCIsImNvbnRyYWN0SGFzaCI6ImI4Y2I1Y2YwNjhmYTIzOGQ5ZTRjMDdjZWZiNTEzM2QyNzNkMGNmMzlkYzYxNDZlYTdjMzU3M2UyYjAzMDZjMjkiLCJpbnB1dEhhc2giOiJmZWUzODk1NTI0YjFiYTllZGRhYjE3NzQxZTFiNDAyNmEzYmQ2ZGRlZmFkYmUyNDVhMjljZjgzMThmYWYzMmRhIiwibGVnYWN5RmluZ2VycHJpbnQiOiIxN2U4NjJlMWYzNmQ3ZGQyYzU4NjM0NTZhNmU1NTc3M2Y5M2YzYzNhYWQ0NDk3MDU1OTA2YzRhMjE2YjFhYmJlIiwic291cmNlIjoiYnJpZWYubWQifSx7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6ImRlOWI3NDA0NjQzNDY2MTVhYWMwNzUzNmViMjBkNGNlNmM5NWJjNDg4NWMzZjFlNDNmNDQ5YTMwY2U4YzJlOGYiLCJjb250cmFjdEhhc2giOiJlOGY4NWJmZTU0NGQxYjlhYzA0ZTlmNDQ3MDUzMWQzNWIzNGE4ZmMyYmZjZTFkODU1OTVmNGFjN2M0N2NlYzgwIiwiaW5wdXRIYXNoIjoiZDEyNGQ5YTA2MDRiNTNjMDc4YWU3MGY1NmEzMGUyZjdiMWQ5NGMyYWQwOGJhZWIzMDVlNjQyYTQwNjBhZWQxOCIsImxlZ2FjeUZpbmdlcnByaW50IjoiODBhN2Q1NGY1MmY2NjFkZmU1Y2VkOTM1OGM1NWQxMWVmOGIyMTI5ZGE5Njk5ZGNmYjdiOTk0MTM0MDQ1NzFjNiIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV0sInNjaGVtYSI6ImNvbWV0Lm5hdGl2ZS5zaGFwZS1zZW1hbnRpY3MudjEifSwic2hhcGVDb25maXJtYXRpb25IYXNoIjoiMGEzMTg4NjdiZGM5NGMyN2FjNDIwNzE5N2RkMTdjYjFlMTExYTliYWQ5NDEzYzMzYmU3NmE4MDg3NTU2YzM3OCIsInNwZWNDaGFuZ2VzIjpbeyJjYXBhYmlsaXR5Ijoid29ya2Zsb3ciLCJvcGVyYXRpb24iOiJjcmVhdGUiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dfSwic2hhcGUucmV2YWxpZGF0ZSI6eyJhY2NlcHRhbmNlIjpbeyJpZCI6IkExIiwic291cmNlIjoiYnJpZWYubWQiLCJ0ZXh0IjoiVGhlIG9yaWdpbmFsIEJ1aWxkIGJ1c2luZXNzIFJ1biByZXN1bWVzLiJ9XSwiY2hpbGRyZW4iOm51bGwsImZvcm1hbEhhc2giOiIxNTY2ZWYwNWRjMGEzNTM2N2M3OWEwYTdkOGM4ZmI4MDA0YjU2MTJkM2JkNzQ3MGUyZmYzNWYxNjgxMzJkM2QyIiwic2VtYW50aWNTbmFwc2hvdCI6eyJhcnRpZmFjdHMiOlt7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6ImY1NDE0MDE1NmViYTExMjUwNGQ0MzYwMGYyNGU0YTM2ZThlYzY1ZmY5MzY5ZmRhYWQxMDU2ZjNmZmE2NjhkODgiLCJjb250cmFjdEhhc2giOiJiOGNiNWNmMDY4ZmEyMzhkOWU0YzA3Y2VmYjUxMzNkMjczZDBjZjM5ZGM2MTQ2ZWE3YzM1NzNlMmIwMzA2YzI5IiwiaW5wdXRIYXNoIjoiZmVlMzg5NTUyNGIxYmE5ZWRkYWIxNzc0MWUxYjQwMjZhM2JkNmRkZWZhZGJlMjQ1YTI5Y2Y4MzE4ZmFmMzJkYSIsImxlZ2FjeUZpbmdlcnByaW50IjoiMTdlODYyZTFmMzZkN2RkMmM1ODYzNDU2YTZlNTU3NzNmOTNmM2MzYWFkNDQ5NzA1NTkwNmM0YTIxNmIxYWJiZSIsInNvdXJjZSI6ImJyaWVmLm1kIn0seyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiJkZTliNzQwNDY0MzQ2NjE1YWFjMDc1MzZlYjIwZDRjZTZjOTViYzQ4ODVjM2YxZTQzZjQ0OWEzMGNlOGMyZThmIiwiY29udHJhY3RIYXNoIjoiZThmODViZmU1NDRkMWI5YWMwNGU5ZjQ0NzA1MzFkMzViMzRhOGZjMmJmY2UxZDg1NTk1ZjRhYzdjNDdjZWM4MCIsImlucHV0SGFzaCI6ImQxMjRkOWEwNjA0YjUzYzA3OGFlNzBmNTZhMzBlMmY3YjFkOTRjMmFkMDhiYWViMzA1ZTY0MmE0MDYwYWVkMTgiLCJsZWdhY3lGaW5nZXJwcmludCI6IjgwYTdkNTRmNTJmNjYxZGZlNWNlZDkzNThjNTVkMTFlZjhiMjEyOWRhOTY5OWRjZmI3Yjk5NDEzNDA0NTcxYzYiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dLCJzY2hlbWEiOiJjb21ldC5uYXRpdmUuc2hhcGUtc2VtYW50aWNzLnYxIn0sInNoYXBlQ29uZmlybWF0aW9uSGFzaCI6IjBhMzE4ODY3YmRjOTRjMjdhYzQyMDcxOTdkZDE3Y2IxZTExMWE5YmFkOTQxM2MzM2JlNzZhODA4NzU1NmMzNzgiLCJzcGVjQ2hhbmdlcyI6W3siY2FwYWJpbGl0eSI6IndvcmtmbG93Iiwib3BlcmF0aW9uIjoiY3JlYXRlIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XX19fSwiaW5wdXRIYXNoIjoiNjVlNzcwM2ZjNzhkNGEyNjk4MmQ1NzdlMGExNTg5NjM3ZDFkYTc3OTY1NDk4OWFiZmI3MGI3ZmIwZTdhZWYxZSIsIm91dGNvbWUiOnsiYWN0aW9uSWQiOiJwdWJsaXNoZWQtY29tcGxldGVkLWludmFsaWQ6NCIsImF0dGVtcHQiOjEsImNsYWltVG9rZW4iOiJwb3J0YWJsZS0wOWJmM2U0YjY5YjJkZjk3YjJkNjZlMDE5YmQ2Y2RlOWEzNGRkNTJiOTdjZWU2ODAwOGU0NTdlYWUzMmUxMWFjIiwiaW5wdXRIYXNoIjoiNjVlNzcwM2ZjNzhkNGEyNjk4MmQ1NzdlMGExNTg5NjM3ZDFkYTc3OTY1NDk4OWFiZmI3MGI3ZmIwZTdhZWYxZSIsIm91dGNvbWVJZCI6IlNJTVVMQVRFRC1BR0VOVC1PVVRDT01FLXB1Ymxpc2hlZC1jb21wbGV0ZWQtaW52YWxpZDo0Iiwib3V0cHV0Ijp7InJlc3BvbnNlIjp7ImNoZWNrcyI6W3siYXJndiI6WyItZSIsImNvbnN0IGZzPXJlcXVpcmUoJ25vZGU6ZnMnKTtmcy5hcHBlbmRGaWxlU3luYyhwcm9jZXNzLmFyZ3ZbMV0sJ29uY2VcXG4nKTtwcm9jZXNzLnN0ZG91dC53cml0ZSgnYWN0dWFsLWxlZ2FjeS1jaGVjay1jb21wbGV0ZWRcXG4nKSIsIkM6XFxVc2Vyc1xcQkVOWU1cXEFwcERhdGFcXExvY2FsXFxUZW1wXFxuYXRpdmUtMDUyLTU0NS1jb21wbGV0ZWQtaW52YWxpZC0xMFFRbVBcXGFjdHVhbC1ub2RlLWNvdW50Il0sImN3ZFJlZiI6Ii4iLCJleGVjdXRhYmxlIjoiRDpcXG5vZGVqc1xcbm9kZS5leGUiLCJpZCI6Im9uY2UiLCJuYW1lIjoiQ3VycmVudCBCdWlsZCBjaGVjayIsInJlcGVhdGFibGUiOnRydWUsInRpbWVvdXRNcyI6MTUwMDB9XSwia2luZCI6InJlcXVlc3QtY2hlY2tzIn19LCJzdGF0dXMiOiJzdWNjZWVkZWQifSwicHJvdG9jb2xWZXJzaW9uIjoxLCJyZWNlaXB0cyI6W3siaGFzaCI6IjlkNTZiODU5ZmJiY2JjYWQ0MzJkOTUzZGMwNjEwNmM0MDdlOGYyYzg3Y2MyOTU4OGE4OGFkZTEzYjliMThiZmMiLCJvdXRjb21lSWQiOiJTSU1VTEFURUQtQUdFTlQtT1VUQ09NRS1wdWJsaXNoZWQtY29tcGxldGVkLWludmFsaWQ6NCJ9XSwicmVjb25jaWxpYXRpb25zIjpbXSwicmVmIjoibmF0aXZlLWJ1aWxkZXIiLCJyZXF1aXJlZENhcGFiaWxpdGllcyI6W10sInJldHJ5IjoibWFudWFsIiwicnVuSWQiOiJwdWJsaXNoZWQtY29tcGxldGVkLWludmFsaWQiLCJzdGF0dXMiOiJzdWNjZWVkZWQiLCJzdGVwSWQiOiJidWlsZC5idWlsZGVyIiwidHlwZSI6ImhhbmRvZmYifSx7ImF0dGVtcHQiOjEsImNsYWltIjp7ImV4ZWN1dG9ySWQiOiJjb21ldC1uYXRpdmUtY2hlY2tzIiwic2Vzc2lvbklkIjoiY29tZXQtbmF0aXZlLWNoZWNrcyIsInRva2VuIjoicG9ydGFibGUtMGY1MWRlMmM4ODdhMjlmNGMzNjAwMjJhMTYzOWNjNDZhOGJjYTcxMDQwYmUwZjdjMGU3MzgxZmVjYWIyYTdjNCJ9LCJleGVjdXRpb25PcmlnaW4iOnsid29ya2Zsb3ciOnsiaGFzaCI6IjJhZDE3Y2U5OTRiMjhlZTA4MTQ5NGE2MmU3ZjY4ZWVhZTY3MWJmOGNjOWM3YWY4OTM5NDBhNTkyMGRiNDNkYmQiLCJpZCI6ImNvbWV0LW5hdGl2ZSIsInZlcnNpb24iOiIzIn19LCJpZCI6InB1Ymxpc2hlZC1jb21wbGV0ZWQtaW52YWxpZDo1IiwiaW5wdXQiOnsiYWN0aXZhdGlvbiI6eyJjaGVja3MiOlt7ImFyZ3YiOlsiLWUiLCJjb25zdCBmcz1yZXF1aXJlKCdub2RlOmZzJyk7ZnMuYXBwZW5kRmlsZVN5bmMocHJvY2Vzcy5hcmd2WzFdLCdvbmNlXFxuJyk7cHJvY2Vzcy5zdGRvdXQud3JpdGUoJ2FjdHVhbC1sZWdhY3ktY2hlY2stY29tcGxldGVkXFxuJykiLCJDOlxcVXNlcnNcXEJFTllNXFxBcHBEYXRhXFxMb2NhbFxcVGVtcFxcbmF0aXZlLTA1Mi01NDUtY29tcGxldGVkLWludmFsaWQtMTBRUW1QXFxhY3R1YWwtbm9kZS1jb3VudCJdLCJjd2RSZWYiOiIuIiwiZXhlY3V0YWJsZSI6IkQ6XFxub2RlanNcXG5vZGUuZXhlIiwiaWQiOiJvbmNlIiwibmFtZSI6IkN1cnJlbnQgQnVpbGQgY2hlY2siLCJyZXBlYXRhYmxlIjp0cnVlLCJ0aW1lb3V0TXMiOjE1MDAwfV19LCJpbnB1dCI6eyJhcnRpZmFjdFJvb3RSZWYiOiJkb2NzIiwibmFtZSI6InB1Ymxpc2hlZC1jb21wbGV0ZWQtaW52YWxpZCIsInByb2plY3RSb290IjoiQzpcXFVzZXJzXFxCRU5ZTVxcQXBwRGF0YVxcTG9jYWxcXFRlbXBcXG5hdGl2ZS0wNTItNTQ1LWNvbXBsZXRlZC1pbnZhbGlkLTEwUVFtUFxccHJvamVjdCJ9LCJvdXRwdXRzIjp7ImJ1aWxkLmJ1aWxkZXIiOnsicmVzcG9uc2UiOnsiY2hlY2tzIjpbeyJhcmd2IjpbIi1lIiwiY29uc3QgZnM9cmVxdWlyZSgnbm9kZTpmcycpO2ZzLmFwcGVuZEZpbGVTeW5jKHByb2Nlc3MuYXJndlsxXSwnb25jZVxcbicpO3Byb2Nlc3Muc3Rkb3V0LndyaXRlKCdhY3R1YWwtbGVnYWN5LWNoZWNrLWNvbXBsZXRlZFxcbicpIiwiQzpcXFVzZXJzXFxCRU5ZTVxcQXBwRGF0YVxcTG9jYWxcXFRlbXBcXG5hdGl2ZS0wNTItNTQ1LWNvbXBsZXRlZC1pbnZhbGlkLTEwUVFtUFxcYWN0dWFsLW5vZGUtY291bnQiXSwiY3dkUmVmIjoiLiIsImV4ZWN1dGFibGUiOiJEOlxcbm9kZWpzXFxub2RlLmV4ZSIsImlkIjoib25jZSIsIm5hbWUiOiJDdXJyZW50IEJ1aWxkIGNoZWNrIiwicmVwZWF0YWJsZSI6dHJ1ZSwidGltZW91dE1zIjoxNTAwMH1dLCJraW5kIjoicmVxdWVzdC1jaGVja3MifX0sInNoYXBlLmNvbmZpcm0iOnsiY2hvaWNlIjoiYXBwcm92ZWQiLCJwcm9wb3NhbCI6eyJpbnB1dCI6eyJhcnRpZmFjdFJvb3RSZWYiOiJkb2NzIiwibmFtZSI6InB1Ymxpc2hlZC1jb21wbGV0ZWQtaW52YWxpZCIsInByb2plY3RSb290IjoiQzpcXFVzZXJzXFxCRU5ZTVxcQXBwRGF0YVxcTG9jYWxcXFRlbXBcXG5hdGl2ZS0wNTItNTQ1LWNvbXBsZXRlZC1pbnZhbGlkLTEwUVFtUFxccHJvamVjdCJ9LCJvdXRwdXRzIjp7InNoYXBlLnByZXBhcmUiOnsiYWNjZXB0YW5jZSI6W3siaWQiOiJBMSIsInNvdXJjZSI6ImJyaWVmLm1kIiwidGV4dCI6IlRoZSBvcmlnaW5hbCBCdWlsZCBidXNpbmVzcyBSdW4gcmVzdW1lcy4ifV0sImNoaWxkcmVuIjpudWxsLCJmb3JtYWxIYXNoIjoiMTU2NmVmMDVkYzBhMzUzNjdjNzlhMGE3ZDhjOGZiODAwNGI1NjEyZDNiZDc0NzBlMmZmMzVmMTY4MTMyZDNkMiIsInNlbWFudGljU25hcHNob3QiOnsiYXJ0aWZhY3RzIjpbeyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiJmNTQxNDAxNTZlYmExMTI1MDRkNDM2MDBmMjRlNGEzNmU4ZWM2NWZmOTM2OWZkYWFkMTA1NmYzZmZhNjY4ZDg4IiwiY29udHJhY3RIYXNoIjoiYjhjYjVjZjA2OGZhMjM4ZDllNGMwN2NlZmI1MTMzZDI3M2QwY2YzOWRjNjE0NmVhN2MzNTczZTJiMDMwNmMyOSIsImlucHV0SGFzaCI6ImZlZTM4OTU1MjRiMWJhOWVkZGFiMTc3NDFlMWI0MDI2YTNiZDZkZGVmYWRiZTI0NWEyOWNmODMxOGZhZjMyZGEiLCJsZWdhY3lGaW5nZXJwcmludCI6IjE3ZTg2MmUxZjM2ZDdkZDJjNTg2MzQ1NmE2ZTU1NzczZjkzZjNjM2FhZDQ0OTcwNTU5MDZjNGEyMTZiMWFiYmUiLCJzb3VyY2UiOiJicmllZi5tZCJ9LHsiYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiZGU5Yjc0MDQ2NDM0NjYxNWFhYzA3NTM2ZWIyMGQ0Y2U2Yzk1YmM0ODg1YzNmMWU0M2Y0NDlhMzBjZThjMmU4ZiIsImNvbnRyYWN0SGFzaCI6ImU4Zjg1YmZlNTQ0ZDFiOWFjMDRlOWY0NDcwNTMxZDM1YjM0YThmYzJiZmNlMWQ4NTU5NWY0YWM3YzQ3Y2VjODAiLCJpbnB1dEhhc2giOiJkMTI0ZDlhMDYwNGI1M2MwNzhhZTcwZjU2YTMwZTJmN2IxZDk0YzJhZDA4YmFlYjMwNWU2NDJhNDA2MGFlZDE4IiwibGVnYWN5RmluZ2VycHJpbnQiOiI4MGE3ZDU0ZjUyZjY2MWRmZTVjZWQ5MzU4YzU1ZDExZWY4YjIxMjlkYTk2OTlkY2ZiN2I5OTQxMzQwNDU3MWM2Iiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XSwic2NoZW1hIjoiY29tZXQubmF0aXZlLnNoYXBlLXNlbWFudGljcy52MSJ9LCJzaGFwZUNvbmZpcm1hdGlvbkhhc2giOiIwYTMxODg2N2JkYzk0YzI3YWM0MjA3MTk3ZGQxN2NiMWUxMTFhOWJhZDk0MTNjMzNiZTc2YTgwODc1NTZjMzc4Iiwic3BlY0NoYW5nZXMiOlt7ImNhcGFiaWxpdHkiOiJ3b3JrZmxvdyIsIm9wZXJhdGlvbiI6ImNyZWF0ZSIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV19fX19LCJzaGFwZS5wcmVwYXJlIjp7ImFjY2VwdGFuY2UiOlt7ImlkIjoiQTEiLCJzb3VyY2UiOiJicmllZi5tZCIsInRleHQiOiJUaGUgb3JpZ2luYWwgQnVpbGQgYnVzaW5lc3MgUnVuIHJlc3VtZXMuIn1dLCJjaGlsZHJlbiI6bnVsbCwiZm9ybWFsSGFzaCI6IjE1NjZlZjA1ZGMwYTM1MzY3Yzc5YTBhN2Q4YzhmYjgwMDRiNTYxMmQzYmQ3NDcwZTJmZjM1ZjE2ODEzMmQzZDIiLCJzZW1hbnRpY1NuYXBzaG90Ijp7ImFydGlmYWN0cyI6W3siYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiZjU0MTQwMTU2ZWJhMTEyNTA0ZDQzNjAwZjI0ZTRhMzZlOGVjNjVmZjkzNjlmZGFhZDEwNTZmM2ZmYTY2OGQ4OCIsImNvbnRyYWN0SGFzaCI6ImI4Y2I1Y2YwNjhmYTIzOGQ5ZTRjMDdjZWZiNTEzM2QyNzNkMGNmMzlkYzYxNDZlYTdjMzU3M2UyYjAzMDZjMjkiLCJpbnB1dEhhc2giOiJmZWUzODk1NTI0YjFiYTllZGRhYjE3NzQxZTFiNDAyNmEzYmQ2ZGRlZmFkYmUyNDVhMjljZjgzMThmYWYzMmRhIiwibGVnYWN5RmluZ2VycHJpbnQiOiIxN2U4NjJlMWYzNmQ3ZGQyYzU4NjM0NTZhNmU1NTc3M2Y5M2YzYzNhYWQ0NDk3MDU1OTA2YzRhMjE2YjFhYmJlIiwic291cmNlIjoiYnJpZWYubWQifSx7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6ImRlOWI3NDA0NjQzNDY2MTVhYWMwNzUzNmViMjBkNGNlNmM5NWJjNDg4NWMzZjFlNDNmNDQ5YTMwY2U4YzJlOGYiLCJjb250cmFjdEhhc2giOiJlOGY4NWJmZTU0NGQxYjlhYzA0ZTlmNDQ3MDUzMWQzNWIzNGE4ZmMyYmZjZTFkODU1OTVmNGFjN2M0N2NlYzgwIiwiaW5wdXRIYXNoIjoiZDEyNGQ5YTA2MDRiNTNjMDc4YWU3MGY1NmEzMGUyZjdiMWQ5NGMyYWQwOGJhZWIzMDVlNjQyYTQwNjBhZWQxOCIsImxlZ2FjeUZpbmdlcnByaW50IjoiODBhN2Q1NGY1MmY2NjFkZmU1Y2VkOTM1OGM1NWQxMWVmOGIyMTI5ZGE5Njk5ZGNmYjdiOTk0MTM0MDQ1NzFjNiIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV0sInNjaGVtYSI6ImNvbWV0Lm5hdGl2ZS5zaGFwZS1zZW1hbnRpY3MudjEifSwic2hhcGVDb25maXJtYXRpb25IYXNoIjoiMGEzMTg4NjdiZGM5NGMyN2FjNDIwNzE5N2RkMTdjYjFlMTExYTliYWQ5NDEzYzMzYmU3NmE4MDg3NTU2YzM3OCIsInNwZWNDaGFuZ2VzIjpbeyJjYXBhYmlsaXR5Ijoid29ya2Zsb3ciLCJvcGVyYXRpb24iOiJjcmVhdGUiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dfSwic2hhcGUucmV2YWxpZGF0ZSI6eyJhY2NlcHRhbmNlIjpbeyJpZCI6IkExIiwic291cmNlIjoiYnJpZWYubWQiLCJ0ZXh0IjoiVGhlIG9yaWdpbmFsIEJ1aWxkIGJ1c2luZXNzIFJ1biByZXN1bWVzLiJ9XSwiY2hpbGRyZW4iOm51bGwsImZvcm1hbEhhc2giOiIxNTY2ZWYwNWRjMGEzNTM2N2M3OWEwYTdkOGM4ZmI4MDA0YjU2MTJkM2JkNzQ3MGUyZmYzNWYxNjgxMzJkM2QyIiwic2VtYW50aWNTbmFwc2hvdCI6eyJhcnRpZmFjdHMiOlt7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6ImY1NDE0MDE1NmViYTExMjUwNGQ0MzYwMGYyNGU0YTM2ZThlYzY1ZmY5MzY5ZmRhYWQxMDU2ZjNmZmE2NjhkODgiLCJjb250cmFjdEhhc2giOiJiOGNiNWNmMDY4ZmEyMzhkOWU0YzA3Y2VmYjUxMzNkMjczZDBjZjM5ZGM2MTQ2ZWE3YzM1NzNlMmIwMzA2YzI5IiwiaW5wdXRIYXNoIjoiZmVlMzg5NTUyNGIxYmE5ZWRkYWIxNzc0MWUxYjQwMjZhM2JkNmRkZWZhZGJlMjQ1YTI5Y2Y4MzE4ZmFmMzJkYSIsImxlZ2FjeUZpbmdlcnByaW50IjoiMTdlODYyZTFmMzZkN2RkMmM1ODYzNDU2YTZlNTU3NzNmOTNmM2MzYWFkNDQ5NzA1NTkwNmM0YTIxNmIxYWJiZSIsInNvdXJjZSI6ImJyaWVmLm1kIn0seyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiJkZTliNzQwNDY0MzQ2NjE1YWFjMDc1MzZlYjIwZDRjZTZjOTViYzQ4ODVjM2YxZTQzZjQ0OWEzMGNlOGMyZThmIiwiY29udHJhY3RIYXNoIjoiZThmODViZmU1NDRkMWI5YWMwNGU5ZjQ0NzA1MzFkMzViMzRhOGZjMmJmY2UxZDg1NTk1ZjRhYzdjNDdjZWM4MCIsImlucHV0SGFzaCI6ImQxMjRkOWEwNjA0YjUzYzA3OGFlNzBmNTZhMzBlMmY3YjFkOTRjMmFkMDhiYWViMzA1ZTY0MmE0MDYwYWVkMTgiLCJsZWdhY3lGaW5nZXJwcmludCI6IjgwYTdkNTRmNTJmNjYxZGZlNWNlZDkzNThjNTVkMTFlZjhiMjEyOWRhOTY5OWRjZmI3Yjk5NDEzNDA0NTcxYzYiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dLCJzY2hlbWEiOiJjb21ldC5uYXRpdmUuc2hhcGUtc2VtYW50aWNzLnYxIn0sInNoYXBlQ29uZmlybWF0aW9uSGFzaCI6IjBhMzE4ODY3YmRjOTRjMjdhYzQyMDcxOTdkZDE3Y2IxZTExMWE5YmFkOTQxM2MzM2JlNzZhODA4NzU1NmMzNzgiLCJzcGVjQ2hhbmdlcyI6W3siY2FwYWJpbGl0eSI6IndvcmtmbG93Iiwib3BlcmF0aW9uIjoiY3JlYXRlIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XX19fSwiaW5wdXRIYXNoIjoiZTdiMTkyYjI3YmQ5N2ViYjYzYmNmMWY5Njk0YzFmZTI5MTAxNGFhYTkxZjZkMjMxMjQyN2E0NTA5NGRlNzc0YiIsInByb3RvY29sVmVyc2lvbiI6MSwicmVhc29uIjoiQWN0dWFsIG9sZCBjaGVjayBhbmQgZGVzY2VuZGFudHMgY29tcGxldGVkOyBkdXJhYmxlIHJlc3VsdCBub3cgaGFzIHRoZSByZXBvcnRlZCBtaXNtYXRjaGVkIHBsYW4gbmFtZS4iLCJyZWNlaXB0cyI6W10sInJlY29uY2lsaWF0aW9ucyI6W10sInJlZiI6Im5hdGl2ZS1idWlsZC1jaGVja3MiLCJyZXF1aXJlZENhcGFiaWxpdGllcyI6W10sInJldHJ5IjoibWFudWFsIiwicnVuSWQiOiJwdWJsaXNoZWQtY29tcGxldGVkLWludmFsaWQiLCJzdGF0dXMiOiJ1bmtub3duIiwic3RlcElkIjoiYnVpbGQuY2hlY2tzIiwidHlwZSI6ImNhbGxfdG9vbCJ9XSwiYWN0aW9uQ29udGV4dHMiOnsicHVibGlzaGVkLWNvbXBsZXRlZC1pbnZhbGlkOjEiOnsicmVzdWx0cyI6e30sInNlcXVlbmNlIjoxfSwicHVibGlzaGVkLWNvbXBsZXRlZC1pbnZhbGlkOjMiOnsicmVzdWx0cyI6eyJzaGFwZS5jb25maXJtIjp7InNlcXVlbmNlIjoyLCJ2YWx1ZSI6eyJjaG9pY2UiOiJhcHByb3ZlZCIsInByb3Bvc2FsIjp7ImlucHV0Ijp7ImFydGlmYWN0Um9vdFJlZiI6ImRvY3MiLCJuYW1lIjoicHVibGlzaGVkLWNvbXBsZXRlZC1pbnZhbGlkIiwicHJvamVjdFJvb3QiOiJDOlxcVXNlcnNcXEJFTllNXFxBcHBEYXRhXFxMb2NhbFxcVGVtcFxcbmF0aXZlLTA1Mi01NDUtY29tcGxldGVkLWludmFsaWQtMTBRUW1QXFxwcm9qZWN0In0sIm91dHB1dHMiOnsic2hhcGUucHJlcGFyZSI6eyJhY2NlcHRhbmNlIjpbeyJpZCI6IkExIiwic291cmNlIjoiYnJpZWYubWQiLCJ0ZXh0IjoiVGhlIG9yaWdpbmFsIEJ1aWxkIGJ1c2luZXNzIFJ1biByZXN1bWVzLiJ9XSwiY2hpbGRyZW4iOm51bGwsImZvcm1hbEhhc2giOiIxNTY2ZWYwNWRjMGEzNTM2N2M3OWEwYTdkOGM4ZmI4MDA0YjU2MTJkM2JkNzQ3MGUyZmYzNWYxNjgxMzJkM2QyIiwic2VtYW50aWNTbmFwc2hvdCI6eyJhcnRpZmFjdHMiOlt7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6ImY1NDE0MDE1NmViYTExMjUwNGQ0MzYwMGYyNGU0YTM2ZThlYzY1ZmY5MzY5ZmRhYWQxMDU2ZjNmZmE2NjhkODgiLCJjb250cmFjdEhhc2giOiJiOGNiNWNmMDY4ZmEyMzhkOWU0YzA3Y2VmYjUxMzNkMjczZDBjZjM5ZGM2MTQ2ZWE3YzM1NzNlMmIwMzA2YzI5IiwiaW5wdXRIYXNoIjoiZmVlMzg5NTUyNGIxYmE5ZWRkYWIxNzc0MWUxYjQwMjZhM2JkNmRkZWZhZGJlMjQ1YTI5Y2Y4MzE4ZmFmMzJkYSIsImxlZ2FjeUZpbmdlcnByaW50IjoiMTdlODYyZTFmMzZkN2RkMmM1ODYzNDU2YTZlNTU3NzNmOTNmM2MzYWFkNDQ5NzA1NTkwNmM0YTIxNmIxYWJiZSIsInNvdXJjZSI6ImJyaWVmLm1kIn0seyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiJkZTliNzQwNDY0MzQ2NjE1YWFjMDc1MzZlYjIwZDRjZTZjOTViYzQ4ODVjM2YxZTQzZjQ0OWEzMGNlOGMyZThmIiwiY29udHJhY3RIYXNoIjoiZThmODViZmU1NDRkMWI5YWMwNGU5ZjQ0NzA1MzFkMzViMzRhOGZjMmJmY2UxZDg1NTk1ZjRhYzdjNDdjZWM4MCIsImlucHV0SGFzaCI6ImQxMjRkOWEwNjA0YjUzYzA3OGFlNzBmNTZhMzBlMmY3YjFkOTRjMmFkMDhiYWViMzA1ZTY0MmE0MDYwYWVkMTgiLCJsZWdhY3lGaW5nZXJwcmludCI6IjgwYTdkNTRmNTJmNjYxZGZlNWNlZDkzNThjNTVkMTFlZjhiMjEyOWRhOTY5OWRjZmI3Yjk5NDEzNDA0NTcxYzYiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dLCJzY2hlbWEiOiJjb21ldC5uYXRpdmUuc2hhcGUtc2VtYW50aWNzLnYxIn0sInNoYXBlQ29uZmlybWF0aW9uSGFzaCI6IjBhMzE4ODY3YmRjOTRjMjdhYzQyMDcxOTdkZDE3Y2IxZTExMWE5YmFkOTQxM2MzM2JlNzZhODA4NzU1NmMzNzgiLCJzcGVjQ2hhbmdlcyI6W3siY2FwYWJpbGl0eSI6IndvcmtmbG93Iiwib3BlcmF0aW9uIjoiY3JlYXRlIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XX19fX19LCJzaGFwZS5wcmVwYXJlIjp7InNlcXVlbmNlIjoxLCJ2YWx1ZSI6eyJhY2NlcHRhbmNlIjpbeyJpZCI6IkExIiwic291cmNlIjoiYnJpZWYubWQiLCJ0ZXh0IjoiVGhlIG9yaWdpbmFsIEJ1aWxkIGJ1c2luZXNzIFJ1biByZXN1bWVzLiJ9XSwiY2hpbGRyZW4iOm51bGwsImZvcm1hbEhhc2giOiIxNTY2ZWYwNWRjMGEzNTM2N2M3OWEwYTdkOGM4ZmI4MDA0YjU2MTJkM2JkNzQ3MGUyZmYzNWYxNjgxMzJkM2QyIiwic2VtYW50aWNTbmFwc2hvdCI6eyJhcnRpZmFjdHMiOlt7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6ImY1NDE0MDE1NmViYTExMjUwNGQ0MzYwMGYyNGU0YTM2ZThlYzY1ZmY5MzY5ZmRhYWQxMDU2ZjNmZmE2NjhkODgiLCJjb250cmFjdEhhc2giOiJiOGNiNWNmMDY4ZmEyMzhkOWU0YzA3Y2VmYjUxMzNkMjczZDBjZjM5ZGM2MTQ2ZWE3YzM1NzNlMmIwMzA2YzI5IiwiaW5wdXRIYXNoIjoiZmVlMzg5NTUyNGIxYmE5ZWRkYWIxNzc0MWUxYjQwMjZhM2JkNmRkZWZhZGJlMjQ1YTI5Y2Y4MzE4ZmFmMzJkYSIsImxlZ2FjeUZpbmdlcnByaW50IjoiMTdlODYyZTFmMzZkN2RkMmM1ODYzNDU2YTZlNTU3NzNmOTNmM2MzYWFkNDQ5NzA1NTkwNmM0YTIxNmIxYWJiZSIsInNvdXJjZSI6ImJyaWVmLm1kIn0seyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiJkZTliNzQwNDY0MzQ2NjE1YWFjMDc1MzZlYjIwZDRjZTZjOTViYzQ4ODVjM2YxZTQzZjQ0OWEzMGNlOGMyZThmIiwiY29udHJhY3RIYXNoIjoiZThmODViZmU1NDRkMWI5YWMwNGU5ZjQ0NzA1MzFkMzViMzRhOGZjMmJmY2UxZDg1NTk1ZjRhYzdjNDdjZWM4MCIsImlucHV0SGFzaCI6ImQxMjRkOWEwNjA0YjUzYzA3OGFlNzBmNTZhMzBlMmY3YjFkOTRjMmFkMDhiYWViMzA1ZTY0MmE0MDYwYWVkMTgiLCJsZWdhY3lGaW5nZXJwcmludCI6IjgwYTdkNTRmNTJmNjYxZGZlNWNlZDkzNThjNTVkMTFlZjhiMjEyOWRhOTY5OWRjZmI3Yjk5NDEzNDA0NTcxYzYiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dLCJzY2hlbWEiOiJjb21ldC5uYXRpdmUuc2hhcGUtc2VtYW50aWNzLnYxIn0sInNoYXBlQ29uZmlybWF0aW9uSGFzaCI6IjBhMzE4ODY3YmRjOTRjMjdhYzQyMDcxOTdkZDE3Y2IxZTExMWE5YmFkOTQxM2MzM2JlNzZhODA4NzU1NmMzNzgiLCJzcGVjQ2hhbmdlcyI6W3siY2FwYWJpbGl0eSI6IndvcmtmbG93Iiwib3BlcmF0aW9uIjoiY3JlYXRlIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XX19fSwic2VxdWVuY2UiOjN9LCJwdWJsaXNoZWQtY29tcGxldGVkLWludmFsaWQ6NCI6eyJyZXN1bHRzIjp7InNoYXBlLmNvbmZpcm0iOnsic2VxdWVuY2UiOjIsInZhbHVlIjp7ImNob2ljZSI6ImFwcHJvdmVkIiwicHJvcG9zYWwiOnsiaW5wdXQiOnsiYXJ0aWZhY3RSb290UmVmIjoiZG9jcyIsIm5hbWUiOiJwdWJsaXNoZWQtY29tcGxldGVkLWludmFsaWQiLCJwcm9qZWN0Um9vdCI6IkM6XFxVc2Vyc1xcQkVOWU1cXEFwcERhdGFcXExvY2FsXFxUZW1wXFxuYXRpdmUtMDUyLTU0NS1jb21wbGV0ZWQtaW52YWxpZC0xMFFRbVBcXHByb2plY3QifSwib3V0cHV0cyI6eyJzaGFwZS5wcmVwYXJlIjp7ImFjY2VwdGFuY2UiOlt7ImlkIjoiQTEiLCJzb3VyY2UiOiJicmllZi5tZCIsInRleHQiOiJUaGUgb3JpZ2luYWwgQnVpbGQgYnVzaW5lc3MgUnVuIHJlc3VtZXMuIn1dLCJjaGlsZHJlbiI6bnVsbCwiZm9ybWFsSGFzaCI6IjE1NjZlZjA1ZGMwYTM1MzY3Yzc5YTBhN2Q4YzhmYjgwMDRiNTYxMmQzYmQ3NDcwZTJmZjM1ZjE2ODEzMmQzZDIiLCJzZW1hbnRpY1NuYXBzaG90Ijp7ImFydGlmYWN0cyI6W3siYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiZjU0MTQwMTU2ZWJhMTEyNTA0ZDQzNjAwZjI0ZTRhMzZlOGVjNjVmZjkzNjlmZGFhZDEwNTZmM2ZmYTY2OGQ4OCIsImNvbnRyYWN0SGFzaCI6ImI4Y2I1Y2YwNjhmYTIzOGQ5ZTRjMDdjZWZiNTEzM2QyNzNkMGNmMzlkYzYxNDZlYTdjMzU3M2UyYjAzMDZjMjkiLCJpbnB1dEhhc2giOiJmZWUzODk1NTI0YjFiYTllZGRhYjE3NzQxZTFiNDAyNmEzYmQ2ZGRlZmFkYmUyNDVhMjljZjgzMThmYWYzMmRhIiwibGVnYWN5RmluZ2VycHJpbnQiOiIxN2U4NjJlMWYzNmQ3ZGQyYzU4NjM0NTZhNmU1NTc3M2Y5M2YzYzNhYWQ0NDk3MDU1OTA2YzRhMjE2YjFhYmJlIiwic291cmNlIjoiYnJpZWYubWQifSx7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6ImRlOWI3NDA0NjQzNDY2MTVhYWMwNzUzNmViMjBkNGNlNmM5NWJjNDg4NWMzZjFlNDNmNDQ5YTMwY2U4YzJlOGYiLCJjb250cmFjdEhhc2giOiJlOGY4NWJmZTU0NGQxYjlhYzA0ZTlmNDQ3MDUzMWQzNWIzNGE4ZmMyYmZjZTFkODU1OTVmNGFjN2M0N2NlYzgwIiwiaW5wdXRIYXNoIjoiZDEyNGQ5YTA2MDRiNTNjMDc4YWU3MGY1NmEzMGUyZjdiMWQ5NGMyYWQwOGJhZWIzMDVlNjQyYTQwNjBhZWQxOCIsImxlZ2FjeUZpbmdlcnByaW50IjoiODBhN2Q1NGY1MmY2NjFkZmU1Y2VkOTM1OGM1NWQxMWVmOGIyMTI5ZGE5Njk5ZGNmYjdiOTk0MTM0MDQ1NzFjNiIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV0sInNjaGVtYSI6ImNvbWV0Lm5hdGl2ZS5zaGFwZS1zZW1hbnRpY3MudjEifSwic2hhcGVDb25maXJtYXRpb25IYXNoIjoiMGEzMTg4NjdiZGM5NGMyN2FjNDIwNzE5N2RkMTdjYjFlMTExYTliYWQ5NDEzYzMzYmU3NmE4MDg3NTU2YzM3OCIsInNwZWNDaGFuZ2VzIjpbeyJjYXBhYmlsaXR5Ijoid29ya2Zsb3ciLCJvcGVyYXRpb24iOiJjcmVhdGUiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dfX19fX0sInNoYXBlLnByZXBhcmUiOnsic2VxdWVuY2UiOjEsInZhbHVlIjp7ImFjY2VwdGFuY2UiOlt7ImlkIjoiQTEiLCJzb3VyY2UiOiJicmllZi5tZCIsInRleHQiOiJUaGUgb3JpZ2luYWwgQnVpbGQgYnVzaW5lc3MgUnVuIHJlc3VtZXMuIn1dLCJjaGlsZHJlbiI6bnVsbCwiZm9ybWFsSGFzaCI6IjE1NjZlZjA1ZGMwYTM1MzY3Yzc5YTBhN2Q4YzhmYjgwMDRiNTYxMmQzYmQ3NDcwZTJmZjM1ZjE2ODEzMmQzZDIiLCJzZW1hbnRpY1NuYXBzaG90Ijp7ImFydGlmYWN0cyI6W3siYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiZjU0MTQwMTU2ZWJhMTEyNTA0ZDQzNjAwZjI0ZTRhMzZlOGVjNjVmZjkzNjlmZGFhZDEwNTZmM2ZmYTY2OGQ4OCIsImNvbnRyYWN0SGFzaCI6ImI4Y2I1Y2YwNjhmYTIzOGQ5ZTRjMDdjZWZiNTEzM2QyNzNkMGNmMzlkYzYxNDZlYTdjMzU3M2UyYjAzMDZjMjkiLCJpbnB1dEhhc2giOiJmZWUzODk1NTI0YjFiYTllZGRhYjE3NzQxZTFiNDAyNmEzYmQ2ZGRlZmFkYmUyNDVhMjljZjgzMThmYWYzMmRhIiwibGVnYWN5RmluZ2VycHJpbnQiOiIxN2U4NjJlMWYzNmQ3ZGQyYzU4NjM0NTZhNmU1NTc3M2Y5M2YzYzNhYWQ0NDk3MDU1OTA2YzRhMjE2YjFhYmJlIiwic291cmNlIjoiYnJpZWYubWQifSx7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6ImRlOWI3NDA0NjQzNDY2MTVhYWMwNzUzNmViMjBkNGNlNmM5NWJjNDg4NWMzZjFlNDNmNDQ5YTMwY2U4YzJlOGYiLCJjb250cmFjdEhhc2giOiJlOGY4NWJmZTU0NGQxYjlhYzA0ZTlmNDQ3MDUzMWQzNWIzNGE4ZmMyYmZjZTFkODU1OTVmNGFjN2M0N2NlYzgwIiwiaW5wdXRIYXNoIjoiZDEyNGQ5YTA2MDRiNTNjMDc4YWU3MGY1NmEzMGUyZjdiMWQ5NGMyYWQwOGJhZWIzMDVlNjQyYTQwNjBhZWQxOCIsImxlZ2FjeUZpbmdlcnByaW50IjoiODBhN2Q1NGY1MmY2NjFkZmU1Y2VkOTM1OGM1NWQxMWVmOGIyMTI5ZGE5Njk5ZGNmYjdiOTk0MTM0MDQ1NzFjNiIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV0sInNjaGVtYSI6ImNvbWV0Lm5hdGl2ZS5zaGFwZS1zZW1hbnRpY3MudjEifSwic2hhcGVDb25maXJtYXRpb25IYXNoIjoiMGEzMTg4NjdiZGM5NGMyN2FjNDIwNzE5N2RkMTdjYjFlMTExYTliYWQ5NDEzYzMzYmU3NmE4MDg3NTU2YzM3OCIsInNwZWNDaGFuZ2VzIjpbeyJjYXBhYmlsaXR5Ijoid29ya2Zsb3ciLCJvcGVyYXRpb24iOiJjcmVhdGUiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dfX0sInNoYXBlLnJldmFsaWRhdGUiOnsic2VxdWVuY2UiOjMsInZhbHVlIjp7ImFjY2VwdGFuY2UiOlt7ImlkIjoiQTEiLCJzb3VyY2UiOiJicmllZi5tZCIsInRleHQiOiJUaGUgb3JpZ2luYWwgQnVpbGQgYnVzaW5lc3MgUnVuIHJlc3VtZXMuIn1dLCJjaGlsZHJlbiI6bnVsbCwiZm9ybWFsSGFzaCI6IjE1NjZlZjA1ZGMwYTM1MzY3Yzc5YTBhN2Q4YzhmYjgwMDRiNTYxMmQzYmQ3NDcwZTJmZjM1ZjE2ODEzMmQzZDIiLCJzZW1hbnRpY1NuYXBzaG90Ijp7ImFydGlmYWN0cyI6W3siYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiZjU0MTQwMTU2ZWJhMTEyNTA0ZDQzNjAwZjI0ZTRhMzZlOGVjNjVmZjkzNjlmZGFhZDEwNTZmM2ZmYTY2OGQ4OCIsImNvbnRyYWN0SGFzaCI6ImI4Y2I1Y2YwNjhmYTIzOGQ5ZTRjMDdjZWZiNTEzM2QyNzNkMGNmMzlkYzYxNDZlYTdjMzU3M2UyYjAzMDZjMjkiLCJpbnB1dEhhc2giOiJmZWUzODk1NTI0YjFiYTllZGRhYjE3NzQxZTFiNDAyNmEzYmQ2ZGRlZmFkYmUyNDVhMjljZjgzMThmYWYzMmRhIiwibGVnYWN5RmluZ2VycHJpbnQiOiIxN2U4NjJlMWYzNmQ3ZGQyYzU4NjM0NTZhNmU1NTc3M2Y5M2YzYzNhYWQ0NDk3MDU1OTA2YzRhMjE2YjFhYmJlIiwic291cmNlIjoiYnJpZWYubWQifSx7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6ImRlOWI3NDA0NjQzNDY2MTVhYWMwNzUzNmViMjBkNGNlNmM5NWJjNDg4NWMzZjFlNDNmNDQ5YTMwY2U4YzJlOGYiLCJjb250cmFjdEhhc2giOiJlOGY4NWJmZTU0NGQxYjlhYzA0ZTlmNDQ3MDUzMWQzNWIzNGE4ZmMyYmZjZTFkODU1OTVmNGFjN2M0N2NlYzgwIiwiaW5wdXRIYXNoIjoiZDEyNGQ5YTA2MDRiNTNjMDc4YWU3MGY1NmEzMGUyZjdiMWQ5NGMyYWQwOGJhZWIzMDVlNjQyYTQwNjBhZWQxOCIsImxlZ2FjeUZpbmdlcnByaW50IjoiODBhN2Q1NGY1MmY2NjFkZmU1Y2VkOTM1OGM1NWQxMWVmOGIyMTI5ZGE5Njk5ZGNmYjdiOTk0MTM0MDQ1NzFjNiIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV0sInNjaGVtYSI6ImNvbWV0Lm5hdGl2ZS5zaGFwZS1zZW1hbnRpY3MudjEifSwic2hhcGVDb25maXJtYXRpb25IYXNoIjoiMGEzMTg4NjdiZGM5NGMyN2FjNDIwNzE5N2RkMTdjYjFlMTExYTliYWQ5NDEzYzMzYmU3NmE4MDg3NTU2YzM3OCIsInNwZWNDaGFuZ2VzIjpbeyJjYXBhYmlsaXR5Ijoid29ya2Zsb3ciLCJvcGVyYXRpb24iOiJjcmVhdGUiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dfX19LCJzZXF1ZW5jZSI6NH0sInB1Ymxpc2hlZC1jb21wbGV0ZWQtaW52YWxpZDo1Ijp7InJlc3VsdHMiOnsiYnVpbGQuYnVpbGRlciI6eyJzZXF1ZW5jZSI6NCwidmFsdWUiOnsicmVzcG9uc2UiOnsiY2hlY2tzIjpbeyJhcmd2IjpbIi1lIiwiY29uc3QgZnM9cmVxdWlyZSgnbm9kZTpmcycpO2ZzLmFwcGVuZEZpbGVTeW5jKHByb2Nlc3MuYXJndlsxXSwnb25jZVxcbicpO3Byb2Nlc3Muc3Rkb3V0LndyaXRlKCdhY3R1YWwtbGVnYWN5LWNoZWNrLWNvbXBsZXRlZFxcbicpIiwiQzpcXFVzZXJzXFxCRU5ZTVxcQXBwRGF0YVxcTG9jYWxcXFRlbXBcXG5hdGl2ZS0wNTItNTQ1LWNvbXBsZXRlZC1pbnZhbGlkLTEwUVFtUFxcYWN0dWFsLW5vZGUtY291bnQiXSwiY3dkUmVmIjoiLiIsImV4ZWN1dGFibGUiOiJEOlxcbm9kZWpzXFxub2RlLmV4ZSIsImlkIjoib25jZSIsIm5hbWUiOiJDdXJyZW50IEJ1aWxkIGNoZWNrIiwicmVwZWF0YWJsZSI6dHJ1ZSwidGltZW91dE1zIjoxNTAwMH1dLCJraW5kIjoicmVxdWVzdC1jaGVja3MifX19LCJzaGFwZS5jb25maXJtIjp7InNlcXVlbmNlIjoyLCJ2YWx1ZSI6eyJjaG9pY2UiOiJhcHByb3ZlZCIsInByb3Bvc2FsIjp7ImlucHV0Ijp7ImFydGlmYWN0Um9vdFJlZiI6ImRvY3MiLCJuYW1lIjoicHVibGlzaGVkLWNvbXBsZXRlZC1pbnZhbGlkIiwicHJvamVjdFJvb3QiOiJDOlxcVXNlcnNcXEJFTllNXFxBcHBEYXRhXFxMb2NhbFxcVGVtcFxcbmF0aXZlLTA1Mi01NDUtY29tcGxldGVkLWludmFsaWQtMTBRUW1QXFxwcm9qZWN0In0sIm91dHB1dHMiOnsic2hhcGUucHJlcGFyZSI6eyJhY2NlcHRhbmNlIjpbeyJpZCI6IkExIiwic291cmNlIjoiYnJpZWYubWQiLCJ0ZXh0IjoiVGhlIG9yaWdpbmFsIEJ1aWxkIGJ1c2luZXNzIFJ1biByZXN1bWVzLiJ9XSwiY2hpbGRyZW4iOm51bGwsImZvcm1hbEhhc2giOiIxNTY2ZWYwNWRjMGEzNTM2N2M3OWEwYTdkOGM4ZmI4MDA0YjU2MTJkM2JkNzQ3MGUyZmYzNWYxNjgxMzJkM2QyIiwic2VtYW50aWNTbmFwc2hvdCI6eyJhcnRpZmFjdHMiOlt7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6ImY1NDE0MDE1NmViYTExMjUwNGQ0MzYwMGYyNGU0YTM2ZThlYzY1ZmY5MzY5ZmRhYWQxMDU2ZjNmZmE2NjhkODgiLCJjb250cmFjdEhhc2giOiJiOGNiNWNmMDY4ZmEyMzhkOWU0YzA3Y2VmYjUxMzNkMjczZDBjZjM5ZGM2MTQ2ZWE3YzM1NzNlMmIwMzA2YzI5IiwiaW5wdXRIYXNoIjoiZmVlMzg5NTUyNGIxYmE5ZWRkYWIxNzc0MWUxYjQwMjZhM2JkNmRkZWZhZGJlMjQ1YTI5Y2Y4MzE4ZmFmMzJkYSIsImxlZ2FjeUZpbmdlcnByaW50IjoiMTdlODYyZTFmMzZkN2RkMmM1ODYzNDU2YTZlNTU3NzNmOTNmM2MzYWFkNDQ5NzA1NTkwNmM0YTIxNmIxYWJiZSIsInNvdXJjZSI6ImJyaWVmLm1kIn0seyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiJkZTliNzQwNDY0MzQ2NjE1YWFjMDc1MzZlYjIwZDRjZTZjOTViYzQ4ODVjM2YxZTQzZjQ0OWEzMGNlOGMyZThmIiwiY29udHJhY3RIYXNoIjoiZThmODViZmU1NDRkMWI5YWMwNGU5ZjQ0NzA1MzFkMzViMzRhOGZjMmJmY2UxZDg1NTk1ZjRhYzdjNDdjZWM4MCIsImlucHV0SGFzaCI6ImQxMjRkOWEwNjA0YjUzYzA3OGFlNzBmNTZhMzBlMmY3YjFkOTRjMmFkMDhiYWViMzA1ZTY0MmE0MDYwYWVkMTgiLCJsZWdhY3lGaW5nZXJwcmludCI6IjgwYTdkNTRmNTJmNjYxZGZlNWNlZDkzNThjNTVkMTFlZjhiMjEyOWRhOTY5OWRjZmI3Yjk5NDEzNDA0NTcxYzYiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dLCJzY2hlbWEiOiJjb21ldC5uYXRpdmUuc2hhcGUtc2VtYW50aWNzLnYxIn0sInNoYXBlQ29uZmlybWF0aW9uSGFzaCI6IjBhMzE4ODY3YmRjOTRjMjdhYzQyMDcxOTdkZDE3Y2IxZTExMWE5YmFkOTQxM2MzM2JlNzZhODA4NzU1NmMzNzgiLCJzcGVjQ2hhbmdlcyI6W3siY2FwYWJpbGl0eSI6IndvcmtmbG93Iiwib3BlcmF0aW9uIjoiY3JlYXRlIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XX19fX19LCJzaGFwZS5wcmVwYXJlIjp7InNlcXVlbmNlIjoxLCJ2YWx1ZSI6eyJhY2NlcHRhbmNlIjpbeyJpZCI6IkExIiwic291cmNlIjoiYnJpZWYubWQiLCJ0ZXh0IjoiVGhlIG9yaWdpbmFsIEJ1aWxkIGJ1c2luZXNzIFJ1biByZXN1bWVzLiJ9XSwiY2hpbGRyZW4iOm51bGwsImZvcm1hbEhhc2giOiIxNTY2ZWYwNWRjMGEzNTM2N2M3OWEwYTdkOGM4ZmI4MDA0YjU2MTJkM2JkNzQ3MGUyZmYzNWYxNjgxMzJkM2QyIiwic2VtYW50aWNTbmFwc2hvdCI6eyJhcnRpZmFjdHMiOlt7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6ImY1NDE0MDE1NmViYTExMjUwNGQ0MzYwMGYyNGU0YTM2ZThlYzY1ZmY5MzY5ZmRhYWQxMDU2ZjNmZmE2NjhkODgiLCJjb250cmFjdEhhc2giOiJiOGNiNWNmMDY4ZmEyMzhkOWU0YzA3Y2VmYjUxMzNkMjczZDBjZjM5ZGM2MTQ2ZWE3YzM1NzNlMmIwMzA2YzI5IiwiaW5wdXRIYXNoIjoiZmVlMzg5NTUyNGIxYmE5ZWRkYWIxNzc0MWUxYjQwMjZhM2JkNmRkZWZhZGJlMjQ1YTI5Y2Y4MzE4ZmFmMzJkYSIsImxlZ2FjeUZpbmdlcnByaW50IjoiMTdlODYyZTFmMzZkN2RkMmM1ODYzNDU2YTZlNTU3NzNmOTNmM2MzYWFkNDQ5NzA1NTkwNmM0YTIxNmIxYWJiZSIsInNvdXJjZSI6ImJyaWVmLm1kIn0seyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiJkZTliNzQwNDY0MzQ2NjE1YWFjMDc1MzZlYjIwZDRjZTZjOTViYzQ4ODVjM2YxZTQzZjQ0OWEzMGNlOGMyZThmIiwiY29udHJhY3RIYXNoIjoiZThmODViZmU1NDRkMWI5YWMwNGU5ZjQ0NzA1MzFkMzViMzRhOGZjMmJmY2UxZDg1NTk1ZjRhYzdjNDdjZWM4MCIsImlucHV0SGFzaCI6ImQxMjRkOWEwNjA0YjUzYzA3OGFlNzBmNTZhMzBlMmY3YjFkOTRjMmFkMDhiYWViMzA1ZTY0MmE0MDYwYWVkMTgiLCJsZWdhY3lGaW5nZXJwcmludCI6IjgwYTdkNTRmNTJmNjYxZGZlNWNlZDkzNThjNTVkMTFlZjhiMjEyOWRhOTY5OWRjZmI3Yjk5NDEzNDA0NTcxYzYiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dLCJzY2hlbWEiOiJjb21ldC5uYXRpdmUuc2hhcGUtc2VtYW50aWNzLnYxIn0sInNoYXBlQ29uZmlybWF0aW9uSGFzaCI6IjBhMzE4ODY3YmRjOTRjMjdhYzQyMDcxOTdkZDE3Y2IxZTExMWE5YmFkOTQxM2MzM2JlNzZhODA4NzU1NmMzNzgiLCJzcGVjQ2hhbmdlcyI6W3siY2FwYWJpbGl0eSI6IndvcmtmbG93Iiwib3BlcmF0aW9uIjoiY3JlYXRlIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XX19LCJzaGFwZS5yZXZhbGlkYXRlIjp7InNlcXVlbmNlIjozLCJ2YWx1ZSI6eyJhY2NlcHRhbmNlIjpbeyJpZCI6IkExIiwic291cmNlIjoiYnJpZWYubWQiLCJ0ZXh0IjoiVGhlIG9yaWdpbmFsIEJ1aWxkIGJ1c2luZXNzIFJ1biByZXN1bWVzLiJ9XSwiY2hpbGRyZW4iOm51bGwsImZvcm1hbEhhc2giOiIxNTY2ZWYwNWRjMGEzNTM2N2M3OWEwYTdkOGM4ZmI4MDA0YjU2MTJkM2JkNzQ3MGUyZmYzNWYxNjgxMzJkM2QyIiwic2VtYW50aWNTbmFwc2hvdCI6eyJhcnRpZmFjdHMiOlt7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6ImY1NDE0MDE1NmViYTExMjUwNGQ0MzYwMGYyNGU0YTM2ZThlYzY1ZmY5MzY5ZmRhYWQxMDU2ZjNmZmE2NjhkODgiLCJjb250cmFjdEhhc2giOiJiOGNiNWNmMDY4ZmEyMzhkOWU0YzA3Y2VmYjUxMzNkMjczZDBjZjM5ZGM2MTQ2ZWE3YzM1NzNlMmIwMzA2YzI5IiwiaW5wdXRIYXNoIjoiZmVlMzg5NTUyNGIxYmE5ZWRkYWIxNzc0MWUxYjQwMjZhM2JkNmRkZWZhZGJlMjQ1YTI5Y2Y4MzE4ZmFmMzJkYSIsImxlZ2FjeUZpbmdlcnByaW50IjoiMTdlODYyZTFmMzZkN2RkMmM1ODYzNDU2YTZlNTU3NzNmOTNmM2MzYWFkNDQ5NzA1NTkwNmM0YTIxNmIxYWJiZSIsInNvdXJjZSI6ImJyaWVmLm1kIn0seyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiJkZTliNzQwNDY0MzQ2NjE1YWFjMDc1MzZlYjIwZDRjZTZjOTViYzQ4ODVjM2YxZTQzZjQ0OWEzMGNlOGMyZThmIiwiY29udHJhY3RIYXNoIjoiZThmODViZmU1NDRkMWI5YWMwNGU5ZjQ0NzA1MzFkMzViMzRhOGZjMmJmY2UxZDg1NTk1ZjRhYzdjNDdjZWM4MCIsImlucHV0SGFzaCI6ImQxMjRkOWEwNjA0YjUzYzA3OGFlNzBmNTZhMzBlMmY3YjFkOTRjMmFkMDhiYWViMzA1ZTY0MmE0MDYwYWVkMTgiLCJsZWdhY3lGaW5nZXJwcmludCI6IjgwYTdkNTRmNTJmNjYxZGZlNWNlZDkzNThjNTVkMTFlZjhiMjEyOWRhOTY5OWRjZmI3Yjk5NDEzNDA0NTcxYzYiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dLCJzY2hlbWEiOiJjb21ldC5uYXRpdmUuc2hhcGUtc2VtYW50aWNzLnYxIn0sInNoYXBlQ29uZmlybWF0aW9uSGFzaCI6IjBhMzE4ODY3YmRjOTRjMjdhYzQyMDcxOTdkZDE3Y2IxZTExMWE5YmFkOTQxM2MzM2JlNzZhODA4NzU1NmMzNzgiLCJzcGVjQ2hhbmdlcyI6W3siY2FwYWJpbGl0eSI6IndvcmtmbG93Iiwib3BlcmF0aW9uIjoiY3JlYXRlIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XX19fSwic2VxdWVuY2UiOjV9fSwid2FpdHMiOlt7ImlkIjoicHVibGlzaGVkLWNvbXBsZXRlZC1pbnZhbGlkOjIiLCJzdGVwSWQiOiJzaGFwZS5jb25maXJtIiwic2VxdWVuY2UiOjIsInN0YXR1cyI6InJlc29sdmVkIiwicHJvcG9zYWwiOnsiaW5wdXQiOnsiYXJ0aWZhY3RSb290UmVmIjoiZG9jcyIsIm5hbWUiOiJwdWJsaXNoZWQtY29tcGxldGVkLWludmFsaWQiLCJwcm9qZWN0Um9vdCI6IkM6XFxVc2Vyc1xcQkVOWU1cXEFwcERhdGFcXExvY2FsXFxUZW1wXFxuYXRpdmUtMDUyLTU0NS1jb21wbGV0ZWQtaW52YWxpZC0xMFFRbVBcXHByb2plY3QifSwib3V0cHV0cyI6eyJzaGFwZS5wcmVwYXJlIjp7ImFjY2VwdGFuY2UiOlt7ImlkIjoiQTEiLCJzb3VyY2UiOiJicmllZi5tZCIsInRleHQiOiJUaGUgb3JpZ2luYWwgQnVpbGQgYnVzaW5lc3MgUnVuIHJlc3VtZXMuIn1dLCJjaGlsZHJlbiI6bnVsbCwiZm9ybWFsSGFzaCI6IjE1NjZlZjA1ZGMwYTM1MzY3Yzc5YTBhN2Q4YzhmYjgwMDRiNTYxMmQzYmQ3NDcwZTJmZjM1ZjE2ODEzMmQzZDIiLCJzZW1hbnRpY1NuYXBzaG90Ijp7ImFydGlmYWN0cyI6W3siYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiZjU0MTQwMTU2ZWJhMTEyNTA0ZDQzNjAwZjI0ZTRhMzZlOGVjNjVmZjkzNjlmZGFhZDEwNTZmM2ZmYTY2OGQ4OCIsImNvbnRyYWN0SGFzaCI6ImI4Y2I1Y2YwNjhmYTIzOGQ5ZTRjMDdjZWZiNTEzM2QyNzNkMGNmMzlkYzYxNDZlYTdjMzU3M2UyYjAzMDZjMjkiLCJpbnB1dEhhc2giOiJmZWUzODk1NTI0YjFiYTllZGRhYjE3NzQxZTFiNDAyNmEzYmQ2ZGRlZmFkYmUyNDVhMjljZjgzMThmYWYzMmRhIiwibGVnYWN5RmluZ2VycHJpbnQiOiIxN2U4NjJlMWYzNmQ3ZGQyYzU4NjM0NTZhNmU1NTc3M2Y5M2YzYzNhYWQ0NDk3MDU1OTA2YzRhMjE2YjFhYmJlIiwic291cmNlIjoiYnJpZWYubWQifSx7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6ImRlOWI3NDA0NjQzNDY2MTVhYWMwNzUzNmViMjBkNGNlNmM5NWJjNDg4NWMzZjFlNDNmNDQ5YTMwY2U4YzJlOGYiLCJjb250cmFjdEhhc2giOiJlOGY4NWJmZTU0NGQxYjlhYzA0ZTlmNDQ3MDUzMWQzNWIzNGE4ZmMyYmZjZTFkODU1OTVmNGFjN2M0N2NlYzgwIiwiaW5wdXRIYXNoIjoiZDEyNGQ5YTA2MDRiNTNjMDc4YWU3MGY1NmEzMGUyZjdiMWQ5NGMyYWQwOGJhZWIzMDVlNjQyYTQwNjBhZWQxOCIsImxlZ2FjeUZpbmdlcnByaW50IjoiODBhN2Q1NGY1MmY2NjFkZmU1Y2VkOTM1OGM1NWQxMWVmOGIyMTI5ZGE5Njk5ZGNmYjdiOTk0MTM0MDQ1NzFjNiIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV0sInNjaGVtYSI6ImNvbWV0Lm5hdGl2ZS5zaGFwZS1zZW1hbnRpY3MudjEifSwic2hhcGVDb25maXJtYXRpb25IYXNoIjoiMGEzMTg4NjdiZGM5NGMyN2FjNDIwNzE5N2RkMTdjYjFlMTExYTliYWQ5NDEzYzMzYmU3NmE4MDg3NTU2YzM3OCIsInNwZWNDaGFuZ2VzIjpbeyJjYXBhYmlsaXR5Ijoid29ya2Zsb3ciLCJvcGVyYXRpb24iOiJjcmVhdGUiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dfX19LCJwcm9wb3NhbEhhc2giOiI4ODVhN2EzODQ3ZWYxNzk4NTMzM2EyN2QxNTEzNjQzNjcxYzBhZjFiODZmMzdiNWY3MDMzNzVlMzU1OGRiMmU3IiwiY2hvaWNlcyI6WyJhcHByb3ZlZCIsInJlamVjdGVkIl0sInJlc3VsdHMiOnsic2hhcGUucHJlcGFyZSI6eyJzZXF1ZW5jZSI6MSwidmFsdWUiOnsiYWNjZXB0YW5jZSI6W3siaWQiOiJBMSIsInNvdXJjZSI6ImJyaWVmLm1kIiwidGV4dCI6IlRoZSBvcmlnaW5hbCBCdWlsZCBidXNpbmVzcyBSdW4gcmVzdW1lcy4ifV0sImNoaWxkcmVuIjpudWxsLCJmb3JtYWxIYXNoIjoiMTU2NmVmMDVkYzBhMzUzNjdjNzlhMGE3ZDhjOGZiODAwNGI1NjEyZDNiZDc0NzBlMmZmMzVmMTY4MTMyZDNkMiIsInNlbWFudGljU25hcHNob3QiOnsiYXJ0aWZhY3RzIjpbeyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiJmNTQxNDAxNTZlYmExMTI1MDRkNDM2MDBmMjRlNGEzNmU4ZWM2NWZmOTM2OWZkYWFkMTA1NmYzZmZhNjY4ZDg4IiwiY29udHJhY3RIYXNoIjoiYjhjYjVjZjA2OGZhMjM4ZDllNGMwN2NlZmI1MTMzZDI3M2QwY2YzOWRjNjE0NmVhN2MzNTczZTJiMDMwNmMyOSIsImlucHV0SGFzaCI6ImZlZTM4OTU1MjRiMWJhOWVkZGFiMTc3NDFlMWI0MDI2YTNiZDZkZGVmYWRiZTI0NWEyOWNmODMxOGZhZjMyZGEiLCJsZWdhY3lGaW5nZXJwcmludCI6IjE3ZTg2MmUxZjM2ZDdkZDJjNTg2MzQ1NmE2ZTU1NzczZjkzZjNjM2FhZDQ0OTcwNTU5MDZjNGEyMTZiMWFiYmUiLCJzb3VyY2UiOiJicmllZi5tZCJ9LHsiYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiZGU5Yjc0MDQ2NDM0NjYxNWFhYzA3NTM2ZWIyMGQ0Y2U2Yzk1YmM0ODg1YzNmMWU0M2Y0NDlhMzBjZThjMmU4ZiIsImNvbnRyYWN0SGFzaCI6ImU4Zjg1YmZlNTQ0ZDFiOWFjMDRlOWY0NDcwNTMxZDM1YjM0YThmYzJiZmNlMWQ4NTU5NWY0YWM3YzQ3Y2VjODAiLCJpbnB1dEhhc2giOiJkMTI0ZDlhMDYwNGI1M2MwNzhhZTcwZjU2YTMwZTJmN2IxZDk0YzJhZDA4YmFlYjMwNWU2NDJhNDA2MGFlZDE4IiwibGVnYWN5RmluZ2VycHJpbnQiOiI4MGE3ZDU0ZjUyZjY2MWRmZTVjZWQ5MzU4YzU1ZDExZWY4YjIxMjlkYTk2OTlkY2ZiN2I5OTQxMzQwNDU3MWM2Iiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XSwic2NoZW1hIjoiY29tZXQubmF0aXZlLnNoYXBlLXNlbWFudGljcy52MSJ9LCJzaGFwZUNvbmZpcm1hdGlvbkhhc2giOiIwYTMxODg2N2JkYzk0YzI3YWM0MjA3MTk3ZGQxN2NiMWUxMTFhOWJhZDk0MTNjMzNiZTc2YTgwODc1NTZjMzc4Iiwic3BlY0NoYW5nZXMiOlt7ImNhcGFiaWxpdHkiOiJ3b3JrZmxvdyIsIm9wZXJhdGlvbiI6ImNyZWF0ZSIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV19fX0sImRlY2lzaW9uIjp7ImlkIjoiU0lNVUxBVEVELVVTRVItQVBQUk9WRUQtU0hBUEUiLCJjaG9pY2UiOiJhcHByb3ZlZCIsInByb3Bvc2FsSGFzaCI6Ijg4NWE3YTM4NDdlZjE3OTg1MzMzYTI3ZDE1MTM2NDM2NzFjMGFmMWI4NmYzN2I1ZjcwMzM3NWUzNTU4ZGIyZTciLCJyZWFzb24iOiJTSU1VTEFURUQgVVNFUiBhcHByb3ZhbCBvbmx5IGZvciB0aGUgaXNvbGF0ZWQgcHJvdG9jb2wgZml4dHVyZSJ9fV0sInJlYWR5IjpbXSwiam9pbnMiOnt9LCJvdXRwdXRzIjp7ImJ1aWxkLmJ1aWxkZXIiOnsic2VxdWVuY2UiOjQsInZhbHVlIjp7InJlc3BvbnNlIjp7ImNoZWNrcyI6W3siYXJndiI6WyItZSIsImNvbnN0IGZzPXJlcXVpcmUoJ25vZGU6ZnMnKTtmcy5hcHBlbmRGaWxlU3luYyhwcm9jZXNzLmFyZ3ZbMV0sJ29uY2VcXG4nKTtwcm9jZXNzLnN0ZG91dC53cml0ZSgnYWN0dWFsLWxlZ2FjeS1jaGVjay1jb21wbGV0ZWRcXG4nKSIsIkM6XFxVc2Vyc1xcQkVOWU1cXEFwcERhdGFcXExvY2FsXFxUZW1wXFxuYXRpdmUtMDUyLTU0NS1jb21wbGV0ZWQtaW52YWxpZC0xMFFRbVBcXGFjdHVhbC1ub2RlLWNvdW50Il0sImN3ZFJlZiI6Ii4iLCJleGVjdXRhYmxlIjoiRDpcXG5vZGVqc1xcbm9kZS5leGUiLCJpZCI6Im9uY2UiLCJuYW1lIjoiQ3VycmVudCBCdWlsZCBjaGVjayIsInJlcGVhdGFibGUiOnRydWUsInRpbWVvdXRNcyI6MTUwMDB9XSwia2luZCI6InJlcXVlc3QtY2hlY2tzIn19fSwic2hhcGUuY29uZmlybSI6eyJzZXF1ZW5jZSI6MiwidmFsdWUiOnsiY2hvaWNlIjoiYXBwcm92ZWQiLCJwcm9wb3NhbCI6eyJpbnB1dCI6eyJhcnRpZmFjdFJvb3RSZWYiOiJkb2NzIiwibmFtZSI6InB1Ymxpc2hlZC1jb21wbGV0ZWQtaW52YWxpZCIsInByb2plY3RSb290IjoiQzpcXFVzZXJzXFxCRU5ZTVxcQXBwRGF0YVxcTG9jYWxcXFRlbXBcXG5hdGl2ZS0wNTItNTQ1LWNvbXBsZXRlZC1pbnZhbGlkLTEwUVFtUFxccHJvamVjdCJ9LCJvdXRwdXRzIjp7InNoYXBlLnByZXBhcmUiOnsiYWNjZXB0YW5jZSI6W3siaWQiOiJBMSIsInNvdXJjZSI6ImJyaWVmLm1kIiwidGV4dCI6IlRoZSBvcmlnaW5hbCBCdWlsZCBidXNpbmVzcyBSdW4gcmVzdW1lcy4ifV0sImNoaWxkcmVuIjpudWxsLCJmb3JtYWxIYXNoIjoiMTU2NmVmMDVkYzBhMzUzNjdjNzlhMGE3ZDhjOGZiODAwNGI1NjEyZDNiZDc0NzBlMmZmMzVmMTY4MTMyZDNkMiIsInNlbWFudGljU25hcHNob3QiOnsiYXJ0aWZhY3RzIjpbeyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiJmNTQxNDAxNTZlYmExMTI1MDRkNDM2MDBmMjRlNGEzNmU4ZWM2NWZmOTM2OWZkYWFkMTA1NmYzZmZhNjY4ZDg4IiwiY29udHJhY3RIYXNoIjoiYjhjYjVjZjA2OGZhMjM4ZDllNGMwN2NlZmI1MTMzZDI3M2QwY2YzOWRjNjE0NmVhN2MzNTczZTJiMDMwNmMyOSIsImlucHV0SGFzaCI6ImZlZTM4OTU1MjRiMWJhOWVkZGFiMTc3NDFlMWI0MDI2YTNiZDZkZGVmYWRiZTI0NWEyOWNmODMxOGZhZjMyZGEiLCJsZWdhY3lGaW5nZXJwcmludCI6IjE3ZTg2MmUxZjM2ZDdkZDJjNTg2MzQ1NmE2ZTU1NzczZjkzZjNjM2FhZDQ0OTcwNTU5MDZjNGEyMTZiMWFiYmUiLCJzb3VyY2UiOiJicmllZi5tZCJ9LHsiYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiZGU5Yjc0MDQ2NDM0NjYxNWFhYzA3NTM2ZWIyMGQ0Y2U2Yzk1YmM0ODg1YzNmMWU0M2Y0NDlhMzBjZThjMmU4ZiIsImNvbnRyYWN0SGFzaCI6ImU4Zjg1YmZlNTQ0ZDFiOWFjMDRlOWY0NDcwNTMxZDM1YjM0YThmYzJiZmNlMWQ4NTU5NWY0YWM3YzQ3Y2VjODAiLCJpbnB1dEhhc2giOiJkMTI0ZDlhMDYwNGI1M2MwNzhhZTcwZjU2YTMwZTJmN2IxZDk0YzJhZDA4YmFlYjMwNWU2NDJhNDA2MGFlZDE4IiwibGVnYWN5RmluZ2VycHJpbnQiOiI4MGE3ZDU0ZjUyZjY2MWRmZTVjZWQ5MzU4YzU1ZDExZWY4YjIxMjlkYTk2OTlkY2ZiN2I5OTQxMzQwNDU3MWM2Iiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XSwic2NoZW1hIjoiY29tZXQubmF0aXZlLnNoYXBlLXNlbWFudGljcy52MSJ9LCJzaGFwZUNvbmZpcm1hdGlvbkhhc2giOiIwYTMxODg2N2JkYzk0YzI3YWM0MjA3MTk3ZGQxN2NiMWUxMTFhOWJhZDk0MTNjMzNiZTc2YTgwODc1NTZjMzc4Iiwic3BlY0NoYW5nZXMiOlt7ImNhcGFiaWxpdHkiOiJ3b3JrZmxvdyIsIm9wZXJhdGlvbiI6ImNyZWF0ZSIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV19fX19fSwic2hhcGUucHJlcGFyZSI6eyJzZXF1ZW5jZSI6MSwidmFsdWUiOnsiYWNjZXB0YW5jZSI6W3siaWQiOiJBMSIsInNvdXJjZSI6ImJyaWVmLm1kIiwidGV4dCI6IlRoZSBvcmlnaW5hbCBCdWlsZCBidXNpbmVzcyBSdW4gcmVzdW1lcy4ifV0sImNoaWxkcmVuIjpudWxsLCJmb3JtYWxIYXNoIjoiMTU2NmVmMDVkYzBhMzUzNjdjNzlhMGE3ZDhjOGZiODAwNGI1NjEyZDNiZDc0NzBlMmZmMzVmMTY4MTMyZDNkMiIsInNlbWFudGljU25hcHNob3QiOnsiYXJ0aWZhY3RzIjpbeyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiJmNTQxNDAxNTZlYmExMTI1MDRkNDM2MDBmMjRlNGEzNmU4ZWM2NWZmOTM2OWZkYWFkMTA1NmYzZmZhNjY4ZDg4IiwiY29udHJhY3RIYXNoIjoiYjhjYjVjZjA2OGZhMjM4ZDllNGMwN2NlZmI1MTMzZDI3M2QwY2YzOWRjNjE0NmVhN2MzNTczZTJiMDMwNmMyOSIsImlucHV0SGFzaCI6ImZlZTM4OTU1MjRiMWJhOWVkZGFiMTc3NDFlMWI0MDI2YTNiZDZkZGVmYWRiZTI0NWEyOWNmODMxOGZhZjMyZGEiLCJsZWdhY3lGaW5nZXJwcmludCI6IjE3ZTg2MmUxZjM2ZDdkZDJjNTg2MzQ1NmE2ZTU1NzczZjkzZjNjM2FhZDQ0OTcwNTU5MDZjNGEyMTZiMWFiYmUiLCJzb3VyY2UiOiJicmllZi5tZCJ9LHsiYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiZGU5Yjc0MDQ2NDM0NjYxNWFhYzA3NTM2ZWIyMGQ0Y2U2Yzk1YmM0ODg1YzNmMWU0M2Y0NDlhMzBjZThjMmU4ZiIsImNvbnRyYWN0SGFzaCI6ImU4Zjg1YmZlNTQ0ZDFiOWFjMDRlOWY0NDcwNTMxZDM1YjM0YThmYzJiZmNlMWQ4NTU5NWY0YWM3YzQ3Y2VjODAiLCJpbnB1dEhhc2giOiJkMTI0ZDlhMDYwNGI1M2MwNzhhZTcwZjU2YTMwZTJmN2IxZDk0YzJhZDA4YmFlYjMwNWU2NDJhNDA2MGFlZDE4IiwibGVnYWN5RmluZ2VycHJpbnQiOiI4MGE3ZDU0ZjUyZjY2MWRmZTVjZWQ5MzU4YzU1ZDExZWY4YjIxMjlkYTk2OTlkY2ZiN2I5OTQxMzQwNDU3MWM2Iiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XSwic2NoZW1hIjoiY29tZXQubmF0aXZlLnNoYXBlLXNlbWFudGljcy52MSJ9LCJzaGFwZUNvbmZpcm1hdGlvbkhhc2giOiIwYTMxODg2N2JkYzk0YzI3YWM0MjA3MTk3ZGQxN2NiMWUxMTFhOWJhZDk0MTNjMzNiZTc2YTgwODc1NTZjMzc4Iiwic3BlY0NoYW5nZXMiOlt7ImNhcGFiaWxpdHkiOiJ3b3JrZmxvdyIsIm9wZXJhdGlvbiI6ImNyZWF0ZSIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV19fSwic2hhcGUucmV2YWxpZGF0ZSI6eyJzZXF1ZW5jZSI6MywidmFsdWUiOnsiYWNjZXB0YW5jZSI6W3siaWQiOiJBMSIsInNvdXJjZSI6ImJyaWVmLm1kIiwidGV4dCI6IlRoZSBvcmlnaW5hbCBCdWlsZCBidXNpbmVzcyBSdW4gcmVzdW1lcy4ifV0sImNoaWxkcmVuIjpudWxsLCJmb3JtYWxIYXNoIjoiMTU2NmVmMDVkYzBhMzUzNjdjNzlhMGE3ZDhjOGZiODAwNGI1NjEyZDNiZDc0NzBlMmZmMzVmMTY4MTMyZDNkMiIsInNlbWFudGljU25hcHNob3QiOnsiYXJ0aWZhY3RzIjpbeyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiJmNTQxNDAxNTZlYmExMTI1MDRkNDM2MDBmMjRlNGEzNmU4ZWM2NWZmOTM2OWZkYWFkMTA1NmYzZmZhNjY4ZDg4IiwiY29udHJhY3RIYXNoIjoiYjhjYjVjZjA2OGZhMjM4ZDllNGMwN2NlZmI1MTMzZDI3M2QwY2YzOWRjNjE0NmVhN2MzNTczZTJiMDMwNmMyOSIsImlucHV0SGFzaCI6ImZlZTM4OTU1MjRiMWJhOWVkZGFiMTc3NDFlMWI0MDI2YTNiZDZkZGVmYWRiZTI0NWEyOWNmODMxOGZhZjMyZGEiLCJsZWdhY3lGaW5nZXJwcmludCI6IjE3ZTg2MmUxZjM2ZDdkZDJjNTg2MzQ1NmE2ZTU1NzczZjkzZjNjM2FhZDQ0OTcwNTU5MDZjNGEyMTZiMWFiYmUiLCJzb3VyY2UiOiJicmllZi5tZCJ9LHsiYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiZGU5Yjc0MDQ2NDM0NjYxNWFhYzA3NTM2ZWIyMGQ0Y2U2Yzk1YmM0ODg1YzNmMWU0M2Y0NDlhMzBjZThjMmU4ZiIsImNvbnRyYWN0SGFzaCI6ImU4Zjg1YmZlNTQ0ZDFiOWFjMDRlOWY0NDcwNTMxZDM1YjM0YThmYzJiZmNlMWQ4NTU5NWY0YWM3YzQ3Y2VjODAiLCJpbnB1dEhhc2giOiJkMTI0ZDlhMDYwNGI1M2MwNzhhZTcwZjU2YTMwZTJmN2IxZDk0YzJhZDA4YmFlYjMwNWU2NDJhNDA2MGFlZDE4IiwibGVnYWN5RmluZ2VycHJpbnQiOiI4MGE3ZDU0ZjUyZjY2MWRmZTVjZWQ5MzU4YzU1ZDExZWY4YjIxMjlkYTk2OTlkY2ZiN2I5OTQxMzQwNDU3MWM2Iiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XSwic2NoZW1hIjoiY29tZXQubmF0aXZlLnNoYXBlLXNlbWFudGljcy52MSJ9LCJzaGFwZUNvbmZpcm1hdGlvbkhhc2giOiIwYTMxODg2N2JkYzk0YzI3YWM0MjA3MTk3ZGQxN2NiMWUxMTFhOWJhZDk0MTNjMzNiZTc2YTgwODc1NTZjMzc4Iiwic3BlY0NoYW5nZXMiOlt7ImNhcGFiaWxpdHkiOiJ3b3JrZmxvdyIsIm9wZXJhdGlvbiI6ImNyZWF0ZSIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV19fX0sImNoaWxkcmVuIjpbXSwibGluZWFnZSI6W119LCJzb3VyY2VSZXZpc2lvbiI6MTAsInNvdXJjZUhhc2giOiI1OTE0OWNkNGM0NTE5NWU1MzQwMzQ1NGMwZmJkMmY0NzM0MmE2MWFhNzM3NDY1NWNiZDdmNmQ3NGRiMTZhNjE5In0K"
+    },
+    {
+      "ref": "docs/comet/changes/published-completed-invalid/specs/workflow/spec.md",
+      "bytesBase64": "IyBXb3JrZmxvdwpUaGUgb3JpZ2luYWwgQnVpbGQgUnVuIHJlc3VtZXMgd2l0aG91dCBmYWJyaWNhdGVkIGFjY2VwdGFuY2UuCg=="
+    }
+  ],
+  "legacyCache": {
+    "files": [
+      {
+        "ref": "native/sdk-checks/e90df55f8cbc942aa236d2602f54904b205a9c8a6835cc093bfb81a8a972e53b/executions/5e9b6d487d7a5fb797e1e9709fb8c9ed19c58e85e09ef06f171f839436ac6893.json",
+        "bytesBase64": "eyJzY2hlbWEiOiJjb21ldC5uYXRpdmUuc2RrLWNoZWNrLWV4ZWN1dGlvbi52MSIsImV4ZWN1dGlvbkJpbmRpbmciOiI0YTJjOGI4ZDQ5ODkwYmY2OTkwODMxMDU4YmFjYjVkNTA1NmRhZTBjZWE2NTE2MWMwZGQ1NjMzYmZiZDRhNTY0IiwicnVuSWQiOiJwdWJsaXNoZWQtY29tcGxldGVkLWludmFsaWQiLCJhY3Rpb25JZCI6InB1Ymxpc2hlZC1jb21wbGV0ZWQtaW52YWxpZDo1IiwiYXR0ZW1wdCI6MSwiaW5wdXRIYXNoIjoiZTdiMTkyYjI3YmQ5N2ViYjYzYmNmMWY5Njk0YzFmZTI5MTAxNGFhYTkxZjZkMjMxMjQyN2E0NTA5NGRlNzc0YiIsImNsYWltVG9rZW4iOiJTSU1VTEFURUQtQ0xBSU0tcHVibGlzaGVkLWNvbXBsZXRlZC1pbnZhbGlkOjUiLCJjYW5kaWRhdGVJZCI6InB1Ymxpc2hlZC1jb21wbGV0ZWQtaW52YWxpZDo1IiwicGxhbnNIYXNoIjoiODAxYTNjOTU5ODFkZmQ2YWUxNWQ0Y2UzZGJiMWQwMTE0NjBiMzQ1NjZkOTkwZjE4ZGE2YzQ4MzVjOWE0NTMyNCIsIm93bmVyIjp7InBpZCI6NjA3NTIsImlkZW50aXR5Ijoid2luMzItcHM6NjM5Mjk5NDk5OTAzNzY0OTM1In0sInBoYXNlIjoiY29tcGxldGVkIiwidGVybWluYXRpb25VbmNvbmZpcm1lZCI6ZmFsc2UsImNoZWNrcyI6W3siaWQiOiJvbmNlIiwibmFtZSI6IkN1cnJlbnQgQnVpbGQgY2hlY2siLCJhcmd2RGlzcGxheSI6WyItZSIsImNvbnN0IGZzPXJlcXVpcmUoJ25vZGU6ZnMnKTtmcy5hcHBlbmRGaWxlU3luYyhwcm9jZXNzLmFyZ3ZbMV0sJ29uY2VcXG4nKTtwcm9jZXNzLnN0ZG91dC53cml0ZSgnYWN0dWFsLWxlZ2FjeS1jaGVjay1jb21wbGV0ZWRcXG4nKSIsIkM6XFxVc2Vyc1xcQkVOWU1cXEFwcERhdGFcXExvY2FsXFxUZW1wXFxuYXRpdmUtMDUyLTU0NS1jb21wbGV0ZWQtaW52YWxpZC0xMFFRbVBcXGFjdHVhbC1ub2RlLWNvdW50Il0sImN3ZFJlZiI6Ii4iLCJzdGF0dXMiOiJwYXNzZWQiLCJleGl0Q29kZSI6MCwiZHVyYXRpb25NcyI6Njc3LCJsb2dSZWYiOiJuYXRpdmUvc2RrLWNoZWNrcy9lOTBkZjU1ZjhjYmM5NDJhYTIzNmQyNjAyZjU0OTA0YjIwNWE5YzhhNjgzNWNjMDkzYmZiODFhOGE5NzJlNTNiL2xvZ3MvY2hlY2tzLzdjMWY2Nzg2MTQ2MjEyNDdjNzkxNWZmMjRlNDI2OGU4NDU2MzU0MTY4ZDM4MzY5NjM5YjM5NjdlMWEwNDI1YzEtb25jZS5sb2ciLCJsb2dTaGEyNTYiOiIxYTQ1OGNjYTNlMTg1YjhmYWUzM2EzOTMzYWVhYjZkNThkZDk4YmY4MjU4MmJmMzU2YjU3ZDAzYjIyZjhkNDhiIn1dLCJjaGVja0lkIjoib25jZSIsImNoaWxkIjp7InBpZCI6NjA4ODAsImluc3RhbmNlSWQiOiJkMTI3MjkwOC1lZmU4LTQxNzItYWY1OC05YjA0MmM3MzNhZDQiLCJvd25lclBpZCI6NjA3NTIsImlkZW50aXR5Ijoid2luMzItcHM6NjM5Mjk5NDk5OTU5OTY4MTU4In0sIm91dGNvbWUiOnsic3RhdHVzIjoic3VjY2VlZGVkIiwib3V0cHV0Ijp7InJhd0lucHV0Ijp7ImJlZm9yZVJlZiI6Im5hdGl2ZS9zZGstY2hlY2tzL2U5MGRmNTVmOGNiYzk0MmFhMjM2ZDI2MDJmNTQ5MDRiMjA1YTljOGE2ODM1Y2MwOTNiZmI4MWE4YTk3MmU1M2IvaW5wdXRzL2RkYTdkMjc5OWY1NmNjNjE1YzA3ZmVmYzJlNWU1MDc0ZGM1ZGMxOTQwYTIzZWYwNzZjOTYxMzc5NDJhZjQwYmQuanNvbiIsImFmdGVyUmVmIjoibmF0aXZlL3Nkay1jaGVja3MvZTkwZGY1NWY4Y2JjOTQyYWEyMzZkMjYwMmY1NDkwNGIyMDVhOWM4YTY4MzVjYzA5M2JmYjgxYThhOTcyZTUzYi9pbnB1dHMvZGRhN2QyNzk5ZjU2Y2M2MTVjMDdmZWZjMmU1ZTUwNzRkYzVkYzE5NDBhMjNlZjA3NmM5NjEzNzk0MmFmNDBiZC5qc29uIn0sImlucHV0QmVmb3JlIjoiZWVlNDQyMjA2MThkYThjMTY0NGNmNzc2MWY4ZjExYzUxZGE1NzM0YTczNmVkMjMxYTQ5ZDJlNGNiNjBmMjIyMSIsImlucHV0QWZ0ZXIiOiJlZWU0NDIyMDYxOGRhOGMxNjQ0Y2Y3NzYxZjhmMTFjNTFkYTU3MzRhNzM2ZWQyMzFhNDlkMmU0Y2I2MGYyMjIxIiwiaW5wdXRTbmFwc2hvdCI6eyJzY2hlbWEiOiJjb21ldC5uYXRpdmUuY2hlY2staW5wdXQudjIiLCJiZWZvcmUiOiI3ZTRmNDgwNDk0ZTM1ZTNjYzY3MzVkYzBiZmIzYmNhMmUyZTg2NmU4ODZkMzAzMTM4NGNkYjNiNTU4MDYxOGExIiwiYWZ0ZXIiOiI3ZTRmNDgwNDk0ZTM1ZTNjYzY3MzVkYzBiZmIzYmNhMmUyZTg2NmU4ODZkMzAzMTM4NGNkYjNiNTU4MDYxOGExIiwiY2FuZGlkYXRlQmVmb3JlIjpudWxsLCJjb21wbGV0ZSI6dHJ1ZSwiZGlhZ25vc3RpY3MiOltdfSwiY2FuZGlkYXRlSW5wdXRGaW5nZXJwcmludEdhdGUiOm51bGwsImNhbmRpZGF0ZUlkIjoicHVibGlzaGVkLWNvbXBsZXRlZC1pbnZhbGlkOjUiLCJjaGVja3MiOlt7ImlkIjoib25jZSIsIm5hbWUiOiJQcmV2aW91cyBwbGFuIiwiYXJndkRpc3BsYXkiOlsiLWUiLCJjb25zdCBmcz1yZXF1aXJlKCdub2RlOmZzJyk7ZnMuYXBwZW5kRmlsZVN5bmMocHJvY2Vzcy5hcmd2WzFdLCdvbmNlXFxuJyk7cHJvY2Vzcy5zdGRvdXQud3JpdGUoJ2FjdHVhbC1sZWdhY3ktY2hlY2stY29tcGxldGVkXFxuJykiLCJDOlxcVXNlcnNcXEJFTllNXFxBcHBEYXRhXFxMb2NhbFxcVGVtcFxcbmF0aXZlLTA1Mi01NDUtY29tcGxldGVkLWludmFsaWQtMTBRUW1QXFxhY3R1YWwtbm9kZS1jb3VudCJdLCJjd2RSZWYiOiIuIiwic3RhdHVzIjoicGFzc2VkIiwiZXhpdENvZGUiOjAsImR1cmF0aW9uTXMiOjY3NywibG9nUmVmIjoibmF0aXZlL3Nkay1jaGVja3MvZTkwZGY1NWY4Y2JjOTQyYWEyMzZkMjYwMmY1NDkwNGIyMDVhOWM4YTY4MzVjYzA5M2JmYjgxYThhOTcyZTUzYi9sb2dzL2NoZWNrcy83YzFmNjc4NjE0NjIxMjQ3Yzc5MTVmZjI0ZTQyNjhlODQ1NjM1NDE2OGQzODM2OTYzOWIzOTY3ZTFhMDQyNWMxLW9uY2UubG9nIiwibG9nU2hhMjU2IjoiMWE0NThjY2EzZTE4NWI4ZmFlMzNhMzkzM2FlYWI2ZDU4ZGQ5OGJmODI1ODJiZjM1NmI1N2QwM2IyMmY4ZDQ4YiJ9XSwiY29tcGxldGVkQXQiOiIyMDI2LTExLTEwVDIzOjI2OjM3LjEwNloifX19"
+      },
+      {
+        "ref": "native/sdk-checks/e90df55f8cbc942aa236d2602f54904b205a9c8a6835cc093bfb81a8a972e53b/executions/5e9b6d487d7a5fb797e1e9709fb8c9ed19c58e85e09ef06f171f839436ac6893.json.termination.json",
+        "bytesBase64": "eyJzY2hlbWEiOiJjb21ldC5uYXRpdmUuc2RrLWNoZWNrLXRlcm1pbmF0aW9uLnYxIiwiYWN0aW9uQmluZGluZyI6ImM1NjBmOGQyNzVlYjQ3MTE0OGU0MTc5NTk4MWZkNmZkOTllZGNiMjhlNWJjZGU1MDY4NTZhODFmNDBmMDJmMjAiLCJjaGlsZEJpbmRpbmciOiJkMDIxMDgyNDkzNmMxOTIzMDE2NTQ5M2QzN2Q5YzM0ZTNmNWI5ZGQ0MWYxMGEyYmQ0ZDkyNTNjOWViMmI2YzczIiwiY29uZmlybWVkIjp0cnVlLCJzb3VyY2UiOiJwcm9jZXNzLXRyZWUifQ=="
+      },
+      {
+        "ref": "native/sdk-checks/e90df55f8cbc942aa236d2602f54904b205a9c8a6835cc093bfb81a8a972e53b/inputs/dda7d2799f56cc615c07fefc2e5e5074dc5dc1940a23ef076c96137942af40bd.json",
+        "bytesBase64": "eyJzY2hlbWEiOiJjb21ldC5uYXRpdmUucmF3LWlucHV0LnYxIiwicHJvamVjdFJvb3QiOiJDOlxcVXNlcnNcXEJFTllNXFxBcHBEYXRhXFxMb2NhbFxcVGVtcFxcbmF0aXZlLTA1Mi01NDUtY29tcGxldGVkLWludmFsaWQtMTBRUW1QXFxwcm9qZWN0IiwiZmlsZXMiOlt7InBhdGgiOiJkb2NzL2NvbWV0L2NoYW5nZXMvcHVibGlzaGVkLWNvbXBsZXRlZC1pbnZhbGlkL2JyaWVmLm1kIiwiaGFzaCI6ImY1NDE0MDE1NmViYTExMjUwNGQ0MzYwMGYyNGU0YTM2ZThlYzY1ZmY5MzY5ZmRhYWQxMDU2ZjNmZmE2NjhkODgiLCJtb2RlIjoiMTAwNjQ0In0seyJwYXRoIjoiZG9jcy9jb21ldC9jaGFuZ2VzL3B1Ymxpc2hlZC1jb21wbGV0ZWQtaW52YWxpZC9zcGVjcy93b3JrZmxvdy9zcGVjLm1kIiwiaGFzaCI6ImRlOWI3NDA0NjQzNDY2MTVhYWMwNzUzNmViMjBkNGNlNmM5NWJjNDg4NWMzZjFlNDNmNDQ5YTMwY2U4YzJlOGYiLCJtb2RlIjoiMTAwNjQ0In1dLCJjb21wbGV0ZSI6dHJ1ZSwiZGlhZ25vc3RpY3MiOltdLCJjb250ZW50SGFzaCI6IjdlNGY0ODA0OTRlMzVlM2NjNjczNWRjMGJmYjNiY2EyZTJlODY2ZTg4NmQzMDMxMzg0Y2RiM2I1NTgwNjE4YTEiLCJjb250ZXh0SGFzaCI6ImVlNjg5YThkY2Q4NDBhYTI5NzY1NDRjNjg0NDYwZmQ4ZTgwZTA4OGU0YWFkMzlhODBlMjllYTBjMWIyYmE5M2MiLCJnaXQiOm51bGwsImhhc2hDYWNoZSI6W3sicGF0aCI6ImRvY3MvY29tZXQvY2hhbmdlcy9wdWJsaXNoZWQtY29tcGxldGVkLWludmFsaWQvYnJpZWYubWQiLCJzdGF0S2V5IjoiNDc4OTA5NTAwOjM2MzEwMjcxOTk4MDUwNzMyOjU1NzozMzIwNjoxNzk0MzUzMTkxMTUzODQ4NzAwOjE3OTQzNTMxOTExNTM4NDg3MDA6MTc5NDM1MzE5MTE1Mzg0ODcwMCJ9LHsicGF0aCI6ImRvY3MvY29tZXQvY2hhbmdlcy9wdWJsaXNoZWQtY29tcGxldGVkLWludmFsaWQvc3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCIsInN0YXRLZXkiOiI0Nzg5MDk1MDA6MjczMDMwNzI3NDMzMDk3NDM6NzM6MzMyMDY6MTc5NDM1MzE5MTE1Mzg0ODcwMDoxNzk0MzUzMTkxMTU0NzI4MzAwOjE3OTQzNTMxOTExNTQ3MjgzMDAifV0sInJlcG9zaXRvcmllcyI6W119"
+      },
+      {
+        "ref": "native/sdk-checks/e90df55f8cbc942aa236d2602f54904b205a9c8a6835cc093bfb81a8a972e53b/logs/checks/7c1f678614621247c7915ff24e4268e8456354168d38369639b3967e1a0425c1-once.log",
+        "bytesBase64": "YWN0dWFsLWxlZ2FjeS1jaGVjay1jb21wbGV0ZWQK"
+      }
+    ],
+    "executionRef": "native/sdk-checks/e90df55f8cbc942aa236d2602f54904b205a9c8a6835cc093bfb81a8a972e53b/executions/5e9b6d487d7a5fb797e1e9709fb8c9ed19c58e85e09ef06f171f839436ac6893.json",
+    "logRef": "native/sdk-checks/e90df55f8cbc942aa236d2602f54904b205a9c8a6835cc093bfb81a8a972e53b/logs/checks/7c1f678614621247c7915ff24e4268e8456354168d38369639b3967e1a0425c1-once.log",
+    "counterFile": {
+      "name": "actual-node-count",
+      "relativeToProject": "../actual-node-count",
+      "bytesBase64": "b25jZQo="
+    },
+    "actualOriginalResult": {
+      "status": "succeeded",
+      "output": {
+        "rawInput": {
+          "beforeRef": "native/sdk-checks/e90df55f8cbc942aa236d2602f54904b205a9c8a6835cc093bfb81a8a972e53b/inputs/dda7d2799f56cc615c07fefc2e5e5074dc5dc1940a23ef076c96137942af40bd.json",
+          "afterRef": "native/sdk-checks/e90df55f8cbc942aa236d2602f54904b205a9c8a6835cc093bfb81a8a972e53b/inputs/dda7d2799f56cc615c07fefc2e5e5074dc5dc1940a23ef076c96137942af40bd.json"
+        },
+        "inputBefore": "eee44220618da8c1644cf7761f8f11c51da5734a736ed231a49d2e4cb60f2221",
+        "inputAfter": "eee44220618da8c1644cf7761f8f11c51da5734a736ed231a49d2e4cb60f2221",
+        "inputSnapshot": {
+          "schema": "comet.native.check-input.v2",
+          "before": "7e4f480494e35e3cc6735dc0bfb3bca2e2e866e886d3031384cdb3b5580618a1",
+          "after": "7e4f480494e35e3cc6735dc0bfb3bca2e2e866e886d3031384cdb3b5580618a1",
+          "candidateBefore": null,
+          "complete": true,
+          "diagnostics": []
+        },
+        "candidateInputFingerprintGate": null,
+        "candidateId": "published-completed-invalid:5",
+        "checks": [
+          {
+            "id": "once",
+            "name": "Current Build check",
+            "argvDisplay": [
+              "-e",
+              "const fs=require('node:fs');fs.appendFileSync(process.argv[1],'once\\n');process.stdout.write('actual-legacy-check-completed\\n')",
+              "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\actual-node-count"
+            ],
+            "cwdRef": ".",
+            "status": "passed",
+            "exitCode": 0,
+            "durationMs": 677,
+            "logRef": "native/sdk-checks/e90df55f8cbc942aa236d2602f54904b205a9c8a6835cc093bfb81a8a972e53b/logs/checks/7c1f678614621247c7915ff24e4268e8456354168d38369639b3967e1a0425c1-once.log",
+            "logSha256": "1a458cca3e185b8fae33a3933aeab6d58dd98bf82582bf356b57d03b22f8d48b"
+          }
+        ],
+        "completedAt": "2026-11-10T23:26:37.106Z"
+      }
+    }
+  }
+}

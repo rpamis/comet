@@ -1,0 +1,130 @@
+[
+  {
+    "oldTitle": "migrates only the named legacy runtime without enumerating unrelated changes",
+    "line": 37,
+    "originalBody": "it('migrates only the named legacy runtime without enumerating unrelated changes', async () => {\n    const legacy = path.join(projectRoot, 'comet', 'changes', 'target', 'runtime');\n    await fs.mkdir(legacy, { recursive: true });\n    await fs.writeFile(path.join(legacy, 'record.json'), '{\"saved\":true}');\n    const reads = vi.spyOn(fs, 'readdir');\n    const paths = await nativeProjectPaths(projectRoot, '.', { change: 'target' });\n    expect(\n      await fs.readFile(\n        path.join(nativePreferredChangeRuntimeDir(paths, 'target'), 'record.json'),\n        'utf8',\n      ),\n    ).toBe('{\"saved\":true}');\n    expect(await isWorkspaceRuntimeMigrationFence(legacy)).toBe(true);\n    reads.mockClear();\n    await nativeProjectPaths(projectRoot, '.', { change: 'target' });\n    expect(reads.mock.calls.some(([file]) => String(file) === paths.changesDir)).toBe(false);\n  })",
+    "classification": "mixed-retired-implicit-layout-and-preserved-read-only-business-boundary",
+    "newDeclaration": "it('resolves only the named Runtime without migrating or enumerating legacy changes', async () => {\n const legacy=path.join(projectRoot,'comet/changes/target/runtime'),record=path.join(legacy,'record.json');await fs.mkdir(legacy,{recursive:true});await fs.writeFile(record,'{\"saved\":true}');\n await fs.mkdir(path.join(projectRoot,'comet/changes/unrelated/runtime'),{recursive:true});const reads=vi.spyOn(fs,'readdir');\n const paths=await nativeProjectPaths(projectRoot,'.',{change:'target'});await nativeProjectPaths(projectRoot,'.',{change:'target'});\n expect(reads.mock.calls.some(([file])=>String(file)===paths.changesDir)).toBe(false);\n expect(await fs.readFile(record,'utf8')).toBe('{\"saved\":true}');expect(await fs.readdir(legacy)).toEqual(['record.json']);expect(await isWorkspaceRuntimeMigrationFence(legacy)).toBe(false);\n await expect(fs.stat(nativePreferredChangeRuntimeDir(paths,'target'))).rejects.toMatchObject({code:'ENOENT'});\n})",
+    "notes": "Opaque history is preserved/read-only here. Actual complete valid history/WAL import is covered by explicit Doctor published transition tests, not by relabeling this synthetic JSON as a real Run."
+  },
+  {
+    "oldTitle": "normalizes %s to %s",
+    "line": 55,
+    "originalBody": "it.each([\n    ['.', '.'],\n    ['docs', 'docs'],\n    ['docs\\\\specs', 'docs/specs'],\n  ])('normalizes %s to %s', (input, expected) => {\n    expect(normalizeArtifactRootRef(input)).toBe(expected);\n  })",
+    "classification": "unchanged-business",
+    "newDeclaration": null,
+    "notes": ""
+  },
+  {
+    "oldTitle": "rejects %s",
+    "line": 63,
+    "originalBody": "it.each(['../docs', '/tmp/docs', 'C:\\\\docs', '~/.docs', ''])('rejects %s', (input) => {\n    expect(() => normalizeArtifactRootRef(input)).toThrow();\n  })",
+    "classification": "unchanged-business",
+    "newDeclaration": null,
+    "notes": ""
+  },
+  {
+    "oldTitle": "accepts an in-project directory junction",
+    "line": 67,
+    "originalBody": "it('accepts an in-project directory junction', async () => {\n    const actual = path.join(projectRoot, 'actual');\n    const link = path.join(projectRoot, 'linked');\n    await fs.mkdir(actual);\n    await fs.symlink(actual, link, process.platform === 'win32' ? 'junction' : 'dir');\n\n    expect(await resolveArtifactRoot(projectRoot, 'linked')).toBe(link);\n  })",
+    "classification": "unchanged-business",
+    "newDeclaration": null,
+    "notes": ""
+  },
+  {
+    "oldTitle": "rejects a junction that escapes the project",
+    "line": 76,
+    "originalBody": "it('rejects a junction that escapes the project', async () => {\n    const link = path.join(projectRoot, 'escaped');\n    await fs.symlink(outside, link, process.platform === 'win32' ? 'junction' : 'dir');\n\n    await expect(resolveArtifactRoot(projectRoot, 'escaped')).rejects.toThrow(\n      'resolves outside the project root',\n    );\n  })",
+    "classification": "unchanged-business",
+    "newDeclaration": null,
+    "notes": ""
+  },
+  {
+    "oldTitle": "rejects a configured comet root that is itself a junction",
+    "line": 85,
+    "originalBody": "it('rejects a configured comet root that is itself a junction', async () => {\n    const linkedRoot = path.join(projectRoot, 'comet');\n    await fs.symlink(outside, linkedRoot, process.platform === 'win32' ? 'junction' : 'dir');\n\n    await expect(nativeProjectPaths(projectRoot, '.')).rejects.toThrow(\n      'Native comet root must not be a symbolic link',\n    );\n  })",
+    "classification": "unchanged-business",
+    "newDeclaration": null,
+    "notes": ""
+  },
+  {
+    "oldTitle": "rejects a .comet parent junction that redirects Runtime outside the project",
+    "line": 94,
+    "originalBody": "it('rejects a .comet parent junction that redirects Runtime outside the project', async () => {\n    await fs.symlink(\n      outside,\n      path.join(projectRoot, '.comet'),\n      process.platform === 'win32' ? 'junction' : 'dir',\n    );\n\n    await expect(nativeProjectPaths(projectRoot, 'docs')).rejects.toThrow();\n  })",
+    "classification": "mixed-retired-implicit-layout-and-preserved-read-only-business-boundary",
+    "newDeclaration": "it('resolves Native paths without following a linked legacy .comet directory',async()=>{\n await fs.writeFile(path.join(outside,'canary.json'),'foreign-data');await fs.symlink(outside,path.join(projectRoot,'.comet'),process.platform==='win32'?'junction':'dir');\n const paths=await nativeProjectPaths(projectRoot,'docs');expect(paths.workspaceRuntimeRoot).toBe(resolveWorkspaceRuntimeRootSync(projectRoot));\n expect(await fs.readdir(outside)).toEqual(['canary.json']);expect(await fs.readFile(path.join(outside,'canary.json'),'utf8')).toBe('foreign-data');await expect(fs.stat(paths.runtimeDir)).rejects.toMatchObject({code:'ENOENT'});\n})",
+    "notes": ""
+  },
+  {
+    "oldTitle": "keeps Runtime user-local when the document artifact root changes",
+    "line": 104,
+    "originalBody": "it('keeps Runtime user-local when the document artifact root changes', async () => {\n    const rootPaths = await nativeProjectPaths(projectRoot, '.');\n    const docsPaths = await nativeProjectPaths(projectRoot, 'docs');\n\n    expect(rootPaths.runtimeDir).toBe(\n      path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'native'),\n    );\n    expect(docsPaths.runtimeDir).toBe(rootPaths.runtimeDir);\n    expect(nativePreferredChangeRuntimeDir(docsPaths, 'focused-change')).toBe(\n      path.join(\n        resolveWorkspaceRuntimeRootSync(projectRoot),\n        'native',\n        'changes',\n        'focused-change',\n      ),\n    );\n  })",
+    "classification": "unchanged-business",
+    "newDeclaration": null,
+    "notes": ""
+  },
+  {
+    "oldTitle": "reports preferred, legacy, missing, and conflicting Runtime storage",
+    "line": 122,
+    "originalBody": "it('reports preferred, legacy, missing, and conflicting Runtime storage', async () => {\n    const paths = await nativeProjectPaths(projectRoot, 'docs');\n    const name = 'runtime-health';\n    const preferred = nativePreferredChangeRuntimeDir(paths, name);\n    const legacy = nativeLegacyChangeRuntimeDir(paths, name);\n\n    await expect(inspectNativeRuntimeStorage(paths, name)).resolves.toMatchObject({\n      status: 'missing',\n      layout: 'missing',\n      path: preferred,\n    });\n    expect(nativeChangeRuntimeDir(paths, name)).toBe(preferred);\n\n    await fs.mkdir(preferred, { recursive: true });\n    await expect(inspectNativeRuntimeStorage(paths, name)).resolves.toMatchObject({\n      status: 'available',\n      layout: 'user-local',\n      path: preferred,\n    });\n    expect(nativeChangeRuntimeDir(paths, name)).toBe(preferred);\n\n    await fs.rm(preferred, { recursive: true });\n    await fs.mkdir(legacy, { recursive: true });\n    await expect(inspectNativeRuntimeStorage(paths, name)).resolves.toMatchObject({\n      status: 'available',\n      layout: 'legacy',\n      path: legacy,\n    });\n    expect(() => nativeChangeRuntimeDir(paths, name)).toThrow('requires migration');\n\n    await fs.mkdir(preferred, { recursive: true });\n    await expect(inspectNativeRuntimeStorage(paths, name)).resolves.toMatchObject({\n      status: 'invalid',\n      layout: 'user-local',\n      message: 'Both user-local and legacy Native Runtime directories exist',\n    });\n\n    await fs.rm(legacy, { recursive: true });\n    await fs.rm(preferred, { recursive: true });\n    await fs.writeFile(preferred, 'not a directory');\n    await expect(inspectNativeRuntimeStorage(paths, name)).resolves.toMatchObject({\n      status: 'invalid',\n      layout: 'user-local',\n      message: 'Native Runtime path must be a real directory',\n    });\n  })",
+    "classification": "unchanged-business",
+    "newDeclaration": null,
+    "notes": ""
+  },
+  {
+    "oldTitle": "reports linked legacy Runtime as invalid without opening the target",
+    "line": 169,
+    "originalBody": "it('reports linked legacy Runtime as invalid without opening the target', async () => {\n    const paths = await nativeProjectPaths(projectRoot, 'docs');\n    const legacy = nativeLegacyChangeRuntimeDir(paths, 'linked-legacy');\n    await fs.mkdir(path.dirname(legacy), { recursive: true });\n    await fs.symlink(outside, legacy, process.platform === 'win32' ? 'junction' : 'dir');\n    await expect(inspectNativeRuntimeStorage(paths, 'linked-legacy')).resolves.toMatchObject({\n      status: 'invalid',\n      layout: 'legacy',\n    });\n    expect(() => nativeChangeRuntimeDir(paths, 'linked-legacy')).toThrow('requires migration');\n  })",
+    "classification": "unchanged-business",
+    "newDeclaration": null,
+    "notes": ""
+  },
+  {
+    "oldTitle": "migrates change-local evidence before returning paths and fences the old writer",
+    "line": 181,
+    "originalBody": "it('migrates change-local evidence before returning paths and fences the old writer', async () => {\n    const legacy = path.join(projectRoot, 'docs/comet/changes/migrate-me/runtime');\n    await fs.mkdir(path.join(legacy, 'evidence'), { recursive: true });\n    await fs.writeFile(path.join(legacy, 'evidence/receipt.json'), '{\"preserved\":true}');\n    const paths = await nativeProjectPaths(projectRoot, 'docs');\n    const runtime = nativeChangeRuntimeDir(paths, 'migrate-me');\n    expect(runtime).toBe(nativePreferredChangeRuntimeDir(paths, 'migrate-me'));\n    expect(await fs.readFile(path.join(runtime, 'evidence/receipt.json'), 'utf8')).toBe(\n      '{\"preserved\":true}',\n    );\n    expect(await isWorkspaceRuntimeMigrationFence(legacy, runtime)).toBe(true);\n    expect((await inspectNativeRuntimeStorage(paths, 'migrate-me')).layout).toBe('user-local');\n    await expect(fs.mkdir(legacy, { recursive: true })).rejects.toThrow();\n    expect((await nativeProjectPaths(projectRoot, 'docs')).runtimeDir).toBe(paths.runtimeDir);\n  })",
+    "classification": "mixed-retired-implicit-layout-and-preserved-read-only-business-boundary",
+    "newDeclaration": "it('leaves old change-local check evidence untouched during path resolution',async()=>{\n const legacy=path.join(projectRoot,'docs/comet/changes/migrate-me/runtime'),record=path.join(legacy,'evidence/receipt.json');await fs.mkdir(path.dirname(record),{recursive:true});await fs.writeFile(record,'{\"preserved\":true}');\n const paths=await nativeProjectPaths(projectRoot,'docs');expect(nativeChangeRuntimeDir(paths,'migrate-me')).toBe(nativePreferredChangeRuntimeDir(paths,'migrate-me'));\n expect(await fs.readFile(record,'utf8')).toBe('{\"preserved\":true}');expect(await fs.readdir(legacy)).toEqual(['evidence']);expect(await isWorkspaceRuntimeMigrationFence(legacy)).toBe(false);\n expect(await inspectNativeRuntimeStorage(paths,'migrate-me')).toMatchObject({status:'available',layout:'legacy',path:legacy});await expect(fs.stat(nativePreferredChangeRuntimeDir(paths,'migrate-me'))).rejects.toMatchObject({code:'ENOENT'});\n expect((await nativeProjectPaths(projectRoot,'docs')).runtimeDir).toBe(paths.runtimeDir);\n})",
+    "notes": "Arbitrary check/evidence receipt copying and old-writer sealing retired; original bytes/diagnostic visibility preserved. Not actual Archive receipt."
+  },
+  {
+    "oldTitle": "rescans legacy directories created after a previous successful path resolution",
+    "line": 197,
+    "originalBody": "it('rescans legacy directories created after a previous successful path resolution', async () => {\n    const initial = await nativeProjectPaths(projectRoot, 'docs');\n    const legacy = nativeLegacyChangeRuntimeDir(initial, 'late-runtime');\n    await fs.mkdir(legacy, { recursive: true });\n    await fs.writeFile(path.join(legacy, 'trajectory.jsonl'), '{\"type\":\"history-preserved\"}\\n');\n\n    const refreshed = await nativeProjectPaths(projectRoot, 'docs');\n    const runtime = nativeChangeRuntimeDir(refreshed, 'late-runtime');\n    expect(refreshed.workspaceRuntimeRoot).toBe(initial.workspaceRuntimeRoot);\n    expect(await fs.readFile(path.join(runtime, 'trajectory.jsonl'), 'utf8')).toBe(\n      '{\"type\":\"history-preserved\"}\\n',\n    );\n    expect(await isWorkspaceRuntimeMigrationFence(legacy, runtime)).toBe(true);\n    await expect(fs.mkdir(legacy, { recursive: true })).rejects.toThrow();\n  })",
+    "classification": "mixed-retired-implicit-layout-and-preserved-read-only-business-boundary",
+    "newDeclaration": "it('reports late legacy business history without moving it during path resolution',async()=>{\n const initial=await nativeProjectPaths(projectRoot,'docs'),legacy=nativeLegacyChangeRuntimeDir(initial,'late-runtime'),history='{\"type\":\"history-preserved\"}\\n';await fs.mkdir(legacy,{recursive:true});await fs.writeFile(path.join(legacy,'trajectory.jsonl'),history);\n const refreshed=await nativeProjectPaths(projectRoot,'docs');expect(refreshed.workspaceRuntimeRoot).toBe(initial.workspaceRuntimeRoot);expect(await fs.readFile(path.join(legacy,'trajectory.jsonl'),'utf8')).toBe(history);expect(await fs.readdir(legacy)).toEqual(['trajectory.jsonl']);expect(await isWorkspaceRuntimeMigrationFence(legacy)).toBe(false);\n expect(await inspectNativeRuntimeStorage(refreshed,'late-runtime')).toMatchObject({status:'available',layout:'legacy',path:legacy});await expect(fs.stat(nativeChangeRuntimeDir(refreshed,'late-runtime'))).rejects.toMatchObject({code:'ENOENT'});\n})",
+    "notes": "Opaque history is preserved/read-only here. Actual complete valid history/WAL import is covered by explicit Doctor published transition tests, not by relabeling this synthetic JSON as a real Run."
+  },
+  {
+    "oldTitle": "retains legacy execution evidence when migration cannot prove it stopped",
+    "line": 213,
+    "originalBody": "it('retains legacy execution evidence when migration cannot prove it stopped', async () => {\n    const legacy = path.join(projectRoot, 'docs/comet/changes/still-running/runtime');\n    await fs.mkdir(legacy, { recursive: true });\n    const evidence = JSON.stringify({\n      actions: [{ status: 'running', claim: { token: 'fixture' } }],\n    });\n    await fs.writeFile(path.join(legacy, 'state.json'), evidence);\n    await expect(nativeProjectPaths(projectRoot, 'docs')).rejects.toThrow();\n    expect(await fs.readFile(path.join(legacy, 'state.json'), 'utf8')).toBe(evidence);\n    await expect(\n      fs.stat(\n        path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'native/changes/still-running'),\n      ),\n    ).rejects.toMatchObject({ code: 'ENOENT' });\n  })",
+    "classification": "mixed-retired-implicit-layout-and-preserved-read-only-business-boundary",
+    "newDeclaration": "it('preserves old execution-looking bytes without running a process check during path resolution',async()=>{\n const legacy=path.join(projectRoot,'docs/comet/changes/still-running/runtime');await fs.mkdir(legacy,{recursive:true});const evidence=JSON.stringify({actions:[{status:'running',claim:{token:'fixture'}}]});await fs.writeFile(path.join(legacy,'state.json'),evidence);\n const paths=await nativeProjectPaths(projectRoot,'docs');expect(await fs.readFile(path.join(legacy,'state.json'),'utf8')).toBe(evidence);expect(await fs.readdir(legacy)).toEqual(['state.json']);expect(await inspectNativeRuntimeStorage(paths,'still-running')).toMatchObject({status:'available',layout:'legacy'});\n await expect(fs.stat(path.join(resolveWorkspaceRuntimeRootSync(projectRoot),'native/changes/still-running'))).rejects.toMatchObject({code:'ENOENT'});\n})",
+    "notes": "Old process-quiescence refusal retired; execution-looking opaque bytes remain untouched and no current business record is fabricated."
+  },
+  {
+    "oldTitle": "does not follow a copied workspace fence when reconstructing a portable checkout",
+    "line": 229,
+    "originalBody": "it('does not follow a copied workspace fence when reconstructing a portable checkout', async () => {\n    const legacy = path.join(projectRoot, 'docs/comet/changes/copied-change/runtime');\n    await fs.mkdir(legacy, { recursive: true });\n    await fs.writeFile(path.join(legacy, 'source-evidence.json'), '{}');\n    const source = await nativeProjectPaths(projectRoot, 'docs');\n    await fs.cp(path.join(projectRoot, 'docs'), path.join(outside, 'docs'), { recursive: true });\n    const copy = await nativeProjectPaths(outside, 'docs');\n    const target = nativeChangeRuntimeDir(copy, 'copied-change');\n    expect(target).not.toBe(nativeChangeRuntimeDir(source, 'copied-change'));\n    await expect(fs.stat(target)).rejects.toMatchObject({ code: 'ENOENT' });\n    expect((await inspectNativeRuntimeStorage(copy, 'copied-change')).status).toBe('missing');\n  })",
+    "classification": "mixed-retired-implicit-layout-and-preserved-read-only-business-boundary",
+    "newDeclaration": "it('does not follow a copied legacy fence when resolving a portable checkout',async()=>{\n const source=await nativeProjectPaths(projectRoot,'docs'),original=nativeChangeRuntimeDir(source,'copied-change'),legacy=nativeLegacyChangeRuntimeDir(source,'copied-change');await fs.mkdir(original,{recursive:true});await fs.writeFile(path.join(original,'source-evidence.json'),'original-data');await fs.mkdir(path.dirname(legacy),{recursive:true});\n const marker=JSON.stringify({schema:'comet.workspace-runtime-migration.v1',workspaceId:'old-workspace',source:legacy,target:original,kind:'directory'});await fs.writeFile(legacy,marker);await fs.cp(path.join(projectRoot,'docs'),path.join(outside,'docs'),{recursive:true});\n const copy=await nativeProjectPaths(outside,'docs'),target=nativeChangeRuntimeDir(copy,'copied-change');expect(target).not.toBe(original);await expect(fs.stat(target)).rejects.toMatchObject({code:'ENOENT'});expect((await inspectNativeRuntimeStorage(copy,'copied-change')).status).toBe('missing');\n expect(await fs.readFile(path.join(original,'source-evidence.json'),'utf8')).toBe('original-data');expect(await fs.readFile(nativeLegacyChangeRuntimeDir(copy,'copied-change'),'utf8')).toBe(marker);\n})",
+    "notes": "Old implicit fence publication retired. New test supplies an inert legacy marker without claiming it is a published052 Run/approval. Namespace isolation, no foreign data recovery and source bytes are asserted."
+  },
+  {
+    "oldTitle": "isolates equal change names in separate workspaces and rejects linked runtime roots",
+    "line": 242,
+    "originalBody": "it('isolates equal change names in separate workspaces and rejects linked runtime roots', async () => {\n    const first = await nativeProjectPaths(projectRoot, 'docs');\n    const second = await nativeProjectPaths(outside, 'docs');\n    expect(first.workspaceRuntimeRoot).not.toBe(second.workspaceRuntimeRoot);\n    expect(nativePreferredChangeRuntimeDir(first, 'same-name')).not.toBe(\n      nativePreferredChangeRuntimeDir(second, 'same-name'),\n    );\n    await fs.symlink(outside, first.runtimeDir, process.platform === 'win32' ? 'junction' : 'dir');\n    await expect(nativeProjectPaths(projectRoot, 'docs')).rejects.toThrow();\n  })",
+    "classification": "unchanged-business",
+    "newDeclaration": null,
+    "notes": "Opaque history is preserved/read-only here. Actual complete valid history/WAL import is covered by explicit Doctor published transition tests, not by relabeling this synthetic JSON as a real Run."
+  },
+  {
+    "oldTitle": "keeps Runtime references and storage roots contained",
+    "line": 253,
+    "originalBody": "it('keeps Runtime references and storage roots contained', async () => {\n    const paths = await nativeProjectPaths(projectRoot, 'docs');\n\n    expect(nativeRuntimeRefFile(paths.runtimeDir, 'runtime/changes/example/state.json')).toBe(\n      path.join(paths.runtimeDir, 'changes', 'example', 'state.json'),\n    );\n    expect(() => nativeRuntimeRefFile(paths.runtimeDir, '../outside.json')).toThrow(\n      'Invalid Native Runtime ref',\n    );\n    expect(nativeStorageRoot(paths, paths.runtimeDir)).toBe(paths.runtimeDir);\n    expect(nativeStorageRoot(paths, paths.nativeRoot)).toBe(paths.nativeRoot);\n    expect(() => nativeStorageRoot(paths, projectRoot)).toThrow(\n      'outside Native document and Runtime roots',\n    );\n  })",
+    "classification": "unchanged-business",
+    "newDeclaration": null,
+    "notes": ""
+  }
+]

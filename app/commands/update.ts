@@ -1257,6 +1257,16 @@ async function updateSingleProject(
       })
     : null;
   const projectConfigDocument = projectConfigSnapshot?.document ?? null;
+  if (includesProjectScope && projectConfigDocument) {
+    const { importLegacyWorkspaceRuntimeData } =
+      await import('../../domains/workflow-contract/legacy-runtime-import.js');
+    const { importClassicLegacyRuntimeData } =
+      await import('../../domains/comet-classic/classic-legacy-runtime-import.js');
+    const result = await importLegacyWorkspaceRuntimeData(projectPath);
+    await importClassicLegacyRuntimeData(projectPath);
+    if (result.imported.length)
+      log(`  Imported ${result.imported.length} legacy business records; source files preserved.`);
+  }
   const projectConfig = projectConfigDocument?.config ?? null;
   const configuredWorkflows =
     projectConfig?.workflows ?? (projectConfig ? [projectConfig.default_workflow] : null);

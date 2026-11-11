@@ -1,0 +1,38 @@
+{
+  "cases": [
+    {
+      "id": "native-invalid-completed-check-recovery",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/545-completed-invalid/registry-append/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-published-build-frontier.test.ts",
+          "namePattern": "^(?:continues published 0\\.5\\.2 Build checks pending at the original Builder without a stop receipt or fabricated candidate|continues published 0\\.5\\.2 Build checks claimed at the original Builder without a stop receipt or fabricated candidate|continues published 0\\.5\\.2 Build checks completed-invalid at the original Builder without a stop receipt or fabricated candidate)$",
+          "requiredNames": [
+            "continues published 0.5.2 Build checks pending at the original Builder without a stop receipt or fabricated candidate",
+            "continues published 0.5.2 Build checks claimed at the original Builder without a stop receipt or fabricated candidate",
+            "continues published 0.5.2 Build checks completed-invalid at the original Builder without a stop receipt or fabricated candidate"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-invalid-completed-check-guidance",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/545-completed-invalid/registry-append/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-published-build-frontier.test.ts",
+          "namePattern": "^(?:continues published 0\\.5\\.2 Build checks pending at the original Builder without a stop receipt or fabricated candidate|continues published 0\\.5\\.2 Build checks claimed at the original Builder without a stop receipt or fabricated candidate|continues published 0\\.5\\.2 Build checks completed-invalid at the original Builder without a stop receipt or fabricated candidate)$",
+          "requiredNames": [
+            "continues published 0.5.2 Build checks pending at the original Builder without a stop receipt or fabricated candidate",
+            "continues published 0.5.2 Build checks claimed at the original Builder without a stop receipt or fabricated candidate",
+            "continues published 0.5.2 Build checks completed-invalid at the original Builder without a stop receipt or fabricated candidate"
+          ]
+        }
+      ]
+    }
+  ]
+}

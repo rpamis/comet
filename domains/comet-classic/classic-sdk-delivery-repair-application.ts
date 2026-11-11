@@ -8,8 +8,6 @@ import {
 } from '../engine/runtime.js';
 import { isDeepStrictEqual } from 'node:util';
 import type { ClassicWorkflowApplication } from './classic-sdk-application.js';
-import { assertClassicSdkCheckReceipt } from './classic-sdk-check-record.js';
-import { createClassicSdkCheckExecutor } from './classic-sdk-check.js';
 import {
   classicDeliveryRepairForAction,
   classicDeliveryRepairInputs,
@@ -21,9 +19,10 @@ import {
   assertClassicDeliveryRepairCurrent,
   captureClassicDeliveryRepair,
 } from './classic-sdk-delivery-repair.js';
-
 export function withClassicDeliveryRepair<
-  T extends ClassicWorkflowApplication & { commandValidators: RuntimeCommandValidator[] },
+  T extends ClassicWorkflowApplication & {
+    commandValidators: RuntimeCommandValidator[];
+  },
 >(base: T, profile: string, sourceRun?: Readonly<WorkflowRun>) {
   const checkStep = `${profile}.delivery.check`,
     confirmStep = `${profile}.delivery.confirm`;
@@ -80,7 +79,7 @@ export function withClassicDeliveryRepair<
           accepted: false,
           reason: 'Classic delivery repair check has the wrong execution owner',
         };
-      if (run.workflow.version === '2') {
+      {
         const repair = classicDeliveryRepairForAction(action);
         if (
           outcome.status !== 'succeeded' ||
@@ -93,11 +92,6 @@ export function withClassicDeliveryRepair<
             accepted: false,
             reason: 'Classic delivery repair reports differ from the submitted reports',
           };
-      } else {
-        await assertClassicSdkCheckReceipt(context.projectRoot, run, action, {
-          status: outcome.status,
-          output: outcome.output,
-        });
       }
       if (outcome.status === 'succeeded') {
         await assertClassicDeliveryRepairCurrent(
@@ -124,13 +118,11 @@ export function withClassicDeliveryRepair<
         classicDeliveryRepairForAction(action),
         'prepare',
       );
-      if (run.workflow.version !== '2')
-        await createClassicSdkCheckExecutor(context.projectRoot).preflight!(action, context, run);
     },
     async execute(action, context, run) {
       if (!context?.projectRoot || !run)
         throw new Error('Classic delivery repair requires its project');
-      if (run.workflow.version === '2') {
+      {
         const repair = classicDeliveryRepairForAction(action);
         return {
           status: 'succeeded' as const,
@@ -140,7 +132,6 @@ export function withClassicDeliveryRepair<
           },
         };
       }
-      return createClassicSdkCheckExecutor(context.projectRoot).execute(action, context, run);
     },
   };
   return {

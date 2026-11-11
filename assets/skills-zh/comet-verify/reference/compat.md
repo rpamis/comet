@@ -98,24 +98,13 @@ Verify 负责整个 change 的唯一最终集成代码审查。Build 只保留�
 
 1. tasks.md 全部任务已完成 `[x]`
 2. 改动文件与 tasks.md 描述一致（`git diff --stat` / `git diff --cached --stat` / `git diff --stat <base-ref>...HEAD` 对照 tasks 内容）；中性文档集内的纯文档编辑在对照结果旁说明即可，不作为实现不一致处理
-3. 编译通过（复用 Runtime 判定仍有效的 Build 证据；失效时重跑）
+3. 编译通过（由 Agent 核对已有 Build 结果是否适用；失效时补跑）
 4. 相关测试通过
 5. 无明显安全问题（无硬编码密钥、无新增 unsafe 操作）
 6. 最终集成代码审查已通过，或非 full autonomous 的 `review_mode: off` 跳过原因已记录；full autonomous 不允许跳过独立审查
 7. 核心成功场景、关键失败和边界场景，以及本次涉及的高风险功能要求均已验证通过；小改动也不可省略
 
-复用构建时，用 Build 相同的 cwd、程序和参数再次调用 `comet check run <change-name> build --local -- <program> [args...]`；Runtime 返回 `reused=true` 才算复用，输入或环境已变化时会真正重跑。证据的 cwd 必须等于之后调用 guard 的目录（通常是项目根）；子目录构建用 `npm --prefix <subdir> run build` 这类从根可执行的形式记录，或在 `.comet/check-policy.json`（v2）中声明该命令的 cwd 后用 `--cwd <subdir>` 记录，否则守卫会拒绝并说明原因。不得仅凭旧对话中的“构建通过”跳过检查。证据按“输入面”判定：默认输入是工作区文件内容，commit、暂存、勾选任务和环境变量变化默认不作废证据；guard 报告证据失效时会给出原因和变化文件清单，按清单处理即可。Build 阶段留下的 `--incremental` 增量证据可用于预览确认，`--apply` 前必须用完整命令重新取得 full 证据。
-
-light/full 均必须通过 Runtime 执行真实验证命令。先记录将要写入的报告路径，避免将报告的修改也算作验证输入的变化；测试和验收检查完成后再填写结果：
-
-```bash
-comet state set <change-name> verification_report docs/superpowers/reports/YYYY-MM-DD-<change-name>-verify.md
-comet check run <change-name> verify --local -- <program> [args...]
-```
-
-只有确定性的本地检查才使用 `--local`。外部服务检查省略该参数，其结果只能用于一次成功的阶段转换：Guard 预览不会用掉该结果，`--apply` 会重新核对，并在转换成功后将其标记为不可再次使用。丢失上下文后恢复任务，或输入、环境发生变化时，仍由 Runtime 判断哪些检查需要重跑。
-
-Windows 普通 npm/pnpm shim 由平台适配器处理，包含 shell 元字符的 batch 参数会被拒绝。多条必要命令应通过项目已有验证入口统一执行；任何一条失败，入口都必须返回失败，不能用最后一条命令成功掩盖之前的失败。手工 `record-check` 只保存声明，不能据此自动推进阶段，还会遮蔽之前有效的 Runtime 证据并要求重新 `comet check run`。不同检查要求的证据彼此独立；verify 与 build 的检查结果彼此独立，不能互相替代。只有 argv、cwd、输入、环境和语义完全相同的本地 full 命令才能由 Runtime 在 Build 与 Verify 之间复用。`COMET_SKIP_BUILD=1` 不能作为可核实的检查记录。需要查看日志时，按 `logRef` 读取。首次实际执行就通过 `comet check run` 完成；失败时修复后使用 `comet check rerun` 精确重试，成功后立即运行 guard，中间不插入任何 `comet state` 写入；提交放在 guard 通过之后。
+按[普通命令与检查](../../comet/reference/platform-execution.md)使用平台工具执行普通命令、核对原任务与副作用、判断结果是否适用，并提交实际报告。Comet 不重复执行检查，不维护普通命令的内容快照、进程监管或恢复机制。 light/full 均覆盖各自验收要求。Build 结果仍适用时直接引用，不凭旧对话中的“通过”跳过。失败、超时、未执行和未知结果分别说明。报告路径用 `comet state set <change-name> verification_report <report-ref>` 登记。
 
 集成代码审查的输入限定为本次改动 diff、tasks.md 和必要测试结果；它不替代 spec 覆盖率、Design Doc 一致性或漂移检查。`review_mode: off` 只跳过自动 code review，不跳过构建、测试、安全检查或异常调试协议。
 
@@ -165,7 +154,7 @@ comet state transition <change-name> verify-fail
 **Spec 漂移处理**（用户决策点）：
 
 - 若检查项 6 发现矛盾（delta spec 有内容但 design doc 未体现），**必须以单选题形式暂停、展示处理方式并等待用户选择**，不得自动选择。选项：
-  - 选项 A：在 design doc 追加 "Implementation Divergence" 节记录偏差原因。选项 A 属于 verify 阶段允许产物；写入后不得因该 design doc 变更再次触发 Step 1b dirty-worktree 决策。design doc 属于检查输入（非中性文档），写入后必须重跑 `comet check run <change-name> verify --local -- <命令>`，再运行 `comet guard <change-name> verify --apply`
+  - 选项 A：在 design doc 追加 "Implementation Divergence" 节记录偏差原因。选项 A 属于 verify 阶段允许产物；写入后不得因该 design doc 变更再次触发 Step 1b dirty-worktree 决策。由 Agent 判断该文档变化是否影响既有结果，只补必要检查、记录实际结果，再运行 `comet guard <change-name> verify --apply`
   - 选项 B：用户选择 B 后，运行 `comet state transition <change-name> verify-fail`，然后调用 `/comet-build`；由 `/comet-build` 的 Spec 增量更新规则加载 Superpowers `brainstorming` 更新 Design Doc + delta spec
   - 选项 C：确认偏差可接受，继续验证（归档时 design doc 将标记为 `superseded-by-main-spec`）
 

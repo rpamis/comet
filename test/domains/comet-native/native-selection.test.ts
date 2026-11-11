@@ -1,9 +1,10 @@
+import '../../helpers/isolated-agent-home.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { createNativeChange } from '../../../domains/comet-native/native-change.js';
+import { createNativePortableChange } from '../../../domains/comet-native/native-portable-runtime.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import {
   clearNativeSelection,
@@ -30,11 +31,10 @@ describe('Native current change selection', () => {
   });
 
   it('stores the Native owner in the shared project selection', async () => {
-    await createNativeChange({
+    await createNativePortableChange({
       paths,
       name: 'selected-change',
       language: 'en',
-      verificationProtocol: 'legacy-v1',
     });
     await selectNativeChange(paths, 'selected-change');
 
@@ -59,22 +59,31 @@ describe('Native current change selection', () => {
     });
   });
 
-  it('refuses a runtime junction before writing the shared selection', async () => {
-    await createNativeChange({
+  it('refuses a shared selection directory junction before writing outside the project', async () => {
+    await createNativePortableChange({
       paths,
       name: 'selected-change',
       language: 'en',
-      verificationProtocol: 'legacy-v1',
     });
-    await fs.rm(paths.runtimeDir, { recursive: true, force: true });
-    await fs.symlink(outside, paths.runtimeDir, process.platform === 'win32' ? 'junction' : 'dir');
+    const stateFile = path.join(paths.changesDir, 'selected-change', 'comet-state.yaml');
+    const stateBefore = await fs.readFile(stateFile, 'utf8');
+    const outsideBefore = await fs.readdir(outside);
+    const selectionDirectory = path.dirname(nativeSelectionFile(paths));
+    await fs.rm(selectionDirectory, { recursive: true, force: true });
+    await fs.symlink(
+      outside,
+      selectionDirectory,
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
 
     await expect(selectNativeChange(paths, 'selected-change')).rejects.toThrow(
-      /must not be a symbolic link|resolves outside the Native root/u,
+      /symbolic link|junction|resolves outside|real directory/u,
     );
     await expect(fs.access(nativeSelectionFile(paths))).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(fs.access(path.join(outside, 'current-change.json'))).rejects.toMatchObject({
       code: 'ENOENT',
     });
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(stateBefore);
+    expect(await fs.readdir(outside)).toEqual(outsideBefore);
   });
 });

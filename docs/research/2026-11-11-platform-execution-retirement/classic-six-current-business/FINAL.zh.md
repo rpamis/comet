@@ -1,0 +1,9 @@
+# 最后执行结果
+
+公开CLI等待项已执行：真实跨进程固定Classic包恢复1/0，原User批准/claim/session/unknown/只读不写/具体恢复argv/坏portable拒绝/修改Skill拒绝/原claim续交均保留。对同一个partial真实RED原根，最新built公开CLI返回70并明确interrupted checkpoint不匹配，原YAML与底层partial record全等，未把Open推进Build。两结果不是mock/Temp source代替，详见final-public-cli-evidence.json与原始报告。
+
+Current组合25/0仍是Temp两source修正proxy证据；源码薄patch=Temp根composition-current-checkpoints.patch，必须由Root合入再build及正式定向跑。该patch保Root新deliveryPaths可选schema桥，没有恢复旧checks。
+
+旧默认checkCommands计划已从新夹具input删除；实际平台report/原Action输入绑定/实际失败阻止验收/真实Archive批准不可替换四目标最终4/0。没有把固定命令输入继续当无效新流程携带。原六档60声明/102例完整归档；保80当前例，非整档退休。
+
+metadata operations41（current36/historical5）均expectedEntry CAS，只追加原节点；共享classic-sdk-stale-workspace-read-identity由native_step合并其runtime-home与本包最终两只读新标题，已从41剔除。其他历史excluded与全部原字段/chain/无关selectors不动。四blob已固定，不重写旧证据摘要。

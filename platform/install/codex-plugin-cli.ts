@@ -15,7 +15,16 @@ export async function ensureCodexPluginCli(options: {
   pluginRoot: string;
   env?: NodeJS.ProcessEnv;
 }): Promise<{ status: 'installed' | 'ready'; version: string; entry: string }> {
-  const env = { ...process.env, ...options.env, COMET_NO_HINTS: '1' };
+  const env = { ...process.env };
+  for (const [key, value] of Object.entries(options.env ?? {})) {
+    if (process.platform === 'win32') {
+      for (const existing of Object.keys(env)) {
+        if (existing.toLowerCase() === key.toLowerCase()) delete env[existing];
+      }
+    }
+    env[key] = value;
+  }
+  env.COMET_NO_HINTS = '1';
   const cwd = path.resolve(options.pluginRoot);
   const pkg = JSON.parse(await fs.readFile(path.join(cwd, 'plugin.json'), 'utf8'));
   const required = parseSemver(pkg.version);

@@ -10,16 +10,12 @@ import {
   validateAndScopeNativeVerifierFinalResult,
   type NativeVerifierAcceptanceResult,
 } from './native-verifier-protocol.js';
-
 const COMMIT_PATTERN = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
-
 export function assertCommit(value: string, label: string): void {
   if (!COMMIT_PATTERN.test(value)) throw new Error(`${label} must be a Git commit`);
 }
-
 export const NATIVE_SUPERVISOR_SCHEMA = 'comet.native.supervisor.v2' as const;
 export const NATIVE_MAX_SUPERVISOR_BUILDER_FAILURES = 3;
-
 export type NativeSupervisorChildStatus =
   | 'pending'
   | 'ready'
@@ -29,7 +25,6 @@ export type NativeSupervisorChildStatus =
   | 'archived'
   | 'blocked'
   | 'needs-reverify';
-
 export interface NativeSupervisorVerificationEvidence {
   summary: string;
   checks: string[];
@@ -37,59 +32,26 @@ export interface NativeSupervisorVerificationEvidence {
   receiptRef?: string;
   execution?: NativeSupervisorTask;
 }
-
 export interface NativeSupervisorIntegrationCheck {
   name: string;
   status: 'passed' | 'failed' | 'incomplete';
   reason?: string | null;
   receiptRef?: string;
 }
-
-export interface NativeSupervisorCheckExecutionState {
-  id: string;
-  name: string;
-  status: 'planned' | 'running' | 'passed' | 'failed' | 'interrupted';
-  repeatable: boolean;
-  executionCount: number;
-  argvDisplay: string[];
-  cwdRef: string;
-  exitCode: number | null;
-  signal: NodeJS.Signals | null;
-  timedOut: boolean;
-  durationMs: number;
-  startedAt: string | null;
-  completedAt: string | null;
-  logRef: string | null;
-}
-
 export interface NativeSupervisorTask {
   role: 'builder' | 'verifier';
   child: string;
   projectRoot: string;
   baseCommit: string;
   runId: string;
-  acceptance?: Array<{ id: string; source: string; text: string }>;
+  acceptance?: Array<{
+    id: string;
+    source: string;
+    text: string;
+  }>;
   contractRef?: string;
   verificationBoundary?: 'child-scope-parent-reverifies-all';
-  checksReason?: 'not-run' | 'running' | 'completed';
-  checkExecution?: {
-    operationId: string;
-    key: string;
-    status: 'running' | 'completed' | 'interrupted';
-    activeProcess?:
-      | null
-      | { status: 'starting'; checkId: string }
-      | { status: 'running'; checkId: string; instanceId?: string };
-    startedAt: string;
-    expiresAt?: string;
-    receiptRef?: string;
-    machineId?: string;
-    inputFingerprint?: string;
-    plans?: import('./native-check-executor.js').NativeCheckPlan[];
-    checkStates?: NativeSupervisorCheckExecutionState[];
-  };
 }
-
 export interface NativeSupervisorEvent {
   kind:
     | 'task-dispatched'
@@ -108,7 +70,6 @@ export interface NativeSupervisorEvent {
   summary: string;
   at: string;
 }
-
 export interface NativeSupervisorChildState {
   name: string;
   summary: string | null;
@@ -124,12 +85,15 @@ export interface NativeSupervisorChildState {
   /** Last known Child worktree; retained after a task completes for recovery/status. */
   projectRoot?: string | null;
   task: NativeSupervisorTask | null;
-  acceptanceScope?: Array<{ id: string; source: string; text: string }>;
+  acceptanceScope?: Array<{
+    id: string;
+    source: string;
+    text: string;
+  }>;
   contractRef?: string;
   /** Consecutive Builder failures for this child since its last candidate. */
   builderFailureCount?: number;
 }
-
 export interface NativeSupervisorState {
   schema: typeof NATIVE_SUPERVISOR_SCHEMA;
   stateVersion: number;
@@ -140,13 +104,6 @@ export interface NativeSupervisorState {
     targetBranch: string;
     targetCommit: string;
     headCommit: string;
-    checkExecution?: NonNullable<NativeSupervisorTask['checkExecution']> & {
-      child: string;
-      candidateCommit: string;
-      integrationCommit: string;
-      checks?: NativeSupervisorIntegrationCheck[];
-      error?: string;
-    };
   };
   children: NativeSupervisorChildState[];
   history: NativeSupervisorEvent[];
@@ -162,11 +119,9 @@ export interface NativeSupervisorState {
     };
   };
 }
-
 export function cloneState(state: NativeSupervisorState): NativeSupervisorState {
   return structuredClone(state);
 }
-
 export function recordEvent(
   state: NativeSupervisorState,
   event: Omit<NativeSupervisorEvent, 'at'>,
@@ -174,7 +129,6 @@ export function recordEvent(
   state.history.push({ ...event, at: new Date().toISOString() });
   if (state.history.length > 256) state.history.splice(0, state.history.length - 256);
 }
-
 export function assertChildDependenciesIntegrated(
   state: NativeSupervisorState,
   child: NativeSupervisorChildState,
@@ -189,7 +143,6 @@ export function assertChildDependenciesIntegrated(
     );
   }
 }
-
 /**
  * Single source of truth for the dependency gate: whether every declared
  * dependency of a child is integrated. Both the state derivation after a
@@ -205,7 +158,6 @@ export function supervisorDependenciesIntegrated(
   const statuses = new Map(children.map(({ name, status }) => [name, status]));
   return dependsOn.every((dependency) => statuses.get(dependency) === 'integrated');
 }
-
 export function stableSupervisorIntegrationOrder(
   state: NativeSupervisorState,
 ): NativeSupervisorChildState[] {
@@ -225,7 +177,6 @@ export function stableSupervisorIntegrationOrder(
   }
   return ordered;
 }
-
 export function createNativeSupervisorState(options: {
   parent: string;
   targetBranch: string;
@@ -278,7 +229,6 @@ export function createNativeSupervisorState(options: {
     finalVerification: { status: 'pending', summary: null },
   };
 }
-
 export function supervisorAcceptanceScope(contract: NativeChildrenContract, name: string) {
   const child = contract.children.find((entry) => entry.name === name)!;
   return child.covers.length > 0
@@ -289,7 +239,6 @@ export function supervisorAcceptanceScope(contract: NativeChildrenContract, name
       }))
     : [{ id: `child:${name}`, source: 'children.yaml', text: child.summary ?? name }];
 }
-
 export function reconcileNativeSupervisorState(options: {
   state: NativeSupervisorState;
   contract: NativeChildrenContract;
@@ -359,7 +308,6 @@ export function reconcileNativeSupervisorState(options: {
   next.stateVersion += 1;
   return next;
 }
-
 export function markNativeSupervisorChildVerified(
   state: NativeSupervisorState,
   options: {
@@ -408,17 +356,14 @@ export function markNativeSupervisorChildVerified(
   next.stateVersion += 1;
   return next;
 }
-
 /** Build return instructions from current task facts, including the latest receipt. */
+/** 返回原业务任务和结果模板；检查由接收任务的 Agent 平台执行。 */
 export function projectNativeSupervisorTask(
   task: NativeSupervisorTask,
   parent: string,
   controlProjectRoot: string,
 ) {
   const identity = { child: task.child, runId: task.runId };
-  const retryCheckIds = (task.checkExecution?.checkStates ?? [])
-    .filter(({ status }) => status === 'interrupted')
-    .map(({ id }) => id);
   const templates =
     task.role === 'builder'
       ? [
@@ -427,35 +372,17 @@ export function projectNativeSupervisorTask(
         ]
       : [
           {
-            kind: 'supervisor-checks',
-            ...identity,
-            checks: [
-              {
-                id: '<check-id>',
-                name: '<check-name>',
-                executable: '<executable>',
-                argv: [],
-                cwdRef: '.',
-                timeoutMs: 120000,
-                repeatable: true,
-              },
-            ],
-            materials: [],
-            ...(retryCheckIds.length > 0 ? { retry_check_ids: retryCheckIds } : {}),
-          },
-          {
             kind: 'supervisor-verifier-result',
             ...identity,
             verdict: nativeEnumPlaceholder(NATIVE_VERIFIER_VERDICTS),
             evidence: {
-              summary: '<verification-summary>',
-              checks: [],
+              summary: '<actual-verification-summary>',
+              checks: ['<actual-check-and-result>'],
               acceptance: (task.acceptance ?? []).map(({ id }) => ({
                 id,
                 result: nativeEnumPlaceholder(NATIVE_VERIFIER_ACCEPTANCE_RESULTS),
-                reason: '<evidence>',
+                reason: '<actual-evidence>',
               })),
-              receiptRef: task.checkExecution?.receiptRef ?? null,
             },
           },
         ];
@@ -468,6 +395,8 @@ export function projectNativeSupervisorTask(
       language: 'en',
       projectRoot: task.projectRoot,
     }),
+    instruction:
+      'Child 只在自己的 worktree 使用 Agent 平台工具完成任务和必要检查，将实际结果按模板 JSON 返回父 Agent；父 Agent 在 controlProjectRoot 串行执行 returnAction 提交结果。平台负责超时、取消和进程清理。',
     returnAction: {
       cwd: controlProjectRoot,
       commandArgs: [
@@ -487,11 +416,13 @@ export function projectNativeSupervisorTask(
     },
   };
 }
-
 export function createNativeSupervisorTask(
   state: NativeSupervisorState,
   options: Omit<NativeSupervisorTask, 'baseCommit'>,
-): { state: NativeSupervisorState; task: NativeSupervisorTask } {
+): {
+  state: NativeSupervisorState;
+  task: NativeSupervisorTask;
+} {
   if (!options.projectRoot.trim() || !options.runId.trim()) {
     throw new Error('Native Supervisor task projectRoot and runId are required');
   }
@@ -525,7 +456,6 @@ export function createNativeSupervisorTask(
     ],
     contractRef: child.contractRef,
     verificationBoundary: 'child-scope-parent-reverifies-all',
-    checksReason: 'not-run',
   };
   child.projectRoot = options.projectRoot;
   child.task = task;
@@ -539,10 +469,12 @@ export function createNativeSupervisorTask(
   next.stateVersion += 1;
   return { state: next, task };
 }
-
 export function reconnectNativeSupervisorTask(
   state: NativeSupervisorState,
-  options: { child: string; runId: string },
+  options: {
+    child: string;
+    runId: string;
+  },
 ): NativeSupervisorTask {
   const child = state.children.find(({ name }) => name === options.child);
   if (!child?.task || child.task.runId !== options.runId) {
@@ -550,12 +482,17 @@ export function reconnectNativeSupervisorTask(
   }
   return structuredClone(child.task);
 }
-
 /** Reconnect a task and return the auditable state transition for persistence. */
 export function reconnectNativeSupervisorTaskWithState(
   state: NativeSupervisorState,
-  options: { child: string; runId: string },
-): { state: NativeSupervisorState; task: NativeSupervisorTask } {
+  options: {
+    child: string;
+    runId: string;
+  },
+): {
+  state: NativeSupervisorState;
+  task: NativeSupervisorTask;
+} {
   const task = reconnectNativeSupervisorTask(state, options);
   const next = cloneState(state);
   recordEvent(next, {
@@ -567,10 +504,13 @@ export function reconnectNativeSupervisorTaskWithState(
   next.stateVersion += 1;
   return { state: next, task };
 }
-
 export function cancelNativeSupervisorTask(
   state: NativeSupervisorState,
-  options: { child: string; runId: string; reason: string },
+  options: {
+    child: string;
+    runId: string;
+    reason: string;
+  },
 ): NativeSupervisorState {
   if (options.reason.trim().length === 0)
     throw new Error('Native Supervisor cancellation reason is required');
@@ -606,10 +546,13 @@ export function cancelNativeSupervisorTask(
   next.stateVersion += 1;
   return next;
 }
-
 export function blockNativeSupervisorTask(
   state: NativeSupervisorState,
-  options: { child: string; runId: string; reason: string },
+  options: {
+    child: string;
+    runId: string;
+    reason: string;
+  },
 ): NativeSupervisorState {
   if (options.reason.trim().length === 0)
     throw new Error('Native Supervisor blocker reason is required');
@@ -628,10 +571,13 @@ export function blockNativeSupervisorTask(
   next.stateVersion += 1;
   return next;
 }
-
 export function applyNativeSupervisorBuilderResult(
   state: NativeSupervisorState,
-  options: { child: string; runId: string; candidateCommit: string },
+  options: {
+    child: string;
+    runId: string;
+    candidateCommit: string;
+  },
 ): NativeSupervisorState {
   assertCommit(options.candidateCommit, 'Native Supervisor candidate commit');
   const next = cloneState(state);
@@ -656,7 +602,6 @@ export function applyNativeSupervisorBuilderResult(
   next.stateVersion += 1;
   return next;
 }
-
 export function applyNativeSupervisorVerifierResult(
   state: NativeSupervisorState,
   options: {
@@ -718,10 +663,12 @@ export function applyNativeSupervisorVerifierResult(
   next.stateVersion += 1;
   return next;
 }
-
 export function retryNativeSupervisorBuilder(
   state: NativeSupervisorState,
-  options: { child: string; expectedStateVersion: number },
+  options: {
+    child: string;
+    expectedStateVersion: number;
+  },
 ): NativeSupervisorState {
   if (!Number.isSafeInteger(options.expectedStateVersion) || options.expectedStateVersion < 1) {
     throw new Error('Native Supervisor Builder retry state version is invalid');
@@ -757,7 +704,6 @@ export function retryNativeSupervisorBuilder(
   next.stateVersion += 1;
   return next;
 }
-
 export function integrateNativeSupervisorChild(
   state: NativeSupervisorState,
   options: {
@@ -800,7 +746,6 @@ export function integrateNativeSupervisorChild(
   next.stateVersion += 1;
   return next;
 }
-
 export function projectNativeSupervisorChildren(
   state: NativeSupervisorState,
 ): NativeChildrenInspection {

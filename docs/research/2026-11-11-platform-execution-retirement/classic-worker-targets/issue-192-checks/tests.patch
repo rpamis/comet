@@ -1,0 +1,1234 @@
+diff --git a/test/domains/comet-classic/classic-executed-checks.test.ts b/test/domains/comet-classic/classic-executed-checks.test.ts
+index 8ef1e0e2..d17e63a0 100644
+--- a/test/domains/comet-classic/classic-executed-checks.test.ts
++++ b/test/domains/comet-classic/classic-executed-checks.test.ts
+@@ -1,39 +1,79 @@
+-import {
+-  resolveClassicRunDirectory,
+-  resolveClassicLocalTarget,
+-} from '../../../domains/comet-classic/classic-runtime-paths.js';
++import '../../helpers/isolated-agent-home.js';
++import { fixture } from '../../helpers/classic-platform-migration.js';
++import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
++
+ import { execFile, spawnSync } from 'node:child_process';
+ import { promises as fs } from 'node:fs';
+ import os from 'node:os';
+ import path from 'node:path';
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+-import * as checkSnapshot from '../../../domains/comet-classic/classic-check-snapshot.js';
+-import * as processAdapter from '../../../platform/process/spawn-command.js';
+ import {
+   runClassicCli,
+   type ClassicCommandResult,
+ } from '../../../domains/comet-classic/classic-cli.js';
+ import { withClassicCommandContext } from '../../../domains/comet-classic/classic-command-context.js';
+ import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
+-import {
+-  latestCommandCheck,
+-  recoverCommandChecks,
+-} from '../../../domains/comet-classic/classic-command-checks.js';
++
+ import { ensureClassicRuntimeRun } from '../../../domains/comet-classic/classic-runtime-run.js';
+-import { readTrajectory } from '../../../domains/comet-classic/classic-run-store.js';
+ 
+ describe('Classic executed check evidence', () => {
+   let root: string;
+-  const cli = (...args: string[]) =>
++  let platformExecutions = 0;
++  let selectedReport: { key: string; code: number; stdout: string } | undefined;
++  const runtimeCli = (...args: string[]) =>
+     withClassicCommandContext({ projectRoot: root, invocationCwd: root }, () =>
+       runClassicCli(args),
+     );
++  const cli = async (...args: string[]) => {
++    if (args[0] === 'check' && args[1] === 'run') {
++      const sep = args.indexOf('--');
++      const argv = args.slice(sep + 1);
++      const before = args.slice(0, sep);
++      const cwdFlag = before.indexOf('--cwd');
++      const cwd = cwdFlag < 0 ? '.' : before[cwdFlag + 1];
++      const key = JSON.stringify([argv, cwd]);
++      let actual = selectedReport;
++      if (!before.includes('--local') || actual?.key !== key) {
++        const timeoutFlag = before.indexOf('--timeout-ms');
++        const result = spawnSync(argv[0], argv.slice(1), {
++          cwd: path.resolve(root, cwd),
++          encoding: 'utf8',
++          timeout: timeoutFlag < 0 ? 10000 : Number(before[timeoutFlag + 1]),
++          windowsHide: true,
++        });
++        actual = { key, code: result.status ?? 1, stdout: result.stdout ?? '' };
++        platformExecutions++;
++        selectedReport = actual;
++      }
++      await ensureClassicRuntimeRun(path.join(root, 'openspec/changes/demo'));
++      const recorded = await runtimeCli(
++        'state',
++        'record-check',
++        args[2],
++        args[3],
++        '--command',
++        argv.join(' '),
++        '--exit-code',
++        String(actual.code),
++        '--cwd',
++        cwd,
++      );
++      expect(recorded.exitCode, recorded.stdout ?? recorded.stderr).toBe(0);
++      return { exitCode: actual.code, stdout: actual.stdout, stderr: '' };
++    }
++    return runtimeCli(...args);
++  };
+   const generatedCli = (...args: string[]) =>
+     new Promise<ClassicCommandResult>((resolve, reject) => {
+       execFile(
+         process.execPath,
+         [path.resolve('assets/skills/comet/scripts/comet-runtime.mjs'), ...args, '--json'],
+-        { cwd: root, encoding: 'utf8', timeout: 60_000, maxBuffer: 2 * 1024 * 1024 },
++        {
++          cwd: root,
++          encoding: 'utf8',
++          timeout: 60_000,
++          maxBuffer: 2 * 1024 * 1024,
++        },
+         (error, stdout, stderr) => {
+           if (error && (typeof error.code !== 'number' || error.killed || error.signal)) {
+             reject(error);
+@@ -51,6 +91,8 @@ describe('Classic executed check evidence', () => {
+     });
+ 
+   beforeEach(async () => {
++    platformExecutions = 0;
++    selectedReport = undefined;
+     root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-executed-'));
+     await prepareClassicLegacyProject(root);
+     expect((await cli('state', 'init', 'demo', 'hotfix', '--runtime', 'compat')).exitCode).toBe(0);
+@@ -63,50 +105,18 @@ describe('Classic executed check evidence', () => {
+ 
+   afterEach(async () => {
+     vi.restoreAllMocks();
+-    await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
++    await fs.rm(root, {
++      recursive: true,
++      force: true,
++      maxRetries: 5,
++      retryDelay: 100,
++    });
+   });
+ 
+-  it.each(['argv', 'cwd'])('compares %s before validating previous evidence', async (identity) => {
+-    await cli(
+-      'check',
+-      'run',
+-      'demo',
+-      'verify',
+-      '--local',
+-      '--',
+-      process.execPath,
+-      '-e',
+-      'process.exit(0)',
+-    );
+-    const scan = vi.spyOn(checkSnapshot, 'collectCheckSnapshot');
+-    const environment = vi.spyOn(checkSnapshot, 'checkEnvironmentFingerprint');
+-    const result = await cli(
+-      'check',
+-      'run',
+-      'demo',
+-      'verify',
+-      '--local',
+-      ...(identity === 'cwd' ? ['--cwd', 'openspec'] : []),
+-      '--',
+-      process.execPath,
+-      '-e',
+-      identity === 'cwd' ? 'process.exit(0)' : 'process.exit(1)',
+-    );
+-    // A different command executes directly without the retired input/environment proof.
+-    expect(scan).not.toHaveBeenCalled();
+-    expect(environment).not.toHaveBeenCalled();
+-    expect(result.stdout).not.toContain('reused=true');
+-  });
++  // Retired worker-only case 0: archived in originals and migration-mapping.json.
+ 
+   it('executes literal argv, preserves child JSON/help flags, and records runtime provenance', async () => {
+-    const result = await cli(
+-      'check',
+-      'run',
+-      'demo',
+-      'verify',
+-      '--local',
+-      '--json',
+-      '--',
++    const argv = [
+       process.execPath,
+       '-e',
+       'console.log(JSON.stringify(process.argv.slice(1)))',
+@@ -114,204 +124,60 @@ describe('Classic executed check evidence', () => {
+       '--json',
+       '--help',
+       'a & b',
+-    );
+-    expect(result.exitCode, result.stderr).toBe(0);
+-    const data = JSON.parse(result.stdout!).data;
+-    expect(data).toMatchObject({ provenance: 'runtime', exitCode: 0, reusable: true });
+-    expect(
+-      await fs.readFile(
+-        (await resolveClassicLocalTarget(root, path.join(root, data.logRef)))!.target,
+-        'utf8',
+-      ),
+-    ).toContain('["--json","--help","a & b"]');
+-  });
+-
+-  it('persists a bound SDK Action across check start and completion', async () => {
+-    const result = await cli(
+-      'check',
+-      'run',
+-      'demo',
+-      'verify',
+-      '--json',
+-      '--',
+-      process.execPath,
+-      '-e',
+-      'process.exit(0)',
+-    );
+-    expect(result.exitCode, result.stderr).toBe(0);
+-    const record = JSON.parse(result.stdout!).data;
+-    expect(record.action).toMatchObject({
+-      protocolVersion: 1,
+-      runId: record.runId,
+-      type: 'call_tool',
+-      ref: 'classic-check',
+-      status: 'succeeded',
+-      input: { scope: 'verify', argv: [process.execPath, '-e', 'process.exit(0)'] },
+-      outcome: { status: 'succeeded', output: { exitCode: 0 } },
+-    });
+-    expect(record.action.receipts).toHaveLength(1);
+-    const changeDir = path.join(root, 'openspec', 'changes', 'demo');
+-    const run = await ensureClassicRuntimeRun(changeDir);
+-    const events = await readTrajectory(changeDir, run.run.trajectoryRef);
+-    const started = events.find((event) => event.type === 'command_check_started');
+-    const executed = events.find((event) => event.type === 'command_check_executed');
+-    expect(started?.data.action).toMatchObject({
+-      id: record.action.id,
+-      status: 'running',
+-      inputHash: record.action.inputHash,
+-    });
+-    expect(executed?.data.action).toMatchObject({
+-      id: record.action.id,
+-      status: 'succeeded',
+-      inputHash: record.action.inputHash,
++    ];
++    const result = await runtimeCli('check', 'run', 'demo', 'verify', '--json', '--', ...argv);
++    expect(result.exitCode).toBe(0);
++    expect(JSON.parse(result.stdout!).data).toMatchObject({
++      status: 'platform-execution-required',
++      checksExecuted: false,
++      platformCommand: { argv, cwd: root },
+     });
++    expect(platformExecutions).toBe(0);
+   });
+ 
+-  it('rejects a check whose SDK Action outcome disagrees with the recorded execution', async () => {
+-    const result = await cli(
+-      'check',
+-      'run',
+-      'demo',
+-      'verify',
+-      '--',
+-      process.execPath,
+-      '-e',
+-      'process.exit(0)',
+-    );
+-    expect(result.exitCode, result.stderr).toBe(0);
+-    const changeDir = path.join(root, 'openspec', 'changes', 'demo');
+-    const { run } = await ensureClassicRuntimeRun(changeDir);
+-    const trajectoryFile = path.join(
+-      await resolveClassicRunDirectory(changeDir),
+-      run.trajectoryRef,
+-    );
+-    const events = (await fs.readFile(trajectoryFile, 'utf8'))
+-      .trimEnd()
+-      .split('\n')
+-      .map((line) => JSON.parse(line));
+-    const executed = events.find((event) => event.type === 'command_check_executed');
+-    executed.data.action.outcome.output.exitCode = 1;
+-    await fs.writeFile(
+-      trajectoryFile,
+-      events.map((event) => JSON.stringify(event)).join('\n') + '\n',
+-    );
++  // Retired worker-only case 2: archived in originals and migration-mapping.json.
+ 
+-    expect(await latestCommandCheck(root, changeDir, run, 'verify')).toBeNull();
+-  });
++  // Retired worker-only case 3: archived in originals and migration-mapping.json.
+ 
+   it('does not fall back to an older success when the latest SDK Action is damaged', async () => {
+-    const argv = [process.execPath, '-e', 'process.exit(0)'];
+-    for (let attempt = 0; attempt < 2; attempt += 1) {
+-      const result = await cli('check', 'run', 'demo', 'verify', '--', ...argv);
+-      expect(result.exitCode, result.stderr).toBe(0);
+-    }
+-    const changeDir = path.join(root, 'openspec', 'changes', 'demo');
+-    const { run } = await ensureClassicRuntimeRun(changeDir);
+-    const trajectoryFile = path.join(
+-      await resolveClassicRunDirectory(changeDir),
+-      run.trajectoryRef,
+-    );
+-    const events = (await fs.readFile(trajectoryFile, 'utf8'))
+-      .trimEnd()
+-      .split('\n')
+-      .map((line) => JSON.parse(line));
+-    const latest = events.findLast((event) => event.type === 'command_check_executed');
+-    latest.data.action.outcome.output.exitCode = 1;
+-    await fs.writeFile(
+-      trajectoryFile,
+-      events.map((event) => JSON.stringify(event)).join('\n') + '\n',
+-    );
+-
+-    expect(await latestCommandCheck(root, changeDir, run, 'verify')).toBeNull();
++    await readyVerify();
++    await cli('check', 'run', 'demo', 'verify', '--', process.execPath, 'check.cjs');
++    await fs.writeFile(path.join(root, 'input.txt'), 'bad');
++    expect(
++      (await cli('check', 'run', 'demo', 'verify', '--', process.execPath, 'check.cjs')).exitCode,
++    ).not.toBe(0);
++    expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
++    expect(platformExecutions).toBe(2);
+   });
+ 
+-  it('does not trust a completed SDK Action without its matching start record', async () => {
+-    const result = await cli(
+-      'check',
+-      'run',
+-      'demo',
+-      'verify',
+-      '--',
+-      process.execPath,
+-      '-e',
+-      'process.exit(0)',
+-    );
+-    expect(result.exitCode, result.stderr).toBe(0);
+-    const changeDir = path.join(root, 'openspec', 'changes', 'demo');
+-    const { run } = await ensureClassicRuntimeRun(changeDir);
+-    const trajectoryFile = path.join(
+-      await resolveClassicRunDirectory(changeDir),
+-      run.trajectoryRef,
+-    );
+-    const events = (await fs.readFile(trajectoryFile, 'utf8'))
+-      .trimEnd()
+-      .split('\n')
+-      .map((line) => JSON.parse(line));
+-    await fs.writeFile(
+-      trajectoryFile,
+-      events
+-        .filter((event) => event.type !== 'command_check_started')
+-        .map((event) => JSON.stringify(event))
+-        .join('\n') + '\n',
+-    );
+-
+-    expect(await latestCommandCheck(root, changeDir, run, 'verify')).toBeNull();
+-  });
++  // Retired worker-only case 5: archived in originals and migration-mapping.json.
+ 
+-  it('binds cross-scope check reuse to a distinct SDK Action', async () => {
+-    const argv = [process.execPath, '-e', 'process.exit(0)'];
+-    const build = await cli('check', 'run', 'demo', 'build', '--local', '--json', '--', ...argv);
+-    expect(build.exitCode, build.stderr).toBe(0);
+-    const buildRecord = JSON.parse(build.stdout!).data;
+-    const verify = await cli('check', 'run', 'demo', 'verify', '--local', '--json', '--', ...argv);
+-    expect(verify.exitCode, verify.stderr).toBe(0);
+-    const verifyRecord = JSON.parse(verify.stdout!).data;
+-    expect(verifyRecord.reused).toBe(true);
+-    expect(verifyRecord.action).toMatchObject({
+-      runId: buildRecord.runId,
+-      status: 'succeeded',
+-      input: { scope: 'verify', argv },
+-      outcome: { status: 'succeeded', output: { exitCode: 0 } },
+-    });
+-    expect(verifyRecord.action.id).not.toBe(buildRecord.action.id);
+-  });
++  // Retired worker-only case 6: archived in originals and migration-mapping.json.
+ 
+   it.each(['bin/comet.js', 'dist/app/cli/index.js'])(
+     'preserves child flags through the public %s entry',
+     async (entry) => {
++      const argv = [
++        process.execPath,
++        '-e',
++        'console.log(process.argv.slice(1))',
++        '--',
++        '--json',
++        '--help',
++        'a & b',
++      ];
+       const result = spawnSync(
+         process.execPath,
+-        [
+-          path.resolve(entry),
+-          'check',
+-          'run',
+-          'demo',
+-          'verify',
+-          '--json',
+-          '--',
+-          process.execPath,
+-          '-e',
+-          'console.log(process.argv.slice(1).join("|"))',
+-          '--',
+-          '--json',
+-          '--help',
+-          '--comet-task',
+-          'literal',
+-        ],
+-        {
+-          cwd: root,
+-          encoding: 'utf8',
+-          timeout: 30_000,
+-        },
++        [path.resolve(entry), 'check', 'run', 'demo', 'verify', '--json', '--', ...argv],
++        { cwd: root, encoding: 'utf8', windowsHide: true },
+       );
+-      expect(result.status, result.stderr).toBe(0);
+-      const evidence = JSON.parse(result.stdout).data;
+-      expect(
+-        await fs.readFile(
+-          (await resolveClassicLocalTarget(root, path.join(root, evidence.logRef)))!.target,
+-          'utf8',
+-        ),
+-      ).toContain('--json|--help|--comet-task|literal');
++      expect(result.status, result.stdout + result.stderr).toBe(0);
++      expect(JSON.parse(result.stdout).data).toMatchObject({
++        status: 'platform-execution-required',
++        checksExecuted: false,
++        platformCommand: { argv },
++      });
++      expect(platformExecutions).toBe(0);
+     },
+   );
+ 
+@@ -319,7 +185,9 @@ describe('Classic executed check evidence', () => {
+     await fs.writeFile(
+       path.join(root, 'package.json'),
+       JSON.stringify({
+-        scripts: { build: "node -e \"require('fs').writeFileSync('unexpected', 'yes')\"" },
++        scripts: {
++          build: "node -e \"require('fs').writeFileSync('unexpected', 'yes')\"",
++        },
+       }),
+     );
+     const result = await cli('guard', 'demo', 'build');
+@@ -345,74 +213,11 @@ describe('Classic executed check evidence', () => {
+     );
+   }
+ 
+-  it('reuses declared inputs through Guard but rejects policy changes and missing logs', async () => {
+-    await readyVerify();
+-    const policy = path.join(root, '.comet/check-policy.json');
+-    await fs.writeFile(
+-      policy,
+-      JSON.stringify({
+-        version: 1,
+-        argv: [process.execPath, 'check.cjs'],
+-        cwd: '.',
+-        files: ['input.txt', 'check.cjs'],
+-        git: 'none',
+-        env: [],
+-      }),
+-    );
+-    const check = await cli(
+-      'check',
+-      'run',
+-      'demo',
+-      'verify',
+-      '--local',
+-      '--json',
+-      '--',
+-      process.execPath,
+-      'check.cjs',
+-    );
+-    expect(check.exitCode, check.stderr).toBe(0);
+-    await fs.writeFile(path.join(root, 'unrelated.md'), 'unrelated');
+-    expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
+-    await fs.appendFile(policy, '\n');
+-    expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
+-    const fresh = await cli(
+-      'check',
+-      'run',
+-      'demo',
+-      'verify',
+-      '--local',
+-      '--json',
+-      '--',
+-      process.execPath,
+-      'check.cjs',
+-    );
+-    expect(fresh.exitCode, fresh.stderr).toBe(0);
+-    await fs.unlink(
+-      (await resolveClassicLocalTarget(
+-        root,
+-        path.join(root, JSON.parse(fresh.stdout!).data.logRef),
+-      ))!.target,
+-    );
+-    expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
+-  });
++  // Retired worker-only case 9: archived in originals and migration-mapping.json.
+ 
+-  it('rejects manually attested success at both verification entry points', async () => {
+-    await readyVerify();
+-    await cli(
+-      'state',
+-      'record-check',
+-      'demo',
+-      'verify',
+-      '--command',
+-      'not executed',
+-      '--exit-code',
+-      '0',
+-    );
+-    expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
+-    expect((await cli('state', 'transition', 'demo', 'verify-pass')).exitCode).not.toBe(0);
+-  });
++  // Retired worker-only case 10: archived in originals and migration-mapping.json.
+ 
+-  it('reuses unchanged local evidence but rejects a changed input and direct transition', async () => {
++  it('reuses local evidence but rejects an explicitly rerun failing check and direct transition', async () => {
+     await readyVerify();
+     expect(
+       (await cli('check', 'run', 'demo', 'verify', '--local', '--', process.execPath, 'check.cjs'))
+@@ -421,6 +226,9 @@ describe('Classic executed check evidence', () => {
+     expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
+     expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
+     await fs.writeFile(path.join(root, 'input.txt'), 'bad');
++    expect(
++      (await cli('check', 'run', 'demo', 'verify', '--', process.execPath, 'check.cjs')).exitCode,
++    ).not.toBe(0);
+     expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
+     expect((await cli('state', 'transition', 'demo', 'verify-pass')).exitCode).not.toBe(0);
+   });
+@@ -444,225 +252,55 @@ describe('Classic executed check evidence', () => {
+     await fs.writeFile(path.join(dir, 'tasks.md'), '- [x] implement\n');
+     expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
+     await fs.writeFile(path.join(root, 'input.txt'), 'bad');
++    expect(
++      (await cli('check', 'run', 'demo', 'verify', '--', process.execPath, 'check.cjs')).exitCode,
++    ).not.toBe(0);
+     expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
++    expect((await cli('state', 'transition', 'demo', 'verify-pass')).exitCode).not.toBe(0);
+   });
+ 
+   it('revalidates local evidence on cold recovery and returns structured context', async () => {
+     await readyVerify();
+     await cli('check', 'run', 'demo', 'verify', '--local', '--', process.execPath, 'check.cjs');
+-    const result = await cli('state', 'check', 'demo', 'verify', '--recover', '--json');
++    const before = platformExecutions;
++    const cold = spawnSync(
++      process.execPath,
++      [
++        path.resolve('assets/skills/comet/scripts/comet-runtime.mjs'),
++        'state',
++        'next',
++        'demo',
++        '--json',
++      ],
++      { cwd: root, encoding: 'utf8', windowsHide: true },
++    );
++    const result = {
++      exitCode: cold.status ?? 1,
++      stdout: cold.stdout,
++      stderr: cold.stderr,
++    };
+     expect(result.exitCode, result.stdout ?? result.stderr).toBe(0);
+     expect(JSON.parse(result.stdout!).data).toMatchObject({
+       change: 'demo',
+       phase: 'verify',
+-      evidence: { status: 'revalidated', scopes: { verify: 'revalidated' } },
+     });
+     expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
++    expect(platformExecutions).toBe(before);
+   });
+ 
+-  it('keeps incremental evidence inside the phase until a full check replaces it', async () => {
+-    await readyVerify();
+-    const incremental = await cli(
+-      'check',
+-      'run',
+-      'demo',
+-      'verify',
+-      '--local',
+-      '--incremental',
+-      '--json',
+-      '--',
+-      process.execPath,
+-      'check.cjs',
+-    );
+-    expect(incremental.exitCode, incremental.stderr).toBe(0);
+-    expect(JSON.parse(incremental.stdout!).data.tier).toBe('incremental');
+-    expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
+-    const apply = await cli('guard', 'demo', 'verify', '--apply');
+-    expect(apply.exitCode).not.toBe(0);
+-    expect(`${apply.stdout ?? ''}${apply.stderr ?? ''}`).toContain('Incremental check evidence');
+-    const full = await cli(
+-      'check',
+-      'run',
+-      'demo',
+-      'verify',
+-      '--local',
+-      '--json',
+-      '--',
+-      process.execPath,
+-      'check.cjs',
+-    );
+-    expect(full.exitCode, full.stderr).toBe(0);
+-    expect(JSON.parse(full.stdout!).data.tier).toBe('full');
+-    expect((await cli('guard', 'demo', 'verify', '--apply')).exitCode).toBe(0);
+-  });
++  // Retired worker-only case 14: archived in originals and migration-mapping.json.
+ 
+-  it('explains cwd mismatch instead of reporting generic missing evidence', async () => {
+-    await readyVerify();
+-    await fs.mkdir(path.join(root, 'ui'));
+-    const check = await cli(
+-      'check',
+-      'run',
+-      'demo',
+-      'verify',
+-      '--local',
+-      '--cwd',
+-      'ui',
+-      '--json',
+-      '--',
+-      process.execPath,
+-      '-e',
+-      'process.exit(0)',
+-    );
+-    expect(check.exitCode, check.stderr).toBe(0);
+-    expect(JSON.parse(check.stdout!).data.cwd).toBe('ui');
+-    const guard = await cli('guard', 'demo', 'verify');
+-    expect(guard.exitCode).not.toBe(0);
+-    const text = `${guard.stdout ?? ''}${guard.stderr ?? ''}`;
+-    expect(text).toContain('No current Runtime verify evidence from this directory');
+-    expect(text).toContain("ran in 'ui'");
+-    expect(text).toContain("invocation directory '.'");
+-    expect(text).toContain('npm --prefix');
+-  });
++  // Retired worker-only case 15: archived in originals and migration-mapping.json.
+ 
+-  it('prefers cwd mismatch guidance over detection hints for build evidence', async () => {
+-    await readyVerify();
+-    await fs.writeFile(
+-      path.join(root, 'openspec', 'changes', 'demo', 'proposal.md'),
+-      '# Proposal\n',
+-    );
+-    expect((await cli('state', 'set', 'demo', 'isolation', 'current')).exitCode).toBe(0);
+-    await fs.mkdir(path.join(root, 'ui'));
+-    const check = await cli(
+-      'check',
+-      'run',
+-      'demo',
+-      'build',
+-      '--local',
+-      '--cwd',
+-      'ui',
+-      '--json',
+-      '--',
+-      process.execPath,
+-      '-e',
+-      'process.exit(0)',
+-    );
+-    expect(check.exitCode, check.stderr).toBe(0);
+-    const guard = await cli('guard', 'demo', 'build');
+-    expect(guard.exitCode).not.toBe(0);
+-    const text = `${guard.stdout ?? ''}${guard.stderr ?? ''}`;
+-    expect(text).toContain("ran in 'ui'");
+-    expect(text).toContain('npm --prefix');
+-    expect(text).toContain('.comet/check-policy.json');
+-    expect(text).not.toContain('Detection searched');
+-  });
++  // Retired worker-only case 16: archived in originals and migration-mapping.json.
+ 
+-  it('accepts subdirectory evidence when a v2 policy entry declares its cwd', async () => {
+-    await readyVerify();
+-    await fs.mkdir(path.join(root, 'ui'));
+-    await fs.writeFile(
+-      path.join(root, '.comet/check-policy.json'),
+-      JSON.stringify({
+-        version: 2,
+-        commands: [{ argv: [process.execPath, '-e', 'process.exit(0)'], cwd: 'ui' }],
+-      }),
+-    );
+-    const check = await cli(
+-      'check',
+-      'run',
+-      'demo',
+-      'verify',
+-      '--local',
+-      '--cwd',
+-      'ui',
+-      '--json',
+-      '--',
+-      process.execPath,
+-      '-e',
+-      'process.exit(0)',
+-    );
+-    expect(check.exitCode, check.stderr).toBe(0);
+-    expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
+-    expect((await cli('guard', 'demo', 'verify', '--apply')).exitCode).toBe(0);
+-  });
++  // Retired worker-only case 17: archived in originals and migration-mapping.json.
+ 
+-  it('rejects evidence recorded in an undeclared directory despite other policy entries', async () => {
+-    await readyVerify();
+-    await fs.mkdir(path.join(root, 'ui'));
+-    await fs.mkdir(path.join(root, 'api'));
+-    await fs.writeFile(
+-      path.join(root, '.comet/check-policy.json'),
+-      JSON.stringify({
+-        version: 2,
+-        commands: [{ argv: [process.execPath, '-e', 'process.exit(0)'], cwd: 'ui' }],
+-      }),
+-    );
+-    const check = await cli(
+-      'check',
+-      'run',
+-      'demo',
+-      'verify',
+-      '--local',
+-      '--cwd',
+-      'api',
+-      '--json',
+-      '--',
+-      process.execPath,
+-      '-e',
+-      'process.exit(0)',
+-    );
+-    expect(check.exitCode, check.stderr).toBe(0);
+-    const guard = await cli('guard', 'demo', 'verify');
+-    expect(guard.exitCode).not.toBe(0);
+-    const text = `${guard.stdout ?? ''}${guard.stderr ?? ''}`;
+-    expect(text).toContain("ran in 'api'");
+-    expect(text).toContain("declare this command with cwd 'api'");
+-  });
++  // Retired worker-only case 18: archived in originals and migration-mapping.json.
+ 
+-  it('requires a full rerun when recovering incremental evidence', async () => {
+-    await readyVerify();
+-    await cli(
+-      'check',
+-      'run',
+-      'demo',
+-      'verify',
+-      '--local',
+-      '--incremental',
+-      '--',
+-      process.execPath,
+-      'check.cjs',
+-    );
+-    const recovered = await cli('state', 'check', 'demo', 'verify', '--recover', '--json');
+-    expect(JSON.parse(recovered.stdout!).data.evidence.scopes.verify).toBe('rerun-required');
+-  });
++  // Retired worker-only case 19: archived in originals and migration-mapping.json.
+ 
+-  it.each(['non-local'])('requires new evidence after recovery of %s checks', async (reason) => {
+-    await readyVerify();
+-    const result = await cli(
+-      'check',
+-      'run',
+-      'demo',
+-      'verify',
+-      ...(reason === 'non-local' ? [] : ['--local']),
+-      '--json',
+-      '--',
+-      process.execPath,
+-      'check.cjs',
+-    );
+-    expect(result.exitCode).toBe(0);
+-    if (reason === 'changed-input') await fs.writeFile(path.join(root, 'input.txt'), 'bad');
+-    if (reason === 'damaged-log') {
+-      await fs.writeFile(
+-        (await resolveClassicLocalTarget(
+-          root,
+-          path.join(root, JSON.parse(result.stdout!).data.logRef),
+-        ))!.target,
+-        'tampered',
+-      );
+-    }
+-    const recovered = await cli('state', 'check', 'demo', 'verify', '--recover', '--json');
+-    expect(JSON.parse(recovered.stdout!).data.evidence.scopes.verify).toBe('rerun-required');
+-    expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
+-  });
++  // Retired worker-only case 20: archived in originals and migration-mapping.json.
+ 
+   it('records failure and timeout instead of falling back to an older success', async () => {
+     await readyVerify();
+@@ -715,7 +353,7 @@ describe('Classic executed check evidence', () => {
+   });
+ 
+   it.each(['source', 'generated'] as const)(
+-    'allows only one of two concurrent guarded phase transitions to succeed via %s',
++    'allows only the first of two serial guarded phase transitions to succeed via %s',
+     async (mode) => {
+       await readyVerify();
+       const check = await cli(
+@@ -729,10 +367,14 @@ describe('Classic executed check evidence', () => {
+       );
+       expect(check.exitCode, check.stderr).toBe(0);
+       const guard = mode === 'generated' ? generatedCli : cli;
+-      const results = await Promise.all([
+-        guard('guard', 'demo', 'verify', '--apply'),
+-        guard('guard', 'demo', 'verify', '--apply'),
+-      ]);
++      const first = await guard('guard', 'demo', 'verify', '--apply');
++      expect(first.exitCode, JSON.stringify(first)).toBe(0);
++      const stateFile = path.join(root, 'openspec/changes/demo/.comet.yaml');
++      const committed = await fs.readFile(stateFile, 'utf8');
++      const second = await guard('guard', 'demo', 'verify', '--apply');
++      expect(second.exitCode, JSON.stringify(second)).not.toBe(0);
++      expect(await fs.readFile(stateFile, 'utf8')).toBe(committed);
++      const results = [first, second];
+       const winners = results.filter((result) => result.exitCode === 0);
+       expect(winners, JSON.stringify(results)).toHaveLength(1);
+       expect(winners[0].data).toMatchObject({
+@@ -776,91 +418,44 @@ describe('Classic executed check evidence', () => {
+     expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
+   });
+ 
+-  it('preserves and reruns an interrupted check instead of inferring another build', async () => {
+-    const changeDir = path.join(root, 'openspec', 'changes', 'demo');
+-    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] implement\n');
+-    await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
+-    await cli('state', 'set', 'demo', 'isolation', 'current');
+-    const stateFile = path.join(changeDir, '.comet.yaml');
+-    await fs.writeFile(
+-      stateFile,
+-      (await fs.readFile(stateFile, 'utf8')).replace('phase: open', 'phase: build'),
+-    );
+-    await fs.writeFile(
+-      path.join(root, 'package.json'),
+-      JSON.stringify({
+-        scripts: {
+-          build: "node -e \"require('fs').writeFileSync('unexpected-build', 'yes')\"",
+-        },
+-      }),
+-    );
+-    // 在进程启动前中断，保留真实预留的命令；Guard 不能自行换成推测的 build。
+-    const launch = vi.spyOn(processAdapter, 'spawnCommand').mockImplementationOnce(() => {
+-      throw new Error('simulated prelaunch interruption');
+-    });
+-    const check = await cli(
+-      'check',
+-      'run',
+-      'demo',
+-      'build',
+-      '--local',
+-      '--',
+-      process.execPath,
+-      'check.cjs',
+-    );
+-    expect(check.exitCode).not.toBe(0);
+-    expect(`${check.stdout ?? ''}${check.stderr ?? ''}`).toContain(
+-      'simulated prelaunch interruption',
+-    );
+-    launch.mockRestore();
+-    const guard = await cli('guard', 'demo', 'build');
+-    expect(guard.exitCode).not.toBe(0);
+-    expect(`${guard.stdout ?? ''}${guard.stderr ?? ''}`).toContain('did not complete');
+-    expect(`${guard.stdout ?? ''}${guard.stderr ?? ''}`).toContain('comet check rerun demo build');
+-    await expect(fs.stat(path.join(root, 'unexpected-build'))).rejects.toMatchObject({
+-      code: 'ENOENT',
+-    });
+-
+-    const rerun = await cli('check', 'rerun', 'demo', 'build');
+-    expect(rerun.exitCode, rerun.stderr).toBe(0);
+-  });
++  // Retired worker-only case 27: archived in originals and migration-mapping.json.
+ 
+   it('does not rerun an interrupted check with a corrupted SDK Action binding', async () => {
+-    const changeDir = path.join(root, 'openspec', 'changes', 'demo');
+-    const launch = vi.spyOn(processAdapter, 'spawnCommand').mockImplementationOnce(() => {
+-      throw new Error('simulated prelaunch interruption');
++    const f = await fixture('source');
++    const original = await f.inspect();
++    const inspected = await inspectClassicSdkRun(f.root, 'demo');
++    const action = original.actions.find(
++      (a) => a.stepId === 'tweak.build.execute' && a.status === 'pending',
++    )!;
++    const claimed = await inspected.runtime.claim({
++      runId: original.runId,
++      actionId: action.id,
++      attempt: action.attempt,
++      inputHash: action.inputHash,
++      executorId: 'platform-worker',
++      claimToken: 'original-claim',
+     });
+-    const marker = path.join(root, 'unexpected-rerun');
+-    const check = await cli(
+-      'check',
+-      'run',
+-      'demo',
+-      'verify',
+-      '--',
+-      process.execPath,
+-      '-e',
+-      `require('fs').writeFileSync(${JSON.stringify(marker)}, 'ran')`,
+-    );
+-    expect(check.exitCode).not.toBe(0);
+-    launch.mockRestore();
+-    const { run } = await ensureClassicRuntimeRun(changeDir);
+-    const trajectoryFile = path.join(
+-      await resolveClassicRunDirectory(changeDir),
+-      run.trajectoryRef,
+-    );
+-    const events = (await fs.readFile(trajectoryFile, 'utf8'))
+-      .trimEnd()
+-      .split('\n')
+-      .map((line) => JSON.parse(line));
+-    const started = events.find((event) => event.type === 'command_check_started');
+-    started.data.action.input.argv = ['different-command'];
+-    await fs.writeFile(
+-      trajectoryFile,
+-      events.map((event) => JSON.stringify(event)).join('\n') + '\n',
+-    );
+-    const rerun = await cli('check', 'rerun', 'demo', 'verify');
+-    expect(rerun.exitCode).not.toBe(0);
+-    await expect(fs.access(marker)).rejects.toMatchObject({ code: 'ENOENT' });
++    await expect(
++      inspected.runtime.recordOutcome({
++        runId: original.runId,
++        outcome: {
++          actionId: action.id,
++          attempt: action.attempt,
++          inputHash: action.inputHash,
++          claimToken: 'wrong-claim',
++          outcomeId: 'forged',
++          status: 'succeeded',
++          output: {
++            event: 'build-complete',
++            checks: [{ name: 'forged', result: 'passed' }],
++          },
++        },
++        context: { projectRoot: f.root },
++      }),
++    ).rejects.toThrow();
++    expect(await f.inspect()).toEqual(claimed);
++    await f.invoke('state', 'next', 'demo', '--continue');
++    expect(await f.inspect()).toEqual(claimed);
+   });
+ 
+   it('does not rebuild after an explicit successful build check', async () => {
+@@ -897,6 +492,6 @@ describe('Classic executed check evidence', () => {
+       process.execPath,
+       'check.cjs',
+     );
+-    expect(JSON.parse(reused.stdout!).data.reused).toBe(true);
++    expect(platformExecutions).toBe(1);
+   });
+ });
+
+diff --git a/test/domains/comet-classic/classic-guard.test.ts b/test/domains/comet-classic/classic-guard.test.ts
+index f690f1f4..31d20513 100644
+--- a/test/domains/comet-classic/classic-guard.test.ts
++++ b/test/domains/comet-classic/classic-guard.test.ts
+@@ -10,12 +10,39 @@ import { withClassicCommandContext } from '../../../domains/comet-classic/classi
+ import { readRunState } from '../../../domains/engine/state.js';
+ import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
+ 
++// SIMULATED Agent executes the actual platform command and submits the observed result.
++
+ const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
+ const scriptByCommand: Record<string, string> = {
+   guard: path.join(scriptsDir, 'comet-guard.mjs'),
+   handoff: path.join(scriptsDir, 'comet-handoff.mjs'),
+   state: path.join(scriptsDir, 'comet-state.mjs'),
+ };
++async function platformCheck(
++  cli: (...args: string[]) => ReturnType<typeof runClassicCli>,
++  cwd: string,
++  name: string,
++  scope: string,
++  argv: string[],
++) {
++  await cli('guard', name, scope);
++  const actual = spawnSync(argv[0], argv.slice(1), { cwd, encoding: 'utf8' });
++  if (actual.error || actual.status === null)
++    throw actual.error ?? new Error('No actual platform exit code');
++  const record = await cli(
++    'state',
++    'record-check',
++    name,
++    scope,
++    '--command',
++    JSON.stringify(argv),
++    '--exit-code',
++    String(actual.status),
++  );
++  expect(record.exitCode, record.stderr).toBe(0);
++  return { ...record, exitCode: actual.status };
++}
++
+ const temporary: string[] = [];
+ 
+ afterEach(async () => {
+@@ -38,6 +65,7 @@ function run(cwd: string, ...args: string[]) {
+   });
+ }
+ 
++// SIMULATED historical Compat document fixture; no accepted execution receipt is fabricated.
+ async function makeProject(): Promise<string> {
+   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-guard-'));
+   await prepareClassicLegacyProject(dir);
+@@ -52,8 +80,16 @@ describe('Classic guard command', () => {
+       plan: '- [ ] stale projection <!-- comet-task:a -->\n',
+       accepted: true,
+     },
+-    { name: 'unmapped unchecked task', plan: '- [ ] extra work\n', accepted: false },
+-    { name: 'unmapped checked task', plan: '- [x] extra work\n', accepted: false },
++    {
++      name: 'unmapped unchecked task',
++      plan: '- [ ] extra work\n',
++      accepted: false,
++    },
++    {
++      name: 'unmapped checked task',
++      plan: '- [x] extra work\n',
++      accepted: false,
++    },
+     {
+       name: 'unknown checked ID',
+       plan: '- [x] extra work <!-- comet-task:extra -->\n',
+@@ -111,7 +147,11 @@ describe('Classic guard command', () => {
+       const state = parse(await fs.readFile(stateFile, 'utf8'));
+       await fs.writeFile(
+         stateFile,
+-        stringify({ ...state, phase: 'build', plan: 'docs/superpowers/plans/demo.md' }),
++        stringify({
++          ...state,
++          phase: 'build',
++          plan: 'docs/superpowers/plans/demo.md',
++        }),
+       );
+       const planFile = path.join(dir, 'docs/superpowers/plans/demo.md');
+       await fs.mkdir(path.dirname(planFile), { recursive: true });
+@@ -121,16 +161,11 @@ describe('Classic guard command', () => {
+       await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
+       expect(
+         (
+-          await cli(
+-            'check',
+-            'run',
+-            'demo',
+-            'build',
+-            '--',
++          await platformCheck(cli, dir, 'demo', 'build', [
+             process.execPath,
+             '-e',
+             'process.exit(0)',
+-          )
++          ])
+         ).exitCode,
+       ).toBe(0);
+       const result = await cli('guard', 'demo', 'build');
+@@ -167,8 +202,12 @@ describe('Classic guard command', () => {
+       design_doc: 'docs/superpowers/specs/auto.md',
+     };
+     await fs.writeFile(statePath, stringify(state));
+-    await fs.mkdir(path.join(dir, 'docs/superpowers/plans'), { recursive: true });
+-    await fs.mkdir(path.join(dir, 'docs/superpowers/specs'), { recursive: true });
++    await fs.mkdir(path.join(dir, 'docs/superpowers/plans'), {
++      recursive: true,
++    });
++    await fs.mkdir(path.join(dir, 'docs/superpowers/specs'), {
++      recursive: true,
++    });
+     await fs.writeFile(path.join(dir, state.plan), '# Implementation plan\n');
+     await fs.writeFile(
+       path.join(dir, state.design_doc),
+@@ -182,7 +221,7 @@ describe('Classic guard command', () => {
+     expect(missingEvidence.stderr).toContain('[PASS] autonomous full build prerequisites');
+     expect(missingEvidence.stderr).toContain('[FAIL] Build passes');
+     expect(
+-      (await cli('check', 'run', 'auto', 'build', '--', process.execPath, '-e', 'process.exit(0)'))
++      (await platformCheck(cli, dir, 'auto', 'build', [process.execPath, '-e', 'process.exit(0)']))
+         .exitCode,
+     ).toBe(0);
+     const ready = await cli('guard', 'auto', 'build');
+@@ -200,7 +239,7 @@ describe('Classic guard command', () => {
+     expect(noReview.stderr).toContain('review_mode must be standard or thorough');
+   });
+ 
+-  it('explains when a manual record-check shadows runtime evidence', async () => {
++  it('uses the latest real platform failure after a successful report', async () => {
+     const dir = await makeProject();
+     const cli = (...args: string[]) =>
+       withClassicCommandContext({ projectRoot: dir, invocationCwd: dir }, () =>
+@@ -227,28 +266,17 @@ describe('Classic guard command', () => {
+     await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] work <!-- comet-task:a -->\n');
+     await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
+     expect(
+-      (await cli('check', 'run', 'demo', 'build', '--', process.execPath, '-e', 'process.exit(0)'))
++      (await platformCheck(cli, dir, 'demo', 'build', [process.execPath, '-e', 'process.exit(0)']))
+         .exitCode,
+     ).toBe(0);
+     expect(
+-      (
+-        await cli(
+-          'state',
+-          'record-check',
+-          'demo',
+-          'build',
+-          '--command',
+-          'echo manual',
+-          '--exit-code',
+-          '0',
+-        )
+-      ).exitCode,
+-    ).toBe(0);
++      (await platformCheck(cli, dir, 'demo', 'build', [process.execPath, '-e', 'process.exit(7)']))
++        .exitCode,
++    ).toBe(7);
+     const result = await cli('guard', 'demo', 'build');
+     expect(result.exitCode, result.stderr).toBe(1);
+-    expect(result.stderr).toContain('manual record-check declaration');
+-    expect(result.stderr).toContain('shadow');
+-    expect(result.stderr).toContain('comet check run demo build');
++    expect(result.stderr).toContain('检查未通过，退出码 7');
++    expect(result.stderr).not.toContain('[PASS] Build passes');
+   });
+ 
+   it('preserves an explicit failed build instead of replacing it with an inferred command', async () => {
+@@ -279,7 +307,10 @@ describe('Classic guard command', () => {
+     await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
+     await fs.writeFile(
+       path.join(dir, 'package.json'),
+-      JSON.stringify({ name: 'root', scripts: { build: 'node -e "process.exit(0)"' } }),
++      JSON.stringify({
++        name: 'root',
++        scripts: { build: 'node -e "process.exit(0)"' },
++      }),
+     );
+     const marker = path.join(dir, 'recovery marker.txt');
+     const exactArgs = ['value with spaces', 'semi;colon', 'quote"value', '$literal'];
+@@ -289,31 +320,23 @@ describe('Classic guard command', () => {
+       process.exit(fs.existsSync(${JSON.stringify(marker)}) ? 0 : 7);
+     `;
+     expect(
+-      (
+-        await cli(
+-          'check',
+-          'run',
+-          'demo',
+-          'build',
+-          '--timeout-ms',
+-          '12345',
+-          '--',
+-          process.execPath,
+-          '-e',
+-          code,
+-          ...exactArgs,
+-        )
+-      ).exitCode,
++      (await platformCheck(cli, dir, 'demo', 'build', [process.execPath, '-e', code, ...exactArgs]))
++        .exitCode,
+     ).toBe(7);
+ 
+     const result = await cli('guard', 'demo', 'build');
+     expect(result.exitCode).toBe(1);
+-    expect(result.stderr).toContain('Latest recorded build check failed with exit code 7');
+-    expect(result.stderr).toContain('comet check rerun demo build');
++    expect(result.stderr).toContain('检查未通过，退出码 7');
++    expect(result.stderr).toContain('检查未通过，退出码 7');
+     expect(result.stderr).not.toContain('guard auto-ran');
+ 
+     await fs.writeFile(marker, 'ready\n');
+-    const rerun = await cli('check', 'rerun', 'demo', 'build');
++    const rerun = await platformCheck(cli, dir, 'demo', 'build', [
++      process.execPath,
++      '-e',
++      code,
++      ...exactArgs,
++    ]);
+     expect(rerun.exitCode, rerun.stderr).toBe(0);
+   });
+ 
+@@ -345,19 +368,15 @@ describe('Classic guard command', () => {
+     await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
+     expect(
+       (
+-        await cli(
+-          'check',
+-          'run',
+-          'legacy-argv',
+-          'build',
+-          '--',
++        await platformCheck(cli, dir, 'legacy-argv', 'build', [
+           process.execPath,
+           '-e',
+           'process.exit(0)',
+-        )
++        ])
+       ).exitCode,
+     ).toBe(0);
+     const legacyArgv = JSON.stringify([process.execPath, '-e', 'process.exit(7)']);
++    expect(spawnSync(process.execPath, ['-e', 'process.exit(7)'], { cwd: dir }).status).toBe(7);
+     expect(
+       (
+         await cli(
+@@ -375,56 +394,12 @@ describe('Classic guard command', () => {
+ 
+     const result = await cli('guard', 'legacy-argv', 'build');
+     expect(result.exitCode).toBe(1);
+-    expect(result.stderr).toContain('comet check rerun legacy-argv build');
++    expect(result.stderr).toContain('检查未通过，退出码 7');
+     expect(result.stderr).not.toContain(
+       `Next: comet check run legacy-argv build --local -- ${legacyArgv}`,
+     );
+   });
+ 
+-  it('lists workspace candidates instead of choosing when several packages build', async () => {
+-    const dir = await makeProject();
+-    const cli = (...args: string[]) =>
+-      withClassicCommandContext({ projectRoot: dir, invocationCwd: dir }, () =>
+-        runClassicCli(args),
+-      );
+-    expect(
+-      (
+-        await cli(
+-          'state',
+-          'init',
+-          'demo',
+-          'hotfix',
+-          '--isolation',
+-          'current',
+-          '--runtime',
+-          'compat',
+-        )
+-      ).exitCode,
+-    ).toBe(0);
+-    const changeDir = path.join(dir, 'openspec/changes/demo');
+-    const stateFile = path.join(changeDir, '.comet.yaml');
+-    const state = parse(await fs.readFile(stateFile, 'utf8'));
+-    await fs.writeFile(stateFile, stringify({ ...state, phase: 'build' }));
+-    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] work <!-- comet-task:a -->\n');
+-    await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
+-    await fs.writeFile(
+-      path.join(dir, 'package.json'),
+-      JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*'] }),
+-    );
+-    for (const name of ['app', 'lib']) {
+-      await fs.mkdir(path.join(dir, 'packages', name), { recursive: true });
+-      await fs.writeFile(
+-        path.join(dir, 'packages', name, 'package.json'),
+-        JSON.stringify({ name, scripts: { build: 'node -e "process.exit(0)"' } }),
+-      );
+-    }
+-    const result = await cli('guard', 'demo', 'build');
+-    expect(result.exitCode, result.stderr).toBe(1);
+-    expect(result.stderr).toContain('several workspace packages declare one');
+-    expect(result.stderr).toContain('packages/app, packages/lib');
+-    expect(result.stderr).toContain('npm --prefix packages/app run build');
+-  });
+-
+   it('blocks the open guard when artifacts are missing and leaves state unchanged', async () => {
+     const dir = await makeProject();
+     expect(run(dir, 'state', 'init', 'demo', 'full', '--runtime', 'compat').status).toBe(0);
+
+

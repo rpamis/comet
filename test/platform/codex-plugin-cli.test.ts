@@ -16,9 +16,16 @@ beforeEach(async () => {
     ...process.env,
     HOME: root,
     USERPROFILE: root,
+    APPDATA: path.join(root, 'AppData/Roaming'),
+    LOCALAPPDATA: path.join(root, 'AppData/Local'),
     npm_config_prefix: path.join(root, 'prefix'),
+    npm_config_userconfig: path.join(root, 'npm-user.npmrc'),
+    npm_config_globalconfig: path.join(root, 'npm-global.npmrc'),
+    npm_config_cache: path.join(root, 'npm-cache'),
     COMET_INSTALL_COUNT: path.join(root, 'installs.txt'),
   };
+  await fs.writeFile(env.npm_config_userconfig!, '');
+  await fs.writeFile(env.npm_config_globalconfig!, '');
   vi.spyOn(os, 'homedir').mockReturnValue(root);
   const source = path.join(root, 'source/package');
   await fs.mkdir(path.join(source, 'bin'), { recursive: true });

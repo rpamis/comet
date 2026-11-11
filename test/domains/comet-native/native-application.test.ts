@@ -17,7 +17,6 @@ import {
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
-import { nativeSdkCheckRuntimeRef } from '../../../domains/comet-native/native-sdk-check-execution.js';
 import { hashRuntimeValue } from '../../../domains/engine/runtime.js';
 
 const roots: string[] = [];
@@ -29,43 +28,6 @@ async function fixture(supervisor = false) {
   roots.push(root);
   return prepareNativeApplication(root, supervisor);
 }
-
-it.each(['missing', 'invalid'] as const)(
-  'preserves the original CLI error when check execution diagnostics are %s',
-  async (phase) => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-error-diagnostics-'));
-    roots.push(root);
-    const f = await prepareNativeApplication(root, false, 'native');
-    const run = await f.submitBuilder(f.pending(f.run, 'build.builder'), 'approved\n');
-    const check = f.pending(run, 'verify.checks');
-    expect(check).toBeTruthy();
-    await f.claim(check, 'check-owner');
-    if (phase === 'invalid') {
-      const directory = path.join(
-        resolveWorkspaceRuntimeRootSync(f.projectRoot),
-        nativeSdkCheckRuntimeRef(run),
-        'executions',
-      );
-      await fs.mkdir(directory, { recursive: true });
-      await fs.writeFile(path.join(directory, `${hashRuntimeValue(check.id)}.json`), '{');
-    }
-    const argv = ['status', f.name, '--unexpected-option'];
-    const original = await runNativeCli([...argv, '--project-root', f.projectRoot, '--json']);
-    expect(original.exitCode).not.toBe(0);
-    const error = await f.native(argv).then(
-      () => {
-        throw new Error('Expected a CLI failure');
-      },
-      (error: Error) => error,
-    );
-    expect(() => JSON.parse(error.message), error.message).not.toThrow();
-    const diagnostic = JSON.parse(error.message);
-    expect(diagnostic).toMatchObject(JSON.parse(original.stdout!));
-    expect(diagnostic.executions).toContainEqual(
-      expect.objectContaining({ actionId: check.id, phase }),
-    );
-  },
-);
 function preparedSupervisor(run: WorkflowRun) {
   expect(run.actions.filter(({ stepId }) => stepId === 'supervisor.prepare')).toMatchObject([
     { status: 'succeeded' },
@@ -160,12 +122,6 @@ it('transfers a custom Supervisor through public CLI with fixed identity and an 
   let run = preparedSupervisor(f.run);
   const builder = f.pending(run, 'supervisor.child.builder');
   run = await f.submitBuilder(builder, 'approved\n', 'original-child-builder');
-  run = await f.dispatch({
-    operation: 'execute',
-    runId: f.name,
-    actionId: f.pending(run, 'supervisor.child.checks').id,
-    executorId: 'comet-native-checks',
-  });
   const review = f.pending(run, 'native.extension.child.candidate-review');
   run = await f.dispatch({
     operation: 'claim',
@@ -577,8 +533,6 @@ it('binds reverse Child reviews, repairs integration in its worktree, and review
     'approved\n',
     'right-builder',
   );
-  run = await execute(childAction(run, 'supervisor.child.checks', 'right'), 'comet-native-checks');
-  run = await execute(childAction(run, 'supervisor.child.checks', 'left'), 'comet-native-checks');
   run = await execute(
     childAction(run, 'native.extension.child.candidate-review', 'right'),
     'native-review-script',
@@ -594,7 +548,6 @@ it('binds reverse Child reviews, repairs integration in its worktree, and review
     'approved\n',
     'left-repair-builder',
   );
-  run = await execute(childAction(run, 'supervisor.child.checks', 'left'), 'comet-native-checks');
   run = await execute(
     childAction(run, 'native.extension.child.candidate-review', 'left'),
     'native-review-script',
@@ -609,7 +562,13 @@ it('binds reverse Child reviews, repairs integration in its worktree, and review
       verdict,
       evidence: {
         summary: 'Independently checked Child',
-        checks: ['candidate-process'],
+        checks: [
+          {
+            name: 'candidate-process',
+            result: 'passed',
+            note: 'Actual fixture platform check report',
+          },
+        ],
         acceptance: [
           {
             id: 'A1',
@@ -618,7 +577,6 @@ it('binds reverse Child reviews, repairs integration in its worktree, and review
           },
         ],
       },
-      integrationChecks: f.checks,
     });
   }
   await verifyChild('right');
@@ -626,12 +584,14 @@ it('binds reverse Child reviews, repairs integration in its worktree, and review
     childAction(run, 'supervisor.child.integrate', 'right'),
     'native-supervisor-integrate',
   );
-  const integrationChecks = childAction(run, 'supervisor.child.integration-checks', 'right');
-  const integrationRoot = (
-    integrationChecks.input as { activation: { integrationWorktree: string } }
-  ).activation.integrationWorktree;
+  const integrationChecks = childAction(
+    run,
+    'native.extension.integration.candidate-review',
+    'right',
+  );
+  const integrationRoot = (integrationChecks.input as { activation: { workspaceRoot: string } })
+    .activation.workspaceRoot;
   await fs.writeFile(path.join(integrationRoot, 'candidate.txt'), 'integration violation\n');
-  run = await execute(integrationChecks, 'comet-native-checks');
   await verifyChild('left', 'fail');
   expect(childAction(run, 'supervisor.child.builder', 'left')).toBeTruthy();
   run = await f.submitBuilder(
@@ -639,7 +599,6 @@ it('binds reverse Child reviews, repairs integration in its worktree, and review
     'approved\n',
     'left-verifier-repair-builder',
   );
-  run = await execute(childAction(run, 'supervisor.child.checks', 'left'), 'comet-native-checks');
   run = await execute(
     childAction(run, 'native.extension.child.candidate-review', 'left'),
     'native-review-script',
@@ -650,16 +609,102 @@ it('binds reverse Child reviews, repairs integration in its worktree, and review
     childAction(run, 'native.extension.integration.candidate-review', 'right'),
     'native-review-script',
   );
-  const repair = f.pending(run, 'supervisor.child.integration-repair');
+  let repair = f.pending(run, 'supervisor.child.integration-repair');
   expect(
     (repair.input as { activation: { integrationWorktree: string } }).activation
       .integrationWorktree,
   ).toBe(integrationRoot);
-  run = await f.submitBuilder(repair, 'approved\n', 'integration-repair-builder');
-  run = await execute(
-    childAction(run, 'supervisor.child.integration-checks', 'right'),
-    'comet-native-checks',
+  const originalRepair = repair;
+  const originalRightMerge = run.actions.find(
+    (a) => a.stepId === 'supervisor.child.integrate' && a.status === 'succeeded',
+  )!;
+  const originalShapeApproval = structuredClone(run.waits.find((w) => w.status === 'resolved'));
+  expect(childAction(run, 'supervisor.child.integrate', 'left')).toBeUndefined();
+  run = await f.claim(repair, 'first-failed-integration-repair-agent');
+  const firstClaimed = run.actions.find((a) => a.id === repair.id)!;
+  run = await f.record(
+    firstClaimed,
+    { summary: 'SIMULATED Agent stopped after partial integration repair.' },
+    'failed',
   );
+  const firstFailed = structuredClone(run.actions.find((a) => a.id === repair.id)!);
+  const firstWait = run.waits.find(
+    (w) => w.stepId === 'supervisor.child.integration-resume' && w.status === 'pending',
+  )!;
+  expect(firstWait).toBeDefined();
+  expect(run.status).toBe('waiting');
+  expect(childAction(run, 'supervisor.child.integrate', 'left')).toBeUndefined();
+  // Reload through the same public fixed-application dispatch before using its original proposal.
+  run = await f.dispatch({ operation: 'inspect', runId: f.name });
+  expect(run.actions.find((a) => a.id === firstFailed.id)).toEqual(firstFailed);
+  run = await f.dispatch({
+    operation: 'resolve-wait',
+    runId: f.name,
+    waitId: firstWait.id,
+    proposalHash: firstWait.proposalHash,
+    choice: 'continue',
+    decisionId: 'SIMULATED-USER-first-original-repair-approved',
+  });
+  repair = f.pending(run, 'supervisor.child.integration-repair');
+  expect(repair.id).not.toBe(originalRepair.id);
+  expect(
+    (repair.input as { activation: { failedBuilderActionId: string } }).activation
+      .failedBuilderActionId,
+  ).toBe(originalRepair.id);
+  const successor = repair,
+    partialFile = path.join(integrationRoot, 'integration-repair.txt');
+  await fs.writeFile(partialFile, 'partial repair\n');
+  run = await f.claim(successor, 'second-failed-integration-repair-agent');
+  const secondClaimed = run.actions.find((a) => a.id === successor.id)!;
+  run = await f.record(
+    secondClaimed,
+    { summary: 'SIMULATED Agent stopped again with uncommitted repair work.' },
+    'failed',
+  );
+  const secondFailed = structuredClone(run.actions.find((a) => a.id === successor.id)!);
+  const secondWait = run.waits.find(
+    (w) => w.stepId === 'supervisor.child.integration-resume' && w.status === 'pending',
+  )!;
+  expect(secondWait.proposalHash).not.toBe(firstWait.proposalHash);
+  expect(await fs.readFile(partialFile, 'utf8')).toBe('partial repair\n');
+  expect(childAction(run, 'supervisor.child.integrate', 'left')).toBeUndefined();
+  const beforeStale = await f.dispatch({ operation: 'inspect', runId: f.name });
+  await expect(
+    f.dispatch({
+      operation: 'resolve-wait',
+      runId: f.name,
+      waitId: secondWait.id,
+      proposalHash: firstWait.proposalHash,
+      choice: 'continue',
+      decisionId: 'SIMULATED-USER-forbidden-stale-repair-decision',
+    }),
+  ).rejects.toThrow();
+  expect(await f.dispatch({ operation: 'inspect', runId: f.name })).toEqual(beforeStale);
+  expect(await fs.readFile(partialFile, 'utf8')).toBe('partial repair\n');
+  run = await f.dispatch({
+    operation: 'resolve-wait',
+    runId: f.name,
+    waitId: secondWait.id,
+    proposalHash: secondWait.proposalHash,
+    choice: 'continue',
+    decisionId: 'SIMULATED-USER-second-original-repair-approved',
+  });
+  repair = f.pending(run, 'supervisor.child.integration-repair');
+  expect(repair.id).not.toBe(successor.id);
+  expect(
+    (repair.input as { activation: { failedBuilderActionId: string } }).activation
+      .failedBuilderActionId,
+  ).toBe(successor.id);
+  expect(run.actions.find((a) => a.id === firstFailed.id)).toEqual(firstFailed);
+  expect(run.actions.find((a) => a.id === secondFailed.id)).toEqual(secondFailed);
+  expect(run.actions.find((a) => a.id === originalRightMerge.id)).toEqual(originalRightMerge);
+  expect(run.waits.find((w) => w.id === originalShapeApproval!.id)).toEqual(originalShapeApproval);
+  expect(await fs.readFile(partialFile, 'utf8')).toBe('partial repair\n');
+  await fs.writeFile(partialFile, 'repaired\n');
+  f.git(integrationRoot, ['add', 'integration-repair.txt']);
+  run = await f.submitBuilder(repair, 'approved\n', 'integration-repair-builder');
+  expect(childAction(run, 'supervisor.child.integrate', 'left')).toBeUndefined();
+
   run = await execute(
     childAction(run, 'native.extension.integration.candidate-review', 'right'),
     'native-review-script',
@@ -671,10 +716,6 @@ it('binds reverse Child reviews, repairs integration in its worktree, and review
   run = await execute(
     childAction(run, 'supervisor.child.integrate', 'left'),
     'native-supervisor-integrate',
-  );
-  run = await execute(
-    childAction(run, 'supervisor.child.integration-checks', 'left'),
-    'comet-native-checks',
   );
   run = await execute(
     childAction(run, 'native.extension.integration.candidate-review', 'left'),
@@ -697,7 +738,6 @@ it('binds reverse Child reviews, repairs integration in its worktree, and review
     'parent violation\n',
     'parent-builder',
   );
-  run = await execute(f.pending(run, 'verify.checks'), 'comet-native-checks');
   run = await execute(
     f.pending(run, 'native.extension.parent.candidate-review'),
     'native-review-script',
@@ -709,7 +749,6 @@ it('binds reverse Child reviews, repairs integration in its worktree, and review
     'approved\n',
     'parent-repair-builder',
   );
-  run = await execute(f.pending(run, 'verify.checks'), 'comet-native-checks');
   run = await execute(
     f.pending(run, 'native.extension.parent.candidate-review'),
     'native-review-script',
@@ -733,12 +772,6 @@ it('does not discard an unknown Child when another review requires Shape revisio
     reason: 'Actual host return interrupted',
   });
   run = await f.submitBuilder(builders[0], 'NEEDS-REQUIREMENTS\n');
-  run = await f.dispatch({
-    operation: 'execute',
-    runId: f.name,
-    actionId: f.pending(run, 'supervisor.child.checks').id,
-    executorId: 'comet-native-checks',
-  });
   run = await f.dispatch({
     operation: 'execute',
     runId: f.name,

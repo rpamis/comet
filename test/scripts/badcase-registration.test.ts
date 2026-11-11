@@ -144,6 +144,7 @@ describe('continuous badcase registration', () => {
     const first = JSON.parse(readFileSync('config/workflow-regressions.json', 'utf8')).cases.find(
       (item) => item.testMigration,
     ).testMigration;
+    delete first.supersededBy;
     Object.assign(catalog.cases[0], { testMigration: { ...first, kind: 'tests-moved' } });
     const before = structuredClone(catalog);
     const entry = catalog.cases[0] as Record<string, any>;

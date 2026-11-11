@@ -1,0 +1,170 @@
+{
+  "provenance": {
+    "package": "@rpamis/comet",
+    "version": "0.5.2",
+    "packageRoot": "C:/Users/BENYM/AppData/Local/Temp/comet-052-cli-package-626acda290b5479fb72b05334de5c0e5/package",
+    "simulation": "SIMULATED User explicit Shape approval. Actual published createNativeChange legacy-v1 and advanceNativeChange runtime transitions. Fault thrown from the real afterPrepared hook after durable WAL, before state/Run/checkpoint writes. No manually constructed workflow state or journal. No model/Eval/push."
+  },
+  "name": "remove-after-recovery",
+  "originalPaths": {
+    "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-transition-wal-freeze-5f159bda\\remove-after-recovery\\project",
+    "configFile": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-transition-wal-freeze-5f159bda\\remove-after-recovery\\project\\.comet\\config.yaml",
+    "artifactRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-transition-wal-freeze-5f159bda\\remove-after-recovery\\project",
+    "artifactRootRef": ".",
+    "nativeRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-transition-wal-freeze-5f159bda\\remove-after-recovery\\project\\comet",
+    "specsDir": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-transition-wal-freeze-5f159bda\\remove-after-recovery\\project\\comet\\specs",
+    "changesDir": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-transition-wal-freeze-5f159bda\\remove-after-recovery\\project\\comet\\changes",
+    "archiveDir": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-transition-wal-freeze-5f159bda\\remove-after-recovery\\project\\comet\\archive",
+    "workspaceRuntimeRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-transition-wal-freeze-5f159bda\\data\\workspaces\\fee38efba88ee496ee710d258816468881dfd646bf57fda8ffef53aa891046cf\\runtime",
+    "runtimeDir": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-transition-wal-freeze-5f159bda\\data\\workspaces\\fee38efba88ee496ee710d258816468881dfd646bf57fda8ffef53aa891046cf\\runtime\\native",
+    "changesRuntimeDir": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-transition-wal-freeze-5f159bda\\data\\workspaces\\fee38efba88ee496ee710d258816468881dfd646bf57fda8ffef53aa891046cf\\runtime\\native\\changes",
+    "locksDir": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-transition-wal-freeze-5f159bda\\data\\workspaces\\fee38efba88ee496ee710d258816468881dfd646bf57fda8ffef53aa891046cf\\runtime\\native\\locks",
+    "transactionsDir": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-transition-wal-freeze-5f159bda\\data\\workspaces\\fee38efba88ee496ee710d258816468881dfd646bf57fda8ffef53aa891046cf\\runtime\\native\\transactions"
+  },
+  "originalState": {
+    "schema": "comet.native.v3",
+    "minimum_runtime_version": 3,
+    "revision": 1,
+    "verification_protocol": "legacy-v1",
+    "name": "remove-after-recovery",
+    "language": "en",
+    "phase": "shape",
+    "brief": "brief.md",
+    "approval": null,
+    "spec_changes": [],
+    "verification_result": "pending",
+    "verification_report": null,
+    "archived": false,
+    "created_at": "2026-11-10",
+    "run_id": null,
+    "approved_contract_hash": null,
+    "implementation_scope": null,
+    "verification_evidence": null,
+    "partial_allowance": null
+  },
+  "originalStateText": "schema: comet.native.v3\nminimum_runtime_version: 3\nrevision: 1\nverification_protocol: legacy-v1\nname: remove-after-recovery\nlanguage: en\nphase: shape\nbrief: brief.md\napproval: null\napproved_contract_hash: null\nspec_changes: []\nverification_result: pending\nverification_report: null\nimplementation_scope: null\nverification_evidence: null\npartial_allowance: null\narchived: false\ncreated_at: 2026-11-10\nrun_id: null\n",
+  "originalRun": null,
+  "originalCheckpoint": null,
+  "journal": {
+    "schema": "comet.native.transition.v3",
+    "minimum_runtime_version": 3,
+    "revision": 1,
+    "operation": "advance",
+    "id": "6a4f5514-bbb4-4e32-836b-84f00cfe497d",
+    "change": "remove-after-recovery",
+    "evidenceHash": "0f32750243e5deddad4b5ea9cc920fe4a6cf2d90b494e08be229293700034197",
+    "createdAt": "2026-11-10T17:42:22.406Z",
+    "previousState": {
+      "schema": "comet.native.v3",
+      "minimum_runtime_version": 3,
+      "revision": 1,
+      "verification_protocol": "legacy-v1",
+      "name": "remove-after-recovery",
+      "language": "en",
+      "phase": "shape",
+      "brief": "brief.md",
+      "approval": null,
+      "spec_changes": [],
+      "verification_result": "pending",
+      "verification_report": null,
+      "archived": false,
+      "created_at": "2026-11-10",
+      "run_id": null,
+      "approved_contract_hash": null,
+      "implementation_scope": null,
+      "verification_evidence": null,
+      "partial_allowance": null
+    },
+    "nextState": {
+      "schema": "comet.native.v3",
+      "minimum_runtime_version": 3,
+      "revision": 2,
+      "verification_protocol": "legacy-v1",
+      "name": "remove-after-recovery",
+      "language": "en",
+      "phase": "build",
+      "brief": "brief.md",
+      "approval": "confirmed",
+      "spec_changes": [],
+      "verification_result": "pending",
+      "verification_report": null,
+      "archived": false,
+      "created_at": "2026-11-10",
+      "run_id": "75ada034-9df2-417f-8a83-141421fb8e3c",
+      "approved_contract_hash": "68ae1e3c43c33351f75fd77af7625f5a35f61e43be5c6f8bf1f0d57f7ac68e60",
+      "implementation_scope": null,
+      "verification_evidence": null,
+      "partial_allowance": null
+    },
+    "previousRun": null,
+    "nextRun": {
+      "runId": "75ada034-9df2-417f-8a83-141421fb8e3c",
+      "skill": "comet-native-runtime",
+      "skillVersion": "3",
+      "skillHash": "112aa4f49084159625760f45f8243a0b081b6a8ad4f851faa25294ef6ae3ac3f",
+      "orchestration": "deterministic",
+      "currentStep": "build",
+      "iteration": 1,
+      "pending": null,
+      "pendingRef": "runtime/pending-action.json",
+      "trajectoryRef": "runtime/trajectory.jsonl",
+      "contextRef": "runtime/context.md",
+      "artifactsRef": "runtime/artifacts.json",
+      "checkpointRef": "runtime/checkpoints/latest.json",
+      "status": "running",
+      "retries": {}
+    },
+    "eventData": {
+      "previousPhase": "shape",
+      "nextPhase": "build",
+      "evidenceHash": "0f32750243e5deddad4b5ea9cc920fe4a6cf2d90b494e08be229293700034197",
+      "summary": "SIMULATED USER explicitly approves Shape for an isolated published transition WAL fixture.",
+      "artifacts": [],
+      "noCodeReason": null,
+      "verificationResult": null
+    }
+  },
+  "journalText": "{\n  \"schema\": \"comet.native.transition.v3\",\n  \"minimum_runtime_version\": 3,\n  \"revision\": 1,\n  \"operation\": \"advance\",\n  \"id\": \"6a4f5514-bbb4-4e32-836b-84f00cfe497d\",\n  \"change\": \"remove-after-recovery\",\n  \"evidenceHash\": \"0f32750243e5deddad4b5ea9cc920fe4a6cf2d90b494e08be229293700034197\",\n  \"createdAt\": \"2026-11-10T17:42:22.406Z\",\n  \"previousState\": {\n    \"schema\": \"comet.native.v3\",\n    \"minimum_runtime_version\": 3,\n    \"revision\": 1,\n    \"verification_protocol\": \"legacy-v1\",\n    \"name\": \"remove-after-recovery\",\n    \"language\": \"en\",\n    \"phase\": \"shape\",\n    \"brief\": \"brief.md\",\n    \"approval\": null,\n    \"spec_changes\": [],\n    \"verification_result\": \"pending\",\n    \"verification_report\": null,\n    \"archived\": false,\n    \"created_at\": \"2026-11-10\",\n    \"run_id\": null,\n    \"approved_contract_hash\": null,\n    \"implementation_scope\": null,\n    \"verification_evidence\": null,\n    \"partial_allowance\": null\n  },\n  \"nextState\": {\n    \"schema\": \"comet.native.v3\",\n    \"minimum_runtime_version\": 3,\n    \"revision\": 2,\n    \"verification_protocol\": \"legacy-v1\",\n    \"name\": \"remove-after-recovery\",\n    \"language\": \"en\",\n    \"phase\": \"build\",\n    \"brief\": \"brief.md\",\n    \"approval\": \"confirmed\",\n    \"spec_changes\": [],\n    \"verification_result\": \"pending\",\n    \"verification_report\": null,\n    \"archived\": false,\n    \"created_at\": \"2026-11-10\",\n    \"run_id\": \"75ada034-9df2-417f-8a83-141421fb8e3c\",\n    \"approved_contract_hash\": \"68ae1e3c43c33351f75fd77af7625f5a35f61e43be5c6f8bf1f0d57f7ac68e60\",\n    \"implementation_scope\": null,\n    \"verification_evidence\": null,\n    \"partial_allowance\": null\n  },\n  \"previousRun\": null,\n  \"nextRun\": {\n    \"runId\": \"75ada034-9df2-417f-8a83-141421fb8e3c\",\n    \"skill\": \"comet-native-runtime\",\n    \"skillVersion\": \"3\",\n    \"skillHash\": \"112aa4f49084159625760f45f8243a0b081b6a8ad4f851faa25294ef6ae3ac3f\",\n    \"orchestration\": \"deterministic\",\n    \"currentStep\": \"build\",\n    \"iteration\": 1,\n    \"pending\": null,\n    \"pendingRef\": \"runtime/pending-action.json\",\n    \"trajectoryRef\": \"runtime/trajectory.jsonl\",\n    \"contextRef\": \"runtime/context.md\",\n    \"artifactsRef\": \"runtime/artifacts.json\",\n    \"checkpointRef\": \"runtime/checkpoints/latest.json\",\n    \"status\": \"running\",\n    \"retries\": {}\n  },\n  \"eventData\": {\n    \"previousPhase\": \"shape\",\n    \"nextPhase\": \"build\",\n    \"evidenceHash\": \"0f32750243e5deddad4b5ea9cc920fe4a6cf2d90b494e08be229293700034197\",\n    \"summary\": \"SIMULATED USER explicitly approves Shape for an isolated published transition WAL fixture.\",\n    \"artifacts\": [],\n    \"noCodeReason\": null,\n    \"verificationResult\": null\n  }\n}\n",
+  "materials": {
+    "directories": [
+      "changes",
+      "changes/remove-after-recovery",
+      "changes/remove-after-recovery/specs",
+      "specs",
+      "specs/legacy-capability"
+    ],
+    "files": [
+      {
+        "ref": "changes/remove-after-recovery/brief.md",
+        "bytesBase64": "IyBPdXRjb21lClNoaXAgYSBmb2N1c2VkIGZpeHR1cmUgb3V0Y29tZS4KIyBTY29wZQpPbmUgY2FwYWJpbGl0eS4KIyBOb24tZ29hbHMKTm8gbW9kZWwsIEV2YWwgb3IgcHVzaC4KIyBBY2NlcHRhbmNlIGV4YW1wbGVzCi0gVGhlIGJlaGF2aW9yIHdvcmtzLgojIENvbnN0cmFpbnRzIGFuZCBpbnZhcmlhbnRzCktlZXAgY29tcGF0aWJpbGl0eS4KIyBEZWNpc2lvbnMKVXNlIE5hdGl2ZSBzdGF0ZS4KIyBPcGVuIHF1ZXN0aW9ucwpOb25lLgojIFZlcmlmaWNhdGlvbiBleHBlY3RhdGlvbnMKVGhpcyBpcyBhbiBpc29sYXRlZCB0cmFuc2l0aW9uIHJlY292ZXJ5IHByb3RvY29sIGZpeHR1cmUuCg=="
+      },
+      {
+        "ref": "changes/remove-after-recovery/comet-state.yaml",
+        "bytesBase64": "c2NoZW1hOiBjb21ldC5uYXRpdmUudjMKbWluaW11bV9ydW50aW1lX3ZlcnNpb246IDMKcmV2aXNpb246IDEKdmVyaWZpY2F0aW9uX3Byb3RvY29sOiBsZWdhY3ktdjEKbmFtZTogcmVtb3ZlLWFmdGVyLXJlY292ZXJ5Cmxhbmd1YWdlOiBlbgpwaGFzZTogc2hhcGUKYnJpZWY6IGJyaWVmLm1kCmFwcHJvdmFsOiBudWxsCmFwcHJvdmVkX2NvbnRyYWN0X2hhc2g6IG51bGwKc3BlY19jaGFuZ2VzOiBbXQp2ZXJpZmljYXRpb25fcmVzdWx0OiBwZW5kaW5nCnZlcmlmaWNhdGlvbl9yZXBvcnQ6IG51bGwKaW1wbGVtZW50YXRpb25fc2NvcGU6IG51bGwKdmVyaWZpY2F0aW9uX2V2aWRlbmNlOiBudWxsCnBhcnRpYWxfYWxsb3dhbmNlOiBudWxsCmFyY2hpdmVkOiBmYWxzZQpjcmVhdGVkX2F0OiAyMDI2LTExLTEwCnJ1bl9pZDogbnVsbAo="
+      },
+      {
+        "ref": "specs/legacy-capability/spec.md",
+        "bytesBase64": "bGVnYWN5Cg=="
+      }
+    ]
+  },
+  "changeRuntime": {
+    "directories": [
+      "checkpoints"
+    ],
+    "files": [
+      {
+        "ref": "baseline-manifest.json",
+        "bytesBase64": "ewogICJzY2hlbWEiOiAiY29tZXQubmF0aXZlLmNvbnRlbnQtc25hcHNob3QudjEiLAogICJvcmlnaW4iOiAiY2hhbmdlLWNyZWF0ZWQiLAogICJjYXB0dXJlIjogewogICAgInByb3ZpZGVyIjogInBoeXNpY2FsLXRyZWUiCiAgfSwKICAiY3JlYXRlZEF0IjogIjIwMjYtMTEtMTBUMTc6NDI6MjIuMTcwWiIsCiAgImNvbXBsZXRlIjogdHJ1ZSwKICAibGltaXRzIjogewogICAgIm1heEZpbGVzIjogMTAwMDAsCiAgICAibWF4RmlsZUJ5dGVzIjogMTA3Mzc0MTgyNCwKICAgICJtYXhUb3RhbEJ5dGVzIjogMTA3Mzc0MTgyNCwKICAgICJtYXhNYW5pZmVzdEJ5dGVzIjogMTA3Mzc0MTgyNCwKICAgICJtYXhEdXJhdGlvbk1zIjogNjAwMDAKICB9LAogICJwb2xpY3kiOiB7CiAgICAic2NoZW1hIjogImNvbWV0Lm5hdGl2ZS5zbmFwc2hvdC1wb2xpY3kudjEiLAogICAgImluY2x1ZGUiOiBbCiAgICAgICIqKi8qIgogICAgXSwKICAgICJleGNsdWRlIjogWwogICAgICAiLmFnZW50cy9za2lsbHMvKioiLAogICAgICAiLmFtYXpvbnEvc2tpbGxzLyoqIiwKICAgICAgIi5hdWdtZW50L3NraWxscy8qKiIsCiAgICAgICIuYm9iL3NraWxscy8qKiIsCiAgICAgICIuY2xhdWRlL3NraWxscy8qKiIsCiAgICAgICIuY2xpbmUvc2tpbGxzLyoqIiwKICAgICAgIi5jb2RlYnVkZHkvc2tpbGxzLyoqIiwKICAgICAgIi5jb2RleC9za2lsbHMvKioiLAogICAgICAiLmNvbnRpbnVlL3NraWxscy8qKiIsCiAgICAgICIuY29zcGVjL3NraWxscy8qKiIsCiAgICAgICIuY3J1c2gvc2tpbGxzLyoqIiwKICAgICAgIi5jdXJzb3Ivc2tpbGxzLyoqIiwKICAgICAgIi5kZXZpbi9za2lsbHMvKioiLAogICAgICAiLmRzaC9za2lsbHMvKioiLAogICAgICAiLmZhY3Rvcnkvc2tpbGxzLyoqIiwKICAgICAgIi5mb3JnZS9za2lsbHMvKioiLAogICAgICAiLmdlbWluaS9za2lsbHMvKioiLAogICAgICAiLmdpdGh1Yi9za2lsbHMvKioiLAogICAgICAiLmdyb2svc2tpbGxzLyoqIiwKICAgICAgIi5pZmxvdy9za2lsbHMvKioiLAogICAgICAiLmp1bmllL3NraWxscy8qKiIsCiAgICAgICIua2lsb2NvZGUvc2tpbGxzLyoqIiwKICAgICAgIi5raW1pLWNvZGUvc2tpbGxzLyoqIiwKICAgICAgIi5raXJvL3NraWxscy8qKiIsCiAgICAgICIubGluZ21hL3NraWxscy8qKiIsCiAgICAgICIubWltb2NvZGUvc2tpbGxzLyoqIiwKICAgICAgIi5taW5pbWF4L3NraWxscy8qKiIsCiAgICAgICIub21wL3NraWxscy8qKiIsCiAgICAgICIub3BlbmNvZGUvc2tpbGxzLyoqIiwKICAgICAgIi5waS9za2lsbHMvKioiLAogICAgICAiLnByaW1lL2FnZW50L3NraWxscy8qKiIsCiAgICAgICIucW9kZXIvc2tpbGxzLyoqIiwKICAgICAgIi5xd2VuL3NraWxscy8qKiIsCiAgICAgICIucm9vL3NraWxscy8qKiIsCiAgICAgICIudHJhZS1jbi9za2lsbHMvKioiLAogICAgICAiLnRyYWUvc2tpbGxzLyoqIiwKICAgICAgIi53aW5kc3VyZi9za2lsbHMvKioiLAogICAgICAiLndvcmtidWRkeS9za2lsbHMvKioiLAogICAgICAiLnpjb2RlL3NraWxscy8qKiIsCiAgICAgICIqKi9fX3B5Y2FjaGVfXy8qKiIsCiAgICAgICIqKi8uY2FjaGUvKioiLAogICAgICAiKiovLmN4eC8qKiIsCiAgICAgICIqKi8uRFNfU3RvcmUiLAogICAgICAiKiovLmV4dGVybmFsTmF0aXZlQnVpbGQvKioiLAogICAgICAiKiovLmdyYWRsZS8qKiIsCiAgICAgICIqKi8uaWRlYS8qKiIsCiAgICAgICIqKi8ubXlweV9jYWNoZS8qKiIsCiAgICAgICIqKi8ubmV4dC8qKiIsCiAgICAgICIqKi8ubm94LyoqIiwKICAgICAgIioqLy5udXh0LyoqIiwKICAgICAgIioqLy5ueC9jYWNoZS8qKiIsCiAgICAgICIqKi8ubnljX291dHB1dC8qKiIsCiAgICAgICIqKi8ub3V0cHV0LyoqIiwKICAgICAgIioqLy5wYXJjZWwtY2FjaGUvKioiLAogICAgICAiKiovLnB5dGVzdF9jYWNoZS8qKiIsCiAgICAgICIqKi8ucnVmZl9jYWNoZS8qKiIsCiAgICAgICIqKi8uc3ZlbHRlLWtpdC8qKiIsCiAgICAgICIqKi8udG94LyoqIiwKICAgICAgIioqLy50dXJiby8qKiIsCiAgICAgICIqKi8udmVudi8qKiIsCiAgICAgICIqKi8udml0ZS8qKiIsCiAgICAgICIqKi8udnNjb2RlLyoqIiwKICAgICAgIioqLyoubG9nIiwKICAgICAgIioqLyoudHNidWlsZGluZm8iLAogICAgICAiKiovYnVpbGQvKioiLAogICAgICAiKiovY2FwdHVyZXMvKioiLAogICAgICAiKiovY21ha2UtYnVpbGQtKi8qKiIsCiAgICAgICIqKi9DTWFrZUZpbGVzLyoqIiwKICAgICAgIioqL2NvdmVyYWdlLyoqIiwKICAgICAgIioqL2Rpc3QvKioiLAogICAgICAiKiovbG9ncy8qKiIsCiAgICAgICIqKi9ub2RlX21vZHVsZXMvKioiLAogICAgICAiKiovb2JqLyoqIiwKICAgICAgIioqL291dC8qKiIsCiAgICAgICIqKi90YXJnZXQvKioiLAogICAgICAiKiovdGVtcC8qKiIsCiAgICAgICIqKi9UaHVtYnMuZGIiLAogICAgICAiKiovdG1wLyoqIiwKICAgICAgIioqL3ZlbnYvKioiCiAgICBdLAogICAgImhhc2giOiAiMjNiYTRhMjdlNGFlNmRmYzdjOTRiOGVhYjMwZjQ5MjMyZGM2OGFhNzY1YWNjNDhmYWFlY2VjMzYyM2I4MjQzYSIKICB9LAogICJlbnRyaWVzIjogW10sCiAgIm9taXR0ZWQiOiBbXSwKICAib21pdHRlZENvdW50IjogMAp9Cg=="
+      },
+      {
+        "ref": "transition.json",
+        "bytesBase64": "ewogICJzY2hlbWEiOiAiY29tZXQubmF0aXZlLnRyYW5zaXRpb24udjMiLAogICJtaW5pbXVtX3J1bnRpbWVfdmVyc2lvbiI6IDMsCiAgInJldmlzaW9uIjogMSwKICAib3BlcmF0aW9uIjogImFkdmFuY2UiLAogICJpZCI6ICI2YTRmNTUxNC1iYmI0LTRlMzItODM2Yi04NGYwMGNmZTQ5N2QiLAogICJjaGFuZ2UiOiAicmVtb3ZlLWFmdGVyLXJlY292ZXJ5IiwKICAiZXZpZGVuY2VIYXNoIjogIjBmMzI3NTAyNDNlNWRlZGRhZDRiNWVhOWNjOTIwZmU0YTZjZjJkOTBiNDk0ZTA4YmUyMjkyOTM3MDAwMzQxOTciLAogICJjcmVhdGVkQXQiOiAiMjAyNi0xMS0xMFQxNzo0MjoyMi40MDZaIiwKICAicHJldmlvdXNTdGF0ZSI6IHsKICAgICJzY2hlbWEiOiAiY29tZXQubmF0aXZlLnYzIiwKICAgICJtaW5pbXVtX3J1bnRpbWVfdmVyc2lvbiI6IDMsCiAgICAicmV2aXNpb24iOiAxLAogICAgInZlcmlmaWNhdGlvbl9wcm90b2NvbCI6ICJsZWdhY3ktdjEiLAogICAgIm5hbWUiOiAicmVtb3ZlLWFmdGVyLXJlY292ZXJ5IiwKICAgICJsYW5ndWFnZSI6ICJlbiIsCiAgICAicGhhc2UiOiAic2hhcGUiLAogICAgImJyaWVmIjogImJyaWVmLm1kIiwKICAgICJhcHByb3ZhbCI6IG51bGwsCiAgICAic3BlY19jaGFuZ2VzIjogW10sCiAgICAidmVyaWZpY2F0aW9uX3Jlc3VsdCI6ICJwZW5kaW5nIiwKICAgICJ2ZXJpZmljYXRpb25fcmVwb3J0IjogbnVsbCwKICAgICJhcmNoaXZlZCI6IGZhbHNlLAogICAgImNyZWF0ZWRfYXQiOiAiMjAyNi0xMS0xMCIsCiAgICAicnVuX2lkIjogbnVsbCwKICAgICJhcHByb3ZlZF9jb250cmFjdF9oYXNoIjogbnVsbCwKICAgICJpbXBsZW1lbnRhdGlvbl9zY29wZSI6IG51bGwsCiAgICAidmVyaWZpY2F0aW9uX2V2aWRlbmNlIjogbnVsbCwKICAgICJwYXJ0aWFsX2FsbG93YW5jZSI6IG51bGwKICB9LAogICJuZXh0U3RhdGUiOiB7CiAgICAic2NoZW1hIjogImNvbWV0Lm5hdGl2ZS52MyIsCiAgICAibWluaW11bV9ydW50aW1lX3ZlcnNpb24iOiAzLAogICAgInJldmlzaW9uIjogMiwKICAgICJ2ZXJpZmljYXRpb25fcHJvdG9jb2wiOiAibGVnYWN5LXYxIiwKICAgICJuYW1lIjogInJlbW92ZS1hZnRlci1yZWNvdmVyeSIsCiAgICAibGFuZ3VhZ2UiOiAiZW4iLAogICAgInBoYXNlIjogImJ1aWxkIiwKICAgICJicmllZiI6ICJicmllZi5tZCIsCiAgICAiYXBwcm92YWwiOiAiY29uZmlybWVkIiwKICAgICJzcGVjX2NoYW5nZXMiOiBbXSwKICAgICJ2ZXJpZmljYXRpb25fcmVzdWx0IjogInBlbmRpbmciLAogICAgInZlcmlmaWNhdGlvbl9yZXBvcnQiOiBudWxsLAogICAgImFyY2hpdmVkIjogZmFsc2UsCiAgICAiY3JlYXRlZF9hdCI6ICIyMDI2LTExLTEwIiwKICAgICJydW5faWQiOiAiNzVhZGEwMzQtOWRmMi00MTdmLThhODMtMTQxNDIxZmI4ZTNjIiwKICAgICJhcHByb3ZlZF9jb250cmFjdF9oYXNoIjogIjY4YWUxZTNjNDNjMzMzNTFmNzVmZDc3YWY3NjI1ZjVhMzVmNjFlNDNiZTVjNmY4YmYxZjBkNTdmN2FjNjhlNjAiLAogICAgImltcGxlbWVudGF0aW9uX3Njb3BlIjogbnVsbCwKICAgICJ2ZXJpZmljYXRpb25fZXZpZGVuY2UiOiBudWxsLAogICAgInBhcnRpYWxfYWxsb3dhbmNlIjogbnVsbAogIH0sCiAgInByZXZpb3VzUnVuIjogbnVsbCwKICAibmV4dFJ1biI6IHsKICAgICJydW5JZCI6ICI3NWFkYTAzNC05ZGYyLTQxN2YtOGE4My0xNDE0MjFmYjhlM2MiLAogICAgInNraWxsIjogImNvbWV0LW5hdGl2ZS1ydW50aW1lIiwKICAgICJza2lsbFZlcnNpb24iOiAiMyIsCiAgICAic2tpbGxIYXNoIjogIjExMmFhNGY0OTA4NDE1OTYyNTc2MGY0NWY4MjQzYTBiMDgxYjZhOGFkNGY4NTFmYWEyNTI5NGVmNmFlM2FjM2YiLAogICAgIm9yY2hlc3RyYXRpb24iOiAiZGV0ZXJtaW5pc3RpYyIsCiAgICAiY3VycmVudFN0ZXAiOiAiYnVpbGQiLAogICAgIml0ZXJhdGlvbiI6IDEsCiAgICAicGVuZGluZyI6IG51bGwsCiAgICAicGVuZGluZ1JlZiI6ICJydW50aW1lL3BlbmRpbmctYWN0aW9uLmpzb24iLAogICAgInRyYWplY3RvcnlSZWYiOiAicnVudGltZS90cmFqZWN0b3J5Lmpzb25sIiwKICAgICJjb250ZXh0UmVmIjogInJ1bnRpbWUvY29udGV4dC5tZCIsCiAgICAiYXJ0aWZhY3RzUmVmIjogInJ1bnRpbWUvYXJ0aWZhY3RzLmpzb24iLAogICAgImNoZWNrcG9pbnRSZWYiOiAicnVudGltZS9jaGVja3BvaW50cy9sYXRlc3QuanNvbiIsCiAgICAic3RhdHVzIjogInJ1bm5pbmciLAogICAgInJldHJpZXMiOiB7fQogIH0sCiAgImV2ZW50RGF0YSI6IHsKICAgICJwcmV2aW91c1BoYXNlIjogInNoYXBlIiwKICAgICJuZXh0UGhhc2UiOiAiYnVpbGQiLAogICAgImV2aWRlbmNlSGFzaCI6ICIwZjMyNzUwMjQzZTVkZWRkYWQ0YjVlYTljYzkyMGZlNGE2Y2YyZDkwYjQ5NGUwOGJlMjI5MjkzNzAwMDM0MTk3IiwKICAgICJzdW1tYXJ5IjogIlNJTVVMQVRFRCBVU0VSIGV4cGxpY2l0bHkgYXBwcm92ZXMgU2hhcGUgZm9yIGFuIGlzb2xhdGVkIHB1Ymxpc2hlZCB0cmFuc2l0aW9uIFdBTCBmaXh0dXJlLiIsCiAgICAiYXJ0aWZhY3RzIjogW10sCiAgICAibm9Db2RlUmVhc29uIjogbnVsbCwKICAgICJ2ZXJpZmljYXRpb25SZXN1bHQiOiBudWxsCiAgfQp9Cg=="
+      },
+      {
+        "ref": "workspace.json",
+        "bytesBase64": "ewogICJzY2hlbWEiOiAiY29tZXQubmF0aXZlLndvcmtzcGFjZS52MiIsCiAgImNhcHR1cmVkQXQiOiAiMjAyNi0xMS0xMFQxNzo0MjoyMi4yNTVaIiwKICAiY2FwdHVyZWRSZXZpc2lvbiI6IDEsCiAgIm5hdGl2ZVJvb3RSZWYiOiAiY29tZXQiLAogICJwcm9qZWN0Um9vdElkIjogIjFhMWEwMDUxMGU1NTQ5MjY5YzBhYmIzMDYxMjdkYmNkMjU4M2ZmMTU1YzIwMGNlYzYyZGJmYzFkNDgyYjRjYzkiLAogICJuYXRpdmVSb290SWQiOiAiNTEwYmQ2ZTFhYmU3OGZlNWMyYTM0NGMxOTdjYmRkZTA1ODVlM2NkZjVjOTlkOTJkNWUxYzNlZWUzYWQ5ZDUzNiIsCiAgInByb2plY3RSb290UGF0aElkIjogImVjMjJhYmM5OTM0NTI1NzU4YTE3ZmUxNTg5NDQzMWU1NWMzZTZlODhkOThlYmRhODY0Yzg4YWIyYmQ1N2Q3OTAiLAogICJuYXRpdmVSb290UGF0aElkIjogImVkYjUwMjQ5YmQ3OTFlMjVmNTI4M2IyNzQ4OTc0NzAyMGQ1ZDI4NzFhMGJiNjk5OGJhMjk0NTdlOGYxMWM1ZWUiCn0K"
+      }
+    ]
+  }
+}

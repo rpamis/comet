@@ -1718,7 +1718,7 @@ export function reconcileApplicationSkill(application: LoadedWorkflowApplication
 export function recordApplicationEvaluationEvidence(projectRoot: string, resultFile: string): Promise<ApplicationEvaluationEvidence>;
 
 // @public (undocumented)
-export function repairWorkflowApplicationLock(projectRoot: string, applicationId: string, runId: string, token: string, confirmedOwnerStopped?: boolean): Promise<"removed" | "changed" | "missing" | "blocked">;
+export function repairWorkflowApplicationLock(projectRoot: string, applicationId: string, runId: string, token: string, confirmedOwnerStopped?: boolean): Promise<"changed" | "removed" | "missing" | "blocked">;
 
 // @public (undocumented)
 export function repairWorkflowApplicationStorageIndex(options: {

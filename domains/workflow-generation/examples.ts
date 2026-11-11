@@ -111,7 +111,7 @@ export async function prepareWorkflowApplicationExample(options: {
           extensions: [
             {
               id: 'artifact-review',
-              afterStep: `${profile}.build.check.evidence`,
+              afterStep: `${profile}.build.execute`,
               skillId: 'artifact-review',
               artifactRefs: ['candidate.txt'],
               validator: { id: 'example-actual-artifact', version: '1' },

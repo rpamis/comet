@@ -1,0 +1,85 @@
+diff --git a/test/domains/skill/native-sdk-skill-routing.test.ts b/test/domains/skill/native-sdk-skill-routing.test.ts
+index e9793d8f..d053923a 100644
+--- a/test/domains/skill/native-sdk-skill-routing.test.ts
++++ b/test/domains/skill/native-sdk-skill-routing.test.ts
+@@ -65,6 +65,9 @@ describe('Chinese Native SDK Skill route', () => {
+     expect(shape).toContain('不能因模板默认位置而改放其他文件');
+     expect(build).toContain('按 brief 中登记的原位置');
+     expect(build).toContain('补齐遗漏产物');
++    expect(build).toContain('Agent 选择适用的自动检查');
++    expect(build).toContain('用平台工具检查原文件的实际内容');
++    expect(build).toContain('记录检查对象和结果');
+     expect(verify).toContain('同时核对 brief 中登记的产物位置、必需章节和格式');
+     expect(verify).toContain('不能用另一文件中的同类内容代替');
+   });
+@@ -80,7 +83,10 @@ describe('Chinese Native SDK Skill route', () => {
+     expect(shape).toContain('brief constraints');
+     expect(shape).toContain('default location in a template');
+     expect(build).toContain('original locations recorded in the brief');
+-    expect(build).toContain('current Runtime check plan');
++    expect(build).toContain('The Agent chooses applicable automated checks');
++    expect(build).toContain('runs them with platform tools');
++    expect(build).toContain('records the check targets and results');
++    expect(build).not.toContain('Runtime check plan');
+     expect(verify).toContain('another file');
+     expect(verify).toContain('do not pass the current candidate');
+   });
+@@ -118,9 +124,13 @@ describe('Chinese Native SDK Skill route', () => {
+     expect(skill).not.toContain('--runtime sdk');
+     expect(skill).toContain('当前 change 的 `comet-state.yaml`');
+     expect(skill).toContain('reference/recovery.md#故障恢复');
+-    expect(await fs.readFile(nativeRecovery, 'utf8')).toContain(
+-      'comet native doctor <change-name> --repair --confirmed',
+-    );
++    const recovery = await fs.readFile(nativeRecovery, 'utf8');
++    expect(recovery).toContain('comet native doctor <change-name> --json');
++    expect(recovery).toContain('只读检查，再按返回的明确恢复或导入动作继续');
++    expect(recovery).toContain('已保存的阶段、Action、领取和有效批准');
++    expect(recovery).toContain('`status` 不写入或恢复记录');
++    expect(recovery).toContain('继续外部工作前，通过原平台核对尚未结束或结果未知的任务');
++    expect(recovery).toContain('不能重放可能已发生的副作用');
+     expect(skill).toContain('旧 Runtime');
+   });
+ 
+@@ -147,7 +157,14 @@ describe('Chinese Native SDK Skill route', () => {
+     const recovery = await fs.readFile(englishNativeRecovery, 'utf8');
+     expect(recovery).toContain('run_checkpoint');
+     expect(recovery).toContain('saved phase');
+-    expect(recovery).toContain('comet native doctor <change-name> --repair --confirmed');
++    expect(recovery).toContain('comet native doctor <change-name> --json');
++    expect(recovery).toContain('first inspect read-only');
++    expect(recovery).toContain('then follow its explicit recovery or import action');
++    expect(recovery).toContain('saved phases, Actions, claims, and valid approvals');
++    expect(recovery).toContain('`status` does not write or restore records');
++    expect(recovery).toContain(
++      'reconcile unfinished or unknown tasks through their original platform without replaying possible side effects',
++    );
+     expect(commands).toContain('comet runtime dispatch --application native');
+     expect(commands).toContain('native next <change> --revise-requirements');
+     expect(commands).toContain('native archive <change> --dry-run --json');
+diff --git a/assets/skills-zh/comet-native/SKILL.md b/assets/skills-zh/comet-native/SKILL.md
+index f92474e0..3c8a2640 100644
+--- a/assets/skills-zh/comet-native/SKILL.md
++++ b/assets/skills-zh/comet-native/SKILL.md
+@@ -95,7 +95,7 @@ Build、Verify 和 Archive 由 Agent 对照实际文件和用户要求判断变
+ 
+ 用户确认一次 Supervisor Shape，就授权执行该范围内的全部子任务。按 Runtime 的指令分配和集成子任务，随后自动进行 Supervisor 主任务的最终验收，覆盖全部验收项。按[Supervisor 协作](reference/commands.md#supervisor-协作)区分统筹、Builder 和 Verifier 的职责；只有 Runtime 接受了子任务的验收结果并确认集成成功，才算完成。
+ 
+-提交候选前，按 brief 中登记的原位置检查文件、章节和格式，补齐遗漏产物；可自动检查的要求列入本轮平台检查，检查实际内容，不能只检查另一个文件中存在同类内容。修改已批准正式内容时沿用现有修订和确认流程。
++提交候选前，按 brief 中登记的原位置检查文件、章节和格式，补齐遗漏产物；Agent 选择适用的自动检查，用平台工具检查原文件的实际内容，并记录检查对象和结果；不能用另一文件中的同类内容代替。修改已批准正式内容时沿用现有修订和确认流程。
+ 
+ 完成标准：实现和相关检查可供验收，Runtime 接受 Builder 交接并进入 Verify。
+ 
+diff --git a/assets/skills/comet-native/SKILL.md b/assets/skills/comet-native/SKILL.md
+index ee69886f..5e601d8a 100644
+--- a/assets/skills/comet-native/SKILL.md
++++ b/assets/skills/comet-native/SKILL.md
+@@ -95,7 +95,7 @@ Apply the same rules when the user explicitly adds to the current scope.
+ 
+ One confirmed Supervisor Shape authorizes all children within that scope. Dispatch and integrate as Runtime directs, then automatically perform final verification of every Supervisor acceptance item. Follow [Supervisor coordination](reference/commands.md#supervisor-coordination) for coordinator, Builder, and Verifier responsibilities. A child is complete only after Runtime accepts its verification and confirms integration.
+ 
+-Before submitting a candidate, check files, sections, and formats at the original locations recorded in the brief, and complete missing artifacts. Add requirements that can be checked automatically to the current Runtime check plan, checking their actual contents rather than only finding equivalent content in another file. Follow the existing revision and confirmation flow when changing approved formal content.
++Before submitting a candidate, check files, sections, and formats at the original locations recorded in the brief, and complete missing artifacts. The Agent chooses applicable automated checks, runs them with platform tools against the original files' actual contents, and records the check targets and results; equivalent content in another file does not replace those checks. Follow the existing revision and confirmation flow when changing approved formal content.
+ 
+ Complete when the implementation and relevant checks are ready for verification, Runtime accepts the Builder handoff, and the phase is Verify.
+ 

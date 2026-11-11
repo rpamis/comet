@@ -1,3 +1,4 @@
+import { writeClassicPlatformChecks } from '../../helpers/classic-platform-checks.js';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -14,18 +15,6 @@ import {
 import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
 import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
 import { createRuntime } from '../../../domains/engine/runtime.js';
-
-// This suite restores original managed checks; new v2 Runs have platform-report coverage.
-vi.mock('../../../domains/comet-classic/classic-sdk-application.js', async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import('../../../domains/comet-classic/classic-sdk-application.js')
-    >();
-  return {
-    ...actual,
-    defineClassicAgentWorkflowApplication: actual.defineClassicWorkflowApplication,
-  };
-});
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -107,23 +96,12 @@ async function fixture(
   }
   const preview = await cli('guard', 'example', 'open');
   await cli('guard', 'example', 'open', '--apply', '--approval-hash', preview.approvalHash);
-  // 命令分隔符后的参数属于被检查进程；直接调用避免追加 --json。
-  const checked = await runClassicCli(
-    [
-      'guard',
-      'example',
-      'build',
-      '--apply',
-      '--json',
-      '--',
-      process.execPath,
-      '-e',
-      'process.exit(0)',
-    ],
-    undefined,
-    { invocationCwd: projectRoot },
-  );
-  expect(checked.exitCode, checked.stderr).toBe(0);
+  const checks = await writeClassicPlatformChecks(projectRoot, [
+    process.execPath,
+    '-e',
+    'process.exit(0)',
+  ]);
+  await cli('guard', 'example', 'build', '--apply', '--checks', checks);
   const report = 'docs/superpowers/reports/verify.md';
   await fs.mkdir(path.dirname(path.join(projectRoot, report)), { recursive: true });
   await fs.writeFile(path.join(projectRoot, report), '# Verification\nPASS\n');
@@ -139,24 +117,8 @@ async function fixture(
       cli,
       active,
     };
-  const verified = await runClassicCli(
-    [
-      'guard',
-      'example',
-      'verify',
-      '--report',
-      report,
-      '--apply',
-      '--json',
-      '--',
-      process.execPath,
-      '-e',
-      'process.exit(0)',
-    ],
-    undefined,
-    { invocationCwd: projectRoot },
-  );
-  expect(verified.exitCode, verified.stderr).toBe(0);
+  await writeClassicPlatformChecks(projectRoot, [process.execPath, '-e', 'process.exit(0)']);
+  await cli('guard', 'example', 'verify', '--report', report, '--apply', '--checks', checks);
   const proposed = await cli(
     'state',
     'propose-archive',
@@ -506,6 +468,11 @@ describe('Classic explicit verification recovery', () => {
         { invocationCwd: f.projectRoot },
       );
       expect(stale.exitCode).not.toBe(0);
+      const checks = await writeClassicPlatformChecks(f.projectRoot, [
+        process.execPath,
+        '-e',
+        'process.exit(0)',
+      ]);
       const verified = await runClassicCli(
         [
           'guard',
@@ -515,10 +482,8 @@ describe('Classic explicit verification recovery', () => {
           'docs/superpowers/reports/verify.md',
           '--apply',
           '--json',
-          '--',
-          process.execPath,
-          '-e',
-          'process.exit(0)',
+          '--checks',
+          checks,
         ],
         undefined,
         { invocationCwd: f.projectRoot },

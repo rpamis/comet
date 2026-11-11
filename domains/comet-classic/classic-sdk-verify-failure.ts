@@ -3,6 +3,7 @@ import type { WorkflowRun } from '../engine/runtime.js';
 
 import { evaluateBranchBinding, isGitWorkTree, liveGitBranch } from './classic-branch-binding.js';
 import { inspectClassicSdkRun } from './classic-sdk-status.js';
+import { reviseClassicSdkWork } from './classic-sdk-revision.js';
 
 /** Record an assessed Verify failure as the current SDK Action outcome. */
 export async function failClassicSdkVerify(options: {
@@ -12,10 +13,22 @@ export async function failClassicSdkVerify(options: {
 }): Promise<WorkflowRun> {
   const reason = options.reason.trim();
   if (!reason) throw new Error('Classic SDK Verify failure requires a reason');
-  const { run, state, runtime, profile } = await inspectClassicSdkRun(
+  let { run, state, runtime, profile } = await inspectClassicSdkRun(
     options.projectRoot,
     options.change,
   );
+  if (state.phase === 'archive') {
+    await reviseClassicSdkWork({
+      projectRoot: options.projectRoot,
+      change: options.change,
+      name: 'reopen-verification',
+      expectedRevision: run.revision,
+    });
+    ({ run, state, runtime, profile } = await inspectClassicSdkRun(
+      options.projectRoot,
+      options.change,
+    ));
+  }
   if (state.phase !== 'verify') {
     throw new Error('Classic SDK Verify failure requires a change in Verify');
   }

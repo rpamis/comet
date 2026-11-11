@@ -188,7 +188,7 @@ describe('CI workflows', () => {
         }),
       ),
     ];
-    expect(files).toHaveLength(26);
+    expect(files).toHaveLength(19);
     const linux = workflow.jobs['core-regression-report'];
     expect(linux.needs).toBe('quality');
     const download = linux.steps.findIndex((step: { uses?: string }) =>
@@ -274,16 +274,14 @@ describe('CI workflows', () => {
     expect(commands).toContain('test/domains/workflow-contract/workspace-runtime.test.ts');
   });
 
-  it('runs real Native process regressions without competing test workers', async () => {
+  it('runs CLI-owned process cleanup regressions without competing test workers', async () => {
     const workflow = parse(await readWorkflow('ci.yml'));
     const step = workflow.jobs['runtime-smoke'].steps.find(
-      (step: { name?: string }) => step.name === 'Native check process and recovery regressions',
+      (step: { name?: string }) => step.name === 'CLI-owned process cleanup regressions',
     );
     expect(step.run).toContain('--maxWorkers=1');
-    expect(step.run).toContain('test/domains/comet-native/native-check-executor.test.ts');
-    expect(step.run).toContain(
-      'test/domains/comet-native/native-check-executor-termination.test.ts',
-    );
+    expect(step.run).toContain('test/platform/process/owned-command-termination.test.ts');
+    expect(step.run).toContain('test/platform/process/node-cli-command.test.ts');
     expect(step.run).toContain('test/platform/process/process-identity.test.ts');
     expect(step.if).toBe("matrix.os != 'ubuntu-latest'");
     expect(step['continue-on-error']).toBeUndefined();

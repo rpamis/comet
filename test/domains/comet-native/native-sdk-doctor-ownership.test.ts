@@ -1,3 +1,4 @@
+import '../../helpers/isolated-agent-home.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -14,6 +15,7 @@ import {
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
+import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import {
   ensureNativeDirectories,
   nativeProjectPaths,
@@ -27,7 +29,8 @@ import {
 } from '../../../domains/comet-native/native-sdk-application.js';
 import { nativeSdkArchiveFinalizeExecutor } from '../../../domains/comet-native/native-sdk-archive.js';
 import { createNativeSdkStateStore } from '../../../domains/comet-native/native-sdk-state-store.js';
-import { reconcileNativeSdkExecutionStops } from '../../../domains/comet-native/native-sdk-check-execution.js';
+import { refreshNativeSdkVerificationReport } from '../../../domains/comet-native/native-sdk-report.js';
+import { execFileSync } from 'node:child_process';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -132,21 +135,25 @@ async function interruptedArchive() {
     collectNativeSdkShapeProposal({ paths, state: run.state as unknown as NativePortableState });
   await succeed(await proposal());
   await approve();
-  await succeed(await proposal());
+  execFileSync(process.execPath, ['-e', 'process.exit(0)'], { cwd: root });
   await succeed(
     {
       summary: 'Preserved the workflow.',
       addressedAcceptanceIds: ['A1'],
       acceptanceReview: fixtureAcceptanceReview(['A1']),
-      checks: [],
+      checks: [
+        {
+          name: 'Actual platform Node check',
+          result: 'passed',
+          note: 'Node exited 0 in the current workspace.',
+        },
+      ],
       knownLimits: [],
       review: null,
       submittedAt: '2026-09-24T01:00:00.000Z',
-      verificationChecks: [],
     },
     'builder-session',
   );
-  await execute('comet-native-checks');
   await succeed(
     {
       candidateId: (run.state as unknown as NativePortableState).builder_handoff!.candidate_id,
@@ -165,17 +172,12 @@ async function interruptedArchive() {
     },
     'verifier-session',
   );
-  for (const executor of [
-    'comet-native-report',
-    'comet-native-report-revalidate',
-    'comet-native-archive-preflight',
-    'comet-native-archive-apply',
-  ]) {
+  await refreshNativeSdkVerificationReport(root, run);
+  for (const executor of ['comet-native-archive-preflight', 'comet-native-archive-apply']) {
     if (run.waits.at(-1)?.stepId === 'verify.confirm' && run.waits.at(-1)?.status === 'pending')
       await approve();
     await execute(executor);
   }
-  run = await reconcileNativeSdkExecutionStops(root, run, runtime);
   vi.spyOn(nativeSdkArchiveFinalizeExecutor, 'execute').mockRejectedValueOnce(
     new Error('Host lost before finalization'),
   );
@@ -206,33 +208,54 @@ describe('Native doctor SDK transaction ownership', () => {
         [...(scope === 'named' ? [name] : []), ...(repair ? ['--repair'] : [])],
         root,
       );
-      expect(result.exitCode).not.toBe(0);
       expect(result.data).toMatchObject({ healthy: false });
-      const data = result.data as Record<string, unknown>;
-      const diagnosed =
-        scope === 'named'
-          ? data
-          : (data.changes as Array<Record<string, unknown>>).find(
-              (change) => change.change === name,
-            );
-      expect(diagnosed).toMatchObject({
-        workflow: 'native-sdk',
-        runtimeFormat: 'sdk',
-        healthy: false,
-        repaired: false,
-        findings: expect.arrayContaining([
+      const data = result.data as Record<string, any>;
+      if (scope === 'named')
+        expect(data.diagnostics.issues).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              code: 'native-execution-outcome-unresolved',
+              actionId: interrupted.actions.at(-1)!.id,
+              nextCommand: 'comet native archive ' + name + ' --recover --json',
+            }),
+          ]),
+        );
+      expect(data.transactions).toEqual(
+        expect.arrayContaining([
           expect.objectContaining({
-            code: 'sdk-action-outcome-unresolved',
-            actionId: interrupted.actions.at(-1)!.id,
-            stepId: 'archive.finalize',
-            repairCommand: `comet native archive ${name} --recover`,
+            change: name,
+            kind: 'archive',
+            status: 'specs-applied',
+            recoveryCommandArgs: ['comet', 'native', 'archive', name, '--recover'],
           }),
-          expect.objectContaining({ code: 'sdk-archive-transaction-incomplete' }),
         ]),
-      });
-      if (scope === 'project' && repair) expect(data.repairedPortableTransactions).toEqual([]);
+      );
       expect(await runtime.inspect(name)).toEqual(interrupted);
       expect(await fs.readFile(transactionFile, 'utf8')).toBe(transaction);
+      if (scope === 'named' && !repair) {
+        const originalAction = interrupted.actions.at(-1)!;
+        const recoveryArgs = (
+          data.transactions as Array<{ recoveryCommandArgs: string[] }>
+        )[0].recoveryCommandArgs.slice(2);
+        const recovered = await runNativeCli([...recoveryArgs, '--project-root', root, '--json']);
+        expect(recovered.exitCode, recovered.stderr || recovered.stdout).toBe(0);
+        const completed = await runtime.inspect(name);
+        expect(completed.status).toBe('completed');
+        expect(completed.actions.find((action) => action.id === originalAction.id)).toMatchObject({
+          status: 'succeeded',
+          inputHash: originalAction.inputHash,
+          claim: originalAction.claim,
+        });
+        const canonical = await fs.readFile(
+          path.join(fixture.paths.specsDir, 'workflow', 'spec.md'),
+        );
+        const repeated = await runNativeCli([...recoveryArgs, '--project-root', root, '--json']);
+        expect(repeated.exitCode, repeated.stderr || repeated.stdout).toBe(0);
+        expect(await fs.readFile(path.join(fixture.paths.specsDir, 'workflow', 'spec.md'))).toEqual(
+          canonical,
+        );
+        expect(await runtime.inspect(name)).toEqual(completed);
+      }
     },
   );
 
@@ -242,11 +265,10 @@ describe('Native doctor SDK transaction ownership', () => {
     await fs.writeFile(transactionFile, malformed);
     for (const args of [[name, '--repair'], ['--repair']]) {
       const result = await nativeDoctorCommand(args, root);
-      expect(result.exitCode).not.toBe(0);
       expect(result.data).toMatchObject({
         healthy: false,
-        findings: expect.arrayContaining([
-          expect.objectContaining({ code: 'sdk-transaction-invalid' }),
+        transactions: expect.arrayContaining([
+          expect.objectContaining({ kind: 'archive', status: 'invalid' }),
         ]),
       });
       expect(await runtime.inspect(name)).toEqual(interrupted);

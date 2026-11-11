@@ -85,7 +85,11 @@ it('repairs archived Classic v2 delivery with platform reports without replaying
     '-e',
     'process.exit(0)',
   );
-  expect(managed.exitCode).not.toBe(0);
+  expect(managed.exitCode).toBe(0);
+  expect(managed.data).toMatchObject({
+    status: 'platform-execution-required',
+    checksExecuted: false,
+  });
   expect((await inspectClassicSdkRun(root, 'example')).run).toEqual(before);
   const rejected = await cli('state', 'complete-build', 'example', '--checks', 'checks.json');
   expect(rejected.exitCode).not.toBe(0);

@@ -1,0 +1,40 @@
+{
+  "sourceOnlyEnvMergeChanged": true,
+  "threeOriginalBodies": [
+    {
+      "name": "installs the bundled npm CLI once across concurrent starts and reuses its verified version",
+      "bodyUnchanged": true
+    },
+    {
+      "name": "rejects a mismatched archive before npm installation and leaves existing files intact",
+      "bodyUnchanged": true
+    },
+    {
+      "name": "keeps a healthy newer global CLI instead of downgrading it to the plugin version",
+      "bodyUnchanged": true
+    }
+  ],
+  "readOnlyEvidence": [
+    "readonly-direct.json",
+    "readonly-pnpm-exec.json",
+    "readonly-npm-exec.json"
+  ],
+  "red": {
+    "source": "source-before-head.ts.txt (HEAD; only imports rewritten in executable Temp copy)",
+    "passed": 0,
+    "failed": 3,
+    "npmInstallCalls": 0,
+    "evidence": "guarded-install-head-red-results.json",
+    "safety": "All stop at first read-only global-root check before the real npm command/installer is returned"
+  },
+  "green": {
+    "source": "actual current platform/install/codex-plugin-cli.ts",
+    "passed": 3,
+    "failed": 0,
+    "npmInstallCalls": 1,
+    "allRootsExactTemp": true,
+    "evidence": "guarded-install-current-green-results.json"
+  },
+  "noRealGlobalInstall": true,
+  "report": "npm-prefix-diagnosis.zh.md"
+}

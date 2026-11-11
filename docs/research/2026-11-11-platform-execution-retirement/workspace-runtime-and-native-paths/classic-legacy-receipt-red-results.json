@@ -1,0 +1,69 @@
+{
+  "temp": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-legacy-receipt-red-OQ7AVW",
+  "evalStarted": false,
+  "results": [
+    {
+      "location": "project-local",
+      "root": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-legacy-receipt-red-OQ7AVW\\project-local",
+      "legacy": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-legacy-receipt-red-OQ7AVW\\project-local\\.comet\\classic-deliveries\\c4e7ddc7485732d10dfccfc4b6b1b4fba7fe626371959dc6447b07a19db377a9.json",
+      "producer": "Actual @rpamis/comet@0.5.2 writeClassicDelivery + recordClassicDocumentArchive; resulting authentic receipt relocated byte-for-byte to a legacy path that the same published reader accepts.",
+      "receipt": {
+        "schemaVersion": 1,
+        "changeIdentity": "run:legacy-document-run",
+        "authorizationId": "d0ebaef8-6892-4498-8b60-80438dc47911",
+        "archiveFiles": {
+          "openspec/changes/demo/.comet/delivery.json": "59d2a6596e0ccd5c4e3724ee927400d9450d4dbda58de1012cf83b196e6bcb24",
+          "openspec/changes/demo/.comet/main-specs.json": "edbfd0512b825ffa4daeb974799528787dd5651de1ff63f5a195ecff238fb109",
+          "openspec/changes/demo/.comet.yaml": "d58221ca9418e3fff7035d2be2a28250e2ecdc089266237e20591923e0e01224",
+          "openspec/changes/demo/proposal.md": "2912f2410b78c0132b132b7b3b8ac34b9162cbc539ed8666d92e882c6edc5c73"
+        }
+      },
+      "originalBytesBase64": "ewogICJzY2hlbWFWZXJzaW9uIjogMSwKICAiY2hhbmdlSWRlbnRpdHkiOiAicnVuOmxlZ2FjeS1kb2N1bWVudC1ydW4iLAogICJhdXRob3JpemF0aW9uSWQiOiAiZDBlYmFlZjgtNjg5Mi00NDk4LThiNjAtODA0MzhkYzQ3OTExIiwKICAiYXJjaGl2ZUZpbGVzIjogewogICAgIm9wZW5zcGVjL2NoYW5nZXMvZGVtby8uY29tZXQvZGVsaXZlcnkuanNvbiI6ICI1OWQyYTY1OTZlMGNjZDVjNGUzNzI0ZWU5Mjc0MDBkOTQ1MGQ0ZGJkYTU4ZGUxMDEyY2Y4M2IxOTZlNmJjYjI0IiwKICAgICJvcGVuc3BlYy9jaGFuZ2VzL2RlbW8vLmNvbWV0L21haW4tc3BlY3MuanNvbiI6ICJlZGJmZDA1MTJiODI1ZmZhNGRhZWI5NzQ3OTk1Mjg3ODdkZDU2NTFkZTFmZjYzZjVhMTk1ZWNmZjIzOGZiMTA5IiwKICAgICJvcGVuc3BlYy9jaGFuZ2VzL2RlbW8vLmNvbWV0LnlhbWwiOiAiZDU4MjIxY2E5NDE4ZTNmZmY3MDM1ZDJiZTJhMjgyNTBlMmVjZGMwODkyNjYyMzdlMjA1OTE5MjNlMGUwMTIyNCIsCiAgICAib3BlbnNwZWMvY2hhbmdlcy9kZW1vL3Byb3Bvc2FsLm1kIjogIjI5MTJmMjQxMGI3OGMwMTMyYjEzMmI3YjNiOGFjMzRiOTE2MmNiYzUzOWVkODY2NmQ5MmU4ODJjNmVkYzVjNzMiCiAgfQp9Cg==",
+      "oldRead": {
+        "delivery": {
+          "action": "archive-only",
+          "schemaVersion": 1,
+          "changeIdentity": "run:legacy-document-run",
+          "authorizationId": "d0ebaef8-6892-4498-8b60-80438dc47911"
+        },
+        "verification": {
+          "status": "complete",
+          "archiveVerified": true
+        }
+      },
+      "beforeCurrent": {
+        "delivery": {
+          "action": "archive-only",
+          "schemaVersion": 1,
+          "changeIdentity": "run:legacy-document-run",
+          "authorizationId": "d0ebaef8-6892-4498-8b60-80438dc47911"
+        },
+        "verification": {
+          "status": "needsVerification",
+          "archiveVerified": false
+        }
+      },
+      "publicImport": {
+        "status": 0,
+        "stdout": "{\"status\":\"imported\",\"imported\":[],\"preservedSource\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-legacy-receipt-red-OQ7AVW\\\\project-local\\\\.comet\\\\runtime\",\"classic\":[]}\n",
+        "stderr": ""
+      },
+      "afterCurrent": {
+        "delivery": {
+          "action": "archive-only",
+          "schemaVersion": 1,
+          "changeIdentity": "run:legacy-document-run",
+          "authorizationId": "d0ebaef8-6892-4498-8b60-80438dc47911"
+        },
+        "verification": {
+          "status": "needsVerification",
+          "archiveVerified": false
+        }
+      },
+      "legacyBytesUnchanged": true,
+      "currentReceiptExists": false,
+      "expected": "explicit import retains original authorization and completed document receipt; current read remains complete",
+      "red": true
+    }
+  ]
+}

@@ -1,0 +1,213 @@
+{
+  "cases": [
+    {
+      "id": "native-explicit-pending-shape-retarget",
+      "sources": [
+        "report:2026-11-09-runtime-core-commit-review",
+        "https://github.com/rpamis/comet/issues/516"
+      ],
+      "behavior": "Compat待确认Shape可以显式修订后重选目标Spec，重新准备确认不扫描内容变化或自动撤回批准。",
+      "coverageLevel": "runtime",
+      "reproduction": "2e7055cc的Compat next --revise-requirements拒绝Shape；即使放行阶段，returnNativePortableChangeToShape也直接返回旧await-user状态，不能重新准备已修改目标。",
+      "expected": "显式修订回active Shape，清除旧提案绑定并以replacement-capability重新等待批准。",
+      "forbidden": "自动内容失效、误用旧确认、保留已撤下的目标Spec或跳过新批准。",
+      "rootCause": "删除自动内容失效后没有让现有显式修订入口处理待确认Compat Shape。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-document-constraints.test.ts",
+          "namePattern": "^Native document constraints lets Shape replace a previously declared target Spec before confirmation$",
+          "requiredNames": [
+            "Native document constraints lets Shape replace a previously declared target Spec before confirmation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-516-shape-retarget-declared-spec",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/516"
+      ],
+      "behavior": "Shape 确认前删除已声明的目标 Spec 并改为另一个目标 Spec 后，可以重新准备确认，声明的 spec_changes 换成新的目标能力；确认后已声明的目标 Spec 缺失仍被拒绝。",
+      "coverageLevel": "public-cli",
+      "reproduction": "在051源码的临时项目中，Native next 为 original-capability 准备 Shape 确认，然后删除 specs/original-capability 并新增 specs/replacement-capability；--confirmed 因文档变化回到 Shape，再次 next --summary 报 spec-document-missing: specs/original-capability/spec.md。SDK Run 下按 revise-requirements 修订同样报该错误并停在 prepare-shape-confirmation。",
+      "expected": "重新准备确认成功，状态停在 await-user，spec_changes 只包含 replacement-capability 的 create；Build 等确认后阶段丢失已声明目标 Spec 仍报 spec-document-missing。",
+      "forbidden": "Shape 确认前要求恢复不再需要的目标 Spec 或改用正式删除声明；仅凭豁免理由或无关能力的正式删除隐藏缺失的已声明 Spec；确认后静默放过已声明 Spec 的缺失。",
+      "rootCause": "文档检查把 Shape 中上一次准备时写入的 spec_changes 当作已确认的绑定集合，不区分确认前的提案与确认后的需求。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-document-constraints.test.ts",
+          "namePattern": "lets Shape replace a previously declared target Spec before confirmation|lets an SDK Shape revision replace a previously declared target Spec|keeps a confirmed target Spec bound after Shape|does not let an exemption hide a previously declared missing target Spec|does not let an unrelated Shape removal hide a declared target Spec",
+          "requiredNames": [
+            "Native document constraints lets Shape replace a previously declared target Spec before confirmation",
+            "Native document constraints lets an SDK Shape revision replace a previously declared target Spec",
+            "Native document constraints keeps a confirmed target Spec bound after Shape",
+            "Native document constraints does not let an exemption hide a previously declared missing target Spec",
+            "Native document constraints does not let an unrelated Shape removal hide a declared target Spec"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-236-linked-isolation",
+      "behavior": "多个真实 linked worktree 的 Native 会话互不污染 scope/运行状态，手工业务编辑后仍可推进",
+      "status": "covered",
+      "reason": "症状仍适用，旧 scope-hash 实现已换成当前候选和 workspace 绑定。",
+      "coverageLayer": "SDK and Compat",
+      "evidence": [
+        "https://github.com/rpamis/comet/issues/236"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-parallel-worktree.test.ts",
+          "namePattern": "keeps concurrent linked worktrees usable after a manual business-source edit",
+          "requiredNames": [
+            "keeps concurrent linked worktrees usable after a manual business-source edit"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+          "namePattern": "requires workspace isolation before creating a second current-workspace SDK change",
+          "requiredNames": [
+            "requires workspace isolation before creating a second current-workspace SDK change"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-status-v4-discovery.test.ts",
+          "namePattern": "finds an SDK-owned Native change in its linked worktree from the primary checkout",
+          "requiredNames": [
+            "finds an SDK-owned Native change in its linked worktree from the primary checkout"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "保真实当前SDK@4 linked-worktree Run可查原schema/name/phase/workspace绑定；显式projectRoot，不伪造旧version或恢复自动全worktree搜索。",
+        "authorization": "report:2026-11-10-agent-platform-execution",
+        "record": "docs/research/2026-11-11-native-reader-test-migration.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-parallel-worktree.test.ts",
+            "namePattern": "keeps concurrent linked worktrees usable after a manual business-source edit",
+            "requiredNames": [
+              "keeps concurrent linked worktrees usable after a manual business-source edit"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+            "namePattern": "requires workspace isolation before creating a second current-workspace SDK change",
+            "requiredNames": [
+              "requires workspace isolation before creating a second current-workspace SDK change"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-status-v4-discovery.test.ts",
+            "namePattern": "^(?:Native v4 registered-worktree status discovery finds an SDK-owned Native change with its explicit linked-worktree project root)$",
+            "requiredNames": [
+              "Native v4 registered-worktree status discovery finds an SDK-owned Native change with its explicit linked-worktree project root"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-11-native-reader-test-migration/registry.json",
+            "sha256": "0e6761255dde8c8dcef5ac0fd0bf2530d094c2b03578ad9d1b463e3735304659"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-11-native-reader-test-migration/tests.json",
+            "sha256": "8c13b415c1f02f364e77a6841f9dafb1b810718155c5190074c149730a0a31fa"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-11-native-reader-test-migration/tests.patch",
+            "sha256": "0177f4208c440a6ecd46f2193121e22d4e66205a12fc71c9fb9e8c7900055ea7"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-11-native-reader-test-migration/mapping.json",
+            "sha256": "f9ba7ada4d2a772535c233990cfe8b4d071827190623cb71bb81989f402ad65b"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-302-prepare-route",
+      "behavior": "Native 创建前准备/复用 linked worktree，恢复自动定位权威workspace，selection互不覆盖",
+      "status": "covered",
+      "reason": "Native已有路径继续作为现有行为验收，Classic部分由另一映射负责。",
+      "coverageLayer": "SDK and Compat",
+      "evidence": [
+        "https://github.com/rpamis/comet/issues/302"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-workspace-preparation.test.ts",
+          "namePattern": "reuses and validates an already prepared linked worktree|creates, resumes, prunes, and excludes an isolated worktree",
+          "requiredNames": [
+            "reuses and validates an already prepared linked worktree",
+            "creates, resumes, prunes, and excludes an isolated worktree"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-status-v4-discovery.test.ts",
+          "namePattern": "finds an SDK-owned Native change in its linked worktree from the primary checkout",
+          "requiredNames": [
+            "finds an SDK-owned Native change in its linked worktree from the primary checkout"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-parallel-worktree.test.ts",
+          "namePattern": "keeps concurrent linked worktrees usable after a manual business-source edit",
+          "requiredNames": [
+            "keeps concurrent linked worktrees usable after a manual business-source edit"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "保真实当前SDK@4 linked-worktree Run可查原schema/name/phase/workspace绑定；显式projectRoot，不伪造旧version或恢复自动全worktree搜索。",
+        "authorization": "report:2026-11-10-agent-platform-execution",
+        "record": "docs/research/2026-11-11-native-reader-test-migration.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-workspace-preparation.test.ts",
+            "namePattern": "reuses and validates an already prepared linked worktree|creates, resumes, prunes, and excludes an isolated worktree",
+            "requiredNames": [
+              "reuses and validates an already prepared linked worktree",
+              "creates, resumes, prunes, and excludes an isolated worktree"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-status-v4-discovery.test.ts",
+            "namePattern": "^(?:Native v4 registered-worktree status discovery finds an SDK-owned Native change with its explicit linked-worktree project root)$",
+            "requiredNames": [
+              "Native v4 registered-worktree status discovery finds an SDK-owned Native change with its explicit linked-worktree project root"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-parallel-worktree.test.ts",
+            "namePattern": "keeps concurrent linked worktrees usable after a manual business-source edit",
+            "requiredNames": [
+              "keeps concurrent linked worktrees usable after a manual business-source edit"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-11-native-reader-test-migration/registry.json",
+            "sha256": "0e6761255dde8c8dcef5ac0fd0bf2530d094c2b03578ad9d1b463e3735304659"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-11-native-reader-test-migration/tests.json",
+            "sha256": "8c13b415c1f02f364e77a6841f9dafb1b810718155c5190074c149730a0a31fa"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-11-native-reader-test-migration/tests.patch",
+            "sha256": "0177f4208c440a6ecd46f2193121e22d4e66205a12fc71c9fb9e8c7900055ea7"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-11-native-reader-test-migration/mapping.json",
+            "sha256": "f9ba7ada4d2a772535c233990cfe8b4d071827190623cb71bb81989f402ad65b"
+          }
+        }
+      }
+    }
+  ]
+}

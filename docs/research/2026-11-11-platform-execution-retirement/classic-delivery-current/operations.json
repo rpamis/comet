@@ -1,0 +1,291 @@
+{
+  "scope": [
+    "classic-527-archived-worktree-routing",
+    "classic-527-archived-copy-integrity",
+    "classic-527-missing-original-history",
+    "classic-preexisting-workspace-delivery-scope"
+  ],
+  "operations": [
+    {
+      "location": "current",
+      "id": "classic-527-archived-worktree-routing",
+      "expectedEntry": {
+        "id": "classic-527-archived-worktree-routing",
+        "sources": [
+          "https://github.com/rpamis/comet/issues/527"
+        ],
+        "behavior": "Classic 完成交付的归档合入另一 worktree 后，next 与 checkpoint 读取原权威 Run；select 明确拒绝已归档需求，amend 不影响归属解析。",
+        "coverageLevel": "public-cli",
+        "reproduction": "8c8478cd 的独立 state bundle 在临时 worktree 完成 Classic 交付并合入 integration；amend 与不 amend 两种 next 均退出70、checkpoint与正文不一致。",
+        "expected": "next 返回 done，checkpoint 成功，select 只返回已归档不能选择；原 Run 和归档字节保持，目标不导入重复 owner。",
+        "forbidden": "把归档副本当作新活动 Run、丢失交付历史、重跑 Archive或把已归档需求选为活动工作。",
+        "rootCause": "命令在跨 worktree 发现原已完成权威前，尝试从合并后的交付前 checkpoint 建立本地归属。",
+        "tests": [
+          {
+            "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+            "namePattern": "^reads completed archived history across worktrees after amend=(false|true) without importing a duplicate Run$",
+            "requiredNames": [
+              "reads completed archived history across worktrees after amend=false without importing a duplicate Run",
+              "reads completed archived history across worktrees after amend=true without importing a duplicate Run"
+            ]
+          }
+        ]
+      },
+      "migration": {
+        "kind": "feature-removed",
+        "reason": "Remove automatic peer-worktree discovery from ordinary archived Classic queries. Keep readable original completed Run history at its explicit workspace, immutable archived bytes, archived selection refusal, amend coverage, no duplicate local owner and no Archive replay. A merged copy without its original history now reports that requirement; the old automatic cross-root completion behavior is intentionally removed, not claimed fixed.",
+        "authorization": "report:2026-11-10-agent-platform-execution",
+        "record": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/README.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+            "namePattern": "^(?:reads completed history in the explicit worktree after amend=false without importing a duplicate Run|reads completed history in the explicit worktree after amend=true without importing a duplicate Run)$",
+            "requiredNames": [
+              "reads completed history in the explicit worktree after amend=false without importing a duplicate Run",
+              "reads completed history in the explicit worktree after amend=true without importing a duplicate Run"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/registry.json",
+            "sha256": "829455bd9849eb35c4dd458eee439cbee1c87fb1f1c85eab0436ccf5da8398e7"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/tests.json",
+            "sha256": "6d1fcec26299b67ddb26f51888a717a3d7a727e34685066468dcd4fed43c00bd"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/mapping.json",
+            "sha256": "f76f04799ff41167596d137becec0337be6337b73ba72a397d1c72ea91b0cf9a"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/tests.patch",
+            "sha256": "6d592f6d6cf98670df0870e9826ff045fc1515a33ada434ff7ffbf61bdb92412"
+          }
+        }
+      }
+    },
+    {
+      "location": "current",
+      "id": "classic-527-archived-copy-integrity",
+      "expectedEntry": {
+        "id": "classic-527-archived-copy-integrity",
+        "sources": [
+          "https://github.com/rpamis/comet/issues/527"
+        ],
+        "behavior": "跨 worktree 查询不能利用原完成记录隐藏本地归档副本的 checkpoint 损坏。",
+        "coverageLevel": "public-cli",
+        "reproduction": "跨 worktree 查询成功后，保留 managed-run 标记并篡改本地归档 checkpoint 的 hash，再运行同一独立 state bundle。",
+        "expected": "查询失败，原权威 Run 保持不变，目标不产生同名 owner。",
+        "forbidden": "跳过 checkpoint 验证或覆盖损坏副本后声称恢复成功。",
+        "rootCause": "跨工作区路由需要证明归档副本与原交付基线匹配，不能只按 change 名称寻找一个 completed Run。",
+        "tests": [
+          {
+            "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+            "namePattern": "^reads completed archived history across worktrees after amend=(false|true) without importing a duplicate Run$",
+            "requiredNames": [
+              "reads completed archived history across worktrees after amend=false without importing a duplicate Run",
+              "reads completed archived history across worktrees after amend=true without importing a duplicate Run"
+            ]
+          }
+        ]
+      },
+      "migration": {
+        "kind": "tests-moved",
+        "reason": "Keep the original archived checkpoint integrity boundary while retiring automatic peer-worktree lookup. Execute both explicit-workspace amend variants with no duplicate import, and additionally the completed original Run test that changes its archived checkpoint hash/branch state and verifies rejection with the authoritative Run unchanged. Rejection merely for missing history is not used as the only checkpoint-integrity evidence.",
+        "authorization": "report:2026-11-10-agent-platform-execution",
+        "record": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/README.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+            "namePattern": "^(?:reads completed history in the explicit worktree after amend=false without importing a duplicate Run|reads completed history in the explicit worktree after amend=true without importing a duplicate Run)$",
+            "requiredNames": [
+              "reads completed history in the explicit worktree after amend=false without importing a duplicate Run",
+              "reads completed history in the explicit worktree after amend=true without importing a duplicate Run"
+            ]
+          },
+          {
+            "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+            "namePattern": "^(?:rejects changed archived checkpoint and branch state after completed delivery)$",
+            "requiredNames": [
+              "rejects changed archived checkpoint and branch state after completed delivery"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/registry.json",
+            "sha256": "829455bd9849eb35c4dd458eee439cbee1c87fb1f1c85eab0436ccf5da8398e7"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/tests.json",
+            "sha256": "6d1fcec26299b67ddb26f51888a717a3d7a727e34685066468dcd4fed43c00bd"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/mapping.json",
+            "sha256": "f76f04799ff41167596d137becec0337be6337b73ba72a397d1c72ea91b0cf9a"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/tests.patch",
+            "sha256": "6d592f6d6cf98670df0870e9826ff045fc1515a33ada434ff7ffbf61bdb92412"
+          }
+        }
+      }
+    },
+    {
+      "location": "current",
+      "id": "classic-527-missing-original-history",
+      "expectedEntry": {
+        "id": "classic-527-missing-original-history",
+        "sources": [
+          "https://github.com/rpamis/comet/issues/527"
+        ],
+        "behavior": "原已完成 worktree 被删除后，归档副本明确报告缺少原完成 Run 历史，不导入交付前 checkpoint 或伪造 done。",
+        "coverageLevel": "public-cli",
+        "reproduction": "合入归档后删除原 linked worktree，再从主工作区查询；旧代码只报 checkpoint 与状态不匹配，未说明缺失的交付证据。",
+        "expected": "明确指出需要 original completed Run history，保留归档字节且不产生本地同名 owner。",
+        "forbidden": "把交付前基线当作完成回执、修改 checkpoint、重跑 Archive或隐式重建活动 Run。",
+        "rootCause": "分支绑定失败没有区分可定位的原权威与只剩交付前 portable 基线的冷查询。",
+        "tests": [
+          {
+            "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+            "namePattern": "^reads completed archived history across worktrees after amend=(false|true) without importing a duplicate Run$",
+            "requiredNames": [
+              "reads completed archived history across worktrees after amend=false without importing a duplicate Run",
+              "reads completed archived history across worktrees after amend=true without importing a duplicate Run"
+            ]
+          }
+        ]
+      },
+      "migration": {
+        "kind": "tests-moved",
+        "reason": "Keep explicit refusal when the original completed Run history is unavailable: the merged archived pre-delivery checkpoint cannot be imported as completed or used to synthesize done. Both amend variants retain archived bytes and original Run, reject absent history before and after the original worktree is removed, do not create a local owner, and never replay OpenSpec. Ordinary peer-root search is not restored.",
+        "authorization": "report:2026-11-10-agent-platform-execution",
+        "record": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/README.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+            "namePattern": "^(?:reads completed history in the explicit worktree after amend=false without importing a duplicate Run|reads completed history in the explicit worktree after amend=true without importing a duplicate Run)$",
+            "requiredNames": [
+              "reads completed history in the explicit worktree after amend=false without importing a duplicate Run",
+              "reads completed history in the explicit worktree after amend=true without importing a duplicate Run"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/registry.json",
+            "sha256": "829455bd9849eb35c4dd458eee439cbee1c87fb1f1c85eab0436ccf5da8398e7"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/tests.json",
+            "sha256": "6d1fcec26299b67ddb26f51888a717a3d7a727e34685066468dcd4fed43c00bd"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/mapping.json",
+            "sha256": "f76f04799ff41167596d137becec0337be6337b73ba72a397d1c72ea91b0cf9a"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/tests.patch",
+            "sha256": "6d592f6d6cf98670df0870e9826ff045fc1515a33ada434ff7ffbf61bdb92412"
+          }
+        }
+      }
+    },
+    {
+      "location": "current",
+      "id": "classic-preexisting-workspace-delivery-scope",
+      "expectedEntry": {
+        "id": "classic-preexisting-workspace-delivery-scope",
+        "behavior": "Classic current 隔离保留创建 change 前已有且未变的源码草稿，发生实际修改的草稿仍须交付。",
+        "sources": [
+          "report:2026-10-25-native-classic-core-review",
+          "https://github.com/rpamis/comet/issues/503"
+        ],
+        "coverageLevel": "public-cli",
+        "reproduction": "8deff743 在 state init 前已有 unrelated-draft.ts，未改该文件但 Verify 将其列入 deliveryInputs，归档后只提交本次修复会报 omits verified implementation。",
+        "expected": "公开 complete-delivery 成功且未变草稿保持未跟踪；本次修改过的原有草稿遗漏时仍拒绝交付。",
+        "forbidden": "强迫提交无关既有文件、删除草稿换取通过，或把既有路径上的新实现也豁免交付。",
+        "rootCause": "交付范围直接采用相对 HEAD 的全工作区变更和全部未跟踪路径，没有绑定 change 创建时的内容。",
+        "tests": [
+          {
+            "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+            "namePattern": "delivers without an unchanged untracked draft that predates the change",
+            "requiredNames": [
+              "delivers without an unchanged untracked draft that predates the change"
+            ]
+          },
+          {
+            "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+            "namePattern": "requires delivery of an initial draft modified during the change",
+            "requiredNames": [
+              "requires delivery of an initial draft modified during the change"
+            ]
+          },
+          {
+            "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+            "namePattern": "does not trust a workspace baseline supplied through public dispatch start",
+            "requiredNames": [
+              "does not trust a workspace baseline supplied through public dispatch start"
+            ]
+          }
+        ]
+      },
+      "migration": {
+        "kind": "feature-removed",
+        "reason": "Remove automatic content-baseline comparison for initial drafts. Preserve default exclusion of pre-existing unselected drafts, explicit delivery paths embedded in the original Archive approval, refusal when a selected initial draft is omitted, successful same-approval delivery when included, unchanged unrelated private notes, and refusal of a forged public baseline. No new approval ledger or fingerprint replaces the old classifier.",
+        "authorization": "report:2026-11-10-agent-platform-execution",
+        "record": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/README.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+            "namePattern": "delivers without an unchanged untracked draft that predates the change",
+            "requiredNames": [
+              "delivers without an unchanged untracked draft that predates the change"
+            ]
+          },
+          {
+            "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+            "namePattern": "^(?:requires delivery of an explicitly selected initial draft)$",
+            "requiredNames": [
+              "requires delivery of an explicitly selected initial draft"
+            ]
+          },
+          {
+            "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+            "namePattern": "does not trust a workspace baseline supplied through public dispatch start",
+            "requiredNames": [
+              "does not trust a workspace baseline supplied through public dispatch start"
+            ]
+          },
+          {
+            "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+            "namePattern": "^(?:delivers an explicitly approved initial draft without including an unrelated draft)$",
+            "requiredNames": [
+              "delivers an explicitly approved initial draft without including an unrelated draft"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/registry.json",
+            "sha256": "829455bd9849eb35c4dd458eee439cbee1c87fb1f1c85eab0436ccf5da8398e7"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/tests.json",
+            "sha256": "6d1fcec26299b67ddb26f51888a717a3d7a727e34685066468dcd4fed43c00bd"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/mapping.json",
+            "sha256": "f76f04799ff41167596d137becec0337be6337b73ba72a397d1c72ea91b0cf9a"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/tests.patch",
+            "sha256": "6d592f6d6cf98670df0870e9826ff045fc1515a33ada434ff7ffbf61bdb92412"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,155 @@
+{
+  "source": "test/domains/comet-classic/classic-sdk-cancellation.test.ts",
+  "frozenSource": "original-classic-sdk-cancellation.test.txt",
+  "declarations": 6,
+  "expandedTests": 7,
+  "registryDirectReferences": 0,
+  "rows": [
+    {
+      "index": 0,
+      "name": "excludes a fully cancelled Run from Classic and shared resume entry points",
+      "decision": "retain",
+      "behaviors": [
+        "取消Run不再成为Classic/shared续行候选",
+        "复制项目后仍不续行取消Run"
+      ]
+    },
+    {
+      "index": 1,
+      "name": "resumes the remaining active Run without a cancelled Run creating an ambiguous choice",
+      "decision": "retain",
+      "behaviors": [
+        "取消Run不制造歧义",
+        "另一个真实active Run仍auto_resume"
+      ]
+    },
+    {
+      "index": 2,
+      "name": "requires original execution stop evidence before resuming a cancelled claimed Run",
+      "decision": "split",
+      "retired": [
+        "普通平台Skill取消后必须提交stoppedActions才释放"
+      ],
+      "behaviors": [
+        "原Run cancelled且原claim历史仍保留",
+        "Classic/shared均不把取消普通任务列为待恢复",
+        "取消不声称OS停止或Action succeeded"
+      ],
+      "newTarget": "releases a cancelled claimed platform Skill without execution stop evidence and keeps its original history"
+    },
+    {
+      "index": 3,
+      "name": "releases a publicly cancelled unclaimed Run and retains its history and artifacts",
+      "decision": "retain",
+      "behaviors": [
+        "保留workflow/Action身份/状态文件",
+        "仅释放原selection及active Guard",
+        "next done且不允许select取消Run",
+        "重复clear无害",
+        "readonly Hook不修selection；显式next完成原selection清理"
+      ]
+    },
+    {
+      "index": 4,
+      "name": "keeps a cancelled %s Build claim guarded until the original host acknowledges stopping",
+      "expanded": [
+        "running",
+        "unknown"
+      ],
+      "decision": "split",
+      "retired": [
+        "取消普通Build后继续占用Guard/selection直到停止证明",
+        "第二次带stoppedActions的cancel才释放"
+      ],
+      "behaviors": [
+        "真实Open审批后Build取消",
+        "running与unknown均保留原Run/Action/claim/批准/任务信息",
+        "不派发/重放已取消任务、不伪造成功",
+        "已知未核实child仍不宣称完整取消"
+      ],
+      "newTargets": [
+        "releases a cancelled running Build platform claim and preserves its approval, tasks, and unknown child protection",
+        "releases a cancelled unknown Build platform claim and preserves its approval, tasks, and unknown child protection"
+      ],
+      "pending": [],
+      "verified": [
+        "unknown child false",
+        "cancelled claim late success rejects and originalRun unchanged",
+        "original Task bytes/approval waits/state/outputs/Action IDs and claim preserved"
+      ]
+    },
+    {
+      "index": 5,
+      "name": "does not clear another current change when cancellation settles",
+      "decision": "retain",
+      "behaviors": [
+        "取消demo不清除other当前选择"
+      ]
+    }
+  ],
+  "validation": {
+    "originalOrdinaryProbe": {
+      "passed": 3,
+      "failed": 0,
+      "evidence": "ordinary-cancellation-green-results.json"
+    },
+    "fullOriginalScopeAndActualArchive": {
+      "passed": 9,
+      "failed": 0,
+      "success": true,
+      "evidence": "full-cancellation-green-results.json",
+      "durationSeconds": 53.81,
+      "doctorChecks": "Original claimed Open and running/unknown Build cancellation additionally run actual readonly doctorCommand(scope=project,json=true): specific SDK state row pass, diagnostics healthy/executionReconciled true; unknown child healthy false; original Run/state bytes unchanged."
+    },
+    "repoReadyBase": "repository-ready/test/domains/comet-classic/classic-sdk-cancellation.test.ts",
+    "archiveIntegration": "repository-ready/test/domains/comet-classic/classic-sdk-archive-cancellation.test.ts",
+    "archiveDependency": "Installed real OpenSpec CLI. Temp run used D:/nodejs/node_modules/@fission-ai/openspec/bin/openspec.js; repo-ready resolves COMET_OPENSPEC or openspec PATH. No install. Repo-ready relative-import/command-resolution copy not separately executed.",
+    "selectors": [
+      {
+        "file": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/classic-cancel-audit/classic-archive-cancellation.test.ts",
+        "name": "rejects cancelling the original running Classic Archive before changing its Run or files and recovers only that Archive claim",
+        "status": "passed"
+      },
+      {
+        "file": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/classic-cancel-audit/classic-archive-cancellation.test.ts",
+        "name": "rejects cancelling the original unknown Classic Archive before changing its Run or files and recovers only that Archive claim",
+        "status": "passed"
+      },
+      {
+        "file": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/classic-cancel-audit/classic-sdk-cancellation-migrated.test.ts",
+        "name": "excludes a fully cancelled Run from Classic and shared resume entry points",
+        "status": "passed"
+      },
+      {
+        "file": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/classic-cancel-audit/classic-sdk-cancellation-migrated.test.ts",
+        "name": "resumes the remaining active Run without a cancelled Run creating an ambiguous choice",
+        "status": "passed"
+      },
+      {
+        "file": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/classic-cancel-audit/classic-sdk-cancellation-migrated.test.ts",
+        "name": "releases a cancelled claimed platform Skill without execution stop evidence and keeps its original history",
+        "status": "passed"
+      },
+      {
+        "file": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/classic-cancel-audit/classic-sdk-cancellation-migrated.test.ts",
+        "name": "releases a publicly cancelled unclaimed Run and retains its history and artifacts",
+        "status": "passed"
+      },
+      {
+        "file": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/classic-cancel-audit/classic-sdk-cancellation-migrated.test.ts",
+        "name": "releases a cancelled running Build platform claim and preserves its approval, tasks, and unknown child protection",
+        "status": "passed"
+      },
+      {
+        "file": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/classic-cancel-audit/classic-sdk-cancellation-migrated.test.ts",
+        "name": "releases a cancelled unknown Build platform claim and preserves its approval, tasks, and unknown child protection",
+        "status": "passed"
+      },
+      {
+        "file": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/classic-cancel-audit/classic-sdk-cancellation-migrated.test.ts",
+        "name": "does not clear another current change when cancellation settles",
+        "status": "passed"
+      }
+    ]
+  }
+}

@@ -2,7 +2,7 @@ import { createHash } from 'crypto';
 import path from 'path';
 
 import { NATIVE_RUN_STORAGE } from '../engine/storage-layout.js';
-import { withNativeMutationLock } from './native-mutation-lock.js';
+import { withNativeMutation } from './native-mutation.js';
 import {
   nativeChangeRuntimeDir,
   nativeStorageRoot,
@@ -168,7 +168,7 @@ export async function repairNativeTrajectoryTail(
   name: string,
   hooks?: NativeTrajectoryRepairHooks,
 ): Promise<Extract<NativeTrajectoryTailInspection, { status: 'repairable' }> | null> {
-  return withNativeMutationLock(paths, `repair trajectory tail for ${name}`, async () => {
+  return withNativeMutation(paths, async () => {
     const result = await inspectFile(paths, name);
     if (!('inspection' in result)) {
       if (result.status === 'clean') return null;

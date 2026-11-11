@@ -3,11 +3,7 @@ import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import {
-  createNativeChange,
-  nativeChangeDir,
-  readNativeChange,
-} from '../../../domains/comet-native/native-change.js';
+import { nativeChangeDir, readNativeChange } from '../../../domains/comet-native/native-change.js';
 import { sha256File } from '../../../domains/comet-native/native-hash.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import {
@@ -17,7 +13,10 @@ import {
 } from '../../../domains/comet-native/native-specs.js';
 import { nativeTransitionJournalFile } from '../../../domains/comet-native/native-transition-journal.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
-import { advanceNativeChange } from '../../helpers/native-confirmed-transition.js';
+import {
+  storedNativeChangeFixture,
+  loadPreparedNativeTransition,
+} from '../../helpers/native-change-document.js';
 
 const brief = `# Outcome
 Ship the feature.
@@ -64,7 +63,7 @@ describe('Native runtime-owned spec metadata', () => {
   }
 
   it('infers create and replace while preserving the first canonical base hash', async () => {
-    let state = await createNativeChange({
+    let state = await storedNativeChangeFixture({
       paths,
       name: 'sync-specs',
       language: 'en',
@@ -96,7 +95,7 @@ describe('Native runtime-owned spec metadata', () => {
   });
 
   it('records remove through a command-owned mutation and rejects a proposed/remove conflict', async () => {
-    await createNativeChange({
+    await storedNativeChangeFixture({
       paths,
       name: 'remove-spec',
       language: 'en',
@@ -124,7 +123,7 @@ describe('Native runtime-owned spec metadata', () => {
   });
 
   it('keeps the first remove hash when the canonical spec later changes', async () => {
-    await createNativeChange({
+    await storedNativeChangeFixture({
       paths,
       name: 'stable-remove',
       language: 'en',
@@ -147,39 +146,21 @@ describe('Native runtime-owned spec metadata', () => {
   });
 
   it('continues a pending transition before recording a remove intent', async () => {
-    const state = await createNativeChange({
-      paths,
-      verificationProtocol: 'legacy-v1',
-      name: 'remove-after-recovery',
-      language: 'en',
-    });
-    await fs.writeFile(path.join(nativeChangeDir(paths, state.name), 'brief.md'), brief);
-    await canonical('legacy-capability', 'legacy\n');
-    await expect(
-      advanceNativeChange({
-        paths,
-        name: state.name,
-        evidence: { summary: 'shape is ready' },
-        hooks: {
-          afterPrepared: () => {
-            throw new Error('interrupt before spec remove');
-          },
-        },
-      }),
-    ).rejects.toThrow('interrupt before spec remove');
-
-    const removed = await markNativeSpecRemoval(paths, state.name, 'legacy-capability');
+    const frozen = await loadPreparedNativeTransition(paths);
+    expect((await readNativeChange(paths, frozen.name)).phase).toBe('shape');
+    const removed = await markNativeSpecRemoval(paths, frozen.name, 'legacy-capability');
     expect(removed).toMatchObject({
       phase: 'build',
+      approval: 'confirmed',
       spec_changes: [{ capability: 'legacy-capability', operation: 'remove' }],
     });
-    await expect(fs.access(nativeTransitionJournalFile(paths, state.name))).rejects.toMatchObject({
+    await expect(fs.access(nativeTransitionJournalFile(paths, frozen.name))).rejects.toMatchObject({
       code: 'ENOENT',
     });
   });
 
   it('keeps existing remove metadata when no proposed specs remain and reads an empty proposal set', async () => {
-    const state = await createNativeChange({
+    const state = await storedNativeChangeFixture({
       paths,
       verificationProtocol: 'legacy-v1',
       name: 'empty-proposals',

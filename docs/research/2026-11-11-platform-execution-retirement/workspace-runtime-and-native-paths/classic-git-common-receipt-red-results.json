@@ -1,0 +1,92 @@
+{
+  "temp": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-legacy-receipt-red-6aZoNs",
+  "evalStarted": false,
+  "results": [
+    {
+      "location": "git-common",
+      "root": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-legacy-receipt-red-6aZoNs\\git-common",
+      "legacy": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-legacy-receipt-red-6aZoNs\\git-common\\.git\\comet\\classic-deliveries\\c4e7ddc7485732d10dfccfc4b6b1b4fba7fe626371959dc6447b07a19db377a9.json",
+      "producer": "Actual @rpamis/comet@0.5.2 writeClassicDelivery local authorization + actual Git archive commit + writeClassicDelivery commit; resulting authentic receipt relocated byte-for-byte to a legacy path that the same published reader accepts.",
+      "receipt": {
+        "schemaVersion": 1,
+        "changeIdentity": "run:legacy-document-run",
+        "authorizationId": "9465edc8-7b9f-4efc-a1e4-a9b66325f792",
+        "commit": "b022e66995b584b9344732a40f6fb4f4302e0f84"
+      },
+      "originalBytesBase64": "ewogICJzY2hlbWFWZXJzaW9uIjogMSwKICAiY2hhbmdlSWRlbnRpdHkiOiAicnVuOmxlZ2FjeS1kb2N1bWVudC1ydW4iLAogICJhdXRob3JpemF0aW9uSWQiOiAiOTQ2NWVkYzgtN2I5Zi00ZWZjLWExZTQtYTliNjYzMjVmNzkyIiwKICAiY29tbWl0IjogImIwMjJlNjY5OTViNTg0YjkzNDQ3MzJhNDBmNmZiNGY0MzAyZTBmODQiCn0K",
+      "oldRead": {
+        "delivery": {
+          "action": "local",
+          "targetBranch": "main",
+          "commit": "b022e66995b584b9344732a40f6fb4f4302e0f84",
+          "schemaVersion": 1,
+          "changeIdentity": "run:legacy-document-run",
+          "authorizationId": "9465edc8-7b9f-4efc-a1e4-a9b66325f792"
+        },
+        "verification": {
+          "status": "complete",
+          "currentBranch": null,
+          "commitExists": false,
+          "archiveCommitted": false,
+          "observedCommit": null,
+          "observedPrUrl": null,
+          "remoteVerified": false,
+          "prVerified": false,
+          "remoteStatus": "notChecked",
+          "prStatus": "notChecked"
+        }
+      },
+      "beforeCurrent": {
+        "delivery": {
+          "action": "local",
+          "targetBranch": "main",
+          "schemaVersion": 1,
+          "changeIdentity": "run:legacy-document-run",
+          "authorizationId": "9465edc8-7b9f-4efc-a1e4-a9b66325f792"
+        },
+        "verification": {
+          "status": "needsVerification",
+          "currentBranch": null,
+          "commitExists": false,
+          "archiveCommitted": false,
+          "observedCommit": null,
+          "observedPrUrl": null,
+          "remoteVerified": false,
+          "prVerified": false,
+          "remoteStatus": "notChecked",
+          "prStatus": "notChecked"
+        }
+      },
+      "publicImport": {
+        "status": 0,
+        "stdout": "{\"status\":\"imported\",\"imported\":[],\"preservedSource\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-legacy-receipt-red-6aZoNs\\\\git-common\\\\.comet\\\\runtime\",\"classic\":[]}\n",
+        "stderr": ""
+      },
+      "afterCurrent": {
+        "delivery": {
+          "action": "local",
+          "targetBranch": "main",
+          "schemaVersion": 1,
+          "changeIdentity": "run:legacy-document-run",
+          "authorizationId": "9465edc8-7b9f-4efc-a1e4-a9b66325f792"
+        },
+        "verification": {
+          "status": "needsVerification",
+          "currentBranch": null,
+          "commitExists": false,
+          "archiveCommitted": false,
+          "observedCommit": null,
+          "observedPrUrl": null,
+          "remoteVerified": false,
+          "prVerified": false,
+          "remoteStatus": "notChecked",
+          "prStatus": "notChecked"
+        }
+      },
+      "legacyBytesUnchanged": true,
+      "currentReceiptExists": false,
+      "expected": "explicit import retains original authorization and completed document receipt; current read remains complete",
+      "red": true
+    }
+  ]
+}

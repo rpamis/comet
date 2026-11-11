@@ -168,21 +168,7 @@ Build 是最长阶段，可能跨越大量任务。为支持上下文压缩后�
 - 已完成 `review_mode` 要求的任务级或分段审查；不在 Build 重复 Verify 的最终集成审查
 - **阶段守卫**：运行 `comet guard <change-name> build --apply`，全部 PASS 后由守卫推进到 `phase: verify`（此步骤更新 `phase` 字段，与 `auto_transition` 无关）
 
-优先用 Runtime 执行并记录检查，避免手动运行后 Guard 再跑一次：
-
-仅对确定性本地检查使用 `--local`；外部服务或环境不确定的检查省略该参数，证据只使用一次。Windows 的普通 npm/pnpm shim 由平台适配器处理；包含 shell 元字符的 batch 参数会被拒绝，复杂检查应使用 `node <script>` 等明确入口，不把整段 shell 字符串当作程序名。
-
-```bash
-comet check run <change-name> build --local -- <program> [args...]
-```
-
-Guard 检查配置、任务、产物和真实检查结果，不自动识别或启动构建命令。Agent 根据改动选择必要命令，通过 `comet check run` 记录；SDK 也可按 Guard 返回模板显式执行。Agent 判断原结果是否适用，只补缺失或受影响的检查。真实失败、未知结果和一次性操作继续按原记录恢复；日志按需读取。工作目录使用当前响应要求的实际路径。
-
-`state record-check --command` 仍只保存手工声明，Comet **绝不会执行该文本**，也不能据此自动推进。手动声明还会成为该 scope 的最新记录，遮蔽之前仍然有效的 Runtime 证据，guard 会拒绝并要求重新 `comet check run`；没有恢复旧证据的方法，只能在树静止时重跑一条 check run。build 与 verify 证据彼此独立：Verify 可引用已验证的同一构建结果，但构建通过不替代测试和验收场景。`COMET_SKIP_BUILD=1` 仅是旧流程的兼容绕过方式，不是可审计的构建证据。
-
-构建命令由 Agent 根据项目和当前任务选择；package.json、pom.xml、Cargo.toml 和 workspace 配置可作为判断依据。Runtime 不代替 Agent 选择子包或启动全量构建。
-
-**证据录制**：实现完成、相关检查跑绿后，录制 build 证据并立即运行 `comet guard <change-name> build --apply`。Build 阶段只录 build 证据：外部（非 `--local`）verify 检查必须在 guard build --apply **成功之后**再录制——阶段转换会使此前录的外部 verify 证据过期（`crossed a phase boundary`），昂贵的非幂等外部检查会被白跑；`--local` 证据不受此限，可在一条 shell 调用里连续录制。输入未变化时 Runtime 会自动复用已记录的证据，文档编辑后的重跑不会再次执行命令。guard 报告证据失效时会给出确切原因和变化文件清单——只重跑列出的 scope，record-check 遮蔽或 phase 边界的情况按报错信息处理，不要全量重来。提交一律放在 guard 通过之后，勾选 task 用 `comet state task-complete`。
+按[普通命令与检查](../../comet/reference/platform-execution.md)使用平台工具执行普通命令、核对原任务与副作用、判断结果是否适用，并提交实际报告。Comet 不重复执行检查，不维护普通命令的内容快照、进程监管或恢复机制。 平台检查结束后用 `state record-check` 记录真实退出码，再运行阶段守卫。Guard 核对配置、任务、产物和报告，不执行检查。任务勾选继续用 `state task-complete`。`COMET_SKIP_BUILD=1` 不作为验收证据。
 
 退出前运行阶段守卫推进 phase（此步骤与 `auto_transition` 无关）：
 

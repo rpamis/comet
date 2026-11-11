@@ -1,0 +1,352 @@
+{
+  "package": "@rpamis/comet",
+  "version": "0.5.2",
+  "oldPackage": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-cli-package-626acda290b5479fb72b05334de5c0e5\\package",
+  "root": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-spec-052-classic-frontiers-3KduFR",
+  "project": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-spec-052-classic-frontiers-3KduFR\\project",
+  "file": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-spec-052-classic-frontiers-3KduFR\\project\\sample\\application.json",
+  "simulation": "SIMULATED User approval and Agent outcomes through actual published SDK. Actual harmless Node0 old check and real files. No model, Eval, remote delivery or hand-written Run state.",
+  "claimedAction": {
+    "protocolVersion": 1,
+    "id": "original-run:8",
+    "runId": "original-run",
+    "stepId": "classic.extension.artifact-review",
+    "type": "invoke_skill",
+    "ref": "artifact-review",
+    "attempt": 1,
+    "input": {
+      "input": {
+        "change": "original-run",
+        "changeDir": "openspec/changes/original-run",
+        "checkCommands": {
+          "build": {
+            "argv": [
+              "D:\\nodejs\\node.exe",
+              "-e",
+              "process.exit(0)"
+            ]
+          },
+          "verify": {
+            "argv": [
+              "D:\\nodejs\\node.exe",
+              "-e",
+              "process.exit(0)"
+            ]
+          }
+        },
+        "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-spec-052-classic-frontiers-3KduFR\\project",
+        "workspaceRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-spec-052-classic-frontiers-3KduFR\\project"
+      },
+      "outputs": {
+        "classic.composition.prepare": {
+          "application": "classic-hotfix-review-example",
+          "profile": "hotfix",
+          "work": [
+            {
+              "scope": [
+                "candidate.txt"
+              ],
+              "skillId": "artifact-review",
+              "stepId": "classic.extension.artifact-review"
+            },
+            {
+              "scope": [
+                "."
+              ],
+              "skillId": "classic-hotfix-stage-0",
+              "stepId": "hotfix.open"
+            },
+            {
+              "scope": [
+                "."
+              ],
+              "skillId": "classic-hotfix-stage-1",
+              "stepId": "hotfix.build.execute"
+            },
+            {
+              "scope": [
+                "."
+              ],
+              "skillId": "classic-hotfix-stage-2",
+              "stepId": "hotfix.verify.run"
+            },
+            {
+              "scope": [
+                "."
+              ],
+              "skillId": "classic-hotfix-stage-3",
+              "stepId": "hotfix.archive.prepare"
+            },
+            {
+              "scope": [
+                "."
+              ],
+              "skillId": "classic-hotfix-stage-4",
+              "stepId": "hotfix.archive.deliver"
+            },
+            {
+              "scope": [
+                "."
+              ],
+              "skillId": "classic-hotfix-stage-5",
+              "stepId": "full.design.handoff"
+            },
+            {
+              "scope": [
+                "."
+              ],
+              "skillId": "classic-hotfix-stage-6",
+              "stepId": "full.design.document"
+            },
+            {
+              "scope": [
+                "."
+              ],
+              "skillId": "classic-hotfix-stage-7",
+              "stepId": "full.build.configure"
+            },
+            {
+              "scope": [
+                "."
+              ],
+              "skillId": "classic-hotfix-stage-8",
+              "stepId": "full.build.plan"
+            },
+            {
+              "scope": [
+                "."
+              ],
+              "skillId": "classic-hotfix-stage-9",
+              "stepId": "full.build.execute"
+            },
+            {
+              "scope": [
+                "."
+              ],
+              "skillId": "classic-hotfix-stage-10",
+              "stepId": "full.verify.run"
+            },
+            {
+              "scope": [
+                "."
+              ],
+              "skillId": "classic-hotfix-stage-11",
+              "stepId": "full.archive.prepare"
+            },
+            {
+              "scope": [
+                "."
+              ],
+              "skillId": "classic-hotfix-stage-12",
+              "stepId": "full.archive.deliver"
+            }
+          ]
+        },
+        "classic.composition.confirm": {
+          "choice": "approved",
+          "proposal": {
+            "input": {
+              "change": "original-run",
+              "changeDir": "openspec/changes/original-run",
+              "checkCommands": {
+                "build": {
+                  "argv": [
+                    "D:\\nodejs\\node.exe",
+                    "-e",
+                    "process.exit(0)"
+                  ]
+                },
+                "verify": {
+                  "argv": [
+                    "D:\\nodejs\\node.exe",
+                    "-e",
+                    "process.exit(0)"
+                  ]
+                }
+              },
+              "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-spec-052-classic-frontiers-3KduFR\\project",
+              "workspaceRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-spec-052-classic-frontiers-3KduFR\\project"
+            },
+            "outputs": {
+              "classic.composition.prepare": {
+                "application": "classic-hotfix-review-example",
+                "profile": "hotfix",
+                "work": [
+                  {
+                    "scope": [
+                      "candidate.txt"
+                    ],
+                    "skillId": "artifact-review",
+                    "stepId": "classic.extension.artifact-review"
+                  },
+                  {
+                    "scope": [
+                      "."
+                    ],
+                    "skillId": "classic-hotfix-stage-0",
+                    "stepId": "hotfix.open"
+                  },
+                  {
+                    "scope": [
+                      "."
+                    ],
+                    "skillId": "classic-hotfix-stage-1",
+                    "stepId": "hotfix.build.execute"
+                  },
+                  {
+                    "scope": [
+                      "."
+                    ],
+                    "skillId": "classic-hotfix-stage-2",
+                    "stepId": "hotfix.verify.run"
+                  },
+                  {
+                    "scope": [
+                      "."
+                    ],
+                    "skillId": "classic-hotfix-stage-3",
+                    "stepId": "hotfix.archive.prepare"
+                  },
+                  {
+                    "scope": [
+                      "."
+                    ],
+                    "skillId": "classic-hotfix-stage-4",
+                    "stepId": "hotfix.archive.deliver"
+                  },
+                  {
+                    "scope": [
+                      "."
+                    ],
+                    "skillId": "classic-hotfix-stage-5",
+                    "stepId": "full.design.handoff"
+                  },
+                  {
+                    "scope": [
+                      "."
+                    ],
+                    "skillId": "classic-hotfix-stage-6",
+                    "stepId": "full.design.document"
+                  },
+                  {
+                    "scope": [
+                      "."
+                    ],
+                    "skillId": "classic-hotfix-stage-7",
+                    "stepId": "full.build.configure"
+                  },
+                  {
+                    "scope": [
+                      "."
+                    ],
+                    "skillId": "classic-hotfix-stage-8",
+                    "stepId": "full.build.plan"
+                  },
+                  {
+                    "scope": [
+                      "."
+                    ],
+                    "skillId": "classic-hotfix-stage-9",
+                    "stepId": "full.build.execute"
+                  },
+                  {
+                    "scope": [
+                      "."
+                    ],
+                    "skillId": "classic-hotfix-stage-10",
+                    "stepId": "full.verify.run"
+                  },
+                  {
+                    "scope": [
+                      "."
+                    ],
+                    "skillId": "classic-hotfix-stage-11",
+                    "stepId": "full.archive.prepare"
+                  },
+                  {
+                    "scope": [
+                      "."
+                    ],
+                    "skillId": "classic-hotfix-stage-12",
+                    "stepId": "full.archive.deliver"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "hotfix.open": {
+          "event": "open-complete"
+        },
+        "hotfix.open.evidence": {
+          "ref": "openspec/changes/original-run",
+          "contentHash": "024a880164589d75fb1097b8c55e5f0b2181afbc887378ef55acd730fd7f2e3e"
+        },
+        "hotfix.build.execute": {
+          "event": "build-complete"
+        },
+        "hotfix.build.check": {
+          "argv": [
+            "D:\\nodejs\\node.exe",
+            "-e",
+            "process.exit(0)"
+          ],
+          "changedDuringExecution": [],
+          "checkEpoch": 1,
+          "contentHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cwd": ".",
+          "environment": "6117c02392d76c395633524c00b5d2fd4dc36233b3aced7b42b76519037efa8d",
+          "exitCode": 0,
+          "inputAfter": "7d4ccce78cc0b27f088efedbbee5cba1fca918daebfab17a3bc29d364bfce071",
+          "inputBefore": "7d4ccce78cc0b27f088efedbbee5cba1fca918daebfab17a3bc29d364bfce071",
+          "manifestHash": "66c6855e54d90870f4e475eb58e5d988ce411d83e3cf9a2c080f55f9c7e9b0cd",
+          "manifestRef": ".comet/runtime/classic-sdk-checks/bf174f4eab6982c025ce019a2b586e0b094f20ded26f0efe35cdf99926dffa4d/8adf6efe-f691-472e-9069-988ec3f88292.manifest",
+          "receiptRef": ".comet/runtime/classic-sdk-checks/bf174f4eab6982c025ce019a2b586e0b094f20ded26f0efe35cdf99926dffa4d/c84b2e11-e205-4d4f-8227-aad7abc44869.log",
+          "reusable": false,
+          "reused": false,
+          "scope": "build",
+          "tier": "full",
+          "timeoutMs": 300000
+        },
+        "hotfix.build.check.evidence": {
+          "ref": ".comet/runtime/classic-sdk-checks/bf174f4eab6982c025ce019a2b586e0b094f20ded26f0efe35cdf99926dffa4d/c84b2e11-e205-4d4f-8227-aad7abc44869.log",
+          "contentHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "activation": {
+        "source": {
+          "checkEpoch": 1,
+          "event": {
+            "contentHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "evidenceKind": "classic-build-check",
+            "kind": "evidence-recorded",
+            "ref": ".comet/runtime/classic-sdk-checks/bf174f4eab6982c025ce019a2b586e0b094f20ded26f0efe35cdf99926dffa4d/c84b2e11-e205-4d4f-8227-aad7abc44869.log",
+            "stepId": "hotfix.build.check.evidence",
+            "submissionId": "actual-old-benign-check"
+          },
+          "sequence": 7
+        }
+      }
+    },
+    "inputHash": "6b352000d75509266da208f80c9e490f4bf8218dc53e0750efd7c0fd640f6ae2",
+    "status": "running",
+    "retry": "reconcile",
+    "requiredCapabilities": [
+      "skill-script"
+    ],
+    "receipts": [],
+    "reconciliations": [],
+    "claim": {
+      "executorId": "example-artifact-host",
+      "token": "original-fixture-claim-token",
+      "sessionId": "original-real-fixture-session"
+    },
+    "executionOrigin": {
+      "workflow": {
+        "id": "comet-classic-hotfix",
+        "version": "1",
+        "hash": "63ddbbb402e70fb0d8f5ed0e59c01e930ed2776583c7e4e4475c4435fa22fb1a"
+      }
+    }
+  }
+}

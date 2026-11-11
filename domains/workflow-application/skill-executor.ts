@@ -31,11 +31,12 @@ export function snapshotApplicationAction(action: Readonly<RuntimeAction>): Runt
   return snapshot;
 }
 
-/** 取消只停止调度；原领取方尚未确认停止时仍持有资源。 */
+/** 平台负责取消 Skill 执行；Runtime 自己执行的能力仍核对实际收尾。 */
 export function applicationActionHoldsScope(action: Readonly<RuntimeAction>): boolean {
   return (
     ['running', 'unknown'].includes(action.status) ||
     (action.status === 'cancelled' &&
+      action.type !== 'invoke_skill' &&
       Boolean(action.claim) &&
       !action.cancellation &&
       !action.executionStop)

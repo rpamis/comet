@@ -65,6 +65,9 @@ describe('Chinese Native SDK Skill route', () => {
     expect(shape).toContain('不能因模板默认位置而改放其他文件');
     expect(build).toContain('按 brief 中登记的原位置');
     expect(build).toContain('补齐遗漏产物');
+    expect(build).toContain('Agent 选择适用的自动检查');
+    expect(build).toContain('用平台工具检查原文件的实际内容');
+    expect(build).toContain('记录检查对象和结果');
     expect(verify).toContain('同时核对 brief 中登记的产物位置、必需章节和格式');
     expect(verify).toContain('不能用另一文件中的同类内容代替');
   });
@@ -80,7 +83,10 @@ describe('Chinese Native SDK Skill route', () => {
     expect(shape).toContain('brief constraints');
     expect(shape).toContain('default location in a template');
     expect(build).toContain('original locations recorded in the brief');
-    expect(build).toContain('current Runtime check plan');
+    expect(build).toContain('The Agent chooses applicable automated checks');
+    expect(build).toContain('runs them with platform tools');
+    expect(build).toContain('records the check targets and results');
+    expect(build).not.toContain('Runtime check plan');
     expect(verify).toContain('another file');
     expect(verify).toContain('do not pass the current candidate');
   });
@@ -118,9 +124,13 @@ describe('Chinese Native SDK Skill route', () => {
     expect(skill).not.toContain('--runtime sdk');
     expect(skill).toContain('当前 change 的 `comet-state.yaml`');
     expect(skill).toContain('reference/recovery.md#故障恢复');
-    expect(await fs.readFile(nativeRecovery, 'utf8')).toContain(
-      'comet native doctor <change-name> --repair --confirmed',
-    );
+    const recovery = await fs.readFile(nativeRecovery, 'utf8');
+    expect(recovery).toContain('comet native doctor <change-name> --json');
+    expect(recovery).toContain('只读检查，再按返回的明确恢复或导入动作继续');
+    expect(recovery).toContain('已保存的阶段、Action、领取和有效批准');
+    expect(recovery).toContain('`status` 不写入或恢复记录');
+    expect(recovery).toContain('继续外部工作前，通过原平台核对尚未结束或结果未知的任务');
+    expect(recovery).toContain('不能重放可能已发生的副作用');
     expect(skill).toContain('旧 Runtime');
   });
 
@@ -147,7 +157,14 @@ describe('Chinese Native SDK Skill route', () => {
     const recovery = await fs.readFile(englishNativeRecovery, 'utf8');
     expect(recovery).toContain('run_checkpoint');
     expect(recovery).toContain('saved phase');
-    expect(recovery).toContain('comet native doctor <change-name> --repair --confirmed');
+    expect(recovery).toContain('comet native doctor <change-name> --json');
+    expect(recovery).toContain('first inspect read-only');
+    expect(recovery).toContain('then follow its explicit recovery or import action');
+    expect(recovery).toContain('saved phases, Actions, claims, and valid approvals');
+    expect(recovery).toContain('`status` does not write or restore records');
+    expect(recovery).toContain(
+      'reconcile unfinished or unknown tasks through their original platform without replaying possible side effects',
+    );
     expect(commands).toContain('comet runtime dispatch --application native');
     expect(commands).toContain('native next <change> --revise-requirements');
     expect(commands).toContain('native archive <change> --dry-run --json');

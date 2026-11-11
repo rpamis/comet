@@ -1,0 +1,44 @@
+{
+  "cases": [
+    {
+      "id": "workflow-simplification-t07-named-migration",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/workspace-runtime-and-native-paths/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-paths.test.ts",
+          "namePattern": "^(?:Native artifact root safety resolves only the named Runtime without migrating or enumerating legacy changes)$",
+          "requiredNames": [
+            "Native artifact root safety resolves only the named Runtime without migrating or enumerating legacy changes"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/workspace-runtime-current-business.test.ts",
+          "namePattern": "^(?:creates one explicit current Runtime without fencing or importing old storage|recognizes an old fence without reading its foreign target or changing it|explicitly imports a legacy physical checkpoint at slot 1 without changing source history|explicitly imports a legacy physical checkpoint at slot 2 without changing source history)$",
+          "requiredNames": [
+            "creates one explicit current Runtime without fencing or importing old storage",
+            "recognizes an old fence without reading its foreign target or changing it",
+            "explicitly imports a legacy physical checkpoint at slot 1 without changing source history",
+            "explicitly imports a legacy physical checkpoint at slot 2 without changing source history"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "runtime-legacy-migration-meta-lock-confirmation",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/workspace-runtime-and-native-paths/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/workspace-runtime-current-business.test.ts",
+          "namePattern": "^(?:creates one explicit current Runtime without fencing or importing old storage)$",
+          "requiredNames": [
+            "creates one explicit current Runtime without fencing or importing old storage"
+          ]
+        }
+      ]
+    }
+  ]
+}

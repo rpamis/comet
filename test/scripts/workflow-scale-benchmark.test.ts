@@ -3,7 +3,6 @@ import {
   scaleCounts,
   countGitTraceStarts,
   runWorkflowScaleBenchmark,
-  workflowScaleSnapshotHealth,
 } from '../../scripts/benchmark/workflow-scale-benchmark.mjs';
 
 it('bounds explicit benchmark scales and keeps ordering reproducible', () => {
@@ -13,43 +12,11 @@ it('bounds explicit benchmark scales and keeps ordering reproducible', () => {
     expect(() => scaleCounts(value, [])).toThrow('integers');
 });
 
-it('requires an explicit positive file budget before preparing larger fixtures', async () => {
-  await expect(runWorkflowScaleBenchmark({ snapshotMaxFiles: 0 })).rejects.toThrow(
-    'positive integer',
-  );
-  await expect(runWorkflowScaleBenchmark({ snapshotMaxFiles: 1.5 })).rejects.toThrow(
-    'positive integer',
-  );
-});
-
-it('rejects incomplete or missing Native snapshot evidence while accepting unrelated input measurements', () => {
-  expect(
-    workflowScaleSnapshotHealth([
-      {
-        name: 'native-full-10000',
-        samples: [{ entries: 10000, snapshotComplete: true, omitted: 0 }],
-      },
-      {
-        name: 'classic-input-dirty-10000',
-        samples: [{ entries: 10003, snapshotComplete: null, omitted: 0 }],
-      },
-    ]),
-  ).toEqual({ complete: true, issues: [] });
-  expect(
-    workflowScaleSnapshotHealth([
-      {
-        name: 'native-full-10001',
-        samples: [{ entries: 10000, snapshotComplete: false, omitted: 1 }],
-      },
-      { name: 'native-incremental-clean-10001', samples: [{}] },
-    ]),
-  ).toEqual({
-    complete: false,
-    issues: [
-      { name: 'native-full-10001', sample: 1, entries: 10000, omitted: 1 },
-      { name: 'native-incremental-clean-10001', sample: 1, entries: null, omitted: null },
-    ],
-  });
+it('rejects removed snapshot benchmark options without preparing fixtures', async () => {
+  for (const options of [{ snapshotMaxFiles: 1 }, { fileCounts: [1] }, { dirtyCounts: [0] }])
+    await expect(runWorkflowScaleBenchmark(options)).rejects.toThrow(
+      'File snapshot benchmarks have been removed',
+    );
 });
 
 it('counts Git process starts across parent and CLI descendants, not unrelated trace events', () => {

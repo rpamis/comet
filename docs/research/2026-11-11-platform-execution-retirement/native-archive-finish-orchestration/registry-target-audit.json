@@ -1,0 +1,7 @@
+{
+  "currentAndCoveredHistoricalCases": 725,
+  "references": [],
+  "effectiveIds": [],
+  "appendRequired": false,
+  "reason": "No feature or business assertion retired. Original file, four titles, exact selector fields, IDs, sources and all prior chains remain unchanged; fixture now mocks the additional orchestration dependency."
+}

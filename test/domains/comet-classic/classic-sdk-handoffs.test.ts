@@ -1,9 +1,9 @@
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { parse, stringify } from 'yaml';
 import {
   hashRuntimeValue,
@@ -24,18 +24,31 @@ import {
 } from '../../../domains/comet-classic/classic-sdk-status.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
-// Preserve the original v1 managed-check contract; default v2 Runs have separate public CLI coverage.
-vi.mock('../../../domains/comet-classic/classic-sdk-application.js', async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import('../../../domains/comet-classic/classic-sdk-application.js')
-    >();
-  return {
-    ...actual,
-    defineClassicAgentWorkflowApplication: actual.defineClassicWorkflowApplication,
-  };
-});
+// SIMULATED Agent executes the actual platform command and submits the observed result.
+async function platformReport(root: string, exitCode = 0) {
+  const actual = spawnSync(process.execPath, ['-e', 'process.exit(' + exitCode + ')'], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  expect(actual.error).toBeUndefined();
+  expect(actual.status).toBe(exitCode);
+  const ref = 'platform-checks.json';
+  await fs.writeFile(
+    path.join(root, ref),
+    JSON.stringify({
+      checks: [
+        {
+          name: JSON.stringify([process.execPath, '-e', 'process.exit(' + exitCode + ')']),
+          result: actual.status === 0 ? 'passed' : 'failed',
+          note: 'Actual platform exit ' + actual.status,
+        },
+      ],
+    }),
+  );
+  return ref;
+}
 
+// All user approvals below are SIMULATED test-user decisions bound to the displayed original hash.
 const roots: string[] = [];
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
@@ -166,11 +179,8 @@ describe('Classic SDK profile-aware handoffs', () => {
       'demo',
       'build',
       '--apply',
-      '--local',
-      '--',
-      process.execPath,
-      '-e',
-      'process.exit(0)',
+      '--checks',
+      await platformReport(root),
     );
     expect(built.exitCode, JSON.stringify(built)).toBe(0);
     expect(built.data.phase).toBe('verify');
@@ -234,7 +244,11 @@ describe('Classic SDK profile-aware handoffs', () => {
       expect(selected.data).toMatchObject({
         runtimeFormat: 'sdk',
         phase: 'build',
-        run: { runId: 'demo', revision: persisted.revision, status: persisted.status },
+        run: {
+          runId: 'demo',
+          revision: persisted.revision,
+          status: persisted.status,
+        },
       });
       expect(selected.data.run.actions).toHaveLength(1);
       expect(selected.data.run.actions[0]).toMatchObject({
@@ -243,7 +257,10 @@ describe('Classic SDK profile-aware handoffs', () => {
       });
       expect(selected.data.run.outputs).toBeUndefined();
       const detailedSelection = await cli('state', 'select', 'demo', '--details');
-      expect(detailedSelection.data.run).toEqual({ ...persisted, id: persisted.runId });
+      expect(detailedSelection.data.run).toEqual({
+        ...persisted,
+        id: persisted.runId,
+      });
       expect(selected.agent.continuation).toMatchObject({
         ...next.data.nextAction,
         cwd: root,
@@ -256,17 +273,18 @@ describe('Classic SDK profile-aware handoffs', () => {
         locale: 'zh-CN',
         agent_context: { non_trivial_work: true, already_in_comet_flow: false },
       });
-      expect(probe).toMatchObject({ phase: 'build', nextCommand: `/comet-${profile}` });
+      expect(probe).toMatchObject({
+        phase: 'build',
+        nextCommand: `/comet-${profile}`,
+      });
 
       const blocked = await cli(
         'guard',
         'demo',
         'build',
         '--apply',
-        '--',
-        process.execPath,
-        '-e',
-        'process.exit(90)',
+        '--checks',
+        await platformReport(root),
       );
       expect(blocked.exitCode).not.toBe(0);
       expect(blocked.agent.continuation).toMatchObject({
@@ -283,15 +301,14 @@ describe('Classic SDK profile-aware handoffs', () => {
         'demo',
         'build',
         '--apply',
-        '--',
-        process.execPath,
-        '-e',
-        'process.exit(1)',
+        '--checks',
+        await platformReport(root, 1),
       );
       expect(failed.exitCode).not.toBe(0);
-      expect(failed.agent.continuation.mode).toBe('execute');
-      expect(failed.agent.continuation.actionId).not.toBe(pending.id);
-      expect(failed.agent.continuation.blockers).toBeUndefined();
+      expect(failed.agent.continuation.mode).toBe('reconcile');
+      expect(failed.agent.continuation.actionId).toBe(pending.id);
+      expect(failed.agent.continuation.blockers).toMatchObject([{ code: 'CLASSIC_GUARD_BLOCKED' }]);
+      expect((await inspectClassicSdkRun(root, 'demo')).run).toEqual(persisted);
       const retry = await cli('state', 'next', 'demo');
       expect(retry.data.nextAction).toMatchObject({
         kind: 'action',
@@ -304,10 +321,8 @@ describe('Classic SDK profile-aware handoffs', () => {
         'demo',
         'build',
         '--apply',
-        '--',
-        process.execPath,
-        '-e',
-        'console.log("checked")',
+        '--checks',
+        await platformReport(root),
       );
       expect(built.exitCode, built.stderr).toBe(0);
       expect(built.agent.continuation).toMatchObject({

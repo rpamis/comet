@@ -13,10 +13,7 @@ import { inspectNativeRuntimeStorage, nativeChangeArtifactPaths } from './native
 import { captureNativeProtectedDirectoryGuard } from './native-protected-file.js';
 import { inspectNativeRunConsistency } from './native-run-consistency.js';
 import { readNativeSelectionRecord } from './native-selection.js';
-import {
-  filterNativeContentSnapshotToProjectScope,
-  readNativeBaselineManifest,
-} from './native-snapshot.js';
+
 import { inspectPendingNativeTransition } from './native-transition-journal.js';
 import {
   inspectNativeTrajectoryTail,
@@ -84,30 +81,6 @@ async function statusFindings(
     ...(await validateNativeSpecChanges(paths, state)).findings,
     ...(await inspectNativeRunConsistency(paths, state)),
   ];
-  if (state.phase === 'shape' || state.phase === 'build') {
-    try {
-      const capturedBaseline = await readNativeBaselineManifest(paths, state.name);
-      if (capturedBaseline === null) {
-        findings.push({
-          code: 'baseline-snapshot-missing',
-          message: 'Native baseline is missing; restore a trusted baseline before advancing',
-        });
-      } else {
-        const baseline = await filterNativeContentSnapshotToProjectScope(paths, capturedBaseline);
-        if (!baseline.complete) {
-          findings.push({
-            code: 'baseline-snapshot-incomplete',
-            message: `Native baseline is incomplete within the project-owned scope (${baseline.omittedCount} omitted entries); resolve the omissions before advancing`,
-          });
-        }
-      }
-    } catch (error) {
-      findings.push({
-        code: 'baseline-snapshot-invalid',
-        message: `Native baseline could not be inspected safely: ${(error as Error).message}`,
-      });
-    }
-  }
   if (state.phase === 'build') {
     try {
       const current = await collectNativeContractFiles({
@@ -302,9 +275,7 @@ export async function inspectNativeStatus(
     specChanges: state.spec_changes.length,
     selected,
     nextCommand:
-      trajectory.status === 'clean'
-        ? 'comet native next ' + state.name + ' --summary <migration-summary>'
-        : null,
+      trajectory.status === 'clean' ? 'comet native doctor ' + state.name + ' --repair' : null,
     archiveReady: false,
     inspection: {
       freshness: 'stale',

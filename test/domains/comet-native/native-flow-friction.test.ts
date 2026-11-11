@@ -1,3 +1,4 @@
+import '../../helpers/isolated-agent-home.js';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -93,6 +94,23 @@ describe('Native workflow friction regressions', () => {
     return confirmed;
   }
 
+  async function reportedChecks(ids: string[]) {
+    // SIMULATED Agent implementation; the platform Node check actually reads the result.
+    await fs.writeFile(
+      path.join(root, 'README.md'),
+      'hello\n' + ids.map((id) => id + ': documented').join('\n') + '\n',
+    );
+    const output = execFileSync(
+      process.execPath,
+      [
+        '-e',
+        `const fs=require('node:fs'),assert=require('node:assert/strict');const text=fs.readFileSync('README.md','utf8');assert(text.includes('hello'));for(const id of ${JSON.stringify(ids)})assert(text.includes(id+': documented'));process.stdout.write('verified '+${ids.length}+' acceptance records');`,
+      ],
+      { cwd: root, encoding: 'utf8', windowsHide: true },
+    );
+    return [{ name: 'README acceptance content', result: 'passed', note: output }];
+  }
+
   async function input(value: unknown) {
     const file = `${root}-input.json`;
     await fs.writeFile(file, JSON.stringify(value));
@@ -153,7 +171,7 @@ None.
     expect(current.data?.continuation).toMatchObject({ action: 'builder-handoff' });
   });
 
-  it('dispatches directly after the explicit handoff plan and includes small acceptance scopes', async () => {
+  it('dispatches the accepted Builder report explicitly and includes the complete small acceptance scope', async () => {
     await confirm();
     const inputFile = `${root}-handoff.json`;
     await fs.writeFile(
@@ -170,13 +188,18 @@ None.
             note: 'Matches the confirmed spelling.',
           },
         ],
-        checks: [],
+        checks: await reportedChecks(['A1']),
         known_limits: [],
-        verification_checks: [],
       }),
     );
     try {
-      const result = await command(['next', 'tiny', '--runner-input', inputFile]);
+      const submitted = await command(['next', 'tiny', '--runner-input', inputFile]);
+      expect(submitted.exitCode).toBe(0);
+      expect(submitted.data?.continuation).toMatchObject({ action: 'dispatch-verifier' });
+      const result = await input({
+        kind: 'dispatch-verifier',
+        verifierExecutionRef: 'SIMULATED-independent-verifier',
+      });
       const packet = (
         result.data as unknown as {
           verifierDispatch: { acceptance: unknown; startupInput: unknown };
@@ -185,20 +208,27 @@ None.
       expect(result.exitCode).toBe(0);
       expect(packet).toMatchObject({
         acceptance: [{ id: 'A1', text: 'The greeting reads hello.' }],
-        startupInput: { kind: 'verifier-started' },
+        verifierExecutionRef: 'SIMULATED-independent-verifier',
+        checks: [
+          expect.objectContaining({
+            name: { text: 'README acceptance content', truncated: false },
+            result: 'passed',
+            note: { text: 'verified 1 acceptance records', truncated: false },
+          }),
+        ],
       });
     } finally {
       await fs.rm(inputFile, { force: true });
     }
   });
 
-  it('keeps the complete scope paginated when it does not fit in the task packet', async () => {
+  it('keeps all 17 confirmed acceptance items in the platform task and typed details pages', async () => {
     const examples = Array.from({ length: 17 }, (_, index) => `Behavior ${index + 1} works.`);
     await confirm(
       brief.replace('- The greeting reads hello.', examples.map((text) => `- ${text}`).join('\n')),
     );
     const ids = examples.map((_, index) => `A${index + 1}`);
-    const dispatched = await input({
+    const submitted = await input({
       kind: 'builder-handoff',
       summary: 'Implemented the confirmed scope.',
       addressed_acceptance_ids: ids,
@@ -208,16 +238,57 @@ None.
         evidence: [`README documents ${id}.`],
         note: 'Checked the corresponding behavior.',
       })),
-      checks: [],
-      verification_checks: [],
+      checks: await reportedChecks(ids),
       known_limits: [],
+    });
+    expect(submitted.exitCode).toBe(0);
+    expect(submitted.data?.continuation).toMatchObject({ action: 'dispatch-verifier' });
+    const dispatched = await input({
+      kind: 'dispatch-verifier',
+      verifierExecutionRef: 'SIMULATED-full-scope-verifier',
     });
     expect(dispatched.exitCode).toBe(0);
     const packet = (dispatched.data as unknown as { verifierDispatch: Record<string, unknown> })
       .verifierDispatch;
-    expect(packet).not.toHaveProperty('acceptance');
-    expect(packet).toMatchObject({ scopeCount: 17, scopeIds: ids });
-    expect(packet.detailsPageArgs).toEqual(expect.arrayContaining(['status', '--details']));
+    expect(packet.acceptance).toEqual(
+      examples.map((text, index) => expect.objectContaining({ id: ids[index], text })),
+    );
+    expect(packet).toMatchObject({
+      checks: [
+        expect.objectContaining({
+          result: 'passed',
+          note: { text: 'verified 17 acceptance records', truncated: false },
+        }),
+      ],
+    });
+    // The retired size projection no longer duplicates scopeCount/scopeIds/startupInput.
+    // Typed details pages must still preserve every original acceptance ID and text.
+    const received: Array<{ id: string; text: string }> = [];
+    let cursor: string | null = null;
+    do {
+      const page = await command([
+        'status',
+        'tiny',
+        '--details',
+        ...(cursor ? ['--cursor', cursor] : []),
+      ]);
+      expect(page.exitCode).toBe(0);
+      const details = (
+        page.data as unknown as {
+          details: {
+            items: Array<{ kind: string; value: { id: string; text: string } }>;
+            nextCursor: string | null;
+          };
+        }
+      ).details;
+      received.push(
+        ...details.items.filter((item) => item.kind === 'acceptance').map((item) => item.value),
+      );
+      cursor = details.nextCursor;
+    } while (cursor);
+    expect(received.map(({ id, text }) => ({ id, text }))).toEqual(
+      examples.map((text, index) => ({ id: ids[index], text })),
+    );
   });
 
   it.each(['A0', 'A01', 'a1', 'A1 A2', ''])(

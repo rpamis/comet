@@ -23,12 +23,9 @@ import { returnNativeCandidateToBuild } from './native-loop-runtime.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { createNativePortableState, parseNativePortableState } from './native-portable-state.js';
 import { defineNativeWorkflowApplication } from './native-sdk-application.js';
-import {
-  nativeSdkBeforeBlockedVerifierRecovery,
-  nativeSdkBeforeVerifierRecovery,
-  nativeSdkLegacyTransitionHandler,
-  nativeSdkMatchesRun,
-} from './native-sdk-definition.js';
+import { upgradeNativeRun } from './native-sdk-run-upgrade.js';
+import { reserveNativeVerifierAttempt } from './native-loop-runtime.js';
+import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
 import { createNativeSdkStateStore } from './native-sdk-state-store.js';
 import { nativeSdkSupervisorParentCandidateCommit } from './native-sdk-supervisor-parent.js';
 
@@ -61,15 +58,14 @@ interface ReviewSource {
   candidateId: string;
   scope: NativeExtensionScope;
   activation: Record<string, RuntimeValue>;
-  shapeHash: string;
-  formalHash: string;
+  resume?: ReturnType<WorkflowTransitionHandler['apply']>['next'];
 }
 
-const CHECKS: Record<NativeExtensionScope, string> = {
-  candidate: 'verify.checks',
-  parent: 'verify.checks',
-  child: 'supervisor.child.checks',
-  integration: 'supervisor.child.integration-checks',
+const EXTENSION_SOURCES: Record<NativeExtensionScope, string> = {
+  candidate: 'build.builder',
+  parent: 'supervisor.parent.builder',
+  child: 'supervisor.child.builder',
+  integration: 'supervisor.child.integrate',
 };
 
 export function nativeExtensionStepId(scope: NativeExtensionScope, id: string): string {
@@ -90,56 +86,72 @@ function sourceFor(run: Readonly<WorkflowRun>, action: Readonly<RuntimeAction>):
   const state = parseNativePortableState(run.state);
   const input = activation(action);
   const scope =
-    action.stepId === CHECKS.child
+    action.stepId === EXTENSION_SOURCES.child
       ? 'child'
-      : action.stepId === CHECKS.integration
+      : ['supervisor.child.integrate', 'supervisor.child.integration-repair'].includes(
+            action.stepId,
+          )
         ? 'integration'
         : state.children_contract_ref
           ? 'parent'
           : 'candidate';
-  const output = action.outcome?.output as { candidateId?: unknown } | undefined;
-  if (!action.outcome || typeof output?.candidateId !== 'string')
-    throw new Error('扩展检查必须绑定已完成的原候选检查');
-  const parent =
-    scope === 'parent'
-      ? run.actions.find(
-          (builder) =>
-            builder.stepId === 'supervisor.parent.builder' &&
-            builder.status === 'succeeded' &&
-            hashRuntimeValue({ actionId: builder.id, outcomeId: builder.outcome!.outcomeId }) ===
-              output.candidateId,
-        )
-      : undefined;
+  const output = action.outcome?.output as Record<string, RuntimeValue> | undefined;
+  const candidateId =
+    scope === 'child'
+      ? output?.candidateCommit
+      : scope === 'integration'
+        ? output?.integrationCommit
+        : state.builder_handoff?.candidate_id;
+  if (!action.outcome || typeof candidateId !== 'string')
+    throw new Error('扩展必须绑定已接受的业务候选');
   return {
     actionId: action.id,
     inputHash: action.inputHash,
     outcomeId: action.outcome.outcomeId,
-    candidateId: output.candidateId,
+    candidateId,
     scope,
-    activation: parent
-      ? {
-          ...activation(parent),
-          integrationCommit: nativeSdkSupervisorParentCandidateCommit(parent),
-        }
-      : input,
-    shapeHash: state.shape_confirmation_hash ?? '',
-    formalHash:
-      (run.outputs['shape.revalidate']?.value as { formalHash?: string } | null)?.formalHash ?? '',
+    activation:
+      scope === 'parent'
+        ? { ...input, integrationCommit: nativeSdkSupervisorParentCandidateCommit(action) }
+        : scope === 'integration'
+          ? {
+              ...input,
+              ...output,
+              ...(action.stepId === 'supervisor.child.integration-repair'
+                ? { repairActionId: action.id }
+                : { mergeActionId: action.id }),
+            }
+          : { ...input, ...(scope === 'child' ? { candidateCommit: candidateId } : {}) },
   };
 }
 
 function sourceAction(run: Readonly<WorkflowRun>, source: ReviewSource): RuntimeAction {
-  const action = run.actions.find((candidate) => candidate.id === source.actionId);
+  const action = run.actions.find((a) => a.id === source.actionId);
+  const legacySteps: Record<NativeExtensionScope, string> = {
+    candidate: 'verify.checks',
+    parent: 'verify.checks',
+    child: 'supervisor.child.checks',
+    integration: 'supervisor.child.integration-checks',
+  };
+  const legacy =
+    action?.executionOrigin &&
+    ['1', '2', '3'].includes(action.executionOrigin.workflow.version) &&
+    action.stepId === legacySteps[source.scope];
   if (
     !action ||
     action.status !== 'succeeded' ||
     action.inputHash !== source.inputHash ||
     action.outcome?.outcomeId !== source.outcomeId ||
-    CHECKS[source.scope] !== action.stepId ||
-    hashRuntimeValue(sourceFor(run, action) as unknown as RuntimeValue) !==
-      hashRuntimeValue(source as unknown as RuntimeValue)
+    (!legacy &&
+      EXTENSION_SOURCES[source.scope] !== action.stepId &&
+      !(
+        source.scope === 'integration' && action.stepId === 'supervisor.child.integration-repair'
+      )) ||
+    !currentNativeSdkSupervisorActions(run).some((a) => a.id === action.id)
   )
-    throw new Error('扩展引用的候选、确认或 Action 激活已失效');
+    throw new Error('扩展引用的业务候选或原结果已失效');
+  if (!legacy && sourceFor(run, action).candidateId !== source.candidateId)
+    throw new Error('扩展候选已经变化');
   return action;
 }
 
@@ -160,7 +172,7 @@ export function createNativeWorkflowApplication(
 ): WorkflowApplicationImplementation {
   if (context.manifest.base !== 'native') throw new Error('Native 应用必须声明 base: native');
   const base = defineNativeWorkflowApplication();
-  let workflow = structuredClone(base.workflow);
+  const workflow = structuredClone(base.workflow);
   const transitions = workflow.transitions ?? [];
   workflow.transitions = transitions;
   const extensions = new Map<
@@ -169,7 +181,8 @@ export function createNativeWorkflowApplication(
   >();
   const chains = new Map<NativeExtensionScope, string[]>();
   const validators: RuntimeValidator[] = [...base.validators];
-  for (const scope of Object.keys(CHECKS) as NativeExtensionScope[]) chains.set(scope, []);
+  for (const scope of Object.keys(EXTENSION_SOURCES) as NativeExtensionScope[])
+    chains.set(scope, []);
   const ids = new Set<string>();
   for (const extension of options.extensions) {
     if (
@@ -305,8 +318,10 @@ export function createNativeWorkflowApplication(
   }
   for (const [scope, steps] of chains) {
     if (!steps.length) continue;
-    const edges = transitions.filter(({ from }) => from === CHECKS[scope]);
-    transitions.push({ from: CHECKS[scope], to: steps[0] });
+    const edges = transitions.filter(({ from }) => from === EXTENSION_SOURCES[scope]);
+    transitions.push({ from: EXTENSION_SOURCES[scope], to: steps[0] });
+    if (scope === 'integration')
+      transitions.push({ from: 'supervisor.child.integration-repair', to: steps[0] });
     for (const [index, stepId] of steps.entries()) {
       if (steps[index + 1]) transitions.push({ from: stepId, to: steps[index + 1] });
       else transitions.push(...edges.map((edge) => ({ ...edge, from: stepId })));
@@ -333,7 +348,7 @@ export function createNativeWorkflowApplication(
     transitionKeys.add(key);
     return true;
   });
-  let transitionHandler: WorkflowTransitionHandler = {
+  const transitionHandler: WorkflowTransitionHandler = {
     ...base.transitionHandler,
     apply(input: Parameters<typeof base.transitionHandler.apply>[0]) {
       const { run, event } = input;
@@ -419,26 +434,57 @@ export function createNativeWorkflowApplication(
               },
             ],
           };
-        return base.transitionHandler.apply({
-          ...input,
-          event: {
-            kind: 'action-outcome',
-            stepId: original.stepId,
-            outcome: original.outcome!,
-          },
-        });
+        if (source.resume) return { state: run.state!, next: source.resume };
+        // 旧扩展只读取已接受的原检查结果作为历史来源，不加载原执行定义。
+        const builderStep =
+          source.scope === 'child'
+            ? 'supervisor.child.builder'
+            : source.scope === 'integration'
+              ? 'supervisor.child.integrate'
+              : undefined;
+        if (builderStep) {
+          const originalResult = run.actionContexts[original.id].results[builderStep];
+          const builder = run.actions.find(
+            (a) =>
+              a.stepId === builderStep &&
+              a.status === 'succeeded' &&
+              run.actionContexts[a.id].sequence === originalResult?.sequence,
+          );
+          if (!builder) throw new Error('旧扩展缺少原已接受的业务来源');
+          return base.transitionHandler.apply({
+            run,
+            event: { kind: 'action-outcome', stepId: builder.stepId, outcome: builder.outcome! },
+          });
+        }
+        const state = parseNativePortableState(run.state);
+        return {
+          state: (state.loop.stage === 'verify-ready' &&
+          state.loop.next_action !== 'await-verifier-result'
+            ? reserveNativeVerifierAttempt(state)
+            : state) as unknown as RuntimeValue,
+          next: ['verify.verifier'],
+        };
       }
       if (
         event.kind === 'action-outcome' &&
         event.outcome.status === 'succeeded' &&
-        Object.values(CHECKS).includes(event.stepId)
+        [...Object.values(EXTENSION_SOURCES), 'supervisor.child.integration-repair'].includes(
+          event.stepId,
+        )
       ) {
         const action = run.actions.find(({ id }) => id === event.outcome.actionId)!;
-        const source = sourceFor(run, { ...action, status: 'succeeded', outcome: event.outcome });
+        const advanced = base.transitionHandler.apply(input);
+        const source = {
+          ...sourceFor(
+            { ...run, state: advanced.state },
+            { ...action, status: 'succeeded', outcome: event.outcome },
+          ),
+          resume: advanced.next,
+        };
         const first = chains.get(source.scope)![0];
         if (first)
           return {
-            state: run.state!,
+            state: advanced.state,
             next: [
               {
                 stepId: first,
@@ -450,6 +496,7 @@ export function createNativeWorkflowApplication(
               },
             ],
           };
+        return advanced;
       }
       if (
         event.kind === 'action-outcome' &&
@@ -471,15 +518,6 @@ export function createNativeWorkflowApplication(
       return base.transitionHandler.apply(input);
     },
   };
-  // 固定包身份已由 loader 验证；仅回退本次新增的恢复定义，其他差异仍拒绝。
-  const previous = [
-    nativeSdkBeforeBlockedVerifierRecovery(workflow),
-    nativeSdkBeforeVerifierRecovery(workflow),
-  ].find((candidate) => nativeSdkMatchesRun(candidate, context.existingRun));
-  if (previous) {
-    workflow = previous;
-    transitionHandler = nativeSdkLegacyTransitionHandler(workflow, transitionHandler);
-  }
   const implementation: WorkflowApplicationImplementation = {
     workflows: [workflow],
     transitionHandlers: [transitionHandler],
@@ -490,7 +528,13 @@ export function createNativeWorkflowApplication(
     executors: [...base.executors, ...(options.executors ?? [])],
     wrapStore(store, identity, storeOptions) {
       const projected = createNativeSdkStateStore(context.projectRoot, {
-        store,
+        store: {
+          ...store,
+          async read(id) {
+            const run = await store.read(id);
+            return run ? upgradeNativeRun(run, workflow, transitionHandler) : null;
+          },
+        },
         identity,
         readOnly: storeOptions?.readOnly,
       });
@@ -550,14 +594,16 @@ export function createNativeWorkflowApplication(
       if (extensions.has(input.action.stepId)) return { accepted: true };
       if (input.outcome.status === 'failed') return { accepted: true };
       // Archive 写入后由原事务验证器核对结果；候选扩展在领取前已重新核对。
-      if (input.action.stepId === 'archive.execute' && input.outcome.output !== null)
+      if (
+        ['archive.execute', 'supervisor.child.archive'].includes(input.action.stepId) &&
+        input.outcome.output !== null
+      )
         return { accepted: true };
       if (
         ![
           'verify.verifier',
-          'verify.report',
-          'verify.revalidate',
           'supervisor.child.verifier',
+          'supervisor.child.archive',
           'supervisor.parent.deliver',
           'archive.prepare',
           'archive.execute',
@@ -565,9 +611,16 @@ export function createNativeWorkflowApplication(
       )
         return { accepted: true };
       const state = parseNativePortableState(input.run.state);
-      const checkId = activation(input.action).checkActionId;
+      const integrating = input.action.stepId === 'supervisor.child.archive';
+      const checkId = integrating
+        ? (activation(input.action).repairActionId ??
+          activation(input.action).mergeActionId ??
+          activation(input.action).checksActionId)
+        : activation(input.action).checkActionId;
       const candidateId =
-        activation(input.action).candidateCommit ?? state.builder_handoff?.candidate_id;
+        (integrating
+          ? activation(input.action).integrationCommit
+          : activation(input.action).candidateCommit) ?? state.builder_handoff?.candidate_id;
       const current = input.run.actions.filter(
         (action) =>
           extensions.has(action.stepId) &&
@@ -575,11 +628,13 @@ export function createNativeWorkflowApplication(
             ? reviewSource(action).actionId === checkId
             : reviewSource(action).candidateId === candidateId),
       );
-      const scope: NativeExtensionScope = checkId
-        ? 'child'
-        : state.children_contract_ref
-          ? 'parent'
-          : 'candidate';
+      const scope: NativeExtensionScope = integrating
+        ? 'integration'
+        : input.action.stepId.startsWith('supervisor.child.')
+          ? 'child'
+          : state.children_contract_ref
+            ? 'parent'
+            : 'candidate';
       for (const stepId of chains.get(scope)!) {
         const checked = current.find(
           (action) =>

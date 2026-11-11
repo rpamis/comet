@@ -43,16 +43,9 @@ async function rebindNativeSdkWork(projectRoot: string, name: string): Promise<W
   if (
     state.archived ||
     ['completed', 'cancelled'].includes(run.status) ||
-    run.actions.some(
-      (action) =>
-        ['running', 'unknown'].includes(action.status) ||
-        (action.status === 'cancelled' &&
-          action.claim &&
-          !action.cancellation &&
-          !action.executionStop),
-    )
+    run.actions.some((action) => ['running', 'unknown'].includes(action.status))
   )
-    throw new Error('Native rebind requires all original executions to have stopped and settled');
+    throw new Error('Native rebind requires the original claimed and unknown tasks to be settled');
   if (state.workspace.change_branch === git.currentBranch) return run;
   if (
     state.children_contract_ref &&
@@ -92,19 +85,8 @@ export async function nativeSelectCommand(
   assertNoArguments(args);
   await configuredPaths(projectRoot);
   if (rebind) await rebindNativeSdkWork(projectRoot, name);
-  // The discovered projection carries the workspace that owns the change, so
-  // selecting a worktree-bound change from the primary root routes both the
-  // recorded selection and the caller into the right workspace (the compact
-  // form dropped everything but the continuation).
-  let executionCwd = projectRoot;
-  const inspect = () =>
-    inspectDiscoveredNativeStatus({
-      projectRoot,
-      name,
-      onSelectedRoot: (selectedRoot) => {
-        executionCwd = selectedRoot;
-      },
-    });
+  const executionCwd = projectRoot;
+  const inspect = () => inspectDiscoveredNativeStatus({ projectRoot, name });
   let status;
   try {
     status = await inspect();

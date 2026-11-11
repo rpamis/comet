@@ -14,12 +14,10 @@ import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contr
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import { createNativeSdkStateStore } from '../../../domains/comet-native/native-sdk-state-store.js';
 import * as sdkStatus from '../../../domains/comet-native/native-sdk-status.js';
-import * as sdkChecks from '../../../domains/comet-native/native-sdk-checks.js';
 import { nativeSdkTaskResultTemplate } from '../../../domains/comet-native/native-sdk-continuation.js';
 import * as stateStores from '../../../domains/comet-native/native-sdk-state-store.js';
 import { inspectNativeSdkDefinitionUpgrade } from '../../../domains/comet-native/native-runtime-ownership.js';
 import { defineNativeWorkflowApplication } from '../../../domains/comet-native/native-sdk-application.js';
-import { nativeSdkLegacyDefinitions } from '../../../domains/comet-native/native-sdk-definition.js';
 import {
   createFileRuntimeStore,
   defineWorkflow,
@@ -42,6 +40,9 @@ it('creates an agent-managed Native Run without a project content snapshot', asy
   const { run } = await inspectNativeSdkRun(root, 'agent-checks');
   expect(run.workflow.version).toBe('4');
   expect(run.actions.some((action) => action.stepId.includes('checks'))).toBe(false);
+  expect(
+    run.actions.some((action) => ['shape.revalidate', 'verify.revalidate'].includes(action.stepId)),
+  ).toBe(false);
 });
 
 async function builderFixture(boundary: 'source' | 'bundle' = 'source', branch?: string) {
@@ -60,7 +61,11 @@ async function builderFixture(boundary: 'source' | 'bundle' = 'source', branch?:
   } else await fs.mkdir(path.join(root, '.git'));
   const name = 'agent-report';
   const cli = async (args: string[]) => {
-    const argv = [...args, '--project-root', root, '--json'];
+    const argv = [
+      ...args,
+      ...(args.includes('--project-root') ? [] : ['--project-root', root]),
+      ...(args.includes('--json') ? [] : ['--json']),
+    ];
     const child =
       boundary === 'bundle'
         ? spawnSync(
@@ -103,18 +108,38 @@ async function builderFixture(boundary: 'source' | 'bundle' = 'source', branch?:
   const { runtime } = await loadOwnedNativeSdkRuntime(root, name);
   const run = await runtime.inspect(name);
   const wait = run.waits.find((entry) => entry.status === 'pending')!;
-  await runtime.resolveWait({
-    runId: name,
-    waitId: wait.id,
-    proposalHash: wait.proposalHash,
-    decisionId: 'test-user-shape-approved',
-    choice: 'approved',
-    context: { requestId: 'test-user-shape-approved', projectRoot: root },
-  });
+  expect(wait.status).toBe('pending');
+  const choices = prepared.envelope.data.next.commandAlternatives;
+  const confirmation = choices?.find((choice: { commandArgs?: string[] }) =>
+    choice.commandArgs?.includes('--confirmed'),
+  );
+  expect(confirmation, prepared.stdout).toBeDefined();
+  expect(prepared.envelope.data.next.askUser).toBeTruthy();
+  expect(confirmation.commandArgs).toContain('--expected-state-version');
+  // 这次批准只属于隔离夹具，不能替代真实用户批准。
+  const confirmed = await cli(
+    confirmation.commandArgs
+      .slice(2)
+      .map((value: string) =>
+        value === '<summary>' ? 'Fixture user approved the complete Shape.' : value,
+      ),
+  );
+  expect(confirmed.exitCode, confirmed.stdout).toBe(0);
   const builder = await cli(['next', name, '--session', 'actual-agent']);
   expect(builder.exitCode, builder.stdout).toBe(0);
   return { root, name, cli, submit, runtime, builder: builder.envelope.data };
 }
+
+it.each(['source', 'bundle'] as const)(
+  'returns guarded Shape choices without another status query (%s)',
+  async (boundary) => {
+    const f = await builderFixture(boundary);
+    expect(f.builder.task).toMatchObject({ role: 'build', session: 'actual-agent' });
+    const run = await f.runtime.inspect(f.name);
+    expect(run.waits.filter((wait) => wait.status === 'resolved')).toHaveLength(1);
+    expect(run.actions.filter((action) => action.stepId === 'shape.prepare')).toHaveLength(1);
+  },
+);
 
 it('projects a repeated current-session task once without advancing or replacing its claim', async () => {
   const f = await builderFixture();
@@ -189,13 +214,12 @@ it('does not derive legacy Runtime check plans for a v4 task template', async ()
     status: 'succeeded',
     outcome: { status: 'succeeded', output: { verificationChecks: [] } },
   } as typeof builder;
-  const plans = vi.spyOn(sdkChecks, 'nativeSdkCheckPlans');
   const template = nativeSdkTaskResultTemplate(
     { ...run, actions: [previous, ...run.actions] },
     builder,
   );
   expect(template.output).not.toHaveProperty('verificationChecks');
-  expect(plans).not.toHaveBeenCalled();
+  expect(run.actions.some((action) => action.stepId === 'verify.checks')).toBe(false);
 });
 
 it('projects once when a Builder report claims Verify and retains the committed session and result template', async () => {
@@ -279,11 +303,9 @@ it.each(['source', 'bundle'] as const)(
     });
     expect(changed.status, changed.stderr).toBe(0);
     if (boundary === 'source') {
-      // Read-only compatibility observation: completed archives keep their original definition.
+      // Read-only compatibility observation: completed archives keep their original business records.
       // The fixture is never persisted or used to manufacture a workflow transition.
-      const definition = defineWorkflow(
-        nativeSdkLegacyDefinitions(defineNativeWorkflowApplication().workflow)[0],
-      );
+      const definition = defineWorkflow(defineNativeWorkflowApplication().workflow);
       const hash = hashRuntimeValue(definition);
       const legacy = {
         ...run,
@@ -319,7 +341,8 @@ it.each(['source', 'bundle'] as const)(
         parseDocument(await fs.readFile(projectionFile, 'utf8'))
           .get('archive_receipt', true)
           ?.toJSON(),
-      ).toEqual(receipt);
+      ).toBeUndefined();
+      expect(legacy.outputs['archive.finalize'].value).toEqual(receipt);
       expect(writeRun).not.toHaveBeenCalled();
       const invalidReceipt = parseDocument(await fs.readFile(projectionFile, 'utf8'));
       invalidReceipt.set('archive_receipt', null);
@@ -530,7 +553,7 @@ it('preserves the original agent task as unknown when recovering a v4 checkpoint
     'checkpoint recovery',
   );
   const repair = await f.cli(['doctor', f.name, '--repair', '--confirmed']);
-  expect(repair.exitCode).not.toBe(0);
+  expect(repair.exitCode, repair.stdout).toBe(0);
   const restored = await createNativeSdkStateStore(f.root, { readOnly: true }).read(f.name);
   expect(restored?.revision).toBe(original.revision);
   expect(restored?.actions.at(-1)).toMatchObject({

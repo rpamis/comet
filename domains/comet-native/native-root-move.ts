@@ -6,7 +6,7 @@ import { NATIVE_MANAGED_RUN_MARKER } from './native-state-document.js';
 
 import { atomicWriteText } from './native-atomic-file.js';
 import { defaultProjectConfig, readProjectConfig, writeProjectConfig } from './native-config.js';
-import { acquireNativeLock, releaseNativeLock } from './native-lock.js';
+
 import {
   isInsidePath,
   nativeProjectPaths,
@@ -114,18 +114,6 @@ async function assertNoUnfinishedTransactions(paths: NativeProjectPaths): Promis
   }
 }
 
-async function assertNoOtherLocks(paths: NativeProjectPaths, ownedLock: string): Promise<void> {
-  for (const entry of await fs.readdir(paths.locksDir, { withFileTypes: true })) {
-    const file = path.join(paths.locksDir, entry.name);
-    if (path.resolve(file) === path.resolve(ownedLock)) continue;
-    // SQLite files remain after release; the lock record identifies an owner.
-    if (entry.isFile() && /\.lock\.sqlite(?:-journal|-wal|-shm)?$/u.test(entry.name)) continue;
-    if (entry.isFile() || entry.isSymbolicLink()) {
-      throw new Error(`Native lock must be diagnosed before moving the root: ${file}`);
-    }
-  }
-}
-
 async function assertNoSdkRootMove(paths: NativeProjectPaths): Promise<void> {
   for (const entry of await walkTree(paths.nativeRoot, { rejectSymlinks: true })) {
     if (entry.type !== 'file' || path.posix.basename(entry.ref) !== 'comet-state.yaml') continue;
@@ -209,10 +197,7 @@ async function validateNativeWorkspaceIdentitiesForRootMove(
   }
 }
 
-async function walkTree(
-  root: string,
-  options: { rejectSymlinks: boolean; excludedFiles?: ReadonlySet<string> },
-): Promise<TreeEntry[]> {
+async function walkTree(root: string, options: { rejectSymlinks: boolean }): Promise<TreeEntry[]> {
   const treeEntries: TreeEntry[] = [];
   async function visit(directory: string): Promise<void> {
     const protectedDirectory = await readNativeProtectedDirectory({
@@ -225,10 +210,6 @@ async function walkTree(
     for (const entry of entries) {
       await protectedDirectory.verify();
       const target = path.join(directory, entry.name);
-      if (options.excludedFiles?.has(path.resolve(target))) {
-        await protectedDirectory.verify();
-        continue;
-      }
       const stat = await fs.lstat(target);
       if (entry.isSymbolicLink() || stat.isSymbolicLink()) {
         if (options.rejectSymlinks) throw new Error(`Native root contains a symlink: ${target}`);
@@ -263,12 +244,7 @@ async function walkTree(
   return treeEntries.sort((left, right) => left.ref.localeCompare(right.ref));
 }
 
-async function copyTree(
-  source: string,
-  target: string,
-  excludedFile: string,
-  targetRoot: string,
-): Promise<void> {
+async function copyTree(source: string, target: string, targetRoot: string): Promise<void> {
   await ensureNativeProtectedDirectory({
     root: targetRoot,
     directory: target,
@@ -284,10 +260,6 @@ async function copyTree(
     for (const entry of entries) {
       await protectedDirectory.verify();
       const sourceEntry = path.join(from, entry.name);
-      if (path.resolve(sourceEntry) === path.resolve(excludedFile)) {
-        await protectedDirectory.verify();
-        continue;
-      }
       const stat = await fs.lstat(sourceEntry);
       if (entry.isSymbolicLink() || stat.isSymbolicLink()) {
         throw new Error(`Native root contains a symlink: ${sourceEntry}`);
@@ -320,19 +292,12 @@ async function copyTree(
   await copyDirectory(source, target);
 }
 
-async function assertEquivalentTrees(
-  source: string,
-  target: string,
-  excludedSourceLock?: string,
-  excludedTargetLock?: string,
-): Promise<void> {
+async function assertEquivalentTrees(source: string, target: string): Promise<void> {
   const sourceFiles = await walkTree(source, {
     rejectSymlinks: true,
-    excludedFiles: excludedSourceLock ? new Set([path.resolve(excludedSourceLock)]) : undefined,
   });
   const targetFiles = await walkTree(target, {
     rejectSymlinks: true,
-    excludedFiles: excludedTargetLock ? new Set([path.resolve(excludedTargetLock)]) : undefined,
   });
   if (JSON.stringify(sourceFiles) !== JSON.stringify(targetFiles)) {
     throw new Error(
@@ -808,7 +773,6 @@ async function finishForwardMove(options: {
   destinationPaths: NativeProjectPaths;
   staging: string;
   journal: NativeTransactionJournal;
-  lockFile: string;
   hooks?: NativeTransactionHooks;
 }): Promise<CometProjectConfig> {
   let config = options.config;
@@ -831,15 +795,13 @@ async function finishForwardMove(options: {
     });
     await walkTree(options.sourcePaths.nativeRoot, {
       rejectSymlinks: true,
-      excludedFiles: new Set([path.resolve(options.lockFile)]),
     });
     await copyTree(
       options.sourcePaths.nativeRoot,
       options.staging,
-      options.lockFile,
       options.destinationPaths.projectRoot,
     );
-    await assertEquivalentTrees(options.sourcePaths.nativeRoot, options.staging, options.lockFile);
+    await assertEquivalentTrees(options.sourcePaths.nativeRoot, options.staging);
     config = await setPendingStage({
       projectRoot: options.projectRoot,
       config,
@@ -857,15 +819,10 @@ async function finishForwardMove(options: {
       await assertEquivalentTrees(
         options.sourcePaths.nativeRoot,
         options.destinationPaths.nativeRoot,
-        options.lockFile,
       );
     } else {
       if (!(await exists(options.staging))) throw new Error(`Native move staging tree is missing`);
-      await assertEquivalentTrees(
-        options.sourcePaths.nativeRoot,
-        options.staging,
-        options.lockFile,
-      );
+      await assertEquivalentTrees(options.sourcePaths.nativeRoot, options.staging);
       await fs.rename(options.staging, options.destinationPaths.nativeRoot);
     }
     config = await setPendingStage({
@@ -887,7 +844,6 @@ async function finishForwardMove(options: {
     await assertEquivalentTrees(
       options.sourcePaths.nativeRoot,
       options.destinationPaths.nativeRoot,
-      options.lockFile,
     );
   }
   config = await cleanupRootMoveTree({
@@ -916,7 +872,6 @@ async function finishForwardMove(options: {
     clarification_mode: config.native.clarification_mode,
     archive_confirmation: config.native.archive_confirmation,
     max_verify_failures: config.native.max_verify_failures,
-    snapshot: config.native.snapshot,
   };
   const committed: CometProjectConfig = {
     ...config,
@@ -958,7 +913,7 @@ export async function moveNativeRoot(options: {
   if (await exists(destinationPaths.nativeRoot)) {
     throw new Error(`Native destination is occupied: ${destinationPaths.nativeRoot}`);
   }
-  const lock = await acquireNativeLock(sourcePaths, 'root-move', `move root to ${toArtifactRoot}`);
+
   const id = randomUUID();
   const pending: NativePendingRootMove = {
     id,
@@ -968,33 +923,26 @@ export async function moveNativeRoot(options: {
   };
   const journal = rootMoveJournal({ id, paths: sourcePaths, now: options.now ?? new Date() });
   const staging = stagingDirectory(destinationPaths, id);
-  try {
-    await assertNoOtherLocks(sourcePaths, lock.file);
-    await assertNoSdkRootMove(sourcePaths);
-    await validateNativeWorkspaceIdentitiesForRootMove(sourcePaths);
-    if (await exists(staging)) throw new Error(`Native move staging path is occupied: ${staging}`);
-    await writeProjectConfig(options.projectRoot, pendingConfig(current, pending));
-    await createNativeTransaction(sourcePaths, journal);
-    await options.hooks?.afterRootMoveStage?.('copying', journal);
-    await finishForwardMove({
-      projectRoot: options.projectRoot,
-      config: pendingConfig(current, pending),
-      pending,
-      sourcePaths,
-      destinationPaths,
-      staging,
-      journal,
-      lockFile: lock.file,
-      hooks: options.hooks,
-    });
-    return {
-      fromNativeRoot: sourcePaths.nativeRoot,
-      toNativeRoot: destinationPaths.nativeRoot,
-      transactionId: id,
-    };
-  } finally {
-    await releaseNativeLock(lock);
-  }
+  await validateNativeWorkspaceIdentitiesForRootMove(sourcePaths);
+  if (await exists(staging)) throw new Error(`Native move staging path is occupied: ${staging}`);
+  await writeProjectConfig(options.projectRoot, pendingConfig(current, pending));
+  await createNativeTransaction(sourcePaths, journal);
+  await options.hooks?.afterRootMoveStage?.('copying', journal);
+  await finishForwardMove({
+    projectRoot: options.projectRoot,
+    config: pendingConfig(current, pending),
+    pending,
+    sourcePaths,
+    destinationPaths,
+    staging,
+    journal,
+    hooks: options.hooks,
+  });
+  return {
+    fromNativeRoot: sourcePaths.nativeRoot,
+    toNativeRoot: destinationPaths.nativeRoot,
+    transactionId: id,
+  };
 }
 
 export async function recoverNativeRootMove(options: {
@@ -1008,93 +956,86 @@ export async function recoverNativeRootMove(options: {
   const sourcePaths = await nativeProjectPaths(options.projectRoot, pending.fromArtifactRoot);
   const destinationPaths = await nativeProjectPaths(options.projectRoot, pending.toArtifactRoot);
   const staging = stagingDirectory(destinationPaths, pending.id);
-  const lockPaths = (await exists(sourcePaths.nativeRoot)) ? sourcePaths : destinationPaths;
-  const lock = await acquireNativeLock(lockPaths, 'root-move', `recover root ${pending.id}`);
-  try {
-    let journalInfo: { journal: NativeTransactionJournal; paths: NativeProjectPaths };
-    try {
-      journalInfo = await readRootMoveJournal(sourcePaths, destinationPaths, staging, pending.id);
-    } catch (error) {
-      if (pending.stage !== 'copying' || !(await exists(sourcePaths.nativeRoot))) throw error;
-      const journal = rootMoveJournal({ id: pending.id, paths: sourcePaths, now: new Date() });
-      await createNativeTransaction(sourcePaths, journal);
-      journalInfo = { journal, paths: sourcePaths };
-    }
-    if (options.strategy === 'continue') {
-      const committed = await finishForwardMove({
-        projectRoot: options.projectRoot,
-        config,
-        pending,
-        sourcePaths,
-        destinationPaths,
-        staging,
-        journal: journalInfo.journal,
-        lockFile: lock.file,
-        hooks: options.hooks,
-      });
-      return { activeNativeRoot: destinationPaths.nativeRoot, config: committed };
-    }
 
-    if (!(await exists(sourcePaths.nativeRoot))) {
-      throw new Error('Cannot roll back after the old Native root was removed; continue recovery');
-    }
-    const destinationRemoval = rollbackRemovalDirectory(destinationPaths.nativeRoot, pending.id);
-    if (!config.native.pending_root_move?.cleanup && (await exists(destinationPaths.nativeRoot))) {
-      await assertEquivalentTrees(sourcePaths.nativeRoot, destinationPaths.nativeRoot, lock.file);
-    }
-    if (
-      !config.native.pending_root_move?.cleanup ||
-      config.native.pending_root_move.cleanup.kind === 'rollback-destination'
-    ) {
-      config = await cleanupRootMoveTree({
-        projectRoot: options.projectRoot,
-        config,
-        id: pending.id,
-        kind: 'rollback-destination',
-        stablePaths: sourcePaths,
-        target: destinationPaths.nativeRoot,
-        quarantine: destinationRemoval,
-        label: 'Native root move rollback destination removal',
-        hooks: options.hooks,
-      });
-    }
-    const stagingRemoval = rollbackRemovalDirectory(staging, pending.id);
-    if (!config.native.pending_root_move?.cleanup && (await exists(staging))) {
-      await assertEquivalentTrees(sourcePaths.nativeRoot, staging, lock.file);
-    }
-    if (
-      !config.native.pending_root_move?.cleanup ||
-      config.native.pending_root_move.cleanup.kind === 'rollback-staging'
-    ) {
-      config = await cleanupRootMoveTree({
-        projectRoot: options.projectRoot,
-        config,
-        id: pending.id,
-        kind: 'rollback-staging',
-        stablePaths: sourcePaths,
-        target: staging,
-        quarantine: stagingRemoval,
-        label: 'Native root move rollback staging removal',
-        hooks: options.hooks,
-      });
-    }
-    const sourceJournal = await readNativeTransaction(sourcePaths, pending.id);
-    await rollbackNativeTransaction(sourcePaths, sourceJournal);
-    const stableNative = {
-      artifact_root: config.native.artifact_root,
-      language: config.native.language,
-      clarification_mode: config.native.clarification_mode,
-      archive_confirmation: config.native.archive_confirmation,
-      max_verify_failures: config.native.max_verify_failures,
-      snapshot: config.native.snapshot,
-    };
-    const restored: CometProjectConfig = {
-      ...config,
-      native: { ...stableNative, artifact_root: pending.fromArtifactRoot },
-    };
-    await writeProjectConfig(options.projectRoot, restored);
-    return { activeNativeRoot: sourcePaths.nativeRoot, config: restored };
-  } finally {
-    await releaseNativeLock(lock);
+  let journalInfo: { journal: NativeTransactionJournal; paths: NativeProjectPaths };
+  try {
+    journalInfo = await readRootMoveJournal(sourcePaths, destinationPaths, staging, pending.id);
+  } catch (error) {
+    if (pending.stage !== 'copying' || !(await exists(sourcePaths.nativeRoot))) throw error;
+    const journal = rootMoveJournal({ id: pending.id, paths: sourcePaths, now: new Date() });
+    await createNativeTransaction(sourcePaths, journal);
+    journalInfo = { journal, paths: sourcePaths };
   }
+  if (options.strategy === 'continue') {
+    const committed = await finishForwardMove({
+      projectRoot: options.projectRoot,
+      config,
+      pending,
+      sourcePaths,
+      destinationPaths,
+      staging,
+      journal: journalInfo.journal,
+      hooks: options.hooks,
+    });
+    return { activeNativeRoot: destinationPaths.nativeRoot, config: committed };
+  }
+
+  if (!(await exists(sourcePaths.nativeRoot))) {
+    throw new Error('Cannot roll back after the old Native root was removed; continue recovery');
+  }
+  const destinationRemoval = rollbackRemovalDirectory(destinationPaths.nativeRoot, pending.id);
+  if (!config.native.pending_root_move?.cleanup && (await exists(destinationPaths.nativeRoot))) {
+    await assertEquivalentTrees(sourcePaths.nativeRoot, destinationPaths.nativeRoot);
+  }
+  if (
+    !config.native.pending_root_move?.cleanup ||
+    config.native.pending_root_move.cleanup.kind === 'rollback-destination'
+  ) {
+    config = await cleanupRootMoveTree({
+      projectRoot: options.projectRoot,
+      config,
+      id: pending.id,
+      kind: 'rollback-destination',
+      stablePaths: sourcePaths,
+      target: destinationPaths.nativeRoot,
+      quarantine: destinationRemoval,
+      label: 'Native root move rollback destination removal',
+      hooks: options.hooks,
+    });
+  }
+  const stagingRemoval = rollbackRemovalDirectory(staging, pending.id);
+  if (!config.native.pending_root_move?.cleanup && (await exists(staging))) {
+    await assertEquivalentTrees(sourcePaths.nativeRoot, staging);
+  }
+  if (
+    !config.native.pending_root_move?.cleanup ||
+    config.native.pending_root_move.cleanup.kind === 'rollback-staging'
+  ) {
+    config = await cleanupRootMoveTree({
+      projectRoot: options.projectRoot,
+      config,
+      id: pending.id,
+      kind: 'rollback-staging',
+      stablePaths: sourcePaths,
+      target: staging,
+      quarantine: stagingRemoval,
+      label: 'Native root move rollback staging removal',
+      hooks: options.hooks,
+    });
+  }
+  const sourceJournal = await readNativeTransaction(sourcePaths, pending.id);
+  await rollbackNativeTransaction(sourcePaths, sourceJournal);
+  const stableNative = {
+    artifact_root: config.native.artifact_root,
+    language: config.native.language,
+    clarification_mode: config.native.clarification_mode,
+    archive_confirmation: config.native.archive_confirmation,
+    max_verify_failures: config.native.max_verify_failures,
+  };
+  const restored: CometProjectConfig = {
+    ...config,
+    native: { ...stableNative, artifact_root: pending.fromArtifactRoot },
+  };
+  await writeProjectConfig(options.projectRoot, restored);
+  return { activeNativeRoot: sourcePaths.nativeRoot, config: restored };
 }

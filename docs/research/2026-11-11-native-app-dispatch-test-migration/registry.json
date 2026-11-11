@@ -1,0 +1,154 @@
+{
+  "cases": [
+    {
+      "id": "native-build-managed-check-reuse",
+      "sources": ["report:2026-11-05-native-verify-archive-cost"],
+      "behavior": "Build can record real managed checks and Verify reuses only matching successful evidence.",
+      "coverageLevel": "runtime",
+      "reproduction": "Execute Build checks, submit a candidate, then verify unchanged inputs, edited inputs, and a later failed Build check.",
+      "expected": "Reuse unchanged successful evidence and rerun edited or superseded evidence.",
+      "forbidden": "Treat terminal summaries or superseded successes as current Runtime checks.",
+      "rootCause": "Build lacked a managed check step before candidate submission.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native v3 Build check reuse reuses a Build check only while inputs match \\(edited=false\\)|Native v3 Build check reuse reuses a Build check only while inputs match \\(edited=true\\)|Native v3 Build check reuse reuses a Build check only while inputs match \\(edited=failed-later\\))$",
+          "requiredNames": [
+            "Native v3 Build check reuse reuses a Build check only while inputs match (edited=false)",
+            "Native v3 Build check reuse reuses a Build check only while inputs match (edited=true)",
+            "Native v3 Build check reuse reuses a Build check only while inputs match (edited=failed-later)"
+          ]
+        },
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "^(?:Native dispatch CLI presentation executes managed Build checks through public receipt dispatch and resumes the Builder)$",
+          "requiredNames": [
+            "Native dispatch CLI presentation executes managed Build checks through public receipt dispatch and resumes the Builder"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "撤下本案例中依赖文件/日志内容摘要、编辑证明或自动漂移的策略。保留原来源和完整旧正文；显式修订、真实失败/超时、原用户决定、检查来源及无重复副作用继续由逐项选择器执行。具体差异与保留行为见记录。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "^(?:Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution \\(edited=false\\)|Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution \\(edited=true\\)|Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution \\(edited=failed-later\\))$",
+            "requiredNames": [
+              "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=false)",
+              "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=true)",
+              "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=failed-later)"
+            ]
+          },
+          {
+            "file": "test/app/native-runtime-dispatch.test.ts",
+            "namePattern": "^(?:Native dispatch CLI presentation executes managed Build checks through public receipt dispatch and resumes the Builder)$",
+            "requiredNames": [
+              "Native dispatch CLI presentation executes managed Build checks through public receipt dispatch and resumes the Builder"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        },
+        "supersededBy": {
+          "kind": "feature-removed",
+          "reason": "Retire this Native managed Build/Verify reuse, candidate fingerprint and execution-receipt slice. Preserve the original ID/source and the separate app selector until its own migration; this append does not change any other file link.",
+          "authorization": "report:2026-11-10-agent-platform-execution",
+          "record": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/README.md",
+          "tests": [
+            {
+              "file": "test/app/native-runtime-dispatch.test.ts",
+              "namePattern": "^(?:Native dispatch CLI presentation executes managed Build checks through public receipt dispatch and resumes the Builder)$",
+              "requiredNames": [
+                "Native dispatch CLI presentation executes managed Build checks through public receipt dispatch and resumes the Builder"
+              ]
+            },
+            {
+              "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+              "namePattern": "^(?:exposes Agent tasks and acceptance without any managed-check executor or refresh command|does not ship retired Native execution and snapshot implementations)$",
+              "requiredNames": [
+                "exposes Agent tasks and acceptance without any managed-check executor or refresh command",
+                "does not ship retired Native execution and snapshot implementations"
+              ]
+            }
+          ],
+          "evidence": {
+            "registry": {
+              "file": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/registry.json",
+              "sha256": "9e3cb23733dd0b02c32508f171c50fa1a23a2ab05db6f846ba49c4b7207264ae"
+            },
+            "tests": {
+              "file": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/tests.json",
+              "sha256": "68158b65c9c1922adc8923b4080af6ca0641c8eea89b2e6fcdddd81844d3b741"
+            },
+            "mapping": {
+              "file": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/mapping.json",
+              "sha256": "4fd47c1006ee01e74c2a30bde05c17c4af2f5f8bc5a60b674c8f0a9bdaafbd7d"
+            },
+            "patch": {
+              "file": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/tests.patch",
+              "sha256": "729139a5cdb94034c4e12a7ba565cfc414cb2108ef6fe3181fcb7817352f4d82"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "native-v3-compact-builder-result",
+      "sources": ["report:2026-11-05-native-verify-archive-cost"],
+      "behavior": "New public Runs omit redundant Builder review and unused recovery templates.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Create through native new and claim the Builder through runtime dispatch. Legacy factory fixtures retain the historical protocol assertions.",
+      "expected": "Return one receipt result without a duplicate acceptanceReview or unused failure/recovery requests.",
+      "forbidden": "Drop required Verify acceptance coverage or alter existing Run templates.",
+      "rootCause": "Healthy handoffs expanded alternative protocols and repeated the full acceptance review.",
+      "tests": [
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "^(?:Native dispatch CLI presentation uses one result protocol and omits duplicate Builder review for a new public v3 Run)$",
+          "requiredNames": [
+            "Native dispatch CLI presentation uses one result protocol and omits duplicate Builder review for a new public v3 Run"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-v3-report-view-nonblocking",
+      "sources": ["report:2026-11-05-native-verify-archive-cost"],
+      "behavior": "Verifier results wait directly for acceptance even when the reading report cannot be written.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Submit the real Verifier result using CLI dispatch, including a directory occupying verification.md, then remove it and call next.",
+      "expected": "Keep the saved verdict and acceptance wait, retry rendering without another report Action.",
+      "forbidden": "Rollback a successful verdict, auto-approve acceptance, or advance revision merely to render the report.",
+      "rootCause": "Report rendering was a separate workflow Action required before acceptance.",
+      "tests": [
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "^(?:Native dispatch CLI presentation waits for acceptance directly after a v3 Verifier result without a report Action|Native dispatch CLI presentation preserves v3 acceptance when the report view fails and retries it on next)$",
+          "requiredNames": [
+            "Native dispatch CLI presentation waits for acceptance directly after a v3 Verifier result without a report Action",
+            "Native dispatch CLI presentation preserves v3 acceptance when the report view fails and retries it on next"
+          ]
+        }
+      ]
+    }
+  ]
+}

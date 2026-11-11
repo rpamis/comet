@@ -129,7 +129,10 @@ export async function acquireRecoverableFileLock(
     const previous = await metadata(file);
     if (previous?.legacy)
       throw new Error(
-        'Legacy lock requires confirmation that its previous operation stopped: ' + file,
+        'Legacy lock requires confirmation that its previous operation stopped: ' +
+          file +
+          '\nInspect argv: ' +
+          JSON.stringify(['comet', 'doctor', '--lock-file', file, '--json']),
       );
     if (previous) await fs.unlink(file);
     await fs.writeFile(file, JSON.stringify(owner), { mode: 0o600, flag: 'wx' });

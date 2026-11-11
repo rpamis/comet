@@ -6,7 +6,6 @@ import {
   type RuntimeValue,
   type WorkflowRun,
 } from '../engine/runtime.js';
-import { type EditReviewObservation } from '../workflow-contract/edit-review.js';
 import { NATIVE_REQUEST_REVIEW_RESULTS, nativeEnumPlaceholder } from './native-input-enum.js';
 import {
   nativePortableContinuation,
@@ -27,11 +26,6 @@ import {
   projectNativeSdkCancellationContinuation,
   type inspectNativeSdkCancellation,
 } from './native-sdk-cancellation.js';
-import {
-  inspectNativeSdkCheckExecutions,
-  type NativeSdkCheckExecutionInspection,
-} from './native-sdk-check-execution.js';
-import { nativeSdkCheckPlans } from './native-sdk-checks.js';
 import { nativeSdkRecoverableFailureReason } from './native-sdk-definition.js';
 import { nativeSdkRequiresIndependentReview } from './native-sdk-review.js';
 import {
@@ -39,15 +33,12 @@ import {
   nativeSdkRequirementsRevisionAllowed,
   nativeSdkStoppedBuilderWait,
 } from './native-sdk-revise.js';
-import { inspectNativeSdkSupervisorRecovery } from './native-sdk-supervisor-recovery.js';
 import { nativeSdkChildVerifierRetryWaits } from './native-sdk-supervisor-verifier-recovery.js';
 import {
   nativeSdkVerifyDecisions,
   nativeSdkVerifyWaitDecisions,
 } from './native-sdk-verify-decision.js';
 import { nativeTaskContextRequest } from './native-task-context.js';
-import { parseNativeVerifierResponse } from './native-verifier-protocol.js';
-
 /** 调度与展示使用同一顺序；终态不再暴露可领取的遗留 Action。 */
 export function nativeSdkPendingActions(run: WorkflowRun): RuntimeAction[] {
   if (['failed', 'cancelled', 'completed'].includes(run.status)) return [];
@@ -56,7 +47,6 @@ export function nativeSdkPendingActions(run: WorkflowRun): RuntimeAction[] {
   if (archiveIndex > 0) pending.unshift(...pending.splice(archiveIndex, 1));
   return pending;
 }
-
 /** 推进和投影共享审批、未知结果及归档串行边界，不猜测在途任务已经结束。 */
 export function nativeSdkNextAction(
   run: WorkflowRun,
@@ -71,7 +61,6 @@ export function nativeSdkNextAction(
     return undefined;
   return nativeSdkPendingActions(run)[0];
 }
-
 function sdkCommandArgs(commandArgs: string[], projectRoot: string): string[] {
   return [
     ...commandArgs,
@@ -79,7 +68,6 @@ function sdkCommandArgs(commandArgs: string[], projectRoot: string): string[] {
     ...(commandArgs.includes('--json') ? [] : ['--json']),
   ];
 }
-
 function bindSdkContinuation(
   continuation: NativePortableContinuation,
   projectRoot: string,
@@ -102,7 +90,6 @@ function bindSdkContinuation(
       : {}),
   };
 }
-
 function sdkDispatchCommand(applicationId: string, projectRoot: string): string[] {
   return sdkCommandArgs(
     [
@@ -117,97 +104,47 @@ function sdkDispatchCommand(applicationId: string, projectRoot: string): string[
     projectRoot,
   );
 }
-
-/** 模板只绑定原领取身份；状态和结果必须来自本次真实执行。 */
-function nativeSdkCheckRequestTemplate() {
-  return {
-    id: '<check-id>',
-    name: '<check-name>',
-    executable: '<executable>',
-    argv: ['<argument>'],
-    cwdRef: '.',
-    timeoutMs: '<positive-integer>',
-    repeatable: '<true|false>',
-  };
-}
-
 function nativeSdkOutcomeOutput(
   run: WorkflowRun,
   state: NativePortableState,
   action: RuntimeAction,
 ): RuntimeValue {
-  const activation = (action.input as { activation?: Record<string, RuntimeValue> })?.activation;
-  const check = {
-    ...nativeSdkCheckRequestTemplate(),
-    ...(run.workflow.version !== '1' ? { repeatable: true } : {}),
-  };
-  const inheritedChecks = new Map<string, ReturnType<typeof nativeSdkCheckPlans>[number]>();
-  if (run.workflow.version === '3' && action.stepId === 'build.builder') {
-    for (const previous of run.actions.slice(
-      0,
-      run.actions.findIndex(({ id }) => id === action.id),
-    )) {
-      if (previous.stepId === 'build.builder' && previous.outcome?.status === 'succeeded') {
-        const output = previous.outcome.output as { response?: { kind?: unknown } };
-        if (output.response?.kind !== 'request-checks') {
-          inheritedChecks.clear();
-          for (const plan of nativeSdkCheckPlans(previous.outcome.output))
-            inheritedChecks.set(plan.id, plan);
-        }
-      }
-      if (previous.stepId !== 'build.checks' || !previous.outcome) continue;
-      const activation = (previous.input as { activation?: { checks?: unknown } }).activation;
-      for (const plan of nativeSdkCheckPlans({ verificationChecks: activation?.checks ?? [] }))
-        inheritedChecks.set(plan.id, plan);
+  const activation = (
+    action.input as {
+      activation?: Record<string, RuntimeValue>;
     }
-  }
+  )?.activation;
   const acceptance = (
     Array.isArray(activation?.acceptance)
-      ? (activation.acceptance as { id: string }[])
+      ? (activation.acceptance as {
+          id: string;
+        }[])
       : state.acceptance
   ).map(({ id }) => ({ id, result: '<passed|failed|blocked>', reason: '<observed-evidence>' }));
   if (['build.builder', 'supervisor.parent.builder'].includes(action.stepId))
     return {
       summary: '<actual-implementation-summary>',
       addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
-      ...(!['3', '4'].includes(run.workflow.version)
-        ? {
-            acceptanceReview: state.acceptance.map(({ id }) => ({
-              id,
-              status:
-                '<implemented-with-evidence|implemented-no-evidence|not-implemented|known-fail>',
-              evidence: ['<actual-implementation-evidence>'],
-              note: '<self-review>',
-            })),
-          }
-        : {}),
+
       checks: [
         { name: '<check-name>', result: '<passed|failed|not-run>', note: '<actual-result>' },
       ],
       knownLimits: ['<actual-limit-or-remove-entry>'],
-      ...(run.workflow.version === '4'
-        ? {}
-        : {
-            verificationChecks: inheritedChecks.size
-              ? [...inheritedChecks.values()].map((plan) => ({ ...plan }))
-              : [check],
-          }),
-      ...(['3', '4'].includes(run.workflow.version) ? { requireIndependentReview: false } : {}),
+
+      ...{ requireIndependentReview: false },
       ...(action.stepId === 'supervisor.parent.builder'
         ? { candidateCommit: '<current-integration-HEAD>' }
         : {}),
     };
   if (action.stepId === 'verify.verifier')
     return {
-      ...(run.workflow.version === '4'
-        ? {
-            checks: (state.builder_handoff?.checks ?? []).map((check) => ({
-              name: check.name.text,
-              result: check.result,
-              note: check.note?.text ?? null,
-            })),
-          }
-        : {}),
+      ...{
+        checks: (state.builder_handoff?.checks ?? []).map((check) => ({
+          name: check.name.text,
+          result: check.result,
+          note: check.note?.text ?? null,
+        })),
+      },
       candidateId: state.builder_handoff?.candidate_id ?? null,
       verifierExecutionRef: action.claim?.sessionId ?? '<actual-session-id>',
       response: {
@@ -219,7 +156,11 @@ function nativeSdkOutcomeOutput(
           acceptance,
           risks: ['<observed-risk-or-remove-entry>'],
           summary: '<verification-summary>',
-          ...(typeof (run.input as { task?: unknown }).task === 'string'
+          ...(typeof (
+            run.input as {
+              task?: unknown;
+            }
+          ).task === 'string'
             ? {
                 requestReview: {
                   result: nativeEnumPlaceholder(NATIVE_REQUEST_REVIEW_RESULTS),
@@ -234,43 +175,29 @@ function nativeSdkOutcomeOutput(
   if (action.stepId === 'supervisor.child.builder')
     return {
       candidateCommit: '<current-child-HEAD>',
-      ...(run.workflow.version === '4'
-        ? { checks: [], summary: '<implementation-summary>' }
-        : { verificationChecks: [check] }),
-      ...(['3', '4'].includes(run.workflow.version) ? { requireIndependentReview: false } : {}),
+      ...{ checks: [], summary: '<implementation-summary>' },
+      ...{ requireIndependentReview: false },
     };
   if (action.stepId === 'supervisor.child.verifier')
     return {
       candidateCommit: activation?.candidateCommit ?? null,
       verdict: '<pass|fail|blocked>',
       evidence: {
-        summary: ['3', '4'].includes(run.workflow.version)
-          ? '<verification-summary>'
-          : '<independent-verification-summary>',
-        checks:
-          run.workflow.version === '4'
-            ? (activation?.checks ?? [])
-            : (
-                (
-                  run.actions.find(({ id }) => id === activation?.checkActionId)?.outcome
-                    ?.output as { checks?: { id: string }[] } | undefined
-                )?.checks ?? []
-              ).map(({ id }) => id),
+        summary: '<verification-summary>',
+        checks: activation?.checks ?? [],
         acceptance,
       },
-      ...(run.workflow.version === '4'
-        ? {}
-        : { integrationChecks: [{ ...check, repeatable: true }] }),
     };
   if (action.stepId === 'supervisor.child.integration-repair')
     return {
       summary: '<repair-summary>',
       integrationCommit: '<new-integration-HEAD>',
-      integrationChecks: [{ ...check, repeatable: true }],
+      checks: [
+        { name: '<check-name>', result: '<passed|failed|not-run>', note: '<actual-result>' },
+      ],
     };
   return '<actual-action-output>';
 }
-
 function nativeSdkOutcomeRequest(
   run: WorkflowRun,
   action: RuntimeAction,
@@ -291,7 +218,6 @@ function nativeSdkOutcomeRequest(
     },
   };
 }
-
 /** 高层入口保留完整业务结果字段，领取身份通过命令中的 Action 和真实会话绑定。 */
 export function nativeSdkTaskResultTemplate(run: WorkflowRun, action: RuntimeAction) {
   if (action.stepId === 'shape.prepare')
@@ -304,132 +230,6 @@ export function nativeSdkTaskResultTemplate(run: WorkflowRun, action: RuntimeAct
     output: nativeSdkOutcomeOutput(run, parseNativePortableState(run.state), action),
   };
 }
-
-function nativeSdkOutcomeAlternatives(
-  run: WorkflowRun,
-  action: RuntimeAction,
-  state: NativePortableState,
-) {
-  if (action.type !== 'handoff' || run.workflow.version === '4') return undefined;
-  const request = nativeSdkOutcomeRequest(run, action, state);
-  if (!request) return undefined;
-  const checks =
-    action.stepId === 'verify.verifier'
-      ? [
-          ...new Map(
-            [
-              ...nativeSdkCheckPlans(
-                run.outputs['supervisor.parent.builder']?.value ??
-                  run.outputs['build.builder']?.value ??
-                  {},
-              ),
-              ...run.actions.flatMap((prior) => {
-                const output = prior.outcome?.output as
-                  { candidateId?: string; response?: { kind?: string } } | undefined;
-                if (
-                  prior.stepId !== 'verify.verifier' ||
-                  prior.status !== 'succeeded' ||
-                  output?.candidateId !== state.builder_handoff?.candidate_id ||
-                  output?.response?.kind !== 'request-checks'
-                )
-                  return [];
-                const response = parseNativeVerifierResponse(output.response);
-                return response.kind === 'request-checks' ? response.checks : [];
-              }),
-            ].map((check) => [check.id, check]),
-          ).values(),
-        ].map(({ id, name, executable, argv, cwdRef, timeoutMs, repeatable }) => ({
-          id,
-          name,
-          executable,
-          argv,
-          cwdRef,
-          timeoutMs,
-          repeatable,
-        }))
-      : [];
-  const alternatives = {
-    checkRequestTemplate: {
-      ...nativeSdkCheckRequestTemplate(),
-      ...(run.workflow.version !== '1' ? { repeatable: true } : {}),
-    },
-    outcomeTemplateInstruction:
-      run.workflow.version !== '1'
-        ? state.language === 'zh-CN'
-          ? '使用 data.resultRequest，保留 receipt，填写实际结果并删除不适用的占位项。验收覆盖全部要求，复用仍有效的检查，只补充缺失证据。根据任务的不确定性和用户要求决定是否使用独立会话，始终使用真实执行身份。检查须可重复执行。失败时保留完整 stdout 和 stderr，按返回的恢复指引继续。'
-          : 'Use data.resultRequest, preserve receipt, and fill the actual result, removing unused placeholders. Cover every acceptance requirement, reuse valid checks, and collect only missing evidence. Choose a separate reviewer according to task uncertainty and user requirements, always using the actual session identity. Checks must be repeatable. On failure, preserve complete stdout and stderr and follow the returned recovery instructions.'
-        : state.language === 'zh-CN'
-          ? '优先使用 data.resultRequest，保留 receipt，只填写 result 中的实际业务结果；Runtime 负责绑定身份。data.outcomeRequest 保留完整协议供兼容调用。需要添加检查时按 checkRequestTemplate 填写；verificationChecks 为空不代表省略了检查字段要求。需要刷新原有可重复检查且提供了 refreshChecksResultRequest 时使用该模板；先确认需要刷新，不自动执行，不重放一次性操作。完整保存 stdout JSON，stderr 另存；一次解析并提取 data.contextRequest 和 data.action，不用 head 或 tail 截断 JSON，不把后台任务提示当作 JSON。SDK inspect 的 data 是原始 Run，不含 Native 状态投影的 continuation 或 pendingActions。使用当前模板，不通过检索 Runtime 源码猜字段；仅在返回缺项或实际错误缺少诊断时再调查。替换全部占位值，删除不适用的列表项。succeeded 表示工作完成，验收结论由 verdict 表达。当前任务要求独立验收而执行能力不可用时，先读取已交付上下文（没有 contextDelivery 时执行自己的 contextRequest），再如实提交 blocked，不代领或假装完成独立审查。'
-          : 'Prefer data.resultRequest: preserve receipt and fill only the actual business result. Runtime binds execution identity. data.outcomeRequest remains available for compatible full-protocol clients. Use checkRequestTemplate when adding checks; an empty verificationChecks list does not remove field requirements. Use refreshChecksResultRequest, when provided, only after deciding existing repeatable checks need refreshing. Do not execute it automatically or replay one-time operations. Save complete stdout JSON and keep stderr separate. Parse data.contextRequest and data.action once; do not truncate JSON with head or tail or parse background-task notices as JSON. SDK inspect returns the raw Run, without Native continuation or pendingActions. Use the returned templates instead of guessing fields from Runtime source; investigate only missing fields or actual errors without a diagnosis. Replace every placeholder and remove unused entries. succeeded means the work finished; verdict expresses acceptance. When required independent review is unavailable, read delivered context (execute your own contextRequest only without contextDelivery), then report blocked honestly. Do not claim on behalf of a reviewer or pretend it ran.',
-    failureOutcomeRequest: {
-      ...request,
-      outcome: {
-        ...request.outcome,
-        status: 'failed',
-        output: { summary: '<actual-execution-failure>' },
-      },
-    },
-    ...(action.stepId === 'verify.verifier'
-      ? {
-          ...(checks.length > 0 && checks.every((check) => check.repeatable)
-            ? {
-                refreshChecksResultRequest: nativeSdkResultRequest(run, action, state, {
-                  candidateId: state.builder_handoff?.candidate_id ?? null,
-                  verifierExecutionRef: action.claim?.sessionId ?? null,
-                  refreshChecks: true,
-                  response: {
-                    kind: 'request-checks',
-                    iteration: state.loop.iteration,
-                    attempt: state.loop.attempt,
-                    checks,
-                  },
-                }),
-              }
-            : {}),
-          requestChecksOutcomeRequest: {
-            ...request,
-            outcome: {
-              ...request.outcome,
-              output: {
-                candidateId: state.builder_handoff?.candidate_id ?? null,
-                verifierExecutionRef: action.claim?.sessionId ?? null,
-                response: {
-                  kind: 'request-checks',
-                  iteration: state.loop.iteration,
-                  attempt: state.loop.attempt,
-                  checks: [
-                    {
-                      id: '<check-id>',
-                      name: '<check-name>',
-                      executable: '<executable>',
-                      argv: ['<argument>'],
-                      cwdRef: '.',
-                      timeoutMs: '<positive-integer>',
-                      repeatable: run.workflow.version !== '1' ? true : '<true|false>',
-                    },
-                  ],
-                },
-              },
-            },
-          },
-        }
-      : {}),
-  };
-  if (['3', '4'].includes(run.workflow.version)) {
-    alternatives.outcomeTemplateInstruction +=
-      state.language === 'zh-CN'
-        ? ' 执行失败时沿用 resultRequest，填写 result.status=failed 和 output.summary。普通 build.builder 需要受管检查时，将 output 填为 {response:{kind:"request-checks",checks:[检查计划]}}，随后运行 native next；检查完成后继续 Build。Verify 补充检查时保留候选身份，将 response 改为 request-checks 并填写 iteration、attempt、checks。计划字段使用 checkRequestTemplate。'
-        : ' For execution failure, reuse resultRequest with result.status=failed and output.summary. For managed checks in ordinary build.builder tasks, set output to {response:{kind:"request-checks",checks:[plans]}} and run native next, then resume Build. For additional Verify checks, preserve candidate identity and use a request-checks response with iteration, attempt and checks. Use checkRequestTemplate for plan fields.';
-    for (const field of [
-      'failureOutcomeRequest',
-      'requestChecksOutcomeRequest',
-      'refreshChecksResultRequest',
-    ])
-      Reflect.deleteProperty(alternatives, field);
-  }
-  return alternatives;
-}
-
 function nativeSdkResultRequest(
   run: WorkflowRun,
   action: RuntimeAction,
@@ -455,14 +255,9 @@ function nativeSdkResultRequest(
     },
   };
 }
-
 /** 宿主任务的核对模板不适用于已经执行的 Runtime 检查、归档或已拒绝的结果。 */
 function nativeSdkHostRecoveryRequests(run: WorkflowRun, action: RuntimeAction) {
-  if (
-    action.type !== 'handoff' ||
-    !action.claim ||
-    (['3', '4'].includes(run.workflow.version) && action.status === 'running' && !action.reason)
-  )
+  if (action.type !== 'handoff' || !action.claim || (action.status === 'running' && !action.reason))
     return {};
   const identity = {
     runId: run.runId,
@@ -495,7 +290,6 @@ function nativeSdkHostRecoveryRequests(run: WorkflowRun, action: RuntimeAction) 
     ],
   };
 }
-
 /** CLI 只省略无关 Run 历史，当前 Action、输入和状态保持完整。 */
 export async function projectNativeSdkDispatchResult(options: {
   run: WorkflowRun;
@@ -511,7 +305,6 @@ export async function projectNativeSdkDispatchResult(options: {
   const applicationId = options.applicationId ?? 'native';
   const outcomeRequest = nativeSdkOutcomeRequest(run, action, state);
   const resultRequest = outcomeRequest ? nativeSdkResultRequest(run, action, state) : undefined;
-  const alternatives = nativeSdkOutcomeAlternatives(run, action, state);
   const projection = await projectNativeSdkContinuation(options);
   // 领取响应已经包含完整 Action；原任务索引复用该正文，避免重复序列化输入。
   const activeActions =
@@ -541,13 +334,7 @@ export async function projectNativeSdkDispatchResult(options: {
                 }
               : {}),
             inputRef: 'action.input',
-            outcomeRequestRef: run.workflow.version !== '1' ? 'resultRequest' : 'outcomeRequest',
-            ...(action.type === 'handoff' && !['3', '4'].includes(run.workflow.version)
-              ? { failureOutcomeRequestRef: 'failureOutcomeRequest' }
-              : {}),
-            ...(action.stepId === 'verify.verifier' && !['3', '4'].includes(run.workflow.version)
-              ? { requestChecksOutcomeRequestRef: 'requestChecksOutcomeRequest' }
-              : {}),
+            outcomeRequestRef: 'resultRequest',
           };
         })
       : undefined;
@@ -565,9 +352,20 @@ export async function projectNativeSdkDispatchResult(options: {
     workflow: run.workflow,
     status: run.status,
     workspace: { projectRoot: options.projectRoot },
-    ...(typeof (run.input as { task?: unknown }).task === 'string'
+    ...(typeof (
+      run.input as {
+        task?: unknown;
+      }
+    ).task === 'string'
       ? {
-          originalRequest: { source: 'run.input.task', text: (run.input as { task: string }).task },
+          originalRequest: {
+            source: 'run.input.task',
+            text: (
+              run.input as {
+                task: string;
+              }
+            ).task,
+          },
           requestReviewInstruction:
             state.language === 'zh-CN'
               ? '先核对原始请求与 Spec、实现是否一致，再判断验收项。非目标不能自行排除用户要求；范围变化须有对应用户授权。Verifier 在同一结果中填写 requestReview，有冲突或疑问时如实 fail 或 blocked。'
@@ -576,12 +374,10 @@ export async function projectNativeSdkDispatchResult(options: {
       : {}),
     ...(outcomeRequest
       ? {
-          ...(run.workflow.version !== '1' ? {} : { outcomeRequest }),
           resultRequest,
         }
       : {}),
     ...(contextRequest ? { contextRequest } : {}),
-    ...alternatives,
     state,
     action,
     ...projection,
@@ -604,7 +400,6 @@ export async function projectNativeSdkDispatchResult(options: {
     },
   };
 }
-
 function sdkShapeContinuation(
   state: NativePortableState,
   supervisorConfirmation: boolean,
@@ -674,7 +469,6 @@ function sdkShapeContinuation(
     },
   };
 }
-
 function sdkLoopStopContinuation(
   run: WorkflowRun,
   state: NativePortableState,
@@ -718,7 +512,6 @@ function sdkLoopStopContinuation(
     ],
   };
 }
-
 function sdkDecision(
   state: NativePortableState,
   action:
@@ -760,7 +553,6 @@ function sdkDecision(
     ],
   };
 }
-
 /** 从同一 Run 投影下一步；SDK 不使用 compat Runner 输入或 workspace finish 决定。 */
 export async function projectNativeSdkContinuation(
   options: Parameters<typeof projectNativeSdkContinuationValue>[0],
@@ -771,7 +563,13 @@ export async function projectNativeSdkContinuation(
     .reverse()
     .find((action) => ['failed', 'unknown', 'running'].includes(action.status));
   const output = stopped?.outcome?.output as
-    { message?: string; blockers?: unknown[]; reason?: string } | null | undefined;
+    | {
+        message?: string;
+        blockers?: unknown[];
+        reason?: string;
+      }
+    | null
+    | undefined;
   const candidateDrift = Boolean(
     output?.reason === 'candidate-drift' &&
     options.state.phase === 'verify' &&
@@ -857,7 +655,6 @@ export async function projectNativeSdkContinuation(
     ? { ...projection, continuation: { ...projection.continuation, recovery } }
     : projection;
 }
-
 /** Task and diagnostic responses use the same context for the committed claim. */
 export function nativeSdkActionContextRequest(
   action: RuntimeAction,
@@ -867,8 +664,16 @@ export function nativeSdkActionContextRequest(
   const input = action.input as {
     worktree?: unknown;
     child?: string;
-    acceptance?: Array<{ text: string }>;
-    activation?: { worktree?: unknown; child?: string; acceptance?: Array<{ text: string }> };
+    acceptance?: Array<{
+      text: string;
+    }>;
+    activation?: {
+      worktree?: unknown;
+      child?: string;
+      acceptance?: Array<{
+        text: string;
+      }>;
+    };
   } | null;
   const scope = input?.activation ?? input;
   const worktree = scope?.worktree;
@@ -887,7 +692,6 @@ export function nativeSdkActionContextRequest(
       .slice(0, 4000),
   });
 }
-
 async function projectNativeSdkContinuationValue(options: {
   run: WorkflowRun;
   state: NativePortableState;
@@ -895,9 +699,7 @@ async function projectNativeSdkContinuationValue(options: {
   applicationId?: string;
   implementationRevisionAvailable?: boolean;
   skillExecutors?: readonly RuntimeExecutor[];
-  editReviews?: readonly EditReviewObservation[];
   cancellationObservation?: Awaited<ReturnType<typeof inspectNativeSdkCancellation>>;
-  checkExecutionObservation?: readonly NativeSdkCheckExecutionInspection[];
 }) {
   const { run, state, projectRoot } = options;
   const dispatchCommandArgs = sdkDispatchCommand(options.applicationId ?? 'native', projectRoot);
@@ -948,7 +750,6 @@ async function projectNativeSdkContinuationValue(options: {
     state,
     base,
     cancellationObservation: options.cancellationObservation,
-    checkExecutionObservation: options.checkExecutionObservation,
   });
   if (cancellation)
     return {
@@ -1008,11 +809,19 @@ async function projectNativeSdkContinuationValue(options: {
       attempt: action.attempt,
       inputHash: action.inputHash,
       mechanism: 'runtime-dispatch',
-      ...(typeof (run.input as { task?: unknown }).task === 'string'
+      ...(typeof (
+        run.input as {
+          task?: unknown;
+        }
+      ).task === 'string'
         ? {
             originalRequest: {
               source: 'run.input.task',
-              text: (run.input as { task: string }).task,
+              text: (
+                run.input as {
+                  task: string;
+                }
+              ).task,
             },
           }
         : {}),
@@ -1032,8 +841,13 @@ async function projectNativeSdkContinuationValue(options: {
                       ? null
                       : action.stepId === 'verify.verifier'
                         ? (state.builder_handoff?.builder_execution_ref ?? null)
-                        : ((action.input as { activation?: { builderSessionId?: string } })
-                            ?.activation?.builderSessionId ?? null),
+                        : ((
+                            action.input as {
+                              activation?: {
+                                builderSessionId?: string;
+                              };
+                            }
+                          )?.activation?.builderSessionId ?? null),
                     resumeCommandArgs: sdkCommandArgs(
                       ['comet', 'native', 'status', state.name],
                       projectRoot,
@@ -1121,49 +935,18 @@ async function projectNativeSdkContinuationValue(options: {
       ),
     }));
   let continuation: NativePortableContinuation;
-  const recovery = await inspectNativeSdkSupervisorRecovery(run, projectRoot);
   const verifyWait = waits.find((wait) =>
-    ['verify.confirm', 'verify.retry', 'verify.stop', 'verify.checks-stop'].includes(wait.stepId),
+    ['verify.confirm', 'verify.retry', 'verify.stop'].includes(wait.stepId),
   );
   const active = run.actions.filter(
     (action) => action.status === 'running' || action.status === 'unknown',
-  );
-  const checkExecutions =
-    options.checkExecutionObservation ??
-    (await inspectNativeSdkCheckExecutions({ projectRoot, run }));
-  const childCheckWaits = waits.filter((wait) =>
-    ['supervisor.child.checks-stop', 'supervisor.child.integration-checks-stop'].includes(
-      wait.stepId,
-    ),
   );
   const childVerifierWaits = nativeSdkChildVerifierRetryWaits(run);
   const stoppedBuilder = nativeSdkStoppedBuilderWait(run);
   const canReviseStoppedBuilder =
     stoppedBuilder !== undefined &&
     nativeSdkRequirementsRevisionAllowed(run, state, stoppedBuilder.proposalHash);
-  if (recovery) {
-    const decision = sdkDecision(state, 'resolve-verifier-blocker', recovery.proposalHash);
-    continuation = {
-      ...base,
-      action: 'resolve-verifier-blocker',
-      disposition: 'await-user',
-      mode: 'ask',
-      requiresUserDecision: true,
-      commandArgs: decision.commandArgs,
-      requiredInputs: decision.requiredInputs,
-      inputOptions: decision.inputOptions,
-      userCommunication: communication(
-        localized(
-          'Execute only after explicit approval to recover this Child; preserve the original result and recheck the successor candidate.',
-          '只有明确选择恢复当前 Child 后才执行；保留原结果，后继候选必须重新检查和独立验收。',
-        ),
-        localized(
-          'Child verification is blocked. Recover the original work with a new Builder?',
-          'Child 独立验收受阻。是否让新的 Builder 在原工作区继续处理？',
-        ),
-      ),
-    };
-  } else if (run.status === 'completed') {
+  if (run.status === 'completed') {
     continuation = {
       ...base,
       disposition: state.status === 'done' ? 'done' : 'blocked',
@@ -1180,27 +963,6 @@ async function projectNativeSdkContinuationValue(options: {
         ),
       ),
     };
-  } else if (childCheckWaits.length > 0) {
-    continuation = {
-      ...base,
-      disposition: 'await-user',
-      mode: 'ask',
-      requiresUserDecision: true,
-      requiredInputs: ['summary', 'user-decision'],
-      commandAlternatives: childCheckWaits.map((wait) =>
-        sdkDecision(state, 'revise-implementation', wait.proposalHash),
-      ),
-      userCommunication: communication(
-        localized(
-          'Preserve the interrupted check receipts and partial logs. After the user chooses repair, create a new Builder candidate before running fresh checks. Do not replay the original Action or report unknown check results as passed.',
-          '保留中断检查收据与部分日志。用户选择修复后，由新 Builder 提交新候选并重新检查。不能重跑原 Action，或把未知检查结果报告为通过。',
-        ),
-        localized(
-          'Child Runtime checks were interrupted. Repair this Child before continuing?',
-          'Child Runtime 检查中断。是否先修复这个 Child 再继续？',
-        ),
-      ),
-    };
   } else if (childVerifierWaits.length > 0) {
     continuation = {
       ...base,
@@ -1210,8 +972,12 @@ async function projectNativeSdkContinuationValue(options: {
       requiresUserDecision: true,
       requiredInputs: ['summary', 'user-decision'],
       commandAlternatives: childVerifierWaits.flatMap((wait) => [
-        sdkDecision(state, 'retry-verifier', wait.proposalHash),
-        sdkDecision(state, 'revise-implementation', wait.proposalHash),
+        ...(wait.choices.includes('retry')
+          ? [sdkDecision(state, 'retry-verifier', wait.proposalHash)]
+          : []),
+        ...(wait.choices.includes('repair')
+          ? [sdkDecision(state, 'revise-implementation', wait.proposalHash)]
+          : []),
       ]),
       userCommunication: communication(
         localized(
@@ -1266,17 +1032,6 @@ async function projectNativeSdkContinuationValue(options: {
                 ),
       ),
     };
-  } else if (verifyWait?.stepId === 'verify.checks-stop') {
-    continuation = {
-      ...sdkLoopStopContinuation(run, state, verifyWait.proposalHash),
-      userCommunication: communication(
-        localized(
-          'Preserve failed, interrupted, or input-invalidated check receipts. Ask for a repair or requirements decision before creating a new candidate; do not retry the original check or report that it never ran.',
-          '保留失败、中断或输入已变化的原检查收据。请用户决定修复实现或调整需求，再创建新候选；不要重跑原检查或声明它从未执行。',
-        ),
-        state.blockers.map((blocker) => blocker.reason.text).join('; '),
-      ),
-    };
   } else if (verifyWait?.stepId === 'verify.stop') {
     continuation = sdkLoopStopContinuation(run, state, verifyWait.proposalHash);
   } else if (verifyWait) {
@@ -1284,7 +1039,6 @@ async function projectNativeSdkContinuationValue(options: {
     const decisions = nativeSdkVerifyDecisions(run, state).filter(
       ({ wait }) => wait.id === verifyWait.id,
     );
-    const oneShotChecks = !retry && !decisions.some(({ action }) => action === 'retry-verifier');
     continuation = {
       ...base,
       disposition: 'await-user',
@@ -1298,12 +1052,8 @@ async function projectNativeSdkContinuationValue(options: {
       ],
       userCommunication: communication(
         localized(
-          oneShotChecks
-            ? 'Summarize the result and evidence, then wait for an explicit decision. Reverification is unavailable because the current checks include one-shot commands; do not replay them. Accept the valid result or revise the candidate and confirm a new verification plan.'
-            : 'Summarize the result and evidence, then wait for an explicit decision before executing the matching option.',
-          oneShotChecks
-            ? '简要说明结果和证据，等待用户明确决定。当前检查包含不可重复执行的命令，因此不提供重新验收；不能重放它们。可接受有效结果，或修订候选并确认新的验证方式。'
-            : '简要说明结果和证据，等待用户明确决定后执行对应选项。',
+          'Summarize the result and evidence, then wait for an explicit decision before executing the matching option.',
+          '简要说明结果和证据，等待用户明确决定后执行对应选项。',
         ),
         retry
           ? localized(
@@ -1311,12 +1061,8 @@ async function projectNativeSdkContinuationValue(options: {
               '验收未正常返回可用结果。是否保留当前候选和检查，重新尝试独立验收？',
             )
           : localized(
-              oneShotChecks
-                ? 'Verification passed. The checks include one-shot commands, so reverification is unavailable. Accept the result for Archive, revise the implementation, or revise the requirements?'
-                : 'Verification passed. Accept the result for Archive, revise the implementation, or revise the requirements?',
-              oneShotChecks
-                ? '验收已通过。检查包含不可重复执行的命令，因此不能重新验收。请选择接受结果进入归档、修改实现，或调整需求。'
-                : '验收已通过。请选择接受结果进入归档、修改实现，或调整需求。',
+              'Verification passed. Accept the result for Archive, revise the implementation, or revise the requirements?',
+              '验收已通过。请选择接受结果进入归档、修改实现，或调整需求。',
             ),
       ),
     };
@@ -1344,79 +1090,6 @@ async function projectNativeSdkContinuationValue(options: {
         },
       };
     }
-  } else if (checkExecutions.some((execution) => execution.recoveryRequired)) {
-    const staleCompleted = new Set<string>();
-    const stopped = checkExecutions
-      .filter(
-        (execution) =>
-          execution.recoveryRequired &&
-          (staleCompleted.has(execution.actionId) ||
-            execution.phase === 'missing' ||
-            (execution.quiescent && execution.execution && !execution.execution.outcome)),
-      )
-      .map((execution) => {
-        const action = active.find((candidate) => candidate.id === execution.actionId)!;
-        return {
-          actionId: action.id,
-          attempt: action.attempt,
-          inputHash: action.inputHash,
-          claimToken: action.claim!.token,
-          evidence:
-            '<actual evidence that the original execution and all descendants, including detached processes, have stopped>',
-        };
-      });
-    continuation = {
-      ...base,
-      disposition: 'blocked',
-      mode: 'reconcile',
-      requiresUserDecision: stopped.length > 0,
-      commandArgs: [
-        'comet',
-        'native',
-        'doctor',
-        state.name,
-        '--repair',
-        ...(stopped.length > 0
-          ? ['--confirmed', '--stopped-actions', '<stopped-actions-json-file>']
-          : []),
-      ],
-      requiredInputs:
-        stopped.length > 0
-          ? ['stopped-actions-json-file', 'original-execution-stop-evidence']
-          : ['original-check-execution-evidence'],
-      inputOptions:
-        stopped.length > 0
-          ? [
-              {
-                name: 'stopped-actions-json-file',
-                flag: '--stopped-actions',
-                valueKind: 'json-file',
-                required: true,
-                template: stopped,
-              },
-            ]
-          : [],
-      userCommunication: communication(
-        localized(
-          staleCompleted.size > 0
-            ? 'The original check completed, but its input has changed. Preserve its receipts and side effects. Ask the original host or user to confirm all descendants have stopped, then submit the bound stop evidence using doctor. This opens an explicit new-candidate repair decision; it does not replay the old check.'
-            : stopped.length > 0
-              ? 'The check outcome or its older process registration is missing. Ask the original host or user to verify that the original execution and all descendants, including detached processes, have stopped. Submit actual evidence with the original claim using the shown doctor command. Until then, do not create a new candidate or run another check.'
-              : 'The original Runtime check needs recovery. Run doctor to inspect the registered owner, process, and receipts; do not start another check or assume it never executed.',
-          staleCompleted.size > 0
-            ? '原检查已经完成，但输入随后发生变化。保留原收据和副作用，请原宿主或用户确认全部后代已停止，再通过 doctor 提交绑定原领取的停止证据。这会进入新候选修复审批，不会重跑旧检查。'
-            : stopped.length > 0
-              ? '检查结果不完整，或旧执行缺少进程登记。请原宿主或用户核对原执行及全部后代（含脱组进程）确已停止，再按显示的 doctor 命令，用原领取信息提交实际停止证据。此前不要创建新候选或另开检查。'
-              : '原 Runtime 检查需要恢复。请执行 doctor 核对登记的执行者、进程及收据；不要另开检查或假设它未执行。',
-        ),
-        stopped.length > 0
-          ? localized(
-              'Can the original host confirm that this execution and all its descendant processes have stopped?',
-              '能否由原宿主确认此执行及全部后代进程已经停止？',
-            )
-          : null,
-      ),
-    };
   } else if (
     active.length === 1 &&
     active[0].stepId === 'repair.implementation' &&
@@ -1649,25 +1322,6 @@ async function projectNativeSdkContinuationValue(options: {
     };
   }
   if (
-    run.workflow.version === '1' &&
-    (state.phase === 'shape' ||
-      (state.phase === 'build' &&
-        nextAction?.type === 'handoff' &&
-        !nextAction.ref?.includes('verifier')))
-  ) {
-    continuation = {
-      ...continuation,
-      userCommunication: {
-        ...continuation.userCommunication,
-        agentInstruction:
-          localized(
-            'Check verificationRequirements before starting implementation. If this host has neither an independent subagent nor a separate Verifier session, explain the limitation and arrange that session before Build. ',
-            '开始实现前按 verificationRequirements 核对宿主能力；没有独立子 Agent 或另一个 Verifier 会话时，先说明限制并安排会话，再开始 Build。',
-          ) + continuation.userCommunication.agentInstruction,
-      },
-    };
-  }
-  if (
     state.workspace.change_branch &&
     !state.archived &&
     !['completed', 'cancelled'].includes(run.status) &&
@@ -1688,37 +1342,7 @@ async function projectNativeSdkContinuationValue(options: {
   }
   return {
     continuation: bindSdkContinuation(continuation, projectRoot),
-    ...(run.workflow.version === '1' &&
-    (state.phase === 'shape' ||
-      (state.phase === 'build' &&
-        nextAction?.type === 'handoff' &&
-        !nextAction.ref?.includes('verifier')))
-      ? {
-          verificationRequirements: {
-            required: true,
-            checkBefore: 'build',
-            independentSession: true,
-            capabilityStatus: 'host-check-required',
-            supportedModes: ['subagent', 'separate-session'],
-            instruction: localized(
-              'Before starting Build, check that this host can provide a separate read-only Verifier session. Runtime cannot detect host capabilities. A separate session may resume this same project and claim the Verifier Action; use its own session identity and preserve the original task when waiting.',
-              '开始 Build 前，先核对宿主能否提供独立只读 Verifier 会话；Runtime 无法自动探测宿主能力。可用独立子 Agent，或在同一项目另开会话领取 Verifier Action；使用该会话自己的执行标识，等待时继续跟踪原任务。',
-            ),
-            unavailable: {
-              action: 'stop-before-build',
-              instruction: localized(
-                'Explain the missing capability before implementation. Arrange a separate Verifier session, then resume the same Run. Preserve completed work and checks; never fabricate independent verification or repeatedly retry an unavailable executor.',
-                '实现前说明缺少独立验收能力，安排另一个 Verifier 会话后恢复同一 Run。保留已有工作和检查，不伪造独立验收，不反复重试不可用的执行者。',
-              ),
-              resumeCommandArgs: sdkCommandArgs(
-                ['comet', 'native', 'status', state.name],
-                projectRoot,
-              ),
-            },
-          },
-        }
-      : {}),
-    ...(checkExecutions.length > 0 ? { checkExecutions } : {}),
+
     ...(active.length > 0
       ? {
           activeActions: active.map((action) => ({
@@ -1736,10 +1360,7 @@ async function projectNativeSdkContinuationValue(options: {
               ? { contextRequest: nativeSdkActionContextRequest(action, state, projectRoot) }
               : {}),
             commandArgs: dispatchCommandArgs,
-            ...(run.workflow.version !== '1'
-              ? { resultRequest: nativeSdkResultRequest(run, action, state) }
-              : { outcomeRequest: nativeSdkOutcomeRequest(run, action, state) }),
-            ...nativeSdkOutcomeAlternatives(run, action, state),
+            ...{ resultRequest: nativeSdkResultRequest(run, action, state) },
             ...nativeSdkHostRecoveryRequests(run, action),
           })),
         }
@@ -1761,9 +1382,7 @@ async function projectNativeSdkContinuationValue(options: {
       ? {
           pendingWaits: waits.map((wait) => ({
             ...wait,
-            ...(['verify.stop', 'verify.checks-stop', 'verify.retry', 'verify.confirm'].includes(
-              wait.stepId,
-            )
+            ...(['verify.stop', 'verify.retry', 'verify.confirm'].includes(wait.stepId)
               ? {
                   choices: nativeSdkVerifyWaitDecisions(state, wait, run).map(
                     ({ choice }) => choice,
@@ -1771,12 +1390,9 @@ async function projectNativeSdkContinuationValue(options: {
                 }
               : {}),
             commandArgs: dispatchCommandArgs,
-            decisionRequests: ([
-              'verify.stop',
-              'verify.checks-stop',
-              'verify.retry',
-              'verify.confirm',
-            ].includes(wait.stepId)
+            decisionRequests: (['verify.stop', 'verify.retry', 'verify.confirm'].includes(
+              wait.stepId,
+            )
               ? nativeSdkVerifyWaitDecisions(state, wait, run).map(({ choice }) => choice)
               : wait.choices
             ).map((choice) => ({

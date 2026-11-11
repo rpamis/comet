@@ -169,7 +169,7 @@ function validateOutcome(value: RuntimeValue): void {
         !Array.isArray(value) &&
         !Object.hasOwn(value, 'output');
       const guidance = missingOutput
-        ? '；缺少 outcome.output，业务结果应放在其中。请按本次领取响应的 outcomeRequest 修正，保留原 Action 身份与领取绑定，不要重新领取或执行'
+        ? '；缺少 outcome.output，业务结果应放在其中。也可按本次领取响应的 resultRequest 填写 result.output，保留原 Action 身份与领取绑定，不要重新领取或执行'
         : '';
       invalid(`outcome 无效：${error.message}${guidance}`);
     }
@@ -508,8 +508,6 @@ async function nativeCliResponse(
         skillExecutors: executors,
       });
       const data = {
-        // 这些操作原来公开完整 Run；新增续行字段，不删除已有 SDK/CLI 字段。
-        ...response.data,
         schema: 'comet.native.run-view.v1' as const,
         runId: response.data.runId,
         revision: response.data.revision,
@@ -622,9 +620,14 @@ async function bindBuiltInApplication(
   const ownerWorkflow: CometProjectWorkflow = application === 'native' ? 'native' : 'classic';
   if (request.operation === 'start') {
     const requestedWorkflow = request.workflow as { id: string; version: string };
-    if (requestedWorkflow.id !== workflow.id || requestedWorkflow.version !== workflow.version) {
+    const supportedVersions = application === 'native' ? ['1', '2', '3', '4'] : ['1', '2'];
+    if (
+      requestedWorkflow.id !== workflow.id ||
+      !supportedVersions.includes(requestedWorkflow.version)
+    ) {
       invalid(`--application ${application} 与请求的 workflow 不匹配`);
     }
+    request.workflow = { id: workflow.id, version: workflow.version };
     const input = object(request.input, 'input');
     await assertBuiltInChangeInput(projectRoot, application, change, input);
     return;
@@ -698,8 +701,6 @@ export async function runtimeDispatchCommand(
 ): Promise<RuntimeCommandResult> {
   let requestId: string = randomUUID();
   let recoveryRequest: { operation: 'inspect'; runId: string } | undefined;
-  let rejectedOutcome:
-    { actionId: string; attempt: number; inputHash: string; claimToken: string } | undefined;
   let recoveryCwd = path.resolve(host.invocationCwd ?? process.cwd(), options.projectRoot ?? '.');
   try {
     const invocationCwd = path.resolve(host.invocationCwd ?? process.cwd());
@@ -713,26 +714,6 @@ export async function runtimeDispatchCommand(
     );
     const requestFile = path.resolve(invocationCwd, text(options.request, '--request'));
     const request = parseRequest(await readJson(requestFile, 'REQUEST'));
-    if (
-      request.operation === 'record-outcome' &&
-      request.outcome &&
-      typeof request.outcome === 'object' &&
-      !Array.isArray(request.outcome)
-    ) {
-      const outcome = request.outcome as Record<string, unknown>;
-      if (
-        typeof outcome.actionId === 'string' &&
-        typeof outcome.attempt === 'number' &&
-        typeof outcome.inputHash === 'string' &&
-        typeof outcome.claimToken === 'string'
-      )
-        rejectedOutcome = {
-          actionId: outcome.actionId,
-          attempt: outcome.attempt,
-          inputHash: outcome.inputHash,
-          claimToken: outcome.claimToken,
-        };
-    }
     if (typeof request.runId === 'string' && request.operation !== 'inspect') {
       recoveryRequest = { operation: 'inspect', runId: request.runId };
       recoveryCwd = projectRoot;
@@ -1037,6 +1018,7 @@ export async function runtimeDispatchCommand(
             ).createClassicSdkStateStore(projectRoot, { readOnly: request.operation === 'inspect' })
           : createFileRuntimeStore<WorkflowRun>({ rootDir });
     let selectedBuiltInRun: WorkflowRun | null | undefined;
+    let upgradeBuiltInRun: ((run: WorkflowRun) => WorkflowRun) | undefined;
     if (application?.startsWith('classic-') && request.operation !== 'start') {
       selectedBuiltInRun = await persistentStore.read(text(request.runId, 'runId'));
       const { classicSdkApplicationForRun } =
@@ -1045,25 +1027,27 @@ export async function runtimeDispatchCommand(
         application.slice('classic-'.length) as 'full' | 'hotfix' | 'tweak',
         selectedBuiltInRun,
       );
+      const { upgradeClassicRun } =
+        await import('../../domains/comet-classic/classic-sdk-run-upgrade.js');
+      upgradeBuiltInRun = (run) => upgradeClassicRun(run, defined.workflow);
+      if (selectedBuiltInRun) selectedBuiltInRun = upgradeBuiltInRun(selectedBuiltInRun);
       builtInWorkflow = defined.workflow;
       transitionHandlers = [defined.transitionHandler];
       evidenceValidators = defined.evidenceValidators;
       validators = defined.validators;
       commandValidators = defined.commandValidators;
-      executors = defined.executors.some((executor) => executor.id === 'comet-classic-check')
-        ? defined.executors
-        : [
-            ...defined.executors,
-            (
-              await import('../../domains/comet-classic/classic-sdk-check.js')
-            ).createClassicSdkCheckExecutor(projectRoot),
-          ];
+      executors = defined.executors;
     }
     if (application === 'native' && request.operation !== 'start') {
       selectedBuiltInRun = await persistentStore.read(text(request.runId, 'runId'));
       const { nativeSdkApplicationForRun } =
         await import('../../domains/comet-native/native-sdk-application.js');
-      const defined = nativeSdkApplicationForRun(selectedBuiltInRun);
+      const defined = nativeSdkApplicationForRun(null);
+      const { upgradeNativeRun } =
+        await import('../../domains/comet-native/native-sdk-run-upgrade.js');
+      upgradeBuiltInRun = (run) =>
+        upgradeNativeRun(run, defined.workflow, defined.transitionHandler);
+      if (selectedBuiltInRun) selectedBuiltInRun = upgradeBuiltInRun(selectedBuiltInRun);
       builtInWorkflow = defined.workflow;
       transitionHandlers = [defined.transitionHandler];
       validators = defined.validators;
@@ -1115,7 +1099,8 @@ export async function runtimeDispatchCommand(
                   selectedBuiltInRun = undefined;
                   return current;
                 }
-                return persistentStore.read(runId);
+                const current = await persistentStore.read(runId);
+                return current && upgradeBuiltInRun ? upgradeBuiltInRun(current) : current;
               },
               compareAndSwap: persistentStore.compareAndSwap,
             }
@@ -1167,25 +1152,9 @@ export async function runtimeDispatchCommand(
       request.operation === 'record-outcome'
     ) {
       try {
-        const { nativeSdkAutomaticReportAction, refreshNativeSdkVerificationReport } =
+        const { refreshNativeSdkVerificationReport } =
           await import('../../domains/comet-native/native-sdk-report.js');
-        if (data.workflow.version === '3')
-          await refreshNativeSdkVerificationReport(projectRoot, data);
-        const action = nativeSdkAutomaticReportAction(
-          data,
-          request.outcome as { actionId: string; outcomeId: string },
-        );
-        if (action) {
-          data = await withCometRuntimeProgress(() =>
-            runtime.execute({
-              runId: data.runId,
-              expectedRevision: data.revision,
-              actionId: action.id,
-              executorId: 'comet-native-report',
-              context,
-            }),
-          );
-        }
+        await refreshNativeSdkVerificationReport(projectRoot, data);
       } catch (error) {
         // 回报已提交；报告生成失败不能让调用者重交原 Verifier 结果。
         warning = {
@@ -1220,7 +1189,12 @@ export async function runtimeDispatchCommand(
           (action) => action.id === request.actionId,
         );
         const view = {
-          ...data,
+          protocolVersion: data.protocolVersion,
+          schemaVersion: data.schemaVersion,
+          runId: data.runId,
+          revision: data.revision,
+          status: data.status,
+          workflow: data.workflow,
           ...projection,
           ...(await claimedTaskContext(
             data,
@@ -1260,34 +1234,6 @@ export async function runtimeDispatchCommand(
     };
   } catch (error) {
     const failure = runtimeCommandFailure(error, requestId);
-    if (options.application && recoveryRequest) {
-      try {
-        const { withNativeCommandRecovery } =
-          await import('../../domains/comet-native/native-command-recovery.js');
-        const diagnosed = await withNativeCommandRecovery(
-          {
-            command: 'runtime',
-            exitCode: failure.exitCode,
-            error: {
-              code: 'blocked',
-              message: error instanceof Error ? error.message : String(error),
-            },
-          },
-          {
-            projectRoot: recoveryCwd,
-            name: recoveryRequest.runId,
-            error,
-            onlyLocks: true,
-            application: options.application,
-            rejectedOutcome,
-          },
-        );
-        const recovery = (diagnosed.data as { recovery?: unknown } | undefined)?.recovery;
-        if (recovery) failure.response = { ...failure.response, recovery };
-      } catch {
-        // 恢复诊断不可掩盖原失败，也不能通过尝试写入来修复观测。
-      }
-    }
     if (
       host.output !== 'compact' ||
       !recoveryRequest ||

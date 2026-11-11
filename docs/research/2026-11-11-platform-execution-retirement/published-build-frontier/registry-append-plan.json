@@ -1,0 +1,145 @@
+{
+  "instruction": "Planning only; no registry edited or validated here. Freeze original registry/tests/body/mapping/deletion patch first. Preserve original case ID, sources and all original fields. If an effective migration already exists append via supersededBy; replace only this slice selector links and keep every unrelated target.",
+  "authorization": "report:2026-11-10-agent-platform-execution",
+  "sourceRecordSuggested": "docs/research/2026-11-11-platform-execution-retirement/native-sdk-main-worker/README.md",
+  "cases": [
+    {
+      "id": "native-invalid-completed-check-recovery",
+      "kind": "feature-removed",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-published-build-frontier.test.ts",
+          "namePattern": "^continues published 0\\.5\\.2 Build checks (?:pending|claimed) at the original Builder without a stop receipt or fabricated candidate$",
+          "requiredNames": [
+            "continues published 0.5.2 Build checks pending at the original Builder without a stop receipt or fabricated candidate",
+            "continues published 0.5.2 Build checks claimed at the original Builder without a stop receipt or fabricated candidate"
+          ]
+        }
+      ],
+      "reason": "Retire only the old Comet-managed invalid-completed checker validation/stop-handshake repair and guidance. Preserve old Issue545 provenance and original assertions; actual published 0.5.2 pending/claimed Build frontiers now continue the original approved business Run at Builder without replaying old checks. Do not label this as a run of the original completed-invalid process case.",
+      "evidenceStatus": "Original root real RED/GREEN and portable public CLI2/0 available; root must persist evidence and validate metadata."
+    },
+    {
+      "id": "native-invalid-completed-check-guidance",
+      "kind": "feature-removed",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-published-build-frontier.test.ts",
+          "namePattern": "^continues published 0\\.5\\.2 Build checks (?:pending|claimed) at the original Builder without a stop receipt or fabricated candidate$",
+          "requiredNames": [
+            "continues published 0.5.2 Build checks pending at the original Builder without a stop receipt or fabricated candidate",
+            "continues published 0.5.2 Build checks claimed at the original Builder without a stop receipt or fabricated candidate"
+          ]
+        }
+      ],
+      "reason": "Retire only the old Comet-managed invalid-completed checker validation/stop-handshake repair and guidance. Preserve old Issue545 provenance and original assertions; actual published 0.5.2 pending/claimed Build frontiers now continue the original approved business Run at Builder without replaying old checks. Do not label this as a run of the original completed-invalid process case.",
+      "evidenceStatus": "Original root real RED/GREEN and portable public CLI2/0 available; root must persist evidence and validate metadata."
+    },
+    {
+      "id": "native-rejected-check-proof-original-claim-correction",
+      "kind": "feature-removed",
+      "reason": "Only managed checker digest/validator-specific rejection code retires; original claim correction, rejected ledger, immutable outcome IDs and no duplicate advancement remain.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "requiredNames": [
+            "rejects a foreign Verifier candidate and accepts correction on the original claim"
+          ]
+        }
+      ],
+      "evidenceStatus": "Root2/0 assertions reviewed sufficient, but $title actual names were truncated. Exact full requiredNames only after registration title fix and actual rerun."
+    },
+    {
+      "id": "native-verifier-position-diagnostic",
+      "kind": "feature-removed",
+      "reason": "Only requested-check command baseline retires. Current final-result expected/received iteration and attempt, rejected ledger and original claim correction remain.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "requiredNames": [
+            "diagnoses a stale Verifier iteration and attempt and preserves correction on the original claim"
+          ]
+        }
+      ],
+      "evidenceStatus": "Same title formatting caveat as original-claim case."
+    },
+    {
+      "id": "native-single-result-template",
+      "kind": "feature-removed",
+      "reason": "Old v2 managed checkRequestTemplate.repeatable retires; one receipt/resultRequest and one shared Action reference remain through current factory4.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "requiredNames": [
+            "omits unused recovery and failure templates for a healthy v3 Verifier"
+          ]
+        }
+      ],
+      "evidenceStatus": "Current body retains exact business assertions; root targeted execution/selector validation pending if no current JSON evidence."
+    },
+    {
+      "id": "native-v4-compact-steps-original-run-recovery",
+      "kind": "feature-removed",
+      "reason": "Synthetic current-factory graph rebound to old hash and seven synthetic old factory selection branches retire. Actual installed known v4 identity retains original accepted decisions/claims via thin business adaptation, not old factory.",
+      "replaceOnly": "main synthetic Supervisor accepted-result pending/unknown link; preserve other-file selectors until their own review/migration",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+          "requiredNames": [
+            "continues an actually installed old v4 approved result without another decision (pending)",
+            "continues an actually installed old v4 approved result without another decision (unknown)",
+            "rejects an unknown current Native definition instead of rebinding its business records"
+          ]
+        }
+      ],
+      "evidenceStatus": "coverage/native-retained-business-current-built-results.json actual18 group includes these exact passed names."
+    },
+    {
+      "id": "native-299-real-integration-parent-verify",
+      "kind": "feature-removed",
+      "reason": "Retire synthetic preChild old factory only. Preserve real DAG/Git Child and Parent failure/repair, two repair failures and original proposal guards, approved delivery/cleanup and published Child frontiers.",
+      "replaceOnly": "preChild synthetic main title; keep current 8 DAG parameter names and every unrelated child/agent target; add exact existing parallel target",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-application.test.ts",
+          "requiredNames": [
+            "binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate"
+          ]
+        }
+      ],
+      "evidenceStatus": "Supervisor11/0 plus parallel1/0 reviewed; use full actual8 parameter names rather than incomplete prefix."
+    },
+    {
+      "id": "local-native-supervisor-auto-preparation",
+      "kind": "feature-removed",
+      "reason": "Partial synthetic driver replacement only, retain actual preparation/integration/review and original sibling selectors.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-application.test.ts",
+          "requiredNames": [
+            "binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate"
+          ]
+        }
+      ],
+      "preserveUnrelated": true
+    },
+    {
+      "ids": "the existing21 sharedAppliedArchive case IDs",
+      "action": "NO CHANGE for shared appliedUnknown current group; preserve all four current exact selectors and cancelled Archive business group",
+      "evidence": "coverage/native-original-archive-cancelled-unknown-business-results.json 5/0"
+    },
+    {
+      "ids": [
+        "native-next-drain-internal-actions",
+        "native-task-recovery-boundaries",
+        "native-classic-check-plan-continuation",
+        "native-build-managed-check-reuse",
+        "native-repeatable-verify-plans",
+        "native-rejected-check-request-no-baseline",
+        "native-531-legacy-eperm-stop-recovery"
+      ],
+      "action": "Use per-worker review.json precise ID/source and retirement boundary; append only deleted managed-check selectors, never replace whole mixed case or unrelated links.",
+      "evidence": "C:/Users/BENYM/AppData/Local/Temp/native-main-worker-spec-review-20261111/review.json"
+    }
+  ]
+}

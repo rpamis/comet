@@ -14,18 +14,30 @@ describe('Agent runner input contract', () => {
   it('reports missing and unknown fields at the nested JSON pointer without values', () => {
     try {
       parseNativeRunnerInput({
-        kind: 'dispatch-verifier',
-        checks: [{ id: 'check', unexpected: 'secret-value' }],
+        kind: 'verifier-response',
+        candidateId: 'candidate',
+        verifierExecutionRef: 'actual-verifier',
+        response: {
+          kind: 'final-result',
+          result: {
+            iteration: 1,
+            attempt: 1,
+            verdict: 'pass',
+            acceptance: [{ id: 'A1', unexpected: 'secret-value' }],
+            risks: [],
+            summary: 'Observed.',
+          },
+        },
       });
       throw new Error('Expected rejection');
     } catch (error) {
       const result = errorResult('next', error);
       expect(result.exitCode).toBe(65);
       expect(result.error?.issues?.[0]).toMatchObject({
-        path: '/checks/0',
+        path: '/result/acceptance/0',
         unknownFields: ['unexpected'],
       });
-      expect(result.error?.issues?.[0].missingFields).toContain('executable');
+      expect(result.error?.issues?.[0].missingFields).toContain('reason');
       expect(JSON.stringify(result)).not.toContain('secret-value');
     }
   });
@@ -35,11 +47,11 @@ describe('Agent runner input contract', () => {
     try {
       await fs.writeFile(
         path.join(root, 'input.json'),
-        '\ufeff{"kind":"dispatch-verifier","checks":[]}',
+        '\ufeff{"kind":"dispatch-verifier","verifierExecutionRef":"actual-session"}',
       );
       expect(await readNativeRunnerInput('input.json', root)).toEqual({
         kind: 'dispatch-verifier',
-        checks: [],
+        verifierExecutionRef: 'actual-session',
       });
     } finally {
       await fs.rm(root, { recursive: true, force: true });
@@ -125,6 +137,6 @@ describe('Agent runner input contract', () => {
         checks: [{ name: 'unit', result: 'pass', note: null }],
         known_limits: [],
       }),
-    ).toThrow('Native Builder check 0 result must be one of: passed, failed, not-run');
+    ).toThrow('Native builder_handoff.checks[0].result must be one of: passed, failed, not-run');
   });
 });

@@ -261,7 +261,7 @@ export async function submitClassicSdkBuildPlan(options: {
       : null;
   if (!changeDirRef) throw new Error('Classic SDK Run has no change directory');
   await assertClassicSdkDesignRequirementsCurrent(projectRoot, changeDirRef, inspected);
-  const receipt = await classicPlanEvidenceReceipt(projectRoot, planRef, changeDirRef, {});
+  const receipt = await classicPlanEvidenceReceipt(projectRoot, planRef, changeDirRef);
   const designEvidence = await classicAcceptedDesignEvidence(projectRoot, inspected);
 
   const requirePause = pause || state.buildPause === 'plan-ready';
@@ -361,7 +361,7 @@ export async function continueClassicSdkBuildPlan(options: {
       ? inspected.input.changeDir
       : null;
   if (!changeDirRef) throw new Error('Classic SDK Run has no change directory');
-  const receipt = await classicPlanEvidenceReceipt(projectRoot, state.plan, changeDirRef, {});
+  const receipt = await classicPlanEvidenceReceipt(projectRoot, state.plan, changeDirRef);
   const acceptedPlan = inspected.evidenceWaits
     ?.slice()
     .reverse()

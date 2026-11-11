@@ -1,3 +1,4 @@
+import '../../helpers/isolated-agent-home.js';
 import { createHash } from 'node:crypto';
 import { createFileRuntimeStore, type WorkflowRun } from '../../../domains/engine/runtime.js';
 import { recoverSdkChangeOwnerToActive } from '../../../domains/workflow-contract/change-runtime-owner.js';
@@ -11,7 +12,8 @@ import * as gitWorktree from '../../../platform/paths/git-worktree.js';
 
 import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
-import { createNativeChange } from '../../../domains/comet-native/native-change.js';
+// SIMULATED historical document, only for the mixed legacy/current read-only discovery case.
+import { storedNativeChangeFixture } from '../../helpers/native-change-document.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -126,48 +128,36 @@ describe('Native v4 registered-worktree status discovery', () => {
     expect(await fs.readFile(checkpoint, 'utf8')).toBe('{invalid');
   });
 
-  it('filters named discovery before inspecting unrelated Runtime and shares worktree observations', async () => {
+  it('filters named discovery before inspecting unrelated documents without searching worktrees', async () => {
     const repository = await createRepository();
     roots.push(repository.root);
-    const { runNativeCli } = await import('../../../domains/comet-native/native-cli.js');
-    for (const name of ['target', 'unrelated']) {
-      const root = addWorktree(repository, name, `comet/${name}`);
-      const result = await runNativeCli([
-        'new',
-        name,
-        '--runtime',
-        'compat',
-        '--project-root',
-        root,
-        '--json',
-      ]);
-      expect(result.exitCode).toBe(0);
-    }
-    const archiveDir = path.join(repository.root, 'docs/comet/archive/2026-09-10-unrelated');
+    const targetRoot = addWorktree(repository, 'target', 'comet/target');
+    const paths = await nativeProjectPaths(targetRoot, 'docs');
+    await ensureNativeDirectories(paths);
+    await createNativePortableChange({ paths, name: 'target', language: 'en' });
+    await storedNativeChangeFixture({ paths, name: 'unrelated', language: 'en' });
+    const archiveDir = path.join(targetRoot, 'docs/comet/archive/2026-09-10-unrelated');
     await fs.mkdir(archiveDir, { recursive: true });
     await fs.writeFile(path.join(archiveDir, 'comet-state.yaml'), 'corrupt: [');
-    const read = vi.spyOn(fs, 'readFile');
-    const list = vi.spyOn(gitWorktree, 'listGitWorktrees');
-    const inspect = vi.spyOn(gitWorktree, 'inspectGitWorktree');
+    const read = vi.spyOn(fs, 'readFile'),
+      list = vi.spyOn(gitWorktree, 'listGitWorktrees'),
+      inspect = vi.spyOn(gitWorktree, 'inspectGitWorktree');
     const { inspectDiscoveredNativeStatus } =
       await import('../../../domains/comet-native/native-status-discovery.js');
-    const status = await inspectDiscoveredNativeStatus({
-      projectRoot: repository.root,
-      name: 'target',
-    });
+    const status = await inspectDiscoveredNativeStatus({ projectRoot: targetRoot, name: 'target' });
     expect(status).toMatchObject({
       name: 'target',
       phase: 'shape',
       workspace: { bindingState: 'aligned' },
     });
-    expect(list).toHaveBeenCalledTimes(1);
-    expect(inspect).not.toHaveBeenCalled();
+    expect(list).not.toHaveBeenCalled();
+    expect(inspect).toHaveBeenCalledTimes(1);
     const files = read.mock.calls.map(([file]) => String(file).replaceAll('\\', '/'));
     expect(files.filter((file) => file.includes('/changes/unrelated/'))).toEqual([]);
     expect(files.filter((file) => file.includes('/2026-09-10-unrelated/'))).toEqual([]);
   });
 
-  it('uses the portable adapter for named and list status from another registered worktree', async () => {
+  it('uses the portable adapter for named and list status with an explicit linked worktree', async () => {
     const repository = await createRepository();
     roots.push(repository.root);
     const worktreeRoot = addWorktree(repository, 'portable-side', 'comet/portable-side');
@@ -191,7 +181,7 @@ describe('Native v4 registered-worktree status discovery', () => {
         '--details',
         '--json',
         '--project-root',
-        repository.root,
+        worktreeRoot,
       ]),
     );
     const namedData = named.data as {
@@ -211,7 +201,7 @@ describe('Native v4 registered-worktree status discovery', () => {
     expect(gitWorktree.samePath(namedData.workspace?.projectRoot ?? '', worktreeRoot)).toBe(true);
 
     const shown = json(
-      await runNativeCli(['show', 'portable-side', '--json', '--project-root', repository.root]),
+      await runNativeCli(['show', 'portable-side', '--json', '--project-root', worktreeRoot]),
     );
     const shownData = shown.data as {
       state?: { name?: string };
@@ -228,9 +218,7 @@ describe('Native v4 registered-worktree status discovery', () => {
       ),
     ).toBe(true);
 
-    const listed = json(
-      await runNativeCli(['status', '--json', '--project-root', repository.root]),
-    );
+    const listed = json(await runNativeCli(['status', '--json', '--project-root', worktreeRoot]));
     const listedData = listed.data as {
       schema?: string;
       total?: number;
@@ -254,7 +242,7 @@ describe('Native v4 registered-worktree status discovery', () => {
     ).toBe(true);
   });
 
-  it('finds an SDK-owned Native change in its linked worktree from the primary checkout', async () => {
+  it('finds an SDK-owned Native change with its explicit linked-worktree project root', async () => {
     const repository = await createRepository();
     roots.push(repository.root);
     const worktreeRoot = addWorktree(repository, 'sdk-side', 'comet/sdk-side');
@@ -264,7 +252,7 @@ describe('Native v4 registered-worktree status discovery', () => {
       JSON.stringify({
         operation: 'start',
         runId: 'sdk-side',
-        workflow: { id: 'comet-native', version: '1' },
+        workflow: { id: 'comet-native', version: '4' },
         input: { name: 'sdk-side', artifactRootRef: 'docs' },
         initialState: createNativePortableState({
           name: 'sdk-side',
@@ -287,7 +275,7 @@ describe('Native v4 registered-worktree status discovery', () => {
     expect(started.response.status).toBe('succeeded');
 
     const status = json(
-      await runNativeCli(['status', 'sdk-side', '--json', '--project-root', repository.root]),
+      await runNativeCli(['status', 'sdk-side', '--json', '--project-root', worktreeRoot]),
     );
     const data = status.data as { workspace?: { projectRoot?: string; bindingState?: string } };
     expect(data).toMatchObject({
@@ -299,22 +287,13 @@ describe('Native v4 registered-worktree status discovery', () => {
     expect(gitWorktree.samePath(data.workspace?.projectRoot ?? '', worktreeRoot)).toBe(true);
   });
 
-  it('merges portable and legacy changes instead of returning early on the current v4', async () => {
+  it('merges local portable and SIMULATED historical documents instead of returning early on current v4', async () => {
     const repository = await createRepository();
     roots.push(repository.root);
-    const legacyRoot = addWorktree(repository, 'legacy-side', 'comet/legacy-side');
-    const legacyPaths = await nativeProjectPaths(legacyRoot, 'docs');
-    await ensureNativeDirectories(legacyPaths);
-    await createNativeChange({ paths: legacyPaths, name: 'legacy-side', language: 'en' });
-
-    const portablePaths = await nativeProjectPaths(repository.root, 'docs');
-    await ensureNativeDirectories(portablePaths);
-    await createNativePortableChange({
-      paths: portablePaths,
-      name: 'portable-main',
-      language: 'en',
-    });
-
+    const paths = await nativeProjectPaths(repository.root, 'docs');
+    await ensureNativeDirectories(paths);
+    await createNativePortableChange({ paths, name: 'portable-main', language: 'en' });
+    await storedNativeChangeFixture({ paths, name: 'legacy-side', language: 'en' });
     const page = await listDiscoveredNativeStatusPage({ projectRoot: repository.root });
     expect(page).toMatchObject({
       schema: 'comet.native.status-page.v2',
@@ -325,17 +304,15 @@ describe('Native v4 registered-worktree status discovery', () => {
     expect(page.items.map(({ name }) => name)).toEqual(['legacy-side', 'portable-main']);
     const legacyItem = page.items.find(({ name }) => name === 'legacy-side') as
       { migrationRequired?: boolean; workspace?: { projectRoot?: string } } | undefined;
-    expect(legacyItem).toMatchObject({
-      migrationRequired: true,
-    });
-    expect(gitWorktree.samePath(legacyItem?.workspace?.projectRoot ?? '', legacyRoot)).toBe(true);
+    expect(legacyItem).toMatchObject({ migrationRequired: true });
+    expect(gitWorktree.samePath(legacyItem?.workspace?.projectRoot ?? '', repository.root)).toBe(
+      true,
+    );
     const portableItem = page.items.find(({ name }) => name === 'portable-main') as
-      { schema?: string; workspace?: { projectRoot?: string; bindingState?: string } } | undefined;
+      { workspace?: { projectRoot?: string } } | undefined;
     expect(portableItem).toMatchObject({
       schema: 'comet.native.status.v2',
-      workspace: {
-        bindingState: 'aligned',
-      },
+      workspace: { bindingState: 'aligned' },
       continuation: { action: 'prepare-shape-confirmation' },
     });
     expect(gitWorktree.samePath(portableItem?.workspace?.projectRoot ?? '', repository.root)).toBe(

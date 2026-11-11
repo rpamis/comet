@@ -266,7 +266,7 @@ export async function prepareNativeCandidateReviewProject(options: {
     startRequest: {
       operation: 'start',
       runId: name,
-      workflow: { id: 'comet-native', version: '1' },
+      workflow: { id: 'comet-native', version: '4' },
       input: { name, artifactRootRef: 'docs' },
       initialState: createNativePortableState({
         name,

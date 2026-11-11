@@ -1,0 +1,263 @@
+{
+  "review": "approved split subject to explicit boundary recorded in Markdown",
+  "files": [
+    {
+      "file": "test/domains/workflow-application/run-view.test.ts",
+      "oldDeclarations": 4,
+      "currentDeclarations": 4,
+      "changed": [
+        {
+          "oldName": "publishes pending stop confirmation instead of a done continuation after logical cancellation",
+          "newName": "publishes pending cleanup confirmation for a cancelled Runtime tool",
+          "currentLine": 113,
+          "oldBody": "it('publishes pending stop confirmation instead of a done continuation after logical cancellation', () => {\n  const run = childRun('running');\n  run.children = [];\n  run.status = 'cancelled';\n  const action = run.actions[0];\n  action.type = 'invoke_skill';\n  action.status = 'cancelled';\n  action.claim = { executorId: 'host', token: 'original-token' };\n  const view = projectWorkflowApplicationRun(application, run);\n  expect(view.continuation.mode).toBe('reconcile');\n  expect(view.current.actions).toHaveLength(1);\n  expect(view.current.actions[0]).toMatchObject({\n    stopConfirmationRequired: true,\n    confirmStoppedRequest: {\n      operation: 'cancel',\n      stoppedActions: [\n        {\n          actionId: action.id,\n          claimToken: 'original-token',\n          attempt: action.attempt,\n          inputHash: action.inputHash,\n        },\n      ],\n    },\n  });\n  action.cancellation = {\n    actionId: action.id,\n    claimToken: 'original-token',\n    attempt: action.attempt,\n    inputHash: action.inputHash,\n    evidence: 'stopped',\n  };\n  const stopped = projectWorkflowApplicationRun(application, run);\n  expect(stopped.continuation.mode).toBe('done');\n  expect(stopped.current.actions).toHaveLength(0);\n})",
+          "currentBody": "it('publishes pending cleanup confirmation for a cancelled Runtime tool', () => {\n  const run = childRun('running');\n  run.children = [];\n  run.status = 'cancelled';\n  const action = run.actions[0];\n  action.type = 'call_tool';\n  action.status = 'cancelled';\n  action.claim = { executorId: 'host', token: 'original-token' };\n  const view = projectWorkflowApplicationRun(application, run);\n  expect(view.continuation.mode).toBe('reconcile');\n  expect(view.current.actions).toHaveLength(1);\n  expect(view.current.actions[0]).toMatchObject({\n    stopConfirmationRequired: true,\n    confirmStoppedRequest: {\n      operation: 'cancel',\n      stoppedActions: [\n        {\n          actionId: action.id,\n          claimToken: 'original-token',\n          attempt: action.attempt,\n          inputHash: action.inputHash,\n        },\n      ],\n    },\n  });\n  action.cancellation = {\n    actionId: action.id,\n    claimToken: 'original-token',\n    attempt: action.attempt,\n    inputHash: action.inputHash,\n    evidence: 'stopped',\n  };\n  const stopped = projectWorkflowApplicationRun(application, run);\n  expect(stopped.continuation.mode).toBe('done');\n  expect(stopped.current.actions).toHaveLength(0);\n})",
+          "executed": [
+            {
+              "evidence": "coverage/shared-cancel-and-published-frontier-green-results.json",
+              "name": "publishes pending cleanup confirmation for a cancelled Runtime tool",
+              "status": "passed"
+            }
+          ]
+        }
+      ],
+      "unchangedDeclarations": [
+        {
+          "name": "keeps runtime-managed child %s on the legal %s path",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "prioritizes unknown external work when a recoverable child is %s",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "never executes residual child work after %s",
+          "bodyUnchanged": true
+        }
+      ]
+    },
+    {
+      "file": "test/domains/workflow-application/workspace-scope.test.ts",
+      "oldDeclarations": 6,
+      "currentDeclarations": 6,
+      "changed": [
+        {
+          "oldName": "retains cancelled claims across cold reloads until the original executor confirms stopping through %s",
+          "newName": "closes a cancelled platform Skill Run and releases scope after cold reload without a stop receipt",
+          "currentLine": 229,
+          "oldBody": "it.each(['cancel', 'acknowledgeStopped'] as const)(\n  'retains cancelled claims across cold reloads until the original executor confirms stopping through %s',\n  async (operation) => {\n    const f = await fixture();\n    const action = f.run.actions.find((item) => item.stepId === 'left')!;\n    await f.runtime.claim({\n      runId: f.run.runId,\n      actionId: action.id,\n      attempt: action.attempt,\n      inputHash: action.inputHash,\n      executorId: 'local-skill',\n      capabilities: ['skill-script'],\n      claimToken: 'original-writer',\n    });\n\n    const restored = structuredClone(await f.runtime.inspect(f.run.runId));\n    restored.runId = 'restored-cancelled';\n    restored.revision = 50;\n    restored.status = 'cancelled';\n    restored.actions = restored.actions.map((item) => ({\n      ...item,\n      runId: restored.runId,\n      status: ['pending', 'running'].includes(item.status) ? 'cancelled' : item.status,\n    }));\n    await expect(\n      f.loaded.store.restoreCheckpoint!(restored.runId, null, restored),\n    ).rejects.toMatchObject({ code: 'SCOPE_HELD' });\n    let cancelled = await f.runtime.cancel({\n      runId: f.run.runId,\n      reason: 'user cancellation',\n    });\n    const store = createFileRuntimeStore({\n      rootDir: path.join(\n        resolveWorkspaceRuntimeRootSync(f.root),\n        'applications',\n        f.loaded.identity.id,\n      ),\n      mirroredRevisionPaths: ['run.revision'],\n    });\n    expect(await store.readPartitionMetadata(cancelled.runId)).toBe('active');\n    const loaded = await loadWorkflowApplication({\n      file: f.disk.file,\n      projectRoot: f.root,\n    });\n    const runtime = createRuntime({\n      ...loaded.implementation,\n      store: loaded.store,\n    });\n    let peer = await runtime.start({\n      runId: 'peer',\n      workflow: { id: 'editorial', version: '1' },\n      input: f.run.input,\n    });\n    peer = await runtime.execute({\n      runId: peer.runId,\n      actionId: peer.actions[0].id,\n      executorId: 'tool-host',\n    });\n    peer = await runtime.resolveWait({\n      runId: peer.runId,\n      waitId: peer.waits[0].id,\n      proposalHash: peer.waits[0].proposalHash,\n      decisionId: 'peer-approval',\n      choice: 'approved',\n    });\n    peer = await runtime.execute({\n      runId: peer.runId,\n      actionId: peer.actions.at(-1)!.id,\n      executorId: 'tool-host',\n    });\n    const next = peer.actions.find((item) => item.stepId === 'left')!;\n    const claim = {\n      runId: peer.runId,\n      actionId: next.id,\n      attempt: next.attempt,\n      inputHash: next.inputHash,\n      executorId: 'local-skill',\n      capabilities: ['skill-script'],\n      claimToken: 'peer-writer',\n    };\n    await expect(runtime.claim(claim)).rejects.toMatchObject({\n      code: 'SCOPE_HELD',\n    });\n    const acknowledge = (\n      stoppedActions: Parameters<typeof runtime.acknowledgeStopped>[0]['stoppedActions'],\n    ) =>\n      operation === 'cancel'\n        ? runtime.cancel({\n            runId: cancelled.runId,\n            reason: 'confirm',\n            stoppedActions,\n          })\n        : runtime.acknowledgeStopped({\n            runId: cancelled.runId,\n            stoppedActions,\n          });\n    const stopped = {\n      actionId: action.id,\n      attempt: action.attempt,\n      inputHash: action.inputHash,\n      claimToken: 'wrong',\n      evidence: 'The original process and its children have exited.',\n    };\n    await expect(acknowledge([stopped])).rejects.toMatchObject({\n      code: 'STALE_ACTION',\n    });\n    await expect(runtime.claim(claim)).rejects.toMatchObject({\n      code: 'SCOPE_HELD',\n    });\n    cancelled = await acknowledge([{ ...stopped, claimToken: 'original-writer' }]);\n    if (operation === 'acknowledgeStopped') {\n      expect(\n        cancelled.actions.find((item) => item.id === action.id)?.executionStop?.claimToken,\n      ).toBe('original-writer');\n      expect(cancelled.actions.find((item) => item.id === action.id)?.cancellation).toBeUndefined();\n    }\n    expect(await store.readPartitionMetadata(cancelled.runId)).toBe('closed');\n    expect((await runtime.claim(claim)).actions.find((item) => item.id === next.id)?.status).toBe(\n      'running',\n    );\n    // 原取消的重复提交保持兼容，封存不永久阻止幂等确认。\n    await acknowledge([{ ...stopped, claimToken: 'original-writer' }]);\n    expect(await store.readPartitionMetadata(cancelled.runId)).toBe('closed');\n  },\n)",
+          "currentBody": "it('closes a cancelled platform Skill Run and releases scope after cold reload without a stop receipt', async () => {\n  const f = await fixture();\n  const action = f.run.actions.find((item) => item.stepId === 'left')!;\n  await f.runtime.claim({\n    runId: f.run.runId,\n    actionId: action.id,\n    attempt: action.attempt,\n    inputHash: action.inputHash,\n    executorId: 'local-skill',\n    capabilities: ['skill-script'],\n    claimToken: 'original-writer',\n  });\n\n  const cancelled = await f.runtime.cancel({\n    runId: f.run.runId,\n    reason: 'user cancellation',\n  });\n  const store = createFileRuntimeStore({\n    rootDir: path.join(\n      resolveWorkspaceRuntimeRootSync(f.root),\n      'applications',\n      f.loaded.identity.id,\n    ),\n    mirroredRevisionPaths: ['run.revision'],\n  });\n  expect(await store.readPartitionMetadata(cancelled.runId)).toBe('closed');\n  expect(cancelled.actions.find((item) => item.id === action.id)?.claim?.token).toBe(\n    'original-writer',\n  );\n  const loaded = await loadWorkflowApplication({\n    file: f.disk.file,\n    projectRoot: f.root,\n  });\n  const runtime = createRuntime({\n    ...loaded.implementation,\n    store: loaded.store,\n  });\n  let peer = await runtime.start({\n    runId: 'peer',\n    workflow: { id: 'editorial', version: '1' },\n    input: f.run.input,\n  });\n  peer = await runtime.execute({\n    runId: peer.runId,\n    actionId: peer.actions[0].id,\n    executorId: 'tool-host',\n  });\n  peer = await runtime.resolveWait({\n    runId: peer.runId,\n    waitId: peer.waits[0].id,\n    proposalHash: peer.waits[0].proposalHash,\n    decisionId: 'peer-approval',\n    choice: 'approved',\n  });\n  peer = await runtime.execute({\n    runId: peer.runId,\n    actionId: peer.actions.at(-1)!.id,\n    executorId: 'tool-host',\n  });\n  const next = peer.actions.find((item) => item.stepId === 'left')!;\n  const claim = {\n    runId: peer.runId,\n    actionId: next.id,\n    attempt: next.attempt,\n    inputHash: next.inputHash,\n    executorId: 'local-skill',\n    capabilities: ['skill-script'],\n    claimToken: 'peer-writer',\n  };\n  expect((await runtime.claim(claim)).actions.find((item) => item.id === next.id)?.status).toBe(\n    'running',\n  );\n  expect(await runtime.inspect(cancelled.runId)).toEqual(cancelled);\n  await runtime.cancel({ runId: cancelled.runId, reason: 'user cancellation' });\n  expect(await store.readPartitionMetadata(cancelled.runId)).toBe('closed');\n})",
+          "executed": [
+            {
+              "evidence": "coverage/shared-cancel-and-published-frontier-green-results.json",
+              "name": "closes a cancelled platform Skill Run and releases scope after cold reload without a stop receipt",
+              "status": "passed"
+            }
+          ]
+        }
+      ],
+      "unchangedDeclarations": [
+        {
+          "name": "writes independently in two actual Git worktrees after the same approval",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "rejects the same absolute file shared by different worktrees and retains unknown work",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "rejects mixed workspace declarations before treating the same directory as isolated",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "fails closed on corrupt peer records before claiming a shared write scope",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "fences raw writers after application holder coordination is enabled",
+          "bodyUnchanged": true
+        }
+      ]
+    },
+    {
+      "file": "test/domains/workflow-application/cross-application-scope.test.ts",
+      "oldDeclarations": 20,
+      "currentDeclarations": 20,
+      "changed": [
+        {
+          "oldName": "retains cancelled ownership across cold application reload until exact stop acknowledgement",
+          "newName": "releases a cancelled platform Skill scope across cold application reload without a stop acknowledgement",
+          "currentLine": 112,
+          "oldBody": "it('retains cancelled ownership across cold application reload until exact stop acknowledgement', async () => {\n  const project = await root();\n  const alpha = await fixture(project, 'alpha');\n  const beta = await fixture(project, 'beta');\n  const claimed = await alpha.runtime.claim({ ...alpha.request, claimToken: 'original' });\n  const action = claimed.actions.at(-1)!;\n  await alpha.runtime.cancel({ runId: claimed.runId, reason: 'cancel scheduling only' });\n  const reload = await loadWorkflowApplication({ file: beta.disk.file, projectRoot: project });\n  const runtime = createRuntime({ ...reload.implementation, store: reload.store });\n  await expect(runtime.claim(beta.request)).rejects.toMatchObject({ code: 'SCOPE_HELD' });\n  await alpha.runtime.acknowledgeStopped({\n    runId: claimed.runId,\n    stoppedActions: [\n      {\n        actionId: action.id,\n        attempt: action.attempt,\n        inputHash: action.inputHash,\n        claimToken: 'original',\n        evidence: 'The original executor and all child processes have exited.',\n      },\n    ],\n  });\n  expect((await runtime.claim(beta.request)).actions.at(-1)?.status).toBe('running');\n})",
+          "currentBody": "it('releases a cancelled platform Skill scope across cold application reload without a stop acknowledgement', async () => {\n  const project = await root();\n  const alpha = await fixture(project, 'alpha');\n  const beta = await fixture(project, 'beta');\n  const claimed = await alpha.runtime.claim({ ...alpha.request, claimToken: 'original' });\n  const cancelled = await alpha.runtime.cancel({\n    runId: claimed.runId,\n    reason: 'user cancellation',\n  });\n  const reload = await loadWorkflowApplication({ file: beta.disk.file, projectRoot: project });\n  const runtime = createRuntime({ ...reload.implementation, store: reload.store });\n  expect((await runtime.claim(beta.request)).actions.at(-1)?.status).toBe('running');\n  expect(await alpha.runtime.inspect(claimed.runId)).toEqual(cancelled);\n  expect(cancelled.actions.at(-1)?.claim).toEqual(claimed.actions.at(-1)?.claim);\n})",
+          "executed": [
+            {
+              "evidence": "coverage/shared-cancel-and-published-frontier-green-results.json",
+              "name": "releases a cancelled platform Skill scope across cold application reload without a stop acknowledgement",
+              "status": "passed"
+            }
+          ]
+        }
+      ],
+      "unchangedDeclarations": [
+        {
+          "name": "serializes simultaneous cross-application claims including identical Run IDs",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "uses each pinned application manifest and canonical paths rather than current bindings",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "does not forget an active app when its complete Store directory disappears",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "does not read inactive peer Run checkpoints or their full member inventory on a warm claim",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "rejects a corrupt peer holder index without executing the new action",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "keeps unknown executions occupied across applications and protects fixed manifest identity",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "does not confuse an application named workspace with the workspace lock",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "bootstraps workspace membership from existing per-application holder indexes",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "refuses a corrupt workspace membership checksum instead of reconstructing away holders",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "still permits releasing an existing claim when an unrelated application directory is corrupt",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "rejects replacing an occupied app Store with a new empty directory under the same ID",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "rejects a pre-claim checkpoint after the writer Store is lost, then restores the original unknown claim and releases only by proof",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "keeps the workspace fenced until every lost writer Run is recovered",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "does not accept a changed manifest to move a lost original writer to another scope",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "does not rebind an empty replacement when portable restore CAS fails",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "settles a proposed claim from actual authority when its CAS throws before commit",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "retains the write-ahead claim if the app disappears immediately after the writer CAS",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "allows restoring multiple missing applications without removing their remaining ownership fences",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "does not turn a parallel read-only action into a writer recovery requirement",
+          "bodyUnchanged": true
+        }
+      ]
+    },
+    {
+      "file": "test/domains/workflow-application/application-hook.test.ts",
+      "oldDeclarations": 8,
+      "currentDeclarations": 8,
+      "changed": [
+        {
+          "oldName": "still rejects excessive active child width, including cancelled claims without stop confirmation",
+          "newName": "rejects excessive active child width and releases cancelled platform Skills without stop confirmation",
+          "currentLine": 134,
+          "oldBody": "it('still rejects excessive active child width, including cancelled claims without stop confirmation', async () => {\n  const f = await childTree(128);\n  expect(await f.hook(f.run, f.request)).toMatchObject({\n    allowed: false,\n    reason: '活跃子流程超出安全读取范围',\n  });\n  for (const child of f.run.children) {\n    const run = await f.runtime.inspect(child.runId);\n    const action = run.actions[0];\n    await f.runtime.claim({\n      runId: run.runId,\n      actionId: action.id,\n      attempt: action.attempt,\n      inputHash: action.inputHash,\n      executorId: 'reader',\n      claimToken: `claim-${run.runId}`,\n    });\n  }\n  const cancelled = await f.runtime.cancel({\n    runId: f.run.runId,\n    reason: 'user stopped scheduling',\n  });\n  expect((await f.runtime.inspect(cancelled.children[0].runId)).actions[0]).toMatchObject({\n    status: 'cancelled',\n    claim: { executorId: 'reader' },\n  });\n  expect(await f.hook(cancelled, f.request)).toMatchObject({\n    allowed: false,\n    reason: '活跃子流程超出安全读取范围',\n  });\n})",
+          "currentBody": "it('rejects excessive active child width and releases cancelled platform Skills without stop confirmation', async () => {\n  const f = await childTree(128);\n  expect(await f.hook(f.run, f.request)).toMatchObject({\n    allowed: false,\n    reason: '活跃子流程超出安全读取范围',\n  });\n  for (const child of f.run.children) {\n    const run = await f.runtime.inspect(child.runId);\n    const action = run.actions[0];\n    await f.runtime.claim({\n      runId: run.runId,\n      actionId: action.id,\n      attempt: action.attempt,\n      inputHash: action.inputHash,\n      executorId: 'reader',\n      claimToken: `claim-${run.runId}`,\n    });\n  }\n  const cancelled = await f.runtime.cancel({\n    runId: f.run.runId,\n    reason: 'user stopped scheduling',\n  });\n  expect((await f.runtime.inspect(cancelled.children[0].runId)).actions[0]).toMatchObject({\n    status: 'cancelled',\n    claim: { executorId: 'reader' },\n  });\n  expect(await f.hook(cancelled, f.request)).toMatchObject({ allowed: true });\n  for (const child of cancelled.children) {\n    const run = await f.runtime.inspect(child.runId);\n    expect(run.actions[0].cancellation).toBeUndefined();\n    expect(run.actions[0].executionStop).toBeUndefined();\n    expect(run.actions[0].claim?.token).toBe(`claim-${run.runId}`);\n  }\n})",
+          "executed": [
+            {
+              "evidence": "coverage/shared-platform-cancel-hook-results.json",
+              "name": "rejects excessive active child width and releases cancelled platform Skills without stop confirmation",
+              "status": "passed"
+            }
+          ]
+        }
+      ],
+      "unchangedDeclarations": [
+        {
+          "name": "allows current work after 128 verified completed child Runs without treating history as active width",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "provides a default Guard and grants only the currently claimed, approved Skill write scope",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "a claimed root write scope still cannot modify host Rule carriers",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "custom Guards cannot grant writes to SDK state, fixed packages or unapproved Skill scopes",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "requires the declared application Rule to exist within the fixed package",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "rejects nested default write scopes when repair-cycle reachability does not serialize active work",
+          "bodyUnchanged": true
+        },
+        {
+          "name": "serializes competing claims across sibling Runs and retains unknown write ownership",
+          "bodyUnchanged": true
+        }
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "file": "coverage/shared-cancel-and-published-frontier-green-results.json",
+      "success": true,
+      "passed": 40,
+      "failed": 0
+    },
+    {
+      "file": "coverage/shared-platform-cancel-hook-results.json",
+      "success": true,
+      "passed": 8,
+      "failed": 0
+    }
+  ],
+  "registry": {
+    "reviewedCurrentCatalog": "config/workflow-regressions.json",
+    "reviewedFrozenHistorical": "config/historical-workflow-regressions.json",
+    "incrementalCases": 524,
+    "historicalMigrations": 34,
+    "affectedFiles": [
+      "test/domains/workflow-application/run-view.test.ts",
+      "test/domains/workflow-application/workspace-scope.test.ts",
+      "test/domains/workflow-application/cross-application-scope.test.ts",
+      "test/domains/workflow-application/application-hook.test.ts"
+    ],
+    "effectiveCurrentReferences": [],
+    "allChainReferences": [],
+    "append": [],
+    "decision": "NO APPEND: none of these four test files is an effective current target; historical chain references are not treated as current"
+  }
+}

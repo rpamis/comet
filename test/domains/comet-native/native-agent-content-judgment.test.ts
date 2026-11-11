@@ -1,3 +1,4 @@
+import '../../helpers/isolated-agent-home.js';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
@@ -5,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
-import { nativeSdkCurrentCheckSummaries } from '../../../domains/comet-native/native-sdk-checks.js';
+
 import {
   createNativeSdkRuntime,
   inspectNativeSdkRun,
@@ -13,7 +14,7 @@ import {
 
 import { inspectNativeHookGuard } from '../../../domains/comet-native/native-hook-guard.js';
 import { parseCometHookRequest } from '../../../platform/process/hook-adapter.js';
-import { createLegacyNativeSdkChange } from '../../helpers/native-legacy-sdk-change.js';
+
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 
 const roots: string[] = [];
@@ -24,16 +25,10 @@ afterEach(async () => {
 
 it.each(
   [
-    { fail: true, name: 'keeps a real failed Native check failed after file edits without replay' },
     {
       fail: false,
       generated: true,
       name: 'continues Native Verify and Archive through the generated Runtime without content proof',
-    },
-    {
-      fail: false,
-      afterPass: true,
-      name: 'blocks Native Archive when a new real check fails after an accepted pass',
     },
     {
       fail: false,
@@ -43,8 +38,15 @@ it.each(
     },
     {
       fail: false,
+      generated: true,
+      afterPass: true,
+      name: 'blocks Native Archive when a new real check fails after an accepted pass',
+    },
+    {
+      fail: false,
+      generated: true,
       repair: true,
-      name: 'reuses an Agent-selected original Runtime check for a repaired Native candidate',
+      name: 'preserves an Agent-selected prior report for a repaired candidate and requires full new verification',
     },
   ].map(
     (item) =>
@@ -85,15 +87,19 @@ it.each(
       [path.resolve('assets/skills/comet-native/scripts/comet-native-runtime.mjs'), ...input],
       { cwd: root, encoding: 'utf8', windowsHide: true },
     );
-    return { exitCode: result.status ?? 1, stdout: result.stdout, stderr: result.stderr };
+    return {
+      exitCode: result.status ?? 1,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    };
   };
   const cli = async (...args: string[]) => {
     const result = await invoke(...args);
     expect(result.exitCode, result.stdout ?? result.stderr).toBe(0);
     return JSON.parse(result.stdout!);
   };
-  // Managed-check assertions cover supported legacy Runs; v4 platform reports have their own CLI suite.
-  await createLegacyNativeSdkChange(root, 'demo', '3');
+  // Current public v4 fixture: SIMULATED Agent/User reports only; no legacy factory or managed check.
+  await cli('new', 'demo', '--runtime', 'sdk', '--isolation', 'current'); // Current public factory; no managed checks.
   const change = path.join(root, 'docs/comet/changes/demo');
   await fs.writeFile(
     path.join(change, 'brief.md'),
@@ -138,27 +144,35 @@ it.each(
     summary: 'Preserved the worker.',
     addressedAcceptanceIds: ['A1'],
     acceptanceReview: fixtureAcceptanceReview(['A1']),
-    checks: [],
+    checks: [
+      {
+        name: 'SIMULATED Agent-reported worker check',
+        result: 'passed',
+        note: 'Agent/platform report, no Comet executor.',
+      },
+    ],
     knownLimits: [],
     review: null,
     submittedAt: new Date().toISOString(),
-    verificationChecks: [
-      {
-        id: 'worker',
-        name: 'Check worker value',
-        executable: process.execPath,
-        argv: [
-          '-e',
-          fail
-            ? 'process.exit(7)'
-            : "if (!require('node:fs').readFileSync('worker.py', 'utf8').includes('value = 1')) process.exit(1);require('node:fs').appendFileSync('check-counter.txt','x')",
-        ],
-        cwdRef: '.',
-        timeoutMs: 10_000,
-        repeatable: true,
-      },
-    ],
   };
+  if (repair) {
+    const actual = spawnSync(
+      process.execPath,
+      [
+        '-e',
+        "require('node:fs').appendFileSync('prior-check-count', 'executed\\n'); process.exit(0)",
+      ],
+      { cwd: root, windowsHide: true },
+    );
+    expect(actual.status).toBe(0);
+    builderOutput.checks = [
+      {
+        name: 'Agent-selected actual Node check',
+        result: 'passed',
+        note: 'Node exited 0 before the first Builder handoff; the Agent judged this result still applicable after the explanation-only repair.',
+      },
+    ];
+  }
   await runtime.recordOutcome({
     runId: 'demo',
     outcome: {
@@ -174,19 +188,7 @@ it.each(
   });
   await invoke('next', 'demo');
   const before = await inspect();
-  if (fail) {
-    const check = before.run.actions.find((action) => action.stepId === 'verify.checks')!;
-    expect(check.outcome?.output).toMatchObject({ checks: [{ status: 'failed', exitCode: 7 }] });
-    await fs.appendFile(path.join(root, 'worker.py'), '# Explanation after a failed check.\n');
-    await invoke('next', 'demo');
-    const failed = (await inspect()).run;
-    expect(failed.actions.filter((action) => action.stepId === 'verify.checks')).toHaveLength(1);
-    expect(failed.outputs['archive.finalize']).toBeUndefined();
-    expect(failed.actions.find((action) => action.id === check.id)?.outcome?.output).toMatchObject({
-      checks: [{ status: 'failed', exitCode: 7 }],
-    });
-    return;
-  }
+
   expect(before.state.phase).toBe('verify');
   const after = '# Explanation.\nvalue = 1\n';
   const request = {
@@ -209,13 +211,16 @@ it.each(
       before.state.builder_handoff?.candidate_id,
     );
   }
-  await expect(
-    nativeSdkCurrentCheckSummaries({ run: (await inspect()).run, projectRoot: root }),
-  ).resolves.toHaveLength(1);
+  expect((await inspect()).run.actions.some((action) => action.stepId === 'verify.checks')).toBe(
+    false,
+  );
   expect(
-    (await inspect()).run.actions.find((action) => action.stepId === 'verify.checks')?.outcome
-      ?.output,
-  ).not.toHaveProperty('inputSnapshot');
+    (await inspect()).state.builder_handoff?.checks.map((check) => ({
+      name: check.name.text,
+      result: check.result,
+      note: check.note?.text,
+    })),
+  ).toEqual(builderOutput.checks);
   const formal = (await inspect()).run.actions.find(
     (entry) => entry.stepId === 'verify.verifier' && entry.status === 'pending',
   )!;
@@ -267,60 +272,108 @@ it.each(
     },
     context: { requestId: randomUUID(), projectRoot: root },
   });
-  await cli('next', 'demo');
   if (repair) {
-    const firstCheck = before.run.actions.find((action) => action.stepId === 'verify.checks')!;
-    await fs.appendFile(
-      path.join(root, 'worker.py'),
-      '# Agent addressed the in-scope review feedback.\n',
-    );
-    const returned = (await inspect()).run;
-    expect((await inspect()).state.phase).toBe('build');
-    const builder = returned.actions.find(
+    let current = await inspect();
+    expect(current.state).toMatchObject({ phase: 'build', verification_result: 'fail' });
+    const builder = current.run.actions.find(
       (action) => action.stepId === 'build.builder' && action.status === 'pending',
     )!;
-    const token = randomUUID();
+    const builderToken = randomUUID();
     await runtime.claim({
       runId: 'demo',
       actionId: builder.id,
       attempt: builder.attempt,
       inputHash: builder.inputHash,
       executorId: 'native-host',
-      sessionId: 'builder-repair',
-      claimToken: token,
-      context: { requestId: token, projectRoot: root },
+      sessionId: 'builder',
+      claimToken: builderToken,
+      context: { requestId: builderToken, projectRoot: root },
     });
+    await fs.appendFile(
+      path.join(root, 'worker.py'),
+      '# Agent repaired the explanation; the original check still applies.\n',
+    );
     await runtime.recordOutcome({
       runId: 'demo',
       outcome: {
         actionId: builder.id,
         attempt: builder.attempt,
         inputHash: builder.inputHash,
-        claimToken: token,
+        claimToken: builderToken,
+        outcomeId: randomUUID(),
+        status: 'succeeded',
+        output: builderOutput,
+      },
+      context: { requestId: randomUUID(), projectRoot: root },
+    });
+    current = await inspect();
+    expect(current.state.builder_handoff!.candidate_id).not.toBe(
+      before.state.builder_handoff!.candidate_id,
+    );
+    expect(
+      current.state.builder_handoff!.checks.map((check) => ({
+        name: check.name.text,
+        result: check.result,
+        note: check.note?.text,
+      })),
+    ).toEqual(builderOutput.checks);
+    const verifier = current.run.actions.find(
+      (action) => action.stepId === 'verify.verifier' && action.status === 'pending',
+    )!;
+    expect(
+      current.run.waits.some(
+        (wait) => wait.stepId === 'verify.confirm' && wait.status === 'pending',
+      ),
+    ).toBe(false);
+    const verifierToken = randomUUID();
+    await runtime.claim({
+      runId: 'demo',
+      actionId: verifier.id,
+      attempt: verifier.attempt,
+      inputHash: verifier.inputHash,
+      executorId: 'native-host',
+      sessionId: 'repaired-verifier',
+      claimToken: verifierToken,
+      context: { requestId: verifierToken, projectRoot: root },
+    });
+    await runtime.recordOutcome({
+      runId: 'demo',
+      outcome: {
+        actionId: verifier.id,
+        attempt: verifier.attempt,
+        inputHash: verifier.inputHash,
+        claimToken: verifierToken,
         outcomeId: randomUUID(),
         status: 'succeeded',
         output: {
-          ...builderOutput,
-          summary: 'Addressed the in-scope review feedback.',
-          verificationChecks: builderOutput.verificationChecks.map((plan) => ({
-            ...plan,
-            reusable: true,
-          })),
+          candidateId: current.state.builder_handoff!.candidate_id,
+          verifierExecutionRef: 'repaired-verifier',
+          response: {
+            kind: 'final-result',
+            result: {
+              iteration: current.state.loop.iteration,
+              attempt: current.state.loop.attempt,
+              verdict: 'pass',
+              acceptance: [
+                {
+                  id: 'A1',
+                  result: 'passed',
+                  reason:
+                    'SIMULATED independent Agent completed the full current acceptance after repair.',
+                },
+              ],
+              risks: [],
+              summary: 'The repaired candidate satisfies every criterion.',
+            },
+          },
         },
       },
       context: { requestId: randomUUID(), projectRoot: root },
     });
-    await cli('next', 'demo');
-    const repaired = (await inspect()).run;
-    const check = repaired.actions.findLast((action) => action.stepId === 'verify.checks')!;
-    expect(check.outcome?.output).toMatchObject({
-      checks: [{ status: 'passed', reusedFrom: { actionId: firstCheck.id } }],
-    });
-    expect(await fs.readFile(path.join(root, 'check-counter.txt'), 'utf8')).toBe('x');
-    expect(repaired.waits.filter((wait) => wait.stepId === 'shape.confirm')).toHaveLength(1);
-    expect((await inspect()).state.phase).toBe('verify');
-    return;
+    expect(await fs.readFile(path.join(root, 'prior-check-count'), 'utf8')).toBe('executed\n');
   }
+  await cli('next', 'demo');
+
   const accepted = (await inspect()).run;
   const wait = accepted.waits.find(
     (entry) => entry.stepId === 'verify.confirm' && entry.status === 'pending',
@@ -335,39 +388,160 @@ it.each(
     choice: 'approved',
     context: { requestId: randomUUID(), projectRoot: root },
   });
+
   if (afterPass) {
-    await fs.writeFile(path.join(root, 'worker.py'), 'value = 2\n');
-    const current = (await inspect()).run;
-    const pending = current.actions.find((action) => action.status === 'pending')!;
-    await runtime.dispatchCommand({
-      runId: current.runId,
-      expectedRevision: current.revision,
-      name: 'refresh-checks',
-      commandId: 'fixture-repeat-check',
-      input: {
-        archiveActionId: pending.id,
-        approvalWaitId: wait.id,
-        proposalHash: wait.proposalHash,
-        checkIds: ['worker'],
-        summary: 'Agent selected the affected original check.',
-      },
-      context: { requestId: randomUUID(), projectRoot: root },
-    });
-    await invoke('next', 'demo');
-    const failed = (await inspect()).run;
-    expect(failed.actions.filter((action) => action.stepId === 'verify.checks')).toHaveLength(2);
+    const result = spawnSync(
+      process.execPath,
+      [
+        '-e',
+        "require('node:fs').appendFileSync('agent-check-count', 'executed\\n'); process.exit(7)",
+      ],
+      { cwd: root, windowsHide: true },
+    );
+    expect(result.status).toBe(7);
+    const approved = await inspect();
+    await cli(
+      'next',
+      'demo',
+      '--revise-implementation',
+      '--summary',
+      'SIMULATED Agent observed the actual platform check exit 7 after accepting the previous pass.',
+      '--proposal-hash',
+      wait.proposalHash,
+      '--expected-state-version',
+      String(approved.state.state_version),
+      '--expected-action',
+      'revise-implementation',
+    );
+    const revised = (await inspect()).run;
+    expect(revised.state).toMatchObject({ phase: 'build', verification_result: 'pending' });
+    expect(revised.waits.find((entry) => entry.id === wait.id)).toEqual(
+      approved.run.waits.find((entry) => entry.id === wait.id),
+    );
+    const blocked = await invoke('archive', 'demo');
+    expect(blocked.exitCode).not.toBe(0);
     expect(
-      failed.actions.findLast((action) => action.stepId === 'verify.checks')?.outcome?.output,
-    ).toMatchObject({ checks: [{ status: 'failed', exitCode: 1 }] });
-    expect(failed.outputs['archive.finalize']).toBeUndefined();
+      (await inspect()).run.actions.some(
+        (action) => action.stepId === 'archive.finalize' && action.status === 'succeeded',
+      ),
+    ).toBe(false);
+    expect(await fs.readFile(path.join(root, 'agent-check-count'), 'utf8')).toBe('executed\n');
     return;
   }
+
   await fs.appendFile(path.join(root, 'worker.py'), '# More explanation, same behavior.\n');
   await cli('next', 'demo');
   const completed = (await inspect()).run;
   expect(completed.status).toBe('completed');
   if (alias)
     expect((await inspectNativeSdkRun(await fs.realpath(root), 'demo')).run).toEqual(completed);
-  expect(completed.actions.filter((action) => action.stepId === 'verify.checks')).toHaveLength(1);
+  expect(completed.actions.filter((action) => action.stepId === 'verify.checks')).toHaveLength(0);
   expect(completed.outputs['archive.finalize']?.value).not.toHaveProperty('reportSha256');
+  if (repair)
+    expect(await fs.readFile(path.join(root, 'prior-check-count'), 'utf8')).toBe('executed\n');
+});
+
+it('keeps an actual Agent-platform failure report failed after file edits without replay', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-failed-agent-report-'));
+  roots.push(root);
+  execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });
+  const name = 'failed-report';
+  const cli = async (...args: string[]) => {
+    const r = await runNativeCli([...args, '--project-root', root, '--json']);
+    expect(r.exitCode, r.stdout || r.stderr).toBe(0);
+    return JSON.parse(r.stdout);
+  };
+  await cli('new', name);
+  const dir = path.join(root, 'docs/comet/changes', name);
+  await fs.writeFile(
+    path.join(dir, 'brief.md'),
+    `# Acceptance examples
+- The worker preserves its output.
+`,
+  );
+  await fs.mkdir(path.join(dir, 'specs/worker'), { recursive: true });
+  await fs.writeFile(
+    path.join(dir, 'specs/worker/spec.md'),
+    `The worker preserves its output.
+`,
+  );
+  await fs.writeFile(
+    path.join(root, 'worker.py'),
+    `value=1
+`,
+  );
+  await cli('next', name);
+  const runtime = createNativeSdkRuntime(root);
+  let run = (await inspectNativeSdkRun(root, name)).run;
+  const wait = run.waits.find((w) => w.status === 'pending')!;
+  run = await runtime.resolveWait({
+    runId: name,
+    waitId: wait.id,
+    proposalHash: wait.proposalHash,
+    decisionId: 'SIMULATED-isolated-user-shape-approval',
+    choice: 'approved',
+  });
+  const builder = run.actions.find((a) => a.stepId === 'build.builder' && a.status === 'pending')!,
+    claimToken = randomUUID();
+  await runtime.claim({
+    runId: name,
+    actionId: builder.id,
+    attempt: builder.attempt,
+    inputHash: builder.inputHash,
+    executorId: 'native-host',
+    sessionId: 'SIMULATED-agent-builder',
+    claimToken,
+  });
+  const actual = spawnSync(process.execPath, ['-e', 'process.exit(7)'], {
+    cwd: root,
+    windowsHide: true,
+  });
+  expect(actual.status).toBe(7);
+  const output = {
+    summary: 'SIMULATED Agent reports the actual ordinary Node check failure.',
+    addressedAcceptanceIds: ['A1'],
+    acceptanceReview: fixtureAcceptanceReview(['A1']),
+    checks: [
+      {
+        name: 'ordinary Agent-platform Node check',
+        result: 'failed',
+        note: 'Actual process exitCode=7; no Comet executor ran it.',
+      },
+    ],
+    knownLimits: [
+      'Actual ordinary check failed; independent review has not accepted the candidate.',
+    ],
+    review: null,
+    submittedAt: new Date().toISOString(),
+  };
+  await runtime.recordOutcome({
+    runId: name,
+    outcome: {
+      actionId: builder.id,
+      attempt: builder.attempt,
+      inputHash: builder.inputHash,
+      claimToken,
+      outcomeId: randomUUID(),
+      status: 'succeeded',
+      output,
+    },
+    context: { requestId: 'SIMULATED-platform-outcome', projectRoot: root },
+  });
+  const before = (await inspectNativeSdkRun(root, name)).run;
+  await fs.appendFile(
+    path.join(root, 'worker.py'),
+    `# explanation only
+`,
+  );
+  await cli('next', name);
+  const after = (await inspectNativeSdkRun(root, name)).run;
+  expect(after.actions.find((a) => a.id === builder.id)?.outcome).toEqual(
+    before.actions.find((a) => a.id === builder.id)?.outcome,
+  );
+  expect(after.outputs['build.builder'].value).toMatchObject({
+    checks: [{ result: 'failed', note: expect.stringContaining('exitCode=7') }],
+  });
+  expect(after.actions.some((a) => a.stepId.includes('checks'))).toBe(false);
+  expect(after.outputs['archive.finalize']).toBeUndefined();
+  expect(after.status).not.toBe('completed');
 });

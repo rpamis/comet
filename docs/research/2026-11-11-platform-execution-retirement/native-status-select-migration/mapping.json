@@ -1,0 +1,103 @@
+{
+  "rows": [
+    {
+      "file": "test/domains/comet-native/native-portable-status.test.ts",
+      "index": 0,
+      "originalName": "keeps the archived status next-step mode consistent with pending workspace finish (%s)",
+      "currentName": "keeps the archived status next-step mode consistent with pending workspace finish (%s)",
+      "disposition": "unchanged",
+      "bodyUnchanged": true,
+      "bodyRef": "tests.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-status.test.ts",
+      "index": 1,
+      "originalName": "projects the portable loop even when local execution is missing",
+      "currentName": "projects the complete portable loop read-only without a local execution overlay",
+      "disposition": "split-retired-mechanism-retained-business",
+      "bodyUnchanged": false,
+      "bodyRef": "tests.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-status.test.ts",
+      "index": 2,
+      "originalName": "does not expose a malformed local overlay as available execution state",
+      "currentName": "does not consume or expose malformed retired execution overlays during read-only status",
+      "disposition": "split-retired-mechanism-retained-business",
+      "bodyUnchanged": false,
+      "bodyRef": "tests.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-status.test.ts",
+      "index": 3,
+      "originalName": "keeps the default projection compact and pages typed details by state version",
+      "currentName": "keeps the default projection compact and pages typed details by state version",
+      "disposition": "unchanged",
+      "bodyUnchanged": true,
+      "bodyRef": "tests.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-status.test.ts",
+      "index": 4,
+      "originalName": "bounds 32-child named Supervisor status without reading unrelated change state",
+      "currentName": "bounds 32-child named Supervisor status without reading unrelated change state",
+      "disposition": "unchanged",
+      "bodyUnchanged": true,
+      "bodyRef": "tests.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-status.test.ts",
+      "index": 5,
+      "originalName": "keeps Supervisor default status compact and paginates diagnostic history",
+      "currentName": "keeps Supervisor default status compact and paginates diagnostic history",
+      "disposition": "unchanged",
+      "bodyUnchanged": true,
+      "bodyRef": "tests.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-select-command.test.ts",
+      "index": 0,
+      "originalName": "returns the full discovered status projection and routes into the owning workspace",
+      "currentName": "returns the full status projection in the explicitly selected original workspace",
+      "disposition": "split-retired-mechanism-retained-business",
+      "bodyUnchanged": false,
+      "bodyRef": "tests.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-select-command.test.ts",
+      "index": 1,
+      "originalName": "keeps the invoking root when discovery does not route elsewhere",
+      "currentName": "keeps the invoking root when discovery does not route elsewhere",
+      "disposition": "unchanged",
+      "bodyUnchanged": true,
+      "bodyRef": "tests.json"
+    }
+  ],
+  "changedBehavior": [
+    {
+      "original": "projects the portable loop even when local execution is missing",
+      "retired": "localExecution missing DTO",
+      "retained": "Original schema/phase/entire initial loop/continuation, one item in list and full continuation after actual select; added complete root snapshot unchanged during inspect/list and local execution dir remains absent"
+    },
+    {
+      "original": "does not expose a malformed local overlay as available execution state",
+      "retired": "Parsing local execution overlay into invalid/available status",
+      "retained": "Malformed obsolete overlay is neither consumed nor exposed as execution; original Shape loop/continuation persists; original overlay and all root bytes unchanged; readFile/open spies exclude overlay. SIMULATED obsolete file, no process is started."
+    },
+    {
+      "original": "returns the full discovered status projection and routes into the owning workspace",
+      "retired": "onSelectedRoot callback automatically routing from unrelated root",
+      "retained": "Original entire returned status projection and selection in explicit owning workspace; wrong workspace cannot gain selection; primary config remains unchanged; mock called once with exact explicit root; original mock phase does not claim actual Build transition."
+    }
+  ],
+  "evidence": {
+    "before": "three-before.json",
+    "targetedAfter": "three-after.json",
+    "finalFiles": "files-after.json"
+  },
+  "limitations": [
+    "Only tests changed",
+    "No production code or generated bundles changed; no build, install, real Hook or Eval",
+    "These tests are status/projection/selection boundaries, not a real SDK Build transition or cross-worktree discovery benchmark"
+  ]
+}

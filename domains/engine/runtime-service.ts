@@ -608,10 +608,16 @@ export function createRuntime(options: CreateRuntimeOptions) {
           const actions = new Map(run.actions.map((action) => [action.id, action]));
           for (const command of run.commands ?? []) {
             const action = actions.get(command.actionId);
+            const declared = Object.hasOwn(definition.commands ?? {}, command.name);
+            const retired =
+              action &&
+              !declared &&
+              !Object.hasOwn(definition.steps, action.stepId) &&
+              ['succeeded', 'failed', 'cancelled'].includes(action.status);
             if (
               !action ||
-              !Object.hasOwn(definition.commands ?? {}, command.name) ||
-              definition.commands?.[command.name].stepId !== action.stepId ||
+              (!retired &&
+                (!declared || definition.commands?.[command.name].stepId !== action.stepId)) ||
               action.input === null ||
               typeof action.input !== 'object' ||
               !Object.hasOwn(action.input, 'activation') ||
@@ -705,6 +711,8 @@ export function createRuntime(options: CreateRuntimeOptions) {
           }
           for (const wait of run.evidenceWaits ?? []) {
             const step = definition.steps[wait.stepId];
+            // 已结算历史保留原收据和序号，不重新注册退休步骤的执行契约。
+            if (!step && wait.status !== 'pending') continue;
             if (!step || step.type !== 'await_evidence' || step.kind !== wait.kind) {
               throw new RuntimeProtocolError(
                 'INVALID_RUN',

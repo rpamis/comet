@@ -97,7 +97,7 @@ describe('Classic public argument safety', () => {
     const result = await runClassicCli(['guard', '--help'], {}, options());
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(
-      'SDK-owned Build: comet guard <change-name> build [--apply [--local] [--session <builder-execution-ref>] [-- <program> [args...]]]',
+      'SDK-owned Build: comet guard <change-name> build [--apply --checks <checks-json-file> --session <builder-execution-ref>]',
     );
   });
 
@@ -105,7 +105,7 @@ describe('Classic public argument safety', () => {
     const result = await runClassicCli(['guard', '--help'], {}, options());
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(
-      'SDK-owned Verify: comet guard <change-name> verify --report <repo-relative-ref> [--apply [--local] -- <program> [args...]]',
+      'SDK-owned Verify: comet guard <change-name> verify --report <repo-relative-ref> [--apply --checks <checks-json-file>]',
     );
   });
 

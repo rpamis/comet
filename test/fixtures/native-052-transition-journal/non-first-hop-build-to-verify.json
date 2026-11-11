@@ -1,0 +1,146 @@
+{
+  "provenance": {
+    "package": "@rpamis/comet@0.5.2",
+    "entry": "advanceNativeChange",
+    "simulation": "Actual published first WAL recovery and Build transition; Agent report and afterPrepared interruption simulated; no model/Eval/check command. Old full scope data is capture input only and is not restored into product.",
+    "captureScript": "Capture via actual @rpamis/comet@0.5.2 continueNativeTransition followed by advanceNativeChange(Build), interrupted at actual afterPrepared; full capture script retained in Temp report, no retired implementation is imported by this test."
+  },
+  "name": "remove-after-recovery",
+  "journal": {
+    "schema": "comet.native.transition.v3",
+    "minimum_runtime_version": 3,
+    "revision": 1,
+    "operation": "advance",
+    "id": "50700550-767c-4ac8-afde-6d8bef84ca9f",
+    "change": "remove-after-recovery",
+    "evidenceHash": "ee70a5672a7ca6affda7a2afdf63b3c9b6eb6b9cc94dd60cc07c487fb6bb372f",
+    "createdAt": "2026-11-10T20:53:26.616Z",
+    "previousState": {
+      "schema": "comet.native.v3",
+      "minimum_runtime_version": 3,
+      "revision": 2,
+      "verification_protocol": "legacy-v1",
+      "name": "remove-after-recovery",
+      "language": "en",
+      "phase": "build",
+      "brief": "brief.md",
+      "approval": "confirmed",
+      "spec_changes": [],
+      "verification_result": "pending",
+      "verification_report": null,
+      "archived": false,
+      "created_at": "2026-11-10",
+      "run_id": "75ada034-9df2-417f-8a83-141421fb8e3c",
+      "approved_contract_hash": "68ae1e3c43c33351f75fd77af7625f5a35f61e43be5c6f8bf1f0d57f7ac68e60",
+      "implementation_scope": null,
+      "verification_evidence": null,
+      "partial_allowance": null
+    },
+    "nextState": {
+      "schema": "comet.native.v3",
+      "minimum_runtime_version": 3,
+      "revision": 3,
+      "verification_protocol": "legacy-v1",
+      "name": "remove-after-recovery",
+      "language": "en",
+      "phase": "verify",
+      "brief": "brief.md",
+      "approval": "confirmed",
+      "spec_changes": [],
+      "verification_result": "pending",
+      "verification_report": null,
+      "archived": false,
+      "created_at": "2026-11-10",
+      "run_id": "75ada034-9df2-417f-8a83-141421fb8e3c",
+      "approved_contract_hash": "68ae1e3c43c33351f75fd77af7625f5a35f61e43be5c6f8bf1f0d57f7ac68e60",
+      "implementation_scope": "runtime/evidence/scopes/07ae0390cd0f0168ecb6a499acbe45cdb1ce58e44d6795a650ea1e31d470668a.json",
+      "verification_evidence": null,
+      "partial_allowance": null
+    },
+    "previousRun": {
+      "runId": "75ada034-9df2-417f-8a83-141421fb8e3c",
+      "skill": "comet-native-runtime",
+      "skillVersion": "3",
+      "skillHash": "112aa4f49084159625760f45f8243a0b081b6a8ad4f851faa25294ef6ae3ac3f",
+      "orchestration": "deterministic",
+      "currentStep": "build",
+      "iteration": 1,
+      "pending": null,
+      "pendingRef": "runtime/pending-action.json",
+      "trajectoryRef": "runtime/trajectory.jsonl",
+      "contextRef": "runtime/context.md",
+      "artifactsRef": "runtime/artifacts.json",
+      "checkpointRef": "runtime/checkpoints/latest.json",
+      "status": "running",
+      "retries": {}
+    },
+    "nextRun": {
+      "runId": "75ada034-9df2-417f-8a83-141421fb8e3c",
+      "skill": "comet-native-runtime",
+      "skillVersion": "3",
+      "skillHash": "112aa4f49084159625760f45f8243a0b081b6a8ad4f851faa25294ef6ae3ac3f",
+      "orchestration": "deterministic",
+      "currentStep": "verify",
+      "iteration": 2,
+      "pending": null,
+      "pendingRef": "runtime/pending-action.json",
+      "trajectoryRef": "runtime/trajectory.jsonl",
+      "contextRef": "runtime/context.md",
+      "artifactsRef": "runtime/artifacts.json",
+      "checkpointRef": "runtime/checkpoints/latest.json",
+      "status": "running",
+      "retries": {}
+    },
+    "eventData": {
+      "previousPhase": "build",
+      "nextPhase": "verify",
+      "evidenceHash": "ee70a5672a7ca6affda7a2afdf63b3c9b6eb6b9cc94dd60cc07c487fb6bb372f",
+      "summary": "SIMULATED Agent hands off actual feature.ts fixture",
+      "artifacts": [
+        "feature.ts"
+      ],
+      "noCodeReason": null,
+      "verificationResult": null,
+      "implementationScopeHash": "07ae0390cd0f0168ecb6a499acbe45cdb1ce58e44d6795a650ea1e31d470668a",
+      "repairScopeHash": "30333a1e37cefec645f5fef6ab5f80fd9efdf0b11b3e6f5ba8ded698192fc5a2"
+    }
+  },
+  "nativeFiles": [
+    {
+      "ref": "specs/legacy-capability/spec.md",
+      "bytesBase64": "bGVnYWN5Cg=="
+    },
+    {
+      "ref": "changes/remove-after-recovery/brief.md",
+      "bytesBase64": "IyBPdXRjb21lClNoaXAgYSBmb2N1c2VkIGZpeHR1cmUgb3V0Y29tZS4KIyBTY29wZQpPbmUgY2FwYWJpbGl0eS4KIyBOb24tZ29hbHMKTm8gbW9kZWwsIEV2YWwgb3IgcHVzaC4KIyBBY2NlcHRhbmNlIGV4YW1wbGVzCi0gVGhlIGJlaGF2aW9yIHdvcmtzLgojIENvbnN0cmFpbnRzIGFuZCBpbnZhcmlhbnRzCktlZXAgY29tcGF0aWJpbGl0eS4KIyBEZWNpc2lvbnMKVXNlIE5hdGl2ZSBzdGF0ZS4KIyBPcGVuIHF1ZXN0aW9ucwpOb25lLgojIFZlcmlmaWNhdGlvbiBleHBlY3RhdGlvbnMKVGhpcyBpcyBhbiBpc29sYXRlZCB0cmFuc2l0aW9uIHJlY292ZXJ5IHByb3RvY29sIGZpeHR1cmUuCg=="
+    },
+    {
+      "ref": "changes/remove-after-recovery/comet-state.yaml",
+      "bytesBase64": "c2NoZW1hOiBjb21ldC5uYXRpdmUudjMKbWluaW11bV9ydW50aW1lX3ZlcnNpb246IDMKcmV2aXNpb246IDIKdmVyaWZpY2F0aW9uX3Byb3RvY29sOiBsZWdhY3ktdjEKbmFtZTogcmVtb3ZlLWFmdGVyLXJlY292ZXJ5Cmxhbmd1YWdlOiBlbgpwaGFzZTogYnVpbGQKYnJpZWY6IGJyaWVmLm1kCmFwcHJvdmFsOiBjb25maXJtZWQKYXBwcm92ZWRfY29udHJhY3RfaGFzaDogNjhhZTFlM2M0M2MzMzM1MWY3NWZkNzdhZjc2MjVmNWEzNWY2MWU0M2JlNWM2ZjhiZjFmMGQ1N2Y3YWM2OGU2MApzcGVjX2NoYW5nZXM6IFtdCnZlcmlmaWNhdGlvbl9yZXN1bHQ6IHBlbmRpbmcKdmVyaWZpY2F0aW9uX3JlcG9ydDogbnVsbAppbXBsZW1lbnRhdGlvbl9zY29wZTogbnVsbAp2ZXJpZmljYXRpb25fZXZpZGVuY2U6IG51bGwKcGFydGlhbF9hbGxvd2FuY2U6IG51bGwKYXJjaGl2ZWQ6IGZhbHNlCmNyZWF0ZWRfYXQ6IDIwMjYtMTEtMTAKcnVuX2lkOiA3NWFkYTAzNC05ZGYyLTQxN2YtOGE4My0xNDE0MjFmYjhlM2MK"
+    }
+  ],
+  "runtimeFiles": [
+    {
+      "ref": "run-state.json",
+      "bytesBase64": "ewogICJydW5JZCI6ICI3NWFkYTAzNC05ZGYyLTQxN2YtOGE4My0xNDE0MjFmYjhlM2MiLAogICJza2lsbCI6ICJjb21ldC1uYXRpdmUtcnVudGltZSIsCiAgInNraWxsVmVyc2lvbiI6ICIzIiwKICAic2tpbGxIYXNoIjogIjExMmFhNGY0OTA4NDE1OTYyNTc2MGY0NWY4MjQzYTBiMDgxYjZhOGFkNGY4NTFmYWEyNTI5NGVmNmFlM2FjM2YiLAogICJvcmNoZXN0cmF0aW9uIjogImRldGVybWluaXN0aWMiLAogICJjdXJyZW50U3RlcCI6ICJidWlsZCIsCiAgIml0ZXJhdGlvbiI6IDEsCiAgInBlbmRpbmciOiBudWxsLAogICJwZW5kaW5nUmVmIjogInJ1bnRpbWUvcGVuZGluZy1hY3Rpb24uanNvbiIsCiAgInRyYWplY3RvcnlSZWYiOiAicnVudGltZS90cmFqZWN0b3J5Lmpzb25sIiwKICAiY29udGV4dFJlZiI6ICJydW50aW1lL2NvbnRleHQubWQiLAogICJhcnRpZmFjdHNSZWYiOiAicnVudGltZS9hcnRpZmFjdHMuanNvbiIsCiAgImNoZWNrcG9pbnRSZWYiOiAicnVudGltZS9jaGVja3BvaW50cy9sYXRlc3QuanNvbiIsCiAgInN0YXR1cyI6ICJydW5uaW5nIiwKICAicmV0cmllcyI6IHt9Cn0K"
+    },
+    {
+      "ref": "trajectory.jsonl",
+      "bytesBase64": "eyJzZXF1ZW5jZSI6MSwidGltZXN0YW1wIjoiMjAyNi0xMS0xMFQxNzo0MjoyMi40MDZaIiwidHlwZSI6InJ1bl9zdGFydGVkIiwicnVuSWQiOiI3NWFkYTAzNC05ZGYyLTQxN2YtOGE4My0xNDE0MjFmYjhlM2MiLCJkYXRhIjp7InJ1bnRpbWUiOiJjb21ldC1uYXRpdmUiLCJwaGFzZSI6InNoYXBlIiwidHJhbnNpdGlvbklkIjoiNmE0ZjU1MTQtYmJiNC00ZTMyLTgzNmItODRmMDBjZmU0OTdkIn19Cnsic2VxdWVuY2UiOjIsInRpbWVzdGFtcCI6IjIwMjYtMTEtMTBUMTc6NDI6MjIuNDA2WiIsInR5cGUiOiJzdGF0ZV90cmFuc2l0aW9uZWQiLCJydW5JZCI6Ijc1YWRhMDM0LTlkZjItNDE3Zi04YTgzLTE0MTQyMWZiOGUzYyIsImRhdGEiOnsicHJldmlvdXNQaGFzZSI6InNoYXBlIiwibmV4dFBoYXNlIjoiYnVpbGQiLCJldmlkZW5jZUhhc2giOiIwZjMyNzUwMjQzZTVkZWRkYWQ0YjVlYTljYzkyMGZlNGE2Y2YyZDkwYjQ5NGUwOGJlMjI5MjkzNzAwMDM0MTk3Iiwic3VtbWFyeSI6IlNJTVVMQVRFRCBVU0VSIGV4cGxpY2l0bHkgYXBwcm92ZXMgU2hhcGUgZm9yIGFuIGlzb2xhdGVkIHB1Ymxpc2hlZCB0cmFuc2l0aW9uIFdBTCBmaXh0dXJlLiIsImFydGlmYWN0cyI6W10sIm5vQ29kZVJlYXNvbiI6bnVsbCwidmVyaWZpY2F0aW9uUmVzdWx0IjpudWxsLCJ0cmFuc2l0aW9uSWQiOiI2YTRmNTUxNC1iYmI0LTRlMzItODM2Yi04NGYwMGNmZTQ5N2QifX0K"
+    },
+    {
+      "ref": "transition.json",
+      "bytesBase64": "ewogICJzY2hlbWEiOiAiY29tZXQubmF0aXZlLnRyYW5zaXRpb24udjMiLAogICJtaW5pbXVtX3J1bnRpbWVfdmVyc2lvbiI6IDMsCiAgInJldmlzaW9uIjogMSwKICAib3BlcmF0aW9uIjogImFkdmFuY2UiLAogICJpZCI6ICI1MDcwMDU1MC03NjdjLTRhYzgtYWZkZS02ZDhiZWY4NGNhOWYiLAogICJjaGFuZ2UiOiAicmVtb3ZlLWFmdGVyLXJlY292ZXJ5IiwKICAiZXZpZGVuY2VIYXNoIjogImVlNzBhNTY3MmE3Y2E2YWZmZGE3YTJhZmRmNjNiM2M5YjZlYjZiOWNjOTRkZDYwY2MwN2M0ODdmYjZiYjM3MmYiLAogICJjcmVhdGVkQXQiOiAiMjAyNi0xMS0xMFQyMDo1MzoyNi42MTZaIiwKICAicHJldmlvdXNTdGF0ZSI6IHsKICAgICJzY2hlbWEiOiAiY29tZXQubmF0aXZlLnYzIiwKICAgICJtaW5pbXVtX3J1bnRpbWVfdmVyc2lvbiI6IDMsCiAgICAicmV2aXNpb24iOiAyLAogICAgInZlcmlmaWNhdGlvbl9wcm90b2NvbCI6ICJsZWdhY3ktdjEiLAogICAgIm5hbWUiOiAicmVtb3ZlLWFmdGVyLXJlY292ZXJ5IiwKICAgICJsYW5ndWFnZSI6ICJlbiIsCiAgICAicGhhc2UiOiAiYnVpbGQiLAogICAgImJyaWVmIjogImJyaWVmLm1kIiwKICAgICJhcHByb3ZhbCI6ICJjb25maXJtZWQiLAogICAgInNwZWNfY2hhbmdlcyI6IFtdLAogICAgInZlcmlmaWNhdGlvbl9yZXN1bHQiOiAicGVuZGluZyIsCiAgICAidmVyaWZpY2F0aW9uX3JlcG9ydCI6IG51bGwsCiAgICAiYXJjaGl2ZWQiOiBmYWxzZSwKICAgICJjcmVhdGVkX2F0IjogIjIwMjYtMTEtMTAiLAogICAgInJ1bl9pZCI6ICI3NWFkYTAzNC05ZGYyLTQxN2YtOGE4My0xNDE0MjFmYjhlM2MiLAogICAgImFwcHJvdmVkX2NvbnRyYWN0X2hhc2giOiAiNjhhZTFlM2M0M2MzMzM1MWY3NWZkNzdhZjc2MjVmNWEzNWY2MWU0M2JlNWM2ZjhiZjFmMGQ1N2Y3YWM2OGU2MCIsCiAgICAiaW1wbGVtZW50YXRpb25fc2NvcGUiOiBudWxsLAogICAgInZlcmlmaWNhdGlvbl9ldmlkZW5jZSI6IG51bGwsCiAgICAicGFydGlhbF9hbGxvd2FuY2UiOiBudWxsCiAgfSwKICAibmV4dFN0YXRlIjogewogICAgInNjaGVtYSI6ICJjb21ldC5uYXRpdmUudjMiLAogICAgIm1pbmltdW1fcnVudGltZV92ZXJzaW9uIjogMywKICAgICJyZXZpc2lvbiI6IDMsCiAgICAidmVyaWZpY2F0aW9uX3Byb3RvY29sIjogImxlZ2FjeS12MSIsCiAgICAibmFtZSI6ICJyZW1vdmUtYWZ0ZXItcmVjb3ZlcnkiLAogICAgImxhbmd1YWdlIjogImVuIiwKICAgICJwaGFzZSI6ICJ2ZXJpZnkiLAogICAgImJyaWVmIjogImJyaWVmLm1kIiwKICAgICJhcHByb3ZhbCI6ICJjb25maXJtZWQiLAogICAgInNwZWNfY2hhbmdlcyI6IFtdLAogICAgInZlcmlmaWNhdGlvbl9yZXN1bHQiOiAicGVuZGluZyIsCiAgICAidmVyaWZpY2F0aW9uX3JlcG9ydCI6IG51bGwsCiAgICAiYXJjaGl2ZWQiOiBmYWxzZSwKICAgICJjcmVhdGVkX2F0IjogIjIwMjYtMTEtMTAiLAogICAgInJ1bl9pZCI6ICI3NWFkYTAzNC05ZGYyLTQxN2YtOGE4My0xNDE0MjFmYjhlM2MiLAogICAgImFwcHJvdmVkX2NvbnRyYWN0X2hhc2giOiAiNjhhZTFlM2M0M2MzMzM1MWY3NWZkNzdhZjc2MjVmNWEzNWY2MWU0M2JlNWM2ZjhiZjFmMGQ1N2Y3YWM2OGU2MCIsCiAgICAiaW1wbGVtZW50YXRpb25fc2NvcGUiOiAicnVudGltZS9ldmlkZW5jZS9zY29wZXMvMDdhZTAzOTBjZDBmMDE2OGVjYjZhNDk5YWNiZTQ1Y2RiMWNlNThlNDRkNjc5NWE2NTBlYTFlMzFkNDcwNjY4YS5qc29uIiwKICAgICJ2ZXJpZmljYXRpb25fZXZpZGVuY2UiOiBudWxsLAogICAgInBhcnRpYWxfYWxsb3dhbmNlIjogbnVsbAogIH0sCiAgInByZXZpb3VzUnVuIjogewogICAgInJ1bklkIjogIjc1YWRhMDM0LTlkZjItNDE3Zi04YTgzLTE0MTQyMWZiOGUzYyIsCiAgICAic2tpbGwiOiAiY29tZXQtbmF0aXZlLXJ1bnRpbWUiLAogICAgInNraWxsVmVyc2lvbiI6ICIzIiwKICAgICJza2lsbEhhc2giOiAiMTEyYWE0ZjQ5MDg0MTU5NjI1NzYwZjQ1ZjgyNDNhMGIwODFiNmE4YWQ0Zjg1MWZhYTI1Mjk0ZWY2YWUzYWMzZiIsCiAgICAib3JjaGVzdHJhdGlvbiI6ICJkZXRlcm1pbmlzdGljIiwKICAgICJjdXJyZW50U3RlcCI6ICJidWlsZCIsCiAgICAiaXRlcmF0aW9uIjogMSwKICAgICJwZW5kaW5nIjogbnVsbCwKICAgICJwZW5kaW5nUmVmIjogInJ1bnRpbWUvcGVuZGluZy1hY3Rpb24uanNvbiIsCiAgICAidHJhamVjdG9yeVJlZiI6ICJydW50aW1lL3RyYWplY3RvcnkuanNvbmwiLAogICAgImNvbnRleHRSZWYiOiAicnVudGltZS9jb250ZXh0Lm1kIiwKICAgICJhcnRpZmFjdHNSZWYiOiAicnVudGltZS9hcnRpZmFjdHMuanNvbiIsCiAgICAiY2hlY2twb2ludFJlZiI6ICJydW50aW1lL2NoZWNrcG9pbnRzL2xhdGVzdC5qc29uIiwKICAgICJzdGF0dXMiOiAicnVubmluZyIsCiAgICAicmV0cmllcyI6IHt9CiAgfSwKICAibmV4dFJ1biI6IHsKICAgICJydW5JZCI6ICI3NWFkYTAzNC05ZGYyLTQxN2YtOGE4My0xNDE0MjFmYjhlM2MiLAogICAgInNraWxsIjogImNvbWV0LW5hdGl2ZS1ydW50aW1lIiwKICAgICJza2lsbFZlcnNpb24iOiAiMyIsCiAgICAic2tpbGxIYXNoIjogIjExMmFhNGY0OTA4NDE1OTYyNTc2MGY0NWY4MjQzYTBiMDgxYjZhOGFkNGY4NTFmYWEyNTI5NGVmNmFlM2FjM2YiLAogICAgIm9yY2hlc3RyYXRpb24iOiAiZGV0ZXJtaW5pc3RpYyIsCiAgICAiY3VycmVudFN0ZXAiOiAidmVyaWZ5IiwKICAgICJpdGVyYXRpb24iOiAyLAogICAgInBlbmRpbmciOiBudWxsLAogICAgInBlbmRpbmdSZWYiOiAicnVudGltZS9wZW5kaW5nLWFjdGlvbi5qc29uIiwKICAgICJ0cmFqZWN0b3J5UmVmIjogInJ1bnRpbWUvdHJhamVjdG9yeS5qc29ubCIsCiAgICAiY29udGV4dFJlZiI6ICJydW50aW1lL2NvbnRleHQubWQiLAogICAgImFydGlmYWN0c1JlZiI6ICJydW50aW1lL2FydGlmYWN0cy5qc29uIiwKICAgICJjaGVja3BvaW50UmVmIjogInJ1bnRpbWUvY2hlY2twb2ludHMvbGF0ZXN0Lmpzb24iLAogICAgInN0YXR1cyI6ICJydW5uaW5nIiwKICAgICJyZXRyaWVzIjoge30KICB9LAogICJldmVudERhdGEiOiB7CiAgICAicHJldmlvdXNQaGFzZSI6ICJidWlsZCIsCiAgICAibmV4dFBoYXNlIjogInZlcmlmeSIsCiAgICAiZXZpZGVuY2VIYXNoIjogImVlNzBhNTY3MmE3Y2E2YWZmZGE3YTJhZmRmNjNiM2M5YjZlYjZiOWNjOTRkZDYwY2MwN2M0ODdmYjZiYjM3MmYiLAogICAgInN1bW1hcnkiOiAiU0lNVUxBVEVEIEFnZW50IGhhbmRzIG9mZiBhY3R1YWwgZmVhdHVyZS50cyBmaXh0dXJlIiwKICAgICJhcnRpZmFjdHMiOiBbCiAgICAgICJmZWF0dXJlLnRzIgogICAgXSwKICAgICJub0NvZGVSZWFzb24iOiBudWxsLAogICAgInZlcmlmaWNhdGlvblJlc3VsdCI6IG51bGwsCiAgICAiaW1wbGVtZW50YXRpb25TY29wZUhhc2giOiAiMDdhZTAzOTBjZDBmMDE2OGVjYjZhNDk5YWNiZTQ1Y2RiMWNlNThlNDRkNjc5NWE2NTBlYTFlMzFkNDcwNjY4YSIsCiAgICAicmVwYWlyU2NvcGVIYXNoIjogIjMwMzMzYTFlMzdjZWZlYzY0NWY1ZmVmNmFiNWY4MGZkOWVmZGYwYjExYjNlNmY1YmE4ZGVkNjk4MTkyZmM1YTIiCiAgfQp9Cg=="
+    },
+    {
+      "ref": "checkpoints/latest.json",
+      "bytesBase64": "ewogICJydW5JZCI6ICI3NWFkYTAzNC05ZGYyLTQxN2YtOGE4My0xNDE0MjFmYjhlM2MiLAogICJzdGF0ZVZlcnNpb24iOiAxLAogICJ0cmFqZWN0b3J5T2Zmc2V0IjogMiwKICAiY29udGV4dEhhc2giOiBudWxsLAogICJhcnRpZmFjdHNIYXNoIjogIjhmZGRlMzUwN2ZlNzk4MjMxZmVlZTMyN2YzNDAwOGIyZGM0ODAxNTA3OTUyNzMxNTYwMWQyMGZlNTQyZGJkMGIiLAogICJjcmVhdGVkQXQiOiAiMjAyNi0xMS0xMFQxNzo0MjoyMi40MDZaIgp9Cg=="
+    }
+  ],
+  "projectFiles": [
+    {
+      "ref": "feature.ts",
+      "bytesBase64": "ZXhwb3J0IGNvbnN0IHJlYWR5PXRydWU7Cg=="
+    }
+  ]
+}

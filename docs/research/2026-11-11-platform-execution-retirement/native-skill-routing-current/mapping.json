@@ -1,0 +1,102 @@
+{
+  "cases": [
+    {
+      "id": "native-user-artifact-location-retention",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-skill-routing-current/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/skill/native-sdk-skill-routing.test.ts",
+          "namePattern": "preserves user-specified artifact locations through Shape, Build and independent Verify",
+          "requiredNames": [
+            "Chinese Native SDK Skill route preserves user-specified artifact locations through Shape, Build and independent Verify"
+          ]
+        },
+        {
+          "file": "test/domains/skill/native-sdk-skill-routing.test.ts",
+          "namePattern": "keeps confirmed artifact-location requirements in the English Native route",
+          "requiredNames": [
+            "Chinese Native SDK Skill route keeps confirmed artifact-location requirements in the English Native route"
+          ]
+        }
+      ]
+    }
+  ],
+  "declarations": [
+    {
+      "name": "aligns review, delivered context and optional learning in %s",
+      "unchanged": true
+    },
+    {
+      "name": "prefers receipt result submission consistently through SDK verification in %s",
+      "unchanged": true
+    },
+    {
+      "name": "preserves user-specified artifact locations through Shape, Build and independent Verify",
+      "unchanged": false
+    },
+    {
+      "name": "keeps confirmed artifact-location requirements in the English Native route",
+      "unchanged": false
+    },
+    {
+      "name": "separates SDK claims, outcomes, and verification in %s",
+      "unchanged": true
+    },
+    {
+      "name": "routes SDK-owned changes by the persisted Run projection and keeps legacy instructions separate",
+      "unchanged": false
+    },
+    {
+      "name": "uses the public SDK dispatch protocol for host work and binds user decisions",
+      "unchanged": true
+    },
+    {
+      "name": "keeps the English SDK path aligned with public Native commands",
+      "unchanged": false
+    },
+    {
+      "name": "keeps optional review and learning out of ordinary Native completion in %s",
+      "unchanged": true
+    }
+  ],
+  "behaviors": [
+    {
+      "name": "Chinese and English SDK recovery routing",
+      "retained": "SDK persisted Run/owner routing, original comet-state.yaml boundary, SDK versus Compat reference separation, public dispatch/claim/outcome, proposal hash/user decisions, unknown result no replay, Supervisor delivery/cleanup recovery and continuation inputs unchanged.",
+      "moved": "Two hardcoded unconditional Doctor repair command literals replaced by current read-only Doctor then explicit returned recovery/import; preserve saved phase/Actions/claims/valid approvals, status no writes, reconcile unknown through original platform and no repeated side effects."
+    },
+    {
+      "name": "Confirmed artifact location retention",
+      "retained": "Original user locations/required sections/formats in brief; Build fills missing artifacts at original locations; Verify refuses equivalent content in another file and cannot pass omitted artifacts; approved formal changes still use revision/confirmation.",
+      "moved": "Old English current Runtime check plan removed. Agent chooses applicable automated checks, platform tools inspect original contents and record actual targets/results. Chinese was already platform-oriented and now explicitly records targets/results to align. No extra Agent/check round/CLI check plan introduced."
+    }
+  ],
+  "sourceDocChanges": [
+    {
+      "file": "assets/skills-zh/comet-native/SKILL.md",
+      "beforeBuild": "\n首次实现前，读取当前 brief、完整目标规格和全部验收项，在已确认的需求范围内修改项目代码和测试。修复时优先处理 Verifier 指出的未通过项、无法验证的原因和失败检查；提交前仍要核对其他已确认行为。`previous_unresolved_ids` 只提示本轮修复重点，下一次正式验收仍覆盖全部验收项。\n\nBuild、Verify 和 Archive 由 Agent 对照实际文件和用户要求判断变化，不以内容摘要决定批准或验收是否失效。需求未变则保留批准，目标、验收标准或授权发生实质变化且原决定未覆盖时才重新确认。正式产物位置和阶段权限见[正式产物](reference/artifacts.md#正式产物)。\n\n用户 Hook 的共享输出目录可通过 `.comet/config.yaml` 的 `hook.allow_paths` 放行；该配置对 Native 和 Classic 共用，工作流产物目录不在白名单范围。详见[用户 Hook 写入](reference/commands.md#用户-hook-写入)。\n\n需求变化时，先判断变化属于哪种情况，再执行当前 `continuation` 允许的动作：\n\n- 已确认的功能有实现遗漏：从 Verify 使用 `--revise-implementation`，保留已确认的需求范围，回 Build 修改。\n- 用户可见行为或验收标准发生变化：从 Verify 或 Archive-ready 使用 `--revise-requirements`，更新正式文件，按[需求变化后的重新确认](reference/clarification.md#需求变化后的重新确认)先说明变化与影响，再展示完整当前 Shape 并重新确认。\n- 与当前需求无关：交给另一个 change。\n\n用户明确补充当前范围时，按同一规则处理。\n\n用户确认一次 Supervisor Shape，就授权执行该范围内的全部子任务。按 Runtime 的指令分配和集成子任务，随后自动进行 Supervisor 主任务的最终验收，覆盖全部验收项。按[Supervisor 协作](reference/commands.md#supervisor-协作)区分统筹、Builder 和 Verifier 的职责；只有 Runtime 接受了子任务的验收结果并确认集成成功，才算完成。\n\n提交候选前，按 brief 中登记的原位置检查文件、章节和格式，补齐遗漏产物；可自动检查的要求列入本轮平台检查，检查实际内容，不能只检查另一个文件中存在同类内容。修改已批准正式内容时沿用现有修订和确认流程。\n\n完成标准：实现和相关检查可供验收，Runtime 接受 Builder 交接并进入 Verify。\n",
+      "afterBuild": "\n首次实现前，读取当前 brief、完整目标规格和全部验收项，在已确认的需求范围内修改项目代码和测试。修复时优先处理 Verifier 指出的未通过项、无法验证的原因和失败检查；提交前仍要核对其他已确认行为。`previous_unresolved_ids` 只提示本轮修复重点，下一次正式验收仍覆盖全部验收项。\n\nBuild、Verify 和 Archive 由 Agent 对照实际文件和用户要求判断变化，不以内容摘要决定批准或验收是否失效。需求未变则保留批准，目标、验收标准或授权发生实质变化且原决定未覆盖时才重新确认。正式产物位置和阶段权限见[正式产物](reference/artifacts.md#正式产物)。\n\n用户 Hook 的共享输出目录可通过 `.comet/config.yaml` 的 `hook.allow_paths` 放行；该配置对 Native 和 Classic 共用，工作流产物目录不在白名单范围。详见[用户 Hook 写入](reference/commands.md#用户-hook-写入)。\n\n需求变化时，先判断变化属于哪种情况，再执行当前 `continuation` 允许的动作：\n\n- 已确认的功能有实现遗漏：从 Verify 使用 `--revise-implementation`，保留已确认的需求范围，回 Build 修改。\n- 用户可见行为或验收标准发生变化：从 Verify 或 Archive-ready 使用 `--revise-requirements`，更新正式文件，按[需求变化后的重新确认](reference/clarification.md#需求变化后的重新确认)先说明变化与影响，再展示完整当前 Shape 并重新确认。\n- 与当前需求无关：交给另一个 change。\n\n用户明确补充当前范围时，按同一规则处理。\n\n用户确认一次 Supervisor Shape，就授权执行该范围内的全部子任务。按 Runtime 的指令分配和集成子任务，随后自动进行 Supervisor 主任务的最终验收，覆盖全部验收项。按[Supervisor 协作](reference/commands.md#supervisor-协作)区分统筹、Builder 和 Verifier 的职责；只有 Runtime 接受了子任务的验收结果并确认集成成功，才算完成。\n\n提交候选前，按 brief 中登记的原位置检查文件、章节和格式，补齐遗漏产物；Agent 选择适用的自动检查，用平台工具检查原文件的实际内容，并记录检查对象和结果；不能用另一文件中的同类内容代替。修改已批准正式内容时沿用现有修订和确认流程。\n\n完成标准：实现和相关检查可供验收，Runtime 接受 Builder 交接并进入 Verify。\n"
+    },
+    {
+      "file": "assets/skills/comet-native/SKILL.md",
+      "beforeBuild": "\nBefore the first implementation, read the current brief, complete target Specs, and every acceptance item. Edit project code and tests within confirmed scope. During repair, prioritize the Verifier's failed or blocked items and failed checks, then recheck other confirmed behavior before submission. `previous_unresolved_ids` identifies the repair focus; the next formal verification still covers every acceptance item.\n\nBuild, Verify, and Archive recheck the binding between formal files and the approved original text. When something changes, the current Agent judges its semantics and impact; an unchanged contract keeps its approval, and only a material change to the goal, acceptance criteria, or authorization requests the related decision. After an edit, Hooks verify actual content before the next implementation write or advancement, and the verification also runs when a Hook did not fire. Existing Shapes retain their binding; invalid documents or reports preserve work and address only the specific gaps. Ordinary documents preserve candidates by default; use `native.document_writes: revert` for strict behavior. See [formal artifacts](reference/artifacts.md#formal-artifacts) for paths.\n\nUser Hook output can use `hook.allow_paths` in `.comet/config.yaml`; see [User Hook writes](reference/commands.md#user-hook-writes).\n\nClassify requirement changes before taking an action allowed by the current `continuation`:\n\n- Missing implementation of confirmed functionality: use `--revise-implementation` from Verify, retain confirmed scope, and return to Build.\n- Changed user-visible behavior or acceptance criteria: use `--revise-requirements` from Verify or Archive-ready, update formal artifacts, and follow [reconfirmation after requirement changes](reference/clarification.md#reconfirmation-after-requirement-changes) to explain changes and effects before presenting and reconfirming the complete current Shape.\n- Unrelated requirements: use another change.\n\nApply the same rules when the user explicitly adds to the current scope.\n\nOne confirmed Supervisor Shape authorizes all children within that scope. Dispatch and integrate as Runtime directs, then automatically perform final verification of every Supervisor acceptance item. Follow [Supervisor coordination](reference/commands.md#supervisor-coordination) for coordinator, Builder, and Verifier responsibilities. A child is complete only after Runtime accepts its verification and confirms integration.\n\nBefore submitting a candidate, check files, sections, and formats at the original locations recorded in the brief, and complete missing artifacts. Add requirements that can be checked automatically to the current Runtime check plan, checking their actual contents rather than only finding equivalent content in another file. Follow the existing revision and confirmation flow when changing approved formal content.\n\nComplete when the implementation and relevant checks are ready for verification, Runtime accepts the Builder handoff, and the phase is Verify.\n",
+      "afterBuild": "\nBefore the first implementation, read the current brief, complete target Specs, and every acceptance item. Edit project code and tests within confirmed scope. During repair, prioritize the Verifier's failed or blocked items and failed checks, then recheck other confirmed behavior before submission. `previous_unresolved_ids` identifies the repair focus; the next formal verification still covers every acceptance item.\n\nBuild, Verify, and Archive recheck the binding between formal files and the approved original text. When something changes, the current Agent judges its semantics and impact; an unchanged contract keeps its approval, and only a material change to the goal, acceptance criteria, or authorization requests the related decision. After an edit, Hooks verify actual content before the next implementation write or advancement, and the verification also runs when a Hook did not fire. Existing Shapes retain their binding; invalid documents or reports preserve work and address only the specific gaps. Ordinary documents preserve candidates by default; use `native.document_writes: revert` for strict behavior. See [formal artifacts](reference/artifacts.md#formal-artifacts) for paths.\n\nUser Hook output can use `hook.allow_paths` in `.comet/config.yaml`; see [User Hook writes](reference/commands.md#user-hook-writes).\n\nClassify requirement changes before taking an action allowed by the current `continuation`:\n\n- Missing implementation of confirmed functionality: use `--revise-implementation` from Verify, retain confirmed scope, and return to Build.\n- Changed user-visible behavior or acceptance criteria: use `--revise-requirements` from Verify or Archive-ready, update formal artifacts, and follow [reconfirmation after requirement changes](reference/clarification.md#reconfirmation-after-requirement-changes) to explain changes and effects before presenting and reconfirming the complete current Shape.\n- Unrelated requirements: use another change.\n\nApply the same rules when the user explicitly adds to the current scope.\n\nOne confirmed Supervisor Shape authorizes all children within that scope. Dispatch and integrate as Runtime directs, then automatically perform final verification of every Supervisor acceptance item. Follow [Supervisor coordination](reference/commands.md#supervisor-coordination) for coordinator, Builder, and Verifier responsibilities. A child is complete only after Runtime accepts its verification and confirms integration.\n\nBefore submitting a candidate, check files, sections, and formats at the original locations recorded in the brief, and complete missing artifacts. The Agent chooses applicable automated checks, runs them with platform tools against the original files' actual contents, and records the check targets and results; equivalent content in another file does not replace those checks. Follow the existing revision and confirmation flow when changing approved formal content.\n\nComplete when the implementation and relevant checks are ready for verification, Runtime accepts the Builder handoff, and the phase is Verify.\n"
+    }
+  ],
+  "evidence": {
+    "before": "routing-before.json",
+    "after": "routing-and-skill-after.json"
+  },
+  "registryAudit": {
+    "affectedCaseIds": [
+      "native-user-artifact-location-retention"
+    ],
+    "unaffectedRelatedCaseIds": [
+      "native-rule-skill-review-and-learning-alignment"
+    ],
+    "reason": "Unchanged Rule test selected by the latter ID; none of the two recovery route declarations are registered."
+  },
+  "scope": "Static Skill contracts only; no Runtime source/bundle/build, installation, real Hook, actual Agent compliance or Eval."
+}

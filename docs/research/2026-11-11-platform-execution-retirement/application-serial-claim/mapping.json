@@ -1,0 +1,62 @@
+{
+  "authorization": "report:2026-11-11-single-writer-workspaces",
+  "file": "test/domains/workflow-application/application-hook.test.ts",
+  "originalExpanded": 8,
+  "currentExpanded": 8,
+  "rows": [
+    {
+      "originalName": "allows current work after 128 verified completed child Runs without treating history as active width",
+      "currentName": "allows current work after 128 verified completed child Runs without treating history as active width",
+      "unchanged": true
+    },
+    {
+      "originalName": "rejects excessive active child width and releases cancelled platform Skills without stop confirmation",
+      "currentName": "rejects excessive active child width and releases cancelled platform Skills without stop confirmation",
+      "unchanged": true
+    },
+    {
+      "originalName": "provides a default Guard and grants only the currently claimed, approved Skill write scope",
+      "currentName": "provides a default Guard and grants only the currently claimed, approved Skill write scope",
+      "unchanged": true
+    },
+    {
+      "originalName": "a claimed root write scope still cannot modify host Rule carriers",
+      "currentName": "a claimed root write scope still cannot modify host Rule carriers",
+      "unchanged": true
+    },
+    {
+      "originalName": "custom Guards cannot grant writes to SDK state, fixed packages or unapproved Skill scopes",
+      "currentName": "custom Guards cannot grant writes to SDK state, fixed packages or unapproved Skill scopes",
+      "unchanged": true
+    },
+    {
+      "originalName": "requires the declared application Rule to exist within the fixed package",
+      "currentName": "requires the declared application Rule to exist within the fixed package",
+      "unchanged": true
+    },
+    {
+      "originalName": "rejects nested default write scopes when repair-cycle reachability does not serialize active work",
+      "currentName": "rejects nested default write scopes when repair-cycle reachability does not serialize active work",
+      "unchanged": true
+    },
+    {
+      "originalName": "serializes competing claims across sibling Runs and retains unknown write ownership",
+      "currentName": "rejects a conflicting sibling claim after serial submission and retains unknown write ownership",
+      "unchanged": false
+    }
+  ],
+  "retired": "Concurrent Promise.allSettled submissions within one workspace and cross-Run writer mutex serialization guarantee",
+  "retained": [
+    "Explicit application approval waits resolved with their real proposal hashes before either claim",
+    "First serial child claim succeeds and keeps its token/executor",
+    "Second child conflicting declared scope rejects with SCOPE_HELD without changing first Run, parent Run or sibling Run",
+    "Unknown first Action retains the full original claim; second claim still SCOPE_HELD",
+    "Actual write Hook is allowed with ordinary current claim then denied under unknown ownership",
+    "First original/current/unknown Run, second original Run and parent Run all deep-equal at the appropriate rejected boundaries"
+  ],
+  "scope": "Only this test and title changed; no product/Runtime/build/locks restored; all other seven test bodies unchanged",
+  "evidence": {
+    "original": "one-before.json",
+    "current": "file-after.json"
+  }
+}

@@ -1,4 +1,3 @@
-import path from 'node:path';
 import { nativeSupervisorContractRef } from './native-children-contract.js';
 
 import {
@@ -7,7 +6,6 @@ import {
   resolveGitRef,
   samePath,
 } from '../../platform/paths/git-worktree.js';
-import { runGitCommand } from '../../platform/process/git.js';
 import type {
   RuntimeAction,
   RuntimeExecutor,
@@ -18,24 +16,15 @@ import type {
 import { parseNativePortableState } from './native-portable-state.js';
 import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
 import {
+  executeNativeSupervisorCleanup as executeCleanup,
+  nativeSupervisorCleanupComplete as cleanupComplete,
+  preflightNativeSupervisorCleanup as preflightCleanup,
+  type NativeSupervisorCleanupBinding as CleanupBinding,
+  type NativeSupervisorCleanupCandidate as CleanupCandidate,
   nativeSupervisorChildWorktree,
   nativeSupervisorIntegrationBranch,
   nativeSupervisorIntegrationWorktree,
 } from './native-supervisor-workspace.js';
-import { nativeWorkspaceIsClean, removeNativeWorkspaceConfig } from './native-workspace-config.js';
-
-interface CleanupCandidate {
-  root: string;
-  branch: string;
-}
-
-interface CleanupBinding {
-  projectRoot: string;
-  targetRoot: string;
-  targetBranch: string;
-  targetCommit: string;
-  candidates: CleanupCandidate[];
-}
 
 function outputOf(run: Readonly<WorkflowRun>, stepId: string): Record<string, unknown> | null {
   const action = [...run.actions]
@@ -47,27 +36,52 @@ function outputOf(run: Readonly<WorkflowRun>, stepId: string): Record<string, un
     : null;
 }
 
-function localBranchExists(projectRoot: string, branch: string): boolean {
-  try {
-    runGitCommand(projectRoot, ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`]);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function containsPath(parent: string, child: string): boolean {
-  const relative = path.relative(path.resolve(parent), path.resolve(child));
-  return relative === '' || (!path.isAbsolute(relative) && !relative.startsWith(`..${path.sep}`));
-}
-
-function assertDeliveredTarget(binding: CleanupBinding): void {
+function cleanupCandidates(
+  run: Readonly<WorkflowRun>,
+  projectRoot: string,
+  state: ReturnType<typeof parseNativePortableState>,
+): CleanupCandidate[] {
+  const prepared = outputOf(run, 'supervisor.prepare');
+  const integrationRoot = nativeSupervisorIntegrationWorktree(projectRoot, state.name);
+  const integrationBranch = nativeSupervisorIntegrationBranch(state.name);
   if (
-    inspectGitWorktree(binding.targetRoot).currentBranch !== binding.targetBranch ||
-    resolveGitRef(binding.targetRoot, binding.targetBranch) !== binding.targetCommit
+    !prepared ||
+    nativeSupervisorContractRef(prepared, run) !== state.children_contract_ref ||
+    typeof prepared.integrationWorktree !== 'string' ||
+    !samePath(prepared.integrationWorktree, integrationRoot) ||
+    prepared.integrationBranch !== integrationBranch
   ) {
-    throw new Error('Native SDK Supervisor target branch changed during cleanup');
+    throw new Error('Native SDK Supervisor cleanup lacks its integration workspace');
   }
+  const children = new Map<string, CleanupCandidate>();
+  for (const item of currentNativeSdkSupervisorActions(run)) {
+    if (item.stepId !== 'supervisor.child.prepare' || item.status !== 'succeeded') continue;
+    const output = item.outcome?.output;
+    if (!output || typeof output !== 'object' || Array.isArray(output)) {
+      throw new Error('Native SDK Supervisor cleanup has an invalid Child receipt');
+    }
+    const receipt = output as Record<string, unknown>;
+    if (
+      typeof receipt.child !== 'string' ||
+      typeof receipt.worktree !== 'string' ||
+      nativeSupervisorContractRef(receipt, run) !== state.children_contract_ref ||
+      !samePath(
+        receipt.worktree,
+        nativeSupervisorChildWorktree(projectRoot, state.name, receipt.child),
+      ) ||
+      receipt.branch !== `comet/supervisor/${state.name}/${receipt.child}`
+    ) {
+      throw new Error('Native SDK Supervisor cleanup has a mismatched Child receipt');
+    }
+    children.set(receipt.child, {
+      root: receipt.worktree,
+      branch: receipt.branch,
+    });
+  }
+  if (children.size === 0) {
+    throw new Error('Native SDK Supervisor cleanup has no prepared Children');
+  }
+  return [...children.values(), { root: integrationRoot, branch: integrationBranch }];
 }
 
 function cleanupBinding(
@@ -96,120 +110,36 @@ function cleanupBinding(
   ) {
     throw new Error('Native SDK Supervisor cleanup lacks the verified delivery');
   }
-  const prepared = outputOf(run, 'supervisor.prepare');
-  const integrationRoot = nativeSupervisorIntegrationWorktree(projectRoot, state.name);
-  const integrationBranch = nativeSupervisorIntegrationBranch(state.name);
-  if (
-    !prepared ||
-    nativeSupervisorContractRef(prepared) !== state.children_contract_ref ||
-    typeof prepared.integrationWorktree !== 'string' ||
-    !samePath(prepared.integrationWorktree, integrationRoot) ||
-    prepared.integrationBranch !== integrationBranch
-  ) {
-    throw new Error('Native SDK Supervisor cleanup lacks its integration workspace');
-  }
-  const children = new Map<string, CleanupCandidate>();
-  for (const item of currentNativeSdkSupervisorActions(run)) {
-    if (item.stepId !== 'supervisor.child.prepare' || item.status !== 'succeeded') continue;
-    const output = item.outcome?.output;
-    if (!output || typeof output !== 'object' || Array.isArray(output)) {
-      throw new Error('Native SDK Supervisor cleanup has an invalid Child receipt');
-    }
-    const receipt = output as Record<string, unknown>;
-    if (
-      typeof receipt.child !== 'string' ||
-      typeof receipt.worktree !== 'string' ||
-      nativeSupervisorContractRef(receipt) !== state.children_contract_ref ||
-      !samePath(
-        receipt.worktree,
-        nativeSupervisorChildWorktree(projectRoot, state.name, receipt.child),
-      ) ||
-      receipt.branch !== `comet/supervisor/${state.name}/${receipt.child}`
-    ) {
-      throw new Error('Native SDK Supervisor cleanup has a mismatched Child receipt');
-    }
-    children.set(receipt.child, { root: receipt.worktree, branch: receipt.branch });
-  }
-  if (children.size === 0) {
-    throw new Error('Native SDK Supervisor cleanup has no prepared Children');
-  }
   return {
     projectRoot,
     targetRoot: delivery.targetRoot,
     targetBranch: delivery.targetBranch,
     targetCommit: delivery.targetCommit,
-    candidates: [...children.values(), { root: integrationRoot, branch: integrationBranch }],
+    candidates: cleanupCandidates(run, projectRoot, state),
   };
 }
 
-function preflightCleanup(binding: CleanupBinding): void {
-  assertDeliveredTarget(binding);
-  const registered = listGitWorktreeRoots(binding.projectRoot);
-  for (const candidate of binding.candidates) {
-    if (registered.some((root) => samePath(root, candidate.root))) {
-      if (containsPath(candidate.root, process.cwd())) {
-        throw new Error(
-          `Native SDK Supervisor cannot clean the current worktree: ${candidate.root}`,
-        );
-      }
-      if (
-        inspectGitWorktree(candidate.root).currentBranch !== candidate.branch ||
-        !nativeWorkspaceIsClean(candidate.root)
-      ) {
-        throw new Error(
-          `Native SDK Supervisor cleanup found a changed worktree: ${candidate.root}`,
-        );
-      }
-    }
-    if (localBranchExists(binding.projectRoot, candidate.branch)) {
-      try {
-        runGitCommand(binding.projectRoot, [
-          'merge-base',
-          '--is-ancestor',
-          candidate.branch,
-          binding.targetCommit,
-        ]);
-      } catch {
-        throw new Error(
-          `Native SDK Supervisor cleanup found an unintegrated branch: ${candidate.branch}`,
-        );
-      }
-    }
-  }
-}
-
-function cleanupComplete(binding: CleanupBinding): boolean {
-  const registered = listGitWorktreeRoots(binding.projectRoot);
-  return binding.candidates.every(
-    (candidate) =>
-      !registered.some((root) => samePath(root, candidate.root)) &&
-      !localBranchExists(binding.projectRoot, candidate.branch),
-  );
-}
-
-async function executeCleanup(binding: CleanupBinding): Promise<void> {
-  preflightCleanup(binding);
-  for (const candidate of binding.candidates) {
-    assertDeliveredTarget(binding);
-    if (!listGitWorktreeRoots(binding.projectRoot).some((root) => samePath(root, candidate.root))) {
-      continue;
-    }
-    await removeNativeWorkspaceConfig(candidate.root);
-    runGitCommand(binding.projectRoot, ['worktree', 'remove', candidate.root]);
-  }
-  for (const candidate of binding.candidates) {
-    assertDeliveredTarget(binding);
-    if (localBranchExists(binding.projectRoot, candidate.branch)) {
-      runGitCommand(binding.targetRoot, ['branch', '-d', candidate.branch]);
-    }
-  }
-  if (!cleanupComplete(binding)) {
-    throw new Error('Native SDK Supervisor cleanup did not remove every temporary worktree');
-  }
+/** Preflight the exact temporary worktrees before delivery changes the user target. */
+export function preflightNativeSdkSupervisorDeliveryCleanup(
+  run: Readonly<WorkflowRun>,
+  projectRoot: string,
+  integrationCommit: string,
+  state: ReturnType<typeof parseNativePortableState>,
+): void {
+  preflightCleanup({
+    projectRoot,
+    targetRoot: nativeSupervisorIntegrationWorktree(projectRoot, state.name),
+    targetBranch: nativeSupervisorIntegrationBranch(state.name),
+    targetCommit: integrationCommit,
+    candidates: cleanupCandidates(run, projectRoot, state),
+  });
 }
 
 function cleanupOutput(binding: CleanupBinding) {
-  return { targetBranch: binding.targetBranch, targetCommit: binding.targetCommit };
+  return {
+    targetBranch: binding.targetBranch,
+    targetCommit: binding.targetCommit,
+  };
 }
 
 export const nativeSdkSupervisorCleanupExecutor: RuntimeExecutor = {
@@ -255,7 +185,10 @@ export const nativeSdkSupervisorCleanupValidator: RuntimeValidator = {
       }
       return { accepted: true };
     } catch (error) {
-      return { accepted: false, reason: error instanceof Error ? error.message : String(error) };
+      return {
+        accepted: false,
+        reason: error instanceof Error ? error.message : String(error),
+      };
     }
   },
 };

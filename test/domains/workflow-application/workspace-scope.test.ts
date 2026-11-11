@@ -226,131 +226,82 @@ it('fails closed on corrupt peer records before claiming a shared write scope', 
   ).rejects.toMatchObject({ code: 'STORE_INDEX_CORRUPT' });
 });
 
-it.each(['cancel', 'acknowledgeStopped'] as const)(
-  'retains cancelled claims across cold reloads until the original executor confirms stopping through %s',
-  async (operation) => {
-    const f = await fixture();
-    const action = f.run.actions.find((item) => item.stepId === 'left')!;
-    await f.runtime.claim({
-      runId: f.run.runId,
-      actionId: action.id,
-      attempt: action.attempt,
-      inputHash: action.inputHash,
-      executorId: 'local-skill',
-      capabilities: ['skill-script'],
-      claimToken: 'original-writer',
-    });
+it('closes a cancelled platform Skill Run and releases scope after cold reload without a stop receipt', async () => {
+  const f = await fixture();
+  const action = f.run.actions.find((item) => item.stepId === 'left')!;
+  await f.runtime.claim({
+    runId: f.run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: 'local-skill',
+    capabilities: ['skill-script'],
+    claimToken: 'original-writer',
+  });
 
-    const restored = structuredClone(await f.runtime.inspect(f.run.runId));
-    restored.runId = 'restored-cancelled';
-    restored.revision = 50;
-    restored.status = 'cancelled';
-    restored.actions = restored.actions.map((item) => ({
-      ...item,
-      runId: restored.runId,
-      status: ['pending', 'running'].includes(item.status) ? 'cancelled' : item.status,
-    }));
-    await expect(
-      f.loaded.store.restoreCheckpoint!(restored.runId, null, restored),
-    ).rejects.toMatchObject({ code: 'SCOPE_HELD' });
-    let cancelled = await f.runtime.cancel({
-      runId: f.run.runId,
-      reason: 'user cancellation',
-    });
-    const store = createFileRuntimeStore({
-      rootDir: path.join(
-        resolveWorkspaceRuntimeRootSync(f.root),
-        'applications',
-        f.loaded.identity.id,
-      ),
-      mirroredRevisionPaths: ['run.revision'],
-    });
-    expect(await store.readPartitionMetadata(cancelled.runId)).toBe('active');
-    const loaded = await loadWorkflowApplication({
-      file: f.disk.file,
-      projectRoot: f.root,
-    });
-    const runtime = createRuntime({
-      ...loaded.implementation,
-      store: loaded.store,
-    });
-    let peer = await runtime.start({
-      runId: 'peer',
-      workflow: { id: 'editorial', version: '1' },
-      input: f.run.input,
-    });
-    peer = await runtime.execute({
-      runId: peer.runId,
-      actionId: peer.actions[0].id,
-      executorId: 'tool-host',
-    });
-    peer = await runtime.resolveWait({
-      runId: peer.runId,
-      waitId: peer.waits[0].id,
-      proposalHash: peer.waits[0].proposalHash,
-      decisionId: 'peer-approval',
-      choice: 'approved',
-    });
-    peer = await runtime.execute({
-      runId: peer.runId,
-      actionId: peer.actions.at(-1)!.id,
-      executorId: 'tool-host',
-    });
-    const next = peer.actions.find((item) => item.stepId === 'left')!;
-    const claim = {
-      runId: peer.runId,
-      actionId: next.id,
-      attempt: next.attempt,
-      inputHash: next.inputHash,
-      executorId: 'local-skill',
-      capabilities: ['skill-script'],
-      claimToken: 'peer-writer',
-    };
-    await expect(runtime.claim(claim)).rejects.toMatchObject({
-      code: 'SCOPE_HELD',
-    });
-    const acknowledge = (
-      stoppedActions: Parameters<typeof runtime.acknowledgeStopped>[0]['stoppedActions'],
-    ) =>
-      operation === 'cancel'
-        ? runtime.cancel({
-            runId: cancelled.runId,
-            reason: 'confirm',
-            stoppedActions,
-          })
-        : runtime.acknowledgeStopped({
-            runId: cancelled.runId,
-            stoppedActions,
-          });
-    const stopped = {
-      actionId: action.id,
-      attempt: action.attempt,
-      inputHash: action.inputHash,
-      claimToken: 'wrong',
-      evidence: 'The original process and its children have exited.',
-    };
-    await expect(acknowledge([stopped])).rejects.toMatchObject({
-      code: 'STALE_ACTION',
-    });
-    await expect(runtime.claim(claim)).rejects.toMatchObject({
-      code: 'SCOPE_HELD',
-    });
-    cancelled = await acknowledge([{ ...stopped, claimToken: 'original-writer' }]);
-    if (operation === 'acknowledgeStopped') {
-      expect(
-        cancelled.actions.find((item) => item.id === action.id)?.executionStop?.claimToken,
-      ).toBe('original-writer');
-      expect(cancelled.actions.find((item) => item.id === action.id)?.cancellation).toBeUndefined();
-    }
-    expect(await store.readPartitionMetadata(cancelled.runId)).toBe('closed');
-    expect((await runtime.claim(claim)).actions.find((item) => item.id === next.id)?.status).toBe(
-      'running',
-    );
-    // 原取消的重复提交保持兼容，封存不永久阻止幂等确认。
-    await acknowledge([{ ...stopped, claimToken: 'original-writer' }]);
-    expect(await store.readPartitionMetadata(cancelled.runId)).toBe('closed');
-  },
-);
+  const cancelled = await f.runtime.cancel({
+    runId: f.run.runId,
+    reason: 'user cancellation',
+  });
+  const store = createFileRuntimeStore({
+    rootDir: path.join(
+      resolveWorkspaceRuntimeRootSync(f.root),
+      'applications',
+      f.loaded.identity.id,
+    ),
+    mirroredRevisionPaths: ['run.revision'],
+  });
+  expect(await store.readPartitionMetadata(cancelled.runId)).toBe('closed');
+  expect(cancelled.actions.find((item) => item.id === action.id)?.claim?.token).toBe(
+    'original-writer',
+  );
+  const loaded = await loadWorkflowApplication({
+    file: f.disk.file,
+    projectRoot: f.root,
+  });
+  const runtime = createRuntime({
+    ...loaded.implementation,
+    store: loaded.store,
+  });
+  let peer = await runtime.start({
+    runId: 'peer',
+    workflow: { id: 'editorial', version: '1' },
+    input: f.run.input,
+  });
+  peer = await runtime.execute({
+    runId: peer.runId,
+    actionId: peer.actions[0].id,
+    executorId: 'tool-host',
+  });
+  peer = await runtime.resolveWait({
+    runId: peer.runId,
+    waitId: peer.waits[0].id,
+    proposalHash: peer.waits[0].proposalHash,
+    decisionId: 'peer-approval',
+    choice: 'approved',
+  });
+  peer = await runtime.execute({
+    runId: peer.runId,
+    actionId: peer.actions.at(-1)!.id,
+    executorId: 'tool-host',
+  });
+  const next = peer.actions.find((item) => item.stepId === 'left')!;
+  const claim = {
+    runId: peer.runId,
+    actionId: next.id,
+    attempt: next.attempt,
+    inputHash: next.inputHash,
+    executorId: 'local-skill',
+    capabilities: ['skill-script'],
+    claimToken: 'peer-writer',
+  };
+  expect((await runtime.claim(claim)).actions.find((item) => item.id === next.id)?.status).toBe(
+    'running',
+  );
+  expect(await runtime.inspect(cancelled.runId)).toEqual(cancelled);
+  await runtime.cancel({ runId: cancelled.runId, reason: 'user cancellation' });
+  expect(await store.readPartitionMetadata(cancelled.runId)).toBe('closed');
+});
 
 it('fences raw writers after application holder coordination is enabled', async () => {
   const f = await fixture();

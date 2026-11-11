@@ -2,12 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
-import { PLATFORMS } from '../../../platform/install/platforms.js';
 
 import {
-  DEFAULT_NATIVE_SNAPSHOT_CONFIG,
   defaultProjectConfig,
-  mergeNativeSnapshotExcludes,
   readProjectConfig,
   resolveNativeProject,
   writeProjectConfig,
@@ -31,49 +28,7 @@ describe('Native project configuration', () => {
     expect(defaultProjectConfig().native.clarification_mode).toBe('batch');
     expect(defaultProjectConfig().native.archive_confirmation).toBe('automatic');
     expect(defaultProjectConfig().native.max_verify_failures).toBe(5);
-    expect(defaultProjectConfig().native.snapshot).toEqual({
-      include: ['**/*'],
-      exclude: DEFAULT_NATIVE_SNAPSHOT_CONFIG.exclude,
-      max_files: 10_000,
-      max_total_bytes: 1024 * 1024 * 1024,
-      max_duration_ms: 60_000,
-      max_selection_records: 20_000,
-    });
-  });
-
-  it('keeps every supported platform Skill directory outside the default baseline scope', () => {
-    expect(DEFAULT_NATIVE_SNAPSHOT_CONFIG.exclude).toEqual(
-      expect.arrayContaining(PLATFORMS.map((platform) => `${platform.skillsDir}/skills/**`)),
-    );
-  });
-
-  it('includes common generated, IDE, and Comet-managed paths in default snapshots', () => {
-    expect(DEFAULT_NATIVE_SNAPSHOT_CONFIG.exclude).toEqual(
-      expect.arrayContaining([
-        '**/.idea/**',
-        '**/.vscode/**',
-        '.codex/skills/**',
-        '.devin/skills/**',
-        '.windsurf/skills/**',
-        '**/node_modules/**',
-        '**/dist/**',
-        '**/target/**',
-        '**/__pycache__/**',
-        '**/obj/**',
-        '**/logs/**',
-        '**/tmp/**',
-        '**/temp/**',
-      ]),
-    );
-    expect(DEFAULT_NATIVE_SNAPSHOT_CONFIG.exclude).not.toContain('**/bin/**');
-  });
-
-  it('preserves custom exclusions while adding missing defaults', () => {
-    const merged = mergeNativeSnapshotExcludes(['custom/generated/**', '**/dist/**']);
-
-    expect(merged).toEqual(expect.arrayContaining(['custom/generated/**', '**/dist/**']));
-    expect(merged).toEqual(expect.arrayContaining(['**/.idea/**', '**/node_modules/**']));
-    expect(new Set(merged).size).toBe(merged.length);
+    expect(defaultProjectConfig().native).not.toHaveProperty('snapshot');
   });
 
   it('round-trips a custom artifact root without persisting legacy snapshot settings', async () => {
@@ -98,14 +53,6 @@ describe('Native project configuration', () => {
         clarification_mode: 'batch',
         archive_confirmation: 'automatic',
         max_verify_failures: 5,
-        snapshot: {
-          include: ['**/*'],
-          exclude: DEFAULT_NATIVE_SNAPSHOT_CONFIG.exclude,
-          max_files: 10_000,
-          max_total_bytes: 1024 * 1024 * 1024,
-          max_duration_ms: 60_000,
-          max_selection_records: 20_000,
-        },
       },
     });
     const source = await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8');
@@ -248,9 +195,7 @@ describe('Native project configuration', () => {
     expect((await readProjectConfig(projectRoot))?.native.clarification_mode).toBe('batch');
     expect((await readProjectConfig(projectRoot))?.native.archive_confirmation).toBe('automatic');
     expect((await readProjectConfig(projectRoot))?.native.max_verify_failures).toBe(5);
-    expect((await readProjectConfig(projectRoot))?.native.snapshot).toEqual(
-      defaultProjectConfig().native.snapshot,
-    );
+    expect((await readProjectConfig(projectRoot))?.native).not.toHaveProperty('snapshot');
     expect((await readProjectConfig(projectRoot))?.ambient_resume).toBe(true);
   });
 
@@ -317,7 +262,7 @@ describe('Native project configuration', () => {
     expect(source).not.toContain('# Enables automatic recovery');
   });
 
-  it('rejects unsafe snapshot patterns', async () => {
+  it('ignores retired snapshot settings while preserving the original configuration until upgrade', async () => {
     await fs.writeFile(
       path.join(projectRoot, '.comet', 'config.yaml'),
       [
@@ -332,50 +277,9 @@ describe('Native project configuration', () => {
       ].join('\n'),
     );
 
-    await expect(readProjectConfig(projectRoot)).rejects.toThrow(
-      'native.snapshot.include contains an unsafe pattern',
-    );
-  });
-
-  it.each([
-    ['max_files', 0],
-    ['max_total_bytes', 0],
-    ['max_duration_ms', 0],
-  ])('rejects invalid snapshot budget %s', async (field, value) => {
-    await fs.writeFile(
-      path.join(projectRoot, '.comet', 'config.yaml'),
-      [
-        'schema: comet.project.v1',
-        'default_workflow: native',
-        'native:',
-        '  artifact_root: docs',
-        '  snapshot:',
-        `    ${field}: ${value}`,
-        '',
-      ].join('\n'),
-    );
-
-    await expect(readProjectConfig(projectRoot)).rejects.toThrow(`native.snapshot.${field}`);
-  });
-
-  it.each([
-    ['a'.repeat(1025), 'exceeds 1024 characters'],
-    ['*a'.repeat(65), 'contains more than 64 wildcard tokens'],
-  ])('rejects overly complex snapshot pattern', async (pattern, expected) => {
-    await fs.writeFile(
-      path.join(projectRoot, '.comet', 'config.yaml'),
-      [
-        'schema: comet.project.v1',
-        'default_workflow: native',
-        'native:',
-        '  artifact_root: docs',
-        '  snapshot:',
-        `    include: ["${pattern}"]`,
-        '',
-      ].join('\n'),
-    );
-
-    await expect(readProjectConfig(projectRoot)).rejects.toThrow(expected);
+    const before = await fs.readFile(path.join(projectRoot, '.comet/config.yaml'), 'utf8');
+    expect((await readProjectConfig(projectRoot))?.native).not.toHaveProperty('snapshot');
+    expect(await fs.readFile(path.join(projectRoot, '.comet/config.yaml'), 'utf8')).toBe(before);
   });
 
   it('rejects a non-boolean Ambient Resume setting', async () => {

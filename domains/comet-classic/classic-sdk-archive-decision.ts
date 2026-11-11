@@ -12,6 +12,7 @@ export async function proposeClassicSdkArchive(options: {
   summary: string;
   remote?: string;
   prBaseBranch?: string;
+  deliveryPaths?: string[];
 }): Promise<WorkflowRun> {
   const { projectRoot, change } = options;
   const { run, state, runtime, profile } = await inspectClassicSdkRun(projectRoot, change);
@@ -44,6 +45,7 @@ export async function proposeClassicSdkArchive(options: {
     summary: options.summary.trim(),
     ...(options.remote ? { remote: options.remote.trim() } : {}),
     ...(options.prBaseBranch ? { prBaseBranch: options.prBaseBranch.trim() } : {}),
+    ...(options.deliveryPaths ? { deliveryPaths: options.deliveryPaths } : {}),
   };
   const claimToken = randomUUID();
   const claimed = await runtime.claim({

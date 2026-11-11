@@ -1,0 +1,65 @@
+{
+  "schemaAndEvidence": true,
+  "originalFieldsAndChainsPreserved": true,
+  "reversePatchCheck": true,
+  "oldDeletedFiles": [
+    "test/domains/workflow-contract/workspace-runtime.test.ts",
+    "test/domains/workflow-contract/workspace-runtime-legacy-lock.test.ts",
+    "test/domains/workflow-contract/workspace-runtime-repair-failure.test.ts"
+  ],
+  "nativePathsFileRetained": true,
+  "currentTempPasses": 39,
+  "rootSourceApiPasses": 26,
+  "actualCurrentBuiltPublicCliPasses": 2,
+  "oldEffectiveReferences": [
+    {
+      "id": "workflow-simplification-t07-named-migration",
+      "test": {
+        "file": "test/domains/comet-native/native-paths.test.ts",
+        "namePattern": "migrates only the named legacy runtime without enumerating unrelated changes",
+        "requiredNames": [
+          "Native artifact root safety migrates only the named legacy runtime without enumerating unrelated changes"
+        ]
+      }
+    },
+    {
+      "id": "workflow-simplification-t07-named-migration",
+      "test": {
+        "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+        "namePattern": "retries a transient fence publication observation with a bounded fresh read",
+        "requiredNames": [
+          "workspace runtime resolution and migration retries a transient fence publication observation with a bounded fresh read"
+        ]
+      }
+    },
+    {
+      "id": "workflow-simplification-t07-named-migration",
+      "test": {
+        "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+        "namePattern": "does not reuse an unstable fence after its bounded publication retries",
+        "requiredNames": [
+          "workspace runtime resolution and migration does not reuse an unstable fence after its bounded publication retries"
+        ]
+      }
+    },
+    {
+      "id": "runtime-legacy-migration-meta-lock-confirmation",
+      "test": {
+        "file": "test/domains/workflow-contract/workspace-runtime-legacy-lock.test.ts",
+        "namePattern": "^(?:recovers a legacy migration recovery lock only after the original operation is confirmed stopped|preserves an active migration recovery transaction even when recovery is confirmed)$",
+        "requiredNames": [
+          "recovers a legacy migration recovery lock only after the original operation is confirmed stopped",
+          "preserves an active migration recovery transaction even when recovery is confirmed"
+        ]
+      }
+    }
+  ],
+  "additionalRootChecksPending": [
+    "Apply exact patch then run NativePaths22 + namespace17 formal tests and effective two-case regression selectors"
+  ],
+  "notExecuted": [
+    "Eval",
+    "full suite",
+    "new npm pack/install"
+  ]
+}

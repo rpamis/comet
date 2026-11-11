@@ -1,0 +1,242 @@
+[
+  {
+    "operation": "claim",
+    "request": {
+      "runId": "published-completed-invalid",
+      "actionId": "published-completed-invalid:1",
+      "attempt": 1,
+      "inputHash": "67e5b858b6feb4ebe9cdd756314d22580bba8b56cac8d21104119174b025a8f2",
+      "executorId": "actual-pure-proposal",
+      "sessionId": "actual-pure-proposal",
+      "claimToken": "SIMULATED-CLAIM-published-completed-invalid:1",
+      "context": {
+        "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project",
+        "requestId": "claim-published-completed-invalid:1"
+      }
+    }
+  },
+  {
+    "operation": "record-outcome",
+    "request": {
+      "runId": "published-completed-invalid",
+      "outcome": {
+        "actionId": "published-completed-invalid:1",
+        "attempt": 1,
+        "inputHash": "67e5b858b6feb4ebe9cdd756314d22580bba8b56cac8d21104119174b025a8f2",
+        "claimToken": "SIMULATED-CLAIM-published-completed-invalid:1",
+        "outcomeId": "SIMULATED-AGENT-OUTCOME-published-completed-invalid:1",
+        "status": "succeeded",
+        "output": {
+          "specChanges": [
+            {
+              "capability": "workflow",
+              "operation": "create",
+              "source": "specs/workflow/spec.md"
+            }
+          ],
+          "acceptance": [
+            {
+              "id": "A1",
+              "source": "brief.md",
+              "text": "The original Build business Run resumes."
+            }
+          ],
+          "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+          "semanticSnapshot": {
+            "schema": "comet.native.shape-semantics.v1",
+            "artifacts": [
+              {
+                "source": "brief.md",
+                "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                "auxiliary": []
+              },
+              {
+                "source": "specs/workflow/spec.md",
+                "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                "auxiliary": []
+              }
+            ]
+          },
+          "children": null,
+          "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378"
+        }
+      },
+      "context": {
+        "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project",
+        "requestId": "outcome-published-completed-invalid:1"
+      }
+    },
+    "simulation": "Agent document/report text only; actual published Runtime validates it."
+  },
+  {
+    "operation": "resolve-wait",
+    "request": {
+      "runId": "published-completed-invalid",
+      "waitId": "published-completed-invalid:2",
+      "proposalHash": "885a7a3847ef17985333a27d1513643671c0af1b86f37b5f703375e3558db2e7",
+      "decisionId": "SIMULATED-USER-APPROVED-SHAPE",
+      "choice": "approved",
+      "reason": "SIMULATED USER approval only for the isolated protocol fixture",
+      "context": {
+        "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project",
+        "requestId": "approve-shape"
+      }
+    }
+  },
+  {
+    "operation": "claim",
+    "request": {
+      "runId": "published-completed-invalid",
+      "actionId": "published-completed-invalid:3",
+      "attempt": 1,
+      "inputHash": "eec941dbc535bc6cab29b3830b68323e1fe45fad2809b8a8707190961cb02335",
+      "executorId": "actual-pure-proposal",
+      "sessionId": "actual-pure-proposal",
+      "claimToken": "SIMULATED-CLAIM-published-completed-invalid:3",
+      "context": {
+        "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project",
+        "requestId": "claim-published-completed-invalid:3"
+      }
+    }
+  },
+  {
+    "operation": "record-outcome",
+    "request": {
+      "runId": "published-completed-invalid",
+      "outcome": {
+        "actionId": "published-completed-invalid:3",
+        "attempt": 1,
+        "inputHash": "eec941dbc535bc6cab29b3830b68323e1fe45fad2809b8a8707190961cb02335",
+        "claimToken": "SIMULATED-CLAIM-published-completed-invalid:3",
+        "outcomeId": "SIMULATED-AGENT-OUTCOME-published-completed-invalid:3",
+        "status": "succeeded",
+        "output": {
+          "specChanges": [
+            {
+              "capability": "workflow",
+              "operation": "create",
+              "source": "specs/workflow/spec.md"
+            }
+          ],
+          "acceptance": [
+            {
+              "id": "A1",
+              "source": "brief.md",
+              "text": "The original Build business Run resumes."
+            }
+          ],
+          "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+          "semanticSnapshot": {
+            "artifacts": [
+              {
+                "auxiliary": [],
+                "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                "source": "brief.md"
+              },
+              {
+                "auxiliary": [],
+                "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                "source": "specs/workflow/spec.md"
+              }
+            ],
+            "schema": "comet.native.shape-semantics.v1"
+          },
+          "children": null,
+          "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378"
+        }
+      },
+      "context": {
+        "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project",
+        "requestId": "outcome-published-completed-invalid:3"
+      }
+    },
+    "simulation": "Agent document/report text only; actual published Runtime validates it."
+  },
+  {
+    "operation": "claim",
+    "request": {
+      "runId": "published-completed-invalid",
+      "actionId": "published-completed-invalid:4",
+      "attempt": 1,
+      "inputHash": "65e7703fc78d4a26982d577e0a1589637d1da779654989abfb70b7fb0e7aef1e",
+      "executorId": "SIMULATED-BUILDER",
+      "sessionId": "SIMULATED-BUILDER",
+      "claimToken": "SIMULATED-CLAIM-published-completed-invalid:4",
+      "context": {
+        "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project",
+        "requestId": "claim-published-completed-invalid:4"
+      }
+    }
+  },
+  {
+    "operation": "record-outcome",
+    "request": {
+      "runId": "published-completed-invalid",
+      "outcome": {
+        "actionId": "published-completed-invalid:4",
+        "attempt": 1,
+        "inputHash": "65e7703fc78d4a26982d577e0a1589637d1da779654989abfb70b7fb0e7aef1e",
+        "claimToken": "SIMULATED-CLAIM-published-completed-invalid:4",
+        "outcomeId": "SIMULATED-AGENT-OUTCOME-published-completed-invalid:4",
+        "status": "succeeded",
+        "output": {
+          "response": {
+            "kind": "request-checks",
+            "checks": [
+              {
+                "id": "once",
+                "name": "Current Build check",
+                "executable": "D:\\nodejs\\node.exe",
+                "argv": [
+                  "-e",
+                  "const fs=require('node:fs');fs.appendFileSync(process.argv[1],'once\\n');process.stdout.write('actual-legacy-check-completed\\n')",
+                  "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\actual-node-count"
+                ],
+                "cwdRef": ".",
+                "timeoutMs": 15000,
+                "repeatable": true
+              }
+            ]
+          }
+        }
+      },
+      "context": {
+        "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project",
+        "requestId": "outcome-published-completed-invalid:4"
+      }
+    },
+    "simulation": "Agent document/report text only; actual published Runtime validates it."
+  },
+  {
+    "operation": "claim",
+    "request": {
+      "runId": "published-completed-invalid",
+      "actionId": "published-completed-invalid:5",
+      "attempt": 1,
+      "inputHash": "e7b192b27bd97ebb63bcf1f9694c1fe291014aaa91f6d2312427a45094de774b",
+      "executorId": "comet-native-checks",
+      "sessionId": "comet-native-checks",
+      "claimToken": "SIMULATED-CLAIM-published-completed-invalid:5",
+      "context": {
+        "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project",
+        "requestId": "claim-published-completed-invalid:5"
+      }
+    }
+  }
+]

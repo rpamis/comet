@@ -1,0 +1,135 @@
+{
+  "cases": [
+    {
+      "id": "classic-sdk-stale-workspace-read-identity",
+      "sources": [
+        "report:2026-11-05-pr539-ci-classic-sdk-git-identity",
+        "https://github.com/rpamis/comet/actions/runs/42006054083/job/127173621942",
+        "https://github.com/rpamis/comet/actions/runs/42006054083/job/127173621598"
+      ],
+      "behavior": "A retained Classic SDK store rejects reads after Git identity replacement, including replacement during an awaited read.",
+      "coverageLevel": "runtime",
+      "reproduction": "At ffadb8c1, the original replaced-git checkpoint case resolved the old store read instead of rejecting. The same case passes after retaining the original workspace binding. Mid-read tests replace Git through the real backing read and assert unchanged original Run, projection marker and state document.",
+      "expected": "Both read and readProjection validate their original workspace identity before and after asynchronous projection reads. A newly created store can recover the checkpoint into the new workspace identity.",
+      "forbidden": "Return an old Run through a wrapper newly bound to another Git identity, or rewrite the original store while rejecting the identity change.",
+      "rootCause": "The writable read fast path and readProjection constructed a new read-only wrapper, binding the new workspace identity and bypassing the original store identity check.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-state-recovery.test.ts",
+          "namePattern": "^(?:Classic trusted checkpoint recovery restores Build with its completed Open, evidence and pending Action intact \\(replaced-git\\)|Classic trusted checkpoint recovery rejects Git identity replacement during read without rewriting the original store|Classic trusted checkpoint recovery rejects Git identity replacement during readProjection without rewriting the original store)$",
+          "requiredNames": [
+            "Classic trusted checkpoint recovery restores Build with its completed Open, evidence and pending Action intact (replaced-git)",
+            "Classic trusted checkpoint recovery rejects Git identity replacement during read without rewriting the original store",
+            "Classic trusted checkpoint recovery rejects Git identity replacement during readProjection without rewriting the original store"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-runtime-home.test.ts",
+          "namePattern": "^(?:Classic workspace-local runtime storage rejects an SDK store retained across git init and recovers into the new workspace identity)$",
+          "requiredNames": [
+            "Classic workspace-local runtime storage rejects an SDK store retained across git init and recovers into the new workspace identity"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t17-classic-checkpoint",
+      "sources": [
+        "report:2026-11-08-native-classic-overdesign-audit"
+      ],
+      "behavior": "Classic checkpoint optimization must preserve portable user settings and reject edits to Runtime-owned fields.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Classic checkpoint optimization must preserve portable user settings and reject edits to Runtime-owned fields.",
+      "forbidden": "Repeating the expanded checkpoint comparison, losing the portable projection or skipping its actual consistency lock.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-read-performance.test.ts",
+          "namePattern": "imports user settings once, advances its marker, and still rejects Runtime-owned edits",
+          "requiredNames": [
+            "Classic SDK read work budgets imports user settings once, advances its marker, and still rejects Runtime-owned edits"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-239-bounded-runtime",
+      "behavior": "只读命令与 Hook 的成本受明确工作量边界约束，避免反复读取整个历史。",
+      "status": "covered",
+      "reason": "0.5.0 保留此行为；所列确定性测试直接断言该契约。covered 表示已映射，不表示本次清单审计已执行。",
+      "coverageLayer": "sdk-work-budget",
+      "evidence": [
+        "test/domains/comet-native/native-sdk-read-performance.test.ts",
+        "test/domains/comet-classic/classic-sdk-read-performance.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-read-performance.test.ts",
+          "namePattern": "reads a stable next state once and leaves its projection files untouched",
+          "requiredNames": [
+            "reads a stable next state once and leaves its projection files untouched"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-read-performance.test.ts",
+          "namePattern": "reads stable state once without rewriting either projection",
+          "requiredNames": [
+            "reads stable state once without rewriting either projection"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-432-cli-work-budget",
+      "behavior": "Classic状态和检查读取成本有界，不能为小任务反复全量读取同一份状态。",
+      "status": "covered",
+      "reason": "0.5.0 保留此行为；所列确定性测试直接断言该契约。covered 表示已映射，不表示本次清单审计已执行。",
+      "coverageLayer": "sdk-work-budget",
+      "evidence": [
+        "test/domains/comet-classic/classic-sdk-read-performance.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-read-performance.test.ts",
+          "namePattern": "reads multiple fields in one projection while preserving single-field output|reads stable state once without rewriting either projection",
+          "requiredNames": [
+            "reads multiple fields in one projection while preserving single-field output",
+            "reads stable state once without rewriting either projection"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-487-workspace-binding-screenshot",
+      "behavior": "同一 linked worktree 的 Classic 选择、分支重绑与 Hook 使用一致执行根，不能由 CLI 回到主工作树而误拒工作树写入。",
+      "status": "covered",
+      "reason": "已实际读取原截图：它描述 Hook 取 worktree cwd 而 state select 回主根、导致 bound_branch 不匹配。回归覆盖复制后的本地重绑及默认 SDK 主根发起的 linked worktree 选择/恢复和打包 Hook 路由。",
+      "coverageLayer": "sdk-compat-packaged-hook",
+      "evidence": [
+        "https://github.com/rpamis/comet/issues/487",
+        "https://github.com/user-attachments/assets/5183f9d1-2e14-46b2-9ff2-596cf07e1514",
+        "test/domains/comet-classic/classic-workspace.test.ts",
+        "test/domains/comet-entry/hook-router-runtime.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-workspace.test.ts",
+          "namePattern": "keeps a copied change local when its worktree branch needs rebinding|selects an SDK-owned Classic change in its linked worktree from the primary worktree|recovers an SDK-owned Classic change in a linked worktree from the primary worktree",
+          "requiredNames": [
+            "keeps a copied change local when its worktree branch needs rebinding",
+            "selects an SDK-owned Classic change in its linked worktree from the primary worktree",
+            "recovers an SDK-owned Classic change in a linked worktree from the primary worktree"
+          ]
+        },
+        {
+          "file": "test/domains/comet-entry/hook-router-runtime.test.ts",
+          "namePattern": "routes a linked worktree SDK Classic change through the packaged Hook",
+          "requiredNames": [
+            "routes a linked worktree SDK Classic change through the packaged Hook"
+          ]
+        }
+      ]
+    }
+  ]
+}

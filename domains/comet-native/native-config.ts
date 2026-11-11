@@ -2,13 +2,8 @@ import path from 'path';
 
 import {
   DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES,
-  DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG,
   defaultWorkflowProjectConfig,
-  mergeWorkflowNativeSnapshotExcludes,
-  MAX_WORKFLOW_SNAPSHOT_PATTERN_LENGTH,
-  MAX_WORKFLOW_SNAPSHOT_PATTERN_WILDCARDS,
   mergeWorkflowProjectConfigDocument,
-  normalizeWorkflowSnapshotPattern,
   renderStructuredProjectConfig,
 } from '../workflow-contract/project-config.js';
 import {
@@ -24,19 +19,8 @@ import {
   normalizeArtifactRootRef,
   PROJECT_CONFIG_FILE,
 } from './native-paths.js';
-import type {
-  CometProjectConfig,
-  NativeProjectPaths,
-  NativeSnapshotConfig,
-} from './native-types.js';
-
-export const MAX_NATIVE_SNAPSHOT_PATTERN_LENGTH = MAX_WORKFLOW_SNAPSHOT_PATTERN_LENGTH;
-export const MAX_NATIVE_SNAPSHOT_PATTERN_WILDCARDS = MAX_WORKFLOW_SNAPSHOT_PATTERN_WILDCARDS;
-export const DEFAULT_NATIVE_SNAPSHOT_CONFIG: NativeSnapshotConfig =
-  DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG;
+import type { CometProjectConfig, NativeProjectPaths } from './native-types.js';
 export const DEFAULT_NATIVE_MAX_VERIFY_FAILURES = DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES;
-export const normalizeNativeSnapshotPattern = normalizeWorkflowSnapshotPattern;
-export const mergeNativeSnapshotExcludes = mergeWorkflowNativeSnapshotExcludes;
 
 export function defaultProjectConfig(
   artifactRoot = 'docs',

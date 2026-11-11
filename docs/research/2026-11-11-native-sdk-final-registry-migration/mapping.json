@@ -1,0 +1,706 @@
+{
+  "cases": [
+    {
+      "id": "native-builder-check-result-diagnostic",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-native-sdk-final-registry-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:Native Agent platform verification reports reports the exact invalid Builder field without misleading claim diagnostics: checks\\.result)$",
+          "requiredNames": [
+            "Native Agent platform verification reports reports the exact invalid Builder field without misleading claim diagnostics: checks.result"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-builder-review-evidence-diagnostic",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-native-sdk-final-registry-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:Native Agent platform verification reports reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview\\.evidence)$",
+          "requiredNames": [
+            "Native Agent platform verification reports reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview.evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-builder-review-note-diagnostic",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-native-sdk-final-registry-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:Native Agent platform verification reports reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview\\.note)$",
+          "requiredNames": [
+            "Native Agent platform verification reports reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview.note"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-explicit-git-dependent-refresh",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-native-sdk-final-registry-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:observes a selected Git-index failure after byte-identical staging and preserves one-time history through explicit repair)$",
+          "requiredNames": [
+            "observes a selected Git-index failure after byte-identical staging and preserves one-time history through explicit repair"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-refresh-failed-preflight-recovery",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-native-sdk-final-registry-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:observes a selected Git-index failure after byte-identical staging and preserves one-time history through explicit repair)$",
+          "requiredNames": [
+            "observes a selected Git-index failure after byte-identical staging and preserves one-time history through explicit repair"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-389-child-evidence-retry",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-native-sdk-final-registry-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+          "namePattern": "^(?:Supervisor Child Verifier execution failure preserves a real custom application failure and receipts, advances its sibling, and retries only its review|Supervisor Child Verifier execution failure keeps an unknown verifier bound to its original task and creates no retry Wait)$",
+          "requiredNames": [
+            "Supervisor Child Verifier execution failure preserves a real custom application failure and receipts, advances its sibling, and retries only its review",
+            "Supervisor Child Verifier execution failure keeps an unknown verifier bound to its original task and creates no retry Wait"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-500-cross-shell",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-native-sdk-final-registry-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:keeps original published check history across shells without re-execution or content-proof authority|Native Agent platform verification reports accepts a final result from another shell with a different HTTP_PROXY and unchanged inputs|Native Agent platform verification reports accepts a final result from another shell with a different PATH and unchanged inputs|Native Agent platform verification reports accepts a final result from another shell with a different TEMP and unchanged inputs|Native Agent platform verification reports records an actual nonzero source-changing platform check as failed and returns to Build|A4 continues an Agent-reviewed behavior change from verify and retains only the unaffected one-shot check|A4 continues an Agent-reviewed behavior change from archive and retains only the unaffected one-shot check)$",
+          "requiredNames": [
+            "keeps original published check history across shells without re-execution or content-proof authority",
+            "Native Agent platform verification reports accepts a final result from another shell with a different HTTP_PROXY and unchanged inputs",
+            "Native Agent platform verification reports accepts a final result from another shell with a different PATH and unchanged inputs",
+            "Native Agent platform verification reports accepts a final result from another shell with a different TEMP and unchanged inputs",
+            "Native Agent platform verification reports records an actual nonzero source-changing platform check as failed and returns to Build",
+            "A4 continues an Agent-reviewed behavior change from verify and retains only the unaffected one-shot check",
+            "A4 continues an Agent-reviewed behavior change from archive and retains only the unaffected one-shot check"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-check-no-alias-replay",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-native-sdk-final-registry-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:Native Agent platform verification reports rejects a retired checker alias request without replaying a one-shot platform operation)$",
+          "requiredNames": [
+            "Native Agent platform verification reports rejects a retired checker alias request without replaying a one-shot platform operation"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-verifier-start.test.ts",
+          "namePattern": "^(?:Native Verifier startup receipts rejects the retired Runtime check request without ending the active platform Verifier or losing its Builder reports)$",
+          "requiredNames": [
+            "Native Verifier startup receipts rejects the retired Runtime check request without ending the active platform Verifier or losing its Builder reports"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-awaits-accepted-revalidation",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-native-sdk-final-registry-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "^(?:blocked Verifier recovery command contract archives the original approved result without consuming another Verify failure)$",
+          "requiredNames": [
+            "blocked Verifier recovery command contract archives the original approved result without consuming another Verify failure"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-archive-command.test.ts",
+          "namePattern": "^(?:Native Archive command stop boundaries does not advance accepted-result revalidation past a pending approval boundary|Native Archive command stop boundaries does not advance accepted-result revalidation past a pending evidence boundary)$",
+          "requiredNames": [
+            "Native Archive command stop boundaries does not advance accepted-result revalidation past a pending approval boundary",
+            "Native Archive command stop boundaries does not advance accepted-result revalidation past a pending evidence boundary"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "local-native-supervisor-auto-preparation",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-native-sdk-final-registry-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-application.test.ts",
+          "namePattern": "^(?:transfers a custom Supervisor through public CLI with fixed identity and an interrupted Child|binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate|does not discard an unknown Child when another review requires Shape revision)$",
+          "requiredNames": [
+            "transfers a custom Supervisor through public CLI with fixed identity and an interrupted Child",
+            "binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate",
+            "does not discard an unknown Child when another review requires Shape revision"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+          "namePattern": "^(?:Supervisor Child Verifier execution failure preserves a real custom application failure and receipts, advances its sibling, and retries only its review|Supervisor Child Verifier execution failure uses the same recovery Wait for the built-in Native Supervisor|current fixed custom Supervisor business recovery transfers a fixed custom definition without changing its hash or losing dirty Child work)$",
+          "requiredNames": [
+            "Supervisor Child Verifier execution failure preserves a real custom application failure and receipts, advances its sibling, and retries only its review",
+            "Supervisor Child Verifier execution failure uses the same recovery Wait for the built-in Native Supervisor",
+            "current fixed custom Supervisor business recovery transfers a fixed custom definition without changing its hash or losing dirty Child work"
+          ]
+        }
+      ]
+    }
+  ],
+  "perOriginalEffectiveRequirement": [
+    {
+      "id": "native-builder-check-result-diagnostic",
+      "before": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: checks\\.result",
+          "requiredNames": [
+            "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: checks.result"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:Native Agent platform verification reports reports the exact invalid Builder field without misleading claim diagnostics: checks\\.result)$",
+          "requiredNames": [
+            "Native Agent platform verification reports reports the exact invalid Builder field without misleading claim diagnostics: checks.result"
+          ]
+        }
+      ],
+      "reason": "Preserve the exact checks.result field/allowed-values/rejected-value diagnostic; update the required full name to the current Agent-platform reports suite. No claim diagnostic or original case field is weakened.",
+      "proof": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "fullName": "Native Agent platform verification reports reports the exact invalid Builder field without misleading claim diagnostics: checks.result",
+          "evidence": [
+            "D:/Project/Comet/coverage/native-current-sdk-business-repository-results.json"
+          ],
+          "passed": true
+        }
+      ],
+      "ready": true,
+      "wholeCaseFeatureRemoved": false
+    },
+    {
+      "id": "native-builder-review-evidence-diagnostic",
+      "before": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview\\.evidence",
+          "requiredNames": [
+            "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview.evidence"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:Native Agent platform verification reports reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview\\.evidence)$",
+          "requiredNames": [
+            "Native Agent platform verification reports reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview.evidence"
+          ]
+        }
+      ],
+      "reason": "Preserve the exact A1 acceptance-review evidence array/string diagnostic; only update the observed suite prefix after removing the old checker fixture.",
+      "proof": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "fullName": "Native Agent platform verification reports reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview.evidence",
+          "evidence": [
+            "D:/Project/Comet/coverage/native-current-sdk-business-repository-results.json"
+          ],
+          "passed": true
+        }
+      ],
+      "ready": true,
+      "wholeCaseFeatureRemoved": false
+    },
+    {
+      "id": "native-builder-review-note-diagnostic",
+      "before": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview\\.note",
+          "requiredNames": [
+            "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview.note"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:Native Agent platform verification reports reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview\\.note)$",
+          "requiredNames": [
+            "Native Agent platform verification reports reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview.note"
+          ]
+        }
+      ],
+      "reason": "Preserve the exact A1 concrete review-note diagnostic; only update the observed current full test name.",
+      "proof": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "fullName": "Native Agent platform verification reports reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview.note",
+          "evidence": [
+            "D:/Project/Comet/coverage/native-current-sdk-business-repository-results.json"
+          ],
+          "passed": true
+        }
+      ],
+      "ready": true,
+      "wholeCaseFeatureRemoved": false
+    },
+    {
+      "id": "native-sdk-explicit-git-dependent-refresh",
+      "before": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:refreshes an explicitly selected Git check after byte-identical staging and preserves one-time evidence and approval)$",
+          "requiredNames": [
+            "refreshes an explicitly selected Git check after byte-identical staging and preserves one-time evidence and approval"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:observes a selected Git-index failure after byte-identical staging and preserves one-time history through explicit repair)$",
+          "requiredNames": [
+            "observes a selected Git-index failure after byte-identical staging and preserves one-time history through explicit repair"
+          ]
+        }
+      ],
+      "reason": "Preserve real byte-identical Git-index failure, original once-only effect and prior approval history, refusal to Archive failed evidence, selected rerun and eventual legal Archive. Retire only the removed supplemental Runtime-check port and its no-new-result-approval policy; current explicit revision requires a fresh independent result and approval.",
+      "proof": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "fullName": "observes a selected Git-index failure after byte-identical staging and preserves one-time history through explicit repair",
+          "evidence": [
+            "D:/Project/Comet/coverage/native-current-sdk-business-repository-results.json"
+          ],
+          "passed": true
+        }
+      ],
+      "ready": true,
+      "wholeCaseFeatureRemoved": false
+    },
+    {
+      "id": "native-sdk-refresh-failed-preflight-recovery",
+      "before": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:refreshes an explicitly selected Git check after byte-identical staging and preserves one-time evidence and approval)$",
+          "requiredNames": [
+            "refreshes an explicitly selected Git check after byte-identical staging and preserves one-time evidence and approval"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:observes a selected Git-index failure after byte-identical staging and preserves one-time history through explicit repair)$",
+          "requiredNames": [
+            "observes a selected Git-index failure after byte-identical staging and preserves one-time history through explicit repair"
+          ]
+        }
+      ],
+      "reason": "Preserve the observed failed Git-index result blocking Archive and subsequent selected repair without repeating the unrelated once-only effect. Retire only the old checker latest-receipt preflight/recovery mechanism; the current failed Verifier and explicit repair keep old decisions as history.",
+      "proof": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "fullName": "observes a selected Git-index failure after byte-identical staging and preserves one-time history through explicit repair",
+          "evidence": [
+            "D:/Project/Comet/coverage/native-current-sdk-business-repository-results.json"
+          ],
+          "passed": true
+        }
+      ],
+      "ready": true,
+      "wholeCaseFeatureRemoved": false
+    },
+    {
+      "id": "issue-389-child-evidence-retry",
+      "before": [
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+          "namePattern": "preserves a real custom application failure and receipts, advances its sibling, and retries only its review|keeps an unknown verifier bound to its original task and creates no retry Wait",
+          "requiredNames": [
+            "preserves a real custom application failure and receipts, advances its sibling, and retries only its review",
+            "keeps an unknown verifier bound to its original task and creates no retry Wait"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+          "namePattern": "^(?:Supervisor Child Verifier execution failure preserves a real custom application failure and receipts, advances its sibling, and retries only its review|Supervisor Child Verifier execution failure keeps an unknown verifier bound to its original task and creates no retry Wait)$",
+          "requiredNames": [
+            "Supervisor Child Verifier execution failure preserves a real custom application failure and receipts, advances its sibling, and retries only its review",
+            "Supervisor Child Verifier execution failure keeps an unknown verifier bound to its original task and creates no retry Wait"
+          ]
+        }
+      ],
+      "reason": "Preserve original custom review failure and its claim/candidate, independent sibling progress, no retry of unknown original work, and retry only after the original claim truthfully ends. Retire only managed-check log-digest/stop-proof authority; requiredNames now include the observed describe prefix.",
+      "proof": [
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+          "fullName": "Supervisor Child Verifier execution failure preserves a real custom application failure and receipts, advances its sibling, and retries only its review",
+          "evidence": [
+            "D:/Project/Comet/coverage/native-current-sdk-business-repository-results.json"
+          ],
+          "passed": true
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+          "fullName": "Supervisor Child Verifier execution failure keeps an unknown verifier bound to its original task and creates no retry Wait",
+          "evidence": [
+            "D:/Project/Comet/coverage/native-current-sdk-business-repository-results.json"
+          ],
+          "passed": true
+        }
+      ],
+      "ready": true,
+      "wholeCaseFeatureRemoved": false
+    },
+    {
+      "id": "issue-500-cross-shell",
+      "before": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:Native SDK verification input binding accepts original Runtime checks across shells while reading legacy content-proof fields as history)$",
+          "requiredNames": [
+            "Native SDK verification input binding accepts original Runtime checks across shells while reading legacy content-proof fields as history"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:keeps original published check history across shells without re-execution or content-proof authority|Native Agent platform verification reports accepts a final result from another shell with a different HTTP_PROXY and unchanged inputs|Native Agent platform verification reports accepts a final result from another shell with a different PATH and unchanged inputs|Native Agent platform verification reports accepts a final result from another shell with a different TEMP and unchanged inputs|Native Agent platform verification reports records an actual nonzero source-changing platform check as failed and returns to Build|A4 continues an Agent-reviewed behavior change from verify and retains only the unaffected one-shot check|A4 continues an Agent-reviewed behavior change from archive and retains only the unaffected one-shot check)$",
+          "requiredNames": [
+            "keeps original published check history across shells without re-execution or content-proof authority",
+            "Native Agent platform verification reports accepts a final result from another shell with a different HTTP_PROXY and unchanged inputs",
+            "Native Agent platform verification reports accepts a final result from another shell with a different PATH and unchanged inputs",
+            "Native Agent platform verification reports accepts a final result from another shell with a different TEMP and unchanged inputs",
+            "Native Agent platform verification reports records an actual nonzero source-changing platform check as failed and returns to Build",
+            "A4 continues an Agent-reviewed behavior change from verify and retains only the unaffected one-shot check",
+            "A4 continues an Agent-reviewed behavior change from archive and retains only the unaffected one-shot check"
+          ]
+        }
+      ],
+      "reason": "Preserve original published check history across shells, all three current environment variants, real source-changing nonzero failure returning Build, and explicit implementation revision with original approval/once-only history. Retire only shell/content-fingerprint and synthetic 0.5.0 receipt-upgrade authority; true published history is not relabeled as an older missing-field sample.",
+      "proof": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "fullName": "keeps original published check history across shells without re-execution or content-proof authority",
+          "evidence": [
+            "D:/Project/Comet/coverage/native-current-sdk-business-repository-results.json"
+          ],
+          "passed": true
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "fullName": "Native Agent platform verification reports accepts a final result from another shell with a different HTTP_PROXY and unchanged inputs",
+          "evidence": [
+            "D:/Project/Comet/coverage/native-current-sdk-business-repository-results.json"
+          ],
+          "passed": true
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "fullName": "Native Agent platform verification reports accepts a final result from another shell with a different PATH and unchanged inputs",
+          "evidence": [
+            "D:/Project/Comet/coverage/native-current-sdk-business-repository-results.json"
+          ],
+          "passed": true
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "fullName": "Native Agent platform verification reports accepts a final result from another shell with a different TEMP and unchanged inputs",
+          "evidence": [
+            "D:/Project/Comet/coverage/native-current-sdk-business-repository-results.json"
+          ],
+          "passed": true
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "fullName": "Native Agent platform verification reports records an actual nonzero source-changing platform check as failed and returns to Build",
+          "evidence": [
+            "D:/Project/Comet/coverage/native-current-sdk-business-repository-results.json"
+          ],
+          "passed": true
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "fullName": "A4 continues an Agent-reviewed behavior change from verify and retains only the unaffected one-shot check",
+          "evidence": [
+            "D:/Project/Comet/coverage/native-current-sdk-business-repository-results.json"
+          ],
+          "passed": true
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "fullName": "A4 continues an Agent-reviewed behavior change from archive and retains only the unaffected one-shot check",
+          "evidence": [
+            "D:/Project/Comet/coverage/native-current-sdk-business-repository-results.json"
+          ],
+          "passed": true
+        }
+      ],
+      "ready": true,
+      "wholeCaseFeatureRemoved": false
+    },
+    {
+      "id": "native-check-no-alias-replay",
+      "before": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "Native SDK verification input binding does not replay a one-shot SDK command after the Verifier changes its ID and repeatable flag",
+          "requiredNames": [
+            "Native SDK verification input binding does not replay a one-shot SDK command after the Verifier changes its ID and repeatable flag"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:Native Agent platform verification reports rejects a retired checker alias request without replaying a one-shot platform operation)$",
+          "requiredNames": [
+            "Native Agent platform verification reports rejects a retired checker alias request without replaying a one-shot platform operation"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-verifier-start.test.ts",
+          "namePattern": "^(?:Native Verifier startup receipts rejects the retired Runtime check request without ending the active platform Verifier or losing its Builder reports)$",
+          "requiredNames": [
+            "Native Verifier startup receipts rejects the retired Runtime check request without ending the active platform Verifier or losing its Builder reports"
+          ]
+        }
+      ],
+      "reason": "Preserve actual SDK one-shot counter, original candidate/Builder and same-claim correction, and Compat refusal of a retired check request without changing the active platform task. Retire only SDK/Compat automatic check execution and alias/repeatable-plan replay; no new executor replaces it.",
+      "proof": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "fullName": "Native Agent platform verification reports rejects a retired checker alias request without replaying a one-shot platform operation",
+          "evidence": [
+            "D:/Project/Comet/coverage/native-current-sdk-business-repository-results.json"
+          ],
+          "passed": true
+        },
+        {
+          "file": "test/domains/comet-native/native-verifier-start.test.ts",
+          "fullName": "Native Verifier startup receipts rejects the retired Runtime check request without ending the active platform Verifier or losing its Builder reports",
+          "evidence": [
+            "D:/Project/Comet/coverage/native-adjacent-business-repository-results.json"
+          ],
+          "passed": true
+        }
+      ],
+      "ready": true,
+      "wholeCaseFeatureRemoved": false
+    },
+    {
+      "id": "native-archive-awaits-accepted-revalidation",
+      "before": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "blocked Verifier recovery command contract finishes pending accepted-result revalidation before Archive without consuming another Verify failure",
+          "requiredNames": [
+            "blocked Verifier recovery command contract finishes pending accepted-result revalidation before Archive without consuming another Verify failure"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-archive-command.test.ts",
+          "namePattern": "does not advance accepted-result revalidation past a pending (approval|evidence) boundary",
+          "requiredNames": [
+            "Native Archive command stop boundaries does not advance accepted-result revalidation past a pending approval boundary",
+            "Native Archive command stop boundaries does not advance accepted-result revalidation past a pending evidence boundary"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "^(?:blocked Verifier recovery command contract archives the original approved result without consuming another Verify failure)$",
+          "requiredNames": [
+            "blocked Verifier recovery command contract archives the original approved result without consuming another Verify failure"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-archive-command.test.ts",
+          "namePattern": "^(?:Native Archive command stop boundaries does not advance accepted-result revalidation past a pending approval boundary|Native Archive command stop boundaries does not advance accepted-result revalidation past a pending evidence boundary)$",
+          "requiredNames": [
+            "Native Archive command stop boundaries does not advance accepted-result revalidation past a pending approval boundary",
+            "Native Archive command stop boundaries does not advance accepted-result revalidation past a pending evidence boundary"
+          ]
+        }
+      ],
+      "reason": "Preserve original accepted result, unchanged semantic failure budget, one completed Archive, and the existing pending approval/evidence stop boundaries. Retire only verify.revalidate as a new internal Action; no extra approval or fabricated successful check is introduced.",
+      "proof": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "fullName": "blocked Verifier recovery command contract archives the original approved result without consuming another Verify failure",
+          "evidence": [
+            "D:/Project/Comet/coverage/native-current-sdk-business-repository-results.json"
+          ],
+          "passed": true
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-archive-command.test.ts",
+          "fullName": "Native Archive command stop boundaries does not advance accepted-result revalidation past a pending approval boundary",
+          "evidence": [
+            "C:/Users/BENYM/AppData/Local/Temp/comet-native-final-adjacent-4a1db85e/registry-append-plan/archive-pending-boundaries-results.json"
+          ],
+          "passed": true
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-archive-command.test.ts",
+          "fullName": "Native Archive command stop boundaries does not advance accepted-result revalidation past a pending evidence boundary",
+          "evidence": [
+            "C:/Users/BENYM/AppData/Local/Temp/comet-native-final-adjacent-4a1db85e/registry-append-plan/archive-pending-boundaries-results.json"
+          ],
+          "passed": true
+        }
+      ],
+      "ready": true,
+      "wholeCaseFeatureRemoved": false
+    },
+    {
+      "id": "local-native-supervisor-auto-preparation",
+      "before": [
+        {
+          "file": "test/domains/comet-native/native-application.test.ts",
+          "namePattern": "transfers a custom Supervisor through public CLI with fixed identity and an interrupted Child|binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate|does not discard an unknown Child when another review requires Shape revision",
+          "requiredNames": [
+            "transfers a custom Supervisor through public CLI with fixed identity and an interrupted Child",
+            "binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate",
+            "does not discard an unknown Child when another review requires Shape revision"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+          "namePattern": "preserves a real custom application failure and receipts, advances its sibling, and retries only its review|uses the same recovery Wait for the built-in Native Supervisor|transfers an old fixed custom definition without changing its hash or losing dirty Child work",
+          "requiredNames": [
+            "Supervisor Child Verifier execution failure preserves a real custom application failure and receipts, advances its sibling, and retries only its review",
+            "Supervisor Child Verifier execution failure uses the same recovery Wait for the built-in Native Supervisor",
+            "fixed older custom Supervisor Runs transfers an old fixed custom definition without changing its hash or losing dirty Child work"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "test/domains/comet-native/native-application.test.ts",
+          "namePattern": "^(?:transfers a custom Supervisor through public CLI with fixed identity and an interrupted Child|binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate|does not discard an unknown Child when another review requires Shape revision)$",
+          "requiredNames": [
+            "transfers a custom Supervisor through public CLI with fixed identity and an interrupted Child",
+            "binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate",
+            "does not discard an unknown Child when another review requires Shape revision"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+          "namePattern": "^(?:Supervisor Child Verifier execution failure preserves a real custom application failure and receipts, advances its sibling, and retries only its review|Supervisor Child Verifier execution failure uses the same recovery Wait for the built-in Native Supervisor|current fixed custom Supervisor business recovery transfers a fixed custom definition without changing its hash or losing dirty Child work)$",
+          "requiredNames": [
+            "Supervisor Child Verifier execution failure preserves a real custom application failure and receipts, advances its sibling, and retries only its review",
+            "Supervisor Child Verifier execution failure uses the same recovery Wait for the built-in Native Supervisor",
+            "current fixed custom Supervisor business recovery transfers a fixed custom definition without changing its hash or losing dirty Child work"
+          ]
+        }
+      ],
+      "reason": "Preserve every original Native application transfer, reverse Child review/parent repair and unknown-sibling assertion, plus current original-failure retry and fixed-identity/dirty-work transfer. Retire only the artificial pre-verifier-recovery old-hash/factory migration path; the current fixed application proof is not claimed as a true old fixed-package upgrade.",
+      "proof": [
+        {
+          "file": "test/domains/comet-native/native-application.test.ts",
+          "fullName": "transfers a custom Supervisor through public CLI with fixed identity and an interrupted Child",
+          "evidence": [],
+          "passed": false
+        },
+        {
+          "file": "test/domains/comet-native/native-application.test.ts",
+          "fullName": "binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate",
+          "evidence": [
+            "D:/Project/Comet/coverage/native-parallel-repair-business-repository-results.json"
+          ],
+          "passed": true
+        },
+        {
+          "file": "test/domains/comet-native/native-application.test.ts",
+          "fullName": "does not discard an unknown Child when another review requires Shape revision",
+          "evidence": [],
+          "passed": false
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+          "fullName": "Supervisor Child Verifier execution failure preserves a real custom application failure and receipts, advances its sibling, and retries only its review",
+          "evidence": [
+            "D:/Project/Comet/coverage/native-current-sdk-business-repository-results.json"
+          ],
+          "passed": true
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+          "fullName": "Supervisor Child Verifier execution failure uses the same recovery Wait for the built-in Native Supervisor",
+          "evidence": [
+            "D:/Project/Comet/coverage/native-current-sdk-business-repository-results.json"
+          ],
+          "passed": true
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+          "fullName": "current fixed custom Supervisor business recovery transfers a fixed custom definition without changing its hash or losing dirty Child work",
+          "evidence": [
+            "D:/Project/Comet/coverage/native-current-sdk-business-repository-results.json"
+          ],
+          "passed": true
+        }
+      ],
+      "ready": false,
+      "wholeCaseFeatureRemoved": false
+    }
+  ],
+  "note": "No existing case field or migration segment is rewritten. Exact names include actual describe and parameter rendering. The unrelated historical case fields and additional acceptance states remain unchanged."
+}

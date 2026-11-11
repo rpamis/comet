@@ -1,3 +1,4 @@
+import { requireFileSymlink } from '../../helpers/file-symlink.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -129,7 +130,8 @@ it('rejects a wide dependency symlink and a mismatched package identity', () => 
   expect(() => runtimeDependencyPermissions(sdk)).toThrow(/包名不匹配/);
 });
 
-it('rejects a dependency manifest redirected outside its package', () => {
+it('rejects a dependency manifest redirected outside its package', async (context) => {
+  await requireFileSymlink(context);
   const { root, sdk } = fixture();
   manifest(sdk, { name: 'sdk', dependencies: { dep: '1' } });
   const dep = path.join(sdk, 'node_modules/dep');

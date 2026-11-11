@@ -1,0 +1,106 @@
+{
+  "cases": [
+    {
+      "id": "classic-ci539-interrupted-check-plan",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/classic-worker-targets/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+          "namePattern": "^(?:Classic executed check evidence does not rerun an interrupted check with a corrupted SDK Action binding)$",
+          "requiredNames": [
+            "Classic executed check evidence does not rerun an interrupted check with a corrupted SDK Action binding"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+          "namePattern": "^(?:Classic executed check evidence executes literal argv, preserves child JSON/help flags, and records runtime provenance|Classic executed check evidence does not infer or execute a build when prerequisite configuration is missing|Classic executed check evidence does not fall back to an older success when the latest SDK Action is damaged)$",
+          "requiredNames": [
+            "Classic executed check evidence executes literal argv, preserves child JSON/help flags, and records runtime provenance",
+            "Classic executed check evidence does not infer or execute a build when prerequisite configuration is missing",
+            "Classic executed check evidence does not fall back to an older success when the latest SDK Action is damaged"
+          ]
+        }
+      ]
+    }
+  ],
+  "retiredBehaviors": [
+    {
+      "id": "classic-ci539-interrupted-check-plan",
+      "title": "preserves and reruns an interrupted check instead of inferring another build",
+      "body": "it('preserves and reruns an interrupted check instead of inferring another build', async () => {\n    const changeDir = path.join(root, 'openspec', 'changes', 'demo');\n    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] implement\\n');\n    await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\\n');\n    await cli('state', 'set', 'demo', 'isolation', 'current');\n    const stateFile = path.join(changeDir, '.comet.yaml');\n    await fs.writeFile(\n      stateFile,\n      (await fs.readFile(stateFile, 'utf8')).replace('phase: open', 'phase: build'),\n    );\n    await fs.writeFile(\n      path.join(root, 'package.json'),\n      JSON.stringify({\n        scripts: {\n          build: \"node -e \\\"require('fs').writeFileSync('unexpected-build', 'yes')\\\"\",\n        },\n      }),\n    );\n    // An incomplete input snapshot retains the reserved plan without executing it.\n    // Guard must not replace that deliberate plan with an inferred build.\n    await fs.mkdir(path.join(root, 'linked-dir'));\n    await fs.symlink(\n      path.join(root, 'linked-dir'),\n      path.join(root, 'alias-link'),\n      process.platform === 'win32' ? 'junction' : 'dir',\n    );\n    const check = await cli(\n      'check',\n      'run',\n      'demo',\n      'build',\n      '--local',\n      '--',\n      process.execPath,\n      'check.cjs',\n    );\n    expect(check.exitCode).not.toBe(0);\n    expect(`${check.stdout ?? ''}${check.stderr ?? ''}`).toContain('check-policy.json');\n    const guard = await cli('guard', 'demo', 'build');\n    expect(guard.exitCode).not.toBe(0);\n    expect(`${guard.stdout ?? ''}${guard.stderr ?? ''}`).toContain('did not complete');\n    expect(`${guard.stdout ?? ''}${guard.stderr ?? ''}`).toContain('comet check rerun demo build');\n    await expect(fs.stat(path.join(root, 'unexpected-build'))).rejects.toMatchObject({\n      code: 'ENOENT',\n    });\n\n    await fs.rm(path.join(root, 'alias-link'), { recursive: true, force: true });\n    const rerun = await cli('check', 'rerun', 'demo', 'build');\n    expect(rerun.exitCode, rerun.stderr).toBe(0);\n  });",
+      "actualPreviousFile": "docs/research/2026-11-08-content-proof-removal-tests.json",
+      "actualPreviousSnapshotHash": "d4193e502923805169034e5241a318e1d3e2f1ab380c2c1aa97d31f5e71f32b9",
+      "scope": "Snapshot-based incomplete command reservation and automatic rerun only."
+    }
+  ],
+  "retainedTargets": [
+    {
+      "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+      "namePattern": "^(?:Classic executed check evidence does not rerun an interrupted check with a corrupted SDK Action binding)$",
+      "requiredNames": [
+        "Classic executed check evidence does not rerun an interrupted check with a corrupted SDK Action binding"
+      ]
+    }
+  ],
+  "snapshotOrigins": [
+    {
+      "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+      "origin": "previous-tail evidence.tests",
+      "artifact": "docs/research/2026-11-08-content-proof-removal-tests.json",
+      "sha256": "d4193e502923805169034e5241a318e1d3e2f1ab380c2c1aa97d31f5e71f32b9"
+    }
+  ],
+  "retainedAssertions": [
+    "Original corrupted claim/input Action binding rejects wrong-token outcome and preserves the exact original claimed Run",
+    "No inferred replacement build is executed",
+    "Platform command argv is returned without Runtime execution; explicit actual failed check report cannot reuse older success"
+  ],
+  "currentExecution": {
+    "file": "C:/Users/BENYM/AppData/Local/Temp/classic-worker-target-metadata-20261111/current-precise-selectors-results.json",
+    "passed": 8,
+    "failed": 0,
+    "notSelected": 29,
+    "targets": [
+      {
+        "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+        "fullName": "Classic executed check evidence does not rerun an interrupted check with a corrupted SDK Action binding",
+        "title": "does not rerun an interrupted check with a corrupted SDK Action binding"
+      },
+      {
+        "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+        "fullName": "Classic executed check evidence executes literal argv, preserves child JSON/help flags, and records runtime provenance",
+        "title": "executes literal argv, preserves child JSON/help flags, and records runtime provenance"
+      },
+      {
+        "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+        "fullName": "Classic executed check evidence does not infer or execute a build when prerequisite configuration is missing",
+        "title": "does not infer or execute a build when prerequisite configuration is missing"
+      },
+      {
+        "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+        "fullName": "Classic executed check evidence does not fall back to an older success when the latest SDK Action is damaged",
+        "title": "does not fall back to an older success when the latest SDK Action is damaged"
+      }
+    ]
+  },
+  "currentWholeFiles": [
+    {
+      "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+      "sha256": "ab8b0df4b40923715cb26cea452010acfacc0e2161a2183e53c302a8d3f86a01"
+    }
+  ],
+  "noEdits": [
+    "Product source",
+    "Test source",
+    "Current registry",
+    "Frozen historical registry"
+  ],
+  "notExecuted": [
+    "Repository full suite",
+    "Build",
+    "Model Eval",
+    "Real platform Hook/install release"
+  ]
+}

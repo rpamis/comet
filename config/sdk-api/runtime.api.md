@@ -244,6 +244,7 @@ export interface FileRuntimeStoreOptions {
     mirroredRevisionPaths?: readonly 'run.revision'[];
     // (undocumented)
     rootDir: string;
+    singleWriter?: true;
     // (undocumented)
     writerProtocol?: 'application-holder-v1';
 }
@@ -374,7 +375,7 @@ export interface RecordRuntimeEvidence extends RunCommand {
 }
 
 // @public (undocumented)
-export function repairFileRuntimeStoreLock(options: Pick<FileRuntimeStoreOptions, 'rootDir'>, runId: string, token: string, confirmedOwnerStopped?: boolean): Promise<"removed" | "changed" | "missing" | "blocked">;
+export function repairFileRuntimeStoreLock(options: Pick<FileRuntimeStoreOptions, 'rootDir'>, runId: string, token: string, confirmedOwnerStopped?: boolean): Promise<"changed" | "removed" | "missing" | "blocked">;
 
 // @public (undocumented)
 export interface ResolveRuntimeWait extends RunCommand {

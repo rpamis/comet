@@ -1,0 +1,31 @@
+{
+  "acceptanceChange": {
+    "authorization": "report:2026-11-11-cli-owned-timeout-cleanup-acceptance",
+    "userReply": "按建议调整验收，保留真实清理确认",
+    "retracted": "Fixed 500ms after-deadline absence of side effects; this is an explicitly approved change, not an equivalent timing assertion.",
+    "preserved": [
+      "5000ms command timeout",
+      "Owner remains blocked while the real command and descendant stop",
+      "Heartbeat stops",
+      "Owner receives timeout and confirmed=true",
+      "All existing unconfirmed termination and PID reuse rejection cases"
+    ]
+  },
+  "cases": [
+    {
+      "id": "owned-command-timeout-independent-deadline",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-11-cli-owned-timeout-cleanup-acceptance",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/second-full-suite-followup/approved-timeout/README.zh.md",
+      "tests": [
+        {
+          "file": "test/platform/process/owned-command-termination.test.ts",
+          "namePattern": "^keeps its deadline when the owner event loop cannot run its timeout timer$",
+          "requiredNames": [
+            "keeps its deadline when the owner event loop cannot run its timeout timer"
+          ]
+        }
+      ]
+    }
+  ]
+}

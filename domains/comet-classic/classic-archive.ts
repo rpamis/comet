@@ -48,7 +48,7 @@ import { classicSdkEntryData } from './classic-sdk-output.js';
 import { findClassicSdkWorkspace } from './classic-sdk-status.js';
 import { appendClassicStateEvent } from './classic-state-events.js';
 import { resolveClassicStateFile } from './classic-state-file.js';
-import { readClassicState, withClassicStateLock, writeClassicState } from './classic-store.js';
+import { readClassicState, withClassicStateMutation, writeClassicState } from './classic-store.js';
 import { applyClassicTransition } from './classic-transitions.js';
 export { annotatedMarkdown } from './classic-archive-annotation.js';
 
@@ -464,7 +464,7 @@ export const classicArchiveCommand: ClassicCommandHandler = withProjectContext(a
         'Classic change runtime directory',
       );
       const actionId = `classic-archive:${change}`;
-      const recovering = await withClassicStateLock(changeDir, async () => {
+      const recovering = await withClassicStateMutation(changeDir, async () => {
         const runtime = await ensureClassicRuntimeRun(changeDir);
         if (runtime.classic.phase !== 'archive' || runtime.classic.verifyResult !== 'pass') {
           throw new ArchiveFailure(
@@ -594,7 +594,7 @@ export const classicArchiveCommand: ClassicCommandHandler = withProjectContext(a
         );
       }
 
-      await withClassicStateLock(archiveDir, async () => {
+      await withClassicStateMutation(archiveDir, async () => {
         const archivedProjection = await readClassicState(archiveDir);
         if (!archivedProjection.classic || !archivedProjection.run) {
           throw new ArchiveFailure(red('  [FAIL] archived state projection is incomplete'));

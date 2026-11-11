@@ -1,0 +1,29 @@
+import { it, expect, vi } from 'vitest';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import * as contained from 'D:/Project/Comet/domains/workflow-contract/contained-atomic-write.js';
+import {createFileRuntimeStore,createRuntime,defineWorkflow} from 'D:/Project/Comet/domains/engine/runtime.js';
+it('demonstrates why CLI owned asynchronous completion and cancel keep the default SDK commit lock', async()=>{
+ const rootDir=await fs.mkdtemp(path.join(os.tmpdir(),'owned-cancel-probe-'));
+ let finish!:()=>void, entered!:()=>void;
+ const work=new Promise<void>(r=>finish=r),claimed=new Promise<void>(r=>entered=r);
+ const workflow=defineWorkflow({id:'owned',version:'1',entry:'work',steps:{work:{type:'call_tool',ref:'owned-task',retry:'reconcile'}},transitions:[]});
+ const store=createFileRuntimeStore({rootDir,singleWriter:true});
+ const runtime=createRuntime({workflows:[workflow],store,executors:[{id:'owned',capabilities:[],supports:()=>true,execute:async()=>{entered();await work;return {status:'succeeded',output:{done:true}};}}]});
+ const run=await runtime.start({runId:'owned',workflow:{id:'owned',version:'1'},input:{}});
+ const executing=runtime.execute({runId:run.runId,actionId:run.actions[0].id,executorId:'owned'}).then(value=>({value}),error=>({error:String(error)}));
+ await claimed;
+ const gates:(()=>void)[]=[]; const enteredGates:(()=>void)[]=[];
+ const original=contained.atomicWriteContainedText;
+ const spy=vi.spyOn(contained,'atomicWriteContainedText').mockImplementation(async(...args)=>{if(path.basename(args[0])==='checkpoint.json'){await new Promise<void>(r=>{gates.push(r);enteredGates.splice(0).forEach(fn=>fn());});}return original(...args);});
+ const until=async(count:number)=>{while(gates.length<count)await new Promise<void>(r=>enteredGates.push(r));};
+ try{
+ const cancelling=runtime.cancel({runId:run.runId,reason:'SIMULATED user cancels platform-owned asynchronous task'});
+ await until(1);finish();await until(2);
+ gates[0]();const cancelled=await cancelling;expect(cancelled.status).toBe('cancelled');
+ gates[1]();const completion=await executing;const actual=await store.read(run.runId);
+ await fs.writeFile('C:/Users/BENYM/AppData/Local/Temp/comet-single-writer-core-20261111/owned-cancel-unsafe-singlewriter-evidence.json',JSON.stringify({boundary:'deterministic SDK Promise executor only; no Eval/model/container started',misuse:'singleWriter:true used with two concurrent controllers',cancelledStatus:cancelled.status,completionError:'error'in completion?completion.error:null,actualStatus:actual?.status,actualActionStatus:actual?.actions?.[0]?.status,sourceRoutes:['domains/workflow-creation/creator.ts creator.evaluate awaits runWorkflowApplicationEval','app/commands/creator.ts creatorDispatchCommand permits cancel']},null,2));
+ expect(actual?.status).not.toBe('cancelled');
+ }finally{spy.mockRestore();gates.forEach(fn=>fn());finish();await fs.rm(rootDir,{recursive:true,force:true});}
+});

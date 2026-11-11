@@ -97,18 +97,22 @@ function watchWrites() {
 }
 
 describe('Classic SDK read-only diagnostics', () => {
-  it('reads a current writable projection without writes and repairs only stale projections', async () => {
-    const { root, backing, markerFile } = await fixture();
-    const store = createClassicSdkStateStore(root, { store: backing });
-    const expected = await backing.read('demo');
+  it('reads current state without writes and never rebuilds a retired projection marker', async () => {
+    const { root, backing, markerFile } = await fixture(),
+      store = createClassicSdkStateStore(root, { store: backing }),
+      expected = await backing.read('demo');
     expect(await store.read('demo')).toEqual(expected);
     const writes = watchWrites();
     expect(await store.read('demo')).toEqual(expected);
     for (const write of writes) expect(write).not.toHaveBeenCalled();
     vi.restoreAllMocks();
+    await fs.mkdir(path.dirname(markerFile), { recursive: true });
+    await fs.writeFile(markerFile, '{"revision":-1}');
     await fs.rm(markerFile);
+    const before = await snapshot(root);
     expect(await store.read('demo')).toEqual(expected);
-    expect(JSON.parse(await fs.readFile(markerFile, 'utf8')).revision).toBe(expected!.revision);
+    expect(await snapshot(root)).toEqual(before);
+    await expect(fs.access(markerFile)).rejects.toMatchObject({ code: 'ENOENT' });
   });
   it('reads the existing Run once without locks, directories, projection writes or CAS', async () => {
     const { root, backing, store, stateFile } = await fixture();
@@ -140,10 +144,17 @@ describe('Classic SDK read-only diagnostics', () => {
   it('validates a matching state in memory without recreating the absent marker directory', async () => {
     const { root, store, markerFile, backing } = await fixture();
     const expected = await backing.read('demo');
-    await fs.rm(path.dirname(markerFile), { recursive: true });
+    const markerDirectory = path.dirname(markerFile);
+    await expect(fs.access(markerDirectory)).rejects.toMatchObject({ code: 'ENOENT' });
+    const runtimeRoot = resolveWorkspaceRuntimeRootSync(root);
     const before = await snapshot(root);
+    const beforeRuntime = await snapshot(runtimeRoot);
+    const writes = watchWrites();
     expect(await store.read('demo')).toEqual(expected);
+    for (const write of writes) expect(write).not.toHaveBeenCalled();
     expect(await snapshot(root)).toEqual(before);
+    expect(await snapshot(runtimeRoot)).toEqual(beforeRuntime);
+    await expect(fs.access(markerDirectory)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it.each(['run', 'state', 'settings', 'checkpoint'] as const)(
@@ -154,23 +165,30 @@ describe('Classic SDK read-only diagnostics', () => {
       else if (problem === 'state') await fs.rm(stateFile);
       else {
         const source = await fs.readFile(stateFile, 'utf8');
+        const document = parseDocument(source);
+        document.set('run_checkpoint', { schema: 'stale' });
         await fs.writeFile(
           stateFile,
           problem === 'settings'
             ? source.replace(/^language: en$/mu, 'language: zh-CN')
-            : `${source}run_checkpoint: { schema: stale }\n`,
+            : document.toString(),
         );
       }
       const before = await snapshot(root);
       const writes = watchWrites();
-      await expect(store.read('demo')).rejects.toThrow(/comet state next demo --json/u);
+      await expect(store.read('demo')).rejects.toThrow(
+        problem === 'checkpoint'
+          ? /Portable Run checkpoint.*invalid|invalid.*checkpoint/i
+          : /comet state next demo --json/u,
+      );
       for (const write of writes) expect(write).not.toHaveBeenCalled();
       expect(await snapshot(root)).toEqual(before);
     },
   );
 
-  it('rejects Runtime-owned state edits and invalid marker revisions without writes', async () => {
-    const { root, store, stateFile, markerFile } = await fixture();
+  it('rejects Runtime-owned state edits without writes and ignores a retired projection marker', async () => {
+    const { root, store, stateFile, markerFile, backing } = await fixture(),
+      expected = await backing.read('demo');
     await createClassicSdkStateStore(root).read('demo');
     const source = await fs.readFile(stateFile, 'utf8');
     await fs.writeFile(stateFile, source.replace(/^phase: open$/mu, 'phase: archive'));
@@ -178,10 +196,12 @@ describe('Classic SDK read-only diagnostics', () => {
     await expect(store.read('demo')).rejects.toThrow(/Runtime-owned field/u);
     expect(await snapshot(root)).toEqual(before);
     await fs.writeFile(stateFile, source);
-    const marker = JSON.parse(await fs.readFile(markerFile, 'utf8'));
-    await fs.writeFile(markerFile, JSON.stringify({ ...marker, revision: -1 }));
+    await fs.mkdir(path.dirname(markerFile), { recursive: true });
+    const retired = '{"revision":-1}';
+    await fs.writeFile(markerFile, retired);
     before = await snapshot(root);
-    await expect(store.read('demo')).rejects.toThrow(/projection marker is invalid/u);
+    expect(await store.read('demo')).toEqual(expected);
+    expect(await fs.readFile(markerFile, 'utf8')).toBe(retired);
     expect(await snapshot(root)).toEqual(before);
   });
 

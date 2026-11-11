@@ -11,7 +11,6 @@ import {
   type DispatchResult,
 } from './native-cli-shared.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
-import { migrateNativeLegacyChangeToPortable } from './native-portable-migration-runtime.js';
 import {
   disassociateNativePortableCapability,
   isNativePortableChange,
@@ -144,7 +143,19 @@ export async function nativeSpecCommand(
 
   const { paths } = await configuredPaths(projectRoot);
   if (!(await isNativePortableChange(paths, name))) {
-    await migrateNativeLegacyChangeToPortable({ paths, name });
+    return {
+      command: 'spec remove',
+      exitCode: 65,
+      data: {
+        change: name,
+        migrationRequired: true,
+        repairCommand: `comet native doctor ${name} --repair`,
+      },
+      error: {
+        code: 'invalid-data',
+        message: `Native change ${name} requires explicit business import; run comet native doctor ${name} --repair`,
+      },
+    };
   }
   const state = await markNativePortableSpecRemoval({ paths, name, capability });
   return success(

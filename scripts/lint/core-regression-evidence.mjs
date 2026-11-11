@@ -64,7 +64,12 @@ export function createCoreRegressionExecutionPlan(entries, options = {}) {
     throw new Error('Invalid single-platform core execution plan');
   const groups = entries.map((entry) => ({
     id: entry.id,
-    platform: options.singlePlatform ?? (entry.id === WINDOWS_GROUP ? 'win32' : 'linux'),
+    platform:
+      options.singlePlatform ??
+      (entry.id === WINDOWS_GROUP ||
+      entry.caseIds?.includes('classic-short-timeout-supervisor-startup')
+        ? 'win32'
+        : 'linux'),
   }));
   return {
     schema: 'comet.core-regression-plan.v1',

@@ -1,0 +1,20 @@
+# Native 十文件测试登记迁移草案
+
+授权来源：`report:2026-11-10-agent-platform-execution`。用户要求普通工作流撤下受管检查执行器、进程监管/停止回执及专用快照恢复流程，同时保留批准、任务、验收和Archive业务；升级保留旧业务数据。本文只记录可审计的测试迁移草案，不授权恢复已撤下执行器。
+
+范围为六个旧light文件（agent-content、cli-v4、doctor、doctor-v4、guards、progress-checkpoint）和四个adjacent文件（portable-runtime、portable-recovery、verifier-start、v4-regression-eval）。旧10文件完整正文、内容摘要、原登记及当前差异完整保存在同名目录的registry/tests/mapping/tests.patch证据中。摘要仅复用现有workflow-regressions迁移证据格式，不进入产品Runtime、不新增业务指纹。
+
+本草案不改原ID、来源、行为或原tests字段；仅给已具备逐requiredName行为及实际GREEN证据的case追加testMigration；已有链通过末端supersededBy追加。新增配置草案、JSON Patch和append-plan均留Temp，根Agent须按case ID及原链比对合并，禁止用整份草案覆盖并发登记修改。
+
+当前88个触及范围的有效case（72增量、16历史）中，7个具备本研究核对的完整selector证据：native-agent-edit-continuation、native-ci539-lost-overlay-verifier-result、native-portable-explicit-interrupted-check-retry、native-v4-workspace-isolation-discovery、issue-188-evidence、native-240-real-lifecycle、issue-501-generated-inputs。其中只有纯受管检查中断重试case标feature-removed；其余均tests-moved并逐断言说明旧机制退休，不能把混合case整体feature-removed。
+
+content矩阵已补齐五个独立行为：generated Runtime正常编辑续行、parent目录alias续行、真实失败报告编辑后仍失败、先pass再实际Node7后显式revise且禁止Archive/不重放、Agent明确复用一次原Node0报告到新candidate但仍由另一Verifier完整验收再用户批准归档。post-pass与reuse分别仅使用coverage/native-late-agent-failure-results.json、coverage/native-prior-report-repair-results.json实际passed那一项，绝不把未选择项当通过。不存在旧fingerprint/reusable/checkreceipt执行机制仍被验证的声明。
+
+当前原runtime受信任结果混合case迁至平台Agent执行普通Node、Builder身份冒充Verifier拒绝且state bytes不变、完整独立结果写报告、用户接受前Archive拒绝、当前stateVersion明确接受的精确selector。Verifier overlay丢失case保留原平台task/claim/candidate正常只读观察，以及仅显式原session失败回报才能登记失败/显式retry；旧machine文件不再决定任务状态。Workspace两个case保留实际第二change隔离与原artifact缺失仍保留owner断言。
+
+其余81个case保持原登记不动，pending逐requiredName写明原因：范围外旧selector没有本研究可核对的当前GREEN；旧CLI unborn-HEAD雷达与真实branch保护不同；corrupt-overlay恢复旧路径与当前正常输出大小边界不能混同；旧Doctor pid-only unknown记录的明确确认半业务不能只靠live SQLite writer样本宣称等价。对这些case即使范围内部分目标已GREEN，也不把整case写成已完成。
+
+真实执行证据来自已存在JSON报告，本轮只读取/归档并做schema及证据一致性静态验证，没有再跑普通用例、模型、容器或Eval。单元/域API、公开CLI/生成bundle证据分别保留；真实平台Hook、模型遵循和全量等未执行层级不改写成通过。本草案没有全量通过声明。
+
+证据index只标实际status=passed，精确requiredNames使用报告fullName。完整逐旧requiredName映射和pending列表附在mapping.json；其schema cases条目严格只含id/kind/authorization/record/tests，符合现有校验器。根Agent最终Review须核对旧正文、原业务范围和未决项；不能把静态schema通过当业务等价证明。
+

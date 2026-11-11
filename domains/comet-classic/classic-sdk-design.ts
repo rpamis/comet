@@ -17,7 +17,7 @@ import {
 } from './classic-sdk-application.js';
 import { inspectClassicSdkRun } from './classic-sdk-status.js';
 import type { ClassicState } from './classic-state.js';
-import { withClassicStateLock } from './classic-store.js';
+import { withClassicStateMutation } from './classic-store.js';
 import { assignClassicTaskIds } from './classic-tasks.js';
 
 async function assertDesignProposalSourcesCurrent(options: {
@@ -110,7 +110,7 @@ export async function proposeClassicSdkDesign(options: {
   if (!action) throw new Error('Classic SDK Run has no pending Design proposal Action');
   const input = run.input as { changeDir: string };
   // 先稳定协调身份，再固定设计来源；Build 读取任务 ID 不应触发重复设计审批。
-  await withClassicStateLock(path.join(projectRoot, input.changeDir), async () => {
+  await withClassicStateMutation(path.join(projectRoot, input.changeDir), async () => {
     const tasksFile = path.join(input.changeDir, 'tasks.md');
     const source = await readClassicProjectFile(projectRoot, tasksFile, {
       label: 'Classic task authority',

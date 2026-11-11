@@ -1,0 +1,48 @@
+diff --git a/test/domains/comet-native/native-status-cancellation-concurrency.test.ts b/test/domains/comet-native/native-status-cancellation-concurrency.test.ts
+index abd896d4..43dd09d9 100644
+--- a/test/domains/comet-native/native-status-cancellation-concurrency.test.ts
++++ b/test/domains/comet-native/native-status-cancellation-concurrency.test.ts
+@@ -31,19 +31,21 @@ afterEach(async () => {
+   await fs.rm(root, { recursive: true, force: true });
+ });
+ 
+-it('limits cancellation checks to four across workspaces and waits for every check', async () => {
++it('limits local cancellation checks to four, waits for every check, and does not scan other workspaces', async () => {
+   const secondary = path.join(root, 'secondary');
+   await fs.mkdir(secondary);
+   await writeProjectConfig(secondary, defaultProjectConfig('docs', 'en'));
+-  vi.spyOn(worktrees, 'listGitWorktrees').mockReturnValue([
++  const otherWorkspaces = vi.spyOn(worktrees, 'listGitWorktrees').mockReturnValue([
+     { root, branch: 'main', detached: false },
+     { root: secondary, branch: 'secondary', detached: false },
+   ]);
+   const names = ['a', 'b', 'c', 'd', 'e', 'f'];
+-  vi.spyOn(history, 'listNativeSdkHistoryPartitions').mockImplementation(async (projectRoot) => ({
+-    active: projectRoot === root ? names.slice(0, 3) : names.slice(3),
+-    history: [],
+-  }));
++  const partitions = vi
++    .spyOn(history, 'listNativeSdkHistoryPartitions')
++    .mockImplementation(async (projectRoot) => ({
++      active: projectRoot === root ? names : ['foreign-run'],
++      history: [],
++    }));
+   const gates = new Map(names.map((name) => [name, deferred()]));
+   let active = 0;
+   let peak = 0;
+@@ -79,10 +81,12 @@ it('limits cancellation checks to four across workspaces and waits for every che
+     root,
+     root,
+     root,
+-    secondary,
+-    secondary,
+-    secondary,
++    root,
++    root,
++    root,
+   ]);
++  expect(otherWorkspaces).not.toHaveBeenCalled();
++  expect(partitions).toHaveBeenCalledExactlyOnceWith(root);
+ });
+ 
+ it.each([false, true])(

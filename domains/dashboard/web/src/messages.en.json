@@ -2563,5 +2563,13 @@
   "本地目标": "Local target",
   "每个任务运行次数": "Runs per task",
   "默认不限制总时长，可手动停止；轮数上限仍生效。": "No total time limit by default. You can stop manually; the round limit still applies.",
-  "0 表示不限时；正数表示自行设置的总时限。": "Use 0 for no time limit, or a positive number to set a total time limit."
+  "0 表示不限时；正数表示自行设置的总时限。": "Use 0 for no time limit, or a positive number to set a total time limit.",
+  "业务任务已领取": "Business task claimed",
+  "当前无待领取任务": "No task awaiting claim",
+  "任务由 Agent 平台执行": "Tasks run on the Agent platform",
+  "业务任务状态不可读": "Business task state is unreadable",
+  "已领取任务": "Task claimed",
+  "任务状态": "Task status",
+  "业务检查点": "Business checkpoint",
+  "任务来源": "Task source"
 }

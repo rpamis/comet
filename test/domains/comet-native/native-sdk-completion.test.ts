@@ -2,17 +2,19 @@ import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import { inspectNativeSdkRun } from '../../../domains/comet-native/native-runtime-ownership.js';
 import { settleNativeSdkCompletion } from '../../../domains/comet-native/native-sdk-completion-cleanup.js';
+import * as selectionModule from '../../../domains/workflow-contract/current-selection.js';
 import { readCometCurrentSelection } from '../../../domains/workflow-contract/current-selection.js';
 import type { WorkflowRun } from '../../../domains/engine/runtime.js';
 
 const roots: string[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
@@ -65,26 +67,18 @@ describe('Native SDK completion selection release', () => {
     expect((await readCometCurrentSelection(f.root)).status).toBe('selected');
   });
 
-  it('surfaces a pending release instead of hiding a blocked mutation lock', async () => {
+  it('surfaces a failed selection release and repairs it without changing an unrelated selection', async () => {
     const f = await fixture();
-    const paths = await nativeProjectPaths(
-      f.root,
-      (f.completedRun.input as { artifactRootRef: string }).artifactRootRef,
-    );
-    await fs.mkdir(paths.locksDir, { recursive: true });
-    await fs.writeFile(
-      path.join(paths.locksDir, 'root-move.lock'),
-      JSON.stringify({
-        id: 'controlled-foreign-root',
-        pid: 2147483647,
-        hostname: 'controlled-foreign-host',
-        createdAt: new Date().toISOString(),
-        operation: 'Controlled root move interruption',
-      }),
-    );
-
+    const selected = await readCometCurrentSelection(f.root);
+    const release = vi
+      .spyOn(selectionModule, 'clearCometCurrentSelectionIf')
+      .mockRejectedValueOnce(new Error('SIMULATED selection publication failure'));
     await expect(
       settleNativeSdkCompletion({ projectRoot: f.root, run: f.completedRun }),
     ).rejects.toThrow(/current selection release remains pending/);
+    expect(await readCometCurrentSelection(f.root)).toEqual(selected);
+    release.mockRestore();
+    await settleNativeSdkCompletion({ projectRoot: f.root, run: f.completedRun });
+    expect((await readCometCurrentSelection(f.root)).status).toBe('missing');
   });
 });

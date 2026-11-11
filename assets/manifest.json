@@ -6,6 +6,7 @@
     "comet/reference/change-walkthrough.md",
     "comet/reference/host-check.md",
     "comet/reference/task-learning.md",
+    "comet/reference/platform-execution.md",
     "comet/agents/openai.yaml",
     "comet-classic/SKILL.md",
     "comet-classic/reference/sdk-methods.md",

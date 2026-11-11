@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import { execFileSync } from 'child_process';
 import os from 'os';
 import path from 'path';
+import { requireFileSymlink } from '../../helpers/file-symlink.js';
 
 import {
   assertClassicLayoutReadable,
@@ -356,9 +357,10 @@ describe('Classic project discovery boundaries', () => {
     },
   );
 
-  it.each(['.comet', '.comet/config.yaml'])(
+  it.for(['.comet', '.comet/config.yaml'])(
     'rejects a dangling %s link instead of selecting a parent project',
-    async (relative) => {
+    async (relative, context) => {
+      if (relative === '.comet/config.yaml') await requireFileSymlink(context);
       const parent = await project();
       const child = path.join(parent, 'child');
       const nested = path.join(child, 'src');

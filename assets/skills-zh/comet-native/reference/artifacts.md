@@ -21,13 +21,13 @@
 
 Agent 编辑 brief、新能力或旧格式的完整目标规格、关联能力的 `delta.yaml` 和 Supervisor Change 的 `children.yaml`。关联能力只维护 Delta，由 Runtime 在准备 Shape 时生成完整目标规格；生成结果仍作为正式材料供用户确认与 Verifier 核对。`capability-association.yaml` 由 Runtime 创建并维护；`comet-state.yaml` 与 `verification.md` 由 Runtime 管理，Runtime 第一次接受 Verifier 结果后生成报告。
 
-当前 Runtime 的本机数据保存在用户 Comet 数据目录，按 checkout 和 Git worktree 隔离。默认数据根为 `~/.comet`，可用 `COMET_DATA_DIR` 指定工作区外的绝对路径；不能设为项目或项目子目录。Native 的本机状态、日志、锁和短期事务位于 Runtime 返回的 `runtimeDir`，由 Runtime 创建、迁移和修复。项目内的 `.comet/runtime/native/` 是旧版本布局；发现旧锁、未完成写入或迁移阻塞时，按 Runtime 诊断恢复，不手工搬移或删除。
+当前 Runtime 的本机数据保存在用户 Comet 数据目录，按 checkout 和 Git worktree 隔离。默认数据根为 `~/.comet`，可用 `COMET_DATA_DIR` 指定工作区外的绝对路径；不能设为项目或项目子目录。Native 的业务状态和实际文件事务位于 Runtime 返回的 `runtimeDir`，不创建工作流锁。项目内的 `.comet/runtime/native/` 是旧版本布局，需要时使用明确的导入或恢复入口。未完成写入按诊断处理，不手工搬移或删除；旧锁记录不再控制当前流程。
 
 ### 跨设备状态与报告
 
-跨设备恢复工作流状态时，以 `comet-state.yaml` 为准。该文件由 Runtime 更新，记录当前阶段、状态、版本、验收循环次数、验收结果、Builder 交接摘要、阻塞原因、下一步、检查摘要和必要的历史记录。本机进程信息、绝对路径和完整命令输出只保存在本机 Runtime 目录中。
+SDK Run 保存当前进度、批准、任务和验收结果；`comet-state.yaml` 在业务边界保存可移植检查点，用于明确的导入或恢复。普通命令由 Agent 平台执行、等待与清理；Comet 记录实际结果和日志引用，不保存用于恢复旧进程的状态。
 
-`verification.md` 是 Runtime 根据同一版本的 YAML 生成的可读验收报告。报告缺失或版本落后时，Runtime 只重建报告，不会因此重新运行检查或 Verifier。工作流进度始终以 YAML 为准，不能通过修改 Markdown 报告来推进。
+`verification.md` 是实际验收结果的阅读视图。报告缺失时只补写阅读视图，不重复执行检查或 Verifier；编辑报告不能推进 Run。
 
 Agent 对照当前请求、正式文件和已确认验收判断文档是否充分。Runtime 检查正式路径、文件可读取性、非空内容和机器实际使用的结构；不通过标题、措辞、语言比例或占位词判断语义。目标规格位于 `specs/<capability>/spec.md`。报告缺失时按当前 continuation 恢复原报告，再继续归档。
 

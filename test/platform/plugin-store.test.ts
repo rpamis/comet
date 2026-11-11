@@ -8,10 +8,46 @@ import { build } from 'esbuild';
 import { describe, expect, it } from 'vitest';
 
 import { JsonFileTextStore, withRecoverableFileLock } from '../../platform/fs/plugin-store.js';
-import { readProcessIdentity } from '../../platform/process/process-identity.js';
+import {
+  diagnoseRecoverableFileLock,
+  repairRecoverableFileLock,
+} from '../../platform/fs/recoverable-file-lock.js';
 
 describe('JsonFileTextStore locking', () => {
-  it('recovers a lock whose owning process is no longer alive', async () => {
+  it('releases a process-exited store lock without recording a PID or probing an old process', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-lock-exit-'));
+    try {
+      const file = path.join(root, 'state.json');
+      const bundle = path.join(root, 'store.cjs');
+      await build({
+        entryPoints: ['platform/fs/plugin-store.ts'],
+        outfile: bundle,
+        bundle: true,
+        platform: 'node',
+        format: 'cjs',
+        logLevel: 'silent',
+      });
+      await promisify(execFile)(process.execPath, [
+        '-e',
+        'const {JsonFileTextStore}=require(process.argv[1]);new JsonFileTextStore(process.argv[2]).withLock(async()=>process.exit(0));',
+        bundle,
+        file,
+      ]);
+      const owner = JSON.parse(await fs.readFile(`${file}.lock`, 'utf8'));
+      expect(owner.protocolVersion).toBe(2);
+      expect(owner).not.toHaveProperty('pid');
+      expect(owner).not.toHaveProperty('hostname');
+      expect(owner).not.toHaveProperty('processIdentity');
+      await expect(new JsonFileTextStore(file).withLock(async () => 'recovered')).resolves.toBe(
+        'recovered',
+      );
+      await expect(fs.stat(`${file}.lock`)).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('requires explicit stop confirmation before recovering a legacy PID lock', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-lock-stale-'));
     try {
       const file = path.join(root, 'state.json');
@@ -22,7 +58,22 @@ describe('JsonFileTextStore locking', () => {
         'utf8',
       );
       const store = new JsonFileTextStore(file);
-
+      await expect(store.withLock(async () => 'unconfirmed')).rejects.toThrow(
+        'Legacy lock requires confirmation',
+      );
+      const inspection = await diagnoseRecoverableFileLock(lock);
+      expect(await repairRecoverableFileLock(lock, inspection.token!)).toBe('blocked');
+      expect(
+        await repairRecoverableFileLock(lock, 'wrong-token', {
+          confirmedOwnerStopped: true,
+        }),
+      ).toBe('changed');
+      await expect(fs.readFile(lock, 'utf8')).resolves.toContain('stale-owner');
+      expect(
+        await repairRecoverableFileLock(lock, inspection.token!, {
+          confirmedOwnerStopped: true,
+        }),
+      ).toBe('removed');
       await expect(store.withLock(async () => 'recovered')).resolves.toBe('recovered');
       await expect(fs.stat(lock)).rejects.toMatchObject({ code: 'ENOENT' });
     } finally {
@@ -30,13 +81,11 @@ describe('JsonFileTextStore locking', () => {
     }
   });
 
-  it('recovers a lock when its live pid belongs to a different process instance', async () => {
+  it('does not infer stop permission from a legacy PID or process identity', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-lock-reused-pid-'));
     try {
       const file = path.join(root, 'state.json');
       const lock = `${file}.lock`;
-      const identity = await readProcessIdentity(process.pid);
-      expect(identity).toBeTruthy();
       await fs.writeFile(
         lock,
         JSON.stringify({
@@ -44,29 +93,30 @@ describe('JsonFileTextStore locking', () => {
           nonce: 'previous-owner',
           createdAt: 1,
           hostname: os.hostname(),
-          processIdentity: `${identity}-previous`,
+          processIdentity: 'previous-process-instance',
         }),
         'utf8',
       );
 
       await expect(
         withRecoverableFileLock(lock, async () => 'recovered', { timeoutMs: 500 }),
-      ).resolves.toBe('recovered');
-      await expect(fs.stat(lock)).rejects.toMatchObject({ code: 'ENOENT' });
+      ).rejects.toThrow('Legacy lock requires confirmation');
+      await expect(fs.readFile(lock, 'utf8')).resolves.toContain('previous-owner');
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
   });
 
-  it('records the host and process identity for a new lock owner', async () => {
+  it('records transaction metadata without a host or process identity', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-lock-identity-'));
     try {
       const lock = path.join(root, 'state.lock');
-      const expectedIdentity = await readProcessIdentity(process.pid);
       await withRecoverableFileLock(lock, async () => {
         const owner = JSON.parse(await fs.readFile(lock, 'utf8')) as Record<string, unknown>;
-        expect(owner).toMatchObject({ pid: process.pid, hostname: os.hostname() });
-        expect(owner.processIdentity).toBe(expectedIdentity);
+        expect(owner).toMatchObject({ protocolVersion: 2, nonce: expect.any(String) });
+        expect(owner).not.toHaveProperty('pid');
+        expect(owner).not.toHaveProperty('hostname');
+        expect(owner).not.toHaveProperty('processIdentity');
       });
     } finally {
       await fs.rm(root, { recursive: true, force: true });
@@ -89,7 +139,7 @@ describe('JsonFileTextStore locking', () => {
 
       await expect(
         withRecoverableFileLock(lock, async () => 'stolen', { timeoutMs: 100, retryMs: 10 }),
-      ).rejects.toThrow(/Timed out waiting for file lock/u);
+      ).rejects.toThrow('Legacy lock requires confirmation');
       await expect(fs.readFile(lock, 'utf8')).resolves.toContain('legacy-owner');
     } finally {
       await fs.rm(root, { recursive: true, force: true });
@@ -117,20 +167,28 @@ describe('JsonFileTextStore locking', () => {
     }
   });
 
-  it('recovers an empty lock file left by a crash between creation and owner write', async () => {
+  it('requires stop confirmation for an old empty lock regardless of age', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-lock-empty-'));
     try {
       const file = path.join(root, 'state.json');
       const lock = `${file}.lock`;
-      // A fresh empty lock (mtime now) is given a short in-flight-write grace, so
-      // age it just past EMPTY_LOCK_GRACE_MS (10 s) before expecting recovery.
       const empty = path.join(root, 'empty-marker');
       await fs.writeFile(empty, '');
       const past = new Date(Date.now() - 11_000);
       await fs.writeFile(lock, '');
       await fs.utimes(lock, past, past);
       const store = new JsonFileTextStore(file);
-
+      await expect(store.withLock(async () => 'unconfirmed')).rejects.toThrow(
+        'Legacy lock requires confirmation',
+      );
+      const inspection = await diagnoseRecoverableFileLock(lock);
+      expect(await repairRecoverableFileLock(lock, inspection.token!)).toBe('blocked');
+      await expect(fs.readFile(lock, 'utf8')).resolves.toBe('');
+      expect(
+        await repairRecoverableFileLock(lock, inspection.token!, {
+          confirmedOwnerStopped: true,
+        }),
+      ).toBe('removed');
       await expect(store.withLock(async () => 'recovered')).resolves.toBe('recovered');
       await expect(fs.stat(lock)).rejects.toMatchObject({ code: 'ENOENT' });
     } finally {
@@ -138,19 +196,16 @@ describe('JsonFileTextStore locking', () => {
     }
   });
 
-  it('keeps waiting on a fresh empty lock to respect an in-flight owner write', async () => {
+  it('preserves a fresh empty legacy lock until the original operation is confirmed stopped', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-lock-fresh-'));
     try {
       const file = path.join(root, 'state.json');
       const lock = `${file}.lock`;
       await fs.writeFile(lock, '');
 
-      // A just-created empty lock is plausibly mid-write; acquiring must not
-      // silently steal it. The short custom timeout keeps this test fast while
-      // exercising the wait-then-timeout path.
       await expect(
         withRecoverableFileLock(lock, async () => 'stolen', { timeoutMs: 150, retryMs: 20 }),
-      ).rejects.toThrow(/Timed out waiting for file lock/u);
+      ).rejects.toThrow('Legacy lock requires confirmation');
       await expect(fs.readFile(lock, 'utf8')).resolves.toBe('');
     } finally {
       await fs.rm(root, { recursive: true, force: true });

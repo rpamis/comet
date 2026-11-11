@@ -115,10 +115,6 @@ function migrateSpecChanges(state: NativeReadableChangeState): NativePortableSpe
   });
 }
 
-function targetPhase(legacyPhase: NativePortablePhase): 'shape' | 'build' {
-  return legacyPhase === 'shape' ? 'shape' : 'build';
-}
-
 function nextAction(language: NativePortableState['language'], phase: 'shape' | 'build'): string {
   if (language === 'zh-CN') {
     return phase === 'shape' ? '继续澄清并确认验收项' : '重新提交候选实现';
@@ -156,7 +152,7 @@ export function migrateNativeLegacyStateToPortable(options: {
   const legacy = parseLegacyState(options.state);
   assertNativePortableAcceptanceIds(options.acceptance);
 
-  const phase = targetPhase(legacy.phase);
+  const phase = legacy.phase === 'shape' || legacy.approval !== 'confirmed' ? 'shape' : 'build';
   const iteration = phase === 'shape' ? 0 : 1;
   const recoveredAt = canonicalTimestamp(
     options.migratedAt ?? `${legacy.created_at}T00:00:00.000Z`,

@@ -1,0 +1,1122 @@
+[
+  {
+    "file": "test/domains/comet-native/native-doctor-published-transition.test.ts",
+    "title": "preserves a published approved pending Shape transition on read-only diagnosis and explicit legacy upgrade",
+    "fullName": "preserves a published approved pending Shape transition on read-only diagnosis and explicit legacy upgrade",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor.test.ts",
+    "title": "fails closed on malformed config and preserves its exact bytes through the public Doctor entry",
+    "fullName": "fails closed on malformed config and preserves its exact bytes through the public Doctor entry",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor.test.ts",
+    "title": "inspects a real pending root move read-only and repairs it only with the requested rollback strategy",
+    "fullName": "inspects a real pending root move read-only and repairs it only with the requested rollback strategy",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor.test.ts",
+    "title": "keeps stale selection reads unchanged and changes only selection after an explicit current user choice",
+    "fullName": "keeps stale selection reads unchanged and changes only selection after an explicit current user choice",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor.test.ts",
+    "title": "rejects an oversized selection before parsing while preserving the exact input bytes",
+    "fullName": "rejects an oversized selection before parsing while preserving the exact input bytes",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor.test.ts",
+    "title": "repairs released real writer metadata without deleting or replacing its reusable SQLite database",
+    "fullName": "repairs released real writer metadata without deleting or replacing its reusable SQLite database",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor.test.ts",
+    "title": "never repairs away a real live writer even when its exact metadata token is confirmed",
+    "fullName": "never repairs away a real live writer even when its exact metadata token is confirmed",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor.test.ts",
+    "title": "rejects an escaped Runtime directory without writing outside the selected project",
+    "fullName": "rejects an escaped Runtime directory without writing outside the selected project",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+    "title": "does not construct the retired managed-check Native definition 1",
+    "fullName": "does not construct the retired managed-check Native definition 1",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+    "title": "does not construct the retired managed-check Native definition 2",
+    "fullName": "does not construct the retired managed-check Native definition 2",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+    "title": "does not construct the retired managed-check Native definition 3",
+    "fullName": "does not construct the retired managed-check Native definition 3",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+    "title": "exposes Agent tasks and acceptance without any managed-check executor or refresh command",
+    "fullName": "exposes Agent tasks and acceptance without any managed-check executor or refresh command",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+    "title": "does not ship retired Native execution and snapshot implementations",
+    "fullName": "does not ship retired Native execution and snapshot implementations",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+    "title": "rejects an unknown current Native definition instead of rebinding its business records",
+    "fullName": "rejects an unknown current Native definition instead of rebinding its business records",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+    "title": "continues an actually installed old v4 approved result without another decision (pending)",
+    "fullName": "continues an actually installed old v4 approved result without another decision (pending)",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+    "title": "continues an actually installed old v4 approved result without another decision (unknown)",
+    "fullName": "continues an actually installed old v4 approved result without another decision (unknown)",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+    "title": "automatically resumes published v1 'shape-revalidate-pending' with original business history",
+    "fullName": "automatically resumes published v1 'shape-revalidate-pending' with original business history",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+    "title": "automatically resumes published v1 'verify-checks-pending' with original business history",
+    "fullName": "automatically resumes published v1 'verify-checks-pending' with original business history",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+    "title": "automatically resumes published v1 'verify-checks-claimed-not-executed' with original business history",
+    "fullName": "automatically resumes published v1 'verify-checks-claimed-not-executed' with original business history",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+    "title": "automatically resumes published v2 'shape-revalidate-pending' with original business history",
+    "fullName": "automatically resumes published v2 'shape-revalidate-pending' with original business history",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+    "title": "automatically resumes published v2 'verify-checks-pending' with original business history",
+    "fullName": "automatically resumes published v2 'verify-checks-pending' with original business history",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+    "title": "automatically resumes published v2 'verify-checks-claimed-not-executed' with original business history",
+    "fullName": "automatically resumes published v2 'verify-checks-claimed-not-executed' with original business history",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+    "title": "automatically resumes published v3 'shape-revalidate-pending' with original business history",
+    "fullName": "automatically resumes published v3 'shape-revalidate-pending' with original business history",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+    "title": "automatically resumes published v3 'verify-checks-pending' with original business history",
+    "fullName": "automatically resumes published v3 'verify-checks-pending' with original business history",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+    "title": "automatically resumes published v3 'verify-checks-claimed-not-executed' with original business history",
+    "fullName": "automatically resumes published v3 'verify-checks-claimed-not-executed' with original business history",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+    "title": "preserves every independent old Child frontier: v3-two-child-checks-pending",
+    "fullName": "preserves every independent old Child frontier: v3-two-child-checks-pending",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+    "title": "preserves every independent old Child frontier: v3-child-checks-pending-sibling-builder-running",
+    "fullName": "preserves every independent old Child frontier: v3-child-checks-pending-sibling-builder-running",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+    "title": "retains the old repair-only decision and returns to Build only after the original proposal is approved",
+    "fullName": "retains the old repair-only decision and returns to Build only after the original proposal is approved",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+    "title": "keeps a published running Supervisor preparation bound to its original approval and claim",
+    "fullName": "keeps a published running Supervisor preparation bound to its original approval and claim",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+    "title": "resumes a published successful integration repair at Archive without replaying checks",
+    "fullName": "resumes a published successful integration repair at Archive without replaying checks",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+    "title": "preserves the original published pending Archive input after an accepted integration repair",
+    "fullName": "preserves the original published pending Archive input after an accepted integration repair",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-published-document-builder-report.test.ts",
+    "title": "preserves every old user document through published upgrade Builder and a new actual Agent report",
+    "fullName": "preserves every old user document through published upgrade Builder and a new actual Agent report",
+    "evidence": "coverage/native-retained-business-current-built-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-recovery.test.ts",
+    "title": "preserves a running Verifier until its host reports an explicit execution error",
+    "fullName": "Native portable recovery preserves a running Verifier until its host reports an explicit execution error",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-recovery.test.ts",
+    "title": "restarts the complete acceptance scope when a running repair Verifier is lost",
+    "fullName": "Native portable recovery restarts the complete acceptance scope when a running repair Verifier is lost",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-recovery.test.ts",
+    "title": "rebuilds a missing verification report from matching portable state",
+    "fullName": "Native portable recovery rebuilds a missing verification report from matching portable state",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "bounds portable names, state discovery, and initial project configuration",
+    "fullName": "Native portable Runtime vertical path bounds portable names, state discovery, and initial project configuration",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "discovers proposed and modified capabilities while ignoring non-directories",
+    "fullName": "Native portable Runtime vertical path discovers proposed and modified capabilities while ignoring non-directories",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "rejects an invalid proposed capability while preparing Shape confirmation",
+    "fullName": "Native portable Runtime vertical path rejects an invalid proposed capability while preparing Shape confirmation",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "persists the Shape confirmation boundary and rejects blockers or early confirmation",
+    "fullName": "Native portable Runtime vertical path persists the Shape confirmation boundary and rejects blockers or early confirmation",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "keeps Shape confirmation valid across newline and trailing-whitespace normalization",
+    "fullName": "Native portable Runtime vertical path keeps Shape confirmation valid across newline and trailing-whitespace normalization",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "clears stale Supervisor coordination before confirming an ordinary Shape",
+    "fullName": "Native portable Runtime vertical path clears stale Supervisor coordination before confirming an ordinary Shape",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "derives unchanged acceptance across parser metadata for https://example.com/spec",
+    "fullName": "Native portable Runtime vertical path derives unchanged acceptance across parser metadata for https://example.com/spec",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "derives unchanged acceptance across parser metadata for http://example.com/spec",
+    "fullName": "Native portable Runtime vertical path derives unchanged acceptance across parser metadata for http://example.com/spec",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "derives unchanged acceptance across parser metadata for www.example.com",
+    "fullName": "Native portable Runtime vertical path derives unchanged acceptance across parser metadata for www.example.com",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "derives unchanged acceptance across parser metadata for <https://example.com/spec>",
+    "fullName": "Native portable Runtime vertical path derives unchanged acceptance across parser metadata for <https://example.com/spec>",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "derives unchanged acceptance across parser metadata for reader@example.com",
+    "fullName": "Native portable Runtime vertical path derives unchanged acceptance across parser metadata for reader@example.com",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "confirms formal Markdown larger than the retired four-megabyte budget",
+    "fullName": "Native portable Runtime vertical path confirms formal Markdown larger than the retired four-megabyte budget",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "keeps v2 child plans readable while retaining the complete Runtime acceptance matrix",
+    "fullName": "Native portable Runtime vertical path keeps v2 child plans readable while retaining the complete Runtime acceptance matrix",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "rejects multi-child Supervisor Shape confirmation without a coordination mode",
+    "fullName": "Native portable Runtime vertical path rejects multi-child Supervisor Shape confirmation without a coordination mode",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "rejects a late host response without charging the current Verifier attempt",
+    "fullName": "Native portable Runtime vertical path rejects a late host response without charging the current Verifier attempt",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "creates only portable user artifacts without a local execution overlay",
+    "fullName": "Native portable Runtime vertical path creates only portable user artifacts without a local execution overlay",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "does not infer that an external Verifier ended when its dispatch process exits",
+    "fullName": "Native portable Runtime vertical path does not infer that an external Verifier ended when its dispatch process exits",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "accepts a trusted complete platform Verifier result and writes its report only before explicit current user acceptance",
+    "fullName": "Native portable Runtime vertical path accepts a trusted complete platform Verifier result and writes its report only before explicit current user acceptance",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-v4-regression-eval.test.ts",
+    "title": "requires independent full-coverage verification, loops repairs, and archives without legacy artifacts or rechecks",
+    "fullName": "Native v4 deterministic verification-loop regression requires independent full-coverage verification, loops repairs, and archives without legacy artifacts or rechecks",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-verifier-start.test.ts",
+    "title": "accepts the same final outcome once and rejects a conflicting repeated outcome",
+    "fullName": "Native Verifier startup receipts accepts the same final outcome once and rejects a conflicting repeated outcome",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-verifier-start.test.ts",
+    "title": "rejects startup receipts that are stale for the current attempt or candidate",
+    "fullName": "Native Verifier startup receipts rejects startup receipts that are stale for the current attempt or candidate",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-verifier-start.test.ts",
+    "title": "parses exactly the verifier-started input shape",
+    "fullName": "Native Verifier startup receipts parses exactly the verifier-started input shape",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-verifier-start.test.ts",
+    "title": "keeps a dispatched platform task pending until its bound Verifier reports startup and accepts the same start once",
+    "fullName": "Native Verifier startup receipts keeps a dispatched platform task pending until its bound Verifier reports startup and accepts the same start once",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-verifier-start.test.ts",
+    "title": "keeps a delayed platform startup pending without failure or redispatch and preserves the original candidate and action",
+    "fullName": "Native Verifier startup receipts keeps a delayed platform startup pending without failure or redispatch and preserves the original candidate and action",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-verifier-start.test.ts",
+    "title": "rejects the retired Runtime check request without ending the active platform Verifier or losing its Builder reports",
+    "fullName": "Native Verifier startup receipts rejects the retired Runtime check request without ending the active platform Verifier or losing its Builder reports",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-verifier-start.test.ts",
+    "title": "keeps the original started platform task running without retired machine metadata and displays its real task state read-only",
+    "fullName": "Native Verifier startup receipts keeps the original started platform task running without retired machine metadata and displays its real task state read-only",
+    "evidence": "coverage/native-adjacent-business-repository-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+    "title": "blocks Native Archive when a new real check fails after an accepted pass",
+    "fullName": "blocks Native Archive when a new real check fails after an accepted pass",
+    "evidence": "coverage/native-late-agent-failure-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+    "title": "preserves an Agent-selected prior report for a repaired candidate and requires full new verification",
+    "fullName": "preserves an Agent-selected prior report for a repaired candidate and requires full new verification",
+    "evidence": "coverage/native-prior-report-repair-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+    "title": "continues Native Verify and Archive through the generated Runtime without content proof",
+    "fullName": "continues Native Verify and Archive through the generated Runtime without content proof",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-agent-content-current-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+    "title": "continues the original Native Run through a generated Runtime and parent directory alias",
+    "fullName": "continues the original Native Run through a generated Runtime and parent directory alias",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-agent-content-current-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+    "title": "keeps an actual Agent-platform failure report failed after file edits without replay",
+    "fullName": "keeps an actual Agent-platform failure report failed after file edits without replay",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-agent-content-report-failure-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "creates an SDK-owned Native change with its portable state file",
+    "fullName": "Native v4 public CLI surface creates an SDK-owned Native change with its portable state file",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "lists a new SDK change once on the unnamed status page",
+    "fullName": "Native v4 public CLI surface lists a new SDK change once on the unnamed status page",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "does not reinterpret a legacy Archive as SDK recovery",
+    "fullName": "Native v4 public CLI surface does not reinterpret a legacy Archive as SDK recovery",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "uses compat for the previous Runtime option without accepting an unpublished legacy alias",
+    "fullName": "Native v4 public CLI surface uses compat for the previous Runtime option without accepting an unpublished legacy alias",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "creates an SDK Run when Native new omits the runtime option",
+    "fullName": "Native v4 public CLI surface creates an SDK Run when Native new omits the runtime option",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "diagnoses an untouched copied SDK change read-only and restores it explicitly",
+    "fullName": "Native v4 public CLI surface diagnoses an untouched copied SDK change read-only and restores it explicitly",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "does not silently convert an existing pristine Native change after local records are lost",
+    "fullName": "Native v4 public CLI surface does not silently convert an existing pristine Native change after local records are lost",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "selects an untouched SDK change from its portable state in a fresh checkout",
+    "fullName": "Native v4 public CLI surface selects an untouched SDK change from its portable state in a fresh checkout",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "diagnoses a progressed Native change whose portable state outlived its Run history",
+    "fullName": "Native v4 public CLI surface diagnoses a progressed Native change whose portable state outlived its Run history",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "resumes confirmed SDK Build from a copied portable state without local Run history",
+    "fullName": "Native v4 public CLI surface resumes confirmed SDK Build from a copied portable state without local Run history",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "rejects a changed portable Run checkpoint before creating Native ownership",
+    "fullName": "Native v4 public CLI surface rejects a changed portable Run checkpoint before creating Native ownership",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "restores when ownership was published but the Native Run commit was interrupted",
+    "fullName": "Native v4 public CLI surface restores when ownership was published but the Native Run commit was interrupted",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "diagnoses a default SDK change while retaining its state file",
+    "fullName": "Native v4 public CLI surface diagnoses a default SDK change while retaining its state file",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "requires workspace isolation before creating a second current-workspace SDK change",
+    "fullName": "Native v4 public CLI surface requires workspace isolation before creating a second current-workspace SDK change",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "keeps an active SDK Run isolated when its artifact directory is missing",
+    "fullName": "Native v4 public CLI surface keeps an active SDK Run isolated when its artifact directory is missing",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "advances an SDK-owned change through the public Native next command",
+    "fullName": "Native v4 public CLI surface advances an SDK-owned change through the public Native next command",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "routes a public requirements revision from SDK Verify back to Shape",
+    "fullName": "Native v4 public CLI surface routes a public requirements revision from SDK Verify back to Shape",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "returns all ready Supervisor Child Actions after the public SDK Shape confirmation",
+    "fullName": "Native v4 public CLI surface returns all ready Supervisor Child Actions after the public SDK Shape confirmation",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "shows the joint SDK Supervisor confirmation command in public help",
+    "fullName": "Native v4 public CLI surface shows the joint SDK Supervisor confirmation command in public help",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "rejects compat Git finish options before changing an SDK Run",
+    "fullName": "Native v4 public CLI surface rejects compat Git finish options before changing an SDK Run",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "rejects legacy-only options combined with an SDK confirmation",
+    "fullName": "Native v4 public CLI surface rejects legacy-only options combined with an SDK confirmation",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "distinguishes SDK Run actions from legacy continuations in Native help",
+    "fullName": "Native v4 public CLI surface distinguishes SDK Run actions from legacy continuations in Native help",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "explains the SDK default and explicit compat option in Native new help",
+    "fullName": "Native v4 public CLI surface explains the SDK default and explicit compat option in Native new help",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "prepares the complete Supervisor Shape before requesting a joint user decision",
+    "fullName": "Native v4 public CLI surface prepares the complete Supervisor Shape before requesting a joint user decision",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "returns v4 continuations and rejects retired Agent-authored verification inputs",
+    "fullName": "Native v4 public CLI surface returns v4 continuations and rejects retired Agent-authored verification inputs",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "rejects invalid Runner input before recovering Shape drift: {invalid-json",
+    "fullName": "Native v4 public CLI surface rejects invalid Runner input before recovering Shape drift: {invalid-json",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "rejects invalid Runner input before recovering Shape drift: {\"kind\":\"unsupported-future-protocol\"}",
+    "fullName": "Native v4 public CLI surface rejects invalid Runner input before recovering Shape drift: {\"kind\":\"unsupported-future-protocol\"}",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "rejects invalid Runner input before recovering Shape drift: {\"kind\":\"dispatch-verifier\",\"checks\":[]}",
+    "fullName": "Native v4 public CLI surface rejects invalid Runner input before recovering Shape drift: {\"kind\":\"dispatch-verifier\",\"checks\":[]}",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "validates Runner input without mutating the state or local execution overlay",
+    "fullName": "Native v4 public CLI surface validates Runner input without mutating the state or local execution overlay",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "rejects user-decision flags when combined with another public transition flag",
+    "fullName": "Native v4 public CLI surface rejects user-decision flags when combined with another public transition flag",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "rejects caller-supplied identity, provider, execution, and candidate bindings",
+    "fullName": "Native v4 public CLI surface rejects caller-supplied identity, provider, execution, and candidate bindings",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "drives platform reports through explicit user acceptance to Archive without a managed check plan",
+    "fullName": "Native v4 public CLI surface drives platform reports through explicit user acceptance to Archive without a managed check plan",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "verifies every acceptance item once for a repaired candidate without starting a managed check",
+    "fullName": "Native v4 public CLI surface verifies every acceptance item once for a repaired candidate without starting a managed check",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "rejects a Verifier response bound to the pre-repair candidate before mutation",
+    "fullName": "Native v4 public CLI surface rejects a Verifier response bound to the pre-repair candidate before mutation",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "revises requirements after a rejected skill-coordinated pass and starts a fresh candidate cycle",
+    "fullName": "Native v4 public CLI surface revises requirements after a rejected skill-coordinated pass and starts a fresh candidate cycle",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "revises requirements from Archive-ready and invalidates the accepted result",
+    "fullName": "Native v4 public CLI surface revises requirements from Archive-ready and invalidates the accepted result",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "retries an unavailable platform Verifier after its failure budget while preserving candidate and Agent reports",
+    "fullName": "Native v4 public CLI surface retries an unavailable platform Verifier after its failure budget while preserving candidate and Agent reports",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "rejects delayed generic Verifier errors and unavailable messages from an older attempt",
+    "fullName": "Native v4 public CLI surface rejects delayed generic Verifier errors and unavailable messages from an older attempt",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "returns friendly localized guidance when Verifier infrastructure repeatedly fails",
+    "fullName": "Native v4 public CLI surface returns friendly localized guidance when Verifier infrastructure repeatedly fails",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "keeps explicit revise-requirements phase eligibility inside the runtime mutation lock",
+    "fullName": "Native v4 public CLI surface keeps explicit revise-requirements phase eligibility inside the runtime mutation lock",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "rejects a final result that omits an acceptance ID",
+    "fullName": "Native v4 public CLI surface rejects a final result that omits an acceptance ID",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "returns platform-check guidance for Compat without changing the original state",
+    "fullName": "Native v4 public CLI surface returns platform-check guidance for Compat without changing the original state",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "returns platform-check guidance without changing the SDK Run or its original task",
+    "fullName": "Native v4 public CLI surface returns platform-check guidance without changing the SDK Run or its original task",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "keeps SDK spec sync out of the legacy state mutation path",
+    "fullName": "Native v4 public CLI surface keeps SDK spec sync out of the legacy state mutation path",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-business-complete-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+    "title": "resolves a semantic Verifier blocker only after the current user decision and forwards the resolution to its next attempt",
+    "fullName": "Native v4 public CLI surface resolves a semantic Verifier blocker only after the current user decision and forwards the resolution to its next attempt",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-cli-v4-semantic-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor.test.ts",
+    "title": "fails closed on malformed config and preserves its exact bytes through the public Doctor entry",
+    "fullName": "fails closed on malformed config and preserves its exact bytes through the public Doctor entry",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-doctor-all-retained-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor.test.ts",
+    "title": "inspects a real pending root move read-only and repairs it only with the requested rollback strategy",
+    "fullName": "inspects a real pending root move read-only and repairs it only with the requested rollback strategy",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-doctor-all-retained-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor.test.ts",
+    "title": "keeps stale selection reads unchanged and changes only selection after an explicit current user choice",
+    "fullName": "keeps stale selection reads unchanged and changes only selection after an explicit current user choice",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-doctor-all-retained-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor.test.ts",
+    "title": "rejects an oversized selection before parsing while preserving the exact input bytes",
+    "fullName": "rejects an oversized selection before parsing while preserving the exact input bytes",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-doctor-all-retained-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor.test.ts",
+    "title": "repairs released real writer metadata without deleting or replacing its reusable SQLite database",
+    "fullName": "repairs released real writer metadata without deleting or replacing its reusable SQLite database",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-doctor-all-retained-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor.test.ts",
+    "title": "never repairs away a real live writer even when its exact metadata token is confirmed",
+    "fullName": "never repairs away a real live writer even when its exact metadata token is confirmed",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-doctor-all-retained-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor.test.ts",
+    "title": "rejects an escaped Runtime directory without writing outside the selected project",
+    "fullName": "rejects an escaped Runtime directory without writing outside the selected project",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-doctor-all-retained-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+    "title": "reports and resumes a persisted portable migration transaction from published 052 prepared",
+    "fullName": "reports and resumes a persisted portable migration transaction from published 052 prepared",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-doctor-v4-all-business-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+    "title": "repairs a persisted portable transaction from project-wide Doctor from published 052 prepared",
+    "fullName": "repairs a persisted portable transaction from project-wide Doctor from published 052 prepared",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-doctor-v4-all-business-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+    "title": "reports and resumes a persisted portable migration transaction from published 052 yaml-committed",
+    "fullName": "reports and resumes a persisted portable migration transaction from published 052 yaml-committed",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-doctor-v4-all-business-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+    "title": "repairs a persisted portable transaction from project-wide Doctor from published 052 yaml-committed",
+    "fullName": "repairs a persisted portable transaction from project-wide Doctor from published 052 yaml-committed",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-doctor-v4-all-business-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+    "title": "merges current portable statuses with a published unmigrated legacy change without implicit conversion",
+    "fullName": "merges current portable statuses with a published unmigrated legacy change without implicit conversion",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-doctor-v4-all-business-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+    "title": "reports malformed published legacy Run trajectory with its exact path without changing or repairing its bytes",
+    "fullName": "reports malformed published legacy Run trajectory with its exact path without changing or repairing its bytes",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-doctor-v4-all-business-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+    "title": "keeps an invalid published migration journal unchanged on explicit project repair instead of converting its old state",
+    "fullName": "keeps an invalid published migration journal unchanged on explicit project repair instead of converting its old state",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-doctor-v4-all-business-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+    "title": "does not continue an actual prepared Archive WAL through generic Doctor repair",
+    "fullName": "does not continue an actual prepared Archive WAL through generic Doctor repair",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-doctor-v4-all-business-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+    "title": "does not infer incomplete migration from five ordinary document names or delete their original contents",
+    "fullName": "does not infer incomplete migration from five ordinary document names or delete their original contents",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-doctor-v4-all-business-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+    "title": "keeps a fresh portable change healthy in named and project-wide Doctor",
+    "fullName": "keeps a fresh portable change healthy in named and project-wide Doctor",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-doctor-v4-all-business-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+    "title": "keeps a generated portable verification report out of migration findings",
+    "fullName": "keeps a generated portable verification report out of migration findings",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-doctor-v4-all-business-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+    "title": "keeps the original SDK Run authoritative and preserves a retired Supervisor overlay as uninterpreted data",
+    "fullName": "keeps the original SDK Run authoritative and preserves a retired Supervisor overlay as uninterpreted data",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-doctor-v4-all-business-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+    "title": "does not treat an unarchived Shape copy in an archive-named directory as completed conflicting history",
+    "fullName": "does not treat an unarchived Shape copy in an archive-named directory as completed conflicting history",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/native-doctor-v4-all-business-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-recovery.test.ts",
+    "title": "preserves a running Verifier until its host reports an explicit execution error",
+    "fullName": "Native portable recovery preserves a running Verifier until its host reports an explicit execution error",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-recovery.test.ts",
+    "title": "restarts the complete acceptance scope when a running repair Verifier is lost",
+    "fullName": "Native portable recovery restarts the complete acceptance scope when a running repair Verifier is lost",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-recovery.test.ts",
+    "title": "rebuilds a missing verification report from matching portable state",
+    "fullName": "Native portable recovery rebuilds a missing verification report from matching portable state",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "bounds portable names, state discovery, and initial project configuration",
+    "fullName": "Native portable Runtime vertical path bounds portable names, state discovery, and initial project configuration",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "discovers proposed and modified capabilities while ignoring non-directories",
+    "fullName": "Native portable Runtime vertical path discovers proposed and modified capabilities while ignoring non-directories",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "rejects an invalid proposed capability while preparing Shape confirmation",
+    "fullName": "Native portable Runtime vertical path rejects an invalid proposed capability while preparing Shape confirmation",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "persists the Shape confirmation boundary and rejects blockers or early confirmation",
+    "fullName": "Native portable Runtime vertical path persists the Shape confirmation boundary and rejects blockers or early confirmation",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "keeps Shape confirmation valid across newline and trailing-whitespace normalization",
+    "fullName": "Native portable Runtime vertical path keeps Shape confirmation valid across newline and trailing-whitespace normalization",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "clears stale Supervisor coordination before confirming an ordinary Shape",
+    "fullName": "Native portable Runtime vertical path clears stale Supervisor coordination before confirming an ordinary Shape",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "derives unchanged acceptance across parser metadata for https://example.com/spec",
+    "fullName": "Native portable Runtime vertical path derives unchanged acceptance across parser metadata for https://example.com/spec",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "derives unchanged acceptance across parser metadata for http://example.com/spec",
+    "fullName": "Native portable Runtime vertical path derives unchanged acceptance across parser metadata for http://example.com/spec",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "derives unchanged acceptance across parser metadata for www.example.com",
+    "fullName": "Native portable Runtime vertical path derives unchanged acceptance across parser metadata for www.example.com",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "derives unchanged acceptance across parser metadata for <https://example.com/spec>",
+    "fullName": "Native portable Runtime vertical path derives unchanged acceptance across parser metadata for <https://example.com/spec>",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "derives unchanged acceptance across parser metadata for reader@example.com",
+    "fullName": "Native portable Runtime vertical path derives unchanged acceptance across parser metadata for reader@example.com",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "confirms formal Markdown larger than the retired four-megabyte budget",
+    "fullName": "Native portable Runtime vertical path confirms formal Markdown larger than the retired four-megabyte budget",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "keeps v2 child plans readable while retaining the complete Runtime acceptance matrix",
+    "fullName": "Native portable Runtime vertical path keeps v2 child plans readable while retaining the complete Runtime acceptance matrix",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "rejects multi-child Supervisor Shape confirmation without a coordination mode",
+    "fullName": "Native portable Runtime vertical path rejects multi-child Supervisor Shape confirmation without a coordination mode",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "rejects a late host response without charging the current Verifier attempt",
+    "fullName": "Native portable Runtime vertical path rejects a late host response without charging the current Verifier attempt",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "creates only portable user artifacts without a local execution overlay",
+    "fullName": "Native portable Runtime vertical path creates only portable user artifacts without a local execution overlay",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "does not infer that an external Verifier ended when its dispatch process exits",
+    "fullName": "Native portable Runtime vertical path does not infer that an external Verifier ended when its dispatch process exits",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+    "title": "accepts a trusted complete platform Verifier result and writes its report only before explicit current user acceptance",
+    "fullName": "Native portable Runtime vertical path accepts a trusted complete platform Verifier result and writes its report only before explicit current user acceptance",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-v4-regression-eval.test.ts",
+    "title": "requires independent full-coverage verification, loops repairs, and archives without legacy artifacts or rechecks",
+    "fullName": "Native v4 deterministic verification-loop regression requires independent full-coverage verification, loops repairs, and archives without legacy artifacts or rechecks",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-verifier-start.test.ts",
+    "title": "accepts the same final outcome once and rejects a conflicting repeated outcome",
+    "fullName": "Native Verifier startup receipts accepts the same final outcome once and rejects a conflicting repeated outcome",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-verifier-start.test.ts",
+    "title": "rejects startup receipts that are stale for the current attempt or candidate",
+    "fullName": "Native Verifier startup receipts rejects startup receipts that are stale for the current attempt or candidate",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-verifier-start.test.ts",
+    "title": "parses exactly the verifier-started input shape",
+    "fullName": "Native Verifier startup receipts parses exactly the verifier-started input shape",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-verifier-start.test.ts",
+    "title": "keeps a dispatched platform task pending until its bound Verifier reports startup and accepts the same start once",
+    "fullName": "Native Verifier startup receipts keeps a dispatched platform task pending until its bound Verifier reports startup and accepts the same start once",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-verifier-start.test.ts",
+    "title": "keeps a delayed platform startup pending without failure or redispatch and preserves the original candidate and action",
+    "fullName": "Native Verifier startup receipts keeps a delayed platform startup pending without failure or redispatch and preserves the original candidate and action",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-verifier-start.test.ts",
+    "title": "rejects the retired Runtime check request without ending the active platform Verifier or losing its Builder reports",
+    "fullName": "Native Verifier startup receipts rejects the retired Runtime check request without ending the active platform Verifier or losing its Builder reports",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  },
+  {
+    "file": "test/domains/comet-native/native-verifier-start.test.ts",
+    "title": "keeps the original started platform task running without retired machine metadata and displays its real task state read-only",
+    "fullName": "Native Verifier startup receipts keeps the original started platform task running without retired machine metadata and displays its real task state read-only",
+    "evidence": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json",
+    "status": "passed"
+  }
+]

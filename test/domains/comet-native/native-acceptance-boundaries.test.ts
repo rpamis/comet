@@ -249,9 +249,8 @@ async function buildingFixture(source = brief, legacyShape = false) {
     decisionId: 'approved',
     choice: 'approved',
   });
-  await submit(
-    await collectNativeSdkShapeProposal({ paths, state: run.state as NativePortableState }),
-  );
+  // Current v4 approval already enters the original Builder; it does not redispatch a second Shape result.
+
   legacyReader?.mockRestore();
   const submitBuilder = () =>
     submit(
@@ -263,7 +262,6 @@ async function buildingFixture(source = brief, legacyShape = false) {
         knownLimits: [],
         review: null,
         submittedAt: '2026-10-24T01:00:00.000Z',
-        verificationChecks: [],
       },
       'builder-session',
     );
@@ -277,6 +275,6 @@ describe('Native Shape to Builder acceptance boundaries', () => {
       'First criterion.',
       'Last criterion.',
     ]);
-    expect((await fixture.submitBuilder()).actions.at(-1)?.stepId).toBe('verify.checks');
+    expect((await fixture.submitBuilder()).actions.at(-1)?.stepId).toBe('verify.verifier');
   });
 });

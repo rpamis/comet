@@ -77,11 +77,13 @@ function executionKey(run: Readonly<WorkflowRun>, action: Readonly<RuntimeAction
 }
 async function receiptStore(root: string) {
   return createFileRuntimeStore<ArchiveReceipt>({
+    singleWriter: true,
     rootDir: path.join(await resolveWorkspaceRuntimeRoot(root), 'archive-receipts/classic'),
   });
 }
 async function preparationStore(root: string) {
   return createFileRuntimeStore<Preparation>({
+    singleWriter: true,
     rootDir: path.join(await resolveWorkspaceRuntimeRoot(root), 'archive-inputs/classic'),
   });
 }

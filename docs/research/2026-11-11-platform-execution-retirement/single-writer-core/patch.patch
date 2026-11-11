@@ -1,0 +1,567 @@
+diff --git a/test/domains/workflow-contract/change-runtime-owner-history.test.ts b/test/domains/workflow-contract/change-runtime-owner-history.test.ts
+index 94d5fef9..089b1979 100644
+--- a/test/domains/workflow-contract/change-runtime-owner-history.test.ts
++++ b/test/domains/workflow-contract/change-runtime-owner-history.test.ts
+@@ -42,14 +42,14 @@ afterEach(async () => {
+   await fs.rm(root, { recursive: true, force: true });
+ });
+ 
+-it('reads a bound canonical owner with one token read, no partition body reads and no writes', async () => {
++it('reads a bound canonical owner without partition tokens, no partition body reads and no writes', async () => {
+   await registerSdkChangeOwner(root, owner, { canonical: true });
+   const read = vi.spyOn(protectedFiles, 'readProtectedProjectFile');
+   const write = vi.spyOn(contained, 'atomicWriteContainedText');
+   expect(await readSdkChangeOwner(root, 'native', 'first', { readOnly: true })).toEqual(owner);
+   expect(
+     read.mock.calls.filter((call) => call[1] === '.change-owner-partitions.json'),
+-  ).toHaveLength(1);
++  ).toHaveLength(0);
+   expect(read.mock.calls.filter((call) => [activeRef, historyRef].includes(call[1]))).toHaveLength(
+     0,
+   );
+@@ -99,18 +99,6 @@ it('rejects a junction substituted beneath a canonical owner binding', async ()
+   );
+ });
+ 
+-it('keeps canonical reads blocked by interrupted tokens and restores them through named recovery', async () => {
+-  await registerSdkChangeOwner(root, owner, { canonical: true });
+-  const file = path.join(runtimeRoot, '.change-owner-partitions.json');
+-  const token = JSON.parse(await fs.readFile(file, 'utf8'));
+-  await fs.writeFile(file, JSON.stringify({ ...token, state: 'writing' }));
+-  await expect(readSdkChangeOwner(root, 'native', 'first', { readOnly: true })).rejects.toThrow(
+-    'incomplete',
+-  );
+-  expect(await recoverSdkChangeOwnerToActive(root, 'native', 'first')).toEqual(owner);
+-  expect(await readSdkChangeOwner(root, 'native', 'first', { readOnly: true })).toEqual(owner);
+-});
+-
+ it('recovers an interrupted canonical publication from the original legacy owner and refreshes reopen bindings', async () => {
+   await registerSdkChangeOwner(root, owner, { canonical: true });
+   const original = contained.atomicLinkContainedFile;
+@@ -285,50 +273,6 @@ it('invalidates read-only discovery before moving and restores active visibility
+   });
+ });
+ 
+-it('serializes competing partition moves without losing the owner', async () => {
+-  await Promise.all([closeSdkChangeOwner(root, owner), closeSdkChangeOwner(root, owner)]);
+-  await Promise.all([reopenSdkChangeOwner(root, owner), reopenSdkChangeOwner(root, owner)]);
+-  expect(await listSdkChangePartitions(root, 'native')).toEqual({ active: ['first'], history: [] });
+-});
+-
+-it('detects a complete reopen between active and history enumeration rather than returning an empty snapshot', async () => {
+-  await closeSdkChangeOwner(root, owner);
+-  const readdir = fs.readdir.bind(fs);
+-  let reopened = false;
+-  vi.spyOn(fs, 'readdir').mockImplementation(async (...args) => {
+-    const result = await readdir(...args);
+-    if (!reopened && args[0] === path.join(runtimeRoot, 'change-owners/native')) {
+-      reopened = true;
+-      await reopenSdkChangeOwner(root, owner);
+-    }
+-    return result;
+-  });
+-  expect(await listSdkChangePartitions(root, 'native', { readOnly: true })).toEqual({
+-    active: ['first'],
+-    history: [],
+-  });
+-  expect(reopened).toBe(true);
+-});
+-
+-it('blocks interrupted tokens without writing and exposes explicit named recovery', async () => {
+-  await closeSdkChangeOwner(root, owner);
+-  const tokenFile = path.join(runtimeRoot, '.change-owner-partitions.json');
+-  const token = JSON.parse(await fs.readFile(tokenFile, 'utf8'));
+-  token.state = 'writing';
+-  await fs.writeFile(tokenFile, JSON.stringify(token));
+-  const before = await fs.readFile(tokenFile, 'utf8');
+-  await expect(listSdkChangePartitions(root, 'native', { readOnly: true })).rejects.toThrow(
+-    'incomplete or in progress',
+-  );
+-  await expect(readSdkChangeOwner(root, 'native', 'first', { readOnly: true })).rejects.toThrow(
+-    'incomplete or in progress',
+-  );
+-  expect(await fs.readFile(tokenFile, 'utf8')).toBe(before);
+-  expect(await listSdkChangeOwnerRecoveryNames(root, 'native')).toEqual(['first']);
+-  expect(await recoverSdkChangeOwnerToActive(root, 'native', 'first')).toEqual(owner);
+-  expect(await listSdkChangePartitions(root, 'native')).toEqual({ active: ['first'], history: [] });
+-});
+-
+ it('recovers matching double owners after a fresh read failed', async () => {
+   vi.spyOn(contained, 'removeContainedFile').mockRejectedValueOnce(new Error('crash'));
+   await expect(closeSdkChangeOwner(root, owner)).rejects.toThrow('crash');
+@@ -353,22 +297,9 @@ it('ignores only ordinary writer UUID temporary files and rejects other unexpect
+   );
+ });
+ 
+-it.each(['{bad', JSON.stringify({ schema: 'future', token: 'x', state: 'stable' })])(
+-  'rejects invalid partition metadata without treating it as legacy absence',
+-  async (source) => {
+-    await fs.writeFile(path.join(runtimeRoot, '.change-owner-partitions.json'), source);
+-    await expect(listSdkChangeNames(root, 'native', { readOnly: true })).rejects.toThrow(
+-      'Invalid change owner partition token',
+-    );
+-    await expect(closeSdkChangeOwner(root, owner)).rejects.toThrow(
+-      'Invalid change owner partition token',
+-    );
+-  },
+-);
+-
+ it('reads legacy owners without a partition token without creating metadata', async () => {
+   const token = path.join(runtimeRoot, '.change-owner-partitions.json');
+-  await fs.unlink(token);
++  await expect(fs.lstat(token)).rejects.toMatchObject({ code: 'ENOENT' });
+   expect(await listSdkChangeNames(root, 'native', { readOnly: true })).toEqual(['first']);
+   await expect(fs.lstat(token)).rejects.toMatchObject({ code: 'ENOENT' });
+ });
+@@ -384,20 +315,16 @@ it('preserves Classic active lock artifacts and custom active recovery without p
+   await expect(closeSdkChangeOwner(root, classic)).rejects.toThrow('Only builtin Native');
+ });
+ 
+-it('recovers an interrupted first registration with no owner through locked recovery enumeration', async () => {
++it('enumerates an interrupted first registration with no owner without creating coordination metadata', async () => {
+   await fs.unlink(path.join(runtimeRoot, activeRef));
+-  const tokenFile = path.join(runtimeRoot, '.change-owner-partitions.json');
+-  const token = JSON.parse(await fs.readFile(tokenFile, 'utf8'));
+-  token.state = 'writing';
+-  await fs.writeFile(tokenFile, JSON.stringify(token));
+-  await expect(listSdkChangePartitions(root, 'native', { readOnly: true })).rejects.toThrow(
+-    'incomplete or in progress',
+-  );
+   expect(await listSdkChangeOwnerRecoveryNames(root, 'native')).toEqual([]);
+   expect(await listSdkChangePartitions(root, 'native', { readOnly: true })).toEqual({
+     active: [],
+     history: [],
+   });
++  await expect(
++    fs.lstat(path.join(runtimeRoot, '.change-owner-partitions.json')),
++  ).rejects.toMatchObject({ code: 'ENOENT' });
+ });
+ 
+ it('keeps the active owner when target ancestor directory synchronization fails', async () => {
+@@ -416,7 +343,7 @@ it('keeps the active owner when target ancestor directory synchronization fails'
+   expect(await listSdkChangePartitions(root, 'native')).toEqual({ active: ['first'], history: [] });
+ });
+ 
+-it('reads the partition token twice for an entire owner batch, validates every body and keeps standalone reads guarded', async () => {
++it('validates every owner body in one batch without partition tokens', async () => {
+   for (let index = 0; index < 11; index += 1) {
+     const change = `batch-${index}`;
+     await registerSdkChangeOwner(root, { ...owner, change, runId: change });
+@@ -425,7 +352,7 @@ it('reads the partition token twice for an entire owner batch, validates every b
+   const tokenReads = () =>
+     read.mock.calls.filter((call) => call[1] === '.change-owner-partitions.json').length;
+   expect(await listSdkChangeNames(root, 'native', { readOnly: true })).toHaveLength(12);
+-  expect(tokenReads()).toBe(2);
++  expect(tokenReads()).toBe(0);
+   expect(
+     read.mock.calls.filter((call) => call[1].startsWith('change-owners/native/')),
+   ).toHaveLength(12);
+@@ -433,57 +360,26 @@ it('reads the partition token twice for an entire owner batch, validates every b
+   expect(await listSdkChangePartitions(root, 'native', { readOnly: true })).toMatchObject({
+     history: [],
+   });
+-  expect(tokenReads()).toBe(2);
++  expect(tokenReads()).toBe(0);
+   read.mockClear();
+   await readSdkChangeOwner(root, 'native', 'first', { readOnly: true });
+-  expect(tokenReads()).toBe(2);
++  expect(tokenReads()).toBe(0);
+   read.mockClear();
+   await listSdkChangeNames(root, 'native', { readOnly: true });
+-  expect(tokenReads()).toBe(2);
++  expect(tokenReads()).toBe(0);
+ });
+ 
+-it('retries the entire batch when registration completes while an owner body is being read', async () => {
+-  const original = protectedFiles.readProtectedProjectFile;
+-  let inserted = false;
+-  let firstReads = 0;
+-  vi.spyOn(protectedFiles, 'readProtectedProjectFile').mockImplementation(async (...args) => {
+-    const result = await original(...args);
+-    if (args[1] === activeRef) {
+-      firstReads += 1;
+-      if (!inserted) {
+-        inserted = true;
+-        await registerSdkChangeOwner(root, { ...owner, change: 'late', runId: 'late' });
+-      }
+-    }
+-    return result;
+-  });
+-  expect(await listSdkChangeNames(root, 'native', { readOnly: true })).toEqual(['first', 'late']);
+-  expect(firstReads).toBe(2);
+-});
+-
+-it('does not reuse a pre-mutation body when the fence requires a retry', async () => {
+-  const original = protectedFiles.readProtectedProjectFile;
+-  let changed = false;
+-  let firstReads = 0;
+-  vi.spyOn(protectedFiles, 'readProtectedProjectFile').mockImplementation(async (...args) => {
+-    const result = await original(...args);
+-    if (args[1] === activeRef) {
+-      firstReads += 1;
+-      if (!changed) {
+-        changed = true;
+-        await registerSdkChangeOwner(root, { ...owner, change: 'late', runId: 'late' });
+-        await fs.writeFile(path.join(runtimeRoot, activeRef), '{}');
+-      }
+-    }
+-    return result;
++it('rejects a malformed owner on the next serial read instead of reusing an earlier request body', async () => {
++  await runWithHookReadCache(async () => {
++    expect(await listSdkChangeNames(root, 'native', { readOnly: true })).toEqual(['first']);
++    await fs.writeFile(path.join(runtimeRoot, activeRef), '{}');
++    await expect(listSdkChangeNames(root, 'native', { readOnly: true })).rejects.toThrow(
++      'Invalid change runtime owner',
++    );
+   });
+-  await expect(
+-    runWithHookReadCache(() => listSdkChangeNames(root, 'native', { readOnly: true })),
+-  ).rejects.toThrow('Invalid change runtime owner');
+-  expect(firstReads).toBe(2);
+ });
+ 
+-it('waits for all failing batch reads before validating the final token', async () => {
++it('waits for every owner body before returning a failed batch without coordination tokens', async () => {
+   for (let index = 0; index < 9; index += 1) {
+     const change = `settle-${index}`;
+     await registerSdkChangeOwner(root, { ...owner, change, runId: change });
+@@ -510,55 +406,21 @@ it('waits for all failing batch reads before validating the final token', async
+   await expect(listSdkChangeNames(root, 'native', { readOnly: true })).rejects.toThrow(
+     'injected owner failure',
+   );
+-  expect(tokens).toBe(2);
++  expect(tokens).toBe(0);
+   expect(completed).toBe(10);
+ });
+ 
+-it('bounds retries when a writer changes the partition token on every batch attempt', async () => {
+-  const original = protectedFiles.readProtectedProjectFile;
+-  let attempts = 0;
+-  vi.spyOn(protectedFiles, 'readProtectedProjectFile').mockImplementation(async (...args) => {
+-    const result = await original(...args);
+-    if (args[1] === activeRef) {
+-      attempts += 1;
+-      await registerSdkChangeOwner(root, { ...owner, change: 'late', runId: 'late' });
+-    }
+-    return result;
+-  });
+-  await expect(listSdkChangeNames(root, 'native', { readOnly: true })).rejects.toThrow(
+-    'changed during discovery',
+-  );
+-  expect(attempts).toBe(3);
+-});
+-
+-it('rejects unknown token metadata published during a batch rather than accepting its owner list', async () => {
+-  const original = protectedFiles.readProtectedProjectFile;
+-  vi.spyOn(protectedFiles, 'readProtectedProjectFile').mockImplementation(async (...args) => {
+-    const result = await original(...args);
+-    if (args[1] === activeRef) {
+-      await fs.writeFile(
+-        path.join(runtimeRoot, '.change-owner-partitions.json'),
+-        '{"schema":"future"}',
+-      );
+-    }
+-    return result;
+-  });
+-  await expect(listSdkChangeNames(root, 'native', { readOnly: true })).rejects.toThrow(
+-    'Invalid change owner partition token',
+-  );
+-});
+-
+-it('does not borrow a batch fence for a nested read from a different project', async () => {
++it('keeps nested owner reads bound to their own project without partition fences', async () => {
+   const otherRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-other-owner-batch-'));
+   try {
+     await fs.mkdir(path.join(otherRoot, '.git'));
+     await registerSdkChangeOwner(otherRoot, owner);
+     const otherRuntime = await resolveWorkspaceRuntimeRoot(otherRoot);
+     const original = protectedFiles.readProtectedProjectFile;
+-    let otherTokens = 0;
++    let otherBodies = 0;
+     let nested = false;
+     vi.spyOn(protectedFiles, 'readProtectedProjectFile').mockImplementation(async (...args) => {
+-      if (args[0] === otherRuntime && args[1] === '.change-owner-partitions.json') otherTokens += 1;
++      if (args[0] === otherRuntime && args[1] === activeRef) otherBodies += 1;
+       const result = await original(...args);
+       if (!nested && args[0] === runtimeRoot && args[1] === activeRef) {
+         nested = true;
+@@ -569,7 +431,7 @@ it('does not borrow a batch fence for a nested read from a different project', a
+       return result;
+     });
+     expect(await listSdkChangeNames(root, 'native', { readOnly: true })).toEqual(['first']);
+-    expect(otherTokens).toBe(2);
++    expect(otherBodies).toBe(1);
+   } finally {
+     await fs.rm(otherRoot, { recursive: true, force: true });
+   }
+@@ -590,7 +452,7 @@ it('publishes only a successful batch into the caller request cache for subseque
+     }
+     expect(
+       read.mock.calls.filter((call) => call[1] === '.change-owner-partitions.json'),
+-    ).toHaveLength(2);
++    ).toHaveLength(0);
+     expect(
+       read.mock.calls.filter((call) => call[1].startsWith('change-owners/native/')),
+     ).toHaveLength(6);
+@@ -599,7 +461,7 @@ it('publishes only a successful batch into the caller request cache for subseque
+   await runWithHookReadCache(() => readSdkChangeOwner(root, 'native', 'first', { readOnly: true }));
+   expect(
+     read.mock.calls.filter((call) => call[1] === '.change-owner-partitions.json'),
+-  ).toHaveLength(2);
++  ).toHaveLength(0);
+ });
+ 
+ it.each(['deleted', 'compat'] as const)(
+@@ -618,33 +480,19 @@ it.each(['deleted', 'compat'] as const)(
+             format: 'compat',
+           }),
+         );
+-      const tokenFile = path.join(runtimeRoot, '.change-owner-partitions.json');
+-      const token = JSON.parse(await fs.readFile(tokenFile, 'utf8'));
+-      token.token = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+-      await fs.writeFile(tokenFile, JSON.stringify(token));
+       expect(await listSdkChangeNames(root, 'native', { readOnly: true })).toEqual([]);
+       expect(await readSdkChangeOwner(root, 'native', 'first', { readOnly: true })).toBeNull();
+     });
+   },
+ );
+ 
+-it('does not publish body results when final token validation fails', async () => {
+-  const tokenFile = path.join(runtimeRoot, '.change-owner-partitions.json');
+-  const validToken = await fs.readFile(tokenFile, 'utf8');
+-  const original = protectedFiles.readProtectedProjectFile;
++it('does not publish owner bodies from a failed batch into the request cache', async () => {
++  await registerSdkChangeOwner(root, { ...owner, change: 'broken', runId: 'broken' });
++  await fs.writeFile(path.join(runtimeRoot, 'change-owners/native/broken.json'), '{}');
+   await runWithHookReadCache(async () => {
+-    const read = vi
+-      .spyOn(protectedFiles, 'readProtectedProjectFile')
+-      .mockImplementation(async (...args) => {
+-        const result = await original(...args);
+-        if (args[1] === activeRef) await fs.writeFile(tokenFile, '{bad');
+-        return result;
+-      });
+     await expect(listSdkChangeNames(root, 'native', { readOnly: true })).rejects.toThrow(
+-      'Invalid change owner partition token',
++      'Invalid change runtime owner',
+     );
+-    read.mockRestore();
+-    await fs.writeFile(tokenFile, validToken);
+     await fs.writeFile(path.join(runtimeRoot, activeRef), '{}');
+     await expect(readSdkChangeOwner(root, 'native', 'first', { readOnly: true })).rejects.toThrow(
+       'Invalid change runtime owner',
+@@ -678,3 +526,28 @@ it('keeps mutation owner reads uncached despite a previously published read-only
+     );
+   });
+ });
++it('keeps serial owner moves visible without publishing partition coordination metadata', async () => {
++  await registerSdkChangeOwner(root, owner, { canonical: true });
++  expect(await listSdkChangePartitions(root, 'native', { readOnly: true })).toEqual({
++    active: ['first'],
++    history: [],
++  });
++  await closeSdkChangeOwner(root, owner);
++  expect(await readSdkChangeOwner(root, 'native', 'first', { readOnly: true })).toEqual(owner);
++  expect(await listSdkChangePartitions(root, 'native', { readOnly: true })).toEqual({
++    active: [],
++    history: ['first'],
++  });
++  await reopenSdkChangeOwner(root, owner);
++  expect(await listSdkChangePartitions(root, 'native', { readOnly: true })).toEqual({
++    active: ['first'],
++    history: [],
++  });
++  for (const ref of ['.change-owner-partitions.json', '.change-owner-partitions.lock'])
++    await expect(fs.lstat(path.join(runtimeRoot, ref))).rejects.toMatchObject({ code: 'ENOENT' });
++  const before = await fs.readFile(path.join(runtimeRoot, activeRef), 'utf8');
++  await expect(registerSdkChangeOwner(root, { ...owner, application: 'custom' })).rejects.toThrow(
++    'another Runtime',
++  );
++  expect(await fs.readFile(path.join(runtimeRoot, activeRef), 'utf8')).toBe(before);
++});
+diff --git a/test/domains/comet-classic/classic-readonly-state.test.ts b/test/domains/comet-classic/classic-readonly-state.test.ts
+index 38c57cda..ec0f0c18 100644
+--- a/test/domains/comet-classic/classic-readonly-state.test.ts
++++ b/test/domains/comet-classic/classic-readonly-state.test.ts
+@@ -9,7 +9,7 @@ import { parseDocument, stringify } from 'yaml';
+ import {
+   readClassicState,
+   writeClassicState,
+-  withClassicStateLock,
++  withClassicStateMutation,
+ } from '../../../domains/comet-classic/classic-store.js';
+ import {
+   resolveClassicRunDirectory,
+@@ -100,6 +100,8 @@ describe('Classic read-only state and Archive identity', () => {
+     await fs.mkdir(path.dirname(file));
+     await fs.writeFile(file, '{"legacy":true}');
+     await writeClassicProjectText(root, file, '{"local":true}', { label: 'local setup' });
++    // SIMULATED portable copy excludes obsolete project-local records.
++    await fs.rm(file);
+     await fs.rm(resolveWorkspaceRuntimeRootSync(root), { recursive: true });
+     const before = await tree(directory);
+     expect(await classicProjectTargetExists(root, file, { label: 'local read' })).toBe(false);
+@@ -138,6 +140,8 @@ describe('Classic read-only state and Archive identity', () => {
+     const originalTarget = path.join(local, '.comet', 'coordination.json');
+     const copied = path.join(directory, 'copied-project');
+     await fs.cp(root, copied, { recursive: true });
++    // SIMULATED portable copy carries formal materials, not legacy local records.
++    await fs.rm(path.join(copied, path.relative(root, file)));
+     const before = await tree(directory);
+     const reads = vi.spyOn(fs, 'open');
+     expect(
+@@ -401,52 +405,20 @@ describe('Classic read-only state and Archive identity', () => {
+     const local = await resolveClassicRunDirectory(change, root);
+     await fs.writeFile(path.join(local, '.comet-state-transaction.json'), '{}');
+     const before = await tree(directory);
+-    await expect(readClassicState(change, { migrate: false })).rejects.toThrow(/being updated/u);
++    await expect(readClassicState(change, { migrate: false })).rejects.toThrow(
++      /transaction is incomplete/u,
++    );
+     expect(await tree(directory)).toEqual(before);
+   });
+ 
+-  it('reads without mutation while its own active state lock is held', async () => {
+-    await withClassicStateLock(change, async () => {
++  it('reads without mutation inside a serial state operation', async () => {
++    await withClassicStateMutation(change, async () => {
+       const before = await tree(directory);
+       expect((await readClassicState(change, { migrate: false })).classic?.phase).toBe('design');
+       expect(await tree(directory)).toEqual(before);
+     });
+   });
+ 
+-  it('continues to reject another writer even in an expired state-lock async context', async () => {
+-    const local = await resolveClassicRunDirectory(change, root);
+-    let resume!: () => void;
+-    const gate = new Promise<void>((resolve) => {
+-      resume = resolve;
+-    });
+-    let reading!: Promise<unknown>;
+-    await withClassicStateLock(change, async () => {
+-      reading = (async () => {
+-        await gate;
+-        return readClassicState(change, { migrate: false });
+-      })();
+-    });
+-    await fs.writeFile(path.join(local, '.comet-state.lock'), JSON.stringify({ pid: process.pid }));
+-    const before = await tree(directory);
+-    resume();
+-    await expect(reading).rejects.toThrow(/being updated/u);
+-    expect(await tree(directory)).toEqual(before);
+-  });
+-
+-  it('rejects a replaced lock file even while the original lock callback is still active', async () => {
+-    const local = await resolveClassicRunDirectory(change, root);
+-    await withClassicStateLock(change, async () => {
+-      const replacement = path.join(local, 'replacement.lock');
+-      const lock = path.join(local, '.comet-state.lock');
+-      // 连内容也相同的替换文件仍不是本次持有的锁实例。
+-      await fs.copyFile(lock, replacement);
+-      await fs.rename(replacement, lock);
+-      const before = await tree(directory);
+-      await expect(readClassicState(change, { migrate: false })).rejects.toThrow(/lock changed/u);
+-      expect(await tree(directory)).toEqual(before);
+-    });
+-  });
+-
+   it('keeps a sealed legacy Archive unchanged during read-only inspection', async () => {
+     const archived = path.join(root, 'openspec', 'changes', 'archive', '2026-01-01-demo');
+     await fs.rename(change, archived);
+diff --git a/test/domains/comet-classic/classic-progress.test.ts b/test/domains/comet-classic/classic-progress.test.ts
+index 8084791c..43dbace5 100644
+--- a/test/domains/comet-classic/classic-progress.test.ts
++++ b/test/domains/comet-classic/classic-progress.test.ts
+@@ -25,7 +25,7 @@ import {
+   writeClassicDelivery,
+ } from '../../../domains/comet-classic/classic-progress.js';
+ import { resolveClassicRunDirectory } from '../../../domains/comet-classic/classic-runtime-paths.js';
+-import { withClassicStateLock } from '../../../domains/comet-classic/classic-store.js';
++import { withClassicStateMutation } from '../../../domains/comet-classic/classic-store.js';
+ import { resolveWorkspaceRuntimeRoot } from '../../../domains/workflow-contract/workspace-runtime.js';
+ import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
+ import { classicProjectTargetExists } from '../../../domains/comet-classic/classic-protected-path.js';
+@@ -713,16 +713,9 @@ describe('Classic structured progress', () => {
+     },
+   );
+ 
+-  it('records an archive commit while the real state lock is held, without ignoring other changes', async () => {
+-    await writeFile(path.join(root, '.gitignore'), 'changes/demo/.comet-state.lock\n');
++  it('records an archive commit during a serial state operation without ignoring other changes', async () => {
+     const commit = await archivedDelivery('push');
+-    await withClassicStateLock(change, async () => {
+-      expect(
+-        await readFile(
+-          path.join(await resolveClassicRunDirectory(change, root), '.comet-state.lock'),
+-          'utf8',
+-        ),
+-      ).toBeTruthy();
++    await withClassicStateMutation(change, async () => {
+       const result = await writeClassicDelivery(
+         root,
+         change,
+diff --git a/test/domains/workflow-application/application.test.ts b/test/domains/workflow-application/application.test.ts
+index efc95fd1..6f608ac0 100644
+--- a/test/domains/workflow-application/application.test.ts
++++ b/test/domains/workflow-application/application.test.ts
+@@ -43,7 +43,7 @@ describe('application adaptation and SDK authority', () => {
+     await fs.rm(root, { recursive: true, force: true });
+   });
+   const input = { topic: 'Actual topic' };
+-  it('repairs only an observed application or Run writer lock and preserves the authoritative Run', async () => {
++  it('repairs only an observed generic SDK Run writer lock and preserves the authoritative Run', async () => {
+     const { runtime, fixture } = await application();
+     const run = await runtime.start({
+       runId: 'lock-recovery',
+@@ -53,11 +53,7 @@ describe('application adaptation and SDK authority', () => {
+     const applicationId = fixture.manifest.id;
+     const before = await readWorkflowApplicationRun(root, applicationId, run.runId);
+     const locks = await inspectWorkflowApplicationLocks(root, applicationId, run.runId);
+-    expect(locks.map(({ kind }) => kind)).toEqual([
+-      'run-store',
+-      'application-scope',
+-      'application-scope',
+-    ]);
++    expect(locks.map(({ kind }) => kind)).toEqual(['run-store']);
+     for (const target of locks) {
+       await fs.mkdir(path.dirname(target.file), { recursive: true });
+       await fs.writeFile(target.file, '{interrupted-writer');
+diff --git a/test/domains/workflow-application/cross-application-scope.test.ts b/test/domains/workflow-application/cross-application-scope.test.ts
+index 1149a4f5..5f5e1185 100644
+--- a/test/domains/workflow-application/cross-application-scope.test.ts
++++ b/test/domains/workflow-application/cross-application-scope.test.ts
+@@ -70,19 +70,15 @@ async function fixture(
+   };
+   return { disk, loaded, runtime, run, action, request };
+ }
+-it('serializes simultaneous cross-application claims including identical Run IDs', async () => {
++it('rejects the next serial cross-application claim including identical Run IDs', async () => {
+   const project = await root();
+   const alpha = await fixture(project, 'alpha');
+   const beta = await fixture(project, 'beta');
+-  const outcomes = await Promise.allSettled([
+-    alpha.runtime.claim(alpha.request),
+-    beta.runtime.claim(beta.request),
+-  ]);
+-  expect(outcomes.filter((outcome) => outcome.status === 'fulfilled')).toHaveLength(1);
+-  const rejected = outcomes.find(
+-    (outcome) => outcome.status === 'rejected',
+-  ) as PromiseRejectedResult;
+-  expect(rejected.reason).toMatchObject({ code: 'SCOPE_HELD', blockedRunIds: ['same-run'] });
++  await alpha.runtime.claim(alpha.request);
++  await expect(beta.runtime.claim(beta.request)).rejects.toMatchObject({
++    code: 'SCOPE_HELD',
++    blockedRunIds: ['same-run'],
++  });
+   expect(
+     [await alpha.runtime.inspect('same-run'), await beta.runtime.inspect('same-run')]
+       .flatMap((run) => run.actions)
+@@ -195,7 +191,7 @@ it('keeps unknown executions occupied across applications and protects fixed man
+   await expect(beta.runtime.claim(beta.request)).rejects.toThrow();
+   expect((await beta.runtime.inspect(beta.run.runId)).actions.at(-1)?.status).toBe('pending');
+ });
+-it('does not confuse an application named workspace with the workspace lock', async () => {
++it('keeps an application named workspace independent of retired scope lock filenames', async () => {
+   const project = await root();
+   const app = await fixture(project, 'workspace');
+   expect((await app.runtime.claim(app.request)).actions.at(-1)?.status).toBe('running');

@@ -13,7 +13,6 @@ export * from './classic-runtime-run.js';
 export * from './classic-sdk-application.js';
 export * from './classic-sdk-archive-preflight.js';
 export * from './classic-sdk-archive.js';
-export * from './classic-sdk-check.js';
 export * from './classic-state-events.js';
 export * from './classic-intent.js';
 export * from './classic-intent-command.js';

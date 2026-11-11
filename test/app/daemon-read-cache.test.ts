@@ -87,8 +87,7 @@ it('reuses only Git observations while Native documents remain fresh between dae
     .mocked(execFileSync)
     .mock.calls.slice(commandsBefore)
     .filter(([command]) => command === 'git');
-  expect(queries).toHaveLength(1);
-  expect(queries[0][1]).toEqual(['-C', root, 'worktree', 'list', '--porcelain', '-z']);
+  expect(queries).toHaveLength(0);
   expect(snapshotCometRuntimeMetrics().gitCommands - before.gitCommands).toBe(queries.length);
   expect((await query(['status'])).items[0].phase).toBe('shape');
 });

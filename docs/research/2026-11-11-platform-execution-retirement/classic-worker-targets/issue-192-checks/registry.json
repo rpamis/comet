@@ -1,0 +1,81 @@
+{
+  "cases": [
+    {
+      "id": "issue-192-checks",
+      "behavior": "非内建项目可执行明确argv登记有效检查；失败不得被自动推断成功覆盖",
+      "status": "covered",
+      "reason": "050 仍保留该行为；使用当前入口的确定性回归。",
+      "coverageLayer": "sdk-and-compat",
+      "evidence": [
+        "test/domains/comet-classic/classic-executed-checks.test.ts",
+        "test/domains/comet-classic/classic-guard.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+          "namePattern": "executes literal argv, preserves child JSON/help flags, and records runtime provenance|persists a bound SDK Action across check start and completion",
+          "requiredNames": [
+            "executes literal argv, preserves child JSON/help flags, and records runtime provenance",
+            "persists a bound SDK Action across check start and completion"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-guard.test.ts",
+          "namePattern": "preserves an explicit failed build instead of replacing it with an inferred command|lists workspace candidates instead of choosing when several packages build",
+          "requiredNames": [
+            "preserves an explicit failed build instead of replacing it with an inferred command",
+            "lists workspace candidates instead of choosing when several packages build"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "Retire automatic document/candidate byte invalidation and command inference. Preserve real failures, original claim/Run, explicit user decisions, approved delivery and generated Runtime continuation. This does not declare the retired automatic trigger fixed.",
+        "authorization": "report:2026-11-09-test-pruning",
+        "record": "docs/research/2026-11-09-runtime-review-repair.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+            "namePattern": "executes literal argv, preserves child JSON/help flags, and records runtime provenance|persists a bound SDK Action across check start and completion",
+            "requiredNames": [
+              "executes literal argv, preserves child JSON/help flags, and records runtime provenance",
+              "persists a bound SDK Action across check start and completion"
+            ]
+          },
+          {
+            "file": "test/domains/comet-classic/classic-guard.test.ts",
+            "namePattern": "(?:preserves an explicit failed build instead of replacing it with an inferred command)",
+            "requiredNames": [
+              "preserves an explicit failed build instead of replacing it with an inferred command"
+            ]
+          },
+          {
+            "file": "test/domains/comet-classic/classic-agent-delivery-repair.test.ts",
+            "requiredNames": [
+              "repairs archived Classic v2 delivery with platform reports without replaying commands or Archive"
+            ],
+            "namePattern": "^(?:repairs archived Classic v2 delivery with platform reports without replaying commands or Archive)$"
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-runtime-core-review/final-retirements/registry.json",
+            "sha256": "4845b34ebd08093043da91362e1be2a4307a94cd304ab8f712767a268eafad1b"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-runtime-core-review/final-retirements/tests.json",
+            "sha256": "ae7822e0ba61e40673b283ee0589649c07e50db68f1c27ef055f30a1e9b04102"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-runtime-core-review/final-retirements/mapping.json",
+            "sha256": "9cfffeca21078a0869cafde16dbed4b825385c9ba7d8a28518bfe0ec65b7a6e3"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-runtime-core-review/final-retirements/tests.patch",
+            "sha256": "5ecd9aec68776ccd9856eab444931ecb42ea31493028f7dbf3447a9df06ee748"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -3,15 +3,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { recoverArchiveTransaction } from '../../../domains/comet-native/native-archive.js';
 import {
-  archiveNativeChange,
-  recoverArchiveTransaction,
-} from '../../../domains/comet-native/native-archive.js';
-import {
+  applyNativeArchiveTransactionV2,
   readNativeArchiveTransactionV2,
   rollbackNativeArchiveTransactionV2,
 } from '../../../domains/comet-native/native-archive-transaction.js';
-import { doctorNativeProject } from '../../../domains/comet-native/native-doctor.js';
+import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { sha256File } from '../../../domains/comet-native/native-hash.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import type {
@@ -19,13 +17,14 @@ import type {
   NativeSpecChange,
 } from '../../../domains/comet-native/native-types.js';
 import {
-  prepareNativeArchiveFixture,
-  readyNativeArchivePreflight,
-} from '../../helpers/native-archive.js';
+  loadPreparedNativeArchive,
+  type FrozenNativeArchive,
+} from '../../helpers/native-archive-wal.js';
 
 describe('Native Archive target CAS', () => {
   let projectRoot: string;
   let paths: NativeProjectPaths;
+  let fixture: FrozenNativeArchive;
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-archive-cas-'));
@@ -36,50 +35,22 @@ describe('Native Archive target CAS', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
-  async function preparedChange(
-    name: string,
-  ): Promise<{ canonical: string; now: Date; hash: string }> {
-    const canonical = path.join(paths.specsDir, 'authentication', 'spec.md');
-    await fs.mkdir(path.dirname(canonical), { recursive: true });
-    await fs.writeFile(canonical, 'old auth\n');
-    const specChanges: NativeSpecChange[] = [
-      {
-        capability: 'authentication',
-        operation: 'replace',
-        source: 'specs/authentication.md',
-        base_hash: await sha256File(canonical),
-      },
-    ];
-    await prepareNativeArchiveFixture({
-      paths,
-      name,
-      specChanges,
-      proposedSpecs: { 'specs/authentication.md': 'new auth\n' },
-    });
-    const now = new Date('2026-07-24T00:00:00.000Z');
-    const hash = await readyNativeArchivePreflight({ paths, name, now });
-    return { canonical, now, hash };
+  async function preparedChange(_name: string) {
+    fixture = await loadPreparedNativeArchive(paths, 'replace-create');
+    return {
+      canonical: path.join(paths.specsDir, 'authentication/spec.md'),
+      now: new Date(fixture.journal.createdAt),
+      hash: fixture.journal.preflightHash,
+    };
   }
-
-  async function preparedRemoveChange(
-    name: string,
-  ): Promise<{ canonical: string; now: Date; hash: string }> {
-    const canonical = path.join(paths.specsDir, 'legacy-auth', 'spec.md');
-    await fs.mkdir(path.dirname(canonical), { recursive: true });
-    await fs.writeFile(canonical, 'legacy auth\n');
-    const specChanges: NativeSpecChange[] = [
-      {
-        capability: 'legacy-auth',
-        operation: 'remove',
-        base_hash: await sha256File(canonical),
-      },
-    ];
-    await prepareNativeArchiveFixture({ paths, name, specChanges });
-    const now = new Date('2026-07-24T01:00:00.000Z');
-    const hash = await readyNativeArchivePreflight({ paths, name, now });
-    return { canonical, now, hash };
+  async function preparedRemoveChange(_name: string) {
+    fixture = await loadPreparedNativeArchive(paths, 'remove');
+    return {
+      canonical: path.join(paths.specsDir, 'legacy-auth/spec.md'),
+      now: new Date(fixture.journal.createdAt),
+      hash: fixture.journal.preflightHash,
+    };
   }
-
   async function archiveCasQuarantines(canonical: string): Promise<string[]> {
     return (await fs.readdir(path.dirname(canonical)))
       .filter((entry) => entry.includes('.comet-archive-cas-'))
@@ -98,18 +69,12 @@ describe('Native Archive target CAS', () => {
       let injected = false;
 
       await expect(
-        archiveNativeChange({
-          paths,
-          name,
-          expectedPreflightHash: hash,
-          now,
-          hooks: {
-            async afterArchiveTargetBound(phase, operation, target) {
-              if (phase !== 'apply' || operation.type !== 'write' || injected) return;
-              injected = true;
-              await fs.rename(target, displaced);
-              await fs.writeFile(target, replacement);
-            },
+        applyNativeArchiveTransactionV2(paths, fixture.journal, {
+          async afterArchiveTargetBound(phase, operation, target) {
+            if (phase !== 'apply' || operation.type !== 'write' || injected) return;
+            injected = true;
+            await fs.rename(target, displaced);
+            await fs.writeFile(target, replacement);
           },
         }),
       ).rejects.toThrow(/content changed|object identity changed/u);
@@ -122,25 +87,16 @@ describe('Native Archive target CAS', () => {
 
   it('continues after crashing immediately after the original target was quarantined', async () => {
     const { canonical, now, hash } = await preparedChange('quarantine-crash');
-    let transactionId = '';
+    const transactionId = fixture.journal.id;
     let crashed = false;
 
     await expect(
-      archiveNativeChange({
-        paths,
-        name: 'quarantine-crash',
-        expectedPreflightHash: hash,
-        now,
-        hooks: {
-          afterPrepared(journal) {
-            transactionId = journal.id;
-          },
-          afterArchiveTargetQuarantined(phase, operation) {
-            if (phase === 'apply' && operation.type === 'write' && !crashed) {
-              crashed = true;
-              throw new Error('crash after target quarantine');
-            }
-          },
+      applyNativeArchiveTransactionV2(paths, fixture.journal, {
+        afterArchiveTargetQuarantined(phase, operation) {
+          if (phase === 'apply' && operation.type === 'write' && !crashed) {
+            crashed = true;
+            throw new Error('crash after target quarantine');
+          }
         },
       }),
     ).rejects.toThrow('crash after target quarantine');
@@ -148,19 +104,19 @@ describe('Native Archive target CAS', () => {
     await expect(fs.access(canonical)).rejects.toMatchObject({ code: 'ENOENT' });
     expect(await archiveCasQuarantines(canonical)).toHaveLength(1);
 
-    const inspected = await doctorNativeProject({ paths });
-    expect(inspected.findings).toContainEqual(
-      expect.objectContaining({ code: 'archive-transaction-incomplete', severity: 'error' }),
-    );
-    const repaired = await doctorNativeProject({
-      paths,
-      repair: true,
-      recoveryStrategy: 'continue',
-    });
-    expect(repaired.findings).toContainEqual(
-      expect.objectContaining({ code: 'archive-transaction-recovered', severity: 'info' }),
-    );
-    expect((await readNativeArchiveTransactionV2(paths, transactionId)).status).toBe('committed');
+    expect((await readNativeArchiveTransactionV2(paths, transactionId)).status).toBe('applying');
+    const repaired = await runNativeCli([
+      'doctor',
+      '--transaction',
+      transactionId,
+      '--repair',
+      '--strategy',
+      'continue',
+      '--project-root',
+      projectRoot,
+      '--json',
+    ]);
+    expect(repaired.exitCode, repaired.stdout).toBe(0);
     expect(await fs.readFile(canonical, 'utf8')).toBe('new auth\n');
     expect(await archiveCasQuarantines(canonical)).toEqual([]);
   });
@@ -171,18 +127,12 @@ describe('Native Archive target CAS', () => {
     let injected = false;
 
     await expect(
-      archiveNativeChange({
-        paths,
-        name: 'remove-object-race',
-        expectedPreflightHash: hash,
-        now,
-        hooks: {
-          async afterArchiveTargetBound(phase, operation, target) {
-            if (phase !== 'apply' || operation.type !== 'remove' || injected) return;
-            injected = true;
-            await fs.rename(target, displaced);
-            await fs.writeFile(target, 'legacy auth\n');
-          },
+      applyNativeArchiveTransactionV2(paths, fixture.journal, {
+        async afterArchiveTargetBound(phase, operation, target) {
+          if (phase !== 'apply' || operation.type !== 'remove' || injected) return;
+          injected = true;
+          await fs.rename(target, displaced);
+          await fs.writeFile(target, 'legacy auth\n');
         },
       }),
     ).rejects.toThrow(/content changed|object identity changed/u);
@@ -194,24 +144,15 @@ describe('Native Archive target CAS', () => {
 
   it('never overwrites a target created between quarantine and exclusive install', async () => {
     const { canonical, now, hash } = await preparedChange('exclusive-install-race');
-    let transactionId = '';
+    const transactionId = fixture.journal.id;
     let injected = false;
 
     await expect(
-      archiveNativeChange({
-        paths,
-        name: 'exclusive-install-race',
-        expectedPreflightHash: hash,
-        now,
-        hooks: {
-          afterPrepared(journal) {
-            transactionId = journal.id;
-          },
-          async beforeArchiveTargetInstall(phase, operation, target) {
-            if (phase !== 'apply' || operation.type !== 'write' || injected) return;
-            injected = true;
-            await fs.writeFile(target, 'external auth\n');
-          },
+      applyNativeArchiveTransactionV2(paths, fixture.journal, {
+        async beforeArchiveTargetInstall(phase, operation, target) {
+          if (phase !== 'apply' || operation.type !== 'write' || injected) return;
+          injected = true;
+          await fs.writeFile(target, 'external auth\n');
         },
       }),
     ).rejects.toThrow('created before exclusive install');
@@ -238,25 +179,16 @@ describe('Native Archive target CAS', () => {
 
   it('continues after the exclusive target link is durable but its identity record is not', async () => {
     const { canonical, now, hash } = await preparedChange('install-record-crash');
-    let transactionId = '';
+    const transactionId = fixture.journal.id;
     let crashed = false;
 
     await expect(
-      archiveNativeChange({
-        paths,
-        name: 'install-record-crash',
-        expectedPreflightHash: hash,
-        now,
-        hooks: {
-          afterPrepared(journal) {
-            transactionId = journal.id;
-          },
-          afterArchiveTargetInstalled(phase, operation) {
-            if (phase === 'apply' && operation.type === 'write' && !crashed) {
-              crashed = true;
-              throw new Error('crash after exclusive install');
-            }
-          },
+      applyNativeArchiveTransactionV2(paths, fixture.journal, {
+        afterArchiveTargetInstalled(phase, operation) {
+          if (phase === 'apply' && operation.type === 'write' && !crashed) {
+            crashed = true;
+            throw new Error('crash after exclusive install');
+          }
         },
       }),
     ).rejects.toThrow('crash after exclusive install');
@@ -274,20 +206,11 @@ describe('Native Archive target CAS', () => {
 
   it('refuses to roll back over a same-content external replacement', async () => {
     const { canonical, now, hash } = await preparedChange('rollback-same-content');
-    let transactionId = '';
+    const transactionId = fixture.journal.id;
     await expect(
-      archiveNativeChange({
-        paths,
-        name: 'rollback-same-content',
-        expectedPreflightHash: hash,
-        now,
-        hooks: {
-          afterPrepared(journal) {
-            transactionId = journal.id;
-          },
-          afterOperation(operation) {
-            if (operation.type === 'write') throw new Error('crash after canonical write');
-          },
+      applyNativeArchiveTransactionV2(paths, fixture.journal, {
+        afterOperation(operation) {
+          if (operation.type === 'write') throw new Error('crash after canonical write');
         },
       }),
     ).rejects.toThrow('crash after canonical write');
@@ -307,20 +230,11 @@ describe('Native Archive target CAS', () => {
 
   it('refuses to restore a removed spec over a same-content external recreation', async () => {
     const { canonical, now, hash } = await preparedRemoveChange('rollback-remove-recreation');
-    let transactionId = '';
+    const transactionId = fixture.journal.id;
     await expect(
-      archiveNativeChange({
-        paths,
-        name: 'rollback-remove-recreation',
-        expectedPreflightHash: hash,
-        now,
-        hooks: {
-          afterPrepared(journal) {
-            transactionId = journal.id;
-          },
-          afterOperation(operation) {
-            if (operation.type === 'remove') throw new Error('crash after canonical remove');
-          },
+      applyNativeArchiveTransactionV2(paths, fixture.journal, {
+        afterOperation(operation) {
+          if (operation.type === 'remove') throw new Error('crash after canonical remove');
         },
       }),
     ).rejects.toThrow('crash after canonical remove');
@@ -337,20 +251,11 @@ describe('Native Archive target CAS', () => {
 
   it('resumes rollback after crashing with the transaction write quarantined', async () => {
     const { canonical, now, hash } = await preparedChange('rollback-quarantine-crash');
-    let transactionId = '';
+    const transactionId = fixture.journal.id;
     await expect(
-      archiveNativeChange({
-        paths,
-        name: 'rollback-quarantine-crash',
-        expectedPreflightHash: hash,
-        now,
-        hooks: {
-          afterPrepared(journal) {
-            transactionId = journal.id;
-          },
-          afterOperation(operation) {
-            if (operation.type === 'write') throw new Error('crash after canonical write');
-          },
+      applyNativeArchiveTransactionV2(paths, fixture.journal, {
+        afterOperation(operation) {
+          if (operation.type === 'write') throw new Error('crash after canonical write');
         },
       }),
     ).rejects.toThrow('crash after canonical write');

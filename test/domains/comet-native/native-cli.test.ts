@@ -13,7 +13,6 @@ import {
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import { projectRootFrom } from '../../../domains/comet-native/native-cli-shared.js';
-import { acquireNativeLock, releaseNativeLock } from '../../../domains/comet-native/native-lock.js';
 import {
   nativeChangeRuntimeDir,
   nativeLegacyChangeRuntimeDir,
@@ -22,7 +21,6 @@ import {
 } from '../../../domains/comet-native/native-paths.js';
 import { isWorkspaceRuntimeMigrationFence } from '../../../domains/workflow-contract/workspace-runtime.js';
 import {
-  nativeLocalExecutionFile,
   readNativePortableChange,
   submitNativePortableBuilderCandidate,
 } from '../../../domains/comet-native/native-portable-runtime.js';
@@ -237,27 +235,18 @@ describe('Comet Native CLI dispatcher', () => {
     const changeDir = path.join(paths.changesDir, 'portable-change');
     expect((await fs.readdir(changeDir)).sort()).toEqual(['brief.md', 'comet-state.yaml', 'specs']);
     const runtimeDir = nativeChangeRuntimeDir(paths, 'portable-change');
-    expect(await fs.readdir(runtimeDir)).toEqual(['state.json']);
+    expect(await fs.readdir(runtimeDir)).toEqual([]);
 
     const yaml = await fs.readFile(path.join(changeDir, 'comet-state.yaml'), 'utf8');
     expect(yaml).toContain('schema: comet.native.v4');
     expect(yaml).toContain('state_version: 1');
     expect(yaml).not.toMatch(/snapshot|baseline|sha256|contract_hash|approved_contract/iu);
-    const local = JSON.parse(
-      await fs.readFile(path.join(runtimeDir, 'state.json'), 'utf8'),
-    ) as Record<string, unknown>;
-    expect(local).toMatchObject({
-      schema: 'comet.native.local-execution.v4',
-      change: 'portable-change',
-      basedOnStateVersion: 1,
-      execution: null,
-      checks: [],
-      workspace: {
-        projectRoot: path.resolve(projectRoot),
-        worktreeRoot: path.resolve(projectRoot),
-      },
+    await expect(fs.access(path.join(runtimeDir, 'state.json'))).rejects.toMatchObject({
+      code: 'ENOENT',
     });
-    expect(JSON.stringify(local)).not.toMatch(/snapshot|baseline|receipt|evidence|checkpoint/iu);
+    expect((await readNativePortableChange(paths, 'portable-change')).workspace.change_branch).toBe(
+      branch,
+    );
   });
 
   it('binds one current-workspace change and requires isolation for a second change', async () => {
@@ -349,15 +338,16 @@ describe('Comet Native CLI dispatcher', () => {
     });
   });
 
-  it('atomically allows only one current-workspace creation when two sessions race', async () => {
-    const results = await Promise.all(
-      ['race-alpha', 'race-beta'].map(async (name) => ({
+  it('requires isolation for a second current-workspace creation after the first serial request', async () => {
+    const results = [];
+    for (const name of ['race-alpha', 'race-beta']) {
+      results.push({
         name,
         result: json(
           await runNativeCli(['new', name, '--runtime', 'compat', '--json', ...projectArgs()]),
         ),
-      })),
-    );
+      });
+    }
     const succeeded = results.filter(({ result }) => result.exitCode === 0);
     const rejected = results.filter(({ result }) => result.exitCode === 73);
 
@@ -434,37 +424,29 @@ describe('Comet Native CLI dispatcher', () => {
     });
   });
 
-  it('rechecks an explicit Git binding under the Native creation lock', async () => {
+  it('rejects an explicit Git binding that does not match the current branch before creation', async () => {
     const targetBranch = await initializeAndCommit();
     execFileSync('git', ['switch', '-c', 'comet/locked-binding'], {
       cwd: projectRoot,
       stdio: 'ignore',
     });
-    const paths = await nativeProjectPaths(projectRoot, 'docs');
-    const lock = await acquireNativeLock(paths, 'root-move', 'hold new under test');
-    let pending: ReturnType<typeof runNativeCli>;
-    try {
-      pending = runNativeCli([
-        'new',
-        'locked-binding',
-        '--runtime',
-        'compat',
-        '--isolation',
-        'branch',
-        '--change-branch',
-        'comet/locked-binding',
-        '--target-branch',
-        targetBranch,
-        '--json',
-        ...projectArgs(),
-      ]);
-      await new Promise((resolve) => setTimeout(resolve, 75));
-      execFileSync('git', ['switch', targetBranch], { cwd: projectRoot, stdio: 'ignore' });
-    } finally {
-      await releaseNativeLock(lock);
-    }
+    execFileSync('git', ['switch', targetBranch], { cwd: projectRoot, stdio: 'ignore' });
+    const pending = runNativeCli([
+      'new',
+      'locked-binding',
+      '--runtime',
+      'compat',
+      '--isolation',
+      'branch',
+      '--change-branch',
+      'comet/locked-binding',
+      '--target-branch',
+      targetBranch,
+      '--json',
+      ...projectArgs(),
+    ]);
 
-    expect(json(await pending!)).toMatchObject({
+    expect(json(await pending)).toMatchObject({
       exitCode: 65,
       error: {
         code: 'invalid-data',
@@ -662,7 +644,7 @@ describe('Comet Native CLI dispatcher', () => {
       const secondaryPaths = await nativeProjectPaths(secondary, 'docs');
       await expect(
         fs.access(path.join(nativeChangeRuntimeDir(secondaryPaths, 'root-routed'), 'state.json')),
-      ).resolves.toBeUndefined();
+      ).rejects.toMatchObject({ code: 'ENOENT' });
       await expect(
         fs.access(
           path.join(secondary, 'docs', 'comet', 'changes', 'root-routed', 'comet-state.yaml'),
@@ -862,9 +844,9 @@ describe('Comet Native CLI dispatcher', () => {
         continuation: { runnerAction: { kind: 'builder-handoff' } },
       },
     });
-    expect((await fs.readdir(nativeChangeRuntimeDir(paths, 'sentence-counting'))).sort()).toEqual([
-      'state.json',
-    ]);
+    expect((await fs.readdir(nativeChangeRuntimeDir(paths, 'sentence-counting'))).sort()).toEqual(
+      [],
+    );
   });
 
   it('returns acceptance scenarios through the typed details page', async () => {
@@ -1016,14 +998,13 @@ describe('Comet Native CLI dispatcher', () => {
 
     await runNativeCli(['init', '--root', '.', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, '.');
-    const lock = await acquireNativeLock(paths, 'root-move', 'archive concurrent-change');
-    try {
-      const conflict = await runNativeCli(['root', 'move', 'docs', '--json', ...projectArgs()]);
-      expect(conflict.exitCode).toBe(73);
-      expect(json(conflict)).toMatchObject({ error: { code: 'conflict' } });
-    } finally {
-      await releaseNativeLock(lock);
-    }
+    const oldLock = path.join(paths.runtimeDir, 'locks', 'root-move.lock');
+    const oldBytes = 'SIMULATED obsolete Native root lock\n';
+    await fs.mkdir(path.dirname(oldLock), { recursive: true });
+    await fs.writeFile(oldLock, oldBytes);
+    const moved = await runNativeCli(['root', 'move', 'docs', '--json', ...projectArgs()]);
+    expect(moved.exitCode).toBe(0);
+    expect(await fs.readFile(oldLock, 'utf8')).toBe(oldBytes);
   });
 
   it('returns the v2 confirmation continuation when Shape has not been confirmed', async () => {
@@ -1064,11 +1045,49 @@ describe('Comet Native CLI dispatcher', () => {
     });
   });
 
+  it.each([
+    '--confirmed',
+    '--accept-result',
+    '--revise-implementation',
+    '--revise-requirements',
+    '--retry-verifier',
+    '--continue-builder',
+    '--resolve-verifier-blocker',
+  ])('rejects a Compat user decision %s without original continuation guards', async (decision) => {
+    await runNativeCli(['new', 'guarded-decision', '--runtime', 'compat', ...projectArgs()]);
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    const file = path.join(paths.changesDir, 'guarded-decision', 'comet-state.yaml');
+    const before = await fs.readFile(file, 'utf8');
+    const rejected = json(
+      await runNativeCli([
+        'next',
+        'guarded-decision',
+        decision,
+        '--summary',
+        'SIMULATED user decision without returned guards',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(rejected).toMatchObject({
+      exitCode: 64,
+      error: {
+        code: 'usage',
+        message: expect.stringContaining('--expected-state-version and --expected-action'),
+      },
+    });
+    expect(await fs.readFile(file, 'utf8')).toBe(before);
+  });
+
   it('records explicit Shape confirmation in portable state and advances to Builder handoff', async () => {
     await runNativeCli(['new', 'confirmed-shape', '--runtime', 'compat', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     await fs.writeFile(path.join(paths.changesDir, 'confirmed-shape', 'brief.md'), brief);
 
+    const beforeEarly = await fs.readFile(
+      path.join(paths.changesDir, 'confirmed-shape', 'comet-state.yaml'),
+      'utf8',
+    );
     const early = json(
       await runNativeCli([
         'next',
@@ -1080,18 +1099,22 @@ describe('Comet Native CLI dispatcher', () => {
         ...projectArgs(),
       ]),
     );
-    expect(early).toMatchObject({
-      exitCode: 64,
-      error: { message: expect.stringContaining('persisted Shape user confirmation boundary') },
-    });
+
     await expect(readNativePortableChange(paths, 'confirmed-shape')).resolves.toMatchObject({
       phase: 'shape',
       status: 'active',
       state_version: 1,
     });
 
+    expect(
+      await fs.readFile(path.join(paths.changesDir, 'confirmed-shape', 'comet-state.yaml'), 'utf8'),
+    ).toBe(beforeEarly);
     expect((await prepareShape('confirmed-shape')).exitCode).toBe(0);
 
+    const preparedBytes = await fs.readFile(
+      path.join(paths.changesDir, 'confirmed-shape', 'comet-state.yaml'),
+      'utf8',
+    );
     const unguarded = json(
       await runNativeCli([
         'next',
@@ -1107,7 +1130,7 @@ describe('Comet Native CLI dispatcher', () => {
       exitCode: 64,
       error: {
         message: expect.stringContaining(
-          '--expected-state-version and --expected-action are required for Shape confirmation',
+          '--expected-state-version and --expected-action from the current continuation',
         ),
       },
     });
@@ -1116,6 +1139,14 @@ describe('Comet Native CLI dispatcher', () => {
       status: 'await-user',
       state_version: 2,
       loop: { next_action: 'confirm-shape' },
+    });
+
+    expect(
+      await fs.readFile(path.join(paths.changesDir, 'confirmed-shape', 'comet-state.yaml'), 'utf8'),
+    ).toBe(preparedBytes);
+    expect(early).toMatchObject({
+      exitCode: 64,
+      error: { message: expect.stringContaining('--expected-state-version and --expected-action') },
     });
 
     const result = json(
@@ -1195,6 +1226,7 @@ describe('Comet Native CLI dispatcher', () => {
       phase: 'verify',
       continuation: { action: 'dispatch-verifier', runnerAction: { kind: 'dispatch-verifier' } },
     });
+    const submittedState = await readNativePortableChange(paths, 'revise-implementation');
     const returned = json(
       await runNativeCli([
         'next',
@@ -1202,6 +1234,10 @@ describe('Comet Native CLI dispatcher', () => {
         '--summary',
         'Implementation changed after handoff',
         '--revise-implementation',
+        '--expected-state-version',
+        String(submittedState.state_version),
+        '--expected-action',
+        'revise-implementation',
         '--json',
         ...projectArgs(),
       ]),
@@ -1378,21 +1414,32 @@ describe('Comet Native CLI dispatcher', () => {
     expect(data.proposedSpecs[64].content).toContain(padding);
   }, 120_000);
 
-  it('repairs a stale selection without requiring a transaction strategy', async () => {
-    await runNativeCli(['init', ...projectArgs()]);
-    await fs.writeFile(
-      path.join(projectRoot, '.comet', 'current-change.json'),
-      JSON.stringify({
-        schema: 'comet.selection.v2',
-        workflow: 'native',
-        change: 'missing-change',
-        branch: null,
-      }),
+  it('keeps stale selection bytes until the user explicitly selects the original current change', async () => {
+    await runNativeCli(['new', 'selected-change', '--runtime', 'compat', ...projectArgs()]);
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    const stateFile = path.join(paths.changesDir, 'selected-change', 'comet-state.yaml');
+    const original = await fs.readFile(stateFile, 'utf8');
+    const file = path.join(projectRoot, '.comet', 'current-change.json');
+    const bytes = JSON.stringify({
+      schema: 'comet.selection.v2',
+      workflow: 'native',
+      change: 'missing-change',
+      branch: null,
+    });
+    await fs.writeFile(file, bytes);
+    expect((await runNativeCli(['doctor', '--repair', '--json', ...projectArgs()])).exitCode).toBe(
+      0,
     );
-    const repaired = await runNativeCli(['doctor', '--repair', '--json', ...projectArgs()]);
-    expect(repaired.exitCode).toBe(0);
-    const data = json(repaired).data as { findings: Array<{ code: string }> };
-    expect(data.findings).toContainEqual(expect.objectContaining({ code: 'selection-cleared' }));
+    expect(await fs.readFile(file, 'utf8')).toBe(bytes);
+    const selected = json(
+      await runNativeCli(['select', 'selected-change', '--json', ...projectArgs()]),
+    );
+    expect(selected.exitCode).toBe(0);
+    expect(JSON.parse(await fs.readFile(file, 'utf8'))).toMatchObject({
+      change: 'selected-change',
+      workflow: 'native',
+    });
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(original);
   });
 
   it.each([
@@ -1454,7 +1501,7 @@ describe('Comet Native CLI dispatcher', () => {
     },
   );
 
-  it('migrates a legacy active change on its first mutating CLI command', async () => {
+  it('imports legacy business state only through explicit Doctor repair and preserves original evidence', async () => {
     await runNativeCli(['init', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const changeDir = path.join(paths.changesDir, 'legacy-change');
@@ -1503,6 +1550,24 @@ describe('Comet Native CLI dispatcher', () => {
         continuation: { disposition: 'blocked' },
       },
     });
+    const beforeImport = await fs.readFile(path.join(changeDir, 'comet-state.yaml'), 'utf8');
+    const rejected = json(
+      await runNativeCli([
+        'next',
+        'legacy-change',
+        '--summary',
+        'Resume from the portable stable boundary',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(rejected.exitCode).not.toBe(0);
+    expect(JSON.stringify(rejected)).toContain('doctor');
+    expect(await fs.readFile(path.join(changeDir, 'comet-state.yaml'), 'utf8')).toBe(beforeImport);
+    const imported = json(
+      await runNativeCli(['doctor', 'legacy-change', '--repair', '--json', ...projectArgs()]),
+    );
+    expect(imported.exitCode).toBe(0);
     const migrated = json(
       await runNativeCli([
         'next',
@@ -1523,22 +1588,16 @@ describe('Comet Native CLI dispatcher', () => {
           acceptance: { total: 1, pending: 1 },
           loop: { iteration: 1, attempt: 0 },
         },
-        migration: {
-          completed: true,
-          summary: 'Resume from the portable stable boundary',
-        },
         continuation: { runnerAction: { kind: 'builder-handoff' } },
       },
     });
     expect(JSON.stringify(migrated.data)).not.toMatch(/[a-f0-9]{64}/u);
-    expect((await fs.readdir(runtimeDir)).sort()).toEqual(['evidence', 'state.json']);
-    expect(await fs.readFile(path.join(runtimeDir, 'evidence', 'history.json'), 'utf8')).toBe(
+    await expect(fs.access(runtimeDir)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await fs.readFile(path.join(legacyRuntimeDir, 'evidence', 'history.json'), 'utf8')).toBe(
       '{"legacy":true}',
     );
-    expect(await isWorkspaceRuntimeMigrationFence(legacyRuntimeDir, runtimeDir)).toBe(true);
-    await expect(fs.access(path.join(changeDir, 'evidence.md'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+    expect(await isWorkspaceRuntimeMigrationFence(legacyRuntimeDir, runtimeDir)).toBe(false);
+    expect(await fs.readFile(path.join(changeDir, 'evidence.md'), 'utf8')).toBe('legacy evidence');
     const yaml = await fs.readFile(path.join(changeDir, 'comet-state.yaml'), 'utf8');
     expect(yaml).toContain('schema: comet.native.v4');
     expect(yaml).not.toMatch(/approved_contract_hash|implementation_scope|verification_evidence/iu);
@@ -1546,8 +1605,8 @@ describe('Comet Native CLI dispatcher', () => {
       phase: 'build',
       schema: 'comet.native.v4',
     });
-    await expect(
-      fs.access(nativeLocalExecutionFile(paths, 'legacy-change')),
-    ).resolves.toBeUndefined();
+    await expect(fs.access(path.join(runtimeDir, 'state.json'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
   });
 });

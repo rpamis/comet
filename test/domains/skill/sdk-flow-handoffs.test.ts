@@ -28,6 +28,7 @@ describe.each(['skills-zh', 'skills'])('%s SDK flow handoffs', (root) => {
       const main = await read(`${name}/SKILL.md`);
       expect(main).toContain('](reference/compat.md)');
       expect(main).toContain('../comet-classic/reference/sdk-methods.md');
+      if (['comet-build', 'comet-verify'].includes(name)) expect(main).toContain('--checks');
       expect(main).not.toContain('comet state set <name>');
       const compat = await read(`${name}/reference/compat.md`);
       expect(compat).toContain('comet state select');
@@ -38,7 +39,7 @@ describe.each(['skills-zh', 'skills'])('%s SDK flow handoffs', (root) => {
       'comet-task-authority',
       'base-ref',
       'CRITICAL/IMPORTANT',
-      '--local',
+      'platform-execution.md',
       'rulings.md',
       'complete-delivery',
     ])

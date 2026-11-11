@@ -1,0 +1,462 @@
+{
+  "policy": "All entries are per-mechanism splits. No registered case is wholly feature-removed; preserve original sources and all other tests/behaviors in that case.",
+  "source": "original-main.txt",
+  "sharedAppliedArchiveCaseIds": [
+    "native-archive-rejected-apply-recovery",
+    "native-531-transient-snapshot-preserves-acceptance",
+    "native-531-declared-check-outputs",
+    "native-509-environment-archive",
+    "native-dirty-gitlink-archive",
+    "manual-recovery-native-applied-comment",
+    "manual-recovery-native-repeat-edit",
+    "manual-recovery-native-large-crlf",
+    "manual-recovery-native-compat-edit",
+    "manual-recovery-native-build-edit",
+    "manual-recovery-native-archive-ready",
+    "manual-recovery-native-archive-report-edit",
+    "manual-recovery-native-archive-requirements-edit",
+    "manual-recovery-native-archive-formal-comment",
+    "manual-recovery-native-reviewed-requirements",
+    "native-missing-shape-fingerprint-recovery",
+    "native-archive-formal-requirements-judgment-route",
+    "native-528-applied-archive-recovery",
+    "native-528-recovery-original-evidence-guards",
+    "native-528-legacy-archive-recovery",
+    "native-archive-shared-input-observation"
+  ],
+  "mapping": [
+    {
+      "line": 1350,
+      "title": "repairs only the known pre-Child-archive definition and preserves Run facts (%s)",
+      "dependencies": [
+        "preChildArchiveApplication"
+      ],
+      "caseIds": [],
+      "keep": [
+        {
+          "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+          "namePattern": "automatically resumes published v|preserves every independent old Child frontier|keeps a published running Supervisor preparation",
+          "behaviors": [
+            "same Run, original Action/claim/approval, real saved old data"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+          "namePattern": "^rejects an unknown current Native definition instead of rebinding its business records$",
+          "requiredNames": [
+            "rejects an unknown current Native definition instead of rebinding its business records"
+          ],
+          "behaviors": [
+            "Unknown current definition remains refused without rewriting saved business records; old synthetic whitelist wording alone retires."
+          ]
+        }
+      ],
+      "retireMechanisms": [
+        "Known synthetic old hash matching",
+        "Refuse any claimed old Action upgrade",
+        "Unknown maxTransitions-only old definition whitelist rejection"
+      ],
+      "wholeCaseFeatureRemoved": false,
+      "oldTitle": "repairs only the known pre-Child-archive definition and preserves Run facts (%s)"
+    },
+    {
+      "line": 1871,
+      "title": "repairs failed Supervisor Children and serializes integration after a definition upgrade",
+      "dependencies": [
+        "preChildArchiveApplication"
+      ],
+      "caseIds": [
+        "native-299-real-integration-parent-verify"
+      ],
+      "keep": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "handles parent repair, delivery, and cleanup after Supervisor DAG restart",
+          "behaviors": [
+            "real DAG/Git, Child/Parent failure/repair, approval, delivery, drift, cleanup"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-application.test.ts",
+          "namePattern": "^binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate$",
+          "behaviors": [
+            "parallel/reverse Child reviews",
+            "late Child Verifier cannot bypass pending integration repair/review",
+            "two integration repair failures retain original failed records and uncommitted work",
+            "reject stale proposalHash; current proposal approval resumes original work"
+          ],
+          "exactTitle": "binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate",
+          "replacement": "Replace existing same-title group; do not add a duplicate long-running test."
+        },
+        {
+          "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+          "namePattern": "resumes a published successful integration repair at Archive|preserves the original published pending Archive input",
+          "behaviors": [
+            "actual published original repair and Archive continuation"
+          ]
+        }
+      ],
+      "retireMechanisms": [
+        "preChildArchiveApplication synthetic missing-child.archive factory",
+        "old automatic integration-check/receipt trigger only"
+      ],
+      "wholeCaseFeatureRemoved": false,
+      "additionalExistingCaseIds": [
+        "local-native-supervisor-auto-preparation"
+      ],
+      "oldTitle": "repairs failed Supervisor Children and serializes integration after a definition upgrade"
+    },
+    {
+      "line": 4312,
+      "title": "continues a healthy previous-definition Run without an upgrade or replacing its claim",
+      "dependencies": [
+        "preCheckRecoveryApplication"
+      ],
+      "caseIds": [],
+      "keep": [
+        {
+          "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+          "namePattern": "keeps a published running Supervisor preparation|preserves every independent old Child frontier",
+          "behaviors": [
+            "same original live business task/claim and approvals"
+          ]
+        }
+      ],
+      "retireMechanisms": [
+        "workflow hash must remain the old hash",
+        "doctor exact revision +1 under old definition without migration"
+      ],
+      "wholeCaseFeatureRemoved": false,
+      "oldTitle": "continues a healthy previous-definition Run without an upgrade or replacing its claim"
+    },
+    {
+      "line": 4354,
+      "title": "upgrades a stopped check Run without replaying its execution (tampered=%s)",
+      "dependencies": [
+        "preCheckRecoveryApplication"
+      ],
+      "caseIds": [],
+      "keep": [
+        {
+          "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+          "namePattern": "automatically resumes published v|retains the old repair-only decision",
+          "behaviors": [
+            "old records immutable; no old check replay or fake stop/pass; original repair proposal controls Build"
+          ]
+        }
+      ],
+      "retireMechanisms": [
+        "old runner stop/log receipt integrity reconciliation",
+        "doctor installs synthetic pre-check-recovery definition"
+      ],
+      "wholeCaseFeatureRemoved": false,
+      "oldTitle": "upgrades a stopped check Run without replaying its execution (tampered=%s)"
+    },
+    {
+      "line": 5249,
+      "title": "revalidates approved report %s changes without losing valid evidence",
+      "dependencies": [
+        "nativeSdkBeforeReportRecovery"
+      ],
+      "caseIds": [],
+      "keep": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "continues an authorized implementation edit without requesting the same decision again|commits acceptance without report Actions|waits for acceptance without delegated approval",
+          "behaviors": [
+            "original approved result/candidate and user decision, no accidental approval"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "continues the original v4 Supervisor accepted-result Action after compact definitions ship",
+          "behaviors": [
+            "real old pending/unknown approved revalidate data"
+          ],
+          "requiredNames": [
+            "continues the original v4 Supervisor accepted-result Action after compact definitions ship (pending)",
+            "continues the original v4 Supervisor accepted-result Action after compact definitions ship (unknown)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "namePattern": "interruption at report without",
+          "behaviors": [
+            "optional report failure preserves acceptance; durable history no replay"
+          ]
+        }
+      ],
+      "retireMechanisms": [
+        "legacy-definition selection",
+        "report/check/revalidation Actions and stop recovery",
+        "file/environment/generated-input change automatically invalidates content proof"
+      ],
+      "wholeCaseFeatureRemoved": false,
+      "oldTitle": "revalidates approved report %s changes without losing valid evidence"
+    },
+    {
+      "line": 6443,
+      "title": "rejects a file symlink backup for an old Archive %s transaction",
+      "dependencies": [
+        "interruptedLegacyArchive",
+        "legacyArchiveOriginalsBackup"
+      ],
+      "caseIds": [],
+      "keep": [
+        {
+          "file": "test/domains/comet-native/native-sdk-archive-input-boundaries.test.ts",
+          "namePattern": "rejects a file symlink backup at the current Archive boundary",
+          "behaviors": [
+            "actual file symlink in Git-untracked and non-Git contexts rejected; original Run/WAL unchanged"
+          ]
+        }
+      ],
+      "retireMechanisms": [
+        "synthetic stripped-binding factory needed to reach file reader"
+      ],
+      "wholeCaseFeatureRemoved": false,
+      "oldTitle": "rejects a file symlink backup for an old Archive %s transaction"
+    },
+    {
+      "line": 6458,
+      "title": "recovers an old Archive %s transaction by matching its original candidate evidence",
+      "dependencies": [
+        "interruptedLegacyArchive",
+        "legacyArchiveOriginalsBackup"
+      ],
+      "caseIds": [],
+      "keep": [
+        {
+          "file": "test/domains/comet-native/native-published-archive-upgrade.test.ts",
+          "namePattern": "continues published 0.5.2 Archive without replaying accepted work",
+          "behaviors": [
+            "real old original claim/approval/side effects"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-archive-input-boundaries.test.ts",
+          "namePattern": "keeps all original capability operations|rejects malformed original-backup inputs|original materials of an actual published",
+          "behaviors": [
+            "multiple capabilities, partial apply no replay, foreign operation refused",
+            "schema/IDs/duplicates/size/path checks and ordinary legitimate continuation",
+            "escaped/foreign supplied original refs and invented original for absent target rejected"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-archive-input-boundaries.test.ts",
+          "namePattern": "rejects a file symlink backup",
+          "behaviors": [
+            "actual input link safety"
+          ]
+        }
+      ],
+      "retireMechanisms": [
+        "synthetic preflight with candidateBinding/recoveryBinding removed",
+        "manually adding expected_target_hash",
+        "legacy content digest reconstruction success/order/idempotent import under missing-binding synthetic definition"
+      ],
+      "wholeCaseFeatureRemoved": false,
+      "notes": [
+        "Current still-public input safety is retained independently; not the entire original test group or case.",
+        "Legacy create/replace/remove WAL target CAS remains native-archive/CAS/recovery suites with genuine all-spec data."
+      ],
+      "oldTitle": "recovers an old Archive %s transaction by matching its original candidate evidence"
+    },
+    {
+      "line": 6564,
+      "title": "records an already-finalized %s receipt as history without revalidating changed implementation",
+      "dependencies": [
+        "legacyArchiveApplication"
+      ],
+      "caseIds": [],
+      "keep": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "records an already-finalized",
+          "behaviors": [
+            "retain current branch"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-published-archive-upgrade.test.ts",
+          "namePattern": "continues published 0.5.2 Archive without replaying accepted work",
+          "behaviors": [
+            "replace legacy branch with actual moved/unreported original receipt and claim; changed later implementation not revalidated"
+          ]
+        }
+      ],
+      "retireMechanisms": [
+        "only legacy synthetic stripped-binding source, not historical receipt recovery"
+      ],
+      "wholeCaseFeatureRemoved": false,
+      "oldTitle": "records an already-finalized %s receipt as history without revalidating changed implementation"
+    },
+    {
+      "line": 6723,
+      "title": "resumes the original finalize after interruption at %s without replaying applied side effects",
+      "dependencies": [
+        "interruptArchiveFinalization"
+      ],
+      "caseIds": [],
+      "keep": [
+        {
+          "file": "test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "namePattern": "resumes the original finalize after interruption at",
+          "behaviors": [
+            "six original transactional EIO boundaries and repeat-idempotency",
+            "report EIO truly occurs but optional view does not block; complete actual receipt gives history-only continuation"
+          ]
+        }
+      ],
+      "retireMechanisms": [
+        "report-view write failure must block already-approved Archive"
+      ],
+      "wholeCaseFeatureRemoved": false,
+      "oldTitle": "resumes the original finalize after interruption at %s without replaying applied side effects"
+    },
+    {
+      "line": 6790,
+      "title": "preserves the interrupted finalize when %s no longer matches its original evidence",
+      "dependencies": [
+        "interruptArchiveFinalization"
+      ],
+      "caseIds": [],
+      "keep": [
+        {
+          "file": "test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "namePattern": "preserves the interrupted finalize when",
+          "behaviors": [
+            "transaction ID and cursor mismatches refuse; original Action/material unchanged; restored original evidence completes"
+          ]
+        }
+      ],
+      "retireMechanisms": [],
+      "wholeCaseFeatureRemoved": false,
+      "oldTitle": "preserves the interrupted finalize when %s no longer matches its original evidence"
+    },
+    {
+      "line": 6841,
+      "title": "resumes a legacy finalize after rename using the original candidate evidence",
+      "dependencies": [
+        "interruptArchiveFinalization"
+      ],
+      "caseIds": [],
+      "keep": [
+        {
+          "file": "test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "namePattern": "interruption at move-journal without",
+          "behaviors": [
+            "same Action/claim, no second rename"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-published-archive-upgrade.test.ts",
+          "namePattern": "continues published 0.5.2 Archive without replaying accepted work",
+          "behaviors": [
+            "actual old moved/unreported receipt continuation"
+          ]
+        }
+      ],
+      "retireMechanisms": [
+        "candidateBinding must be absent and matching old factory executes again"
+      ],
+      "wholeCaseFeatureRemoved": false,
+      "oldTitle": "resumes a legacy finalize after rename using the original candidate evidence"
+    },
+    {
+      "line": 6865,
+      "title": "does not overwrite a changed pre-finalization report while resuming the original finalize",
+      "dependencies": [
+        "interruptArchiveFinalization"
+      ],
+      "caseIds": [],
+      "keep": [
+        {
+          "file": "test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "namePattern": "does not overwrite a changed pre-finalization report",
+          "behaviors": [
+            "move interruption keeps active layout; edited report bytes survive same-claim recovery"
+          ]
+        }
+      ],
+      "retireMechanisms": [],
+      "wholeCaseFeatureRemoved": false,
+      "notes": [
+        "Preparation hook changed from nonfatal report EIO to move EIO; report preservation assertion retained."
+      ],
+      "oldTitle": "does not overwrite a changed pre-finalization report while resuming the original finalize"
+    },
+    {
+      "line": 6887,
+      "title": "rejects a rewritten frozen transaction even when the canonical Spec matches that rewrite",
+      "dependencies": [
+        "interruptArchiveFinalization"
+      ],
+      "caseIds": [],
+      "keep": [
+        {
+          "file": "test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "namePattern": "rejects a rewritten frozen transaction",
+          "behaviors": [
+            "WAL content/result_hash/capability and canonical altered together remain refused; original Action and changed bytes preserved"
+          ]
+        }
+      ],
+      "retireMechanisms": [],
+      "wholeCaseFeatureRemoved": false,
+      "oldTitle": "rejects a rewritten frozen transaction even when the canonical Spec matches that rewrite"
+    },
+    {
+      "line": 6911,
+      "title": "keeps recovery blocked when neither the original transaction nor a complete receipt survived",
+      "dependencies": [
+        "interruptArchiveFinalization"
+      ],
+      "caseIds": [],
+      "keep": [
+        {
+          "file": "test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "namePattern": "keeps recovery blocked when neither",
+          "behaviors": [
+            "missing original WAL and no complete receipt refuses; original Action unchanged and no WAL invented"
+          ]
+        }
+      ],
+      "retireMechanisms": [],
+      "wholeCaseFeatureRemoved": false,
+      "oldTitle": "keeps recovery blocked when neither the original transaction nor a complete receipt survived"
+    },
+    {
+      "oldTitle": "requires fresh verification instead of trusting a legacy check without a candidate digest",
+      "oldSource": "coverage/native-sdk-application.pre-current-fixture.txt:8334",
+      "caseIds": [
+        "native-rejected-check-proof-original-claim-correction"
+      ],
+      "wholeCaseFeatureRemoved": false,
+      "keep": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^rejects a foreign Verifier candidate and accepts correction on the original claim$",
+          "behaviors": [
+            "candidate-bound rejection",
+            "same claim/Wait/rejectedOutcomes retained",
+            "same claim correction succeeds, no duplicate Verifier/archive before approval"
+          ]
+        }
+      ],
+      "retireMechanisms": [
+        "only managed checker candidate digest and validator-specific OUTCOME_REJECTED code"
+      ]
+    }
+  ],
+  "parallelPrototype": {
+    "actualPrototypeTitle": "preserves parallel Child ordering and original integration repair decisions after repeated failures",
+    "repoReadyTitle": "binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate",
+    "sameBody": true,
+    "result": "parallel-results.json: 1 passed, 0 failed",
+    "originalExistingGroupIds": [
+      "local-native-supervisor-auto-preparation"
+    ],
+    "sourceCaseId": "native-299-real-integration-parent-verify"
+  }
+}

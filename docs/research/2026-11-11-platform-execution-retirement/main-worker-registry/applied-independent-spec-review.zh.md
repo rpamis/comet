@@ -1,0 +1,7 @@
+# 已应用16项迁移独立Spec复核
+
+批准当前16项追加。实际仓库中的原ID/字段/来源/所有既有迁移链与冻结expectedEntry逐项深相等；新增节点与原payload逐项深相等。worker/main两组共8个evidence blob及2份README均逐字节等于冻结版本，登记的8份摘要全部匹配。shared21 case结构与应用前候选逐个相等。
+
+实际repo针对该16项subset再次通过workflowRegressionEntries和assertWorkflowMigrationEvidence。未修改任何冻结字段/blob，未重新生成patch或hash；之后独立业务修改另行归档。
+
+另已读实际归档后续3绿结果：报告两route及canonical后续合法Archive恢复均passed。没有把旧main111/9结果称全绿；未运行测试/Eval/全量。完成结果与证据见同目录JSON。

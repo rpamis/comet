@@ -379,12 +379,6 @@ describe('workflow contract normalization', () => {
       native: {
         artifact_root: 'docs/native',
         clarification_mode: 'batch',
-        snapshot: {
-          include: ['**/*.ts', 'packages/**'],
-          exclude: ['dist/**'],
-          max_files: 12_000,
-          max_duration_ms: 90_000,
-        },
       },
       classic: {
         artifact_layout: 'docs',
@@ -396,6 +390,8 @@ describe('workflow contract normalization', () => {
       owners: ['platform', 'workflow'],
       note: 'value: with # content',
     });
+    expect(parsed.config?.native).not.toHaveProperty('snapshot');
+    expect(parsed.value).toHaveProperty('native.snapshot.max_files', 12000);
   });
 
   it('normalizes repository-owned pull request finish providers and fails closed on invalid commands', () => {
@@ -451,9 +447,9 @@ describe('workflow contract normalization', () => {
     }
   });
 
-  it('keeps legacy snapshot parsing internal while omitting it from managed writes', () => {
+  it('ignores retired snapshot settings and removes them from managed writes', () => {
     const config = defaultWorkflowProjectConfig('docs');
-    config.native.snapshot.exclude = ['legacy/generated/**'];
+    expect(config.native).not.toHaveProperty('snapshot');
 
     expect(workflowProjectConfigManagedValue(config)).not.toHaveProperty('native.snapshot');
 
@@ -486,7 +482,7 @@ describe('workflow contract normalization', () => {
     const parsed = parseWorkflowProjectConfigDocument(
       'schema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: docs\n',
     );
-    expect(parsed.config?.native?.snapshot).toEqual(defaultWorkflowProjectConfig().native.snapshot);
+    expect(parsed.config?.native).not.toHaveProperty('snapshot');
   });
 
   it.each([

@@ -19,15 +19,8 @@ import {
   takeMany,
   takeOption,
 } from '../../../domains/comet-native/native-cli-shared.js';
-import {
-  NativeArchivePreflightError,
-  NativeSpecConflictError,
-} from '../../../domains/comet-native/native-archive.js';
-import {
-  NativeBaselineIncompleteError,
-  NativeChangeRevisionConflictError,
-} from '../../../domains/comet-native/native-change.js';
-import { NativeVerificationReceiptBindingError } from '../../../domains/comet-native/native-verification-runtime.js';
+import { NativeSpecConflictError } from '../../../domains/comet-native/native-runtime-errors.js';
+import { NativeChangeRevisionConflictError } from '../../../domains/comet-native/native-change.js';
 
 describe('Native CLI shared helpers', () => {
   const temporaryRoots: string[] = [];
@@ -107,31 +100,17 @@ describe('Native CLI shared helpers', () => {
   });
 
   it('maps domain errors to stable envelopes and renders JSON or text output', () => {
-    const preflight = {
-      ready: false,
-      findingCodes: ['verification-stale'],
-    } as never;
     const cases = [
       errorResult('cmd', new NativeUsageError('bad usage')),
       errorResult(
         'cmd',
         new NativeSpecConflictError('capability', 'expected', 'actual', 'spec.md'),
       ),
-      errorResult('cmd', new NativeArchivePreflightError(preflight)),
+
       errorResult('cmd', new NativeChangeRevisionConflictError('change', 1, 2)),
-      errorResult(
-        'cmd',
-        new NativeBaselineIncompleteError('change', 1, { 'file-size': 1 }, ['a'], false),
-      ),
-      errorResult(
-        'cmd',
-        new NativeVerificationReceiptBindingError([
-          { ref: 'receipt.json', role: 'acceptance-evidence', mismatches: ['sourceRevision: 2'] },
-        ]),
-      ),
     ];
 
-    expect(cases.map((result) => result.exitCode)).toEqual([64, 73, 73, 73, 65, 65]);
+    expect(cases.map((result) => result.exitCode)).toEqual([64, 73, 73]);
     expect(
       errorResult('cmd', Object.assign(new Error('disk failure'), { code: 'EIO' })),
     ).toMatchObject({

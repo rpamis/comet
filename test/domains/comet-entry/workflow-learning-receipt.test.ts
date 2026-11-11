@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { JsonFilePluginStorageStore } from '../../../platform/fs/plugin-store.js';
 import { resolveStableProjectId } from '../../../platform/paths/project-identity.js';
+import * as projectIdentity from '../../../platform/paths/project-identity.js';
 import type { AgentExperienceEvent } from '../../../domains/agent-learning/index.js';
 
 const captured = vi.hoisted(() => ({ events: [] as AgentExperienceEvent[], projectId: '' }));
@@ -31,6 +32,7 @@ beforeEach(async () => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-receipt-'));
   vi.spyOn(os, 'homedir').mockReturnValue(root);
   captured.projectId = resolveStableProjectId(root);
+  vi.spyOn(projectIdentity, 'resolveStableProjectIdAsync').mockResolvedValue(captured.projectId);
   captured.events = [];
   storage = new JsonFilePluginStorageStore(path.join(root, '.comet', 'plugins', 'storage'));
   checkpoint = {

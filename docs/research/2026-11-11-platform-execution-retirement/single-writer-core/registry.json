@@ -1,0 +1,123 @@
+{
+  "cases": [
+    {
+      "id": "native-application-writer-scope-recovery",
+      "behavior": "扩展应用的工作区、应用与 Run 写锁可以精确诊断恢复，同时保留应用 Run 并拒绝跨应用误修复。",
+      "coverageLevel": "runtime",
+      "reproduction": "创建真实应用 Run 后，分别模拟其三层写锁损坏，通过公开应用维护入口观察和修复。",
+      "expected": "只有当前应用的精确令牌与明确停止确认可恢复，Run 始终一致。",
+      "forbidden": "未确认删除未知锁、修复其他应用的 Run 写锁或覆盖权威状态。",
+      "rootCause": "Native 扩展应用也经过工作区与应用写入协调，只修复投影锁不足以覆盖实际写入路径。",
+      "tests": [
+        {
+          "file": "test/domains/workflow-application/application.test.ts",
+          "namePattern": "repairs only an observed application or Run writer lock",
+          "requiredNames": [
+            "application adaptation and SDK authority repairs only an observed application or Run writer lock and preserves the authoritative Run"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-10-25-native-incremental-recovery"
+      ]
+    },
+    {
+      "id": "workflow-simplification-t12-owner-observation",
+      "sources": [
+        "report:2026-11-08-native-classic-overdesign-audit"
+      ],
+      "behavior": "Bound canonical owner records avoid repeated partition body/token reads while legacy writers, corrupt records, conflicts, interrupted tokens and recovery retain their original checks.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Bound canonical owner records avoid repeated partition body/token reads while legacy writers, corrupt records, conflicts, interrupted tokens and recovery retain their original checks.",
+      "forbidden": "Trusting cached metadata as owner content, hiding corrupt or conflicting legacy owners, losing reopen visibility or repairing ownership during a read.",
+      "rootCause": "Named ownership reread partition bodies and tokens. A fixed hard link now streams the actual owner bytes and verifies current file identity; replacement or unsupported identity falls back to the legacy protocol, and reads never repair metadata.",
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+          "namePattern": "detects a complete reopen between active and history enumeration",
+          "requiredNames": [
+            "detects a complete reopen between active and history enumeration rather than returning an empty snapshot"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+          "namePattern": "reads a bound canonical owner with one token read, no partition body reads and no writes",
+          "requiredNames": [
+            "reads a bound canonical owner with one token read, no partition body reads and no writes"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+          "namePattern": "falls back after a legacy writer moves or rewrites an owner without refreshing its canonical record",
+          "requiredNames": [
+            "falls back after a legacy writer moves or rewrites an owner without refreshing its canonical record"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+          "namePattern": "does not hide double owners behind a previously bound canonical record",
+          "requiredNames": [
+            "does not hide double owners behind a previously bound canonical record"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+          "namePattern": "rejects a junction substituted beneath a canonical owner binding",
+          "requiredNames": [
+            "rejects a junction substituted beneath a canonical owner binding"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+          "namePattern": "keeps canonical reads blocked by interrupted tokens and restores them through named recovery",
+          "requiredNames": [
+            "keeps canonical reads blocked by interrupted tokens and restores them through named recovery"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+          "namePattern": "recovers an interrupted canonical publication from the original legacy owner and refreshes reopen bindings",
+          "requiredNames": [
+            "recovers an interrupted canonical publication from the original legacy owner and refreshes reopen bindings"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+          "namePattern": "reads canonical bytes from the actual linked owner instead of trusting cached metadata",
+          "requiredNames": [
+            "reads canonical bytes from the actual linked owner instead of trusting cached metadata"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+          "namePattern": "keeps legacy ownership readable when canonical hard links are unsupported",
+          "requiredNames": [
+            "keeps legacy ownership readable when canonical hard links are unsupported"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+          "namePattern": "rebuilds a damaged detached canonical entry only through validated named recovery",
+          "requiredNames": [
+            "rebuilds a damaged detached canonical entry only through validated named recovery"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/contained-atomic-write.test.ts",
+          "namePattern": "publishes a fixed hard link to the actual source bytes",
+          "requiredNames": [
+            "contained atomic write publishes a fixed hard link to the actual source bytes"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/contained-atomic-write.test.ts",
+          "namePattern": "rejects a displaced source parent before publishing its fixed link",
+          "requiredNames": [
+            "contained atomic write rejects a displaced source parent before publishing its fixed link"
+          ]
+        }
+      ]
+    }
+  ]
+}

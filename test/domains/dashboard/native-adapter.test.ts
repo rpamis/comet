@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  NATIVE_LOCAL_EXECUTION_SCHEMA,
   NATIVE_PORTABLE_STATE_SCHEMA,
-  type NativeLocalExecutionState,
   type NativePortableState,
 } from '../../../domains/comet-native/native-portable-types.js';
 import {
@@ -144,70 +142,22 @@ function portableState(name = 'dashboard-v2'): NativePortableState {
   };
 }
 
-function localExecution(stateVersion = 7): NativeLocalExecutionState {
-  return {
-    schema: NATIVE_LOCAL_EXECUTION_SCHEMA,
-    change: 'dashboard-v2',
-    basedOnStateVersion: stateVersion,
-    workspace: {
-      projectRoot: 'D:\\project',
-      worktreeRoot: 'D:\\project',
-      branch: null,
-    },
-    execution: {
-      operationId: 'verify-operation',
-      stage: 'verifying',
-      actor: 'verifier',
-      executionId: 'private-verifier-session',
-      status: 'running',
-      startedAt: NOW,
-      requestCheckRounds: 2,
-    },
-    checks: [
-      {
-        id: 'focused-tests',
-        name: 'Dashboard focused tests',
-        operationId: 'verify-operation',
-        status: 'running',
-        repeatable: true,
-        timeoutMs: 10_000,
-        executionCount: 1,
-        argv: ['pnpm', 'vitest', '--run'],
-        cwd: 'D:\\project',
-        exitCode: null,
-        startedAt: NOW,
-        completedAt: null,
-        log: 'D:\\project\\.comet\\private.log',
-      },
-    ],
-  };
-}
-
 describe('Native Dashboard v2 adapter', () => {
   it('projects loop, acceptance, verifier results, blockers, history, and recovery state', () => {
     const projection = adaptNativeDashboardChange({
       state: portableState(),
       status: 'active',
-      localExecution: localExecution(),
-      localExecutionReason: 'current',
     });
 
     expect(projection).toMatchObject({
       workflow: 'native',
       name: 'dashboard-v2',
       stateVersion: 7,
-      loop: { stage: 'verify-ready', goalCycle: 2, iteration: 3, attempt: 2, actor: 'verifier' },
+      loop: { stage: 'verify-ready', goalCycle: 2, iteration: 3, attempt: 2, actor: null },
       acceptance: { total: 4, passed: 1, failed: 1, blocked: 1, pending: 1 },
       verificationResult: 'fail',
       specs: { total: 1, modify: 1 },
-      localExecution: {
-        status: 'running',
-        reason: 'current',
-        stage: 'verifying',
-        actor: 'verifier',
-        requestCheckRounds: 2,
-        checks: [{ id: 'focused-tests', status: 'running', logAvailable: true }],
-      },
+      localExecution: { status: 'absent', reason: 'platform', stage: null, actor: null },
       verification: {
         verdict: 'fail',
         assurance: 'host-attested',
@@ -225,21 +175,17 @@ describe('Native Dashboard v2 adapter', () => {
     expect(serialized).not.toContain('cwdRef');
   });
 
-  it('does not apply an overlay whose state version does not match the YAML', () => {
+  it('derives task state from business records without a local execution overlay', () => {
     const item = adaptNativeDashboardListItem({
       state: portableState(),
       status: 'active',
-      localExecution: localExecution(6),
-      localExecutionReason: 'version-mismatch',
     });
 
     expect(item.loop?.actor).toBeNull();
     expect(item.localExecution).toMatchObject({
       status: 'absent',
-      reason: 'version-mismatch',
+      reason: 'platform',
       actor: null,
-      checks: [],
-      recoverableFromStage: 'verify-ready',
     });
   });
 

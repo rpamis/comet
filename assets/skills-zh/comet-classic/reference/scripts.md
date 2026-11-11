@@ -27,10 +27,10 @@ comet state sync-plan <change-name>
 comet state delivery <change-name>
 comet state delivery <change-name> --verify
 comet state delivery <change-name> --file <json-path>
-comet check run <change-name> <build|verify> --local -- <program> [args...]
-# SDK Verify 的首次完整检查先声明报告路径，之后按收据写报告并提交 Guard。
-comet check run <change-name> verify --report <report-ref> --local -- <program> [args...]
-comet check rerun <change-name> <build|verify>
+comet state complete-build <change-name> --checks <checks-json-file>
+comet guard <change-name> verify --report <report-ref> --apply --checks <checks-json-file>
+# Compat：平台执行后记录实际结果，不执行 command 文本。
+comet state record-check <change-name> <build|verify> --command "<实际命令>" --exit-code <实际退出码>
 comet guard <change-name> <phase> --apply
 comet handoff <change-name> design --write
 comet archive <change-name>
@@ -78,11 +78,7 @@ comet state transition <change-name> preset-escalate
 
 ## 检查命令与结果复用
 
-Agent 选择必要的命令、工作目录和范围，并判断原结果是否仍适用。Guard 和状态查询只读取结果，不探测或启动 Build。缺少结果时先明确命令，再通过 `comet check run <change-name> <build|verify> --local -- <program> [args...]` 执行并记录真实结果。SDK 也可按当前 Guard 返回的模板显式提交命令。
-
-`--local` 允许复用仍适用的原 Runtime 结果；不因阶段变化或普通文件编辑重跑。失败、中断、未知结果、一次性执行和实际工作目录约束仍按当前响应处理。用 `comet check rerun <change-name> <build|verify>` 重试已经登记的原命令，不自动改跑其他构建。手工声明不替代实际执行。
-
-`--incremental` 保留阶段内检查用途，不能作为完整阶段验收。完整范围由 Agent 按需求选择。旧 `.comet/check-policy.json` 可保留命令工作目录兼容信息；文件、环境和内容证明配置不再决定结果失效。
+按[普通命令与检查](../../comet/reference/platform-execution.md)使用平台工具执行普通命令、核对原任务与副作用、判断结果是否适用，并提交实际报告。Comet 不重复执行检查，不维护普通命令的内容快照、进程监管或恢复机制。 Guard 和状态查询不启动构建或测试。
 
 ## 解析下一步
 
@@ -92,7 +88,7 @@ Agent 选择必要的命令、工作目录和范围，并判断原结果是否�
 comet state next <change-name>
 ```
 
-普通 `state next` 只读取下一步。响应给出 `comet state next <change-name> --continue --json` 时，执行该业务命令：CLI 沿原 Run 提交已接受材料和真实检查收据，并连续执行已经登记的命令及已批准的内部步骤。Agent 无需填写 SDK 的 Action、领取令牌或证据摘要。缺少所选命令、需要 Agent 工作、用户决定、真实失败或未知执行时停止并返回当前下一步；原检查不因收据提交再次执行。
+普通 `state next` 只读取下一步。返回 `comet state next <change-name> --continue --json` 时，沿原 Run 提交已接受材料并连续处理已批准的内部业务步骤。需要 Agent 工作、用户决定、失败或结果未明时返回当前下一步，不执行普通检查命令。
 
 输出包含 `NEXT: auto|manual|done|delivery`、`SKILL: <skill-name>`（`done` 时省略），以及 `HINT`（仅 `manual` 时）。`auto_transition: false` 时输出 `manual`，表示不自动调用下一 Skill，不影响已经更新的 phase；`delivery` 表示 change 已归档，按 delivery 摘要完成收尾，不再推进阶段。
 

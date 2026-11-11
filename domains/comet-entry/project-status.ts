@@ -27,13 +27,16 @@ import {
   readSdkChangeOwner,
   readSdkChangeOwners,
 } from '../workflow-contract/change-runtime-owner.js';
-import { inspectNativeSdkClosedHistory } from '../comet-native/native-sdk-history-discovery.js';
+import {
+  inspectNativeSdkClosedHistory,
+  listNativeSdkHistoryNames,
+} from '../comet-native/native-sdk-history-discovery.js';
 import { inspectNativeSdkStatus } from '../comet-native/native-sdk-status.js';
 import { hasNativeManagedRunMarker } from '../comet-native/native-sdk-state-store.js';
 import {
   inspectSelectedWorkflowApplicationStatus,
   inspectWorkflowApplicationRun,
-} from '../workflow-application/index.js';
+} from '../workflow-application/application.js';
 import { configuredResolution } from './resolve-entry.js';
 import type { ChangeStatus, CometEntryResolution, CometProjectStatus } from './types.js';
 
@@ -130,7 +133,12 @@ async function listConfiguredNativeStatus(
   options: { clarificationMode: 'sequential' | 'batch'; maxVerifyFailures: number },
   includeHistory: boolean,
 ): Promise<CometProjectStatus['workflows']['native']['changes']> {
-  const names = await listNativeChangeNames(paths);
+  const names = [
+    ...new Set([
+      ...(await listNativeChangeNames(paths)),
+      ...(includeHistory ? await listNativeSdkHistoryNames(paths.projectRoot) : []),
+    ]),
+  ].sort();
   const history = includeHistory
     ? new Map<string, PromiseSettledResult<boolean>>()
     : await inspectNativeSdkClosedHistory(paths.projectRoot, names);

@@ -1,0 +1,33 @@
+{
+  "source": {
+    "package": "@rpamis/comet@0.5.2",
+    "entry": "dist/domains/comet-native/native-portable-migration-runtime.js",
+    "input": "published native-052-transition-journal/remove-after-recovery.json materials only; original Shape, no transition WAL/run/check",
+    "captureScript": "capture-published-052-migration-journals.mjs",
+    "captureCommand": "node capture-published-052-migration-journals.mjs <output-directory>"
+  },
+  "boundary": "prepared",
+  "simulatedFault": "Error: SIMULATED crash after published prepared journal before YAML publish",
+  "root": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-migration-journal-capture-EkafZP\\prepared",
+  "name": "remove-after-recovery",
+  "transaction": {
+    "schema": "comet.native.portable-migration.v1",
+    "id": "0debb3d7-6242-4b42-a623-b398a10b7701",
+    "change": "remove-after-recovery",
+    "fromSchema": "comet.native.v3",
+    "status": "prepared",
+    "createdAt": "2026-11-10T20:39:48.790Z"
+  },
+  "transactionText": "{\n  \"schema\": \"comet.native.portable-migration.v1\",\n  \"id\": \"0debb3d7-6242-4b42-a623-b398a10b7701\",\n  \"change\": \"remove-after-recovery\",\n  \"fromSchema\": \"comet.native.v3\",\n  \"status\": \"prepared\",\n  \"createdAt\": \"2026-11-10T20:39:48.790Z\"\n}\n",
+  "stateText": "schema: comet.native.v3\nminimum_runtime_version: 3\nrevision: 1\nverification_protocol: legacy-v1\nname: remove-after-recovery\nlanguage: en\nphase: shape\nbrief: brief.md\napproval: null\napproved_contract_hash: null\nspec_changes: []\nverification_result: pending\nverification_report: null\nimplementation_scope: null\nverification_evidence: null\npartial_allowance: null\narchived: false\ncreated_at: 2026-11-10\nrun_id: null\n",
+  "changeFiles": [
+    {
+      "ref": "brief.md",
+      "bytesBase64": "IyBPdXRjb21lClNoaXAgYSBmb2N1c2VkIGZpeHR1cmUgb3V0Y29tZS4KIyBTY29wZQpPbmUgY2FwYWJpbGl0eS4KIyBOb24tZ29hbHMKTm8gbW9kZWwsIEV2YWwgb3IgcHVzaC4KIyBBY2NlcHRhbmNlIGV4YW1wbGVzCi0gVGhlIGJlaGF2aW9yIHdvcmtzLgojIENvbnN0cmFpbnRzIGFuZCBpbnZhcmlhbnRzCktlZXAgY29tcGF0aWJpbGl0eS4KIyBEZWNpc2lvbnMKVXNlIE5hdGl2ZSBzdGF0ZS4KIyBPcGVuIHF1ZXN0aW9ucwpOb25lLgojIFZlcmlmaWNhdGlvbiBleHBlY3RhdGlvbnMKVGhpcyBpcyBhbiBpc29sYXRlZCB0cmFuc2l0aW9uIHJlY292ZXJ5IHByb3RvY29sIGZpeHR1cmUuCg=="
+    },
+    {
+      "ref": "comet-state.yaml",
+      "bytesBase64": "c2NoZW1hOiBjb21ldC5uYXRpdmUudjMKbWluaW11bV9ydW50aW1lX3ZlcnNpb246IDMKcmV2aXNpb246IDEKdmVyaWZpY2F0aW9uX3Byb3RvY29sOiBsZWdhY3ktdjEKbmFtZTogcmVtb3ZlLWFmdGVyLXJlY292ZXJ5Cmxhbmd1YWdlOiBlbgpwaGFzZTogc2hhcGUKYnJpZWY6IGJyaWVmLm1kCmFwcHJvdmFsOiBudWxsCmFwcHJvdmVkX2NvbnRyYWN0X2hhc2g6IG51bGwKc3BlY19jaGFuZ2VzOiBbXQp2ZXJpZmljYXRpb25fcmVzdWx0OiBwZW5kaW5nCnZlcmlmaWNhdGlvbl9yZXBvcnQ6IG51bGwKaW1wbGVtZW50YXRpb25fc2NvcGU6IG51bGwKdmVyaWZpY2F0aW9uX2V2aWRlbmNlOiBudWxsCnBhcnRpYWxfYWxsb3dhbmNlOiBudWxsCmFyY2hpdmVkOiBmYWxzZQpjcmVhdGVkX2F0OiAyMDI2LTExLTEwCnJ1bl9pZDogbnVsbAo="
+    }
+  ]
+}

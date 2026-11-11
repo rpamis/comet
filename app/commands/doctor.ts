@@ -1,4 +1,8 @@
 import { readSdkChangeOwner } from '../../domains/workflow-contract/change-runtime-owner.js';
+import {
+  diagnoseRecoverableFileLock,
+  repairRecoverableFileLock,
+} from '../../platform/fs/recoverable-file-lock.js';
 import { inspectNativeSdkStatus } from '../../domains/comet-native/native-sdk-status.js';
 import path from 'path';
 import os from 'os';
@@ -1840,6 +1844,10 @@ interface DoctorOptions {
   strategy?: 'continue' | 'rollback';
   scope?: DoctorScope;
   homeDir?: string;
+  lockFile?: string;
+  lockToken?: string;
+  importLegacyRuntime?: boolean;
+  confirmed?: boolean;
 }
 
 export async function doctorCommand(
@@ -1847,6 +1855,62 @@ export async function doctorCommand(
   options: DoctorOptions = {},
 ): Promise<number> {
   const projectPath = path.resolve(targetPath);
+  if (options.importLegacyRuntime) {
+    const { importLegacyWorkspaceRuntimeData } =
+      await import('../../domains/workflow-contract/legacy-runtime-import.js');
+    const { importClassicLegacyRuntimeData } =
+      await import('../../domains/comet-classic/classic-legacy-runtime-import.js');
+    const data = await importLegacyWorkspaceRuntimeData(projectPath);
+    const classic = await importClassicLegacyRuntimeData(projectPath);
+    console.log(JSON.stringify({ status: 'imported', ...data, classic }));
+    return 0;
+  }
+  if (options.lockFile !== undefined) {
+    const file = path.resolve(projectPath, options.lockFile);
+    const inspected = await diagnoseRecoverableFileLock(file);
+    const repair =
+      options.repair && options.confirmed && options.lockToken
+        ? await repairRecoverableFileLock(file, options.lockToken, { confirmedOwnerStopped: true })
+        : undefined;
+    const lock =
+      repair === 'removed' || repair === 'missing'
+        ? await diagnoseRecoverableFileLock(file)
+        : inspected;
+    const healthy = lock.status === 'missing';
+    const report = {
+      healthy,
+      file,
+      lock,
+      repair,
+      ...(lock.token
+        ? {
+            recovery: {
+              instruction:
+                '核对原操作及全部后代已停止；保留实际结果，再提交本次锁记录的停止确认。不会重放原操作。',
+              commandArgs: [
+                'comet',
+                'doctor',
+                '--lock-file',
+                file,
+                '--repair',
+                '--confirmed',
+                '--lock-token',
+                lock.token,
+                '--json',
+              ],
+            },
+          }
+        : {}),
+    };
+    console.log(
+      options.json
+        ? JSON.stringify(report, null, 2)
+        : `${healthy ? 'Runtime lock is clear' : 'Runtime lock needs attention'}: ${file}\n${JSON.stringify(report)}`,
+    );
+    return healthy ? 0 : 1;
+  }
+  if (options.lockToken !== undefined || options.confirmed)
+    throw new Error('--lock-token and --confirmed require --lock-file');
   const scope = options.scope ?? 'auto';
   const context = { homeDir: path.resolve(options.homeDir ?? os.homedir()) };
   if (options.strategy && !options.repair) {

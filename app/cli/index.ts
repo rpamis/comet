@@ -553,6 +553,13 @@ program
     '--repair',
     'Repair managed Hook, Rule, and selection state; back up and replace a corrupt project registry',
   )
+  .option('--lock-file <file>', 'Inspect one Runtime lock without loading project integrations')
+  .option('--lock-token <token>', 'Repair only the inspected lock record')
+  .option(
+    '--import-legacy-runtime',
+    'Import business records from this project’s old Runtime layout; preserve source files',
+  )
+  .option('--confirmed', 'Confirm the original locked operation and its descendants have stopped')
   .option('--yes', 'Authorize repairable project integrations such as CodeGraph indexing')
   .addOption(
     new Option('--strategy <strategy>', 'Classic root move recovery strategy').choices([

@@ -25,18 +25,10 @@ import {
 import { readProjectConfig, writeProjectConfig } from './native-config.js';
 import { NATIVE_DELTA_FILE, parseNativeDelta } from './native-delta-spec.js';
 import {
-  preservedLocalChecksForVersion,
-  readCurrentLocalExecution,
-} from './native-local-execution-binding.js';
-import {
-  rebuildNativeLocalExecution,
-  writeNativeLocalExecution,
-} from './native-local-execution.js';
-import {
   prepareNativePortableShapeConfirmation as prepareNativePortableShapeConfirmationState,
   returnNativeCandidateToBuild,
 } from './native-loop-runtime.js';
-import { withNativeMutationLock } from './native-mutation-lock.js';
+import { withNativeMutation } from './native-mutation.js';
 import { nativePreferredChangeRuntimeDir, resolveContainedNativePath } from './native-paths.js';
 import {
   buildNativePortableAcceptance,
@@ -49,10 +41,8 @@ import {
 } from './native-portable-state.js';
 import {
   assertPortableWorkspaceBindingCurrent,
-  currentBranch,
   lateBindPortableCurrentWorkspace,
   NAME_PATTERN,
-  nativeLocalExecutionFile,
   nativePortableChangeDir,
   nativePortableStateFile,
   portableWorkspace,
@@ -68,7 +58,6 @@ import type {
   NativeSupervisorCoordinationMode,
 } from './native-portable-types.js';
 import { materializeNativeDeltaTargetsLocked } from './native-shape-materialization.js';
-import { type NativeShapeSemanticSnapshot } from './native-shape-semantics.js';
 import { assertNoActiveNativeSupervisorTasks } from './native-supervisor-state.js';
 import type {
   CometProjectConfig,
@@ -76,16 +65,16 @@ import type {
   NativeFinding,
   NativeProjectPaths,
 } from './native-types.js';
-import { writeNativeVerificationReport } from './native-verification-report-v2.js';
+import { writeNativeSdkVerificationReport } from './native-sdk-report.js';
 import type { NativeWorkspaceBinding } from './native-workspace.js';
-
 export const NATIVE_PORTABLE_BRIEF_TEMPLATE = nativeBriefTemplate('en', { compact: true });
-
 const NATIVE_CAPABILITY_ASSOCIATION_FILE = 'capability-association.yaml';
-
 export function formatNativeDocumentConstraintFindings(
   findings: readonly NativeFinding[],
-  options: { change: string; phase: NativePortablePhase },
+  options: {
+    change: string;
+    phase: NativePortablePhase;
+  },
 ): string {
   const details = findings
     .map(({ code, message, path: ref }) => `- ${code}${ref ? ` (${ref})` : ''}: ${message}`)
@@ -96,7 +85,6 @@ export function formatNativeDocumentConstraintFindings(
     'Recovery: edit the reported formal file in the configured Native change directory, then rerun the latest continuation command. The current state and existing work are preserved; do not edit comet-state.yaml or bypass the Hook.',
   ].join('\n');
 }
-
 export async function validateNativePortableDocuments(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
@@ -175,7 +163,6 @@ export async function validateNativePortableDocuments(options: {
   }
   return { valid: findings.length === 0, findings };
 }
-
 export async function assertNativePortableDocuments(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
@@ -193,7 +180,6 @@ export async function assertNativePortableDocuments(options: {
     );
   }
 }
-
 export type NativePortableExpectedContinuationAction =
   | 'prepare-shape-confirmation'
   | 'confirm-shape'
@@ -205,12 +191,10 @@ export type NativePortableExpectedContinuationAction =
   | 'continue-builder'
   | 'resolve-verifier-blocker'
   | 'disassociate-capability';
-
 export interface NativePortableExpectedContinuation {
   stateVersion: number;
   action: NativePortableExpectedContinuationAction;
 }
-
 export function assertNativePortableExpectedContinuationLocked(options: {
   state: NativePortableState;
   expected?: NativePortableExpectedContinuation;
@@ -230,7 +214,6 @@ export function assertNativePortableExpectedContinuationLocked(options: {
     );
   }
 }
-
 export async function createNativePortableChange(options: {
   paths: NativeProjectPaths;
   name: string;
@@ -239,88 +222,70 @@ export async function createNativePortableChange(options: {
   initialProjectConfig?: CometProjectConfig;
   now?: Date;
 }): Promise<NativePortableState> {
-  return withNativeMutationLock(
-    options.paths,
-    `create portable change ${options.name}`,
-    async () => {
-      if (!NAME_PATTERN.test(options.name))
-        throw new Error(`Invalid Native change name: ${options.name}`);
-      await assertChangeNotSdkOwned(options.paths.projectRoot, 'native', options.name);
-      if (
-        options.initialProjectConfig &&
-        (await readProjectConfig(options.paths.projectRoot)) === null
-      ) {
-        await writeProjectConfig(options.paths.projectRoot, options.initialProjectConfig);
-      }
-      assertPortableWorkspaceBindingCurrent(options.paths.projectRoot, options.workspaceBinding);
-      const activeChanges = (await listActiveNativeChangesOwnedByWorkspace(options.paths)).filter(
-        (name) => name !== options.name,
+  return withNativeMutation(options.paths, async () => {
+    if (!NAME_PATTERN.test(options.name))
+      throw new Error(`Invalid Native change name: ${options.name}`);
+    await assertChangeNotSdkOwned(options.paths.projectRoot, 'native', options.name);
+    if (
+      options.initialProjectConfig &&
+      (await readProjectConfig(options.paths.projectRoot)) === null
+    ) {
+      await writeProjectConfig(options.paths.projectRoot, options.initialProjectConfig);
+    }
+    assertPortableWorkspaceBindingCurrent(options.paths.projectRoot, options.workspaceBinding);
+    const activeChanges = (await listActiveNativeChangesOwnedByWorkspace(options.paths)).filter(
+      (name) => name !== options.name,
+    );
+    if (activeChanges.length > 0) {
+      throw new NativeWorkspaceIsolationRequiredError(
+        options.workspaceBinding?.isolation ?? 'current',
+        activeChanges,
       );
-      if (activeChanges.length > 0) {
-        throw new NativeWorkspaceIsolationRequiredError(
-          options.workspaceBinding?.isolation ?? 'current',
-          activeChanges,
-        );
-      }
-      const changeDir = nativePortableChangeDir(options.paths, options.name);
-      const runtimeDir = nativePreferredChangeRuntimeDir(options.paths, options.name);
-      await Promise.all([
-        resolveContainedNativePath(options.paths.nativeRoot, changeDir),
-        resolveContainedNativePath(options.paths.runtimeDir, runtimeDir),
-      ]);
-      let createdChange = false;
-      let createdRuntime = false;
-      try {
-        await fs.mkdir(options.paths.changesDir, { recursive: true });
-        await fs.mkdir(changeDir, { recursive: false });
-        createdChange = true;
-        await fs.mkdir(options.paths.changesRuntimeDir, { recursive: true });
-        await fs.mkdir(runtimeDir, { recursive: false });
-        createdRuntime = true;
-        await fs.mkdir(path.join(changeDir, 'specs'), { recursive: true });
-        await atomicWriteText(
-          path.join(changeDir, 'brief.md'),
-          nativeBriefTemplate(options.language, { compact: true }),
-        );
-        const state = createNativePortableState({
-          name: options.name,
-          language: options.language,
-          workspace: portableWorkspace(options.workspaceBinding),
-          createdAt: options.now,
-          nextAction: 'prepare-shape-confirmation',
-        });
-        await writeNativePortableState(
-          nativePortableStateFile(options.paths, options.name),
-          state,
-          {
-            containedRoot: options.paths.nativeRoot,
-          },
-        );
-        await writeNativeLocalExecution(
-          nativeLocalExecutionFile(options.paths, options.name),
-          rebuildNativeLocalExecution({
-            portableState: state,
-            projectRoot: options.paths.projectRoot,
-            branch: currentBranch(options.paths.projectRoot),
-          }),
-          { containedRoot: options.paths.runtimeDir },
-        );
-        await registerCompatChangeOwner(options.paths.projectRoot, {
-          schema: COMET_CHANGE_OWNER_SCHEMA,
-          workflow: 'native',
-          change: options.name,
-          format: 'compat',
-        });
-        return state;
-      } catch (error) {
-        if (createdRuntime) await fs.rm(runtimeDir, { recursive: true, force: true });
-        if (createdChange) await fs.rm(changeDir, { recursive: true, force: true });
-        throw error;
-      }
-    },
-  );
+    }
+    const changeDir = nativePortableChangeDir(options.paths, options.name);
+    const runtimeDir = nativePreferredChangeRuntimeDir(options.paths, options.name);
+    await Promise.all([
+      resolveContainedNativePath(options.paths.nativeRoot, changeDir),
+      resolveContainedNativePath(options.paths.runtimeDir, runtimeDir),
+    ]);
+    let createdChange = false;
+    let createdRuntime = false;
+    try {
+      await fs.mkdir(options.paths.changesDir, { recursive: true });
+      await fs.mkdir(changeDir, { recursive: false });
+      createdChange = true;
+      await fs.mkdir(options.paths.changesRuntimeDir, { recursive: true });
+      await fs.mkdir(runtimeDir, { recursive: false });
+      createdRuntime = true;
+      await fs.mkdir(path.join(changeDir, 'specs'), { recursive: true });
+      await atomicWriteText(
+        path.join(changeDir, 'brief.md'),
+        nativeBriefTemplate(options.language, { compact: true }),
+      );
+      const state = createNativePortableState({
+        name: options.name,
+        language: options.language,
+        workspace: portableWorkspace(options.workspaceBinding),
+        createdAt: options.now,
+        nextAction: 'prepare-shape-confirmation',
+      });
+      await writeNativePortableState(nativePortableStateFile(options.paths, options.name), state, {
+        containedRoot: options.paths.nativeRoot,
+      });
+      await registerCompatChangeOwner(options.paths.projectRoot, {
+        schema: COMET_CHANGE_OWNER_SCHEMA,
+        workflow: 'native',
+        change: options.name,
+        format: 'compat',
+      });
+      return state;
+    } catch (error) {
+      if (createdRuntime) await fs.rm(runtimeDir, { recursive: true, force: true });
+      if (createdChange) await fs.rm(changeDir, { recursive: true, force: true });
+      throw error;
+    }
+  });
 }
-
 export async function discoverNativePortableSpecChanges(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
@@ -393,22 +358,18 @@ export async function discoverNativePortableSpecChanges(options: {
   changes.push(...removals.values());
   return changes.sort((left, right) => left.capability.localeCompare(right.capability, 'en'));
 }
-
 export async function readNativePortableAcceptance(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
   specChanges: readonly NativePortableSpecChange[];
   /** 只在完整批准指纹仍可验证时核对旧验收快照。 */
   legacyBriefBoundaries?: boolean;
-  captureSemanticSnapshot?: boolean;
   /** Internal verification of original bytes, never a baseline inferred from changed files. */
   artifactTexts?: ReadonlyMap<string, string>;
   legacyOnly?: boolean;
 }): Promise<{
   acceptance: import('./native-portable-acceptance.js').NativePortableAcceptanceCriterion[];
   formalHash?: string;
-  semanticSnapshot?: NativeShapeSemanticSnapshot;
-  approvedSemanticSnapshot?: NativeShapeSemanticSnapshot;
   approvedLegacyAcceptance?: import('./native-portable-acceptance.js').NativePortableAcceptanceCriterion[];
 }> {
   const changeDir = nativePortableChangeDir(options.paths, options.state.name);
@@ -440,7 +401,6 @@ export async function readNativePortableAcceptance(options: {
     }),
   };
 }
-
 export async function prepareNativePortableShapeConfirmation(options: {
   paths: NativeProjectPaths;
   name: string;
@@ -448,126 +408,111 @@ export async function prepareNativePortableShapeConfirmation(options: {
   expectedContinuation?: NativePortableExpectedContinuation;
   enforceDocumentConstraints?: boolean;
 }): Promise<NativePortableState> {
-  return withNativeMutationLock(
-    options.paths,
-    `prepare portable shape confirmation ${options.name}`,
-    async () => {
-      const state = await readNativePortableChange(options.paths, options.name);
-      assertNativePortableExpectedContinuationLocked({
-        state,
-        expected: options.expectedContinuation,
-        action: 'prepare-shape-confirmation',
-      });
-      if (state.phase !== 'shape' || state.status !== 'active' || state.loop.stage !== 'shape') {
-        throw new Error('Native Shape confirmation can only be prepared from active Shape');
-      }
-      const shapeBoundary =
-        options.enforceDocumentConstraints === true
-          ? { ...state, document_constraints_version: 3 as const }
-          : state;
-      const specChanges = await discoverNativePortableSpecChanges({ paths: options.paths, state });
-      await materializeNativeDeltaTargetsLocked({ paths: options.paths, state, specChanges });
-      if (options.enforceDocumentConstraints === true) {
-        await assertNativePortableDocuments({
-          paths: options.paths,
-          // 已撤回确认绑定的新 Shape 可重选目标；其他校验仍保护原声明。
-          state:
-            state.shape_confirmation_hash === undefined
-              ? { ...shapeBoundary, spec_changes: specChanges }
-              : shapeBoundary,
-          specChanges,
-        });
-      }
-      const shape = await readNativePortableAcceptance({
+  return withNativeMutation(options.paths, async () => {
+    const state = await readNativePortableChange(options.paths, options.name);
+    assertNativePortableExpectedContinuationLocked({
+      state,
+      expected: options.expectedContinuation,
+      action: 'prepare-shape-confirmation',
+    });
+    if (state.phase !== 'shape' || state.status !== 'active' || state.loop.stage !== 'shape') {
+      throw new Error('Native Shape confirmation can only be prepared from active Shape');
+    }
+    const shapeBoundary =
+      options.enforceDocumentConstraints === true
+        ? { ...state, document_constraints_version: 3 as const }
+        : state;
+    const specChanges = await discoverNativePortableSpecChanges({ paths: options.paths, state });
+    await materializeNativeDeltaTargetsLocked({ paths: options.paths, state, specChanges });
+    if (options.enforceDocumentConstraints === true) {
+      await assertNativePortableDocuments({
         paths: options.paths,
-        state: shapeBoundary,
+        // 已撤回确认绑定的新 Shape 可重选目标；其他校验仍保护原声明。
+        state:
+          state.shape_confirmation_hash === undefined
+            ? { ...shapeBoundary, spec_changes: specChanges }
+            : shapeBoundary,
         specChanges,
-        captureSemanticSnapshot: true,
       });
-      const { acceptance } = shape;
-      const children = await readNativeChildrenContract({
-        changeDir: nativePortableChangeDir(options.paths, state.name),
-        acceptanceIds: acceptance.map(({ id }) => id),
-        validation: nativeChildrenAcceptanceValidation({
-          ...state,
-          acceptance,
-        }),
-      });
-      let bound = state;
-      if (children && state.workspace.change_branch === null) {
-        await assertNoActiveNativeSupervisorTasks(options.paths, state.name);
-        const workspace = lateBindPortableCurrentWorkspace(
-          state.workspace,
-          options.paths.projectRoot,
-        );
-        if (workspace === null) {
-          throw new Error(
-            'Native parent changes require a Git integration branch; initialize Git, commit to a branch, then rerun the latest continuation to bind the workspace',
-          );
-        }
-        bound = appendNativePortableHistory(
-          { ...state, workspace },
-          {
-            goal_cycle: state.loop.goal_cycle,
-            iteration: state.loop.iteration,
-            attempt: state.loop.attempt,
-            outcome: 'recovery',
-            unresolved_ids: [],
-            summary: toNativePortableText(
-              `Native workspace bound to branch ${workspace.change_branch} at the Supervisor Shape confirmation boundary`,
-            ),
-            completed_at: new Date().toISOString(),
-          },
-        );
-      }
-      const coordinationRequired =
-        children?.contract.schema === 'comet.native.children.v2' &&
-        children.contract.children.length >= 2;
-      if (coordinationRequired && !children) {
-        throw new Error('Native Supervisor Shape requires children.yaml before confirmation');
-      }
-      const coordinationMode = coordinationRequired
-        ? (options.coordinationMode ?? state.coordination_mode)
-        : undefined;
-      if (!coordinationRequired && options.coordinationMode !== undefined) {
-        throw new Error(
-          '--coordination-mode is only valid for a multi-child Native Supervisor Shape',
-        );
-      }
-      const shapeState: NativePortableState = {
-        ...bound,
-        ...(shapeBoundary.document_constraints_version === undefined
-          ? {}
-          : { document_constraints_version: shapeBoundary.document_constraints_version }),
-        spec_changes: specChanges,
-      };
-      delete shapeState.children_contract_ref;
-      delete shapeState.children_contract;
-      delete shapeState.coordination_mode;
-      if (coordinationRequired) shapeState.coordination_mode = coordinationMode;
-      const next = prepareNativePortableShapeConfirmationState({
-        state: shapeState,
-        acceptance: acceptance.map((entry) => ({ ...entry })),
-      });
-      if (children) {
-        next.children_contract_ref = next.name + ':shape:' + next.state_version;
-        next.children_contract = children.contract;
-      }
-      const written = await writePortableMutation({ paths: options.paths, previous: state, next });
-      await writeNativeLocalExecution(
-        nativeLocalExecutionFile(options.paths, state.name),
-        rebuildNativeLocalExecution({
-          portableState: written,
-          projectRoot: options.paths.projectRoot,
-          branch: currentBranch(options.paths.projectRoot),
-        }),
-        { containedRoot: options.paths.runtimeDir },
+    }
+    const shape = await readNativePortableAcceptance({
+      paths: options.paths,
+      state: shapeBoundary,
+      specChanges,
+    });
+    const { acceptance } = shape;
+    const children = await readNativeChildrenContract({
+      changeDir: nativePortableChangeDir(options.paths, state.name),
+      acceptanceIds: acceptance.map(({ id }) => id),
+      validation: nativeChildrenAcceptanceValidation({
+        ...state,
+        acceptance,
+      }),
+    });
+    let bound = state;
+    if (children && state.workspace.change_branch === null) {
+      await assertNoActiveNativeSupervisorTasks(options.paths, state.name);
+      const workspace = lateBindPortableCurrentWorkspace(
+        state.workspace,
+        options.paths.projectRoot,
       );
-      return written;
-    },
-  );
+      if (workspace === null) {
+        throw new Error(
+          'Native parent changes require a Git integration branch; initialize Git, commit to a branch, then rerun the latest continuation to bind the workspace',
+        );
+      }
+      bound = appendNativePortableHistory(
+        { ...state, workspace },
+        {
+          goal_cycle: state.loop.goal_cycle,
+          iteration: state.loop.iteration,
+          attempt: state.loop.attempt,
+          outcome: 'recovery',
+          unresolved_ids: [],
+          summary: toNativePortableText(
+            `Native workspace bound to branch ${workspace.change_branch} at the Supervisor Shape confirmation boundary`,
+          ),
+          completed_at: new Date().toISOString(),
+        },
+      );
+    }
+    const coordinationRequired =
+      children?.contract.schema === 'comet.native.children.v2' &&
+      children.contract.children.length >= 2;
+    if (coordinationRequired && !children) {
+      throw new Error('Native Supervisor Shape requires children.yaml before confirmation');
+    }
+    const coordinationMode = coordinationRequired
+      ? (options.coordinationMode ?? state.coordination_mode)
+      : undefined;
+    if (!coordinationRequired && options.coordinationMode !== undefined) {
+      throw new Error(
+        '--coordination-mode is only valid for a multi-child Native Supervisor Shape',
+      );
+    }
+    const shapeState: NativePortableState = {
+      ...bound,
+      ...(shapeBoundary.document_constraints_version === undefined
+        ? {}
+        : { document_constraints_version: shapeBoundary.document_constraints_version }),
+      spec_changes: specChanges,
+    };
+    delete shapeState.children_contract_ref;
+    delete shapeState.children_contract;
+    delete shapeState.coordination_mode;
+    if (coordinationRequired) shapeState.coordination_mode = coordinationMode;
+    const next = prepareNativePortableShapeConfirmationState({
+      state: shapeState,
+      acceptance: acceptance.map((entry) => ({ ...entry })),
+    });
+    if (children) {
+      next.children_contract_ref = next.name + ':shape:' + next.state_version;
+      next.children_contract = children.contract;
+    }
+    const written = await writePortableMutation({ paths: options.paths, previous: state, next });
+    return written;
+  });
 }
-
 export async function recoverNativePortableShapeConfirmationDrift(options: {
   paths: NativeProjectPaths;
   name: string;
@@ -583,7 +528,6 @@ export async function recoverNativePortableShapeConfirmationDrift(options: {
     reason: null,
   };
 }
-
 /** Only link destinations may change; prose, examples and acceptance remain confirmed. */
 export async function syncNativePortableSpecReferences(options: {
   paths: NativeProjectPaths;
@@ -593,9 +537,12 @@ export async function syncNativePortableSpecReferences(options: {
   actor: string;
   expectedStateVersion: number;
   affectedAcceptanceIds: string[];
-  replacements: Array<{ from: string; to: string }>;
+  replacements: Array<{
+    from: string;
+    to: string;
+  }>;
 }): Promise<NativePortableState> {
-  return withNativeMutationLock(options.paths, `sync spec references ${options.name}`, async () => {
+  return withNativeMutation(options.paths, async () => {
     const state = await readNativePortableChange(options.paths, options.name);
     if (state.state_version !== options.expectedStateVersion)
       throw new Error('Native spec sync state version is stale');
@@ -641,7 +588,10 @@ export async function syncNativePortableSpecReferences(options: {
     });
     const replacements = new Map(options.replacements.map(({ from, to }) => [from, to]));
     const used = new Set<string>();
-    let fence: { marker: string; length: number } | null = null;
+    let fence: {
+      marker: string;
+      length: number;
+    } | null = null;
     let comment = false;
     const updated = original.text
       .split(/(?<=\n)/u)
@@ -684,7 +634,6 @@ export async function syncNativePortableSpecReferences(options: {
     const file = path.join(changeDir, spec.source);
     await atomicWriteText(file, updated, { containedRoot: options.paths.nativeRoot });
     let committed = false;
-
     try {
       const shape = await readNativePortableAcceptance({
         paths: options.paths,
@@ -746,15 +695,6 @@ export async function syncNativePortableSpecReferences(options: {
       });
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       committed = true;
-      await writeNativeLocalExecution(
-        nativeLocalExecutionFile(options.paths, state.name),
-        rebuildNativeLocalExecution({
-          portableState: written,
-          projectRoot: options.paths.projectRoot,
-          branch: currentBranch(options.paths.projectRoot),
-        }),
-        { containedRoot: options.paths.runtimeDir },
-      );
       return written;
     } catch (error) {
       if (!committed) {
@@ -774,7 +714,6 @@ export async function syncNativePortableSpecReferences(options: {
     }
   });
 }
-
 export async function markNativePortableSpecRemoval(options: {
   paths: NativeProjectPaths;
   name: string;
@@ -783,175 +722,136 @@ export async function markNativePortableSpecRemoval(options: {
   if (!NAME_PATTERN.test(options.capability)) {
     throw new Error(`Invalid Native capability: ${options.capability}`);
   }
-  return withNativeMutationLock(
-    options.paths,
-    `remove portable spec ${options.capability}`,
-    async () => {
-      const state = await readNativePortableChange(options.paths, options.name);
-      if (state.archived) throw new Error(`Native change ${state.name} is already archived`);
-      const existing = state.spec_changes.filter(
-        ({ capability }) => capability !== options.capability,
-      );
-      const next: NativePortableState = {
-        ...state,
-        phase: 'shape',
-        status: 'active',
-        state_version: state.state_version + 1,
-        spec_changes: [
-          ...existing,
-          { capability: options.capability, operation: 'remove', source: null } as const,
-        ].sort((left, right) => left.capability.localeCompare(right.capability, 'en')),
-        acceptance: [],
-        builder_handoff: null,
-        blockers: [],
-        verification: null,
-        verification_result: 'pending',
-        verification_report: null,
-        history: [],
-        history_overflow: {
-          dropped_entries: 0,
-          first_dropped_at: null,
-          last_dropped_at: null,
-          outcome_counts: {
-            pass: 0,
-            fail: 0,
-            blocked: 0,
-            'execution-error': 0,
-            recovery: 0,
-          },
+  return withNativeMutation(options.paths, async () => {
+    const state = await readNativePortableChange(options.paths, options.name);
+    if (state.archived) throw new Error(`Native change ${state.name} is already archived`);
+    const existing = state.spec_changes.filter(
+      ({ capability }) => capability !== options.capability,
+    );
+    const next: NativePortableState = {
+      ...state,
+      phase: 'shape',
+      status: 'active',
+      state_version: state.state_version + 1,
+      spec_changes: [
+        ...existing,
+        { capability: options.capability, operation: 'remove', source: null } as const,
+      ].sort((left, right) => left.capability.localeCompare(right.capability, 'en')),
+      acceptance: [],
+      builder_handoff: null,
+      blockers: [],
+      verification: null,
+      verification_result: 'pending',
+      verification_report: null,
+      history: [],
+      history_overflow: {
+        dropped_entries: 0,
+        first_dropped_at: null,
+        last_dropped_at: null,
+        outcome_counts: {
+          pass: 0,
+          fail: 0,
+          blocked: 0,
+          'execution-error': 0,
+          recovery: 0,
         },
-        loop: {
-          stage: 'shape',
-          goal_cycle: state.loop.goal_cycle + (state.phase === 'shape' ? 0 : 1),
-          iteration: 0,
-          attempt: 0,
-          retry_epoch: 0,
-          failed_iteration_count: 0,
-          no_progress_count: 0,
-          execution_failure_count: 0,
-          previous_unresolved_ids: [],
-          next_action: 'prepare-shape-confirmation',
-        },
-      };
-      delete next.shape_confirmation_hash;
-      delete next.shape_semantic_snapshot;
-      delete next.children_contract_ref;
-      delete next.children_contract;
-      const written = await writePortableMutation({ paths: options.paths, previous: state, next });
-      await writeNativeLocalExecution(
-        nativeLocalExecutionFile(options.paths, state.name),
-        rebuildNativeLocalExecution({
-          portableState: written,
-          projectRoot: options.paths.projectRoot,
-          branch: currentBranch(options.paths.projectRoot),
-        }),
-        { containedRoot: options.paths.runtimeDir },
-      );
-      return written;
-    },
-  );
+      },
+      loop: {
+        stage: 'shape',
+        goal_cycle: state.loop.goal_cycle + (state.phase === 'shape' ? 0 : 1),
+        iteration: 0,
+        attempt: 0,
+        retry_epoch: 0,
+        failed_iteration_count: 0,
+        no_progress_count: 0,
+        execution_failure_count: 0,
+        previous_unresolved_ids: [],
+        next_action: 'prepare-shape-confirmation',
+      },
+    };
+    delete next.shape_confirmation_hash;
+    delete next.children_contract_ref;
+    delete next.children_contract;
+    const written = await writePortableMutation({ paths: options.paths, previous: state, next });
+    return written;
+  });
 }
-
 /** Revoke a capability association through Runtime and invalidate its confirmation. */
 export async function disassociateNativePortableCapability(options: {
   paths: NativeProjectPaths;
   name: string;
   expectedContinuation: NativePortableExpectedContinuation;
 }): Promise<NativePortableState> {
-  return withNativeMutationLock(
-    options.paths,
-    `disassociate portable capability ${options.name}`,
-    async () => {
-      const state = await readNativePortableChange(options.paths, options.name);
-      assertNativePortableExpectedContinuationLocked({
-        state,
-        expected: options.expectedContinuation,
-        action: 'disassociate-capability',
-      });
-      if (state.archived) throw new Error(`Native change ${state.name} is already archived`);
-      const associationPath = path.join(
-        nativePortableChangeDir(options.paths, options.name),
-        NATIVE_CAPABILITY_ASSOCIATION_FILE,
-      );
-      let stat;
-      try {
-        stat = await fs.lstat(associationPath);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return state;
-        throw error;
-      }
-      if (!stat.isFile() || stat.isSymbolicLink()) {
-        throw new Error('Native capability association must be a regular file');
-      }
-      await fs.rm(associationPath);
-      return returnNativePortableStateToShapeLocked({
-        paths: options.paths,
-        state,
-        reason: 'Capability association revoked through comet native spec disassociate',
-      });
-    },
-  );
+  return withNativeMutation(options.paths, async () => {
+    const state = await readNativePortableChange(options.paths, options.name);
+    assertNativePortableExpectedContinuationLocked({
+      state,
+      expected: options.expectedContinuation,
+      action: 'disassociate-capability',
+    });
+    if (state.archived) throw new Error(`Native change ${state.name} is already archived`);
+    const associationPath = path.join(
+      nativePortableChangeDir(options.paths, options.name),
+      NATIVE_CAPABILITY_ASSOCIATION_FILE,
+    );
+    let stat;
+    try {
+      stat = await fs.lstat(associationPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return state;
+      throw error;
+    }
+    if (!stat.isFile() || stat.isSymbolicLink()) {
+      throw new Error('Native capability association must be a regular file');
+    }
+    await fs.rm(associationPath);
+    return returnNativePortableStateToShapeLocked({
+      paths: options.paths,
+      state,
+      reason: 'Capability association revoked through comet native spec disassociate',
+    });
+  });
 }
-
 export async function setNativePortableWorkspaceFinish(options: {
   paths: NativeProjectPaths;
   name: string;
   finish: NonNullable<NativePortableWorkspace['finish']>;
   expectedStateVersion?: number;
 }): Promise<NativePortableState> {
-  return withNativeMutationLock(
-    options.paths,
-    `set portable workspace finish ${options.name}`,
-    async () => {
-      const state = await readNativePortableChange(options.paths, options.name);
-      if (
-        options.expectedStateVersion !== undefined &&
-        (state.state_version !== options.expectedStateVersion ||
-          state.phase !== 'archive' ||
-          state.status !== 'active' ||
-          state.loop.stage !== 'archive-ready' ||
-          state.workspace.finish !== null)
-      ) {
-        throw new Error(
-          'Native workspace finish decision is stale; read the current continuation and confirm the finish again',
-        );
-      }
-      if (state.workspace.isolation === 'current') {
-        throw new Error('Native current-workspace isolation does not accept a finish action');
-      }
-      const local = await readCurrentLocalExecution({ paths: options.paths, state });
-      const next: NativePortableState = {
-        ...state,
-        state_version: state.state_version + 1,
-        workspace: { ...state.workspace, finish: options.finish },
-      };
-      const written = await writePortableMutation({ paths: options.paths, previous: state, next });
-      await writeNativeLocalExecution(
-        nativeLocalExecutionFile(options.paths, state.name),
-        local?.rawInputRef
-          ? preservedLocalChecksForVersion({
-              local,
-              state: written,
-              projectRoot: options.paths.projectRoot,
-            })
-          : rebuildNativeLocalExecution({
-              portableState: written,
-              projectRoot: options.paths.projectRoot,
-              branch: currentBranch(options.paths.projectRoot),
-            }),
-        { containedRoot: options.paths.runtimeDir },
+  return withNativeMutation(options.paths, async () => {
+    const state = await readNativePortableChange(options.paths, options.name);
+    if (
+      options.expectedStateVersion !== undefined &&
+      (state.state_version !== options.expectedStateVersion ||
+        state.phase !== 'archive' ||
+        state.status !== 'active' ||
+        state.loop.stage !== 'archive-ready' ||
+        state.workspace.finish !== null)
+    ) {
+      throw new Error(
+        'Native workspace finish decision is stale; read the current continuation and confirm the finish again',
       );
-      if (written.verification !== null) {
-        await writeNativeVerificationReport({
-          file: path.join(nativePortableChangeDir(options.paths, state.name), 'verification.md'),
-          state: written,
-        });
-      }
-      return written;
-    },
-  );
+    }
+    if (state.workspace.isolation === 'current') {
+      throw new Error('Native current-workspace isolation does not accept a finish action');
+    }
+    const next: NativePortableState = {
+      ...state,
+      state_version: state.state_version + 1,
+      workspace: { ...state.workspace, finish: options.finish },
+    };
+    const written = await writePortableMutation({ paths: options.paths, previous: state, next });
+    if (written.verification !== null) {
+      await writeNativeSdkVerificationReport({
+        paths: options.paths,
+        runId: state.name,
+        file: path.join(nativePortableChangeDir(options.paths, state.name), 'verification.md'),
+        state: written,
+      });
+    }
+    return written;
+  });
 }
-
 export async function returnNativePortableChangeToShape(options: {
   paths: NativeProjectPaths;
   name: string;
@@ -960,30 +860,25 @@ export async function returnNativePortableChangeToShape(options: {
   expectedContinuation?: NativePortableExpectedContinuation;
   keepFailureBudget?: boolean;
 }): Promise<NativePortableState> {
-  return withNativeMutationLock(
-    options.paths,
-    `return portable change ${options.name} to Shape`,
-    async () => {
-      const state = await readNativePortableChange(options.paths, options.name);
-      assertNativePortableExpectedContinuationLocked({
-        state,
-        expected: options.expectedContinuation,
-        action: 'revise-requirements',
-      });
-      if (options.allowedPhases && !options.allowedPhases.includes(state.phase)) {
-        throw new Error('--revise-requirements is not valid from the current phase');
-      }
-      if (state.phase === 'shape' && state.status === 'active') return state;
-      return returnNativePortableStateToShapeLocked({
-        paths: options.paths,
-        state,
-        reason: options.reason,
-        ...(options.keepFailureBudget ? { keepFailureBudget: true } : {}),
-      });
-    },
-  );
+  return withNativeMutation(options.paths, async () => {
+    const state = await readNativePortableChange(options.paths, options.name);
+    assertNativePortableExpectedContinuationLocked({
+      state,
+      expected: options.expectedContinuation,
+      action: 'revise-requirements',
+    });
+    if (options.allowedPhases && !options.allowedPhases.includes(state.phase)) {
+      throw new Error('--revise-requirements is not valid from the current phase');
+    }
+    if (state.phase === 'shape' && state.status === 'active') return state;
+    return returnNativePortableStateToShapeLocked({
+      paths: options.paths,
+      state,
+      reason: options.reason,
+      ...(options.keepFailureBudget ? { keepFailureBudget: true } : {}),
+    });
+  });
 }
-
 export async function returnNativePortableStateToShapeLocked(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
@@ -1029,34 +924,8 @@ export async function returnNativePortableStateToShapeLocked(options: {
     },
   };
   delete next.shape_confirmation_hash;
-  delete next.shape_semantic_snapshot;
   delete next.children_contract_ref;
   delete next.children_contract;
   const written = await writePortableMutation({ paths: options.paths, previous: state, next });
-  await writeNativeLocalExecution(
-    nativeLocalExecutionFile(options.paths, state.name),
-    rebuildNativeLocalExecution({
-      portableState: written,
-      projectRoot: options.paths.projectRoot,
-      branch: currentBranch(options.paths.projectRoot),
-    }),
-    { containedRoot: options.paths.runtimeDir },
-  );
   return written;
-}
-
-/** 每次从原批准全文重新校验，不信任旁证自称的语义 hash。 */
-export async function readNativeApprovedShapeSemanticSnapshot(options: {
-  paths: NativeProjectPaths;
-  state: NativePortableState;
-}): Promise<{
-  snapshot: NativeShapeSemanticSnapshot;
-  legacyFormalHash?: string;
-  semanticFormalHash?: string;
-  legacyAcceptance?: import('./native-portable-acceptance.js').NativePortableAcceptanceCriterion[];
-} | null> {
-  // 只读取旧记录供展示；不从当前文件补造内容证明或据此使验收失效。
-  return options.state.shape_semantic_snapshot
-    ? { snapshot: options.state.shape_semantic_snapshot }
-    : null;
 }

@@ -2,23 +2,15 @@ import {
   defineWorkflow,
   hashRuntimeValue,
   preserveRuntimeExecutionOrigins,
-  type DefineWorkflowOptions,
   type RuntimeCommandValidator,
   type RuntimeExecutor,
   type RuntimeValidator,
   type WorkflowRun,
 } from '../engine/runtime.js';
-import {
-  defineClassicWorkflowApplication,
-  defineClassicAgentWorkflowApplication,
-  type ClassicWorkflowApplication,
-} from './classic-sdk-application.js';
+import { defineClassicAgentWorkflowApplication } from './classic-sdk-application.js';
 import { assertClassicArchiveRetryable } from './classic-sdk-archive-manifest.js';
-import { withClassicCheckPreparation } from './classic-sdk-check-preparation.js';
-import { classicSdkCheckRefreshInput } from './classic-sdk-check.js';
 import { withClassicDeliveryRepair } from './classic-sdk-delivery-repair-application.js';
 import type { ClassicProfile, ClassicState } from './classic-state.js';
-
 export function classicInterruptedSkill(run: Readonly<WorkflowRun>) {
   const last = run.actions.at(-1);
   return run.status === 'failed' &&
@@ -61,8 +53,13 @@ const workContinuationExecutor: RuntimeExecutor = {
   capabilities: [],
   supports: (action) => action.ref === 'classic-work-continuation',
   async execute(action, context, run) {
-    const id = (action.input as { activation?: { interruptedActionId?: string } }).activation
-      ?.interruptedActionId;
+    const id = (
+      action.input as {
+        activation?: {
+          interruptedActionId?: string;
+        };
+      }
+    ).activation?.interruptedActionId;
     const failed = run?.actions.find((entry) => entry.id === id);
     if (!failed || failed.status !== 'failed' || failed.type !== 'invoke_skill')
       throw new Error('Classic original failed Skill is missing');
@@ -76,8 +73,13 @@ const workContinuationOutcomeValidator: RuntimeValidator = {
   id: 'comet-classic-work-continuation-outcome',
   version: '1',
   validate({ run, action, outcome }) {
-    const id = (action.input as { activation?: { interruptedActionId?: string } }).activation
-      ?.interruptedActionId;
+    const id = (
+      action.input as {
+        activation?: {
+          interruptedActionId?: string;
+        };
+      }
+    ).activation?.interruptedActionId;
     const failed = run.actions.find((entry) => entry.id === id);
     return {
       accepted:
@@ -91,7 +93,6 @@ const workContinuationOutcomeValidator: RuntimeValidator = {
     };
   },
 };
-
 export function classicInterruptedBuilder(run: Readonly<WorkflowRun>) {
   const state = run.state as unknown as ClassicState;
   const last = run.actions.at(-1);
@@ -104,12 +105,14 @@ export function classicInterruptedBuilder(run: Readonly<WorkflowRun>) {
     ? last
     : null;
 }
-
 const buildContinuationValidator: RuntimeCommandValidator = {
   id: 'comet-classic-build-continuation-command',
   version: '1',
   validate({ run, name, input }) {
-    const request = input as { expectedRevision?: unknown; fromPhase?: unknown } | null;
+    const request = input as {
+      expectedRevision?: unknown;
+      fromPhase?: unknown;
+    } | null;
     const state = run.state as unknown as ClassicState;
     const accepted =
       name === 'continue-build' &&
@@ -124,7 +127,6 @@ const buildContinuationValidator: RuntimeCommandValidator = {
     };
   },
 };
-
 export function classicArchiveRepairAction(run: Readonly<WorkflowRun>) {
   const state = run.state as unknown as ClassicState;
   if (
@@ -146,12 +148,14 @@ export function classicArchiveRepairAction(run: Readonly<WorkflowRun>) {
       ) ?? null
   );
 }
-
 const archiveRepairValidator: RuntimeCommandValidator = {
   id: 'comet-classic-archive-repair-command',
   version: '1',
   async validate({ run, name, input, context }) {
-    const requested = input as { expectedRevision?: unknown; fromPhase?: unknown } | null;
+    const requested = input as {
+      expectedRevision?: unknown;
+      fromPhase?: unknown;
+    } | null;
     const action = classicArchiveRepairAction(run);
     if (
       name !== 'repair-archive' ||
@@ -169,14 +173,16 @@ const archiveRepairValidator: RuntimeCommandValidator = {
     return { accepted: true, allowFailed: true };
   },
 };
-
 const revisionValidator: RuntimeCommandValidator = {
   id: 'comet-classic-revision-command',
   version: '1',
   validate({ run, name, input }) {
     const state = run.state as unknown as ClassicState;
     const phase = name === 'revise-design' ? 'design' : name === 'revise-plan' ? 'build' : null;
-    const requested = input as { expectedRevision?: unknown; fromPhase?: unknown } | null;
+    const requested = input as {
+      expectedRevision?: unknown;
+      fromPhase?: unknown;
+    } | null;
     const pending = [
       ...run.actions.filter((entry) => entry.status === 'pending'),
       ...run.waits.filter((entry) => entry.status === 'pending'),
@@ -227,7 +233,6 @@ const revisionValidator: RuntimeCommandValidator = {
     };
   },
 };
-
 /** 只重开尚未发生归档副作用的当前验收回合。 */
 export function canReopenClassicVerification(run: WorkflowRun): boolean {
   const state = run.state as unknown as ClassicState;
@@ -265,12 +270,14 @@ export function canReopenClassicVerification(run: WorkflowRun): boolean {
     ].some((suffix) => pending[0].stepId === `${state.workflow}.${suffix}`)
   );
 }
-
 const verificationRevisionValidator: RuntimeCommandValidator = {
   id: 'comet-classic-verification-revision-command',
   version: '1',
   validate({ run, name, input }) {
-    const requested = input as { expectedRevision?: unknown; fromPhase?: unknown } | null;
+    const requested = input as {
+      expectedRevision?: unknown;
+      fromPhase?: unknown;
+    } | null;
     return {
       accepted:
         name === 'reopen-verification' &&
@@ -283,63 +290,6 @@ const verificationRevisionValidator: RuntimeCommandValidator = {
     };
   },
 };
-
-const checkRefreshValidator: RuntimeCommandValidator = {
-  id: 'comet-classic-check-refresh-command',
-  version: '1',
-  async validate({ run, name, input, context }) {
-    try {
-      const state = run.state as unknown as ClassicState;
-      const value = input as {
-        expectedRevision: number;
-        archiveActionId: string;
-        approvalWaitId: string;
-        proposalHash: string;
-        reportSha256: string;
-        sourceActionId: string;
-        observationHash: string;
-        summary: string;
-      };
-      const pending = run.actions.filter((action) => action.status === 'pending');
-      const approval = run.waits.find((wait) => wait.id === value?.approvalWaitId);
-      const report = run.evidenceWaits
-        ?.slice()
-        .reverse()
-        .find(
-          (wait) =>
-            wait.stepId === `${state.workflow}.verify.report.evidence` &&
-            wait.status === 'resolved',
-        )?.receipt;
-      if (
-        !context?.projectRoot ||
-        name !== 'refresh-checks' ||
-        !canReopenClassicVerification(run as WorkflowRun) ||
-        state.phase !== 'archive' ||
-        state.archiveConfirmation !== 'confirmed' ||
-        state.verifyResult !== 'pass' ||
-        !value ||
-        value.expectedRevision !== run.revision ||
-        pending.length !== 1 ||
-        pending[0].id !== value.archiveActionId ||
-        !['archive.preflight', 'archive.execute'].some(
-          (step) => pending[0].stepId === `${state.workflow}.${step}`,
-        ) ||
-        !approval ||
-        approval.stepId !== `${state.workflow}.archive.confirm` ||
-        approval.status !== 'resolved' ||
-        !['local', 'push', 'pr'].includes(approval.decision?.choice ?? '') ||
-        approval.proposalHash !== value.proposalHash ||
-        !report ||
-        !value.summary?.trim()
-      )
-        throw new Error('补充检查必须对应原验收、批准和未执行的归档步骤');
-      return { accepted: true };
-    } catch (error) {
-      return { accepted: false, reason: String(error) };
-    }
-  },
-};
-
 /** 仅给内置 Run 添加显式修订命令；原应用工厂和固定扩展包保持不变。 */
 export function classicSdkRevisionApplication(
   profile: ClassicProfile,
@@ -348,13 +298,8 @@ export function classicSdkRevisionApplication(
   buildContinuation = true,
   workContinuation = true,
   sourceRun?: Readonly<WorkflowRun>,
-  checkRefresh = true,
-  agentChecks = false,
 ) {
-  if (agentChecks) checkRefresh = false;
-  const base = agentChecks
-    ? defineClassicAgentWorkflowApplication(profile)
-    : defineClassicWorkflowApplication(profile);
+  const base = defineClassicAgentWorkflowApplication(profile);
   const continuationValidator: RuntimeCommandValidator = {
     ...workContinuationValidator,
     async validate(context) {
@@ -377,10 +322,7 @@ export function classicSdkRevisionApplication(
   };
   const fullOpen =
     archiveRepair && verification === 'full' && profile !== 'full'
-      ? (agentChecks
-          ? defineClassicAgentWorkflowApplication('full')
-          : defineClassicWorkflowApplication('full')
-        ).workflow
+      ? defineClassicAgentWorkflowApplication('full').workflow
       : null;
   return {
     ...base,
@@ -405,19 +347,7 @@ export function classicSdkRevisionApplication(
         ),
       },
       transitions: [
-        ...(checkRefresh
-          ? [
-              {
-                from: `${verification === 'full' ? 'full' : profile}.verify.check`,
-                to: `${verification === 'full' ? 'full' : profile}.archive.preflight`,
-              },
-              {
-                from: `${verification === 'full' ? 'full' : profile}.verify.check`,
-                to: `${verification === 'full' ? 'full' : profile}.archive.preflight`,
-                on: 'failed',
-              },
-            ]
-          : []),
+        ...[],
         ...(base.workflow.transitions ?? []),
         ...(fullOpen?.transitions?.filter((edge) => edge.from.startsWith('full.open')) ?? []),
         { from: 'full.design.evidence', to: 'full.build.plan' },
@@ -428,14 +358,7 @@ export function classicSdkRevisionApplication(
           : []),
       ],
       commands: {
-        ...(checkRefresh
-          ? {
-              'refresh-checks': {
-                stepId: `${verification === 'full' ? 'full' : profile}.verify.check`,
-                validator: { id: checkRefreshValidator.id, version: checkRefreshValidator.version },
-              },
-            }
-          : {}),
+        ...{},
         ...(workContinuation
           ? {
               'continue-work': {
@@ -491,7 +414,7 @@ export function classicSdkRevisionApplication(
       },
     },
     commandValidators: [
-      ...(checkRefresh ? [checkRefreshValidator] : []),
+      ...[],
       ...(workContinuation ? [continuationValidator] : []),
       ...(buildContinuation ? [buildContinuationValidator] : []),
       ...(archiveRepair ? [archiveRepairValidator] : []),
@@ -524,17 +447,6 @@ export function classicSdkRevisionApplication(
     transitionHandler: {
       ...base.transitionHandler,
       apply(context: Parameters<typeof base.transitionHandler.apply>[0]) {
-        if (context.event.kind === 'action-outcome') {
-          const actionId = context.event.outcome.actionId;
-          const action = context.run.actions.find((entry) => entry.id === actionId);
-          if (action && classicSdkCheckRefreshInput(context.run, action))
-            return {
-              state: context.run.state!,
-              next: [
-                `${(context.run.state as unknown as ClassicState).workflow}.archive.preflight`,
-              ],
-            };
-        }
         if (
           context.event.kind === 'action-outcome' &&
           context.event.stepId === 'classic.resume-work' &&
@@ -548,8 +460,13 @@ export function classicSdkRevisionApplication(
             (entry) => entry.id === output.interruptedActionId,
           );
           const repairId = failed?.stepId.endsWith('.archive.deliver')
-            ? (failed.input as { activation?: { deliveryRepairCheckId?: string } }).activation
-                ?.deliveryRepairCheckId
+            ? (
+                failed.input as {
+                  activation?: {
+                    deliveryRepairCheckId?: string;
+                  };
+                }
+              ).activation?.deliveryRepairCheckId
             : undefined;
           return {
             state: context.run.state!,
@@ -570,160 +487,30 @@ export function classicSdkRevisionApplication(
     },
   };
 }
-
-/** 只识别已知内置定义；其他 hash 交由 Runtime 按固定定义拒绝。 */
+/** 旧 Run 的数据在加载边界转换；这里只装配当前业务定义。 */
 export function classicSdkApplicationForRun(
   profile: ClassicProfile,
   run: WorkflowRun | null,
-  options: { upgradePresetRequirements?: boolean; upgradeBuildCheckRecovery?: boolean } = {},
+  _options: {
+    upgradePresetRequirements?: boolean;
+    upgradeBuildCheckRecovery?: boolean;
+  } = {},
 ) {
-  const preparing = run?.commands?.some((command) =>
-    ['prepare-build-check', 'prepare-verify-check'].includes(command.name),
-  );
-  const configured = <
-    T extends ClassicWorkflowApplication & {
-      commandValidators?: readonly RuntimeCommandValidator[];
-    },
-  >(
-    application: T,
-  ): T =>
-    preparing
-      ? (withClassicCheckPreparation(
-          application,
-          (run!.state as unknown as ClassicState).workflow,
-        ) as T)
-      : application;
-  const agentChecks = run?.workflow.version === '2';
-  const base = configured({
-    ...(agentChecks
-      ? defineClassicAgentWorkflowApplication(profile)
-      : defineClassicWorkflowApplication(profile)),
-    commandValidators: [],
-  });
-  // 正常 Run 精确匹配原定义后直接返回；旧定义仍按下方完整兼容路径识别。
+  const base = {
+    ...defineClassicAgentWorkflowApplication(profile),
+    commandValidators: [] as RuntimeCommandValidator[],
+  };
   if (!run || run.workflow.hash === hashRuntimeValue(defineWorkflow(base.workflow))) return base;
-  const withoutCheckRefresh = <T extends { workflow: DefineWorkflowOptions }>(application: T) => {
-    const workflow = structuredClone(application.workflow);
-    if (workflow.commands) delete workflow.commands['refresh-checks'];
-    workflow.transitions = workflow.transitions?.filter(
-      ({ from, to }) => !(from.endsWith('.verify.check') && to.endsWith('.archive.preflight')),
-    );
-    return { ...application, workflow };
-  };
-  const effective = (run?.state as unknown as ClassicState | undefined)?.workflow ?? profile;
-  const repair = configured(
-    withClassicDeliveryRepair(
-      classicSdkRevisionApplication(
-        profile,
-        effective === 'full' && profile !== 'full' ? 'full' : true,
-        true,
-        true,
-        true,
-        undefined,
-        !agentChecks,
-        agentChecks,
-      ),
-      effective,
-    ),
+  const effective = (run.state as unknown as ClassicState).workflow;
+  const revised = classicSdkRevisionApplication(
+    profile,
+    effective === 'full' && profile !== 'full' ? 'full' : true,
   );
-  if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(repair.workflow))) return repair;
-  const beforeRepairRefresh = withoutCheckRefresh(repair);
-  if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(beforeRepairRefresh.workflow)))
-    return beforeRepairRefresh;
-  const compatible = <T extends { workflow: DefineWorkflowOptions }>(application: T) => {
-    const previous = structuredClone(application.workflow);
-    const step = previous.steps[`${profile}.build.execute`];
-    if (step?.outputSchema && typeof step.outputSchema === 'object') {
-      const schema = step.outputSchema as { properties?: Record<string, unknown> };
-      if (schema.properties) delete schema.properties.requirementsEvidence;
-    }
-    if (step?.validator?.id === 'comet-classic-preset-scope') delete step.validator;
-    return { ...application, workflow: previous };
-  };
-  const withoutBuildCheckRecovery = <T extends { workflow: DefineWorkflowOptions }>(
-    application: T,
-  ) => ({
-    ...application,
-    workflow: {
-      ...application.workflow,
-      transitions: application.workflow.transitions?.filter(
-        (edge) =>
-          !(
-            profile !== 'full' &&
-            edge.from === `${profile}.build.check.evidence` &&
-            edge.on === 'invalidated'
-          ),
-      ),
-    },
-  });
-  for (const verification of [true, 'full', false] as const) {
-    for (const archiveRepair of [true, false]) {
-      for (const buildContinuation of [true, false]) {
-        for (const workContinuation of [true, false]) {
-          const application = configured(
-            classicSdkRevisionApplication(
-              profile,
-              verification,
-              archiveRepair,
-              buildContinuation,
-              workContinuation,
-              undefined,
-              !agentChecks,
-              agentChecks,
-            ),
-          );
-          if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(application.workflow)))
-            return application;
-          const beforeRefresh = withoutCheckRefresh(application);
-          if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(beforeRefresh.workflow)))
-            return beforeRefresh;
-          const previousRecovery = withoutBuildCheckRecovery(application);
-          const oldRecoveryBeforeRefresh = withoutCheckRefresh(previousRecovery);
-          if (
-            run?.workflow.hash ===
-            hashRuntimeValue(defineWorkflow(oldRecoveryBeforeRefresh.workflow))
-          )
-            return options.upgradeBuildCheckRecovery ? application : oldRecoveryBeforeRefresh;
-          if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(previousRecovery.workflow)))
-            return options.upgradeBuildCheckRecovery ? application : previousRecovery;
-          const previous = compatible(application);
-          const oldBeforeRefresh = withoutCheckRefresh(previous);
-          if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(oldBeforeRefresh.workflow)))
-            return options.upgradePresetRequirements ? application : oldBeforeRefresh;
-          if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(previous.workflow)))
-            return options.upgradePresetRequirements ? application : previous;
-          const previousBoth = withoutBuildCheckRecovery(previous);
-          const oldBothBeforeRefresh = withoutCheckRefresh(previousBoth);
-          if (
-            run?.workflow.hash === hashRuntimeValue(defineWorkflow(oldBothBeforeRefresh.workflow))
-          )
-            return options.upgradePresetRequirements
-              ? application
-              : options.upgradeBuildCheckRecovery
-                ? oldBeforeRefresh
-                : oldBothBeforeRefresh;
-          if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(previousBoth.workflow)))
-            return options.upgradePresetRequirements
-              ? application
-              : options.upgradeBuildCheckRecovery
-                ? previous
-                : previousBoth;
-        }
-      }
-    }
-  }
-  const previous = compatible(base);
-  const oldRecovery = withoutBuildCheckRecovery(base);
-  if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(oldRecovery.workflow)))
-    return options.upgradeBuildCheckRecovery ? base : oldRecovery;
-  if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(previous.workflow)))
-    return options.upgradePresetRequirements ? base : previous;
-  const previousBoth = withoutBuildCheckRecovery(previous);
-  if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(previousBoth.workflow)))
-    return options.upgradePresetRequirements
-      ? base
-      : options.upgradeBuildCheckRecovery
-        ? previous
-        : previousBoth;
-  return base;
+  if (run.workflow.hash === hashRuntimeValue(defineWorkflow(revised.workflow))) return revised;
+  const repair = withClassicDeliveryRepair(revised, effective);
+  if (run.workflow.hash === hashRuntimeValue(defineWorkflow(repair.workflow))) return repair;
+  if (run.workflow.version !== '1')
+    throw new Error('Classic 当前 Run 的 definition hash 不匹配，请保留原定义与业务记录。');
+  if (run.commands?.some((command) => command.name === 'repair-delivery')) return repair;
+  return run.commands?.length || effective !== profile ? revised : base;
 }

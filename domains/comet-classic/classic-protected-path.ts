@@ -63,7 +63,7 @@ async function projectTarget(
 ): Promise<{ root: string; relative: string; target: string }> {
   let root = path.resolve(projectRoot);
   let absolute = path.isAbsolute(target) ? path.resolve(target) : path.resolve(root, target);
-  const local = await resolveClassicLocalTarget(root, absolute, { migrate });
+  const local = await resolveClassicLocalTarget(root, absolute, { readOnly: !migrate });
   if (local) {
     root = local.root;
     absolute = local.target;
@@ -90,12 +90,17 @@ export async function classicProjectTargetExists(
   target: string,
   options: { label: string; expected?: 'file' | 'directory' | 'any' },
 ): Promise<boolean> {
-  return (
-    await inspectClassicProjectTarget(projectRoot, target, {
-      label: options.label,
-      expected: options.expected ?? 'any',
-    })
-  ).exists;
+  try {
+    return (
+      await inspectClassicProjectTarget(projectRoot, target, {
+        label: options.label,
+        expected: options.expected ?? 'any',
+      })
+    ).exists;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
 }
 
 export async function classicProjectFileNonempty(

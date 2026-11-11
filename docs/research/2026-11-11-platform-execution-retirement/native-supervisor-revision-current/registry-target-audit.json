@@ -1,0 +1,170 @@
+{
+  "currentAndCoveredHistoricalCases": 725,
+  "references": [
+    {
+      "registry": "current",
+      "id": "native-supervisor-recovery-execution-workspace",
+      "sources": [
+        "report:2026-11-05-pr539-ci-native-supervisor-recovery-execution-workspace"
+      ],
+      "level": 0,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-native/native-supervisor.test.ts",
+        "namePattern": "^(?:Native Supervisor v2 state advances a parent without a mandatory review and keeps verification in its integration workspace)$",
+        "requiredNames": [
+          "Native Supervisor v2 state advances a parent without a mandatory review and keeps verification in its integration workspace"
+        ]
+      },
+      "matchesAdaptedBusiness": false
+    },
+    {
+      "registry": "current",
+      "id": "native-supervisor-recovery-execution-workspace",
+      "sources": [
+        "report:2026-11-05-pr539-ci-native-supervisor-recovery-execution-workspace"
+      ],
+      "level": 1,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-native/native-supervisor.test.ts",
+        "namePattern": "^(?:Native Supervisor v2 state advances a parent without a mandatory review and keeps verification in its integration workspace)$",
+        "requiredNames": [
+          "Native Supervisor v2 state advances a parent without a mandatory review and keeps verification in its integration workspace"
+        ]
+      },
+      "matchesAdaptedBusiness": false
+    },
+    {
+      "registry": "historical",
+      "issue": 314,
+      "id": "native-314-integration-target-fence",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/314"
+      ],
+      "level": 0,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-native/native-supervisor.test.ts",
+        "namePattern": "serially merges a verified commit into integration while protecting target|delivers a fully verified integration branch once and archives children together",
+        "requiredNames": [
+          "serially merges a verified commit into integration while protecting target",
+          "delivers a fully verified integration branch once and archives children together"
+        ]
+      },
+      "matchesAdaptedBusiness": false
+    },
+    {
+      "registry": "historical",
+      "issue": 314,
+      "id": "native-314-integration-target-fence",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/314"
+      ],
+      "level": 1,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-native/native-supervisor.test.ts",
+        "namePattern": "^(?:serially merges a verified commit into integration while protecting target)$",
+        "requiredNames": [
+          "serially merges a verified commit into integration while protecting target"
+        ]
+      },
+      "matchesAdaptedBusiness": false
+    },
+    {
+      "registry": "historical",
+      "issue": 314,
+      "id": "native-314-readable-plan",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/314"
+      ],
+      "level": 0,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-native/native-supervisor.test.ts",
+        "namePattern": "adds a repair child without rewriting integrated history",
+        "requiredNames": [
+          "adds a repair child without rewriting integrated history"
+        ]
+      },
+      "matchesAdaptedBusiness": false
+    },
+    {
+      "registry": "historical",
+      "issue": 314,
+      "id": "native-314-readable-plan",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/314"
+      ],
+      "level": 1,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-native/native-supervisor.test.ts",
+        "namePattern": "adds a repair child without rewriting integrated history",
+        "requiredNames": [
+          "adds a repair child without rewriting integrated history"
+        ]
+      },
+      "matchesAdaptedBusiness": false
+    },
+    {
+      "registry": "historical",
+      "issue": 314,
+      "id": "native-314-agent-identity-recovery",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/314"
+      ],
+      "level": 0,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-native/native-supervisor.test.ts",
+        "namePattern": "requires the current runId before accepting Builder and Verifier results|reconnects the current task and requires cancellation before redispatch",
+        "requiredNames": [
+          "requires the current runId before accepting Builder and Verifier results",
+          "reconnects the current task and requires cancellation before redispatch"
+        ]
+      },
+      "matchesAdaptedBusiness": false
+    },
+    {
+      "registry": "historical",
+      "issue": 314,
+      "id": "native-314-parent-evidence",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/314"
+      ],
+      "level": 0,
+      "effective": false,
+      "target": {
+        "file": "test/domains/comet-native/native-supervisor.test.ts",
+        "namePattern": "rejects a passed parent verification with no executed parent checks",
+        "requiredNames": [
+          "rejects a passed parent verification with no executed parent checks"
+        ]
+      },
+      "matchesAdaptedBusiness": false
+    },
+    {
+      "registry": "historical",
+      "issue": 391,
+      "id": "issue-391-controlled-revision",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/391"
+      ],
+      "level": 0,
+      "effective": true,
+      "target": {
+        "file": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+        "namePattern": "executes the actual returned Shape continuation with summary and guards without implying user confirmation",
+        "requiredNames": [
+          "executes the actual returned Shape continuation with summary and guards without implying user confirmation"
+        ]
+      },
+      "matchesAdaptedBusiness": false
+    }
+  ],
+  "effectiveAffectedIds": [],
+  "appendRequired": false,
+  "reason": "Original files, titles, all selector fields, sources, IDs and prior chains remain unchanged; existing business assertions remain and are strengthened. No feature is retired by this slice."
+}

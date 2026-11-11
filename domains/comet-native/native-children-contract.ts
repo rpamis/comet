@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import type { WorkflowRun } from '../engine/runtime.js';
 
 import { parseDocument } from 'yaml';
 
@@ -403,7 +404,49 @@ export async function readNativeChildrenContract(options: {
 /** 旧 Run 只读兼容：保留原 Action 输入和 SDK 标识。 */
 export function nativeSupervisorContractRef(
   value: { contractRef?: unknown; contractHash?: unknown } | null | undefined,
+  run?: Readonly<WorkflowRun>,
+  originalAction?: Readonly<WorkflowRun['actions'][number]>,
 ): string | undefined {
   const ref = value?.contractRef ?? value?.contractHash;
+  if (run && typeof ref === 'string') {
+    const state = run.state as { children_contract_ref?: string; children_contract_hash?: string };
+    if (
+      originalAction?.stepId === 'supervisor.prepare' &&
+      originalAction.executionOrigin &&
+      ref === state.children_contract_hash
+    ) {
+      const shape = run.actionContexts[originalAction.id].results['shape.prepare'];
+      const source =
+        shape &&
+        run.actions.find(
+          (a) =>
+            a.stepId === 'shape.prepare' &&
+            a.status === 'succeeded' &&
+            run.actionContexts[a.id].sequence === shape.sequence,
+        );
+      if (source && source.id === state.children_contract_ref) return source.id;
+    }
+    if (ref === state.children_contract_ref) return ref;
+    const prepared = run.outputs['supervisor.prepare'];
+    const output = prepared?.value as { contractHash?: unknown } | undefined;
+    if (output?.contractHash === ref) {
+      const action = run.actions.find(
+        (a) =>
+          a.stepId === 'supervisor.prepare' &&
+          a.status === 'succeeded' &&
+          run.actionContexts[a.id].sequence === prepared.sequence,
+      );
+      const shape = action && run.actionContexts[action.id].results['shape.prepare'];
+      const source =
+        shape &&
+        run.actions.find(
+          (a) =>
+            a.stepId === 'shape.prepare' &&
+            a.status === 'succeeded' &&
+            run.actionContexts[a.id].sequence === shape.sequence,
+        );
+      if (source && source.id === state.children_contract_ref) return source.id;
+    }
+  }
   return typeof ref === 'string' ? ref : undefined;
 }

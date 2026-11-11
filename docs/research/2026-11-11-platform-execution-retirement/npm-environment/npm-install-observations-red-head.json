@@ -1,0 +1,50 @@
+[
+  {
+    "args": [
+      "root",
+      "--global"
+    ],
+    "actualRoot": "D:\\nodejs\\node_modules",
+    "expectedRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 W1qUYW\\prefix\\node_modules",
+    "prefixKeys": {
+      "NPM_CONFIG_PREFIX": "D:\\nodejs",
+      "npm_config_prefix": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 W1qUYW\\prefix"
+    }
+  },
+  {
+    "args": [
+      "root",
+      "--global"
+    ],
+    "actualRoot": "D:\\nodejs\\node_modules",
+    "expectedRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 W1qUYW\\prefix\\node_modules",
+    "prefixKeys": {
+      "NPM_CONFIG_PREFIX": "D:\\nodejs",
+      "npm_config_prefix": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 W1qUYW\\prefix"
+    }
+  },
+  {
+    "args": [
+      "root",
+      "--global"
+    ],
+    "actualRoot": "D:\\nodejs\\node_modules",
+    "expectedRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 GdNkHJ\\prefix\\node_modules",
+    "prefixKeys": {
+      "NPM_CONFIG_PREFIX": "D:\\nodejs",
+      "npm_config_prefix": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 GdNkHJ\\prefix"
+    }
+  },
+  {
+    "args": [
+      "root",
+      "--global"
+    ],
+    "actualRoot": "D:\\nodejs\\node_modules",
+    "expectedRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 WmLRCn\\prefix\\node_modules",
+    "prefixKeys": {
+      "NPM_CONFIG_PREFIX": "D:\\nodejs",
+      "npm_config_prefix": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 WmLRCn\\prefix"
+    }
+  }
+]

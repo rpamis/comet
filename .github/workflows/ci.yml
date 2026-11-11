@@ -116,13 +116,6 @@ jobs:
             'test/platform/process/spawn-command.test.ts',
             'test/platform/process/node-cli-command.test.ts',
             'test/platform/process/owned-command-termination.test.ts',
-            'test/domains/comet-native/native-check-registration.test.ts',
-            'test/domains/comet-native/native-check-executor.test.ts',
-            'test/domains/comet-native/native-check-executor-termination.test.ts',
-            'test/domains/comet-native/native-portable-check-termination.test.ts',
-            'test/domains/comet-native/native-sdk-check-termination.test.ts',
-            'test/domains/comet-native/native-supervisor-check-process.test.ts',
-            'test/domains/comet-native/native-supervisor-integration-execution.test.ts',
             'test/domains/comet-native/native-supervisor-legacy-diagnostics.test.ts',
             'test/domains/comet-classic/comet-scripts.test.ts',
             'test/repository/native-runtime-assets.test.ts',
@@ -269,7 +262,7 @@ jobs:
           test/platform/dsh-profiles.test.ts
           test/domains/comet-entry/hook-adapter.test.ts
           test/domains/comet-entry/hook-router-runtime.test.ts
-      - name: Native check process and recovery regressions
+      - name: CLI-owned process cleanup regressions
         if: matrix.os != 'ubuntu-latest'
         run: >-
           pnpm exec vitest run
@@ -277,13 +270,6 @@ jobs:
           test/platform/process/spawn-command.test.ts
           test/platform/process/node-cli-command.test.ts
           test/platform/process/owned-command-termination.test.ts
-          test/domains/comet-native/native-check-registration.test.ts
-          test/domains/comet-native/native-check-executor.test.ts
-          test/domains/comet-native/native-check-executor-termination.test.ts
-          test/domains/comet-native/native-portable-check-termination.test.ts
-          test/domains/comet-native/native-sdk-check-termination.test.ts
-          test/domains/comet-native/native-supervisor-check-process.test.ts
-          test/domains/comet-native/native-supervisor-integration-execution.test.ts
           test/domains/comet-native/native-supervisor-legacy-diagnostics.test.ts
           --maxWorkers=1
       - if: matrix.os != 'ubuntu-latest'

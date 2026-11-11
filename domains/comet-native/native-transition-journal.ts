@@ -14,8 +14,7 @@ import {
   readNativeChange,
 } from './native-change.js';
 import { sha256Text } from './native-hash.js';
-import { acquireNativeLock, releaseNativeLock, type NativeLock } from './native-lock.js';
-import { withNativeMutationLock } from './native-mutation-lock.js';
+import { withNativeMutation } from './native-mutation.js';
 import {
   nativeChangeRuntimeDir,
   nativeStorageRoot,
@@ -23,10 +22,7 @@ import {
 } from './native-paths.js';
 import { readNativeProtectedFile } from './native-protected-file.js';
 import { redactNativeCredentialText } from './native-redaction.js';
-import {
-  parseNativeRepairTrajectoryProjection,
-  type NativeRepairTrajectoryProjection,
-} from './native-repair-runtime.js';
+
 import { assertNativeTrajectoryText } from './native-trajectory-limits.js';
 import {
   isCompatibleNativeRuntimeIdentity,
@@ -121,33 +117,6 @@ export class NativeTransitionMigrationRequiredError extends Error {
 
 export function nativeTransitionJournalFile(paths: NativeProjectPaths, name: string): string {
   return path.join(nativeChangeRuntimeDir(paths, name), 'transition.json');
-}
-
-function nativeTransitionLockName(name: string): string {
-  return `transition-${name}`;
-}
-
-async function acquireNativeTransitionLock(
-  paths: NativeProjectPaths,
-  name: string,
-  operation: string,
-): Promise<NativeLock> {
-  const lockName = nativeTransitionLockName(name);
-  return acquireNativeLock(paths, lockName, operation);
-}
-
-export async function withNativeTransitionLock<T>(
-  paths: NativeProjectPaths,
-  name: string,
-  operation: string,
-  work: () => Promise<T>,
-): Promise<T> {
-  const lock = await acquireNativeTransitionLock(paths, name, operation);
-  try {
-    return await work();
-  } finally {
-    await releaseNativeLock(lock);
-  }
 }
 
 function journalRecord(value: unknown): Record<string, unknown> {
@@ -1192,9 +1161,174 @@ export async function continueNativeTransition(
   name: string,
   hooks?: NativeTransitionHooks,
 ): Promise<NativeChangeState | null> {
-  return withNativeMutationLock(paths, `continue transition ${name}`, () =>
-    withNativeTransitionLock(paths, name, `continue transition ${name}`, () =>
-      continueNativeTransitionLocked(paths, name, hooks),
-    ),
+  return withNativeMutation(paths, () => continueNativeTransitionLocked(paths, name, hooks));
+}
+
+// 只读取既有事务中的历史修复投影，不重新创建范围快照或修复监管。
+const legacyRepairNATIVE_REPAIR_STAGNATION_LIMITS = {
+  maxFailedAcceptanceIds: 1024,
+  maxFailedCheckIds: 128,
+};
+const legacyRepairHASH_PATTERN = /^[a-f0-9]{64}$/u;
+const legacyRepairLEGACY_PROJECTION_KEYS = [
+  'disposition',
+  'overrideSummaryHash',
+  'signatureHash',
+] as const;
+const legacyRepairPROJECTION_KEYS = [
+  'contractHash',
+  'disposition',
+  'failedAcceptanceIds',
+  'failedCheckIds',
+  'maxVerifyFailures',
+  'overrideSummaryHash',
+  'signatureHash',
+] as const;
+interface NativeRepairTrajectoryProjection {
+  signatureHash: string;
+  disposition: 'continue' | 'warn' | 'manual-stop' | 'hard-stop';
+  overrideSummaryHash: string | null;
+  contractHash: string | null;
+  failedAcceptanceIds: string[];
+  failedCheckIds: string[];
+  maxVerifyFailures: number | null;
+}
+function legacyRepairCompareText(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+function legacyRepairExactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+  label: string,
+): void {
+  const actual = Object.keys(value).sort(legacyRepairCompareText);
+  if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
+    throw new Error(`${label} fields are invalid`);
+  }
+}
+function legacyRepairRecord(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error(`${label} must be a plain object`);
+  }
+  return value as Record<string, unknown>;
+}
+function legacyRepairHash(value: unknown, label: string): string {
+  if (typeof value !== 'string' || !legacyRepairHASH_PATTERN.test(value)) {
+    throw new Error(`${label} must be a SHA-256 hash`);
+  }
+  return value;
+}
+function legacyRepairFailedAcceptanceIds(value: unknown): string[] {
+  if (
+    !Array.isArray(value) ||
+    value.length > legacyRepairNATIVE_REPAIR_STAGNATION_LIMITS.maxFailedAcceptanceIds ||
+    value.some((entry) => typeof entry !== 'string' || !/^acceptance-[a-f0-9]{64}$/u.test(entry))
+  ) {
+    throw new Error('Native repair trajectory failed acceptance IDs are invalid');
+  }
+  return [...new Set(value as string[])].sort(legacyRepairCompareText);
+}
+function parseNativeRepairTrajectoryProjection(value: unknown): NativeRepairTrajectoryProjection {
+  const projection = legacyRepairRecord(value, 'Native repair trajectory projection');
+  const keys = Object.keys(projection).sort(legacyRepairCompareText);
+  const legacy =
+    keys.length === legacyRepairLEGACY_PROJECTION_KEYS.length &&
+    keys.every((key, index) => key === legacyRepairLEGACY_PROJECTION_KEYS[index]);
+  if (!legacy) {
+    legacyRepairExactKeys(
+      projection,
+      legacyRepairPROJECTION_KEYS,
+      'Native repair trajectory projection',
+    );
+  }
+  const signatureHash = legacyRepairHash(
+    projection.signatureHash,
+    'Native repair trajectory signature hash',
+  );
+  if (
+    projection.disposition !== 'continue' &&
+    projection.disposition !== 'warn' &&
+    projection.disposition !== 'manual-stop' &&
+    projection.disposition !== 'hard-stop'
+  ) {
+    throw new Error('Native repair trajectory disposition is invalid');
+  }
+  const overrideSummaryHash =
+    projection.overrideSummaryHash === null
+      ? null
+      : legacyRepairHash(
+          projection.overrideSummaryHash,
+          'Native repair trajectory override summary hash',
+        );
+  if (overrideSummaryHash !== null && projection.disposition !== 'continue') {
+    throw new Error('Native repair trajectory override must continue exactly once');
+  }
+  if (legacy) {
+    return {
+      signatureHash,
+      disposition: projection.disposition,
+      overrideSummaryHash,
+      contractHash: null,
+      failedAcceptanceIds: [],
+      failedCheckIds: [],
+      maxVerifyFailures: null,
+    };
+  }
+  const contractHash = legacyRepairHash(
+    projection.contractHash,
+    'Native repair trajectory contract hash',
+  );
+  const normalizedFailedAcceptanceIds = legacyRepairFailedAcceptanceIds(
+    projection.failedAcceptanceIds,
+  );
+  const failedCheckIds = legacyRepairNormalizeNativeRepairFailedCheckIds(
+    projection.failedCheckIds as string[],
+  );
+  if (
+    !Number.isSafeInteger(projection.maxVerifyFailures) ||
+    (projection.maxVerifyFailures as number) < 1
+  ) {
+    throw new Error('Native repair trajectory maximum Verify failures is invalid');
+  }
+  return {
+    signatureHash,
+    disposition: projection.disposition,
+    overrideSummaryHash,
+    contractHash,
+    failedAcceptanceIds: normalizedFailedAcceptanceIds,
+    failedCheckIds,
+    maxVerifyFailures: projection.maxVerifyFailures as number,
+  };
+}
+const legacyRepairTOKEN_PATTERN = /^[a-z0-9][a-z0-9._:/-]{0,255}$/u;
+function legacyRepairNormalizedTokens(
+  values: readonly string[],
+  label: string,
+  max: number,
+  allowEmpty: boolean,
+): string[] {
+  if (!Array.isArray(values) || values.length > max || (!allowEmpty && values.length === 0)) {
+    throw new Error(`${label} exceeds its count boundary`);
+  }
+  const tokens = values.map((value) => {
+    if (typeof value !== 'string' || !legacyRepairTOKEN_PATTERN.test(value)) {
+      throw new Error(`${label} contains an invalid token: ${String(value)}`);
+    }
+    return value;
+  });
+  return [...new Set(tokens)].sort(legacyRepairCompareText);
+}
+function legacyRepairNormalizeNativeRepairFailedCheckIds(values: readonly string[] = []): string[] {
+  return legacyRepairNormalizedTokens(
+    values,
+    'Native repair failed check IDs',
+    legacyRepairNATIVE_REPAIR_STAGNATION_LIMITS.maxFailedCheckIds,
+    true,
   );
 }

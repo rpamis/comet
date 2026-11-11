@@ -1,0 +1,104 @@
+{
+  "source": "report:2026-11-10-agent-platform-execution",
+  "authorization": "用户明确 ordinary workspace singlewriter 不需要PID写入者排他；Root授权删除配置事务PID分支并保实际WAL。",
+  "modifiedSources": [
+    "domains/workflow-contract/project-config-transaction.ts",
+    "domains/workflow-contract/project-config-writer.ts"
+  ],
+  "originalDoctorFile": "docs/research/2026-11-11-platform-execution-retirement/project-config-single-writer/original/doctor.test.ts.txt",
+  "retiredOnly": "doctor command does not repair a project config transaction while its writer is still active: unsupported simultaneous config writer/Doctor exclusion. Do not claim parallel writer safety after retirement.",
+  "preserved": "six transaction fields/schema/id/original source bytes, config candidate/quarantine hashes and paths, source/successor protection, real crash rollback and cleanup, explicit Doctor repair",
+  "red": {
+    "file": "C:/Users/BENYM/AppData/Local/Temp/comet-native-single-writer-20261111/project-config-pid-red.json",
+    "failed": 1,
+    "error": "Project config write transaction ... is still active in process ..."
+  },
+  "green": {
+    "doctor": {
+      "passed": 2,
+      "failed": 0,
+      "tests": [
+        {
+          "file": "test/app/doctor.test.ts",
+          "name": "doctor command reports and repairs a project config write interrupted after quarantine"
+        },
+        {
+          "file": "test/app/doctor.test.ts",
+          "name": "doctor command repairs a real interrupted config transaction while ignoring legacy owner PID metadata"
+        }
+      ]
+    },
+    "wal": {
+      "passed": 15,
+      "failed": 0,
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/workflow-contract.test.ts",
+          "name": "workflow contract normalization fails closed for project config with duplicate keys"
+        },
+        {
+          "file": "test/domains/workflow-contract/workflow-contract.test.ts",
+          "name": "workflow contract normalization fails closed for project config with malformed extension YAML"
+        },
+        {
+          "file": "test/domains/workflow-contract/workflow-contract.test.ts",
+          "name": "workflow contract normalization fails closed for project config with invalid managed fields"
+        },
+        {
+          "file": "test/domains/workflow-contract/workflow-contract.test.ts",
+          "name": "workflow contract normalization fails closed for project config with invalid document evidence mode"
+        },
+        {
+          "file": "test/domains/workflow-contract/workflow-contract.test.ts",
+          "name": "workflow contract normalization fails closed for project config with invalid document writes mode"
+        },
+        {
+          "file": "test/domains/workflow-contract/workflow-contract.test.ts",
+          "name": "workflow contract normalization does not write project config through a linked .comet directory"
+        },
+        {
+          "file": "test/domains/workflow-contract/workflow-contract.test.ts",
+          "name": "workflow contract normalization publishes project config when the project filesystem does not support hard links"
+        },
+        {
+          "file": "test/domains/workflow-contract/workflow-contract.test.ts",
+          "name": "workflow contract normalization does not replace a project config file symlink"
+        },
+        {
+          "file": "test/domains/workflow-contract/workflow-contract.test.ts",
+          "name": "workflow contract normalization does not commit project config through a parent junction replaced after inspection"
+        },
+        {
+          "file": "test/domains/workflow-contract/workflow-contract.test.ts",
+          "name": "workflow contract normalization does not read project config through a symlink"
+        },
+        {
+          "file": "test/domains/workflow-contract/workflow-contract.test.ts",
+          "name": "workflow contract normalization rejects project config drift from an existing initial identity"
+        },
+        {
+          "file": "test/domains/workflow-contract/workflow-contract.test.ts",
+          "name": "workflow contract normalization rejects project config drift from an missing initial identity"
+        },
+        {
+          "file": "test/domains/workflow-contract/workflow-contract.test.ts",
+          "name": "workflow contract normalization does not overwrite a successor config published after the expected config is quarantined"
+        },
+        {
+          "file": "test/domains/workflow-contract/workflow-contract.test.ts",
+          "name": "workflow contract normalization recovers the previous config after a process exits with it quarantined"
+        },
+        {
+          "file": "test/domains/workflow-contract/workflow-contract.test.ts",
+          "name": "workflow contract normalization does not unlink a same-path successor published while an owned transaction file is cleaned"
+        }
+      ]
+    }
+  },
+  "notExecuted": [
+    "root build handled by Root",
+    "real model Eval",
+    "installed Hooks",
+    "release installation"
+  ]
+}

@@ -1,0 +1,168 @@
+diff --git a/test/app/runtime-command.test.ts b/test/app/runtime-command.test.ts
+index 9dc6dc94..80d06e9f 100644
+--- a/test/app/runtime-command.test.ts
++++ b/test/app/runtime-command.test.ts
+@@ -33,7 +33,6 @@ import { parseClassicStateDocument } from '../../domains/comet-classic/classic-s
+ import { runClassicCli } from '../../domains/comet-classic/classic-cli.js';
+ import { prepareClassicWorkspace } from '../../domains/comet-classic/classic-workspace.js';
+ import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
+-import { withRecoverableFileLock } from '../../platform/fs/plugin-store.js';
+ import * as taskContext from '../../app/commands/comet-task-context.js';
+ 
+ const repositoryRoot = path.resolve('.');
+@@ -1826,83 +1825,88 @@ describe('Runtime JSON command', () => {
+     ).rejects.toMatchObject({ code: 'ENOENT' });
+   });
+ 
+-  it('does not reserve a Classic SDK owner while the change ownership lock is held', async () => {
+-    const lock = path.join(
+-      resolveWorkspaceRuntimeRootSync(projectRoot),
+-      'change-owners',
+-      'classic',
+-      'classic-change.lock',
++  it('ignores retired Classic ownership lock files without replacing an existing SDK owner or Run', async () => {
++    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
++    await fs.writeFile(
++      path.join(projectRoot, '.comet/config.yaml'),
++      'schema: comet.project.v1\ndefault_workflow: classic\nworkflows: [classic]\nclassic:\n  artifact_layout: legacy\n',
+     );
+-    await withRecoverableFileLock(lock, async () => {
+-      const projected = parseClassicStateDocument({
+-        workflow: 'full',
+-        phase: 'open',
+-        design_doc: null,
+-        plan: null,
+-        build_mode: null,
+-        isolation: null,
+-        verify_mode: null,
+-        verify_result: 'pending',
+-        verified_at: null,
+-        archived: false,
+-      });
+-      if (!projected.classic) throw new Error('Classic fixture was not projected');
+-      const result = await dispatch(
+-        {
+-          operation: 'start',
+-          runId: 'classic-change',
+-          workflow: { id: 'comet-classic-full', version: '1' },
+-          input: { changeDir: 'openspec/changes/classic-change' },
+-          initialState: projected.classic,
+-        },
+-        { application: 'classic-full', workflow: [], rootDir: undefined },
+-      );
+-      expect(result.response).toMatchObject({
+-        status: 'failed',
+-        error: { message: expect.stringContaining('Timed out waiting for file lock') },
+-      });
+-      await expect(
+-        fs.access(
+-          path.join(
+-            resolveWorkspaceRuntimeRootSync(projectRoot),
+-            'change-owners',
+-            'classic',
+-            'classic-change.json',
+-          ),
+-        ),
+-      ).rejects.toMatchObject({ code: 'ENOENT' });
++    const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
++    const ownerFile = path.join(runtimeRoot, 'change-owners/classic/classic-change.json');
++    const lock = path.join(runtimeRoot, 'change-owners/classic/classic-change.lock');
++    const retired = 'SIMULATED obsolete lock metadata; no writer is running.\n';
++    await fs.mkdir(path.dirname(lock), { recursive: true });
++    await fs.writeFile(lock, retired);
++    const request = classicStartRequest('openspec/changes/classic-change');
++    const options = { application: 'classic-full', workflow: [], rootDir: undefined };
++    const started = await dispatch(request, options);
++    expect(started.response.status, JSON.stringify(started.response)).toBe('succeeded');
++    const owner = await fs.readFile(ownerFile, 'utf8');
++    expect(JSON.parse(owner)).toEqual({
++      schema: 'comet.change-owner.v1',
++      workflow: 'classic',
++      change: 'classic-change',
++      format: 'sdk',
++      application: 'classic-full',
++      runId: 'classic-change',
++    });
++    const backing = createFileRuntimeStore<WorkflowRun>({
++      rootDir: path.join(runtimeRoot, 'sdk-runs/classic'),
++    });
++    const original = await backing.read('classic-change');
++    expect(original?.workflow.version).toBe('2');
++    const repeated = await dispatch(request, options);
++    expect(repeated.response.status).toBe('succeeded');
++    if (repeated.response.status !== 'succeeded')
++      throw new Error(JSON.stringify(repeated.response));
++    expect(repeated.response.data).toEqual(original);
++    const conflicting = await dispatch(
++      { ...request, input: { ...request.input, goal: 'SIMULATED different user request' } },
++      options,
++    );
++    expect(conflicting.response).toMatchObject({
++      status: 'failed',
++      error: { code: 'RUN_CONFLICT' },
+     });
++    expect(await backing.read('classic-change')).toEqual(original);
++    expect(await fs.readFile(ownerFile, 'utf8')).toBe(owner);
++    expect(await fs.readFile(lock, 'utf8')).toBe(retired);
+   });
+ 
+-  it('does not initialize legacy Classic state while the change ownership lock is held', async () => {
++  it('initializes legacy Classic despite obsolete lock files and rejects a duplicate without replacing its owner or state', async () => {
+     execFileSync('git', ['init', projectRoot]);
+     await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+     await fs.writeFile(
+-      path.join(projectRoot, '.comet', 'config.yaml'),
++      path.join(projectRoot, '.comet/config.yaml'),
+       'schema: comet.project.v1\ndefault_workflow: classic\nworkflows: [classic]\nclassic:\n  artifact_layout: legacy\n',
+     );
+-    await fs.mkdir(path.join(projectRoot, 'openspec', 'changes'), { recursive: true });
+-    const lock = path.join(
+-      resolveWorkspaceRuntimeRootSync(projectRoot),
+-      'change-owners',
+-      'classic',
+-      'classic-change.lock',
+-    );
+-    await withRecoverableFileLock(lock, async () => {
+-      const result = await runClassicCli(
+-        ['state', 'init', 'classic-change', 'full', '--runtime', 'compat'],
+-        undefined,
+-        {
+-          projectRoot,
+-          invocationCwd: projectRoot,
+-        },
+-      );
+-      expect(result.exitCode).not.toBe(0);
+-      expect(result.stderr).toContain('Timed out waiting for file lock');
+-      await expect(
+-        fs.access(path.join(projectRoot, 'openspec', 'changes', 'classic-change', '.comet.yaml')),
+-      ).rejects.toMatchObject({ code: 'ENOENT' });
++    await fs.mkdir(path.join(projectRoot, 'openspec/changes'), { recursive: true });
++    const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
++    const ownerFile = path.join(runtimeRoot, 'change-owners/classic/classic-change.json');
++    const lock = path.join(runtimeRoot, 'change-owners/classic/classic-change.lock');
++    const retired = 'SIMULATED obsolete lock metadata; no writer is running.\n';
++    await fs.mkdir(path.dirname(lock), { recursive: true });
++    await fs.writeFile(lock, retired);
++    const init = () =>
++      runClassicCli(['state', 'init', 'classic-change', 'full', '--runtime', 'compat'], undefined, {
++        projectRoot,
++        invocationCwd: projectRoot,
++      });
++    const started = await init();
++    expect(started.exitCode, started.stderr).toBe(0);
++    const owner = await fs.readFile(ownerFile, 'utf8');
++    expect(JSON.parse(owner)).toEqual({
++      schema: 'comet.change-owner.v1',
++      workflow: 'classic',
++      change: 'classic-change',
++      format: 'compat',
+     });
++    const file = path.join(projectRoot, 'openspec/changes/classic-change/.comet.yaml');
++    const original = await fs.readFile(file, 'utf8');
++    expect((await init()).exitCode).not.toBe(0);
++    expect(await fs.readFile(ownerFile, 'utf8')).toBe(owner);
++    expect(await fs.readFile(file, 'utf8')).toBe(original);
++    expect(await fs.readFile(lock, 'utf8')).toBe(retired);
+   });
+ 
+   it('records legacy ownership when Classic state init creates a change', async () => {

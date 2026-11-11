@@ -1,0 +1,434 @@
+{
+  "cases": [
+    {
+      "id": "native-build-managed-check-reuse",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-native-app-dispatch-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "^(?:Native dispatch CLI presentation reports actual platform Build checks through public receipt dispatch without scheduling a managed check)$",
+          "requiredNames": [
+            "Native dispatch CLI presentation reports actual platform Build checks through public receipt dispatch without scheduling a managed check"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^(?:exposes Agent tasks and acceptance without any managed-check executor or refresh command|does not ship retired Native execution and snapshot implementations)$",
+          "requiredNames": [
+            "exposes Agent tasks and acceptance without any managed-check executor or refresh command",
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-v3-compact-builder-result",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-native-app-dispatch-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "^(?:Native dispatch CLI presentation uses one result protocol and omits duplicate Builder review for a new public v4 Run)$",
+          "requiredNames": [
+            "Native dispatch CLI presentation uses one result protocol and omits duplicate Builder review for a new public v4 Run"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-v3-report-view-nonblocking",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-native-app-dispatch-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "^(?:Native dispatch CLI presentation waits for acceptance directly after a v4 Verifier result without a report Action|Native dispatch CLI presentation preserves v4 acceptance when the report view fails and retries it on next)$",
+          "requiredNames": [
+            "Native dispatch CLI presentation waits for acceptance directly after a v4 Verifier result without a report Action",
+            "Native dispatch CLI presentation preserves v4 acceptance when the report view fails and retries it on next"
+          ]
+        }
+      ]
+    }
+  ],
+  "behaviorMapping": {
+    "source": "report:2026-11-10-agent-platform-execution",
+    "file": "test/app/native-runtime-dispatch.test.ts",
+    "originalFrozen": "docs/research/2026-11-11-platform-execution-retirement/app-dispatch/original-native-runtime-dispatch.test.txt",
+    "mapping": [
+      {
+        "original": {
+          "title": "delivers real memory once per receiver and restores it explicitly through the public CLI",
+          "line": 39
+        },
+        "current": {
+          "title": "delivers real memory once per receiver and restores it explicitly through the public CLI",
+          "line": 42
+        },
+        "caseIDs": ["sdk-claim-context-delivery"],
+        "retainedBehavior": "真实公开CLI记忆首次交付/同接收方仅一次/显式restore/新session独立application/adoption尚未发生全部原断言；未降低2s产品预算。原初轮unavailable原因未单独冻结，当前独立重跑和整组都GREEN。",
+        "wholeCaseFeatureRemoved": false,
+        "selector": "Claim context delivery delivers real memory once per receiver and restores it explicitly through the public CLI",
+        "verification": {
+          "status": "passed",
+          "report": "coverage/native-builder-aggregate-final-results.json"
+        }
+      },
+      {
+        "original": {
+          "title": "delivers context to the actual receiver without changing the claimed input or SDK response",
+          "line": 98
+        },
+        "current": {
+          "title": "delivers context to the actual receiver without changing the claimed input or SDK response",
+          "line": 101
+        },
+        "caseIDs": ["sdk-claim-context-delivery"],
+        "retainedBehavior": "实际receiver、完整claim input/完整SDK response、context预算6000与timeout2000、restore/expand/complete、一领取仅检索一次。",
+        "wholeCaseFeatureRemoved": false,
+        "selector": "Claim context delivery delivers context to the actual receiver without changing the claimed input or SDK response",
+        "verification": {
+          "status": "passed",
+          "report": "coverage/native-builder-aggregate-final-results.json"
+        }
+      },
+      {
+        "original": {
+          "title": "keeps a successful claim usable when context retrieval is unavailable",
+          "line": 153
+        },
+        "current": {
+          "title": "keeps a successful claim usable when context retrieval is unavailable",
+          "line": 156
+        },
+        "caseIDs": ["sdk-claim-context-delivery"],
+        "retainedBehavior": "上下文不可用时领取仍成功、原claim running、真实receipt可回报。",
+        "wholeCaseFeatureRemoved": false,
+        "selector": "Claim context delivery keeps a successful claim usable when context retrieval is unavailable",
+        "verification": {
+          "status": "passed",
+          "report": "coverage/native-builder-aggregate-final-results.json"
+        }
+      },
+      {
+        "original": {
+          "title": "executes managed Build checks through public receipt dispatch and resumes the Builder",
+          "line": 363
+        },
+        "current": {
+          "title": "reports actual platform Build checks through public receipt dispatch without scheduling a managed check",
+          "line": 360
+        },
+        "caseIDs": ["native-build-managed-check-reuse"],
+        "retainedBehavior": "平台Node实际执行exit0+stdout，原receipt回报原Builder，保存真实报告并到Verifier；退休build.checks/verify.checks执行器与额外Builder循环。",
+        "wholeCaseFeatureRemoved": false,
+        "selector": "Native dispatch CLI presentation reports actual platform Build checks through public receipt dispatch without scheduling a managed check",
+        "verification": {
+          "status": "passed",
+          "report": "coverage/native-builder-aggregate-final-results.json"
+        }
+      },
+      {
+        "original": {
+          "title": "uses one result protocol and omits duplicate Builder review for a new public v3 Run",
+          "line": 401
+        },
+        "current": {
+          "title": "uses one result protocol and omits duplicate Builder review for a new public v4 Run",
+          "line": 376
+        },
+        "caseIDs": ["native-v3-compact-builder-result"],
+        "retainedBehavior": "当前v4唯一resultRequest收据协议，省重复可选Builder acceptanceReview与outcome/failure/markUnknown重复投影。",
+        "wholeCaseFeatureRemoved": false,
+        "selector": "Native dispatch CLI presentation uses one result protocol and omits duplicate Builder review for a new public v4 Run",
+        "verification": {
+          "status": "passed",
+          "report": "coverage/native-builder-aggregate-final-results.json"
+        }
+      },
+      {
+        "original": {
+          "title": "waits for acceptance directly after a v3 Verifier result without a report Action",
+          "line": 411
+        },
+        "current": {
+          "title": "waits for acceptance directly after a v4 Verifier result without a report Action",
+          "line": 386
+        },
+        "caseIDs": ["native-v3-report-view-nonblocking"],
+        "retainedBehavior": "当前v4原Verifier报告直接待用户批准，生成阅读view，无report Action，不提前Archive，同结果重放revision不变。",
+        "wholeCaseFeatureRemoved": false,
+        "selector": "Native dispatch CLI presentation waits for acceptance directly after a v4 Verifier result without a report Action",
+        "verification": {
+          "status": "passed",
+          "report": "coverage/native-builder-aggregate-final-results.json"
+        }
+      },
+      {
+        "original": {
+          "title": "preserves v3 acceptance when the report view fails and retries it on next",
+          "line": 426
+        },
+        "current": {
+          "title": "preserves v4 acceptance when the report view fails and retries it on next",
+          "line": 401
+        },
+        "caseIDs": ["native-v3-report-view-nonblocking"],
+        "retainedBehavior": "真实directory写失败不否定已接受结果/原批准Wait；next补生成view，revision不变。",
+        "wholeCaseFeatureRemoved": false,
+        "selector": "Native dispatch CLI presentation preserves v4 acceptance when the report view fails and retries it on next",
+        "verification": {
+          "status": "passed",
+          "report": "coverage/native-builder-aggregate-final-results.json"
+        }
+      },
+      {
+        "original": {
+          "title": "reports all malformed Builder fields together and accepts corrected content only with a new outcomeId",
+          "line": 442
+        },
+        "current": {
+          "title": "reports all malformed Builder fields together and accepts corrected content only with a new outcomeId",
+          "line": 417
+        },
+        "caseIDs": ["native-531-builder-batch-validation"],
+        "retainedBehavior": "同一个原请求同时含review evidence字符串、空note、未知B1/缺A1、非法checks.result；同一个message必须一次列齐每个字段及outcomeId。另空review缺A1+坏check仍聚合，两条拒绝ledger均保。保原state/claim；相同outcomeId修改内容拒绝且指明新的 outcomeId；原claim用新ID纠正成功。仅verificationChecks argv/timeoutMs/repeatable旧执行计划字段退休。撤回此前7次单字段替代及业务聚合退休结论。",
+        "wholeCaseFeatureRemoved": false,
+        "selector": "Native dispatch CLI presentation reports all malformed Builder fields together and accepts corrected content only with a new outcomeId",
+        "verification": {
+          "status": "passed",
+          "report": "coverage/native-builder-aggregate-final-results.json"
+        }
+      },
+      {
+        "original": {
+          "title": "submits a Native candidate through its returned receipt without manual identity fields",
+          "line": 499
+        },
+        "current": {
+          "title": "submits a Native candidate through its returned receipt without manual identity fields",
+          "line": 441
+        },
+        "caseIDs": ["runtime-receipt-result-input"],
+        "retainedBehavior": "完整receipt无需手输identity、仅业务output，保存候选、Verifier pending、重复回报完全幂等。旧checkRequestTemplate与verify.checks Action退休。",
+        "wholeCaseFeatureRemoved": false,
+        "selector": "Native dispatch CLI presentation submits a Native candidate through its returned receipt without manual identity fields",
+        "verification": {
+          "status": "passed",
+          "report": "coverage/native-builder-aggregate-final-results.json"
+        }
+      },
+      {
+        "original": {
+          "title": "rejects a Builder identity before claiming a Verifier and accepts an independent retry",
+          "line": 537
+        },
+        "current": {
+          "title": "rejects a Builder identity before claiming a Verifier and accepts an independent retry",
+          "line": 474
+        },
+        "caseIDs": ["native-verifier-builder-identity-claim-recovery", "issue-290-manual-review"],
+        "retainedBehavior": "显式requireIndependentReview=true后Builder会话必须在claim之前被拒绝、原Run完全不变，随后真正独立会话可领取。真实当前RED已由最薄业务CAS校验修正后GREEN；原RuntimeProtocolError代码保留，不用默认same-session许可替代。",
+        "wholeCaseFeatureRemoved": false,
+        "selector": "Native dispatch CLI presentation rejects a Builder identity before claiming a Verifier and accepts an independent retry",
+        "verification": {
+          "status": "passed",
+          "report": "coverage/native-builder-aggregate-final-results.json"
+        }
+      },
+      {
+        "original": {
+          "title": "diagnoses misplaced outcome fields without changing the original claim",
+          "line": 573
+        },
+        "current": {
+          "title": "diagnoses misplaced outcome fields without changing the original claim",
+          "line": 510
+        },
+        "caseIDs": [
+          "native-outcome-output-repair-diagnostic",
+          "native-builder-shape-drift-recovery"
+        ],
+        "retainedBehavior": "错误结果字段放错层级显示outcome.output与恢复guidance、不泄漏token、Run不变；原claim纠正后actualfailure保存。完整身份由真实receipt解析，仅测试支持的原始SDK协议。",
+        "wholeCaseFeatureRemoved": false,
+        "selector": "Native dispatch CLI presentation diagnoses misplaced outcome fields without changing the original claim",
+        "verification": {
+          "status": "passed",
+          "report": "coverage/native-builder-aggregate-final-results.json"
+        }
+      },
+      {
+        "original": {
+          "title": "does not disclose a Builder failure receipt to a rejected outcome with another claim",
+          "line": 613
+        },
+        "current": {
+          "title": "does not disclose a Builder failure receipt to a rejected outcome with another claim",
+          "line": 552
+        },
+        "caseIDs": ["native-builder-shape-drift-recovery"],
+        "retainedBehavior": "另claim回报不可得到原Builder failure receipt，原state/claim保持，原材料变化不使攻击claim合法。",
+        "wholeCaseFeatureRemoved": false,
+        "selector": "Native dispatch CLI presentation does not disclose a Builder failure receipt to a rejected outcome with another claim",
+        "verification": {
+          "status": "passed",
+          "report": "coverage/native-builder-aggregate-final-results.json"
+        }
+      },
+      {
+        "original": {
+          "title": "generates the report after a CLI Verifier outcome but still requires explicit acceptance",
+          "line": 651
+        },
+        "current": {
+          "title": "generates the report after a CLI Verifier outcome but still requires explicit acceptance",
+          "line": 590
+        },
+        "caseIDs": [],
+        "retainedBehavior": "CLI生成原接受结果view、仍需原显式用户批准，不提前Archive、重复提交不推进。退休旧report executor Action状态。",
+        "wholeCaseFeatureRemoved": false,
+        "selector": "Native dispatch CLI presentation generates the report after a CLI Verifier outcome but still requires explicit acceptance",
+        "verification": {
+          "status": "passed",
+          "report": "coverage/native-builder-aggregate-final-results.json"
+        }
+      },
+      {
+        "original": {
+          "title": "preserves the SDK single-operation default and also completes reports in CLI details mode",
+          "line": 665
+        },
+        "current": {
+          "title": "preserves the SDK single-operation default and also completes report views in CLI details mode",
+          "line": 601
+        },
+        "caseIDs": [],
+        "retainedBehavior": "原SDK单操作只记录业务结果与Wait不写阅读view；CLI details补view且不变Run/revision。退休旧report pending Action状态。",
+        "wholeCaseFeatureRemoved": false,
+        "selector": "Native dispatch CLI presentation preserves the SDK single-operation default and also completes report views in CLI details mode",
+        "verification": {
+          "status": "passed",
+          "report": "coverage/native-builder-aggregate-final-results.json"
+        }
+      },
+      {
+        "original": {
+          "title": "keeps an accepted Verifier result successful when automatic report execution fails",
+          "line": 685
+        },
+        "current": {
+          "title": "keeps an accepted Verifier result successful when report view writing fails",
+          "line": 615
+        },
+        "caseIDs": [],
+        "retainedBehavior": "报告阅读view真实写失败仍回原成功结果、原Wait和批准保留，next恢复不重放；退休旧report unknown Action与暂停原Wait机制。",
+        "wholeCaseFeatureRemoved": false,
+        "selector": "Native dispatch CLI presentation keeps an accepted Verifier result successful when report view writing fails",
+        "verification": {
+          "status": "passed",
+          "report": "coverage/native-builder-aggregate-final-results.json"
+        }
+      },
+      {
+        "original": {
+          "title": "preserves complete claimed inputs, state, identity and result template without repeating the Run history",
+          "line": 698
+        },
+        "current": {
+          "title": "preserves complete claimed inputs, state, identity and result template without repeating the Run history",
+          "line": 628
+        },
+        "caseIDs": [],
+        "retainedBehavior": "compact完整原Action/state/input/identity+receipt模板，单resultRequest引用，snapshot context要求与原所有无重复历史断言，SDK/details/inspect完整原Run。",
+        "wholeCaseFeatureRemoved": false,
+        "selector": "Native dispatch CLI presentation preserves complete claimed inputs, state, identity and result template without repeating the Run history",
+        "verification": {
+          "status": "passed",
+          "report": "coverage/native-builder-aggregate-final-results.json"
+        }
+      },
+      {
+        "original": {
+          "title": "returns the submitted outcome receipt and explicit user decision from the same committed Run",
+          "line": 781
+        },
+        "current": {
+          "title": "returns the submitted outcome receipt and explicit user decision from the same committed Run",
+          "line": 686
+        },
+        "caseIDs": [],
+        "retainedBehavior": "原claim actualfailure receipt/输出/原批准Wait同一提交Run，requiresUserDecision/await-user及pendingBuilderDecision保留，重复回报投影完全相同。",
+        "wholeCaseFeatureRemoved": false,
+        "selector": "Native dispatch CLI presentation returns the submitted outcome receipt and explicit user decision from the same committed Run",
+        "verification": {
+          "status": "passed",
+          "report": "coverage/native-builder-aggregate-final-results.json"
+        }
+      }
+    ],
+    "evidenceSummary": {
+      "repositoryReport": "coverage/native-builder-aggregate-final-results.json",
+      "passed": 48,
+      "failed": 0,
+      "app": 17,
+      "loop": 29,
+      "publicReadinessCLI": 2,
+      "aggregateRed": "C:/Users/BENYM/AppData/Local/Temp/comet-app-dispatch-prototype-20261111/aggregate-red-results.json",
+      "publicReadinessRed": "C:/Users/BENYM/AppData/Local/Temp/comet-app-dispatch-prototype-20261111/incomplete-cli-red-results.json",
+      "scope": "Final merged repository source after the aggregate parser and original incomplete error object preservation. Ordinary deterministic tests; no Eval."
+    }
+  },
+  "proofs": [
+    {
+      "file": "test/app/native-runtime-dispatch.test.ts",
+      "fullName": "Native dispatch CLI presentation reports actual platform Build checks through public receipt dispatch without scheduling a managed check",
+      "report": "coverage/native-builder-aggregate-final-results.json",
+      "status": "passed"
+    },
+    {
+      "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+      "fullName": "exposes Agent tasks and acceptance without any managed-check executor or refresh command",
+      "report": "coverage/native-retained-business-current-built-results.json",
+      "status": "passed"
+    },
+    {
+      "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+      "fullName": "does not ship retired Native execution and snapshot implementations",
+      "report": "coverage/native-retained-business-current-built-results.json",
+      "status": "passed"
+    },
+    {
+      "file": "test/app/native-runtime-dispatch.test.ts",
+      "fullName": "Native dispatch CLI presentation uses one result protocol and omits duplicate Builder review for a new public v4 Run",
+      "report": "coverage/native-builder-aggregate-final-results.json",
+      "status": "passed"
+    },
+    {
+      "file": "test/app/native-runtime-dispatch.test.ts",
+      "fullName": "Native dispatch CLI presentation waits for acceptance directly after a v4 Verifier result without a report Action",
+      "report": "coverage/native-builder-aggregate-final-results.json",
+      "status": "passed"
+    },
+    {
+      "file": "test/app/native-runtime-dispatch.test.ts",
+      "fullName": "Native dispatch CLI presentation preserves v4 acceptance when the report view fails and retries it on next",
+      "report": "coverage/native-builder-aggregate-final-results.json",
+      "status": "passed"
+    }
+  ],
+  "retiredMechanisms": [
+    "Managed Build check execution task and repeated Builder scheduling; current Agent executes actual commands and submits reports.",
+    "Creating old Native versions for new fixtures; public current-v4 behavior is tested, genuine old Runs have separate frozen compatibility tests."
+  ],
+  "preserved": [
+    "The original one-request aggregate validation and exact original case/title remain active; native-531-builder-batch-validation receives no migration.",
+    "Original claim, outcome rejection ledger, OUTCOME_CONFLICT guidance with 新的 outcomeId, same-claim new-ID correction.",
+    "Actual user approval, receipt binding, complete input/state and SDK query/details results.",
+    "Original NativeBuilderAcceptanceIncompleteError identity and public CLI exit65/invalid-data/missingIds/incompleteIds."
+  ],
+  "noWholeCaseFeatureRemoved": true
+}

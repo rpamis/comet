@@ -1,0 +1,18 @@
+{
+  "registry": {
+    "file": "docs/research/2026-11-11-platform-execution-retirement/classic-readonly-marker-fixture/registry.json",
+    "sha256": "5018f7c176fdc5b2dfe2ccc98e263bf452e6127d12ca7c4b9e05621f13b9f651"
+  },
+  "tests": {
+    "file": "docs/research/2026-11-11-platform-execution-retirement/classic-readonly-marker-fixture/tests.json",
+    "sha256": "54948bf63de6cb84f9981e7df56a09f95f4573a7300db5fd9add69ce8356a540"
+  },
+  "mapping": {
+    "file": "docs/research/2026-11-11-platform-execution-retirement/classic-readonly-marker-fixture/mapping.json",
+    "sha256": "8f16b98caa50f612497e74f8561ee0c1d41738b6d75e0f15f4b0563d1c05db3e"
+  },
+  "patch": {
+    "file": "docs/research/2026-11-11-platform-execution-retirement/classic-readonly-marker-fixture/patch.patch",
+    "sha256": "9e526b4d5bd2ac3cd6f1b6084771cf0d991ed24a4049bb6b137dcbb8285b7ae0"
+  }
+}

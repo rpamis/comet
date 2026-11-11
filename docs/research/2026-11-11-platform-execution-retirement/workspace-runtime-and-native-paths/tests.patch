@@ -1,0 +1,1371 @@
+diff --git a/test/domains/workflow-contract/workspace-runtime.test.ts b/test/domains/workflow-contract/workspace-runtime.test.ts
+deleted file mode 100644
+index a0642ff..0000000
+--- a/test/domains/workflow-contract/workspace-runtime.test.ts
++++ /dev/null
+@@ -1,967 +0,0 @@
+-import { createHash } from 'node:crypto';
+-import { execFileSync } from 'node:child_process';
+-import { promises as fs } from 'node:fs';
+-import os from 'node:os';
+-import path from 'node:path';
+-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+-import { createFileRuntimeStore } from '../../../domains/engine/runtime-store.js';
+-import * as raceSafeReads from '../../../platform/fs/race-safe-read.js';
+-
+-import {
+-  assertWorkspaceRuntimeMigrationQuiescent,
+-  ensureWorkspaceRuntimeMigrationFence,
+-  isWorkspaceRuntimeMigrationFence,
+-  isWorkspaceRuntimeMigrationFenceSync,
+-  migrateWorkspaceRuntimeDirectory,
+-  migrateWorkspaceRuntimePath,
+-  resolveWorkspaceRuntimeRoot,
+-  resolveWorkspaceRuntimeRootSync,
+-} from '../../../domains/workflow-contract/workspace-runtime.js';
+-
+-let temporary: string;
+-let project: string;
+-let data: string;
+-let legacy: string;
+-
+-async function write(file: string, value: string) {
+-  await fs.mkdir(path.dirname(file), { recursive: true });
+-  await fs.writeFile(file, value);
+-}
+-
+-beforeEach(async () => {
+-  temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-workspace-runtime-'));
+-  project = path.join(temporary, 'project');
+-  data = path.join(temporary, 'user-data');
+-  legacy = path.join(project, '.comet', 'runtime');
+-  await fs.mkdir(project);
+-  vi.stubEnv('COMET_DATA_DIR', data);
+-});
+-
+-afterEach(async () => {
+-  vi.restoreAllMocks();
+-  vi.unstubAllEnvs();
+-  await fs.rm(temporary, { recursive: true, force: true });
+-});
+-
+-describe('workspace runtime resolution and migration', () => {
+-  it('retries a transient fence publication observation with a bounded fresh read', async () => {
+-    const target = await resolveWorkspaceRuntimeRoot(project);
+-    const read = raceSafeReads.readFileRaceSafe;
+-    let attempts = 0;
+-    vi.spyOn(raceSafeReads, 'readFileRaceSafe').mockImplementation(async (...args) => {
+-      if (args[0] === legacy && ++attempts === 1)
+-        throw new raceSafeReads.RaceSafeReadError('changed', 'injected publication change');
+-      return read(...args);
+-    });
+-    expect(await resolveWorkspaceRuntimeRoot(project)).toBe(target);
+-    expect(attempts).toBe(2);
+-  });
+-
+-  it('does not reuse an unstable fence after its bounded publication retries', async () => {
+-    await resolveWorkspaceRuntimeRoot(project);
+-    const before = await fs.readFile(legacy, 'utf8');
+-    const read = raceSafeReads.readFileRaceSafe;
+-    let attempts = 0;
+-    vi.spyOn(raceSafeReads, 'readFileRaceSafe').mockImplementation(async (...args) => {
+-      if (args[0] === legacy) {
+-        attempts += 1;
+-        throw new raceSafeReads.RaceSafeReadError('changed', 'injected continuing change');
+-      }
+-      return read(...args);
+-    });
+-    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow(
+-      'injected continuing change',
+-    );
+-    expect(attempts).toBe(3);
+-    expect(await fs.readFile(legacy, 'utf8')).toBe(before);
+-  });
+-  it.runIf(process.platform === 'win32')(
+-    'reads the same saved run and lock through a Windows case alias',
+-    async (context) => {
+-      const alias = path.join(temporary, 'Project');
+-      try {
+-        await fs.stat(alias);
+-      } catch (error) {
+-        if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+-          context.skip('当前目录区分大小写，不存在同目录大小写别名');
+-        throw error;
+-      }
+-      const runtime = await resolveWorkspaceRuntimeRoot(project);
+-      const record = { runId: 'retained', revision: 1, state: { progress: 'saved' } };
+-      const store = (root: string) => createFileRuntimeStore({ rootDir: path.join(root, 'runs') });
+-      expect(await store(runtime).compareAndSwap(record.runId, null, record)).toBe(true);
+-      await write(path.join(runtime, 'saved-run.lock'), 'same execution owner');
+-      const reopened = await resolveWorkspaceRuntimeRoot(alias);
+-      expect(reopened).toBe(runtime);
+-      expect(resolveWorkspaceRuntimeRootSync(alias)).toBe(runtime);
+-      expect(await store(reopened).read(record.runId)).toEqual(record);
+-      expect(await fs.readFile(path.join(reopened, 'saved-run.lock'), 'utf8')).toBe(
+-        'same execution owner',
+-      );
+-    },
+-  );
+-
+-  it('validates the volume root without attempting mkdir when the root would reject it', async () => {
+-    const volumeRoot = path.parse(data).root;
+-    const mkdir = fs.mkdir.bind(fs);
+-    const create = vi.spyOn(fs, 'mkdir').mockImplementation(async (directory, options) => {
+-      if (path.resolve(String(directory)) === volumeRoot) {
+-        throw Object.assign(new Error('EPERM: operation not permitted, mkdir volume root'), {
+-          code: 'EPERM',
+-        });
+-      }
+-      return mkdir(directory, options);
+-    });
+-    const stat = vi.spyOn(fs, 'lstat');
+-    const runtime = await resolveWorkspaceRuntimeRoot(project);
+-    expect(runtime).toBe(resolveWorkspaceRuntimeRootSync(project));
+-    expect((await fs.stat(runtime)).isDirectory()).toBe(true);
+-    expect(await isWorkspaceRuntimeMigrationFence(legacy, runtime)).toBe(true);
+-    expect(stat).toHaveBeenCalledWith(volumeRoot);
+-    expect(
+-      create.mock.calls.some(([directory]) => path.resolve(String(directory)) === volumeRoot),
+-    ).toBe(false);
+-  });
+-
+-  it.each(['file', 'symlink'] as const)(
+-    'rejects a nonphysical volume root reported as a %s before creating directories',
+-    async (kind) => {
+-      const volumeRoot = path.parse(data).root;
+-      const rootStat = await fs.lstat(volumeRoot);
+-      vi.spyOn(rootStat, 'isDirectory').mockReturnValue(kind !== 'file');
+-      vi.spyOn(rootStat, 'isSymbolicLink').mockReturnValue(kind === 'symlink');
+-      const lstat = fs.lstat.bind(fs);
+-      const stat = vi.spyOn(fs, 'lstat').mockImplementation(async (file, options) => {
+-        if (path.resolve(String(file)) === volumeRoot) return rootStat;
+-        return lstat(file, options);
+-      });
+-      const mkdir = vi.spyOn(fs, 'mkdir');
+-      await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('必须是真实目录');
+-      expect(stat).toHaveBeenCalledWith(volumeRoot);
+-      expect(mkdir).not.toHaveBeenCalled();
+-    },
+-  );
+-
+-  it.each(['ENOENT', 'EACCES', 'EPERM'] as const)(
+-    'preserves a volume root lstat %s error without attempting mkdir',
+-    async (code) => {
+-      const volumeRoot = path.parse(data).root;
+-      const error = Object.assign(new Error(`${code}: lstat volume root`), {
+-        code,
+-        path: volumeRoot,
+-        syscall: 'lstat',
+-      });
+-      const lstat = fs.lstat.bind(fs);
+-      vi.spyOn(fs, 'lstat').mockImplementation(async (file, options) => {
+-        if (path.resolve(String(file)) === volumeRoot) throw error;
+-        return lstat(file, options);
+-      });
+-      const mkdir = vi.spyOn(fs, 'mkdir');
+-      await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toBe(error);
+-      expect(mkdir).not.toHaveBeenCalled();
+-    },
+-  );
+-
+-  it('checks read-only fence ownership without following a foreign target', async () => {
+-    const runtime = await resolveWorkspaceRuntimeRoot(project);
+-    await expect(
+-      isWorkspaceRuntimeMigrationFence(legacy, `${runtime}-wrong`, {
+-        projectRoot: project,
+-        ignoreForeignWorkspaceFence: true,
+-      }),
+-    ).rejects.toThrow(/其他路径/u);
+-    const copied = path.join(temporary, 'copied');
+-    await fs.mkdir(copied);
+-    const foreignFence = path.join(copied, 'runtime');
+-    await fs.copyFile(legacy, foreignFence);
+-    const before = await fs.readFile(foreignFence, 'utf8');
+-    await fs.rm(runtime, { recursive: true });
+-    expect(
+-      await isWorkspaceRuntimeMigrationFence(
+-        foreignFence,
+-        resolveWorkspaceRuntimeRootSync(copied),
+-        {
+-          projectRoot: copied,
+-          ignoreForeignWorkspaceFence: true,
+-        },
+-      ),
+-    ).toBe(true);
+-    expect(await fs.readFile(foreignFence, 'utf8')).toBe(before);
+-    await expect(fs.access(runtime)).rejects.toMatchObject({ code: 'ENOENT' });
+-    await expect(
+-      isWorkspaceRuntimeMigrationFence(foreignFence, runtime, {
+-        projectRoot: copied,
+-      }),
+-    ).rejects.toThrow(/其他工作区/u);
+-    expect(
+-      await isWorkspaceRuntimeMigrationFence(legacy, runtime, {
+-        projectRoot: project,
+-      }),
+-    ).toBe(true);
+-  });
+-
+-  it('creates the user-level runtime and its compatibility fence with concurrent initialization', async () => {
+-    const roots = await Promise.all(
+-      Array.from({ length: 8 }, () => resolveWorkspaceRuntimeRoot(project)),
+-    );
+-    expect(new Set(roots).size).toBe(1);
+-    expect((await fs.stat(roots[0])).isDirectory()).toBe(true);
+-    expect(await fs.readdir(project)).toEqual(['.comet']);
+-    expect(await fs.readdir(path.join(project, '.comet'))).toEqual(['runtime']);
+-    expect(await isWorkspaceRuntimeMigrationFence(legacy, roots[0])).toBe(true);
+-    await expect(fs.mkdir(path.join(legacy, 'old-writer'), { recursive: true })).rejects.toThrow();
+-  });
+-
+-  it('migrates the entire legacy tree, preserves evidence, and leaves only one fence', async () => {
+-    await write(
+-      path.join(legacy, 'sdk-runs', 'native', 'change', 'run.json'),
+-      '{"status":"waiting"}',
+-    );
+-    await write(path.join(legacy, 'native', 'checks', 'evidence.log'), 'checked\n\0complete');
+-    const target = resolveWorkspaceRuntimeRootSync(project);
+-    const roots = await Promise.all([
+-      resolveWorkspaceRuntimeRoot(project),
+-      resolveWorkspaceRuntimeRoot(project),
+-    ]);
+-    expect(roots).toEqual([target, target]);
+-    expect(await fs.readFile(path.join(target, 'native', 'checks', 'evidence.log'), 'utf8')).toBe(
+-      'checked\n\0complete',
+-    );
+-    expect(
+-      await fs.readFile(path.join(target, 'sdk-runs', 'native', 'change', 'run.json'), 'utf8'),
+-    ).toBe('{"status":"waiting"}');
+-    expect(await isWorkspaceRuntimeMigrationFence(legacy, target)).toBe(true);
+-    expect(isWorkspaceRuntimeMigrationFenceSync(legacy, target)).toBe(true);
+-    expect(await fs.readdir(path.dirname(legacy))).toEqual(['runtime']);
+-    expect(await fs.readdir(path.dirname(target))).toEqual([
+-      '.runtime-migration-recovery.lock.sqlite',
+-      'runtime',
+-    ]);
+-    await expect(fs.mkdir(path.join(legacy, 'old-writer'), { recursive: true })).rejects.toThrow();
+-    expect(await resolveWorkspaceRuntimeRoot(project)).toBe(target);
+-  });
+-
+-  it('supports separate files with a directory fence that blocks legacy writes', async () => {
+-    const root = await resolveWorkspaceRuntimeRoot(project);
+-    const source = path.join(project, 'changes', 'one', '.comet', 'runtime-cache.json');
+-    const target = path.join(root, 'classic-changes', 'one', 'runtime-cache.json');
+-    await write(source, '{"result":true}');
+-    await migrateWorkspaceRuntimePath(source, target, { projectRoot: project });
+-    expect(await fs.readFile(target, 'utf8')).toBe('{"result":true}');
+-    expect(await isWorkspaceRuntimeMigrationFence(source, target)).toBe(true);
+-    expect(isWorkspaceRuntimeMigrationFenceSync(source, target)).toBe(true);
+-    await expect(fs.writeFile(source, 'old writer')).rejects.toThrow();
+-    await migrateWorkspaceRuntimePath(source, target, { projectRoot: project });
+-  });
+-
+-  it('copies across filesystem boundaries and only renames within each filesystem', async () => {
+-    await write(path.join(legacy, 'evidence.bin'), 'portable');
+-    const rename = fs.rename.bind(fs);
+-    const calls: Array<[string, string]> = [];
+-    vi.spyOn(fs, 'rename').mockImplementation(async (from, to) => {
+-      calls.push([String(from), String(to)]);
+-      const side = (file: string) => (file.startsWith(project) ? 'project' : 'home');
+-      if (side(String(from)) !== side(String(to)))
+-        throw Object.assign(new Error('EXDEV'), { code: 'EXDEV' });
+-      await rename(from, to);
+-    });
+-    const target = await resolveWorkspaceRuntimeRoot(project);
+-    expect(await fs.readFile(path.join(target, 'evidence.bin'), 'utf8')).toBe('portable');
+-    expect(calls.length).toBeGreaterThan(0);
+-    expect(calls.every(([from, to]) => path.dirname(from) === path.dirname(to))).toBe(true);
+-  });
+-
+-  it.each([
+-    'native/locks/root-move.lock',
+-    'native/check.json.tmp',
+-    'sdk-runs/one/store.lock.contenders/old.ticket',
+-  ])('refuses old lock or in-flight writer %s without modifying the source', async (relative) => {
+-    await write(path.join(legacy, relative), '{}');
+-    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow(/锁|未完成/u);
+-    expect(await fs.readFile(path.join(legacy, relative), 'utf8')).toBe('{}');
+-    expect(await fs.readdir(path.dirname(legacy))).toEqual(['runtime']);
+-  });
+-
+-  it('refuses unfinished transactions and active execution owners', async () => {
+-    await write(path.join(legacy, 'native', 'transactions', 'move.json'), '{"status":"prepared"}');
+-    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('未完成事务');
+-    await fs.rm(path.join(legacy, 'native', 'transactions'), { recursive: true });
+-    await write(
+-      path.join(legacy, 'native', 'execution.json'),
+-      JSON.stringify({ phase: 'running', owner: { pid: process.pid } }),
+-    );
+-    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('活跃执行');
+-  });
+-
+-  it('keeps completed transaction and execution evidence', async () => {
+-    await write(path.join(legacy, 'native', 'transactions', 'move.json'), '{"status":"committed"}');
+-    await write(
+-      path.join(legacy, 'native', 'execution.json'),
+-      '{"phase":"completed","owner":{"pid":123}}',
+-    );
+-    const root = await resolveWorkspaceRuntimeRoot(project);
+-    expect(
+-      await fs.readFile(path.join(root, 'native', 'transactions', 'move.json'), 'utf8'),
+-    ).toContain('committed');
+-  });
+-
+-  it.each(['prepared', 'committed', 'rolled-back'])(
+-    'checks repeated journal names while preserving %s transaction evidence',
+-    async (status) => {
+-      const relative = path.join('native', `prefix-${'journal'.repeat(20)}.json`);
+-      const content = JSON.stringify({ status });
+-      await write(path.join(legacy, relative), content);
+-      if (status === 'prepared') {
+-        await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('未完成事务');
+-        expect(await fs.readFile(path.join(legacy, relative), 'utf8')).toBe(content);
+-      } else {
+-        const migrated = await resolveWorkspaceRuntimeRoot(project);
+-        expect(await fs.readFile(path.join(migrated, relative), 'utf8')).toBe(content);
+-      }
+-    },
+-  );
+-
+-  it('does not interpret journal-like evidence with another suffix as transaction state', async () => {
+-    const name = `${'journal'.repeat(20)}.json.log`;
+-    await write(path.join(legacy, name), 'unstructured evidence');
+-    const migrated = await resolveWorkspaceRuntimeRoot(project);
+-    expect(await fs.readFile(path.join(migrated, name), 'utf8')).toBe('unstructured evidence');
+-  });
+-
+-  it('rejects a symlink inside the source and a symlinked data subtree', async () => {
+-    await fs.mkdir(legacy, { recursive: true });
+-    await fs.symlink(temporary, path.join(legacy, 'escape'), 'junction');
+-    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow(/符号链接/u);
+-    await fs.unlink(path.join(legacy, 'escape'));
+-    await fs.rm(data, { recursive: true });
+-    await fs.mkdir(data);
+-    await fs.symlink(temporary, path.join(data, 'workspaces'), 'junction');
+-    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow(/真实目录/u);
+-  });
+-
+-  it('rejects hardlinks instead of migrating data another path can change', async () => {
+-    await write(path.join(legacy, 'one.log'), 'one');
+-    await fs.link(path.join(legacy, 'one.log'), path.join(legacy, 'two.log'));
+-    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('硬链接');
+-  });
+-
+-  it('never merges an existing target even when its bytes match', async () => {
+-    const target = resolveWorkspaceRuntimeRootSync(project);
+-    await write(path.join(legacy, 'one.log'), 'same');
+-    await write(path.join(target, 'one.log'), 'same');
+-    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('拒绝覆盖或合并');
+-    expect(await fs.readFile(path.join(legacy, 'one.log'), 'utf8')).toBe('same');
+-    expect(await fs.readFile(path.join(target, 'one.log'), 'utf8')).toBe('same');
+-  });
+-
+-  it.each(['afterJournal', 'afterFence', 'afterCopy', 'afterPublish'] as const)(
+-    'retains recovery records and safely completes on retry after a crash at %s',
+-    async (hook) => {
+-      await write(path.join(legacy, 'evidence.log'), 'keep');
+-      const target = resolveWorkspaceRuntimeRootSync(project);
+-      await expect(
+-        migrateWorkspaceRuntimeDirectory(legacy, target, {
+-          projectRoot: project,
+-          testHooks: {
+-            [hook]: () => {
+-              throw new Error('simulated crash');
+-            },
+-          },
+-        }),
+-      ).rejects.toThrow('已保留可恢复数据');
+-      const journalFile = path.join(path.dirname(legacy), '.runtime.comet-runtime-migration.json');
+-      const journal = JSON.parse(await fs.readFile(journalFile, 'utf8'));
+-      const preserved = hook === 'afterJournal' ? legacy : journal.backup;
+-      expect(await fs.readFile(path.join(preserved, 'evidence.log'), 'utf8')).toBe('keep');
+-      expect(await resolveWorkspaceRuntimeRoot(project)).toBe(target);
+-      await expect(fs.stat(journalFile)).rejects.toMatchObject({ code: 'ENOENT' });
+-      expect(await fs.readFile(path.join(target, 'evidence.log'), 'utf8')).toBe('keep');
+-      if (hook === 'afterPublish')
+-        expect(await fs.readFile(path.join(target, 'evidence.log'), 'utf8')).toBe('keep');
+-    },
+-  );
+-
+-  it('detects a writer changing the quarantined source before publication', async () => {
+-    await write(path.join(legacy, 'evidence.log'), 'initial');
+-    const target = resolveWorkspaceRuntimeRootSync(project);
+-    await expect(
+-      migrateWorkspaceRuntimeDirectory(legacy, target, {
+-        projectRoot: project,
+-        testHooks: {
+-          afterCopy: async () => {
+-            const journal = JSON.parse(
+-              await fs.readFile(
+-                path.join(path.dirname(legacy), '.runtime.comet-runtime-migration.json'),
+-                'utf8',
+-              ),
+-            );
+-            await fs.writeFile(path.join(journal.backup, 'evidence.log'), 'changed');
+-          },
+-        },
+-      }),
+-    ).rejects.toThrow('复制后继续变化');
+-    await expect(fs.stat(target)).rejects.toMatchObject({ code: 'ENOENT' });
+-  });
+-
+-  it('isolates a copied foreign fence without following its recorded target', async () => {
+-    await write(path.join(legacy, 'one.log'), 'one');
+-    await resolveWorkspaceRuntimeRoot(project);
+-    const clone = path.join(temporary, 'clone');
+-    await write(path.join(clone, '.comet', 'runtime'), await fs.readFile(legacy, 'utf8'));
+-    const original = resolveWorkspaceRuntimeRootSync(project);
+-    const isolated = await resolveWorkspaceRuntimeRoot(clone);
+-    expect(isolated).not.toBe(original);
+-    expect(await fs.readdir(isolated)).toEqual([]);
+-    expect(await fs.readFile(path.join(original, 'one.log'), 'utf8')).toBe('one');
+-  });
+-
+-  it('rejects source or destination outside the current workspace runtime', async () => {
+-    const root = await resolveWorkspaceRuntimeRoot(project);
+-    await expect(
+-      migrateWorkspaceRuntimePath(path.join(temporary, 'other'), path.join(root, 'target'), {
+-        projectRoot: project,
+-      }),
+-    ).rejects.toThrow('迁移源必须');
+-    await expect(
+-      migrateWorkspaceRuntimePath(path.join(project, 'old'), path.join(temporary, 'other'), {
+-        projectRoot: project,
+-      }),
+-    ).rejects.toThrow('迁移源必须');
+-  });
+-  it('accepts a same-workspace fence after moving a change into archive', async () => {
+-    const root = await resolveWorkspaceRuntimeRoot(project);
+-    const source = path.join(project, 'changes', 'one', 'runtime');
+-    const target = path.join(root, 'classic-changes', 'one');
+-    await write(path.join(source, 'evidence.log'), 'one');
+-    await migrateWorkspaceRuntimeDirectory(source, target, { projectRoot: project });
+-    const archived = path.join(project, 'changes', 'archived-one');
+-    await fs.rename(path.dirname(source), archived);
+-    const moved = path.join(archived, 'runtime');
+-    expect(await isWorkspaceRuntimeMigrationFence(moved, target)).toBe(true);
+-    await migrateWorkspaceRuntimeDirectory(moved, target, { projectRoot: project });
+-  });
+-
+-  it('refuses changing the home root for a fence belonging to this workspace', async () => {
+-    await write(path.join(legacy, 'one.log'), 'one');
+-    await resolveWorkspaceRuntimeRoot(project);
+-    vi.stubEnv('COMET_DATA_DIR', path.join(temporary, 'new-home'));
+-    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('工作区或目标无效');
+-  });
+-
+-  it('does not treat an old SDK revision as the current active execution', async () => {
+-    const revisions = path.join(legacy, 'sdk-runs', 'native', 'one');
+-    await write(
+-      path.join(revisions, '0000000000000001.json'),
+-      JSON.stringify({
+-        runId: 'one',
+-        revision: 1,
+-        action: { status: 'running', claim: { pid: 42 } },
+-      }),
+-    );
+-    await write(
+-      path.join(revisions, '0000000000000002.json'),
+-      JSON.stringify({ runId: 'one', revision: 2, action: { status: 'completed' } }),
+-    );
+-    const root = await resolveWorkspaceRuntimeRoot(project);
+-    expect(await fs.readdir(path.join(root, 'sdk-runs', 'native', 'one'))).toHaveLength(2);
+-  });
+-
+-  it('refuses an invalid latest revision and an incomplete history', async () => {
+-    const revisions = path.join(legacy, 'sdk-runs', 'native', 'one');
+-    await write(
+-      path.join(revisions, '0000000000000002.json'),
+-      JSON.stringify({ runId: 'one', revision: 2, action: { status: 'completed' } }),
+-    );
+-    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('版本记录无效或不连续');
+-  });
+-
+-  it('preserves completed transaction backups without interpreting them as journals', async () => {
+-    await write(
+-      path.join(legacy, 'native', 'transactions', 'one', 'transaction.json'),
+-      '{"status":"committed"}',
+-    );
+-    await write(
+-      path.join(legacy, 'native', 'transactions', 'one', 'backups', 'state.json'),
+-      '{"action":{"status":"running"}}',
+-    );
+-    const root = await resolveWorkspaceRuntimeRoot(project);
+-    expect(
+-      await fs.readFile(
+-        path.join(root, 'native', 'transactions', 'one', 'backups', 'state.json'),
+-        'utf8',
+-      ),
+-    ).toContain('running');
+-  });
+-
+-  it('migrates large ordinary files without attempting to parse them as fences', async () => {
+-    const root = await resolveWorkspaceRuntimeRoot(project);
+-    const source = path.join(project, 'change', '.comet', 'large-evidence.log');
+-    const target = path.join(root, 'classic-changes', 'one', 'large-evidence.log');
+-    const large = 'x'.repeat(2 * 1024 * 1024);
+-    await write(source, large);
+-    await migrateWorkspaceRuntimePath(source, target, { projectRoot: project });
+-    expect(await fs.readFile(target, 'utf8')).toBe(large);
+-  });
+-  it('migrates through a workspace alias and coalesces alias and physical callers', async () => {
+-    const alias = path.join(temporary, 'alias');
+-    await fs.symlink(project, alias, 'junction');
+-    const source = path.join(project, 'change', 'runtime');
+-    const target = path.join(await resolveWorkspaceRuntimeRoot(project), 'native', 'one');
+-    await write(path.join(source, 'one.log'), 'one');
+-    await Promise.all([
+-      migrateWorkspaceRuntimeDirectory(path.join(alias, 'change', 'runtime'), target, {
+-        projectRoot: alias,
+-      }),
+-      migrateWorkspaceRuntimeDirectory(source, target, { projectRoot: project }),
+-    ]);
+-    expect(await fs.readFile(path.join(target, 'one.log'), 'utf8')).toBe('one');
+-  });
+-
+-  it('accepts an explicitly contained Git metadata source and rejects its siblings', async () => {
+-    const sourceRoot = path.join(temporary, 'git-common');
+-    const source = path.join(sourceRoot, 'comet', 'receipt.json');
+-    const target = path.join(
+-      await resolveWorkspaceRuntimeRoot(project),
+-      'classic-deliveries',
+-      'receipt.json',
+-    );
+-    await write(source, '{"result":"complete"}');
+-    await migrateWorkspaceRuntimePath(source, target, { projectRoot: project, sourceRoot });
+-    expect(await fs.readFile(target, 'utf8')).toBe('{"result":"complete"}');
+-    await expect(
+-      migrateWorkspaceRuntimePath(path.join(temporary, 'outside'), target, {
+-        projectRoot: project,
+-        sourceRoot,
+-      }),
+-    ).rejects.toThrow('迁移源必须');
+-  });
+-
+-  it('pairs Classic command execution events before migrating any sibling artifact', async () => {
+-    const source = path.join(project, 'change', '.comet', 'context.md');
+-    const trajectory = path.join(path.dirname(source), 'trajectory.jsonl');
+-    const target = path.join(
+-      await resolveWorkspaceRuntimeRoot(project),
+-      'classic-changes',
+-      'one',
+-      'context.md',
+-    );
+-    const action = { id: 'check-1', inputHash: 'hash', attempt: 1, status: 'running' };
+-    const started = {
+-      runId: 'one',
+-      type: 'command_check_started',
+-      data: { scope: 'verify', action },
+-    };
+-    const finished = {
+-      ...started,
+-      type: 'command_check_executed',
+-      data: { ...started.data, action: { ...action, status: 'succeeded' } },
+-    };
+-    await write(source, 'context');
+-    await write(trajectory, JSON.stringify(started) + '\n');
+-    await expect(
+-      migrateWorkspaceRuntimePath(source, target, { projectRoot: project }),
+-    ).rejects.toThrow('尚未记录执行结束');
+-    const wrong = {
+-      ...finished,
+-      data: { ...finished.data, action: { ...finished.data.action, attempt: 2 } },
+-    };
+-    await fs.appendFile(trajectory, JSON.stringify(wrong) + '\n');
+-    await expect(
+-      migrateWorkspaceRuntimePath(source, target, { projectRoot: project }),
+-    ).rejects.toThrow('尚未记录执行结束');
+-    await fs.appendFile(trajectory, JSON.stringify(finished) + '\n');
+-    await migrateWorkspaceRuntimePath(source, target, { projectRoot: project });
+-    expect(await fs.readFile(target, 'utf8')).toBe('context');
+-  });
+-
+-  it('preserves a pending handoff and an unknown action without migration', async () => {
+-    await write(path.join(legacy, 'native', 'pending-action.json'), '{"type":"handoff"}');
+-    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('pending action');
+-    await fs.rm(path.join(legacy, 'native', 'pending-action.json'));
+-    await write(path.join(legacy, 'sdk-runs', 'run.json'), '{"action":{"status":"unknown"}}');
+-    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('活跃执行');
+-  });
+-
+-  it.each([1, 2])(
+-    'migrates a valid legacy restored checkpoint at physical slot %s',
+-    async (slot) => {
+-      const canonical = (value: unknown): string =>
+-        JSON.stringify(value, (_key, item) =>
+-          item && typeof item === 'object' && !Array.isArray(item)
+-            ? Object.fromEntries(
+-                Object.entries(item).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+-              )
+-            : item,
+-        );
+-      const checkpoint = {
+-        runId: 'one',
+-        revision: 10,
+-        run: { revision: 10 },
+-        action: { status: 'running' },
+-      };
+-      const wrapped = {
+-        schema: 'comet.runtime-store-checkpoint.v1',
+-        record: checkpoint,
+-        hash: createHash('sha256').update(canonical(checkpoint)).digest('hex'),
+-      };
+-      const revisions = path.join(legacy, 'sdk-runs', 'native', 'one');
+-      if (slot === 2)
+-        await write(
+-          path.join(revisions, '0000000000000001.json'),
+-          JSON.stringify({ ...checkpoint, revision: 1, run: { revision: 1 } }),
+-        );
+-      await write(
+-        path.join(revisions, `${String(slot).padStart(16, '0')}.json`),
+-        JSON.stringify(wrapped),
+-      );
+-      await write(
+-        path.join(revisions, '0000000000000011.json'),
+-        JSON.stringify({
+-          ...checkpoint,
+-          revision: 11,
+-          run: { revision: 11 },
+-          action: { status: 'completed' },
+-        }),
+-      );
+-      const root = await resolveWorkspaceRuntimeRoot(project);
+-      expect(
+-        await fs.readFile(
+-          path.join(root, 'sdk-runs', 'native', 'one', '0000000000000011.json'),
+-          'utf8',
+-        ),
+-      ).toContain('completed');
+-    },
+-  );
+-
+-  it('resumes a migration whose recorded local process has exited', async () => {
+-    await write(path.join(legacy, 'one.log'), 'one');
+-    const target = resolveWorkspaceRuntimeRootSync(project);
+-    await expect(
+-      migrateWorkspaceRuntimeDirectory(legacy, target, {
+-        projectRoot: project,
+-        testHooks: {
+-          afterCopy: () => {
+-            throw new Error('crash');
+-          },
+-        },
+-      }),
+-    ).rejects.toThrow();
+-    const journalFile = path.join(path.dirname(legacy), '.runtime.comet-runtime-migration.json');
+-    const journal = JSON.parse(await fs.readFile(journalFile, 'utf8'));
+-    journal.pid = 2147483647;
+-    await fs.writeFile(journalFile, JSON.stringify(journal));
+-    expect(await resolveWorkspaceRuntimeRoot(project)).toBe(target);
+-    expect(await fs.readFile(path.join(target, 'one.log'), 'utf8')).toBe('one');
+-  });
+-
+-  it('recovers a stopped migration without host or PID binding', async () => {
+-    await write(path.join(legacy, 'one.log'), 'one');
+-    const target = resolveWorkspaceRuntimeRootSync(project);
+-    await expect(
+-      migrateWorkspaceRuntimeDirectory(legacy, target, {
+-        projectRoot: project,
+-        testHooks: {
+-          afterFence: () => {
+-            throw new Error('crash');
+-          },
+-        },
+-      }),
+-    ).rejects.toThrow();
+-    const journalFile = path.join(path.dirname(legacy), '.runtime.comet-runtime-migration.json');
+-    const journal = JSON.parse(await fs.readFile(journalFile, 'utf8'));
+-    journal.hostname = 'another-machine';
+-    await fs.writeFile(journalFile, JSON.stringify(journal));
+-    expect(await resolveWorkspaceRuntimeRoot(project)).toBe(target);
+-    expect(await fs.readFile(path.join(target, 'one.log'), 'utf8')).toBe('one');
+-  });
+-
+-  it('refuses recovery after copied evidence is changed or a conflicting target appears', async () => {
+-    await write(path.join(legacy, 'one.log'), 'one');
+-    const target = resolveWorkspaceRuntimeRootSync(project);
+-    await expect(
+-      migrateWorkspaceRuntimeDirectory(legacy, target, {
+-        projectRoot: project,
+-        testHooks: {
+-          afterCopy: () => {
+-            throw new Error('crash');
+-          },
+-        },
+-      }),
+-    ).rejects.toThrow();
+-    const journalFile = path.join(path.dirname(legacy), '.runtime.comet-runtime-migration.json');
+-    const journal = JSON.parse(await fs.readFile(journalFile, 'utf8'));
+-    await fs.writeFile(path.join(journal.stage, 'one.log'), 'changed');
+-    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('摘要不一致');
+-    await write(path.join(target, 'external.log'), 'external');
+-    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('同时存在');
+-    expect(await fs.readFile(path.join(journal.backup, 'one.log'), 'utf8')).toBe('one');
+-    expect(await fs.readFile(path.join(target, 'external.log'), 'utf8')).toBe('external');
+-  });
+-  it('rebuilds a proven partial copy from its unchanged backup', async () => {
+-    await write(path.join(legacy, 'one.log'), 'prefix-complete');
+-    const target = resolveWorkspaceRuntimeRootSync(project);
+-    await expect(
+-      migrateWorkspaceRuntimeDirectory(legacy, target, {
+-        projectRoot: project,
+-        testHooks: {
+-          afterFence: () => {
+-            throw new Error('crash');
+-          },
+-        },
+-      }),
+-    ).rejects.toThrow();
+-    const journal = JSON.parse(
+-      await fs.readFile(
+-        path.join(path.dirname(legacy), '.runtime.comet-runtime-migration.json'),
+-        'utf8',
+-      ),
+-    );
+-    await write(path.join(journal.stage, 'one.log'), 'prefix');
+-    expect(await resolveWorkspaceRuntimeRoot(project)).toBe(target);
+-    expect(await fs.readFile(path.join(target, 'one.log'), 'utf8')).toBe('prefix-complete');
+-  });
+-
+-  it('keeps unknown files in a partial stage and fails closed', async () => {
+-    await write(path.join(legacy, 'one.log'), 'one');
+-    const target = resolveWorkspaceRuntimeRootSync(project);
+-    await expect(
+-      migrateWorkspaceRuntimeDirectory(legacy, target, {
+-        projectRoot: project,
+-        testHooks: {
+-          afterFence: () => {
+-            throw new Error('crash');
+-          },
+-        },
+-      }),
+-    ).rejects.toThrow();
+-    const journal = JSON.parse(
+-      await fs.readFile(
+-        path.join(path.dirname(legacy), '.runtime.comet-runtime-migration.json'),
+-        'utf8',
+-      ),
+-    );
+-    await write(path.join(journal.stage, 'new.log'), 'unique');
+-    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('拒绝删除');
+-    expect(await fs.readFile(path.join(journal.stage, 'new.log'), 'utf8')).toBe('unique');
+-    expect(await fs.readFile(path.join(journal.backup, 'one.log'), 'utf8')).toBe('one');
+-  });
+-  it('checks old locks and migration journals without creating directories', async () => {
+-    const change = path.join(project, 'change');
+-    const source = path.join(change, '.comet');
+-    await write(path.join(change, '.comet-state.lock'), '{}');
+-    await expect(
+-      assertWorkspaceRuntimeMigrationQuiescent(source, { projectRoot: project }),
+-    ).rejects.toThrow('锁');
+-    await expect(fs.stat(data)).rejects.toMatchObject({ code: 'ENOENT' });
+-    await fs.rm(path.join(change, '.comet-state.lock'));
+-    await write(path.join(source, '.runtime.comet-runtime-migration.json'), '{}');
+-    await expect(
+-      assertWorkspaceRuntimeMigrationQuiescent(source, { projectRoot: project }),
+-    ).rejects.toThrow('未完成');
+-    expect(await fs.readdir(path.join(project))).toEqual(['change']);
+-  });
+-  it('recreates a lost current-workspace runtime for portable checkpoint recovery', async () => {
+-    const root = await resolveWorkspaceRuntimeRoot(project);
+-    await write(path.join(root, 'native', 'local.json'), '{"status":"waiting"}');
+-    const fence = await fs.readFile(legacy, 'utf8');
+-    await fs.rm(root, { recursive: true });
+-    expect(await resolveWorkspaceRuntimeRoot(project)).toBe(root);
+-    expect(await fs.readdir(root)).toEqual([]);
+-    expect(await fs.readFile(legacy, 'utf8')).toBe(fence);
+-  });
+-
+-  it('does not recreate a lost runtime when its fence points to a different target', async () => {
+-    const root = await resolveWorkspaceRuntimeRoot(project);
+-    await fs.rm(root, { recursive: true });
+-    const fence = JSON.parse(await fs.readFile(legacy, 'utf8'));
+-    fence.target = path.join(temporary, 'unexpected-target');
+-    await fs.writeFile(legacy, JSON.stringify(fence));
+-    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('工作区或目标无效');
+-    await expect(fs.stat(root)).rejects.toMatchObject({ code: 'ENOENT' });
+-  });
+-  it('allows portable recovery after a migrated Native change runtime is lost', async () => {
+-    const root = await resolveWorkspaceRuntimeRoot(project);
+-    const source = path.join(project, 'changes', 'one', 'runtime');
+-    const target = path.join(root, 'native', 'changes', 'one');
+-    await write(path.join(source, 'run-state.json'), '{"status":"waiting"}');
+-    await migrateWorkspaceRuntimeDirectory(source, target, { projectRoot: project });
+-    const fence = await fs.readFile(source, 'utf8');
+-    await fs.rm(root, { recursive: true });
+-    await resolveWorkspaceRuntimeRoot(project);
+-    await migrateWorkspaceRuntimeDirectory(source, target, { projectRoot: project });
+-    await expect(fs.stat(target)).rejects.toMatchObject({ code: 'ENOENT' });
+-    expect(await fs.readFile(source, 'utf8')).toBe(fence);
+-  });
+-
+-  it('leaves lost Classic run-state and checkpoint files absent for portable recovery', async () => {
+-    const root = await resolveWorkspaceRuntimeRoot(project);
+-    const entries = ['run-state.json', 'checkpoint.json'].map((name) => ({
+-      source: path.join(project, 'changes', 'one', '.comet', name),
+-      target: path.join(root, 'classic-changes', 'one', '.comet', name),
+-    }));
+-    for (const { source, target } of entries) {
+-      await write(source, '{"status":"waiting"}');
+-      await migrateWorkspaceRuntimePath(source, target, { projectRoot: project });
+-    }
+-    await fs.rm(root, { recursive: true });
+-    await resolveWorkspaceRuntimeRoot(project);
+-    for (const { source, target } of entries) {
+-      await migrateWorkspaceRuntimePath(source, target, { projectRoot: project });
+-      expect(await isWorkspaceRuntimeMigrationFence(source, target)).toBe(true);
+-      await expect(fs.stat(target)).rejects.toMatchObject({ code: 'ENOENT' });
+-    }
+-  });
+-
+-  it('still rejects a changed per-record fence target after local data loss', async () => {
+-    const root = await resolveWorkspaceRuntimeRoot(project);
+-    const source = path.join(project, 'changes', 'one', 'runtime');
+-    const target = path.join(root, 'native', 'one');
+-    await write(path.join(source, 'state.json'), '{"status":"waiting"}');
+-    await migrateWorkspaceRuntimeDirectory(source, target, { projectRoot: project });
+-    await fs.rm(root, { recursive: true });
+-    await resolveWorkspaceRuntimeRoot(project);
+-    const fence = JSON.parse(await fs.readFile(source, 'utf8'));
+-    fence.target = path.join(root, 'native', 'other');
+-    await fs.writeFile(source, JSON.stringify(fence));
+-    await expect(
+-      migrateWorkspaceRuntimeDirectory(source, target, { projectRoot: project }),
+-    ).rejects.toThrow('工作区或目标无效');
+-    await expect(fs.stat(target)).rejects.toMatchObject({ code: 'ENOENT' });
+-  });
+-  it('seals a missing legacy file lock without creating a home lock', async () => {
+-    const source = path.join(project, 'change', '.comet-state.lock');
+-    await fs.mkdir(path.dirname(source));
+-    const target = path.join(resolveWorkspaceRuntimeRootSync(project), 'classic-legacy-state.lock');
+-    await Promise.all(
+-      Array.from({ length: 8 }, () =>
+-        ensureWorkspaceRuntimeMigrationFence(source, target, { projectRoot: project }),
+-      ),
+-    );
+-    expect(await isWorkspaceRuntimeMigrationFence(source, target)).toBe(true);
+-    expect(await fs.readdir(source)).toEqual(['.comet-runtime-migration.json']);
+-    await expect(fs.stat(target)).rejects.toMatchObject({ code: 'ENOENT' });
+-    await expect(fs.open(source, 'wx')).rejects.toThrow();
+-    await assertWorkspaceRuntimeMigrationQuiescent(path.join(project, 'change', '.comet'), {
+-      projectRoot: project,
+-    });
+-  });
+-
+-  it('never replaces an existing legacy lock or an unknown directory while sealing', async () => {
+-    const source = path.join(project, 'change', '.comet-state.lock');
+-    const target = path.join(resolveWorkspaceRuntimeRootSync(project), 'classic-legacy-state.lock');
+-    await write(source, JSON.stringify({ pid: process.pid }));
+-    await expect(
+-      ensureWorkspaceRuntimeMigrationFence(source, target, { projectRoot: project }),
+-    ).rejects.toThrow('拒绝覆盖');
+-    expect(await fs.readFile(source, 'utf8')).toContain(String(process.pid));
+-    await fs.rm(source);
+-    await write(path.join(source, 'unknown.json'), 'keep');
+-    await expect(
+-      ensureWorkspaceRuntimeMigrationFence(source, target, { projectRoot: project }),
+-    ).rejects.toThrow('拒绝覆盖');
+-    expect(await fs.readFile(path.join(source, 'unknown.json'), 'utf8')).toBe('keep');
+-    await expect(fs.stat(target)).rejects.toMatchObject({ code: 'ENOENT' });
+-  });
+-
+-  it('keeps a sealed legacy lock valid across archive moves while rejecting target drift', async () => {
+-    const source = path.join(project, 'change', '.comet-state.lock');
+-    const target = path.join(resolveWorkspaceRuntimeRootSync(project), 'classic-legacy-state.lock');
+-    await fs.mkdir(path.dirname(source));
+-    await ensureWorkspaceRuntimeMigrationFence(source, target, { projectRoot: project });
+-    const archived = path.join(project, 'archived-change');
+-    await fs.rename(path.dirname(source), archived);
+-    const moved = path.join(archived, '.comet-state.lock');
+-    await ensureWorkspaceRuntimeMigrationFence(moved, target, { projectRoot: project });
+-    await expect(
+-      ensureWorkspaceRuntimeMigrationFence(moved, `${target}.different`, { projectRoot: project }),
+-    ).rejects.toThrow('其他工作区或目标');
+-    await assertWorkspaceRuntimeMigrationQuiescent(moved, { projectRoot: project });
+-  });
+-
+-  it('only accepts a copied legacy lock fence with explicit foreign-workspace permission', async () => {
+-    const source = path.join(project, 'change', '.comet-state.lock');
+-    const target = path.join(resolveWorkspaceRuntimeRootSync(project), 'classic-legacy-state.lock');
+-    await fs.mkdir(path.dirname(source));
+-    await ensureWorkspaceRuntimeMigrationFence(source, target, { projectRoot: project });
+-    const clone = path.join(temporary, 'clone');
+-    const copied = path.join(clone, 'change', '.comet-state.lock');
+-    await fs.mkdir(path.dirname(copied), { recursive: true });
+-    await fs.cp(source, copied, { recursive: true });
+-    const isolated = path.join(resolveWorkspaceRuntimeRootSync(clone), 'classic-legacy-state.lock');
+-    await expect(
+-      ensureWorkspaceRuntimeMigrationFence(copied, isolated, { projectRoot: clone }),
+-    ).rejects.toThrow('其他工作区或目标');
+-    await ensureWorkspaceRuntimeMigrationFence(copied, isolated, {
+-      projectRoot: clone,
+-      ignoreForeignWorkspaceFence: true,
+-    });
+-    await expect(fs.stat(isolated)).rejects.toMatchObject({ code: 'ENOENT' });
+-    await expect(fs.stat(target)).rejects.toMatchObject({ code: 'ENOENT' });
+-  });
+-  it('does not leave a half fence when interrupted after staging mkdir', async () => {
+-    const source = path.join(project, 'change', '.comet-state.lock');
+-    const target = path.join(resolveWorkspaceRuntimeRootSync(project), 'classic-legacy-state.lock');
+-    await fs.mkdir(path.dirname(source));
+-    let staging: string | undefined;
+-    await expect(
+-      ensureWorkspaceRuntimeMigrationFence(source, target, {
+-        projectRoot: project,
+-        testHooks: {
+-          afterStagingDirectory: (directory) => {
+-            staging = directory;
+-            throw new Error('interrupted after mkdir');
+-          },
+-        },
+-      }),
+-    ).rejects.toThrow('interrupted after mkdir');
+-    await expect(fs.stat(source)).rejects.toMatchObject({ code: 'ENOENT' });
+-    // 模拟进程直接退出时未执行 finally 遗留的空 staging，重试也不能被阻断。
+-    await fs.mkdir(staging!);
+-    await ensureWorkspaceRuntimeMigrationFence(source, target, { projectRoot: project });
+-    expect(await isWorkspaceRuntimeMigrationFence(source, target)).toBe(true);
+-    await expect(fs.stat(target)).rejects.toMatchObject({ code: 'ENOENT' });
+-  });
+-
+-  it.each(['file', 'directory'] as const)(
+-    'does not replace a legacy %s appearing before fence publication',
+-    async (kind) => {
+-      const source = path.join(project, 'change', '.comet-state.lock');
+-      const target = path.join(
+-        resolveWorkspaceRuntimeRootSync(project),
+-        'classic-legacy-state.lock',
+-      );
+-      await fs.mkdir(path.dirname(source));
+-      await expect(
+-        ensureWorkspaceRuntimeMigrationFence(source, target, {
+-          projectRoot: project,
+-          testHooks: {
+-            beforePublish: async () => {
+-              if (kind === 'directory') await fs.mkdir(source);
+-              else await fs.writeFile(source, 'legacy owner');
+-            },
+-          },
+-        }),
+-      ).rejects.toThrow('拒绝覆盖');
+-      expect((await fs.stat(source)).isDirectory()).toBe(kind === 'directory');
+-      if (kind === 'file') expect(await fs.readFile(source, 'utf8')).toBe('legacy owner');
+-      else expect(await fs.readdir(source)).toEqual([]);
+-      expect(await fs.readdir(path.dirname(source))).toEqual(['.comet-state.lock']);
+-    },
+-  );
+-  it('keeps non-Git runtime evidence isolated after git init without following its old fence', async () => {
+-    const oldRoot = await resolveWorkspaceRuntimeRoot(project);
+-    await write(
+-      path.join(oldRoot, 'native', 'execution.json'),
+-      '{"status":"running","owner":{"pid":123}}',
+-    );
+-    const previousFence = await fs.readFile(legacy, 'utf8');
+-    execFileSync('git', ['-C', project, 'init'], { stdio: 'pipe' });
+-    const newRoot = await resolveWorkspaceRuntimeRoot(project);
+-    expect(newRoot).not.toBe(oldRoot);
+-    expect(await fs.readdir(newRoot)).toEqual([]);
+-    expect(await fs.readFile(path.join(oldRoot, 'native', 'execution.json'), 'utf8')).toContain(
+-      'running',
+-    );
+-    expect(await fs.readFile(legacy, 'utf8')).toBe(previousFence);
+-  });
+-});
+diff --git a/test/domains/workflow-contract/workspace-runtime-legacy-lock.test.ts b/test/domains/workflow-contract/workspace-runtime-legacy-lock.test.ts
+deleted file mode 100644
+index 527ec92..0000000
+--- a/test/domains/workflow-contract/workspace-runtime-legacy-lock.test.ts
++++ /dev/null
+@@ -1,55 +0,0 @@
+-import { promises as fs } from 'node:fs';
+-import os from 'node:os';
+-import path from 'node:path';
+-import { afterEach, expect, it, vi } from 'vitest';
+-import { resolveWorkspaceRuntimeLocation } from '../../../platform/paths/workspace-runtime.js';
+-import { acquireRecoverableFileLock } from '../../../platform/fs/recoverable-file-lock.js';
+-import { resolveWorkspaceRuntimeRoot } from '../../../domains/workflow-contract/workspace-runtime.js';
+-
+-const roots: string[] = [];
+-afterEach(async () => {
+-  vi.unstubAllEnvs();
+-  await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
+-});
+-
+-it('recovers a legacy migration recovery lock only after the original operation is confirmed stopped', async () => {
+-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'runtime-legacy-recovery-'));
+-  roots.push(root);
+-  vi.stubEnv('COMET_DATA_DIR', path.join(root, 'data'));
+-  const project = path.join(root, 'project');
+-  await fs.mkdir(project);
+-  const location = resolveWorkspaceRuntimeLocation(project);
+-  await fs.mkdir(location.workspaceRoot, { recursive: true });
+-  const file = path.join(location.workspaceRoot, '.runtime-migration-recovery.lock');
+-  const source = JSON.stringify({ nonce: 'interrupted-migration', createdAt: Date.now() });
+-  await fs.writeFile(file, source);
+-  await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow(
+-    'Legacy lock requires confirmation',
+-  );
+-  expect(await fs.readFile(file, 'utf8')).toBe(source);
+-  expect(await resolveWorkspaceRuntimeRoot(project, { confirmedOwnerStopped: true })).toBe(
+-    location.runtimeRoot,
+-  );
+-  expect(await fs.readdir(location.runtimeRoot)).toEqual([]);
+-});
+-
+-it('preserves an active migration recovery transaction even when recovery is confirmed', async () => {
+-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'runtime-active-recovery-'));
+-  roots.push(root);
+-  vi.stubEnv('COMET_DATA_DIR', path.join(root, 'data'));
+-  const project = path.join(root, 'project');
+-  await fs.mkdir(project);
+-  const location = resolveWorkspaceRuntimeLocation(project);
+-  const file = path.join(location.workspaceRoot, '.runtime-migration-recovery.lock');
+-  const lock = await acquireRecoverableFileLock(file);
+-  const source = await fs.readFile(file, 'utf8');
+-  try {
+-    await expect(
+-      resolveWorkspaceRuntimeRoot(project, { confirmedOwnerStopped: true }),
+-    ).rejects.toThrow('Timed out waiting for file lock');
+-    expect(await fs.readFile(file, 'utf8')).toBe(source);
+-  } finally {
+-    await lock.release();
+-  }
+-  expect(await resolveWorkspaceRuntimeRoot(project)).toBe(location.runtimeRoot);
+-});
+diff --git a/test/domains/workflow-contract/workspace-runtime-repair-failure.test.ts b/test/domains/workflow-contract/workspace-runtime-repair-failure.test.ts
+deleted file mode 100644
+index b9ee32c..0000000
+--- a/test/domains/workflow-contract/workspace-runtime-repair-failure.test.ts
++++ /dev/null
+@@ -1,92 +0,0 @@
+-import { promises as fs } from 'fs';
+-import os from 'os';
+-import path from 'path';
+-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+-
+-import {
+-  recordFailedMigrationRepair,
+-  recallFailedMigrationRepair,
+-  resolveWorkspaceRuntimeRoot,
+-} from '../../../domains/workflow-contract/workspace-runtime.js';
+-import { resolveWorkspaceRuntimeLocation } from '../../../platform/paths/workspace-runtime.js';
+-
+-describe('migration repair failure memoization', () => {
+-  let projectRoot: string;
+-  let source: string;
+-  let location: ReturnType<typeof resolveWorkspaceRuntimeLocation>;
+-
+-  beforeEach(async () => {
+-    projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-repair-memo-'));
+-    source = path.join(projectRoot, '.comet', 'runtime');
+-    await fs.mkdir(path.join(source, 'sdk-runs', 'native'), { recursive: true });
+-    await fs.writeFile(
+-      path.join(path.dirname(source), '.runtime.comet-runtime-migration.json'),
+-      JSON.stringify({ probe: true }),
+-    );
+-    await fs.writeFile(path.join(source, 'sdk-runs', 'native', 'checkpoint.json'), '{"a":1}');
+-    location = resolveWorkspaceRuntimeLocation(projectRoot);
+-  });
+-
+-  afterEach(async () => {
+-    await fs.rm(projectRoot, { recursive: true, force: true });
+-    await fs.rm(location.workspaceRoot, { recursive: true, force: true }).catch(() => {});
+-  });
+-
+-  it('recalls the recorded failure only while the source stays unchanged', async () => {
+-    await expect(recallFailedMigrationRepair(source, location)).resolves.toBeNull();
+-
+-    await recordFailedMigrationRepair(source, location, new Error('boom: hazard found'));
+-
+-    const recalled = await recallFailedMigrationRepair(source, location);
+-    expect(recalled).toBeInstanceOf(Error);
+-    expect(recalled!.message).toContain('boom: hazard found');
+-    expect(recalled!.message).toContain('源未变化');
+-
+-    // 源内容变化（新增文件）后指纹失配，恢复完整流程。
+-    await fs.writeFile(path.join(source, 'sdk-runs', 'native', 'extra.json'), '{}');
+-    await expect(recallFailedMigrationRepair(source, location)).resolves.toBeNull();
+-  });
+-
+-  it('does not recall when the journal itself disappears', async () => {
+-    await recordFailedMigrationRepair(source, location, new Error('boom'));
+-    await fs.rm(path.join(path.dirname(source), '.runtime.comet-runtime-migration.json'));
+-    await expect(recallFailedMigrationRepair(source, location)).resolves.toBeNull();
+-  });
+-
+-  it('memoizes a real failed repair through resolveWorkspaceRuntimeRoot', async () => {
+-    const backup = path.join(
+-      path.dirname(source),
+-      '.runtime.comet-runtime-source-11111111-1111-4111-8111-111111111111',
+-    );
+-    const stage = path.join(
+-      path.dirname(location.runtimeRoot),
+-      '.runtime.comet-runtime-stage-11111111-1111-4111-8111-111111111111',
+-    );
+-    const journal = {
+-      fence: 'directory',
+-      journalSchema: 'comet.workspace-runtime-migration-journal.v1',
+-      id: '11111111-1111-4111-8111-111111111111',
+-      workspaceId: location.workspaceId,
+-      source,
+-      target: location.runtimeRoot,
+-      backup,
+-      stage,
+-      kind: 'directory',
+-      contentHash: '0'.repeat(64),
+-      sourceIdentity: 'x'.repeat(64),
+-      pid: 1,
+-      hostname: os.hostname(),
+-    };
+-    await fs.writeFile(journalPathOf(source), JSON.stringify(journal));
+-
+-    await expect(resolveWorkspaceRuntimeRoot(projectRoot)).rejects.toThrow(/迁移/);
+-
+-    const second = await resolveWorkspaceRuntimeRoot(projectRoot).catch((error: Error) => error);
+-    expect(second).toBeInstanceOf(Error);
+-    expect(second.message).toContain('源未变化');
+-  });
+-});
+-
+-function journalPathOf(source: string): string {
+-  return path.join(path.dirname(source), `.${path.basename(source)}.comet-runtime-migration.json`);
+-}
+diff --git a/test/domains/comet-native/native-paths.test.ts b/test/domains/comet-native/native-paths.test.ts
+index ec3a744..b294c67 100644
+--- a/test/domains/comet-native/native-paths.test.ts
++++ b/test/domains/comet-native/native-paths.test.ts
+@@ -34,22 +34,22 @@ describe('Native artifact root safety', () => {
+     await fs.rm(outside, { recursive: true, force: true });
+   });
+ 
+-  it('migrates only the named legacy runtime without enumerating unrelated changes', async () => {
+-    const legacy = path.join(projectRoot, 'comet', 'changes', 'target', 'runtime');
++  it('resolves only the named Runtime without migrating or enumerating legacy changes', async () => {
++    const legacy = path.join(projectRoot, 'comet/changes/target/runtime'),
++      record = path.join(legacy, 'record.json');
+     await fs.mkdir(legacy, { recursive: true });
+-    await fs.writeFile(path.join(legacy, 'record.json'), '{"saved":true}');
++    await fs.writeFile(record, '{"saved":true}');
++    await fs.mkdir(path.join(projectRoot, 'comet/changes/unrelated/runtime'), { recursive: true });
+     const reads = vi.spyOn(fs, 'readdir');
+     const paths = await nativeProjectPaths(projectRoot, '.', { change: 'target' });
+-    expect(
+-      await fs.readFile(
+-        path.join(nativePreferredChangeRuntimeDir(paths, 'target'), 'record.json'),
+-        'utf8',
+-      ),
+-    ).toBe('{"saved":true}');
+-    expect(await isWorkspaceRuntimeMigrationFence(legacy)).toBe(true);
+-    reads.mockClear();
+     await nativeProjectPaths(projectRoot, '.', { change: 'target' });
+     expect(reads.mock.calls.some(([file]) => String(file) === paths.changesDir)).toBe(false);
++    expect(await fs.readFile(record, 'utf8')).toBe('{"saved":true}');
++    expect(await fs.readdir(legacy)).toEqual(['record.json']);
++    expect(await isWorkspaceRuntimeMigrationFence(legacy)).toBe(false);
++    await expect(fs.stat(nativePreferredChangeRuntimeDir(paths, 'target'))).rejects.toMatchObject({
++      code: 'ENOENT',
++    });
+   });
+ 
+   it.each([
+@@ -91,14 +91,18 @@ describe('Native artifact root safety', () => {
+     );
+   });
+ 
+-  it('rejects a .comet parent junction that redirects Runtime outside the project', async () => {
++  it('resolves Native paths without following a linked legacy .comet directory', async () => {
++    await fs.writeFile(path.join(outside, 'canary.json'), 'foreign-data');
+     await fs.symlink(
+       outside,
+       path.join(projectRoot, '.comet'),
+       process.platform === 'win32' ? 'junction' : 'dir',
+     );
+-
+-    await expect(nativeProjectPaths(projectRoot, 'docs')).rejects.toThrow();
++    const paths = await nativeProjectPaths(projectRoot, 'docs');
++    expect(paths.workspaceRuntimeRoot).toBe(resolveWorkspaceRuntimeRootSync(projectRoot));
++    expect(await fs.readdir(outside)).toEqual(['canary.json']);
++    expect(await fs.readFile(path.join(outside, 'canary.json'), 'utf8')).toBe('foreign-data');
++    await expect(fs.stat(paths.runtimeDir)).rejects.toMatchObject({ code: 'ENOENT' });
+   });
+ 
+   it('keeps Runtime user-local when the document artifact root changes', async () => {
+@@ -147,7 +151,7 @@ describe('Native artifact root safety', () => {
+       layout: 'legacy',
+       path: legacy,
+     });
+-    expect(() => nativeChangeRuntimeDir(paths, name)).toThrow('requires migration');
++    expect(nativeChangeRuntimeDir(paths, name)).toBe(preferred);
+ 
+     await fs.mkdir(preferred, { recursive: true });
+     await expect(inspectNativeRuntimeStorage(paths, name)).resolves.toMatchObject({
+@@ -175,50 +179,69 @@ describe('Native artifact root safety', () => {
+       status: 'invalid',
+       layout: 'legacy',
+     });
+-    expect(() => nativeChangeRuntimeDir(paths, 'linked-legacy')).toThrow('requires migration');
++    expect(nativeChangeRuntimeDir(paths, 'linked-legacy')).toBe(
++      nativePreferredChangeRuntimeDir(paths, 'linked-legacy'),
++    );
+   });
+ 
+-  it('migrates change-local evidence before returning paths and fences the old writer', async () => {
+-    const legacy = path.join(projectRoot, 'docs/comet/changes/migrate-me/runtime');
+-    await fs.mkdir(path.join(legacy, 'evidence'), { recursive: true });
+-    await fs.writeFile(path.join(legacy, 'evidence/receipt.json'), '{"preserved":true}');
++  it('leaves old change-local check evidence untouched during path resolution', async () => {
++    const legacy = path.join(projectRoot, 'docs/comet/changes/migrate-me/runtime'),
++      record = path.join(legacy, 'evidence/receipt.json');
++    await fs.mkdir(path.dirname(record), { recursive: true });
++    await fs.writeFile(record, '{"preserved":true}');
+     const paths = await nativeProjectPaths(projectRoot, 'docs');
+-    const runtime = nativeChangeRuntimeDir(paths, 'migrate-me');
+-    expect(runtime).toBe(nativePreferredChangeRuntimeDir(paths, 'migrate-me'));
+-    expect(await fs.readFile(path.join(runtime, 'evidence/receipt.json'), 'utf8')).toBe(
+-      '{"preserved":true}',
++    expect(nativeChangeRuntimeDir(paths, 'migrate-me')).toBe(
++      nativePreferredChangeRuntimeDir(paths, 'migrate-me'),
+     );
+-    expect(await isWorkspaceRuntimeMigrationFence(legacy, runtime)).toBe(true);
+-    expect((await inspectNativeRuntimeStorage(paths, 'migrate-me')).layout).toBe('user-local');
+-    await expect(fs.mkdir(legacy, { recursive: true })).rejects.toThrow();
++    expect(await fs.readFile(record, 'utf8')).toBe('{"preserved":true}');
++    expect(await fs.readdir(legacy)).toEqual(['evidence']);
++    expect(await isWorkspaceRuntimeMigrationFence(legacy)).toBe(false);
++    expect(await inspectNativeRuntimeStorage(paths, 'migrate-me')).toMatchObject({
++      status: 'available',
++      layout: 'legacy',
++      path: legacy,
++    });
++    await expect(
++      fs.stat(nativePreferredChangeRuntimeDir(paths, 'migrate-me')),
++    ).rejects.toMatchObject({ code: 'ENOENT' });
+     expect((await nativeProjectPaths(projectRoot, 'docs')).runtimeDir).toBe(paths.runtimeDir);
+   });
+ 
+-  it('rescans legacy directories created after a previous successful path resolution', async () => {
+-    const initial = await nativeProjectPaths(projectRoot, 'docs');
+-    const legacy = nativeLegacyChangeRuntimeDir(initial, 'late-runtime');
++  it('reports late legacy business history without moving it during path resolution', async () => {
++    const initial = await nativeProjectPaths(projectRoot, 'docs'),
++      legacy = nativeLegacyChangeRuntimeDir(initial, 'late-runtime'),
++      history = '{"type":"history-preserved"}\n';
+     await fs.mkdir(legacy, { recursive: true });
+-    await fs.writeFile(path.join(legacy, 'trajectory.jsonl'), '{"type":"history-preserved"}\n');
+-
++    await fs.writeFile(path.join(legacy, 'trajectory.jsonl'), history);
+     const refreshed = await nativeProjectPaths(projectRoot, 'docs');
+-    const runtime = nativeChangeRuntimeDir(refreshed, 'late-runtime');
+     expect(refreshed.workspaceRuntimeRoot).toBe(initial.workspaceRuntimeRoot);
+-    expect(await fs.readFile(path.join(runtime, 'trajectory.jsonl'), 'utf8')).toBe(
+-      '{"type":"history-preserved"}\n',
+-    );
+-    expect(await isWorkspaceRuntimeMigrationFence(legacy, runtime)).toBe(true);
+-    await expect(fs.mkdir(legacy, { recursive: true })).rejects.toThrow();
++    expect(await fs.readFile(path.join(legacy, 'trajectory.jsonl'), 'utf8')).toBe(history);
++    expect(await fs.readdir(legacy)).toEqual(['trajectory.jsonl']);
++    expect(await isWorkspaceRuntimeMigrationFence(legacy)).toBe(false);
++    expect(await inspectNativeRuntimeStorage(refreshed, 'late-runtime')).toMatchObject({
++      status: 'available',
++      layout: 'legacy',
++      path: legacy,
++    });
++    await expect(fs.stat(nativeChangeRuntimeDir(refreshed, 'late-runtime'))).rejects.toMatchObject({
++      code: 'ENOENT',
++    });
+   });
+ 
+-  it('retains legacy execution evidence when migration cannot prove it stopped', async () => {
++  it('preserves old execution-looking bytes without running a process check during path resolution', async () => {
+     const legacy = path.join(projectRoot, 'docs/comet/changes/still-running/runtime');
+     await fs.mkdir(legacy, { recursive: true });
+     const evidence = JSON.stringify({
+       actions: [{ status: 'running', claim: { token: 'fixture' } }],
+     });
+     await fs.writeFile(path.join(legacy, 'state.json'), evidence);
+-    await expect(nativeProjectPaths(projectRoot, 'docs')).rejects.toThrow();
++    const paths = await nativeProjectPaths(projectRoot, 'docs');
+     expect(await fs.readFile(path.join(legacy, 'state.json'), 'utf8')).toBe(evidence);
++    expect(await fs.readdir(legacy)).toEqual(['state.json']);
++    expect(await inspectNativeRuntimeStorage(paths, 'still-running')).toMatchObject({
++      status: 'available',
++      layout: 'legacy',
++    });
+     await expect(
+       fs.stat(
+         path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'native/changes/still-running'),
+@@ -226,17 +249,33 @@ describe('Native artifact root safety', () => {
+     ).rejects.toMatchObject({ code: 'ENOENT' });
+   });
+ 
+-  it('does not follow a copied workspace fence when reconstructing a portable checkout', async () => {
+-    const legacy = path.join(projectRoot, 'docs/comet/changes/copied-change/runtime');
+-    await fs.mkdir(legacy, { recursive: true });
+-    await fs.writeFile(path.join(legacy, 'source-evidence.json'), '{}');
+-    const source = await nativeProjectPaths(projectRoot, 'docs');
++  it('does not follow a copied legacy fence when resolving a portable checkout', async () => {
++    const source = await nativeProjectPaths(projectRoot, 'docs'),
++      original = nativeChangeRuntimeDir(source, 'copied-change'),
++      legacy = nativeLegacyChangeRuntimeDir(source, 'copied-change');
++    await fs.mkdir(original, { recursive: true });
++    await fs.writeFile(path.join(original, 'source-evidence.json'), 'original-data');
++    await fs.mkdir(path.dirname(legacy), { recursive: true });
++    const marker = JSON.stringify({
++      schema: 'comet.workspace-runtime-migration.v1',
++      workspaceId: 'old-workspace',
++      source: legacy,
++      target: original,
++      kind: 'directory',
++    });
++    await fs.writeFile(legacy, marker);
+     await fs.cp(path.join(projectRoot, 'docs'), path.join(outside, 'docs'), { recursive: true });
+-    const copy = await nativeProjectPaths(outside, 'docs');
+-    const target = nativeChangeRuntimeDir(copy, 'copied-change');
+-    expect(target).not.toBe(nativeChangeRuntimeDir(source, 'copied-change'));
++    const copy = await nativeProjectPaths(outside, 'docs'),
++      target = nativeChangeRuntimeDir(copy, 'copied-change');
++    expect(target).not.toBe(original);
+     await expect(fs.stat(target)).rejects.toMatchObject({ code: 'ENOENT' });
+     expect((await inspectNativeRuntimeStorage(copy, 'copied-change')).status).toBe('missing');
++    expect(await fs.readFile(path.join(original, 'source-evidence.json'), 'utf8')).toBe(
++      'original-data',
++    );
++    expect(await fs.readFile(nativeLegacyChangeRuntimeDir(copy, 'copied-change'), 'utf8')).toBe(
++      marker,
++    );
+   });
+ 
+   it('isolates equal change names in separate workspaces and rejects linked runtime roots', async () => {
+@@ -246,6 +285,7 @@ describe('Native artifact root safety', () => {
+     expect(nativePreferredChangeRuntimeDir(first, 'same-name')).not.toBe(
+       nativePreferredChangeRuntimeDir(second, 'same-name'),
+     );
++    await fs.mkdir(path.dirname(first.runtimeDir), { recursive: true });
+     await fs.symlink(outside, first.runtimeDir, process.platform === 'win32' ? 'junction' : 'dir');
+     await expect(nativeProjectPaths(projectRoot, 'docs')).rejects.toThrow();
+   });
+diff --git a/test/domains/workflow-contract/workspace-runtime-current-business.test.ts b/test/domains/workflow-contract/workspace-runtime-current-business.test.ts
+index 0360c8e..fb9bc54 100644
+--- a/test/domains/workflow-contract/workspace-runtime-current-business.test.ts
++++ b/test/domains/workflow-contract/workspace-runtime-current-business.test.ts
+@@ -148,6 +148,12 @@ it.each(['ENOENT', 'EACCES', 'EPERM'] as const)(
+ );
+ it('creates one explicit current Runtime without fencing or importing old storage', async () => {
+   await write(path.join(legacy, 'native/old.lock'), 'old process record');
++  const retiredMetaLock = path.join(
++      path.dirname(resolveWorkspaceRuntimeRootSync(project)),
++      '.runtime-migration-recovery.lock',
++    ),
++    retiredBytes = JSON.stringify({ nonce: 'old-migration', createdAt: 1 });
++  await write(retiredMetaLock, retiredBytes);
+   const before = await tree(project);
+   const roots = await Promise.all(
+     Array.from({ length: 8 }, () => ensureWorkspaceRuntimeRoot(project)),
+@@ -155,6 +161,7 @@ it('creates one explicit current Runtime without fencing or importing old storag
+   expect(new Set(roots).size).toBe(1);
+   expect(await fs.readdir(roots[0])).toEqual([]);
+   expect(await tree(project)).toEqual(before);
++  expect(await fs.readFile(retiredMetaLock, 'utf8')).toBe(retiredBytes);
+ });
+ 
+ it('rejects a linked data subtree before publishing current Runtime data', async () => {

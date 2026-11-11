@@ -1,6 +1,6 @@
 # Classic SDK execution methods
 
-New built-in Runs with `checksMode: agent` use platform check reports and `--checks <checks-json-file>` as described in the current Build/Verify Skill. Managed commands and receipts in this reference apply only to legacy Runs with `checksMode: runtime`. Methods, approvals, plans and complete acceptance still apply.
+Follow [ordinary commands and checks](../../comet/reference/platform-execution.md): use platform tools, inspect original tasks and side effects, judge result applicability, and submit actual reports. Comet does not repeat checks or maintain ordinary-command content snapshots, process supervision, or recovery. Preserve chosen methods, approvals, plans, and complete acceptance.
 
 Read only the current phase when `runtimeFormat: sdk`. The main Skill and latest continuation supply commands, Actions, Waits, and templates; this reference defines the work and completion conditions.
 
@@ -47,7 +47,7 @@ After approval, update the single Design Doc: reuse its recorded reference, othe
 
 ## Build
 
-Before the first final GREEN or complete verification, follow the initial managed-check procedure in [Check reuse](#check-reuse). This applies to full, hotfix, and tweak; keep TDD RED and local debugging.
+Use platform tools for TDD, debugging, and final checks, retaining verifiable results.
 
 Before implementing with the chosen strategy, check its planning, implementation, TDD, and review capabilities under [host capability check](../../comet/reference/host-check.md). Reuse known available capabilities; do not defer discovering a missing required method until implementation.
 
@@ -111,9 +111,7 @@ Write actual results, evidence, independent review, unexecuted checks, and accep
 
 ## Check reuse
 
-Keep TDD RED and local debugging. Run the first final GREEN or complete verification through `comet check run <change> build --local -- <program> [args...]`. In Verify, use `comet check run <change> verify --report <report-ref> --local -- <program> [args...]`: declare the final report path before checking, then write the report from real receipts. These commands return to the original implementation or acceptance task without advancing the phase. Submit complete-build and Guard afterward. When continuation includes the original argv, cwd, timeout, and reuse options, retain them and fill only missing inputs such as the report; do not reconstruct the plan.
-
-For deterministic local checks, add `--local` before `--` in the main Skill's Guard command. Runtime returns reused only when argv, cwd, inputs, environment, timeout, original execution receipt, and log match. Build and Verify can reuse the identical full command. Omit the flag for external or nonrepeatable checks. Recover the original execution and receipt; investigate unknown results before repeating side effects. Runtime reruns changed inputs; remembered conversation claims cannot replace evidence.
+Follow [ordinary commands and checks](../../comet/reference/platform-execution.md): use platform tools, inspect original tasks and side effects, judge result applicability, and submit actual reports. Comet does not repeat checks or maintain ordinary-command content snapshots, process supervision, or recovery. Keep TDD RED and local debugging. Reuse does not change review choices or replace full acceptance.
 
 ## Preset scope
 

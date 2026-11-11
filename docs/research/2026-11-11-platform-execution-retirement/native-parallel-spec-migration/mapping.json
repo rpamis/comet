@@ -1,0 +1,117 @@
+{
+  "cases": [
+    {
+      "id": "native-explicit-pending-shape-retarget",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-parallel-spec-migration/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-document-constraints.test.ts",
+          "namePattern": "^Native document constraints lets Shape replace a previously declared target Spec before confirmation$",
+          "requiredNames": [
+            "Native document constraints lets Shape replace a previously declared target Spec before confirmation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-516-shape-retarget-declared-spec",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-parallel-spec-migration/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-document-constraints.test.ts",
+          "namePattern": "lets Shape replace a previously declared target Spec before confirmation|lets an SDK Shape revision replace a previously declared target Spec|keeps a confirmed target Spec bound after Shape|does not let an exemption hide a previously declared missing target Spec|does not let an unrelated Shape removal hide a declared target Spec",
+          "requiredNames": [
+            "Native document constraints lets Shape replace a previously declared target Spec before confirmation",
+            "Native document constraints lets an SDK Shape revision replace a previously declared target Spec",
+            "Native document constraints keeps a confirmed target Spec bound after Shape",
+            "Native document constraints does not let an exemption hide a previously declared missing target Spec",
+            "Native document constraints does not let an unrelated Shape removal hide a declared target Spec"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-236-linked-isolation",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-parallel-spec-migration/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-parallel-worktree.test.ts",
+          "namePattern": "keeps concurrent linked worktrees usable after a manual business-source edit",
+          "requiredNames": [
+            "keeps concurrent linked worktrees usable after a manual business-source edit"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+          "namePattern": "requires workspace isolation before creating a second current-workspace SDK change",
+          "requiredNames": [
+            "requires workspace isolation before creating a second current-workspace SDK change"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-status-v4-discovery.test.ts",
+          "namePattern": "^(?:Native v4 registered-worktree status discovery finds an SDK-owned Native change with its explicit linked-worktree project root)$",
+          "requiredNames": [
+            "Native v4 registered-worktree status discovery finds an SDK-owned Native change with its explicit linked-worktree project root"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-302-prepare-route",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-parallel-spec-migration/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-workspace-preparation.test.ts",
+          "namePattern": "reuses and validates an already prepared linked worktree|creates, resumes, prunes, and excludes an isolated worktree",
+          "requiredNames": [
+            "reuses and validates an already prepared linked worktree",
+            "creates, resumes, prunes, and excludes an isolated worktree"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-status-v4-discovery.test.ts",
+          "namePattern": "^(?:Native v4 registered-worktree status discovery finds an SDK-owned Native change with its explicit linked-worktree project root)$",
+          "requiredNames": [
+            "Native v4 registered-worktree status discovery finds an SDK-owned Native change with its explicit linked-worktree project root"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-parallel-worktree.test.ts",
+          "namePattern": "keeps concurrent linked worktrees usable after a manual business-source edit",
+          "requiredNames": [
+            "keeps concurrent linked worktrees usable after a manual business-source edit"
+          ]
+        }
+      ]
+    }
+  ],
+  "behaviors": [
+    {
+      "file": "test/domains/comet-native/native-parallel-worktree.test.ts",
+      "name": "keeps concurrent linked worktrees usable after a manual business-source edit",
+      "preserved": "Actual Git worktree create, two independent public process bundle flows, brief/Spec/Shape approval, Builder handoff, Verify guard denial in revert mode, manual source contents, explicit return to Build, rebuild Verify, untouched peer source/state, separate Runtime roots, Git branches/selection, no primary change directories and no residual transactions.",
+      "changed": "Read actual current status stateVersion before revision, test missing expected action/version is rejected without writing either original state file, then SIMULATED user decision with current version/revise-implementation. No former assertion removed."
+    },
+    {
+      "file": "test/domains/comet-native/native-document-constraints.test.ts",
+      "name": "lets Shape replace a previously declared target Spec before confirmation",
+      "preserved": "Real initial original Spec declaration then delete/replace actual Spec files; explicit requirement revision and re-prepare still produces exact replacement spec_changes and await-user Shape, never Build approval.",
+      "changed": "Read authoritative pending version; original unbound command now retained as negative rejects/no state write; proper SIMULATED user revision binds current version/revise-requirements. Added removed old Spec directory and actual replacement text assertions. No former assertion removed."
+    }
+  ],
+  "scope": "Only two test bodies plus envelope stateVersion type modified; original other declarations untouched. No product/build/install/real Hook or Eval.",
+  "evidence": {
+    "before": "two-before.json",
+    "targetedAfter": "two-after.json",
+    "finalFiles": "files-after.json"
+  }
+}

@@ -1,29 +1,18 @@
 import { resolveClassicStateFile, isClassicStateFileName } from './classic-state-file.js';
-import {
-  isWorkspaceRuntimeMigrationFence,
-  resolveWorkspaceRuntimeRoot,
-} from '../workflow-contract/workspace-runtime.js';
+import { isWorkspaceRuntimeMigrationFence } from '../workflow-contract/workspace-runtime.js';
 import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { listGitWorktrees, samePath } from '../../platform/paths/git-worktree.js';
 import path from 'node:path';
-
 import { parseDocument } from 'yaml';
-
-import { withRecoverableFileLock } from '../../platform/fs/plugin-store.js';
 import {
   COMET_CHANGE_OWNER_SCHEMA,
   readChangeRuntimeOwner,
-  readSdkChangeOwner,
   registerCompatChangeOwner,
   registerSdkChangeOwner,
   type ChangeRuntimeOwner,
   type SdkApplication,
 } from '../workflow-contract/change-runtime-owner.js';
-import {
-  ensureProtectedProjectDirectory,
-  inspectProtectedProjectPath,
-} from '../workflow-contract/protected-project-path.js';
+import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import {
   inspectClassicStateFileCandidates,
   resolveClassicChangeDirectory,
@@ -36,17 +25,9 @@ import {
 } from './classic-sdk-state-store.js';
 import { parseClassicStateDocument, type ClassicState } from './classic-state.js';
 import { readClassicProjectFile } from './classic-protected-path.js';
-import { readClassicSdkDeliveryCheckpoint } from './classic-sdk-delivery-checkpoint.js';
-import {
-  createFileRuntimeStore,
-  PORTABLE_RUN_CHECKPOINT_KEY,
-  hashRuntimeValue,
-  readPortableRunCheckpoint,
-} from '../engine/runtime.js';
-import { resolveWorkspaceRuntimeRootSync } from '../workflow-contract/workspace-runtime.js';
+import { PORTABLE_RUN_CHECKPOINT_KEY, readPortableRunCheckpoint } from '../engine/runtime.js';
 import { liveGitBranch } from './classic-branch-binding.js';
 import type { WorkflowRun } from '../engine/runtime.js';
-
 /** A copied initial change can recreate its Run; any existing work needs its Action history. */
 export async function inspectPristineClassicSdkState(
   directory: string,
@@ -77,13 +58,12 @@ export async function inspectPristineClassicSdkState(
     ? initial
     : null;
 }
-
 /** Restore a portable Run when present; older states explicitly restart at Open. */
 export async function restoreClassicSdkChange(
   projectRoot: string,
   change: string,
 ): Promise<WorkflowRun> {
-  return withClassicChangeOwnershipLock(projectRoot, change, async () => {
+  return withClassicChangeOwnership(projectRoot, change, async () => {
     const owner = await readChangeRuntimeOwner(projectRoot, 'classic', change);
     if (
       owner &&
@@ -147,26 +127,14 @@ export async function restoreClassicSdkChange(
     return run;
   });
 }
-
-export async function withClassicChangeOwnershipLock<T>(
+export async function withClassicChangeOwnership<T>(
   projectRoot: string,
   change: string,
   work: () => Promise<T>,
 ): Promise<T> {
   await inspectClassicStateFileCandidates(projectRoot, change);
-  const runtimeRoot = await resolveWorkspaceRuntimeRoot(projectRoot);
-  const directory = 'change-owners/classic';
-  await ensureProtectedProjectDirectory(runtimeRoot, directory, {
-    label: 'Classic change ownership directory',
-  });
-  const ref = `${directory}/${change}.lock`;
-  const lock = await inspectProtectedProjectPath(runtimeRoot, ref, {
-    label: 'Classic change ownership lock',
-    expected: 'file',
-  });
-  return withRecoverableFileLock(lock.target, work, { timeoutMs: 5_000 });
+  return work();
 }
-
 export async function assertClassicSdkStartAvailable(options: {
   projectRoot: string;
   changeDirRef: string;
@@ -185,7 +153,6 @@ export async function assertClassicSdkStartAvailable(options: {
     );
   }
 }
-
 export async function registerClassicSdkStartOwner(options: {
   projectRoot: string;
   change: string;
@@ -193,7 +160,7 @@ export async function registerClassicSdkStartOwner(options: {
   application: Extract<SdkApplication, `classic-${string}`>;
 }): Promise<void> {
   const { projectRoot, change, changeDirRef, application } = options;
-  await withClassicChangeOwnershipLock(projectRoot, change, async () => {
+  await withClassicChangeOwnership(projectRoot, change, async () => {
     await assertClassicSdkStartAvailable({ projectRoot, changeDirRef });
     await registerSdkChangeOwner(projectRoot, {
       schema: COMET_CHANGE_OWNER_SCHEMA,
@@ -205,7 +172,6 @@ export async function registerClassicSdkStartOwner(options: {
     });
   });
 }
-
 export async function resolveClassicChangeRuntimeOwner(
   projectRoot: string,
   change: string,
@@ -213,7 +179,7 @@ export async function resolveClassicChangeRuntimeOwner(
   await inspectClassicStateFileCandidates(projectRoot, change);
   const current = await readChangeRuntimeOwner(projectRoot, 'classic', change);
   if (current) return current;
-  return withClassicChangeOwnershipLock(projectRoot, change, async () => {
+  return withClassicChangeOwnership(projectRoot, change, async () => {
     const bound = await readChangeRuntimeOwner(projectRoot, 'classic', change);
     if (bound) return bound;
     const directory = (await resolveClassicChangeDirectory(change, projectRoot)).directory;
@@ -238,34 +204,6 @@ export async function resolveClassicChangeRuntimeOwner(
         localState.isolation === 'worktree' &&
         data.application_checkpoint == null
       ) {
-        for (const worktree of listGitWorktrees(projectRoot)) {
-          if (samePath(worktree.root, projectRoot)) continue;
-          const owner = await readSdkChangeOwner(worktree.root, 'classic', change, {
-            readOnly: true,
-          });
-          if (
-            !owner ||
-            !['classic-full', 'classic-hotfix', 'classic-tweak'].includes(owner.application)
-          )
-            continue;
-          const run = await createFileRuntimeStore<WorkflowRun>({
-            rootDir: path.join(resolveWorkspaceRuntimeRootSync(worktree.root), 'sdk-runs/classic'),
-          }).read(owner.runId);
-          const state = run?.state as ClassicState | undefined;
-          if (
-            run?.status !== 'completed' ||
-            !state?.archived ||
-            state.isolation !== 'worktree' ||
-            state.boundBranch !== worktree.branch
-          )
-            continue;
-          const baseline = readClassicSdkDeliveryCheckpoint(data[PORTABLE_RUN_CHECKPOINT_KEY], run);
-          if (
-            baseline &&
-            hashRuntimeValue(localState as never) === hashRuntimeValue(baseline.state)
-          )
-            return null;
-        }
         if (
           localState.boundBranch &&
           localState.boundBranch !== liveGitBranch(projectRoot) &&

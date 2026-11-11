@@ -1,3 +1,4 @@
+import '../../helpers/isolated-agent-home.js';
 import * as childProcess from 'node:child_process';
 import { execFileSync } from 'node:child_process';
 import {
@@ -12,6 +13,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { stat, utimes } from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   invalidateClassicDelivery,
@@ -23,7 +25,7 @@ import {
   writeClassicDelivery,
 } from '../../../domains/comet-classic/classic-progress.js';
 import { resolveClassicRunDirectory } from '../../../domains/comet-classic/classic-runtime-paths.js';
-import { withClassicStateLock } from '../../../domains/comet-classic/classic-store.js';
+import { withClassicStateMutation } from '../../../domains/comet-classic/classic-store.js';
 import { resolveWorkspaceRuntimeRoot } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { classicProjectTargetExists } from '../../../domains/comet-classic/classic-protected-path.js';
@@ -244,6 +246,24 @@ describe('Classic structured progress', () => {
       (await readClassicCheckpoint(root, change, tasks.replace('First', 'Changed'))).stale,
     ).toBe(false);
     expect((await readClassicCheckpoint(root, change, '')).checkpoint).toEqual(input());
+  });
+
+  it('keeps identical coordination reports unchanged and repairs only a missing reading projection', async () => {
+    await writeClassicCheckpoint(root, change, input(), tasks);
+    const directory = path.join(await resolveClassicRunDirectory(change, root), '.comet');
+    const record = path.join(directory, 'coordination.json');
+    const view = path.join(directory, 'subagent-progress.md');
+    const preservedTime = new Date('2000-01-01T00:00:00Z');
+    await utimes(record, preservedTime, preservedTime);
+    await utimes(view, preservedTime, preservedTime);
+    await writeClassicCheckpoint(root, change, input(), tasks);
+    expect((await stat(record)).mtimeMs).toBe(preservedTime.getTime());
+    expect((await stat(view)).mtimeMs).toBe(preservedTime.getTime());
+    await rm(view);
+    await writeClassicCheckpoint(root, change, input(), tasks);
+    expect((await stat(record)).mtimeMs).toBe(preservedTime.getTime());
+    expect(await readFile(view, 'utf8')).toContain('Tasks: a, b');
+    expect((await readClassicCheckpoint(root, change, tasks)).checkpoint).toEqual(input());
   });
 
   it.each([
@@ -693,16 +713,9 @@ describe('Classic structured progress', () => {
     },
   );
 
-  it('records an archive commit while the real state lock is held, without ignoring other changes', async () => {
-    await writeFile(path.join(root, '.gitignore'), 'changes/demo/.comet-state.lock\n');
+  it('records an archive commit during a serial state operation without ignoring other changes', async () => {
     const commit = await archivedDelivery('push');
-    await withClassicStateLock(change, async () => {
-      expect(
-        await readFile(
-          path.join(await resolveClassicRunDirectory(change, root), '.comet-state.lock'),
-          'utf8',
-        ),
-      ).toBeTruthy();
+    await withClassicStateMutation(change, async () => {
       const result = await writeClassicDelivery(
         root,
         change,
@@ -979,5 +992,15 @@ describe('Classic structured progress', () => {
     } finally {
       await rm(outside, { recursive: true, force: true });
     }
+  });
+  it('rejects an invalid first checkpoint reading view before writing coordination', async () => {
+    const local = await resolveClassicRunDirectory(change, root),
+      dir = path.join(local, '.comet');
+    await mkdir(path.join(dir, 'subagent-progress.md'), { recursive: true });
+    await expect(writeClassicCheckpoint(root, change, input(), tasks)).rejects.toThrow();
+    await expect(readFile(path.join(dir, 'coordination.json'), 'utf8')).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    expect((await stat(path.join(dir, 'subagent-progress.md'))).isDirectory()).toBe(true);
   });
 });

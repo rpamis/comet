@@ -1,0 +1,48 @@
+{
+  "cases": [
+    {
+      "id": "ci-v8-native-loader-source-collision",
+      "sources": [
+        "https://github.com/rpamis/comet/pull/510/checks?check_run_id=122445256376",
+        "https://github.com/rpamis/comet/actions/runs/42025240642/job/127238366855?pr=539"
+      ],
+      "behavior": "Supervisor 恢复测试加载真实应用时，不覆盖其他测试已经执行的源码覆盖率。",
+      "coverageLevel": "runtime",
+      "reproduction": "e76 在同一轮真实 Native 锁测试与 Supervisor 恢复测试中，将成功的 inspectNativeProjectLocks 调用记为零；Linux 原始 V8 数据显示同一源码 URL 分别对应 76915 与 20517 字符的编译结果。",
+      "expected": "恢复案例继续核对真实应用失败、兄弟任务推进及仅重试原审查，锁测试的已执行函数仍有命中，原覆盖率门槛保持不变。",
+      "forbidden": "全局 Node 源码加载器将不同编译结果按同一 URL 合并，覆盖已执行语句；或通过跳过恢复案例、删除断言、排除源码或降低门槛掩盖错误。",
+      "rootCause": "恢复套件在 Vitest 进程中注册 esbuild 的 Node 加载器，磁盘应用的原生 require 与 Vite 编译对同一 .ts URL 上报不同的 V8 范围；它们被按 URL 合并。",
+      "tests": [
+        {
+          "file": "test/repository/coverage-runtime.test.ts",
+          "namePattern": "preserves source coverage while Supervisor recovery loads the built application",
+          "requiredNames": [
+            "preserves source coverage while Supervisor recovery loads the built application"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-supervisor-archive-check-before-cleanup",
+      "behavior": "Supervisor Archive validates the original integration inputs before removing its integration worktree.",
+      "rootCause": "Early delivery finalization removed the worktree before Archive performed its last check-input validation, producing ENOENT after Specs had been applied.",
+      "expected": "Keep the integration directory through final input validation, complete the original delivery and cleanup once, and preserve the requested branch/worktree finish choice.",
+      "forbidden": "Delete the checked integration inputs before validating them, replay the delivery, or leave children unfinished after successful Archive.",
+      "reproduction": "PR539 branch and worktree delivery cases reproduced ENOENT locally. Both now assert integration still exists at the after-Specs boundary and is removed only after final Archive.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-user-options.test.ts",
+          "namePattern": "^(?:Native public user-option paths delivers Supervisor to its branch change and preserves keep|Native public user-option paths delivers Supervisor to its worktree change and preserves keep)$",
+          "requiredNames": [
+            "Native public user-option paths delivers Supervisor to its branch change and preserves keep",
+            "Native public user-option paths delivers Supervisor to its worktree change and preserves keep"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-11-05-pr539-ci-native-supervisor-archive-check-before-cleanup"
+      ],
+      "coverageLevel": "runtime"
+    }
+  ]
+}

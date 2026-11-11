@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { acceptedClassicLegacyVerifyCheck } from './classic-sdk-run-upgrade.js';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { createFileRuntimeStore, type RuntimeValue, type WorkflowRun } from '../engine/runtime.js';
@@ -6,11 +7,6 @@ import { normalizeWorkflowRelativePath } from '../workflow-contract/project-conf
 import { resolveWorkspaceRuntimeRoot } from '../workflow-contract/workspace-runtime.js';
 import { archivedClassicDocumentRef } from './classic-archive-annotation.js';
 import { isGitWorkTree } from './classic-branch-binding.js';
-import {
-  compileCheckPolicyInputPattern,
-  compileCheckPolicyPattern,
-} from './classic-check-manifest.js';
-import { readCheckPolicy, type CheckIdentity } from './classic-check-policy.js';
 import { resolveClassicLayout } from './classic-layout.js';
 import { classicDeliveryActionContext } from './classic-sdk-delivery-repair-model.js';
 import {
@@ -22,7 +18,7 @@ function git(root: string, args: string[]) {
     cwd: root,
     encoding: 'utf8',
     windowsHide: true,
-    timeout: 30_000,
+    timeout: 30000,
     maxBuffer: 32 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -60,6 +56,7 @@ interface WorkspaceBaseline {
 }
 async function baselineStore(root: string) {
   return createFileRuntimeStore<WorkspaceBaseline>({
+    singleWriter: true,
     rootDir: path.join(await resolveWorkspaceRuntimeRoot(root), 'classic-delivery-baselines'),
   });
 }
@@ -82,8 +79,15 @@ export async function bindClassicSdkWorkspaceBaseline(
   return { ...input, workspaceBaseline: { ref } };
 }
 async function initialPaths(root: string, run?: Readonly<WorkflowRun>) {
-  const ref = (run?.input as { workspaceBaseline?: { ref?: string } } | undefined)
-    ?.workspaceBaseline?.ref;
+  const ref = (
+    run?.input as
+      | {
+          workspaceBaseline?: {
+            ref?: string;
+          };
+        }
+      | undefined
+  )?.workspaceBaseline?.ref;
   if (!ref) return new Set<string>();
   const baseline = await (await baselineStore(root)).read(ref);
   return new Set(baseline?.paths ?? Object.keys(baseline?.files ?? {}));
@@ -91,25 +95,28 @@ async function initialPaths(root: string, run?: Readonly<WorkflowRun>) {
 /** 保存 Agent 本轮检查选择的交付路径，不为文件字节创建证明。 */
 export async function collectClassicSdkDeliveryInputs(
   root: string,
-  _manifest: string,
-  identity: CheckIdentity | null,
   run?: Readonly<WorkflowRun>,
+  deliveryPaths?: readonly string[],
 ): Promise<string[]> {
   if (!isGitWorkTree(root)) return [];
   const excluded = await excludedImplementationRoots(root);
-  const policy = identity
-      ? await readCheckPolicy(root, identity)
-      : { files: undefined, outputs: undefined },
-    patterns = policy.files?.map(compileCheckPolicyInputPattern),
-    outputs = policy.outputs?.map(compileCheckPolicyPattern) ?? [],
-    baseline = await initialPaths(root, run);
+  const baseline = await initialPaths(root, run);
+  if (deliveryPaths) {
+    for (const ref of deliveryPaths) {
+      normalizeWorkflowRelativePath(ref, 'Classic delivery path');
+      if (isClassicInputUnderRoot(ref, excluded) || ref.split('/').includes('node_modules'))
+        throw new Error(
+          'Classic delivery path belongs to workflow metadata or another change: ' + ref,
+        );
+    }
+    return [...new Set(deliveryPaths)].sort();
+  }
   return changedPaths(root)
     .filter(
       (ref) =>
         !ref.split('/').includes('node_modules') &&
         !isClassicInputUnderRoot(ref, excluded) &&
-        !outputs.some((match) => match(ref)) &&
-        (patterns ? patterns.some((match) => match(ref)) : !baseline.has(ref)),
+        !baseline.has(ref),
     )
     .sort();
 }
@@ -118,33 +125,33 @@ export async function assertClassicSdkDeliveryInputs(
   root: string,
   run: Readonly<WorkflowRun>,
 ): Promise<Set<string>> {
-  const state = run.state as { workflow: string; verificationReport?: string | null };
+  const state = run.state as {
+    workflow: string;
+    verificationReport?: string | null;
+  };
   const deliveryAction = [...run.actions]
     .reverse()
     .find((action) => action.stepId === state.workflow + '.archive.deliver');
   const repairCheckId = deliveryAction
     ? classicDeliveryActionContext(run, deliveryAction)?.repairCheckId
     : undefined;
+  const legacy = acceptedClassicLegacyVerifyCheck(run);
   const check = repairCheckId
     ? run.actions.find((action) => action.id === repairCheckId)
     : [...run.actions]
         .reverse()
-        .find(
-          (action) =>
-            action.stepId ===
-            state.workflow +
-              (run.workflow.version === '2' ? '.archive.preflight' : '.verify.check'),
-        );
+        .find((action) => action.stepId === state.workflow + '.archive.preflight');
   if (check?.status !== 'succeeded' || check.outcome?.status !== 'succeeded')
     throw new Error('Classic 交付需要当前成功的 Verify 检查');
   const output = check.outcome.output as {
     deliveryPaths?: string[];
     deliveryInputs?: Record<string, string>;
   };
+  const legacyInputs = legacy?.output.deliveryInputs;
   const excluded = output.deliveryPaths ? [] : await excludedImplementationRoots(root);
-  const paths = (output.deliveryPaths ?? Object.keys(output.deliveryInputs ?? {})).filter(
-    (ref) => !isClassicInputUnderRoot(ref, excluded),
-  );
+  const paths = (
+    output.deliveryPaths ?? Object.keys(output.deliveryInputs ?? legacyInputs ?? {})
+  ).filter((ref) => !isClassicInputUnderRoot(ref, excluded));
   const report = run.evidenceWaits
     ?.slice()
     .reverse()
@@ -152,9 +159,15 @@ export async function assertClassicSdkDeliveryInputs(
       (wait) =>
         wait.stepId === state.workflow + '.verify.report.evidence' && wait.status === 'resolved',
     )?.receipt;
-  const active = (run.input as { changeDir: string }).changeDir,
+  const active = (
+      run.input as {
+        changeDir: string;
+      }
+    ).changeDir,
     archive = (
-      run.outputs[state.workflow + '.archive.execute']?.value as { archiveDirectory?: string }
+      run.outputs[state.workflow + '.archive.execute']?.value as {
+        archiveDirectory?: string;
+      }
     )?.archiveDirectory;
   if (state.verificationReport && !report) throw new Error('Classic 交付缺少已接受的验证报告');
   if (report)
@@ -167,12 +180,12 @@ export async function assertClassicSdkDeliveryFileInputs(
   _boundReportRef?: string,
 ): Promise<Set<string>> {
   const refs = Array.isArray(inputs) ? inputs : Object.keys(inputs);
-  const allowed = new Set<string>();
   for (const ref of refs) {
     normalizeWorkflowRelativePath(ref, 'Classic delivery path');
-    const dirty = git(root, ['status', '--porcelain', '--untracked-files=all', '--', ref]).trim();
-    if (dirty) throw new Error('Classic 交付路径尚有未提交修改：' + ref);
-    allowed.add(ref);
   }
-  return allowed;
+  const dirty = refs.length
+    ? git(root, ['status', '--porcelain', '--untracked-files=all', '--', ...refs]).trim()
+    : '';
+  if (dirty) throw new Error('Classic 交付路径尚有未提交修改：' + dirty);
+  return new Set(refs);
 }

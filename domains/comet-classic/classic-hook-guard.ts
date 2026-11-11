@@ -1112,12 +1112,12 @@ async function inspectClassicHookTarget(
   if (governing.cancellationPending)
     return result(
       2,
-      'Classic Run cancellation is incomplete: the original host must confirm that its execution and child tasks have stopped before writing.',
+      'Classic Run still has an unresolved Archive or child Run. Reconcile its original business result before writing; platform tasks are cancelled and cleaned up by the Agent platform.',
     );
   if (governing.executionUnresolved)
     return result(
       2,
-      'Classic execution is unresolved: reconcile the original claim before writing, or confirm the entire process tree has stopped and cancel with stoppedActions.',
+      'Classic execution is unresolved: reconcile the original claim and business result before writing. Cancel ordinary tasks through the Agent platform, then record business cancellation without a process-stop receipt.',
     );
   if (governing.archived) return allowed(`${relativePath} (own change archived)`);
 
@@ -1184,7 +1184,7 @@ async function inspectClassicHookTarget(
     (await classicDocumentEvidenceMode(projectRoot)) !== 'strict'
   ) {
     return allowed(
-      `${relativePath} (preserve the current Run and user edits; before advancing, the current Agent must run comet edit-review observe classic ${changeName} --session <current-session> --json and assess the accumulated changes, formal decisions, and check applicability; uncovered changes cannot be accepted or archived)`,
+      `${relativePath} (preserve the current Run and user edits; before advancing, the current Agent must assess the actual changes, formal decisions, and check applicability, then follow comet state next ${changeName} --json; uncovered changes cannot be accepted or archived)`,
     );
   }
   if (phase === 'build' && governing.classic?.workflow === 'full' && !governing.classic.designDoc) {

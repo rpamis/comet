@@ -128,7 +128,6 @@ export function readClassicSdkDeliveryCheckpoint(
   if (
     !['pending', 'running', 'unknown', 'failed', 'succeeded'].includes(current.status) ||
     current.cancellation ||
-    current.executionStop ||
     (current.executionOrigin && !equal(current.executionOrigin.workflow, run.workflow)) ||
     current.reconciliations.length !== current.attempt - 1 ||
     current.reconciliations.some((item, index) => item.attempt !== index + 1) ||

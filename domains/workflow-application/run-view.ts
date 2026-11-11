@@ -80,7 +80,12 @@ export function projectWorkflowApplicationRun(
               : 'reconcile';
 
   function actionRequests(action: RuntimeAction) {
-    if (action.status === 'cancelled' && action.claim && !action.cancellation) {
+    if (
+      action.type !== 'invoke_skill' &&
+      action.status === 'cancelled' &&
+      action.claim &&
+      !action.cancellation
+    ) {
       return {
         stopConfirmationRequired: true,
         instruction:

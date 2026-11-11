@@ -1,5 +1,4 @@
 import { reviseClassicSdkWork } from '../../../domains/comet-classic/classic-sdk-revision.js';
-import { executeClassicSdkCommandCheck } from '../../../domains/comet-classic/classic-sdk-check.js';
 import { assertVerifyEvidenceCurrent } from '../../../domains/comet-classic/classic-sdk-archive-preflight.js';
 import { createOpenSpecArchiveFixture } from '../../helpers/classic-openspec-fixture.js';
 import { execFileSync, spawnSync } from 'node:child_process';

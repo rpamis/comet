@@ -1,0 +1,39 @@
+{
+  "status": "succeeded",
+  "output": {
+    "rawInput": {
+      "beforeRef": "native/sdk-checks/e90df55f8cbc942aa236d2602f54904b205a9c8a6835cc093bfb81a8a972e53b/inputs/dda7d2799f56cc615c07fefc2e5e5074dc5dc1940a23ef076c96137942af40bd.json",
+      "afterRef": "native/sdk-checks/e90df55f8cbc942aa236d2602f54904b205a9c8a6835cc093bfb81a8a972e53b/inputs/dda7d2799f56cc615c07fefc2e5e5074dc5dc1940a23ef076c96137942af40bd.json"
+    },
+    "inputBefore": "eee44220618da8c1644cf7761f8f11c51da5734a736ed231a49d2e4cb60f2221",
+    "inputAfter": "eee44220618da8c1644cf7761f8f11c51da5734a736ed231a49d2e4cb60f2221",
+    "inputSnapshot": {
+      "schema": "comet.native.check-input.v2",
+      "before": "7e4f480494e35e3cc6735dc0bfb3bca2e2e866e886d3031384cdb3b5580618a1",
+      "after": "7e4f480494e35e3cc6735dc0bfb3bca2e2e866e886d3031384cdb3b5580618a1",
+      "candidateBefore": null,
+      "complete": true,
+      "diagnostics": []
+    },
+    "candidateInputFingerprintGate": null,
+    "candidateId": "published-completed-invalid:5",
+    "checks": [
+      {
+        "id": "once",
+        "name": "Current Build check",
+        "argvDisplay": [
+          "-e",
+          "const fs=require('node:fs');fs.appendFileSync(process.argv[1],'once\\n');process.stdout.write('actual-legacy-check-completed\\n')",
+          "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\actual-node-count"
+        ],
+        "cwdRef": ".",
+        "status": "passed",
+        "exitCode": 0,
+        "durationMs": 677,
+        "logRef": "native/sdk-checks/e90df55f8cbc942aa236d2602f54904b205a9c8a6835cc093bfb81a8a972e53b/logs/checks/7c1f678614621247c7915ff24e4268e8456354168d38369639b3967e1a0425c1-once.log",
+        "logSha256": "1a458cca3e185b8fae33a3933aeab6d58dd98bf82582bf356b57d03b22f8d48b"
+      }
+    ],
+    "completedAt": "2026-11-10T23:26:37.106Z"
+  }
+}

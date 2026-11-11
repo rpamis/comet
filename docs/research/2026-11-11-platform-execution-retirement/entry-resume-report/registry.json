@@ -1,0 +1,24 @@
+{
+  "record": {
+    "id": "manual-recovery-named-native-checkpoint",
+    "behavior": "指定 Native 需求的本机 Run 丢失但便携检查点有效时，入口保留目标并引导原 Run 恢复。",
+    "reproduction": "临时项目删除本机 SDK Run，旧入口返回 ask_user 且没有续行命令；同一回归在旧代码失败。",
+    "expected": "只读探测识别目标并进入原 Native 恢复流程，诊断后沿用原 Run 与 Action。",
+    "forbidden": "探测时写入状态、创建新 Run、跳过对原执行的核对。",
+    "rootCause": "入口将可验证的便携恢复异常按普通无效状态处理。",
+    "sources": [
+      "report:2026-10-27-manual-workflow-recovery"
+    ],
+    "coverageLevel": "runtime",
+    "tests": [
+      {
+        "file": "test/domains/comet-entry/resume-probe.test.ts",
+        "namePattern": "directs a named missing Native Run to a read-only diagnosis",
+        "requiredNames": [
+          "Comet entry resume probe v2 directs a named missing Native Run to a read-only diagnosis"
+        ]
+      }
+    ]
+  },
+  "change": "No selector or registry edit: exact original fullName retained."
+}

@@ -1,0 +1,588 @@
+{
+  "files": [
+    {
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "sha256": "141d241a1f6dbe05b9b3c2e9dfddc147d6762df395616488469e39bf9f412cb7"
+    },
+    {
+      "file": "test/domains/workflow-contract/workspace-runtime-legacy-lock.test.ts",
+      "sha256": "1674faf87e2f984c67885b09a0f45304f61e67715cc57ac2fc530df1dc49fda3"
+    },
+    {
+      "file": "test/domains/workflow-contract/workspace-runtime-repair-failure.test.ts",
+      "sha256": "f7245881de854e9809f47f27f9ce4bf640877e54edf37a289d2bf2e59062c541"
+    }
+  ],
+  "declarations": [
+    {
+      "id": "workspace-runtime.test.ts:1",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 47,
+      "title": "retries a transient fence publication observation with a bounded fresh read",
+      "fullName": "workspace runtime resolution and migration retries a transient fence publication observation with a bounded fresh read",
+      "expression": "it",
+      "declaration": "it('retries a transient fence publication observation with a bounded fresh read', async () => {\n    const target = await resolveWorkspaceRuntimeRoot(project);\n    const read = raceSafeReads.readFileRaceSafe;\n    let attempts = 0;\n    vi.spyOn(raceSafeReads, 'readFileRaceSafe').mockImplementation(async (...args) => {\n      if (args[0] === legacy && ++attempts === 1)\n        throw new raceSafeReads.RaceSafeReadError('changed', 'injected publication change');\n      return read(...args);\n    });\n    expect(await resolveWorkspaceRuntimeRoot(project)).toBe(target);\n    expect(attempts).toBe(2);\n  })",
+      "sha256": "64f4e669d2b757f7fb64aa6109e3ef68535242a123c6a6553d815b1c5beef942"
+    },
+    {
+      "id": "workspace-runtime.test.ts:2",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 60,
+      "title": "does not reuse an unstable fence after its bounded publication retries",
+      "fullName": "workspace runtime resolution and migration does not reuse an unstable fence after its bounded publication retries",
+      "expression": "it",
+      "declaration": "it('does not reuse an unstable fence after its bounded publication retries', async () => {\n    await resolveWorkspaceRuntimeRoot(project);\n    const before = await fs.readFile(legacy, 'utf8');\n    const read = raceSafeReads.readFileRaceSafe;\n    let attempts = 0;\n    vi.spyOn(raceSafeReads, 'readFileRaceSafe').mockImplementation(async (...args) => {\n      if (args[0] === legacy) {\n        attempts += 1;\n        throw new raceSafeReads.RaceSafeReadError('changed', 'injected continuing change');\n      }\n      return read(...args);\n    });\n    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow(\n      'injected continuing change',\n    );\n    expect(attempts).toBe(3);\n    expect(await fs.readFile(legacy, 'utf8')).toBe(before);\n  })",
+      "sha256": "cc68aaea1c8d3c45b29b8c0feec5a95b359e7d3dae9df431d078d1bc6b00bd99"
+    },
+    {
+      "id": "workspace-runtime.test.ts:3",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 78,
+      "title": "reads the same saved run and lock through a Windows case alias",
+      "fullName": "workspace runtime resolution and migration reads the same saved run and lock through a Windows case alias",
+      "expression": "it.runIf(process.platform === 'win32')",
+      "declaration": "it.runIf(process.platform === 'win32')(\n    'reads the same saved run and lock through a Windows case alias',\n    async (context) => {\n      const alias = path.join(temporary, 'Project');\n      try {\n        await fs.stat(alias);\n      } catch (error) {\n        if ((error as NodeJS.ErrnoException).code === 'ENOENT')\n          context.skip('当前目录区分大小写，不存在同目录大小写别名');\n        throw error;\n      }\n      const runtime = await resolveWorkspaceRuntimeRoot(project);\n      const record = { runId: 'retained', revision: 1, state: { progress: 'saved' } };\n      const store = (root: string) => createFileRuntimeStore({ rootDir: path.join(root, 'runs') });\n      expect(await store(runtime).compareAndSwap(record.runId, null, record)).toBe(true);\n      await write(path.join(runtime, 'saved-run.lock'), 'same execution owner');\n      const reopened = await resolveWorkspaceRuntimeRoot(alias);\n      expect(reopened).toBe(runtime);\n      expect(resolveWorkspaceRuntimeRootSync(alias)).toBe(runtime);\n      expect(await store(reopened).read(record.runId)).toEqual(record);\n      expect(await fs.readFile(path.join(reopened, 'saved-run.lock'), 'utf8')).toBe(\n        'same execution owner',\n      );\n    },\n  )",
+      "sha256": "2261f06dba35b3277586f40edffc5bf86e03e67579422d1a790831d0c441b7db"
+    },
+    {
+      "id": "workspace-runtime.test.ts:4",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 104,
+      "title": "validates the volume root without attempting mkdir when the root would reject it",
+      "fullName": "workspace runtime resolution and migration validates the volume root without attempting mkdir when the root would reject it",
+      "expression": "it",
+      "declaration": "it('validates the volume root without attempting mkdir when the root would reject it', async () => {\n    const volumeRoot = path.parse(data).root;\n    const mkdir = fs.mkdir.bind(fs);\n    const create = vi.spyOn(fs, 'mkdir').mockImplementation(async (directory, options) => {\n      if (path.resolve(String(directory)) === volumeRoot) {\n        throw Object.assign(new Error('EPERM: operation not permitted, mkdir volume root'), {\n          code: 'EPERM',\n        });\n      }\n      return mkdir(directory, options);\n    });\n    const stat = vi.spyOn(fs, 'lstat');\n    const runtime = await resolveWorkspaceRuntimeRoot(project);\n    expect(runtime).toBe(resolveWorkspaceRuntimeRootSync(project));\n    expect((await fs.stat(runtime)).isDirectory()).toBe(true);\n    expect(await isWorkspaceRuntimeMigrationFence(legacy, runtime)).toBe(true);\n    expect(stat).toHaveBeenCalledWith(volumeRoot);\n    expect(\n      create.mock.calls.some(([directory]) => path.resolve(String(directory)) === volumeRoot),\n    ).toBe(false);\n  })",
+      "sha256": "42d78eb9e93219cf0662e657f810f4600ce64c03f3ad5797ddb2429d72574690"
+    },
+    {
+      "id": "workspace-runtime.test.ts:5",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 126,
+      "title": "rejects a nonphysical volume root reported as a %s before creating directories",
+      "fullName": "workspace runtime resolution and migration rejects a nonphysical volume root reported as a %s before creating directories",
+      "expression": "it.each(['file', 'symlink'] as const)",
+      "declaration": "it.each(['file', 'symlink'] as const)(\n    'rejects a nonphysical volume root reported as a %s before creating directories',\n    async (kind) => {\n      const volumeRoot = path.parse(data).root;\n      const rootStat = await fs.lstat(volumeRoot);\n      vi.spyOn(rootStat, 'isDirectory').mockReturnValue(kind !== 'file');\n      vi.spyOn(rootStat, 'isSymbolicLink').mockReturnValue(kind === 'symlink');\n      const lstat = fs.lstat.bind(fs);\n      const stat = vi.spyOn(fs, 'lstat').mockImplementation(async (file, options) => {\n        if (path.resolve(String(file)) === volumeRoot) return rootStat;\n        return lstat(file, options);\n      });\n      const mkdir = vi.spyOn(fs, 'mkdir');\n      await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('必须是真实目录');\n      expect(stat).toHaveBeenCalledWith(volumeRoot);\n      expect(mkdir).not.toHaveBeenCalled();\n    },\n  )",
+      "sha256": "656770e092af556aa502944d6e8e5369c9321df5517a22db1d57bed33d2903a9"
+    },
+    {
+      "id": "workspace-runtime.test.ts:6",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 145,
+      "title": "preserves a volume root lstat %s error without attempting mkdir",
+      "fullName": "workspace runtime resolution and migration preserves a volume root lstat %s error without attempting mkdir",
+      "expression": "it.each(['ENOENT', 'EACCES', 'EPERM'] as const)",
+      "declaration": "it.each(['ENOENT', 'EACCES', 'EPERM'] as const)(\n    'preserves a volume root lstat %s error without attempting mkdir',\n    async (code) => {\n      const volumeRoot = path.parse(data).root;\n      const error = Object.assign(new Error(`${code}: lstat volume root`), {\n        code,\n        path: volumeRoot,\n        syscall: 'lstat',\n      });\n      const lstat = fs.lstat.bind(fs);\n      vi.spyOn(fs, 'lstat').mockImplementation(async (file, options) => {\n        if (path.resolve(String(file)) === volumeRoot) throw error;\n        return lstat(file, options);\n      });\n      const mkdir = vi.spyOn(fs, 'mkdir');\n      await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toBe(error);\n      expect(mkdir).not.toHaveBeenCalled();\n    },\n  )",
+      "sha256": "85750cea323a193d96b7f68898db1da4948ea2515ad1e2982933b77e91b445cc"
+    },
+    {
+      "id": "workspace-runtime.test.ts:7",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 165,
+      "title": "checks read-only fence ownership without following a foreign target",
+      "fullName": "workspace runtime resolution and migration checks read-only fence ownership without following a foreign target",
+      "expression": "it",
+      "declaration": "it('checks read-only fence ownership without following a foreign target', async () => {\n    const runtime = await resolveWorkspaceRuntimeRoot(project);\n    await expect(\n      isWorkspaceRuntimeMigrationFence(legacy, `${runtime}-wrong`, {\n        projectRoot: project,\n        ignoreForeignWorkspaceFence: true,\n      }),\n    ).rejects.toThrow(/其他路径/u);\n    const copied = path.join(temporary, 'copied');\n    await fs.mkdir(copied);\n    const foreignFence = path.join(copied, 'runtime');\n    await fs.copyFile(legacy, foreignFence);\n    const before = await fs.readFile(foreignFence, 'utf8');\n    await fs.rm(runtime, { recursive: true });\n    expect(\n      await isWorkspaceRuntimeMigrationFence(\n        foreignFence,\n        resolveWorkspaceRuntimeRootSync(copied),\n        {\n          projectRoot: copied,\n          ignoreForeignWorkspaceFence: true,\n        },\n      ),\n    ).toBe(true);\n    expect(await fs.readFile(foreignFence, 'utf8')).toBe(before);\n    await expect(fs.access(runtime)).rejects.toMatchObject({ code: 'ENOENT' });\n    await expect(\n      isWorkspaceRuntimeMigrationFence(foreignFence, runtime, {\n        projectRoot: copied,\n      }),\n    ).rejects.toThrow(/其他工作区/u);\n    expect(\n      await isWorkspaceRuntimeMigrationFence(legacy, runtime, {\n        projectRoot: project,\n      }),\n    ).toBe(true);\n  })",
+      "sha256": "85f9ff7db9c8a33635af988b4f6aa9cd6801b3aed4426555db4cda0364d7f50c"
+    },
+    {
+      "id": "workspace-runtime.test.ts:8",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 203,
+      "title": "creates the user-level runtime and its compatibility fence with concurrent initialization",
+      "fullName": "workspace runtime resolution and migration creates the user-level runtime and its compatibility fence with concurrent initialization",
+      "expression": "it",
+      "declaration": "it('creates the user-level runtime and its compatibility fence with concurrent initialization', async () => {\n    const roots = await Promise.all(\n      Array.from({ length: 8 }, () => resolveWorkspaceRuntimeRoot(project)),\n    );\n    expect(new Set(roots).size).toBe(1);\n    expect((await fs.stat(roots[0])).isDirectory()).toBe(true);\n    expect(await fs.readdir(project)).toEqual(['.comet']);\n    expect(await fs.readdir(path.join(project, '.comet'))).toEqual(['runtime']);\n    expect(await isWorkspaceRuntimeMigrationFence(legacy, roots[0])).toBe(true);\n    await expect(fs.mkdir(path.join(legacy, 'old-writer'), { recursive: true })).rejects.toThrow();\n  })",
+      "sha256": "d6ec8736f8b5a3c840a02d9a0aff811ff3cb89ae4463969c2414973dea2e1c33"
+    },
+    {
+      "id": "workspace-runtime.test.ts:9",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 215,
+      "title": "migrates the entire legacy tree, preserves evidence, and leaves only one fence",
+      "fullName": "workspace runtime resolution and migration migrates the entire legacy tree, preserves evidence, and leaves only one fence",
+      "expression": "it",
+      "declaration": "it('migrates the entire legacy tree, preserves evidence, and leaves only one fence', async () => {\n    await write(\n      path.join(legacy, 'sdk-runs', 'native', 'change', 'run.json'),\n      '{\"status\":\"waiting\"}',\n    );\n    await write(path.join(legacy, 'native', 'checks', 'evidence.log'), 'checked\\n\\0complete');\n    const target = resolveWorkspaceRuntimeRootSync(project);\n    const roots = await Promise.all([\n      resolveWorkspaceRuntimeRoot(project),\n      resolveWorkspaceRuntimeRoot(project),\n    ]);\n    expect(roots).toEqual([target, target]);\n    expect(await fs.readFile(path.join(target, 'native', 'checks', 'evidence.log'), 'utf8')).toBe(\n      'checked\\n\\0complete',\n    );\n    expect(\n      await fs.readFile(path.join(target, 'sdk-runs', 'native', 'change', 'run.json'), 'utf8'),\n    ).toBe('{\"status\":\"waiting\"}');\n    expect(await isWorkspaceRuntimeMigrationFence(legacy, target)).toBe(true);\n    expect(isWorkspaceRuntimeMigrationFenceSync(legacy, target)).toBe(true);\n    expect(await fs.readdir(path.dirname(legacy))).toEqual(['runtime']);\n    expect(await fs.readdir(path.dirname(target))).toEqual([\n      '.runtime-migration-recovery.lock.sqlite',\n      'runtime',\n    ]);\n    await expect(fs.mkdir(path.join(legacy, 'old-writer'), { recursive: true })).rejects.toThrow();\n    expect(await resolveWorkspaceRuntimeRoot(project)).toBe(target);\n  })",
+      "sha256": "b770ea704c5fd0716b36c0f2423fb54258c77b4a22a7038a104653b29976b6e8"
+    },
+    {
+      "id": "workspace-runtime.test.ts:10",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 244,
+      "title": "supports separate files with a directory fence that blocks legacy writes",
+      "fullName": "workspace runtime resolution and migration supports separate files with a directory fence that blocks legacy writes",
+      "expression": "it",
+      "declaration": "it('supports separate files with a directory fence that blocks legacy writes', async () => {\n    const root = await resolveWorkspaceRuntimeRoot(project);\n    const source = path.join(project, 'changes', 'one', '.comet', 'runtime-cache.json');\n    const target = path.join(root, 'classic-changes', 'one', 'runtime-cache.json');\n    await write(source, '{\"result\":true}');\n    await migrateWorkspaceRuntimePath(source, target, { projectRoot: project });\n    expect(await fs.readFile(target, 'utf8')).toBe('{\"result\":true}');\n    expect(await isWorkspaceRuntimeMigrationFence(source, target)).toBe(true);\n    expect(isWorkspaceRuntimeMigrationFenceSync(source, target)).toBe(true);\n    await expect(fs.writeFile(source, 'old writer')).rejects.toThrow();\n    await migrateWorkspaceRuntimePath(source, target, { projectRoot: project });\n  })",
+      "sha256": "614fc3b5768a348e11dca2d255526b566451dc31acc5de6ea9716ac72ac8e8e8"
+    },
+    {
+      "id": "workspace-runtime.test.ts:11",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 257,
+      "title": "copies across filesystem boundaries and only renames within each filesystem",
+      "fullName": "workspace runtime resolution and migration copies across filesystem boundaries and only renames within each filesystem",
+      "expression": "it",
+      "declaration": "it('copies across filesystem boundaries and only renames within each filesystem', async () => {\n    await write(path.join(legacy, 'evidence.bin'), 'portable');\n    const rename = fs.rename.bind(fs);\n    const calls: Array<[string, string]> = [];\n    vi.spyOn(fs, 'rename').mockImplementation(async (from, to) => {\n      calls.push([String(from), String(to)]);\n      const side = (file: string) => (file.startsWith(project) ? 'project' : 'home');\n      if (side(String(from)) !== side(String(to)))\n        throw Object.assign(new Error('EXDEV'), { code: 'EXDEV' });\n      await rename(from, to);\n    });\n    const target = await resolveWorkspaceRuntimeRoot(project);\n    expect(await fs.readFile(path.join(target, 'evidence.bin'), 'utf8')).toBe('portable');\n    expect(calls.length).toBeGreaterThan(0);\n    expect(calls.every(([from, to]) => path.dirname(from) === path.dirname(to))).toBe(true);\n  })",
+      "sha256": "78ba8ba1a583d80fe9c011ae2d84fa892c2db8ccc4253063ed9cf46c1f7d3c0c"
+    },
+    {
+      "id": "workspace-runtime.test.ts:12",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 274,
+      "title": "refuses old lock or in-flight writer %s without modifying the source",
+      "fullName": "workspace runtime resolution and migration refuses old lock or in-flight writer %s without modifying the source",
+      "expression": "it.each([\n    'native/locks/root-move.lock',\n    'native/check.json.tmp',\n    'sdk-runs/one/store.lock.contenders/old.ticket',\n  ])",
+      "declaration": "it.each([\n    'native/locks/root-move.lock',\n    'native/check.json.tmp',\n    'sdk-runs/one/store.lock.contenders/old.ticket',\n  ])('refuses old lock or in-flight writer %s without modifying the source', async (relative) => {\n    await write(path.join(legacy, relative), '{}');\n    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow(/锁|未完成/u);\n    expect(await fs.readFile(path.join(legacy, relative), 'utf8')).toBe('{}');\n    expect(await fs.readdir(path.dirname(legacy))).toEqual(['runtime']);\n  })",
+      "sha256": "84cb4653592b1875ece49d648d01518ac509f56139850d3e769100e3d37107c0"
+    },
+    {
+      "id": "workspace-runtime.test.ts:13",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 285,
+      "title": "refuses unfinished transactions and active execution owners",
+      "fullName": "workspace runtime resolution and migration refuses unfinished transactions and active execution owners",
+      "expression": "it",
+      "declaration": "it('refuses unfinished transactions and active execution owners', async () => {\n    await write(path.join(legacy, 'native', 'transactions', 'move.json'), '{\"status\":\"prepared\"}');\n    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('未完成事务');\n    await fs.rm(path.join(legacy, 'native', 'transactions'), { recursive: true });\n    await write(\n      path.join(legacy, 'native', 'execution.json'),\n      JSON.stringify({ phase: 'running', owner: { pid: process.pid } }),\n    );\n    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('活跃执行');\n  })",
+      "sha256": "2241274ebc2b0fe80cdec7a8adb4733be2d26e17fabc51ffbee78ade5d910e64"
+    },
+    {
+      "id": "workspace-runtime.test.ts:14",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 296,
+      "title": "keeps completed transaction and execution evidence",
+      "fullName": "workspace runtime resolution and migration keeps completed transaction and execution evidence",
+      "expression": "it",
+      "declaration": "it('keeps completed transaction and execution evidence', async () => {\n    await write(path.join(legacy, 'native', 'transactions', 'move.json'), '{\"status\":\"committed\"}');\n    await write(\n      path.join(legacy, 'native', 'execution.json'),\n      '{\"phase\":\"completed\",\"owner\":{\"pid\":123}}',\n    );\n    const root = await resolveWorkspaceRuntimeRoot(project);\n    expect(\n      await fs.readFile(path.join(root, 'native', 'transactions', 'move.json'), 'utf8'),\n    ).toContain('committed');\n  })",
+      "sha256": "9f326c6143b1d3f01ece9bb8d0706fd6dbb2b33697f423e9544166ea6f516fde"
+    },
+    {
+      "id": "workspace-runtime.test.ts:15",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 308,
+      "title": "checks repeated journal names while preserving %s transaction evidence",
+      "fullName": "workspace runtime resolution and migration checks repeated journal names while preserving %s transaction evidence",
+      "expression": "it.each(['prepared', 'committed', 'rolled-back'])",
+      "declaration": "it.each(['prepared', 'committed', 'rolled-back'])(\n    'checks repeated journal names while preserving %s transaction evidence',\n    async (status) => {\n      const relative = path.join('native', `prefix-${'journal'.repeat(20)}.json`);\n      const content = JSON.stringify({ status });\n      await write(path.join(legacy, relative), content);\n      if (status === 'prepared') {\n        await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('未完成事务');\n        expect(await fs.readFile(path.join(legacy, relative), 'utf8')).toBe(content);\n      } else {\n        const migrated = await resolveWorkspaceRuntimeRoot(project);\n        expect(await fs.readFile(path.join(migrated, relative), 'utf8')).toBe(content);\n      }\n    },\n  )",
+      "sha256": "9781c9a9e7b8adc8ecc18b8f0d080e3b36de9340eaf925e44b499d46c45120ec"
+    },
+    {
+      "id": "workspace-runtime.test.ts:16",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 324,
+      "title": "does not interpret journal-like evidence with another suffix as transaction state",
+      "fullName": "workspace runtime resolution and migration does not interpret journal-like evidence with another suffix as transaction state",
+      "expression": "it",
+      "declaration": "it('does not interpret journal-like evidence with another suffix as transaction state', async () => {\n    const name = `${'journal'.repeat(20)}.json.log`;\n    await write(path.join(legacy, name), 'unstructured evidence');\n    const migrated = await resolveWorkspaceRuntimeRoot(project);\n    expect(await fs.readFile(path.join(migrated, name), 'utf8')).toBe('unstructured evidence');\n  })",
+      "sha256": "b407e485db890df0af178a36d73efa03b8abfedbbd4729d826e8ff12ccca73a3"
+    },
+    {
+      "id": "workspace-runtime.test.ts:17",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 331,
+      "title": "rejects a symlink inside the source and a symlinked data subtree",
+      "fullName": "workspace runtime resolution and migration rejects a symlink inside the source and a symlinked data subtree",
+      "expression": "it",
+      "declaration": "it('rejects a symlink inside the source and a symlinked data subtree', async () => {\n    await fs.mkdir(legacy, { recursive: true });\n    await fs.symlink(temporary, path.join(legacy, 'escape'), 'junction');\n    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow(/符号链接/u);\n    await fs.unlink(path.join(legacy, 'escape'));\n    await fs.rm(data, { recursive: true });\n    await fs.mkdir(data);\n    await fs.symlink(temporary, path.join(data, 'workspaces'), 'junction');\n    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow(/真实目录/u);\n  })",
+      "sha256": "be6b080bd754033b9979a19e36aa2841fafdb707f10850c03fde1cf7b6ff2ef4"
+    },
+    {
+      "id": "workspace-runtime.test.ts:18",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 342,
+      "title": "rejects hardlinks instead of migrating data another path can change",
+      "fullName": "workspace runtime resolution and migration rejects hardlinks instead of migrating data another path can change",
+      "expression": "it",
+      "declaration": "it('rejects hardlinks instead of migrating data another path can change', async () => {\n    await write(path.join(legacy, 'one.log'), 'one');\n    await fs.link(path.join(legacy, 'one.log'), path.join(legacy, 'two.log'));\n    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('硬链接');\n  })",
+      "sha256": "ecec41133afb899c002e066ab07e6d88fd8807db63558a3ab2d61506a4cf04fe"
+    },
+    {
+      "id": "workspace-runtime.test.ts:19",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 348,
+      "title": "never merges an existing target even when its bytes match",
+      "fullName": "workspace runtime resolution and migration never merges an existing target even when its bytes match",
+      "expression": "it",
+      "declaration": "it('never merges an existing target even when its bytes match', async () => {\n    const target = resolveWorkspaceRuntimeRootSync(project);\n    await write(path.join(legacy, 'one.log'), 'same');\n    await write(path.join(target, 'one.log'), 'same');\n    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('拒绝覆盖或合并');\n    expect(await fs.readFile(path.join(legacy, 'one.log'), 'utf8')).toBe('same');\n    expect(await fs.readFile(path.join(target, 'one.log'), 'utf8')).toBe('same');\n  })",
+      "sha256": "d0e15403c0e9a77474801f2a683a871f354d398829f9e14ee2aa39b79e6d8eb1"
+    },
+    {
+      "id": "workspace-runtime.test.ts:20",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 357,
+      "title": "retains recovery records and safely completes on retry after a crash at %s",
+      "fullName": "workspace runtime resolution and migration retains recovery records and safely completes on retry after a crash at %s",
+      "expression": "it.each(['afterJournal', 'afterFence', 'afterCopy', 'afterPublish'] as const)",
+      "declaration": "it.each(['afterJournal', 'afterFence', 'afterCopy', 'afterPublish'] as const)(\n    'retains recovery records and safely completes on retry after a crash at %s',\n    async (hook) => {\n      await write(path.join(legacy, 'evidence.log'), 'keep');\n      const target = resolveWorkspaceRuntimeRootSync(project);\n      await expect(\n        migrateWorkspaceRuntimeDirectory(legacy, target, {\n          projectRoot: project,\n          testHooks: {\n            [hook]: () => {\n              throw new Error('simulated crash');\n            },\n          },\n        }),\n      ).rejects.toThrow('已保留可恢复数据');\n      const journalFile = path.join(path.dirname(legacy), '.runtime.comet-runtime-migration.json');\n      const journal = JSON.parse(await fs.readFile(journalFile, 'utf8'));\n      const preserved = hook === 'afterJournal' ? legacy : journal.backup;\n      expect(await fs.readFile(path.join(preserved, 'evidence.log'), 'utf8')).toBe('keep');\n      expect(await resolveWorkspaceRuntimeRoot(project)).toBe(target);\n      await expect(fs.stat(journalFile)).rejects.toMatchObject({ code: 'ENOENT' });\n      expect(await fs.readFile(path.join(target, 'evidence.log'), 'utf8')).toBe('keep');\n      if (hook === 'afterPublish')\n        expect(await fs.readFile(path.join(target, 'evidence.log'), 'utf8')).toBe('keep');\n    },\n  )",
+      "sha256": "a61d17628cf65811880a7153469d69fbaa231db65b96c7af911be8087a8014c2"
+    },
+    {
+      "id": "workspace-runtime.test.ts:21",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 384,
+      "title": "detects a writer changing the quarantined source before publication",
+      "fullName": "workspace runtime resolution and migration detects a writer changing the quarantined source before publication",
+      "expression": "it",
+      "declaration": "it('detects a writer changing the quarantined source before publication', async () => {\n    await write(path.join(legacy, 'evidence.log'), 'initial');\n    const target = resolveWorkspaceRuntimeRootSync(project);\n    await expect(\n      migrateWorkspaceRuntimeDirectory(legacy, target, {\n        projectRoot: project,\n        testHooks: {\n          afterCopy: async () => {\n            const journal = JSON.parse(\n              await fs.readFile(\n                path.join(path.dirname(legacy), '.runtime.comet-runtime-migration.json'),\n                'utf8',\n              ),\n            );\n            await fs.writeFile(path.join(journal.backup, 'evidence.log'), 'changed');\n          },\n        },\n      }),\n    ).rejects.toThrow('复制后继续变化');\n    await expect(fs.stat(target)).rejects.toMatchObject({ code: 'ENOENT' });\n  })",
+      "sha256": "a9aba16b2eb13b456c71e5ccb703e8944ffe1cda5bb64824435cb407ede6a8ab"
+    },
+    {
+      "id": "workspace-runtime.test.ts:22",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 406,
+      "title": "isolates a copied foreign fence without following its recorded target",
+      "fullName": "workspace runtime resolution and migration isolates a copied foreign fence without following its recorded target",
+      "expression": "it",
+      "declaration": "it('isolates a copied foreign fence without following its recorded target', async () => {\n    await write(path.join(legacy, 'one.log'), 'one');\n    await resolveWorkspaceRuntimeRoot(project);\n    const clone = path.join(temporary, 'clone');\n    await write(path.join(clone, '.comet', 'runtime'), await fs.readFile(legacy, 'utf8'));\n    const original = resolveWorkspaceRuntimeRootSync(project);\n    const isolated = await resolveWorkspaceRuntimeRoot(clone);\n    expect(isolated).not.toBe(original);\n    expect(await fs.readdir(isolated)).toEqual([]);\n    expect(await fs.readFile(path.join(original, 'one.log'), 'utf8')).toBe('one');\n  })",
+      "sha256": "b1f494c1affb5b39dee002baa2cfec9ce160ff5b58c99b73cc6e5f2d1ff740ed"
+    },
+    {
+      "id": "workspace-runtime.test.ts:23",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 418,
+      "title": "rejects source or destination outside the current workspace runtime",
+      "fullName": "workspace runtime resolution and migration rejects source or destination outside the current workspace runtime",
+      "expression": "it",
+      "declaration": "it('rejects source or destination outside the current workspace runtime', async () => {\n    const root = await resolveWorkspaceRuntimeRoot(project);\n    await expect(\n      migrateWorkspaceRuntimePath(path.join(temporary, 'other'), path.join(root, 'target'), {\n        projectRoot: project,\n      }),\n    ).rejects.toThrow('迁移源必须');\n    await expect(\n      migrateWorkspaceRuntimePath(path.join(project, 'old'), path.join(temporary, 'other'), {\n        projectRoot: project,\n      }),\n    ).rejects.toThrow('迁移源必须');\n  })",
+      "sha256": "6bf5d91cc0a28a68cc6416c8d5cbc2c6e2e4fc701314617420fa8fc6f4caff35"
+    },
+    {
+      "id": "workspace-runtime.test.ts:24",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 431,
+      "title": "accepts a same-workspace fence after moving a change into archive",
+      "fullName": "workspace runtime resolution and migration accepts a same-workspace fence after moving a change into archive",
+      "expression": "it",
+      "declaration": "it('accepts a same-workspace fence after moving a change into archive', async () => {\n    const root = await resolveWorkspaceRuntimeRoot(project);\n    const source = path.join(project, 'changes', 'one', 'runtime');\n    const target = path.join(root, 'classic-changes', 'one');\n    await write(path.join(source, 'evidence.log'), 'one');\n    await migrateWorkspaceRuntimeDirectory(source, target, { projectRoot: project });\n    const archived = path.join(project, 'changes', 'archived-one');\n    await fs.rename(path.dirname(source), archived);\n    const moved = path.join(archived, 'runtime');\n    expect(await isWorkspaceRuntimeMigrationFence(moved, target)).toBe(true);\n    await migrateWorkspaceRuntimeDirectory(moved, target, { projectRoot: project });\n  })",
+      "sha256": "560e8cd2f84b037e2d1da2ffe640912da2a72dabddc4d2e59ac92e1b046a7ad6"
+    },
+    {
+      "id": "workspace-runtime.test.ts:25",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 444,
+      "title": "refuses changing the home root for a fence belonging to this workspace",
+      "fullName": "workspace runtime resolution and migration refuses changing the home root for a fence belonging to this workspace",
+      "expression": "it",
+      "declaration": "it('refuses changing the home root for a fence belonging to this workspace', async () => {\n    await write(path.join(legacy, 'one.log'), 'one');\n    await resolveWorkspaceRuntimeRoot(project);\n    vi.stubEnv('COMET_DATA_DIR', path.join(temporary, 'new-home'));\n    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('工作区或目标无效');\n  })",
+      "sha256": "3eaa57cd66182efb7fc090d180c85804fdaf36150ed2c7af34a8d7e3e189d024"
+    },
+    {
+      "id": "workspace-runtime.test.ts:26",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 451,
+      "title": "does not treat an old SDK revision as the current active execution",
+      "fullName": "workspace runtime resolution and migration does not treat an old SDK revision as the current active execution",
+      "expression": "it",
+      "declaration": "it('does not treat an old SDK revision as the current active execution', async () => {\n    const revisions = path.join(legacy, 'sdk-runs', 'native', 'one');\n    await write(\n      path.join(revisions, '0000000000000001.json'),\n      JSON.stringify({\n        runId: 'one',\n        revision: 1,\n        action: { status: 'running', claim: { pid: 42 } },\n      }),\n    );\n    await write(\n      path.join(revisions, '0000000000000002.json'),\n      JSON.stringify({ runId: 'one', revision: 2, action: { status: 'completed' } }),\n    );\n    const root = await resolveWorkspaceRuntimeRoot(project);\n    expect(await fs.readdir(path.join(root, 'sdk-runs', 'native', 'one'))).toHaveLength(2);\n  })",
+      "sha256": "8253eef23a41c68a7adf432159cbcc6f12fa15ff69fc13141cfc8509f87c1267"
+    },
+    {
+      "id": "workspace-runtime.test.ts:27",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 469,
+      "title": "refuses an invalid latest revision and an incomplete history",
+      "fullName": "workspace runtime resolution and migration refuses an invalid latest revision and an incomplete history",
+      "expression": "it",
+      "declaration": "it('refuses an invalid latest revision and an incomplete history', async () => {\n    const revisions = path.join(legacy, 'sdk-runs', 'native', 'one');\n    await write(\n      path.join(revisions, '0000000000000002.json'),\n      JSON.stringify({ runId: 'one', revision: 2, action: { status: 'completed' } }),\n    );\n    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('版本记录无效或不连续');\n  })",
+      "sha256": "bf9eb6d7db41b2b64e35ef7f4c81592b7c004b0da73ab2f691426d1edd5867d2"
+    },
+    {
+      "id": "workspace-runtime.test.ts:28",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 478,
+      "title": "preserves completed transaction backups without interpreting them as journals",
+      "fullName": "workspace runtime resolution and migration preserves completed transaction backups without interpreting them as journals",
+      "expression": "it",
+      "declaration": "it('preserves completed transaction backups without interpreting them as journals', async () => {\n    await write(\n      path.join(legacy, 'native', 'transactions', 'one', 'transaction.json'),\n      '{\"status\":\"committed\"}',\n    );\n    await write(\n      path.join(legacy, 'native', 'transactions', 'one', 'backups', 'state.json'),\n      '{\"action\":{\"status\":\"running\"}}',\n    );\n    const root = await resolveWorkspaceRuntimeRoot(project);\n    expect(\n      await fs.readFile(\n        path.join(root, 'native', 'transactions', 'one', 'backups', 'state.json'),\n        'utf8',\n      ),\n    ).toContain('running');\n  })",
+      "sha256": "8992baac6ba7c72ed18eedf36f8760ef7d0932b85246a77a6376212e447762de"
+    },
+    {
+      "id": "workspace-runtime.test.ts:29",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 496,
+      "title": "migrates large ordinary files without attempting to parse them as fences",
+      "fullName": "workspace runtime resolution and migration migrates large ordinary files without attempting to parse them as fences",
+      "expression": "it",
+      "declaration": "it('migrates large ordinary files without attempting to parse them as fences', async () => {\n    const root = await resolveWorkspaceRuntimeRoot(project);\n    const source = path.join(project, 'change', '.comet', 'large-evidence.log');\n    const target = path.join(root, 'classic-changes', 'one', 'large-evidence.log');\n    const large = 'x'.repeat(2 * 1024 * 1024);\n    await write(source, large);\n    await migrateWorkspaceRuntimePath(source, target, { projectRoot: project });\n    expect(await fs.readFile(target, 'utf8')).toBe(large);\n  })",
+      "sha256": "a38b000e50dd5a8cbfa61835e1fcc2c1d7839e4784ffc267931e69d0a2bb6f70"
+    },
+    {
+      "id": "workspace-runtime.test.ts:30",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 505,
+      "title": "migrates through a workspace alias and coalesces alias and physical callers",
+      "fullName": "workspace runtime resolution and migration migrates through a workspace alias and coalesces alias and physical callers",
+      "expression": "it",
+      "declaration": "it('migrates through a workspace alias and coalesces alias and physical callers', async () => {\n    const alias = path.join(temporary, 'alias');\n    await fs.symlink(project, alias, 'junction');\n    const source = path.join(project, 'change', 'runtime');\n    const target = path.join(await resolveWorkspaceRuntimeRoot(project), 'native', 'one');\n    await write(path.join(source, 'one.log'), 'one');\n    await Promise.all([\n      migrateWorkspaceRuntimeDirectory(path.join(alias, 'change', 'runtime'), target, {\n        projectRoot: alias,\n      }),\n      migrateWorkspaceRuntimeDirectory(source, target, { projectRoot: project }),\n    ]);\n    expect(await fs.readFile(path.join(target, 'one.log'), 'utf8')).toBe('one');\n  })",
+      "sha256": "1847762c073c2f969376c1bf681a2f877b7ea7a7f65e0bb44ceec6cc450a345b"
+    },
+    {
+      "id": "workspace-runtime.test.ts:31",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 520,
+      "title": "accepts an explicitly contained Git metadata source and rejects its siblings",
+      "fullName": "workspace runtime resolution and migration accepts an explicitly contained Git metadata source and rejects its siblings",
+      "expression": "it",
+      "declaration": "it('accepts an explicitly contained Git metadata source and rejects its siblings', async () => {\n    const sourceRoot = path.join(temporary, 'git-common');\n    const source = path.join(sourceRoot, 'comet', 'receipt.json');\n    const target = path.join(\n      await resolveWorkspaceRuntimeRoot(project),\n      'classic-deliveries',\n      'receipt.json',\n    );\n    await write(source, '{\"result\":\"complete\"}');\n    await migrateWorkspaceRuntimePath(source, target, { projectRoot: project, sourceRoot });\n    expect(await fs.readFile(target, 'utf8')).toBe('{\"result\":\"complete\"}');\n    await expect(\n      migrateWorkspaceRuntimePath(path.join(temporary, 'outside'), target, {\n        projectRoot: project,\n        sourceRoot,\n      }),\n    ).rejects.toThrow('迁移源必须');\n  })",
+      "sha256": "d51fe99aa844c7d106dd753864b5338e7f1a179b857a1ee0cc4144cd02c25ca2"
+    },
+    {
+      "id": "workspace-runtime.test.ts:32",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 539,
+      "title": "pairs Classic command execution events before migrating any sibling artifact",
+      "fullName": "workspace runtime resolution and migration pairs Classic command execution events before migrating any sibling artifact",
+      "expression": "it",
+      "declaration": "it('pairs Classic command execution events before migrating any sibling artifact', async () => {\n    const source = path.join(project, 'change', '.comet', 'context.md');\n    const trajectory = path.join(path.dirname(source), 'trajectory.jsonl');\n    const target = path.join(\n      await resolveWorkspaceRuntimeRoot(project),\n      'classic-changes',\n      'one',\n      'context.md',\n    );\n    const action = { id: 'check-1', inputHash: 'hash', attempt: 1, status: 'running' };\n    const started = {\n      runId: 'one',\n      type: 'command_check_started',\n      data: { scope: 'verify', action },\n    };\n    const finished = {\n      ...started,\n      type: 'command_check_executed',\n      data: { ...started.data, action: { ...action, status: 'succeeded' } },\n    };\n    await write(source, 'context');\n    await write(trajectory, JSON.stringify(started) + '\\n');\n    await expect(\n      migrateWorkspaceRuntimePath(source, target, { projectRoot: project }),\n    ).rejects.toThrow('尚未记录执行结束');\n    const wrong = {\n      ...finished,\n      data: { ...finished.data, action: { ...finished.data.action, attempt: 2 } },\n    };\n    await fs.appendFile(trajectory, JSON.stringify(wrong) + '\\n');\n    await expect(\n      migrateWorkspaceRuntimePath(source, target, { projectRoot: project }),\n    ).rejects.toThrow('尚未记录执行结束');\n    await fs.appendFile(trajectory, JSON.stringify(finished) + '\\n');\n    await migrateWorkspaceRuntimePath(source, target, { projectRoot: project });\n    expect(await fs.readFile(target, 'utf8')).toBe('context');\n  })",
+      "sha256": "167046d2a3bdcf9bfb5963c97e2e48a9e1295a3bee49ad4a1c0b52ad9e116b30"
+    },
+    {
+      "id": "workspace-runtime.test.ts:33",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 577,
+      "title": "preserves a pending handoff and an unknown action without migration",
+      "fullName": "workspace runtime resolution and migration preserves a pending handoff and an unknown action without migration",
+      "expression": "it",
+      "declaration": "it('preserves a pending handoff and an unknown action without migration', async () => {\n    await write(path.join(legacy, 'native', 'pending-action.json'), '{\"type\":\"handoff\"}');\n    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('pending action');\n    await fs.rm(path.join(legacy, 'native', 'pending-action.json'));\n    await write(path.join(legacy, 'sdk-runs', 'run.json'), '{\"action\":{\"status\":\"unknown\"}}');\n    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('活跃执行');\n  })",
+      "sha256": "61d1282fafbb1161879fc819b8601fa57663e5a7e5c065cfff645af90bc78bbd"
+    },
+    {
+      "id": "workspace-runtime.test.ts:34",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 585,
+      "title": "migrates a valid legacy restored checkpoint at physical slot %s",
+      "fullName": "workspace runtime resolution and migration migrates a valid legacy restored checkpoint at physical slot %s",
+      "expression": "it.each([1, 2])",
+      "declaration": "it.each([1, 2])(\n    'migrates a valid legacy restored checkpoint at physical slot %s',\n    async (slot) => {\n      const canonical = (value: unknown): string =>\n        JSON.stringify(value, (_key, item) =>\n          item && typeof item === 'object' && !Array.isArray(item)\n            ? Object.fromEntries(\n                Object.entries(item).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),\n              )\n            : item,\n        );\n      const checkpoint = {\n        runId: 'one',\n        revision: 10,\n        run: { revision: 10 },\n        action: { status: 'running' },\n      };\n      const wrapped = {\n        schema: 'comet.runtime-store-checkpoint.v1',\n        record: checkpoint,\n        hash: createHash('sha256').update(canonical(checkpoint)).digest('hex'),\n      };\n      const revisions = path.join(legacy, 'sdk-runs', 'native', 'one');\n      if (slot === 2)\n        await write(\n          path.join(revisions, '0000000000000001.json'),\n          JSON.stringify({ ...checkpoint, revision: 1, run: { revision: 1 } }),\n        );\n      await write(\n        path.join(revisions, `${String(slot).padStart(16, '0')}.json`),\n        JSON.stringify(wrapped),\n      );\n      await write(\n        path.join(revisions, '0000000000000011.json'),\n        JSON.stringify({\n          ...checkpoint,\n          revision: 11,\n          run: { revision: 11 },\n          action: { status: 'completed' },\n        }),\n      );\n      const root = await resolveWorkspaceRuntimeRoot(project);\n      expect(\n        await fs.readFile(\n          path.join(root, 'sdk-runs', 'native', 'one', '0000000000000011.json'),\n          'utf8',\n        ),\n      ).toContain('completed');\n    },\n  )",
+      "sha256": "1a77c78b71eb147bed891f60bfe977bcc42731ca5592c35dac92800daee38124"
+    },
+    {
+      "id": "workspace-runtime.test.ts:35",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 636,
+      "title": "resumes a migration whose recorded local process has exited",
+      "fullName": "workspace runtime resolution and migration resumes a migration whose recorded local process has exited",
+      "expression": "it",
+      "declaration": "it('resumes a migration whose recorded local process has exited', async () => {\n    await write(path.join(legacy, 'one.log'), 'one');\n    const target = resolveWorkspaceRuntimeRootSync(project);\n    await expect(\n      migrateWorkspaceRuntimeDirectory(legacy, target, {\n        projectRoot: project,\n        testHooks: {\n          afterCopy: () => {\n            throw new Error('crash');\n          },\n        },\n      }),\n    ).rejects.toThrow();\n    const journalFile = path.join(path.dirname(legacy), '.runtime.comet-runtime-migration.json');\n    const journal = JSON.parse(await fs.readFile(journalFile, 'utf8'));\n    journal.pid = 2147483647;\n    await fs.writeFile(journalFile, JSON.stringify(journal));\n    expect(await resolveWorkspaceRuntimeRoot(project)).toBe(target);\n    expect(await fs.readFile(path.join(target, 'one.log'), 'utf8')).toBe('one');\n  })",
+      "sha256": "4cae597ad30662933447b24780b964a802f7fbadb6f5cd86edd01cb2bbf9440e"
+    },
+    {
+      "id": "workspace-runtime.test.ts:36",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 657,
+      "title": "recovers a stopped migration without host or PID binding",
+      "fullName": "workspace runtime resolution and migration recovers a stopped migration without host or PID binding",
+      "expression": "it",
+      "declaration": "it('recovers a stopped migration without host or PID binding', async () => {\n    await write(path.join(legacy, 'one.log'), 'one');\n    const target = resolveWorkspaceRuntimeRootSync(project);\n    await expect(\n      migrateWorkspaceRuntimeDirectory(legacy, target, {\n        projectRoot: project,\n        testHooks: {\n          afterFence: () => {\n            throw new Error('crash');\n          },\n        },\n      }),\n    ).rejects.toThrow();\n    const journalFile = path.join(path.dirname(legacy), '.runtime.comet-runtime-migration.json');\n    const journal = JSON.parse(await fs.readFile(journalFile, 'utf8'));\n    journal.hostname = 'another-machine';\n    await fs.writeFile(journalFile, JSON.stringify(journal));\n    expect(await resolveWorkspaceRuntimeRoot(project)).toBe(target);\n    expect(await fs.readFile(path.join(target, 'one.log'), 'utf8')).toBe('one');\n  })",
+      "sha256": "811c643f3b3a524b4fda9a40cf46db9929f90a1407d26c9109ec7026d2de208b"
+    },
+    {
+      "id": "workspace-runtime.test.ts:37",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 678,
+      "title": "refuses recovery after copied evidence is changed or a conflicting target appears",
+      "fullName": "workspace runtime resolution and migration refuses recovery after copied evidence is changed or a conflicting target appears",
+      "expression": "it",
+      "declaration": "it('refuses recovery after copied evidence is changed or a conflicting target appears', async () => {\n    await write(path.join(legacy, 'one.log'), 'one');\n    const target = resolveWorkspaceRuntimeRootSync(project);\n    await expect(\n      migrateWorkspaceRuntimeDirectory(legacy, target, {\n        projectRoot: project,\n        testHooks: {\n          afterCopy: () => {\n            throw new Error('crash');\n          },\n        },\n      }),\n    ).rejects.toThrow();\n    const journalFile = path.join(path.dirname(legacy), '.runtime.comet-runtime-migration.json');\n    const journal = JSON.parse(await fs.readFile(journalFile, 'utf8'));\n    await fs.writeFile(path.join(journal.stage, 'one.log'), 'changed');\n    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('摘要不一致');\n    await write(path.join(target, 'external.log'), 'external');\n    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('同时存在');\n    expect(await fs.readFile(path.join(journal.backup, 'one.log'), 'utf8')).toBe('one');\n    expect(await fs.readFile(path.join(target, 'external.log'), 'utf8')).toBe('external');\n  })",
+      "sha256": "b36e7a8142ab21a8c5863edce561e751aaabbea21075902d5644f4777eea7a3b"
+    },
+    {
+      "id": "workspace-runtime.test.ts:38",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 700,
+      "title": "rebuilds a proven partial copy from its unchanged backup",
+      "fullName": "workspace runtime resolution and migration rebuilds a proven partial copy from its unchanged backup",
+      "expression": "it",
+      "declaration": "it('rebuilds a proven partial copy from its unchanged backup', async () => {\n    await write(path.join(legacy, 'one.log'), 'prefix-complete');\n    const target = resolveWorkspaceRuntimeRootSync(project);\n    await expect(\n      migrateWorkspaceRuntimeDirectory(legacy, target, {\n        projectRoot: project,\n        testHooks: {\n          afterFence: () => {\n            throw new Error('crash');\n          },\n        },\n      }),\n    ).rejects.toThrow();\n    const journal = JSON.parse(\n      await fs.readFile(\n        path.join(path.dirname(legacy), '.runtime.comet-runtime-migration.json'),\n        'utf8',\n      ),\n    );\n    await write(path.join(journal.stage, 'one.log'), 'prefix');\n    expect(await resolveWorkspaceRuntimeRoot(project)).toBe(target);\n    expect(await fs.readFile(path.join(target, 'one.log'), 'utf8')).toBe('prefix-complete');\n  })",
+      "sha256": "bda1d70c769114a4ab3bb840819530fb6e1a82273a9f9895a758d2b7710e775f"
+    },
+    {
+      "id": "workspace-runtime.test.ts:39",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 724,
+      "title": "keeps unknown files in a partial stage and fails closed",
+      "fullName": "workspace runtime resolution and migration keeps unknown files in a partial stage and fails closed",
+      "expression": "it",
+      "declaration": "it('keeps unknown files in a partial stage and fails closed', async () => {\n    await write(path.join(legacy, 'one.log'), 'one');\n    const target = resolveWorkspaceRuntimeRootSync(project);\n    await expect(\n      migrateWorkspaceRuntimeDirectory(legacy, target, {\n        projectRoot: project,\n        testHooks: {\n          afterFence: () => {\n            throw new Error('crash');\n          },\n        },\n      }),\n    ).rejects.toThrow();\n    const journal = JSON.parse(\n      await fs.readFile(\n        path.join(path.dirname(legacy), '.runtime.comet-runtime-migration.json'),\n        'utf8',\n      ),\n    );\n    await write(path.join(journal.stage, 'new.log'), 'unique');\n    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('拒绝删除');\n    expect(await fs.readFile(path.join(journal.stage, 'new.log'), 'utf8')).toBe('unique');\n    expect(await fs.readFile(path.join(journal.backup, 'one.log'), 'utf8')).toBe('one');\n  })",
+      "sha256": "dc081403e1582d0893f491932478e8c281cf6cb4b1334bc203662763b66c23f0"
+    },
+    {
+      "id": "workspace-runtime.test.ts:40",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 748,
+      "title": "checks old locks and migration journals without creating directories",
+      "fullName": "workspace runtime resolution and migration checks old locks and migration journals without creating directories",
+      "expression": "it",
+      "declaration": "it('checks old locks and migration journals without creating directories', async () => {\n    const change = path.join(project, 'change');\n    const source = path.join(change, '.comet');\n    await write(path.join(change, '.comet-state.lock'), '{}');\n    await expect(\n      assertWorkspaceRuntimeMigrationQuiescent(source, { projectRoot: project }),\n    ).rejects.toThrow('锁');\n    await expect(fs.stat(data)).rejects.toMatchObject({ code: 'ENOENT' });\n    await fs.rm(path.join(change, '.comet-state.lock'));\n    await write(path.join(source, '.runtime.comet-runtime-migration.json'), '{}');\n    await expect(\n      assertWorkspaceRuntimeMigrationQuiescent(source, { projectRoot: project }),\n    ).rejects.toThrow('未完成');\n    expect(await fs.readdir(path.join(project))).toEqual(['change']);\n  })",
+      "sha256": "73d053e528906a0a43246110bbdb893daa2c37b6a17ecb07d922d1c540757a68"
+    },
+    {
+      "id": "workspace-runtime.test.ts:41",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 763,
+      "title": "recreates a lost current-workspace runtime for portable checkpoint recovery",
+      "fullName": "workspace runtime resolution and migration recreates a lost current-workspace runtime for portable checkpoint recovery",
+      "expression": "it",
+      "declaration": "it('recreates a lost current-workspace runtime for portable checkpoint recovery', async () => {\n    const root = await resolveWorkspaceRuntimeRoot(project);\n    await write(path.join(root, 'native', 'local.json'), '{\"status\":\"waiting\"}');\n    const fence = await fs.readFile(legacy, 'utf8');\n    await fs.rm(root, { recursive: true });\n    expect(await resolveWorkspaceRuntimeRoot(project)).toBe(root);\n    expect(await fs.readdir(root)).toEqual([]);\n    expect(await fs.readFile(legacy, 'utf8')).toBe(fence);\n  })",
+      "sha256": "b2b66e1b3504f77f299fd8ead129b1688f144ef4823d37010286e3005f077f15"
+    },
+    {
+      "id": "workspace-runtime.test.ts:42",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 773,
+      "title": "does not recreate a lost runtime when its fence points to a different target",
+      "fullName": "workspace runtime resolution and migration does not recreate a lost runtime when its fence points to a different target",
+      "expression": "it",
+      "declaration": "it('does not recreate a lost runtime when its fence points to a different target', async () => {\n    const root = await resolveWorkspaceRuntimeRoot(project);\n    await fs.rm(root, { recursive: true });\n    const fence = JSON.parse(await fs.readFile(legacy, 'utf8'));\n    fence.target = path.join(temporary, 'unexpected-target');\n    await fs.writeFile(legacy, JSON.stringify(fence));\n    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('工作区或目标无效');\n    await expect(fs.stat(root)).rejects.toMatchObject({ code: 'ENOENT' });\n  })",
+      "sha256": "fb42b0605fb46e8c1945fa8d36e36bf6027c466e3aedec64c33357d8b0ca9ef4"
+    },
+    {
+      "id": "workspace-runtime.test.ts:43",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 782,
+      "title": "allows portable recovery after a migrated Native change runtime is lost",
+      "fullName": "workspace runtime resolution and migration allows portable recovery after a migrated Native change runtime is lost",
+      "expression": "it",
+      "declaration": "it('allows portable recovery after a migrated Native change runtime is lost', async () => {\n    const root = await resolveWorkspaceRuntimeRoot(project);\n    const source = path.join(project, 'changes', 'one', 'runtime');\n    const target = path.join(root, 'native', 'changes', 'one');\n    await write(path.join(source, 'run-state.json'), '{\"status\":\"waiting\"}');\n    await migrateWorkspaceRuntimeDirectory(source, target, { projectRoot: project });\n    const fence = await fs.readFile(source, 'utf8');\n    await fs.rm(root, { recursive: true });\n    await resolveWorkspaceRuntimeRoot(project);\n    await migrateWorkspaceRuntimeDirectory(source, target, { projectRoot: project });\n    await expect(fs.stat(target)).rejects.toMatchObject({ code: 'ENOENT' });\n    expect(await fs.readFile(source, 'utf8')).toBe(fence);\n  })",
+      "sha256": "04cba2851b02971163be5938a80c1b87f0997628c20d09ff2e2cefad7b941698"
+    },
+    {
+      "id": "workspace-runtime.test.ts:44",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 796,
+      "title": "leaves lost Classic run-state and checkpoint files absent for portable recovery",
+      "fullName": "workspace runtime resolution and migration leaves lost Classic run-state and checkpoint files absent for portable recovery",
+      "expression": "it",
+      "declaration": "it('leaves lost Classic run-state and checkpoint files absent for portable recovery', async () => {\n    const root = await resolveWorkspaceRuntimeRoot(project);\n    const entries = ['run-state.json', 'checkpoint.json'].map((name) => ({\n      source: path.join(project, 'changes', 'one', '.comet', name),\n      target: path.join(root, 'classic-changes', 'one', '.comet', name),\n    }));\n    for (const { source, target } of entries) {\n      await write(source, '{\"status\":\"waiting\"}');\n      await migrateWorkspaceRuntimePath(source, target, { projectRoot: project });\n    }\n    await fs.rm(root, { recursive: true });\n    await resolveWorkspaceRuntimeRoot(project);\n    for (const { source, target } of entries) {\n      await migrateWorkspaceRuntimePath(source, target, { projectRoot: project });\n      expect(await isWorkspaceRuntimeMigrationFence(source, target)).toBe(true);\n      await expect(fs.stat(target)).rejects.toMatchObject({ code: 'ENOENT' });\n    }\n  })",
+      "sha256": "1275ba9f45f8305a20b0c5164e4006c2bc892cabe17f37d0478577d0a601a1f8"
+    },
+    {
+      "id": "workspace-runtime.test.ts:45",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 815,
+      "title": "still rejects a changed per-record fence target after local data loss",
+      "fullName": "workspace runtime resolution and migration still rejects a changed per-record fence target after local data loss",
+      "expression": "it",
+      "declaration": "it('still rejects a changed per-record fence target after local data loss', async () => {\n    const root = await resolveWorkspaceRuntimeRoot(project);\n    const source = path.join(project, 'changes', 'one', 'runtime');\n    const target = path.join(root, 'native', 'one');\n    await write(path.join(source, 'state.json'), '{\"status\":\"waiting\"}');\n    await migrateWorkspaceRuntimeDirectory(source, target, { projectRoot: project });\n    await fs.rm(root, { recursive: true });\n    await resolveWorkspaceRuntimeRoot(project);\n    const fence = JSON.parse(await fs.readFile(source, 'utf8'));\n    fence.target = path.join(root, 'native', 'other');\n    await fs.writeFile(source, JSON.stringify(fence));\n    await expect(\n      migrateWorkspaceRuntimeDirectory(source, target, { projectRoot: project }),\n    ).rejects.toThrow('工作区或目标无效');\n    await expect(fs.stat(target)).rejects.toMatchObject({ code: 'ENOENT' });\n  })",
+      "sha256": "379b646e34b80d739b022c25cf5e39a4063aadf4271536028fe52a4a8e29d512"
+    },
+    {
+      "id": "workspace-runtime.test.ts:46",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 831,
+      "title": "seals a missing legacy file lock without creating a home lock",
+      "fullName": "workspace runtime resolution and migration seals a missing legacy file lock without creating a home lock",
+      "expression": "it",
+      "declaration": "it('seals a missing legacy file lock without creating a home lock', async () => {\n    const source = path.join(project, 'change', '.comet-state.lock');\n    await fs.mkdir(path.dirname(source));\n    const target = path.join(resolveWorkspaceRuntimeRootSync(project), 'classic-legacy-state.lock');\n    await Promise.all(\n      Array.from({ length: 8 }, () =>\n        ensureWorkspaceRuntimeMigrationFence(source, target, { projectRoot: project }),\n      ),\n    );\n    expect(await isWorkspaceRuntimeMigrationFence(source, target)).toBe(true);\n    expect(await fs.readdir(source)).toEqual(['.comet-runtime-migration.json']);\n    await expect(fs.stat(target)).rejects.toMatchObject({ code: 'ENOENT' });\n    await expect(fs.open(source, 'wx')).rejects.toThrow();\n    await assertWorkspaceRuntimeMigrationQuiescent(path.join(project, 'change', '.comet'), {\n      projectRoot: project,\n    });\n  })",
+      "sha256": "b7255d839fb7e90f4028ab2119bcf5c1b668c3eb32b57773db8e5242b22e3395"
+    },
+    {
+      "id": "workspace-runtime.test.ts:47",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 849,
+      "title": "never replaces an existing legacy lock or an unknown directory while sealing",
+      "fullName": "workspace runtime resolution and migration never replaces an existing legacy lock or an unknown directory while sealing",
+      "expression": "it",
+      "declaration": "it('never replaces an existing legacy lock or an unknown directory while sealing', async () => {\n    const source = path.join(project, 'change', '.comet-state.lock');\n    const target = path.join(resolveWorkspaceRuntimeRootSync(project), 'classic-legacy-state.lock');\n    await write(source, JSON.stringify({ pid: process.pid }));\n    await expect(\n      ensureWorkspaceRuntimeMigrationFence(source, target, { projectRoot: project }),\n    ).rejects.toThrow('拒绝覆盖');\n    expect(await fs.readFile(source, 'utf8')).toContain(String(process.pid));\n    await fs.rm(source);\n    await write(path.join(source, 'unknown.json'), 'keep');\n    await expect(\n      ensureWorkspaceRuntimeMigrationFence(source, target, { projectRoot: project }),\n    ).rejects.toThrow('拒绝覆盖');\n    expect(await fs.readFile(path.join(source, 'unknown.json'), 'utf8')).toBe('keep');\n    await expect(fs.stat(target)).rejects.toMatchObject({ code: 'ENOENT' });\n  })",
+      "sha256": "567fc86c41e407190ce4746a954f4a33aeb1ee20ea0efd60ecb18656d56e230f"
+    },
+    {
+      "id": "workspace-runtime.test.ts:48",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 866,
+      "title": "keeps a sealed legacy lock valid across archive moves while rejecting target drift",
+      "fullName": "workspace runtime resolution and migration keeps a sealed legacy lock valid across archive moves while rejecting target drift",
+      "expression": "it",
+      "declaration": "it('keeps a sealed legacy lock valid across archive moves while rejecting target drift', async () => {\n    const source = path.join(project, 'change', '.comet-state.lock');\n    const target = path.join(resolveWorkspaceRuntimeRootSync(project), 'classic-legacy-state.lock');\n    await fs.mkdir(path.dirname(source));\n    await ensureWorkspaceRuntimeMigrationFence(source, target, { projectRoot: project });\n    const archived = path.join(project, 'archived-change');\n    await fs.rename(path.dirname(source), archived);\n    const moved = path.join(archived, '.comet-state.lock');\n    await ensureWorkspaceRuntimeMigrationFence(moved, target, { projectRoot: project });\n    await expect(\n      ensureWorkspaceRuntimeMigrationFence(moved, `${target}.different`, { projectRoot: project }),\n    ).rejects.toThrow('其他工作区或目标');\n    await assertWorkspaceRuntimeMigrationQuiescent(moved, { projectRoot: project });\n  })",
+      "sha256": "0b17045704ff5eccd72e4b1c1bec40a01b0bf4e4d3b9f4eab4fa75f62c6c766b"
+    },
+    {
+      "id": "workspace-runtime.test.ts:49",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 881,
+      "title": "only accepts a copied legacy lock fence with explicit foreign-workspace permission",
+      "fullName": "workspace runtime resolution and migration only accepts a copied legacy lock fence with explicit foreign-workspace permission",
+      "expression": "it",
+      "declaration": "it('only accepts a copied legacy lock fence with explicit foreign-workspace permission', async () => {\n    const source = path.join(project, 'change', '.comet-state.lock');\n    const target = path.join(resolveWorkspaceRuntimeRootSync(project), 'classic-legacy-state.lock');\n    await fs.mkdir(path.dirname(source));\n    await ensureWorkspaceRuntimeMigrationFence(source, target, { projectRoot: project });\n    const clone = path.join(temporary, 'clone');\n    const copied = path.join(clone, 'change', '.comet-state.lock');\n    await fs.mkdir(path.dirname(copied), { recursive: true });\n    await fs.cp(source, copied, { recursive: true });\n    const isolated = path.join(resolveWorkspaceRuntimeRootSync(clone), 'classic-legacy-state.lock');\n    await expect(\n      ensureWorkspaceRuntimeMigrationFence(copied, isolated, { projectRoot: clone }),\n    ).rejects.toThrow('其他工作区或目标');\n    await ensureWorkspaceRuntimeMigrationFence(copied, isolated, {\n      projectRoot: clone,\n      ignoreForeignWorkspaceFence: true,\n    });\n    await expect(fs.stat(isolated)).rejects.toMatchObject({ code: 'ENOENT' });\n    await expect(fs.stat(target)).rejects.toMatchObject({ code: 'ENOENT' });\n  })",
+      "sha256": "5e58f9e66cef79dc76bfb08ff71badcf1f07eb988c00e595290b5e1032fdb5c3"
+    },
+    {
+      "id": "workspace-runtime.test.ts:50",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 901,
+      "title": "does not leave a half fence when interrupted after staging mkdir",
+      "fullName": "workspace runtime resolution and migration does not leave a half fence when interrupted after staging mkdir",
+      "expression": "it",
+      "declaration": "it('does not leave a half fence when interrupted after staging mkdir', async () => {\n    const source = path.join(project, 'change', '.comet-state.lock');\n    const target = path.join(resolveWorkspaceRuntimeRootSync(project), 'classic-legacy-state.lock');\n    await fs.mkdir(path.dirname(source));\n    let staging: string | undefined;\n    await expect(\n      ensureWorkspaceRuntimeMigrationFence(source, target, {\n        projectRoot: project,\n        testHooks: {\n          afterStagingDirectory: (directory) => {\n            staging = directory;\n            throw new Error('interrupted after mkdir');\n          },\n        },\n      }),\n    ).rejects.toThrow('interrupted after mkdir');\n    await expect(fs.stat(source)).rejects.toMatchObject({ code: 'ENOENT' });\n    // 模拟进程直接退出时未执行 finally 遗留的空 staging，重试也不能被阻断。\n    await fs.mkdir(staging!);\n    await ensureWorkspaceRuntimeMigrationFence(source, target, { projectRoot: project });\n    expect(await isWorkspaceRuntimeMigrationFence(source, target)).toBe(true);\n    await expect(fs.stat(target)).rejects.toMatchObject({ code: 'ENOENT' });\n  })",
+      "sha256": "46fcbba7e4593cc2cef3c5d4e43c8c22fe95acbeaf1acbcb3321c1110291bb20"
+    },
+    {
+      "id": "workspace-runtime.test.ts:51",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 925,
+      "title": "does not replace a legacy %s appearing before fence publication",
+      "fullName": "workspace runtime resolution and migration does not replace a legacy %s appearing before fence publication",
+      "expression": "it.each(['file', 'directory'] as const)",
+      "declaration": "it.each(['file', 'directory'] as const)(\n    'does not replace a legacy %s appearing before fence publication',\n    async (kind) => {\n      const source = path.join(project, 'change', '.comet-state.lock');\n      const target = path.join(\n        resolveWorkspaceRuntimeRootSync(project),\n        'classic-legacy-state.lock',\n      );\n      await fs.mkdir(path.dirname(source));\n      await expect(\n        ensureWorkspaceRuntimeMigrationFence(source, target, {\n          projectRoot: project,\n          testHooks: {\n            beforePublish: async () => {\n              if (kind === 'directory') await fs.mkdir(source);\n              else await fs.writeFile(source, 'legacy owner');\n            },\n          },\n        }),\n      ).rejects.toThrow('拒绝覆盖');\n      expect((await fs.stat(source)).isDirectory()).toBe(kind === 'directory');\n      if (kind === 'file') expect(await fs.readFile(source, 'utf8')).toBe('legacy owner');\n      else expect(await fs.readdir(source)).toEqual([]);\n      expect(await fs.readdir(path.dirname(source))).toEqual(['.comet-state.lock']);\n    },\n  )",
+      "sha256": "973dbf97a73c306f349eeec412f456d65aaf2d438ff85ff503893a84d1a83e6b"
+    },
+    {
+      "id": "workspace-runtime.test.ts:52",
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "line": 951,
+      "title": "keeps non-Git runtime evidence isolated after git init without following its old fence",
+      "fullName": "workspace runtime resolution and migration keeps non-Git runtime evidence isolated after git init without following its old fence",
+      "expression": "it",
+      "declaration": "it('keeps non-Git runtime evidence isolated after git init without following its old fence', async () => {\n    const oldRoot = await resolveWorkspaceRuntimeRoot(project);\n    await write(\n      path.join(oldRoot, 'native', 'execution.json'),\n      '{\"status\":\"running\",\"owner\":{\"pid\":123}}',\n    );\n    const previousFence = await fs.readFile(legacy, 'utf8');\n    execFileSync('git', ['-C', project, 'init'], { stdio: 'pipe' });\n    const newRoot = await resolveWorkspaceRuntimeRoot(project);\n    expect(newRoot).not.toBe(oldRoot);\n    expect(await fs.readdir(newRoot)).toEqual([]);\n    expect(await fs.readFile(path.join(oldRoot, 'native', 'execution.json'), 'utf8')).toContain(\n      'running',\n    );\n    expect(await fs.readFile(legacy, 'utf8')).toBe(previousFence);\n  })",
+      "sha256": "0a85f4a9624d128cbc1f7bbf72347d86035a5dcb298aa290d5dd508e5a89862c"
+    },
+    {
+      "id": "workspace-runtime-legacy-lock.test.ts:1",
+      "file": "test/domains/workflow-contract/workspace-runtime-legacy-lock.test.ts",
+      "line": 15,
+      "title": "recovers a legacy migration recovery lock only after the original operation is confirmed stopped",
+      "fullName": "recovers a legacy migration recovery lock only after the original operation is confirmed stopped",
+      "expression": "it",
+      "declaration": "it('recovers a legacy migration recovery lock only after the original operation is confirmed stopped', async () => {\n  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'runtime-legacy-recovery-'));\n  roots.push(root);\n  vi.stubEnv('COMET_DATA_DIR', path.join(root, 'data'));\n  const project = path.join(root, 'project');\n  await fs.mkdir(project);\n  const location = resolveWorkspaceRuntimeLocation(project);\n  await fs.mkdir(location.workspaceRoot, { recursive: true });\n  const file = path.join(location.workspaceRoot, '.runtime-migration-recovery.lock');\n  const source = JSON.stringify({ nonce: 'interrupted-migration', createdAt: Date.now() });\n  await fs.writeFile(file, source);\n  await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow(\n    'Legacy lock requires confirmation',\n  );\n  expect(await fs.readFile(file, 'utf8')).toBe(source);\n  expect(await resolveWorkspaceRuntimeRoot(project, { confirmedOwnerStopped: true })).toBe(\n    location.runtimeRoot,\n  );\n  expect(await fs.readdir(location.runtimeRoot)).toEqual([]);\n})",
+      "sha256": "163e36020d45d664a84d20aea7a532d982fa140fc930c70f18c52120566d4145"
+    },
+    {
+      "id": "workspace-runtime-legacy-lock.test.ts:2",
+      "file": "test/domains/workflow-contract/workspace-runtime-legacy-lock.test.ts",
+      "line": 36,
+      "title": "preserves an active migration recovery transaction even when recovery is confirmed",
+      "fullName": "preserves an active migration recovery transaction even when recovery is confirmed",
+      "expression": "it",
+      "declaration": "it('preserves an active migration recovery transaction even when recovery is confirmed', async () => {\n  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'runtime-active-recovery-'));\n  roots.push(root);\n  vi.stubEnv('COMET_DATA_DIR', path.join(root, 'data'));\n  const project = path.join(root, 'project');\n  await fs.mkdir(project);\n  const location = resolveWorkspaceRuntimeLocation(project);\n  const file = path.join(location.workspaceRoot, '.runtime-migration-recovery.lock');\n  const lock = await acquireRecoverableFileLock(file);\n  const source = await fs.readFile(file, 'utf8');\n  try {\n    await expect(\n      resolveWorkspaceRuntimeRoot(project, { confirmedOwnerStopped: true }),\n    ).rejects.toThrow('Timed out waiting for file lock');\n    expect(await fs.readFile(file, 'utf8')).toBe(source);\n  } finally {\n    await lock.release();\n  }\n  expect(await resolveWorkspaceRuntimeRoot(project)).toBe(location.runtimeRoot);\n})",
+      "sha256": "c34523130e1d2cc188e77cf72eaf6216702b26d795d0b2224fcdf8e59fd0ca9c"
+    },
+    {
+      "id": "workspace-runtime-repair-failure.test.ts:1",
+      "file": "test/domains/workflow-contract/workspace-runtime-repair-failure.test.ts",
+      "line": 35,
+      "title": "recalls the recorded failure only while the source stays unchanged",
+      "fullName": "migration repair failure memoization recalls the recorded failure only while the source stays unchanged",
+      "expression": "it",
+      "declaration": "it('recalls the recorded failure only while the source stays unchanged', async () => {\n    await expect(recallFailedMigrationRepair(source, location)).resolves.toBeNull();\n\n    await recordFailedMigrationRepair(source, location, new Error('boom: hazard found'));\n\n    const recalled = await recallFailedMigrationRepair(source, location);\n    expect(recalled).toBeInstanceOf(Error);\n    expect(recalled!.message).toContain('boom: hazard found');\n    expect(recalled!.message).toContain('源未变化');\n\n    // 源内容变化（新增文件）后指纹失配，恢复完整流程。\n    await fs.writeFile(path.join(source, 'sdk-runs', 'native', 'extra.json'), '{}');\n    await expect(recallFailedMigrationRepair(source, location)).resolves.toBeNull();\n  })",
+      "sha256": "673c5d0d0258ce14e1d0ff08a8e6d6183532e79ad494ba1e80b4d9eb884d1a40"
+    },
+    {
+      "id": "workspace-runtime-repair-failure.test.ts:2",
+      "file": "test/domains/workflow-contract/workspace-runtime-repair-failure.test.ts",
+      "line": 50,
+      "title": "does not recall when the journal itself disappears",
+      "fullName": "migration repair failure memoization does not recall when the journal itself disappears",
+      "expression": "it",
+      "declaration": "it('does not recall when the journal itself disappears', async () => {\n    await recordFailedMigrationRepair(source, location, new Error('boom'));\n    await fs.rm(path.join(path.dirname(source), '.runtime.comet-runtime-migration.json'));\n    await expect(recallFailedMigrationRepair(source, location)).resolves.toBeNull();\n  })",
+      "sha256": "2c9f87e1da13076f22e386a0293e5a266072e9d66db7576a077ed08419942229"
+    },
+    {
+      "id": "workspace-runtime-repair-failure.test.ts:3",
+      "file": "test/domains/workflow-contract/workspace-runtime-repair-failure.test.ts",
+      "line": 56,
+      "title": "memoizes a real failed repair through resolveWorkspaceRuntimeRoot",
+      "fullName": "migration repair failure memoization memoizes a real failed repair through resolveWorkspaceRuntimeRoot",
+      "expression": "it",
+      "declaration": "it('memoizes a real failed repair through resolveWorkspaceRuntimeRoot', async () => {\n    const backup = path.join(\n      path.dirname(source),\n      '.runtime.comet-runtime-source-11111111-1111-4111-8111-111111111111',\n    );\n    const stage = path.join(\n      path.dirname(location.runtimeRoot),\n      '.runtime.comet-runtime-stage-11111111-1111-4111-8111-111111111111',\n    );\n    const journal = {\n      fence: 'directory',\n      journalSchema: 'comet.workspace-runtime-migration-journal.v1',\n      id: '11111111-1111-4111-8111-111111111111',\n      workspaceId: location.workspaceId,\n      source,\n      target: location.runtimeRoot,\n      backup,\n      stage,\n      kind: 'directory',\n      contentHash: '0'.repeat(64),\n      sourceIdentity: 'x'.repeat(64),\n      pid: 1,\n      hostname: os.hostname(),\n    };\n    await fs.writeFile(journalPathOf(source), JSON.stringify(journal));\n\n    await expect(resolveWorkspaceRuntimeRoot(projectRoot)).rejects.toThrow(/迁移/);\n\n    const second = await resolveWorkspaceRuntimeRoot(projectRoot).catch((error: Error) => error);\n    expect(second).toBeInstanceOf(Error);\n    expect(second.message).toContain('源未变化');\n  })",
+      "sha256": "3948fc70db55e96f59882b5ee7074b62c682672819a006866dddcccc519b2e74"
+    }
+  ]
+}

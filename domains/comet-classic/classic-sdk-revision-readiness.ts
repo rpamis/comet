@@ -128,12 +128,7 @@ export async function inspectClassicSdkRevisionReadiness(
         ?.receipt;
     if (expected) {
       try {
-        const current = await classicPlanEvidenceReceipt(
-          projectRoot,
-          state.plan,
-          input.changeDir,
-          {},
-        );
+        const current = await classicPlanEvidenceReceipt(projectRoot, state.plan, input.changeDir);
         if (expected.ref !== current.ref)
           record('plan', 'Classic Build plan or task requirements changed after accepted evidence');
       } catch (error) {

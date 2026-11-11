@@ -5,7 +5,11 @@ import {
   readSdkChangeOwner,
   type SdkChangeOwner,
 } from '../workflow-contract/change-runtime-owner.js';
-import { readWorkflowApplicationStorageDisposition } from '../workflow-application/index.js';
+import { readWorkflowApplicationStorageDisposition } from '../workflow-application/application.js';
+import {
+  isClassicSdkCancellationComplete,
+  isUnresolvedClassicArchiveAction,
+} from './classic-sdk-run-lifecycle.js';
 
 /** 各只读入口共用的诊断；等待用户批准或正常执行不属于状态损坏。 */
 export async function inspectClassicSdkRunDiagnostics(
@@ -27,12 +31,20 @@ export async function inspectClassicSdkRunDiagnostics(
     (action) =>
       action.status === 'unknown' ||
       (action.status === 'running' && (action.rejectedOutcomes?.length ?? 0) > 0) ||
-      (action.status === 'cancelled' &&
-        action.claim &&
-        !action.cancellation &&
-        !action.executionStop),
+      (action.status === 'cancelled' && isUnresolvedClassicArchiveAction(action)),
   );
   const issues = [
+    ...(run.status === 'cancelled' &&
+    !isClassicSdkCancellationComplete(run) &&
+    unresolved.length === 0
+      ? [
+          {
+            code: 'classic-cancellation-business-unresolved',
+            runId: run.runId,
+            message: '原关联子 Run 或业务结果仍待核对；普通平台任务不提交进程停止回执。',
+          },
+        ]
+      : []),
     ...(!storageSettled
       ? [
           {
@@ -46,7 +58,7 @@ export async function inspectClassicSdkRunDiagnostics(
       code: 'classic-execution-unresolved',
       runId: run.runId,
       actionId: action.id,
-      message: '原执行结果或停止事实尚未核对，不能重放执行',
+      message: '原业务结果尚未核对，不能重放执行',
     })),
   ];
   return {

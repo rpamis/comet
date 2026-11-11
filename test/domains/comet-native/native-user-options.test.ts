@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { archiveNativePortableChange } from '../../../domains/comet-native/native-portable-archive.js';
@@ -13,12 +13,15 @@ import { nativeWorkspaceIsClean } from '../../../domains/comet-native/native-wor
 import { ensureCometProjectGitignore } from '../../../domains/workflow-contract/project-gitignore.js';
 
 const roots: string[] = [];
-const git = (root: string, args: string[]) =>
-  execFileSync('git', args, {
+const git = (root: string, args: string[]) => {
+  if (!root || !path.isAbsolute(root))
+    throw new Error('Test Git commands require an explicit absolute fixture directory');
+  return execFileSync('git', args, {
     cwd: root,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   }).trim();
+};
 async function cliEnvelope(root: string, args: string[]) {
   const argv = [...args, '--project-root', root, '--json'];
   const result =
@@ -120,6 +123,17 @@ const checks = (name: string, files: string[]) => [
     repeatable: true,
   },
 ];
+function platformChecks(root: string, plans: unknown[]) {
+  return plans.map((entry) => {
+    const plan = entry as { name: string; executable: string; argv: string[]; cwdRef: string };
+    execFileSync(plan.executable, plan.argv, {
+      cwd: path.resolve(root, plan.cwdRef),
+      windowsHide: true,
+      stdio: 'ignore',
+    });
+    return { name: plan.name, result: 'passed', note: `Actual Node check in ${root}` };
+  });
+}
 async function acceptCandidate(
   root: string,
   name: string,
@@ -127,19 +141,33 @@ async function acceptCandidate(
   plans: unknown[],
   finish?: 'keep' | false,
 ) {
-  const dispatched = await input(root, name, {
+  const built = await input(root, name, {
     kind: 'builder-handoff',
     summary: 'Protocol regression fixture',
     addressed_acceptance_ids: ids,
     acceptance_review: fixtureAcceptanceReview(ids),
-    checks: [],
-    verification_checks: plans,
+    checks: platformChecks(root, plans),
     known_limits: ['Fixture semantic verdict'],
     review: {
       status: 'passed',
       summary: 'Fixture review',
       reviewer_execution_ref: 'fixture-review',
     },
+  });
+  expect(built.state.phase).toBe('verify');
+  // SIMULATED platform acceptance of this independent Verifier task; no model is run.
+  const dispatched = await input(root, name, {
+    kind: 'dispatch-verifier',
+    verifierExecutionRef: 'fixture-verifier-' + name,
+  });
+  expect(dispatched.verifierDispatch).toMatchObject({
+    candidateId: expect.any(String),
+    verifierExecutionRef: expect.any(String),
+  });
+  await input(root, name, {
+    kind: 'verifier-started',
+    candidateId: dispatched.verifierDispatch.candidateId,
+    verifierExecutionRef: dispatched.verifierDispatch.verifierExecutionRef,
   });
   const result = await input(root, name, {
     kind: 'verifier-response',
@@ -276,33 +304,25 @@ describe('Native public user-option paths', () => {
         'single-session',
       ]);
       let state = await follow(root, prepared.continuation.commandAlternatives[0].commandArgs);
-      // Simulate an upgrade from the old target binding, then loss of the
-      // machine overlay. Both recover from the real portable/Git state.
+      // The current worktree and the original child task identities own this Run.
       const supervisorFile = path.join(
         resolveWorkspaceRuntimeRootSync(root),
         'native/changes/parent/supervisor/state.json',
       );
       const legacySupervisor = JSON.parse(await fs.readFile(supervisorFile, 'utf8'));
-      legacySupervisor.integration.targetBranch = 'main';
-      await fs.writeFile(supervisorFile, JSON.stringify(legacySupervisor));
-      expect((await cli(root, ['status', 'parent'])).supervisor.integration.targetBranch).toBe(
-        'comet/parent',
-      );
-      await fs.unlink(supervisorFile);
       expect((await cli(root, ['status', 'parent'])).supervisor.integration.targetBranch).toBe(
         'comet/parent',
       );
       const completed: string[] = [];
       for (const name of ['alpha', 'beta']) {
         expect(state.continuation.commandArgs).not.toBeNull();
-        const recovered = await cliEnvelope(primary, ['status', 'parent']);
+        const recovered = await cliEnvelope(root, ['status', 'parent']);
         expect(recovered.data.workspace.projectRoot).toBe('.');
         expect(recovered.agent.workspace.cwd).toBe(root);
         expect(recovered.agent.continuation.cwd).toBe(root);
-        const dispatched = await follow(
-          recovered.agent.workspace.cwd,
-          recovered.agent.continuation.commandArgs,
-        );
+        const dispatched = state.supervisorTasks?.length
+          ? state
+          : await follow(recovered.agent.workspace.cwd, recovered.agent.continuation.commandArgs);
         expect(dispatched.supervisorTasks).toHaveLength(1);
         let task = dispatched.supervisorTasks[0];
         expect(dispatched.readyChildren).toContain(name);
@@ -334,26 +354,17 @@ describe('Native public user-option paths', () => {
             candidateCommit,
           })
         ).supervisorTask;
-        const checked = await input(root, 'parent', {
-          ...verifier.returnAction.inputOptions.find(
-            (option: { name: string }) => option.name === 'supervisor-checks',
-          ).template,
-          checks: checks(name, [name]),
-          materials: [],
-        });
-        expect(checked.checkExecution.status).toBe('completed');
-        expect(checked.supervisorTask.returnAction.cwd).toBe(root);
-        const resultTemplate = checked.supervisorTask.returnAction.inputOptions.find(
+        const checkReports = platformChecks(verifier.projectRoot, checks(name, [name]));
+        expect(verifier.returnAction.cwd).toBe(root);
+        const resultTemplate = verifier.returnAction.inputOptions.find(
           (option: { name: string }) => option.name === 'supervisor-verifier-result',
         ).template;
-        expect(resultTemplate.evidence.receiptRef).toBe(checked.checkExecution.receiptRef);
         const verified = await input(root, 'parent', {
           ...resultTemplate,
           verdict: 'pass',
           evidence: {
             summary: 'File assertion passed',
-            checks: [],
-            receiptRef: checked.checkExecution.receiptRef,
+            checks: checkReports.map((check) => `${check.name}: ${check.result}; ${check.note}`),
             acceptance: verifier.acceptance.map((item: { id: string }) => ({
               id: item.id,
               result: 'passed',
@@ -366,32 +377,119 @@ describe('Native public user-option paths', () => {
           kind: 'supervisor-integrate',
           child: name,
         });
+        const { integrationCommit: placeholder, ...integrationInput } =
+          verified.continuation.inputOptions[0].template;
+        expect(placeholder).toBe('<actual-integration-commit>');
+        const platformWork = (await input(root, 'parent', integrationInput)).platformWork;
+        const integrationRoot = platformWork.workspace;
+        expect(platformWork.candidateCommit).toBe(candidateCommit);
+        git(integrationRoot, ['merge', '--no-edit', candidateCommit]);
+        const integrationReports = platformChecks(
+          integrationRoot,
+          checks(`integrate-${name}`, completed),
+        );
         state = await input(root, 'parent', {
           ...verified.continuation.inputOptions[0].template,
-          checks: checks(`integrate-${name}`, completed),
+          integrationCommit: git(integrationRoot, ['rev-parse', 'HEAD']),
+          checks: integrationReports.map((check) => ({
+            name: check.name,
+            status: check.result,
+            reason: check.note,
+          })),
         });
       }
+      const integration = (await cli(root, ['status', 'parent'])).supervisor.integration;
+      git(root, ['merge', '--ff-only', integration.branch]);
       await acceptCandidate(root, 'parent', ['A1', 'A2'], checks('parent', completed));
       const preview = await cli(root, ['archive', 'parent', '--dry-run', '--finish', 'keep']);
       expect(preview.ready).toBe(true);
+      let appliedSpecAfterPartialCleanup: string | undefined;
       if (isolation === 'worktree') {
-        await expect(
-          archiveNativePortableChange({
-            paths: await nativeProjectPaths(root, 'docs'),
-            name: 'parent',
-            hooks: {
-              afterSpecApplied: async () => {
-                expect((await fs.stat(legacySupervisor.integration.worktree)).isDirectory()).toBe(
-                  true,
-                );
-                throw new Error('simulated-archive-interruption');
-              },
-            },
-          }),
-        ).rejects.toThrow('simulated-archive-interruption');
+        const paths = await nativeProjectPaths(root, 'docs');
+        const transactionFile = path.join(paths.transactionsDir, 'portable-archive-parent.json');
+        const stateBefore = await fs.readFile(path.join(dir, 'comet-state.yaml'), 'utf8');
+        const supervisorBefore = await fs.readFile(supervisorFile, 'utf8');
+        const rename = fs.rename.bind(fs);
+        let preparedTransaction: Record<string, unknown> | undefined;
+        let interruptedTransaction: Record<string, unknown> | undefined;
+        const interruption = vi.spyOn(fs, 'rename').mockImplementation(async (source, target) => {
+          await rename(source, target);
+          if (String(target) !== transactionFile) return;
+          const transaction = JSON.parse(await fs.readFile(transactionFile, 'utf8'));
+          if (transaction.status === 'prepared') preparedTransaction ??= transaction;
+          if (transaction.status !== 'specs-applied' || interruptedTransaction) return;
+          interruptedTransaction = transaction;
+          expect((await fs.stat(legacySupervisor.integration.worktree)).isDirectory()).toBe(true);
+          throw new Error('simulated-archive-interruption');
+        });
+        try {
+          await expect(archiveNativePortableChange({ paths, name: 'parent' })).rejects.toThrow(
+            'simulated-archive-interruption',
+          );
+        } finally {
+          interruption.mockRestore();
+        }
+        expect(interruptedTransaction).toMatchObject({
+          id: preparedTransaction!.id,
+          archive_ref: preparedTransaction!.archive_ref,
+          start_state_version: preparedTransaction!.start_state_version,
+          status: 'specs-applied',
+        });
+        expect(JSON.parse(await fs.readFile(transactionFile, 'utf8'))).toEqual(
+          interruptedTransaction,
+        );
+        expect(await fs.readFile(path.join(dir, 'comet-state.yaml'), 'utf8')).toBe(stateBefore);
+        expect(await fs.readFile(supervisorFile, 'utf8')).toBe(supervisorBefore);
+        const supervisor = JSON.parse(supervisorBefore);
+        const betaRoot = supervisor.children.find(
+          (child: { name: string }) => child.name === 'beta',
+        ).projectRoot;
+        const unlink = fs.unlink.bind(fs);
+        let cleanupInterrupted = false;
+        const cleanupFailure = vi.spyOn(fs, 'unlink').mockImplementation(async (target) => {
+          await unlink(target);
+          if (cleanupInterrupted || String(target) !== path.join(betaRoot, '.comet/config.yaml'))
+            return;
+          cleanupInterrupted = true;
+          throw new Error('simulated-partial-cleanup-interruption');
+        });
+        try {
+          const interrupted = await runNativeCli([
+            ...preview.continuation.commandArgs.slice(2),
+            '--project-root',
+            root,
+            '--json',
+          ]);
+          expect(interrupted.exitCode).not.toBe(0);
+          expect(interrupted.stdout).toContain('simulated-partial-cleanup-interruption');
+        } finally {
+          cleanupFailure.mockRestore();
+        }
+        expect(cleanupInterrupted).toBe(true);
+        const remaining = git(root, ['worktree', 'list', '--porcelain']);
+        expect(remaining).not.toContain('/parent-alpha');
+        expect(remaining).toContain('/parent-beta');
+        expect(await fs.readFile(supervisorFile, 'utf8')).toBe(supervisorBefore);
+        appliedSpecAfterPartialCleanup = await fs.readFile(
+          path.join(root, 'docs/comet/specs/options/spec.md'),
+          'utf8',
+        );
       }
-      const archived = await follow(root, preview.continuation.commandArgs);
+      const archived =
+        isolation === 'worktree'
+          ? await cli(root, ['archive', 'parent', '--confirmed'])
+          : await follow(root, preview.continuation.commandArgs);
       expect(archived.workspaceFinishResult.status).toBe('kept');
+      if (appliedSpecAfterPartialCleanup !== undefined) {
+        expect(await fs.readFile(path.join(root, 'docs/comet/specs/options/spec.md'), 'utf8')).toBe(
+          appliedSpecAfterPartialCleanup,
+        );
+        const repeated = await cli(root, ['archive', 'parent', '--confirmed']);
+        expect(repeated.workspaceFinishResult.status).toBe('kept');
+        expect(await fs.readFile(path.join(root, 'docs/comet/specs/options/spec.md'), 'utf8')).toBe(
+          appliedSpecAfterPartialCleanup,
+        );
+      }
       expect(git(root, ['rev-parse', 'main'])).toBe(original);
       expect(await fs.readFile(path.join(root, 'alpha.txt'), 'utf8')).toBe('alpha');
       expect(await fs.readFile(path.join(root, 'beta.txt'), 'utf8')).toBe('beta');
@@ -425,14 +523,20 @@ describe('Native public user-option paths', () => {
       await acceptCandidate(root, name, ['A1'], []);
     }
     const preview = await cli(worktrees[0], ['archive', 'first', '--dry-run', '--finish', 'keep']);
-    expect(preview.ready).toBe(false);
-    const ordered = await follow(
-      worktrees[0],
-      preview.continuation.commandAlternatives[0].commandArgs,
-    );
+    expect(preview.ready).toBe(true);
+    const ordered = await cli(worktrees[0], [
+      'archive',
+      'first',
+      '--dry-run',
+      '--finish',
+      'keep',
+      '--serial-first',
+      'first',
+    ]);
     expect(ordered.ready).toBe(true);
     expect(ordered.continuation.commandArgs).toContain('--serial-first');
     const archived = await follow(worktrees[0], ordered.continuation.commandArgs);
     expect(archived.state.status).toBe('done');
+    expect((await cli(worktrees[1], ['status', 'second'])).phase).toBe('archive');
   }, 180_000);
 });

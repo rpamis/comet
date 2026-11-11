@@ -1,5 +1,3 @@
-import { withNativePathPreparation } from './native-paths.js';
-import { withWorkspaceRuntimePreparation } from '../workflow-contract/workspace-runtime.js';
 import { compactCliStdout } from '../workflow-contract/compact-output.js';
 import { nativeArchiveCommand } from './native-archive-command.js';
 import { withCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
@@ -136,11 +134,7 @@ export async function runNativeCliDetailed(
     command = dispatchArgs[0] ?? null;
     requestName = dispatchArgs[1]?.startsWith('--') ? undefined : dispatchArgs[1];
     const invoke = () =>
-      withWorkspaceRuntimePreparation(() =>
-        withNativePathPreparation(() =>
-          dispatch(dispatchArgs, explicitProjectRoot, options.invocationCwd ?? process.cwd()),
-        ),
-      );
+      dispatch(dispatchArgs, explicitProjectRoot, options.invocationCwd ?? process.cwd());
     const run = async () =>
       isNativeReadOnlyCommand(command ?? '', dispatchArgs.slice(1))
         ? await withGitWorktreeReadScope(invoke)

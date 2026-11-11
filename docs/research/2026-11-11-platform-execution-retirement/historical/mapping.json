@@ -1,0 +1,171 @@
+{
+  "cases": [
+    {
+      "id": "native-portable-incremental-projection-soundness",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^does not ship retired Native execution and snapshot implementations$",
+          "requiredNames": [
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-flow.test.ts",
+          "namePattern": "^preserves real approvals and completes Native platform reports through authorized Archive$",
+          "requiredNames": [
+            "preserves real approvals and completes Native platform reports through authorized Archive"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-projection-baseline-reuse-boundaries",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^does not ship retired Native execution and snapshot implementations$",
+          "requiredNames": [
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-flow.test.ts",
+          "namePattern": "^preserves real approvals and completes Native platform reports through authorized Archive$",
+          "requiredNames": [
+            "preserves real approvals and completes Native platform reports through authorized Archive"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-410-orphan-check",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^does not ship retired Native execution and snapshot implementations$",
+          "requiredNames": [
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-flow.test.ts",
+          "namePattern": "^preserves real approvals and completes Native platform reports through authorized Archive$",
+          "requiredNames": [
+            "preserves real approvals and completes Native platform reports through authorized Archive"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-502-timeout-and-inputs",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/app/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:rejects retired native content-proof commands without creating workflow state|rejects retired classic content-proof commands without creating workflow state|rejects retired Native snapshot proof through the generated command bundle)$",
+          "requiredNames": [
+            "rejects retired native content-proof commands without creating workflow state",
+            "rejects retired classic content-proof commands without creating workflow state",
+            "rejects retired Native snapshot proof through the generated command bundle"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:keeps Agent edit judgment and actual workflow authorization in skills-zh|keeps Agent edit judgment and actual workflow authorization in skills)$",
+          "requiredNames": [
+            "keeps Agent edit judgment and actual workflow authorization in skills-zh",
+            "keeps Agent edit judgment and actual workflow authorization in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues the same Classic full Verify and Archive through the generated Runtime without content proof|continues the same Classic hotfix Verify and Archive through the generated Runtime without content proof|continues the same Classic tweak Verify and Archive through the generated Runtime without content proof|blocks Classic Archive when a new real check fails after an accepted pass)$",
+          "requiredNames": [
+            "continues the same Classic full Verify and Archive through the generated Runtime without content proof",
+            "continues the same Classic hotfix Verify and Archive through the generated Runtime without content proof",
+            "continues the same Classic tweak Verify and Archive through the generated Runtime without content proof",
+            "blocks Classic Archive when a new real check fails after an accepted pass"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+          "namePattern": "^(?:Classic workflow application through the public Runtime SDK keeps delivery pending after the archived change passes Archive outcome validation)$",
+          "requiredNames": [
+            "Classic workflow application through the public Runtime SDK keeps delivery pending after the archived change passes Archive outcome validation"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+          "namePattern": "^(?:Classic workflow application through the public Runtime SDK rejects an archive commit that includes unrelated user files)$",
+          "requiredNames": [
+            "Classic workflow application through the public Runtime SDK rejects an archive commit that includes unrelated user files"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+          "namePattern": "^(?:Classic workflow application through the public Runtime SDK accepts full delivery with separate approved implementation and annotated archive commits)$",
+          "requiredNames": [
+            "Classic workflow application through the public Runtime SDK accepts full delivery with separate approved implementation and annotated archive commits"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+          "namePattern": "^(?:Classic workflow application through the public Runtime SDK completes local delivery only after the scoped archive commit is verified)$",
+          "requiredNames": [
+            "Classic workflow application through the public Runtime SDK completes local delivery only after the scoped archive commit is verified"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+          "namePattern": "^(?:Classic command check evidence does not resurrect an older execution over a newer start)$",
+          "requiredNames": [
+            "Classic command check evidence does not resurrect an older execution over a newer start"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+          "namePattern": "^(?:Classic command check evidence returns the newest valid matching record, including failures, for only the current run)$",
+          "requiredNames": [
+            "Classic command check evidence returns the newest valid matching record, including failures, for only the current run"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+          "namePattern": "^(?:Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown)$",
+          "requiredNames": [
+            "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-preset-scope.test.ts",
+          "namePattern": "^(?:hotfix approved scope reconfirms actual requirement revisions explicitly in Build and Verify|hotfix approved scope keeps the original scope decision after neutral edits and rejects a stale SDK proposal|tweak approved scope reconfirms actual requirement revisions explicitly in Build and Verify|tweak approved scope keeps the original scope decision after neutral edits and rejects a stale SDK proposal)$",
+          "requiredNames": [
+            "hotfix approved scope reconfirms actual requirement revisions explicitly in Build and Verify",
+            "hotfix approved scope keeps the original scope decision after neutral edits and rejects a stale SDK proposal",
+            "tweak approved scope reconfirms actual requirement revisions explicitly in Build and Verify",
+            "tweak approved scope keeps the original scope decision after neutral edits and rejects a stale SDK proposal"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-platform-command.test.ts",
+          "namePattern": "^routes a legacy check invocation to platform work without executing it or claiming a pass$",
+          "requiredNames": [
+            "routes a legacy check invocation to platform work without executing it or claiming a pass"
+          ]
+        }
+      ]
+    }
+  ]
+}

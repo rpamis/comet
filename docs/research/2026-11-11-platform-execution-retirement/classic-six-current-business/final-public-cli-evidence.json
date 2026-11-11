@@ -1,0 +1,28 @@
+{
+  "currentBuiltCliComposedPackage": {
+    "passed": 1,
+    "failed": 0,
+    "requiredNames": [
+      "recovers the fixed Classic Application through public CLI across processes and rejects changed Skill bytes"
+    ],
+    "evidence": "composition-public-cli-final-results.json"
+  },
+  "partialSameOriginalRoot": {
+    "expectedRejectStatus": 70,
+    "originalYamlBytesPreserved": true,
+    "originalPartialRecordPreserved": true,
+    "phaseNotPromoted": true,
+    "evidence": "partial-public-cli-green-results.json"
+  },
+  "leanFixtureFinalChanges": {
+    "passed": 4,
+    "failed": 0,
+    "evidence": "composition-lean-input-final-results.json",
+    "changed": "Remove unused old checkCommands from new fixture inputs, replace invalid nonexistent step with real Archive approval replacement rejection"
+  },
+  "actualEvidenceLimits": [
+    "Current-source composed25/0 used the Temp two-bug proposal alias; root production still needs the two composition source fixes and matching build to close those bugs.",
+    "Separate runs are preserved; not a single all80 green run.",
+    "No Eval/full suite/package install was run."
+  ]
+}

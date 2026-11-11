@@ -1,3 +1,6 @@
+// SIMULATED historical phase documents exercise the retained read-only Guard; current flows below use Portable APIs.
+import { storedNativeChangeFixture } from '../../helpers/native-change-document.js';
+import '../../helpers/isolated-agent-home.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
@@ -5,10 +8,7 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
-import {
-  createNativeChange,
-  writeNativeChange,
-} from '../../../domains/comet-native/native-change.js';
+import { writeNativeChange } from '../../../domains/comet-native/native-change.js';
 import {
   inspectNativeHookGuard,
   listActiveNativeHookChanges,
@@ -80,7 +80,7 @@ describe('Native phase Hook guard', () => {
   ) {
     const paths = await nativeProjectPaths(projectRoot, artifactRoot);
     await ensureNativeDirectories(paths);
-    const state = await createNativeChange({
+    const state = await storedNativeChangeFixture({
       paths,
       name,
       language: 'en',
@@ -989,7 +989,7 @@ describe('Native phase Hook guard', () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     await ensureNativeDirectories(paths);
-    await createNativeChange({
+    await storedNativeChangeFixture({
       paths,
       name: 'guard-control',
       language: 'en',
@@ -1070,13 +1070,13 @@ describe('Native phase Hook guard', () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     const paths = await nativeProjectPaths(projectRoot, '.');
     await ensureNativeDirectories(paths);
-    await createNativeChange({
+    await storedNativeChangeFixture({
       paths,
       name: 'shape-change',
       language: 'en',
       verificationProtocol: 'legacy-v1',
     });
-    const buildChange = await createNativeChange({
+    const buildChange = await storedNativeChangeFixture({
       paths,
       verificationProtocol: 'legacy-v1',
       name: 'build-change',

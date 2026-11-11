@@ -10,7 +10,7 @@ import {
 
 import { atomicWriteJson } from './native-atomic-file.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
-import { withNativeMutationLock } from './native-mutation-lock.js';
+import { withNativeMutation } from './native-mutation.js';
 import {
   nativeChangeRuntimeDir,
   nativeStorageRoot,
@@ -605,7 +605,7 @@ export async function setNativeWorkspaceFinish(
   name: string,
   finish: NativeWorkspaceFinish,
 ): Promise<NativeWorkspaceIdentityV3> {
-  return withNativeMutationLock(paths, `set workspace finish for ${name}`, async () => {
+  return withNativeMutation(paths, async () => {
     const identity = await assertNativeWorkspaceBinding(paths, name);
     if (identity === null || identity.schema !== 'comet.native.workspace.v3') {
       throw new Error(`Native change ${name} has no workspace finishing contract`);

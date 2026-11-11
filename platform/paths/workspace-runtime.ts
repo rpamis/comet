@@ -112,7 +112,9 @@ export function resolveWorkspaceRuntimeLocation(projectRoot: string): WorkspaceR
       relativeData !== '..' &&
       !relativeData.startsWith(`..${path.sep}`))
   )
-    throw new Error('用户级 Runtime 数据根不能位于当前工作区内');
+    throw new Error(
+      `用户级 Runtime 数据根不能位于当前工作区内：${dataRoot}；工作区：${identity.projectRoot}`,
+    );
   const workspaceRoot = path.join(dataRoot, 'workspaces', identity.workspaceId);
   return {
     ...identity,

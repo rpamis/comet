@@ -1,9 +1,11 @@
+import '../../helpers/isolated-agent-home.js';
+// SIMULATED historical document fixture for pure artifact/diagnostic readers; no old workflow creation.
+import { storedNativeChangeFixture } from '../../helpers/native-change-document.js';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { createNativeChange } from '../../../domains/comet-native/native-change.js';
 import {
   structureNativeFindings,
   summarizeNativeFindings,
@@ -22,7 +24,7 @@ describe('Native structured findings', () => {
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-findings-'));
     paths = await nativeProjectPaths(projectRoot, '.');
-    state = await createNativeChange({
+    state = await storedNativeChangeFixture({
       paths,
       name: 'finding-shape',
       language: 'en',

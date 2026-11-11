@@ -10,7 +10,7 @@ import {
   parseNativeDelta,
   renderNativeDelta,
 } from './native-delta-spec.js';
-import { withNativeMutationLock } from './native-mutation-lock.js';
+import { withNativeMutation } from './native-mutation.js';
 import { sameNativePortableAcceptance } from './native-portable-acceptance.js';
 import {
   discoverNativePortableSpecChanges,
@@ -164,20 +164,16 @@ export async function rebaseNativePortableDeltas(options: {
   name: string;
   reason?: string;
 }): Promise<NativePortableState> {
-  return withNativeMutationLock(
-    options.paths,
-    `rebase portable deltas ${options.name}`,
-    async () => {
-      const state = await readNativePortableChange(options.paths, options.name);
-      const result = await rebaseNativePortableDeltasLocked({ paths: options.paths, state });
-      if (!result.rebased) return state;
-      return returnNativePortableStateToFinalVerificationLocked({
-        paths: options.paths,
-        state: result.state,
-        reason:
-          options.reason ??
-          'Native canonical Spec changed independently; the delta was re-based before fresh verification.',
-      });
-    },
-  );
+  return withNativeMutation(options.paths, async () => {
+    const state = await readNativePortableChange(options.paths, options.name);
+    const result = await rebaseNativePortableDeltasLocked({ paths: options.paths, state });
+    if (!result.rebased) return state;
+    return returnNativePortableStateToFinalVerificationLocked({
+      paths: options.paths,
+      state: result.state,
+      reason:
+        options.reason ??
+        'Native canonical Spec changed independently; the delta was re-based before fresh verification.',
+    });
+  });
 }

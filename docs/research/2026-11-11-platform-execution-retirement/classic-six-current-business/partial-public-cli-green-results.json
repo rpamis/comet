@@ -1,0 +1,16 @@
+{
+  "root": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-partial-checkpoint-red-UqVswb\\project",
+  "publicCurrentBuiltCli": true,
+  "status": 70,
+  "stdout": "{\"command\":\"state\",\"exitCode\":70,\"agent\":{\"phase\":null,\"status\":null,\"stateVersion\":null,\"workspace\":{\"cwd\":null},\"continuation\":null},\"data\":{\"issues\":[{\"code\":\"CLASSIC_COMMAND_FAILED\",\"message\":\"Classic SDK Run demo differs from the interrupted checkpoint import; preserve the local records and restore matching Run history before continuing\"}]},\"stderr\":\"\\u001b[31mClassic SDK Run demo differs from the interrupted checkpoint import; preserve the local records and restore matching Run history before continuing\\u001b[0m\"}\n",
+  "stderr": "",
+  "originalYamlBytesPreserved": true,
+  "originalPartialRecordPreserved": true,
+  "phaseNotPromoted": true,
+  "sameOriginalRedCase": true,
+  "notClaimed": [
+    "No old graph hash rewrite or new Run binding",
+    "No Eval",
+    "No full suite"
+  ]
+}

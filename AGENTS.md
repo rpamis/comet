@@ -194,9 +194,9 @@ pnpm test           # 仅在满足“测试”章节的全量条件时
 ```
 comet-runtime.mjs ← domains/comet-classic/*
 comet-state.mjs ← domains/comet-classic/classic-state-entry.ts
-comet-check.mjs ← domains/comet-classic/classic-check-entry.ts (执行并绑定验证证据)
+comet-check.mjs ← domains/comet-classic/classic-check-entry.ts (旧命令的平台执行指引，不运行检查)
 comet-guard.mjs ← domains/comet-classic/classic-guard-entry.ts
-comet-handoff.mjs ← domains/comet-classic/classic-handoff-entry.ts (写入 handoff_context/handoff_hash)
+comet-handoff.mjs ← domains/comet-classic/classic-handoff-entry.ts (引用已确认材料，按需生成可读视图)
 comet-archive.mjs ← domains/comet-classic/classic-archive-entry.ts
 comet-yaml-validate.mjs ← domains/comet-classic/classic-validate-entry.ts
 comet-hook-guard.mjs ← domains/comet-classic/classic-hook-guard-entry.ts (不直接安装为平台 Hook)

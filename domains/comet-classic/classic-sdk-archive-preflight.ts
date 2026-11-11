@@ -1,4 +1,5 @@
 import { collectClassicSdkDeliveryInputs } from './classic-sdk-delivery-inputs.js';
+import { acceptedClassicLegacyVerifyCheck } from './classic-sdk-run-upgrade.js';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -17,27 +18,20 @@ import {
   assertClassicPresetRequirementsCurrent,
 } from './classic-sdk-application.js';
 import { classicArchiveDocumentOutputs } from './classic-sdk-archive-documents.js';
-import { assertClassicSdkCheckReceipt } from './classic-sdk-check-record.js';
-import {
-  assertClassicSdkCheckCommandBinding,
-  classicSdkCheckRefreshInput,
-} from './classic-sdk-check.js';
 import { classicSdkRunMatchesProfile } from './classic-sdk-profile.js';
 import { classicSdkRemoteIdentity } from './classic-sdk-remote.js';
 import type { ClassicState } from './classic-state.js';
-
 interface ClassicSdkArchivePreflightInput {
   runId: string;
   projectRoot: string;
 }
-
 interface ClassicSdkArchiveApproval {
   action: 'local' | 'push' | 'pr';
   targetBranch: string;
   remote?: string;
   prBaseBranch?: string;
+  deliveryPaths?: string[];
 }
-
 function archiveApproval(run: WorkflowRun): ClassicSdkArchiveApproval {
   const profile = (run.state as ClassicState | undefined)?.workflow;
   const wait = run.waits
@@ -49,9 +43,20 @@ function archiveApproval(run: WorkflowRun): ClassicSdkArchiveApproval {
         candidate.status === 'resolved' &&
         ['local', 'push', 'pr'].includes(candidate.decision?.choice ?? ''),
     );
-  const proposed = (wait?.proposal as { outputs?: Record<string, unknown> } | undefined)?.outputs?.[
-    `${profile}.archive.prepare`
-  ] as { targetBranch?: unknown; remote?: unknown; prBaseBranch?: unknown } | undefined;
+  const proposed = (
+    wait?.proposal as
+      | {
+          outputs?: Record<string, unknown>;
+        }
+      | undefined
+  )?.outputs?.[`${profile}.archive.prepare`] as
+    | {
+        targetBranch?: unknown;
+        remote?: unknown;
+        prBaseBranch?: unknown;
+        deliveryPaths?: string[];
+      }
+    | undefined;
   if (
     !wait?.decision ||
     !proposed ||
@@ -69,12 +74,11 @@ function archiveApproval(run: WorkflowRun): ClassicSdkArchiveApproval {
     targetBranch: proposed.targetBranch,
     ...(typeof proposed.remote === 'string' ? { remote: proposed.remote } : {}),
     ...(typeof proposed.prBaseBranch === 'string' ? { prBaseBranch: proposed.prBaseBranch } : {}),
+    ...(proposed.deliveryPaths ? { deliveryPaths: proposed.deliveryPaths } : {}),
   };
 }
-
 /** 仅表示 claim 前的准备检查失败，不包含执行或恢复失败。 */
 export class ClassicSdkArchiveReadinessError extends Error {}
-
 /** Revalidate the approved target and Verify evidence at the side-effect boundary. */
 export async function assertClassicSdkArchiveReady(
   run: WorkflowRun,
@@ -96,7 +100,13 @@ export async function assertClassicSdkArchiveReady(
     const approved = archiveApproval(run);
     await assertClassicPresetRequirementsCurrent(
       projectRoot,
-      String((run.input as { changeDir: string }).changeDir),
+      String(
+        (
+          run.input as {
+            changeDir: string;
+          }
+        ).changeDir,
+      ),
       run,
     );
     const pendingArchive = run.actions.find(
@@ -109,16 +119,33 @@ export async function assertClassicSdkArchiveReady(
     if (state.workflow === 'full' && pendingArchive) {
       const documents = classicArchiveDocumentOutputs(run, pendingArchive);
       const plan = documents.outputs['full.build.plan'] as
-        { plan?: unknown; designEvidence?: { ref?: unknown } } | undefined;
+        | {
+            plan?: unknown;
+            designEvidence?: {
+              ref?: unknown;
+            };
+          }
+        | undefined;
       const design =
-        (documents.outputs['full.design.document'] as { designDoc?: unknown } | undefined)
-          ?.designDoc ?? plan?.designEvidence?.ref;
+        (
+          documents.outputs['full.design.document'] as
+            | {
+                designDoc?: unknown;
+              }
+            | undefined
+        )?.designDoc ?? plan?.designEvidence?.ref;
       if (typeof plan?.plan !== 'string' || typeof design !== 'string')
         throw new Error('Classic Archive documents are missing');
       if (documents.recovered)
         await assertClassicBuildReady(
           projectRoot,
-          String((run.input as { changeDir: string }).changeDir),
+          String(
+            (
+              run.input as {
+                changeDir: string;
+              }
+            ).changeDir,
+          ),
           state,
           run,
         );
@@ -136,12 +163,11 @@ export async function assertClassicSdkArchiveReady(
     );
   }
 }
-
 export async function assertVerifyEvidenceCurrent(
   run: WorkflowRun,
   projectRoot: string,
   state: ClassicState,
-  acceptedEpochDelta = 2,
+  _acceptedEpochDelta = 2,
 ): Promise<void> {
   const report = run.evidenceWaits
     ?.slice()
@@ -150,7 +176,7 @@ export async function assertVerifyEvidenceCurrent(
       (wait) =>
         wait.stepId === state.workflow + '.verify.report.evidence' && wait.status === 'resolved',
     )?.receipt;
-  if (run.workflow.version === '2') {
+  {
     const latest = [...run.actions]
       .reverse()
       .find((action) => action.stepId === state.workflow + '.verify.run');
@@ -158,7 +184,11 @@ export async function assertVerifyEvidenceCurrent(
       | {
           event?: string;
           verificationReport?: string;
-          checks?: Array<{ name: string; result: string; note?: string }>;
+          checks?: Array<{
+            name: string;
+            result: string;
+            note?: string;
+          }>;
           checksReason?: string;
         }
       | undefined;
@@ -170,64 +200,10 @@ export async function assertVerifyEvidenceCurrent(
       output.verificationReport !== state.verificationReport
     )
       throw new Error('Classic Archive requires the latest accepted Verify report');
-    assertClassicAgentCheckReports(output);
+    if (!acceptedClassicLegacyVerifyCheck(run)) assertClassicAgentCheckReports(output);
     return;
   }
-  const evidence = run.evidenceWaits
-    ?.slice()
-    .reverse()
-    .find(
-      (wait) =>
-        wait.stepId === state.workflow + '.verify.check.evidence' && wait.status === 'resolved',
-    )?.receipt;
-  const check = run.actions
-    .slice()
-    .reverse()
-    .find((action) => action.stepId === state.workflow + '.verify.check');
-  const output = check?.outcome?.output as Record<string, unknown> | undefined;
-  if (
-    !state.verificationReport ||
-    report?.ref !== state.verificationReport ||
-    !evidence ||
-    !check ||
-    check.status !== 'succeeded' ||
-    check.claim?.executorId !== 'comet-classic-check' ||
-    !check.outcome ||
-    check.outcome.status !== 'succeeded' ||
-    !output ||
-    output.scope !== 'verify' ||
-    output.exitCode !== 0 ||
-    !Array.isArray(output.argv) ||
-    !output.argv.length ||
-    output.argv.some((arg) => typeof arg !== 'string') ||
-    typeof output.cwd !== 'string' ||
-    typeof output.receiptRef !== 'string' ||
-    typeof output.checkEpoch !== 'number' ||
-    (output.checkEpoch + acceptedEpochDelta !== state.checkEpoch &&
-      output.checkEpoch !== state.checkEpoch)
-  ) {
-    throw new Error(
-      'Classic Archive requires the latest successful Verify execution and accepted report',
-    );
-  }
-  const supplemental = classicSdkCheckRefreshInput(run, check);
-  if (
-    !supplemental &&
-    (evidence.ref !== output.receiptRef ||
-      (evidence.contentHash !== check.inputHash && evidence.contentHash !== output.contentHash))
-  ) {
-    throw new Error(
-      'Classic Verify execution does not belong to the accepted SDK evidence request',
-    );
-  }
-  await assertClassicSdkCheckReceipt(projectRoot, run, check, {
-    status: check.outcome.status,
-    output: check.outcome.output,
-  });
-  if ((run.input as { checkCommands?: unknown }).checkCommands !== undefined)
-    await assertClassicSdkCheckCommandBinding(run, check, projectRoot, output);
 }
-
 export async function runClassicSdkArchivePreflight(
   run: Readonly<WorkflowRun>,
   action: Readonly<RuntimeAction>,
@@ -260,16 +236,24 @@ export async function runClassicSdkArchivePreflight(
       targetBranch: approved.targetBranch,
       verifiedBranch: branch,
       baseCommit,
-      ...(run.workflow.version === '2'
-        ? { deliveryPaths: await collectClassicSdkDeliveryInputs(projectRoot, '', null, run) }
-        : {}),
+      deliveryPaths: await collectClassicSdkDeliveryInputs(
+        projectRoot,
+        run,
+        approved.deliveryPaths,
+      ),
       ...(approved.remote ? { remote: approved.remote, remoteIdentity } : {}),
       ...(approved.prBaseBranch ? { prBaseBranch: approved.prBaseBranch } : {}),
     },
   };
 }
 export function createClassicSdkArchivePreflightExecutor(projectRoot: string): RuntimeExecutor {
-  const bound = (context: { projectRoot?: string } | undefined) => {
+  const bound = (
+    context:
+      | {
+          projectRoot?: string;
+        }
+      | undefined,
+  ) => {
     if (!context?.projectRoot || !samePath(context.projectRoot, projectRoot))
       throw new Error('Classic Archive preflight requires its bound project');
   };
@@ -306,7 +290,10 @@ export async function executeClassicSdkArchivePreflight(
     );
   if (!action) throw new Error('Current Classic SDK Run has no pending Archive preflight Action');
   const result = await runClassicSdkArchivePreflight(run, action, projectRoot);
-  const output = result.output as { verifiedBranch: string; baseCommit: string };
+  const output = result.output as {
+    verifiedBranch: string;
+    baseCommit: string;
+  };
   const token = randomUUID(),
     requestId = randomUUID();
   await runtime.claim({

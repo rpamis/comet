@@ -159,8 +159,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   },
   check: {
     usage: 'comet native check <change-name>',
-    purpose:
-      'Verification command for pre-portable changes; not supported for current portable changes.',
+    purpose: 'Compatibility guidance for running checks through Agent platform tools.',
     output:
       'For current changes, run comet native status <change-name> --json and follow the continuation to dispatch verification through comet native next.',
   },
@@ -173,7 +172,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--details         SDK: include complete business state and Action/Wait history. Compat: include one fixed-size detail page.',
     ],
     output:
-      'SDK status includes the exact continuation, claim request templates, all pending/running/unknown work, and the latest 12 settled records per history collection. run.history reports omitted records; --details returns complete history without --cursor. Compat status reports local execution availability and details use --cursor for fixed-size pages; parent changes expose childSummary and readyChildren.',
+      'SDK status includes the exact continuation, claim request templates, all pending/running/unknown work, and the latest 12 settled records per history collection. run.history reports omitted records; --details returns complete history without --cursor. Compat status reports business continuation and details use --cursor for fixed-size pages; parent changes expose childSummary and readyChildren.',
     examples: [
       'comet native status --json',
       'comet native status session-timeout --details --json',
@@ -182,7 +181,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   select: {
     usage: 'comet native select <change-name> [--rebind]',
     options: [
-      '--rebind  Explicitly bind the same stopped SDK Run to the current Git branch; preserve work and approvals, and reject unresolved executions.',
+      '--rebind  Explicitly bind the same idle SDK Run to the current Git branch; preserve work and approvals, and reject unresolved executions.',
     ],
     purpose: 'Select one Native change after validating its workspace binding.',
     output: 'The selected change record.',
@@ -216,20 +215,20 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--runner-input <file>  Skill-coordinated JSON: builder-handoff, dispatch-verifier, retry-checks, verifier-response, verifier-started, verifier-execution-error, or verifier-unavailable. Builder/dispatch identity fields are rejected; verifier responses must echo the current candidateId and verifierExecutionRef from the Verifier dispatch.',
       '--validate-only       Validate the Runner JSON shape and current boundary without writing state or starting a process; requires --runner-input.',
       '  Choose one object template from an inputOptions exclusiveGroup and save it as UTF-8 JSON (BOM accepted). Field errors return issues with JSON pointer, missingFields and unknownFields. Execute agent.continuation in agent.workspace.cwd; Supervisor results use task.returnAction.',
-      '  builder-handoff fields: kind, summary, addressed_acceptance_ids, acceptance_review, checks, verification_checks, known_limits, optional review. acceptance_review must cover every confirmed ID exactly once with id, status, evidence (concrete references or observations), and note. Only implemented-with-evidence with nonempty evidence is ready for handoff; implemented-no-evidence, not-implemented, and known-fail remain in Build. This Builder declaration does not replace independent verification. checks summarize development feedback. verification_checks is an optional Runtime plan executed after the candidate is frozen; a passing plan returns the Verifier dispatch immediately. Completed Runtime checks can carry to a new candidate only when the implementation, confirmed documents, plan, workspace, environment, and saved evidence still match. If review is supplied, its fields are status=passed, summary, reviewer_execution_ref from a separate read-only review.',
-      '  dispatch-verifier fields: kind, checks (an explicitly resolved plan; [] is allowed).',
-      '  retry-checks fields: kind, check_ids for repeatable interrupted Runtime checks from the current candidate; each check can be retried at most three times.',
-      '  verifier-response fields: kind, candidateId, verifierExecutionRef, response (request-checks or final-result); copy the two binding fields from the current continuation.',
-      '  verifier-started fields: kind, candidateId, verifierExecutionRef copied from verifierDispatch; the dispatched Verifier submits it as its first Runtime action so status can distinguish a registered dispatch from a Verifier that actually started. Repeating it is accepted without side effects.',
+      '  builder-handoff fields: kind, summary, addressed_acceptance_ids, acceptance_review, checks, known_limits, optional review. Cover every confirmed acceptance ID with its actual status, evidence and note. Only implemented-with-evidence entries with nonempty evidence are ready for handoff. checks contain actual Agent platform reports. An optional review records status=passed, summary and reviewer_execution_ref from a separate read-only review.',
+      '  dispatch-verifier fields: kind. Run development checks through Agent platform tools and hand the current candidate to the selected Verifier.',
+      '  retry-checks is a retired compatibility input that returns platform execution guidance without running a command.',
+      '  verifier-response fields: kind, candidateId, verifierExecutionRef, response (final-result). Copy the current candidate and receiving session from the dispatch and report every acceptance item.',
+      '  verifier-started is optional compatibility progress reporting for the existing Verifier session; it does not supervise a process or authorize completion.',
       '  verifier-execution-error fields: kind, summary, stateVersion, iteration, attempt, verifierExecutionRef copied from verifierDispatch.',
-      '  verifier-unavailable fields: kind, summary, stateVersion, iteration, attempt, verifierExecutionRef copied from verifierDispatch; accepted only after the explicit Runtime check plan completed and passed.',
+      '  verifier-unavailable fields: kind, summary, stateVersion, iteration, attempt, verifierExecutionRef. Record the actual platform capability failure; it never grants a passing result.',
       '  Supervisor task fields: supervisor-builder-result (child, runId, candidateCommit), supervisor-builder-failure (child, runId, reason), supervisor-verifier-result (child, runId, verdict, verification data), supervisor-reconnect (child, runId), supervisor-cancel (child, runId, reason), or supervisor-integrate (child, checks).',
-      '  supervisor-checks fields: kind, child, runId, checks (non-empty repeatable Runtime check plans), materials [{name,content}], and optional retry_check_ids for interrupted checks from the same candidate, machine and workspace. Returns per-check execution state plus operationId, status and receiptRef. Repeated running plans return the same handle.',
-      '  supervisor-verifier-result evidence fields: summary, checks (informal notes), acceptance [{id,result,reason}], receiptRef. verdict is pass, fail or blocked; every task acceptance ID must appear exactly once. Runtime receipts determine formal check status; receiptRef may be null for fail or blocked.',
-      '  supervisor-integrate checks are non-empty Runtime check plans executed after the merge in the integration worktree, not declared statuses.',
+      '  supervisor-checks is retired and returns platform execution guidance without starting a process or generating a receipt.',
+      '  supervisor-verifier-result evidence fields: summary, checks (actual platform reports), acceptance [{id,result,reason}]. verdict is pass, fail or blocked; every task acceptance ID must appear exactly once.',
+      '  supervisor-integrate fields: child, integrationCommit and checks [{name,status,reason}], reporting the actual merge and platform checks.',
     ],
     output:
-      'SDK-owned changes return the current Run Action or Wait and the same continuation as status/show, including current decision guards and pending Action claimRequest templates. Fill the template with the host session and claim token; the successful claim returns the current Action input. Runtime-owned checks, reports, and Archive advance one Action per call. Builder and Verifier handoffs use `comet runtime dispatch --application native`; never resubmit running/unknown work. Compat Runtime changes return the portable state, Runner result, continuation.inputOptions, and userCommunication. The compat JSON bridge is not trusted identity attestation: a passing skill-coordinated result waits for explicit user confirmation before Archive.',
+      'SDK-owned changes return the current Run Action or Wait and the same continuation as status/show, including current decision guards and pending Action claimRequest templates. Fill the template with the host session and claim token; the successful claim returns the current Action input. Authorized internal business steps and Archive continue from the original Run. Builder and Verifier handoffs use `comet runtime dispatch --application native`; never resubmit running/unknown work. Compat Runtime changes return the portable state, Runner result, continuation.inputOptions, and userCommunication. The compat JSON bridge is not trusted identity attestation: a passing skill-coordinated result waits for explicit user confirmation before Archive.',
     examples: [
       'comet native next session-timeout --summary "Shape confirmed" --confirmed --expected-state-version <n> --expected-action confirm-shape',
       'comet native next session-timeout --summary "Current result accepted" --accept-result',
@@ -273,25 +272,22 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       'Readiness, every blocker, actual prepared commitMessages (mergeMessage is null when no merge is planned), and the exact next continuation, or the completed Archive transaction and workspace finish result. Messages are retained for retries. After a Git hook rejects a message, provide a corrected message with --confirmed for the unfinished step; completed commits are never rewritten. Execute the returned confirmed command only after ready is true; Archive does not repeat verification.',
   },
   doctor: {
-    usage:
-      'comet native doctor [<change-name>] [--repair] [--confirmed] [--lock-token <token>] [--stopped-actions <json-file>] [--migrate-history]',
+    usage: 'comet native doctor [<change-name>] [--repair] [--confirmed] [--migrate-history]',
     purpose:
-      'Inspect Native state, original executions, project locks and SDK writer locks, or recover the exact recorded interruption.',
+      'Inspect Native business state and existing transactions, or recover the original Run checkpoint.',
     options: [
-      '--stopped-actions <json-file>  With --repair --confirmed, submit original Action/attempt/inputHash/claimToken and actual evidence that its execution and all descendants, including detached processes, stopped; retained results remain unknown and require a fresh repair candidate.',
       '--repair  Apply deterministic migration or rebuild from the portable stable boundary.',
-      '--lock-token <token>  With --repair --confirmed, repair exactly the lock record reported by doctor after confirming its original writer and all concurrent writers stopped. Omit the change name for a project lock. Named changes also inspect Run-store, application and projection locks. Live owners are never removed; age alone does not prove exit.',
-      '--migrate-history  Validate and close fully stopped built-in Native terminal Runs. Preserve documents and checkpoints; unfinished or invalid Runs remain active. Safe to rerun after interruption. Upgrade CLI and platform Hooks together: older Runtime versions cannot write the new storage format. Ordinary inspection never migrates.',
-      '--confirmed  With --repair and a named managed change whose local Run history is missing, recover its saved Run checkpoint after confirming the original process stopped. Older states without a checkpoint restart at Shape and require fresh approvals and checks.',
+      '--migrate-history  Validate and close built-in Native terminal Runs whose business cleanup is complete. Preserve documents and checkpoints; unfinished or invalid Runs remain active. Safe to rerun after interruption. Upgrade CLI and platform Hooks together: older Runtime versions cannot write the new storage format. Ordinary inspection never migrates.',
+      '--confirmed  With --repair and a named managed change whose local Run history is missing, recover its saved Run checkpoint. Original business approvals and task claims are preserved.',
     ],
     output:
-      'Health, retained execution evidence, lock owners, and structured recovery with diagnosticArgs, recoveryArgs and preconditions. Inspection never acquires a writer lock.',
+      'Health, original business records, and structured recovery with diagnosticArgs, recoveryArgs and preconditions. Inspection does not change the Run.',
   },
   transfer: {
     usage:
       'comet native transfer export <change-name> --output <directory> --confirmed-stopped\n       comet native transfer import --input <directory>',
     purpose:
-      'Carry a prepared Supervisor Child Builder and its Git worktrees to another checkout before Child checks start.',
+      'Carry a prepared Supervisor Child Builder and its Git worktrees to another checkout before handing the next Child task to an Agent.',
     subcommands: [
       'export  Snapshot the parent checkpoint, Supervisor branches, and non-ignored uncommitted work.',
       'import  Validate the package and restore its Run and worktrees in a checkout at the same target commit.',

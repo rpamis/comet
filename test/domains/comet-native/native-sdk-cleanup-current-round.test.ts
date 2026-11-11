@@ -69,7 +69,8 @@ beforeAll(async () => {
       return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, bind(entry)]));
     return value;
   };
-  saved = bind(fixture.run) as WorkflowRun;
+  // SIMULATED omitted output view for this intentionally reduced archived fixture, not a new receipt or approval.
+  saved = { ...(bind(fixture.run) as WorkflowRun), outputs: {} };
 });
 beforeEach(() => {
   virtual.registered.clear();

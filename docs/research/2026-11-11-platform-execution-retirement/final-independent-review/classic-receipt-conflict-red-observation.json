@@ -1,0 +1,30 @@
+{
+  "temporary": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-receipt-conflict-review-zexRHj",
+  "root": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-receipt-conflict-review-zexRHj\\project",
+  "source": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-receipt-conflict-review-zexRHj\\project\\.git\\comet\\classic-deliveries\\c4e7ddc7485732d10dfccfc4b6b1b4fba7fe626371959dc6447b07a19db377a9.json",
+  "target": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-receipt-conflict-review-zexRHj\\data\\workspaces\\505e41080885e1404dca44639a2dc7bb8925fd3850d6af242d835a8388a797a8\\runtime\\classic-delivery-receipts\\c4e7ddc7485732d10dfccfc4b6b1b4fba7fe626371959dc6447b07a19db377a9.json",
+  "authorization": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-receipt-conflict-review-zexRHj\\project\\openspec\\changes\\demo\\.comet\\delivery.json",
+  "auth": {
+    "action": "local",
+    "targetBranch": "main",
+    "schemaVersion": 1,
+    "changeIdentity": "run:legacy-document-run",
+    "authorizationId": "9465edc8-7b9f-4efc-a1e4-a9b66325f792",
+    "commit": "b022e66995b584b9344732a40f6fb4f4302e0f84"
+  },
+  "legacy": {
+    "schemaVersion": 1,
+    "changeIdentity": "run:legacy-document-run",
+    "authorizationId": "9465edc8-7b9f-4efc-a1e4-a9b66325f792",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "result": [
+    "classic-delivery-receipts/c4e7ddc7485732d10dfccfc4b6b1b4fba7fe626371959dc6447b07a19db377a9.json"
+  ],
+  "after": {
+    "error": "Error: Classic delivery receipt conflicts with authorization evidence"
+  },
+  "targetExists": true,
+  "authorizationUnchanged": true,
+  "sourceUnchanged": true
+}

@@ -24,11 +24,13 @@ const sampling = vi.hoisted(() => ({ onRead: undefined as (() => void) | undefin
 it('preserves the Windows-specific registered group after shared test migrations', () => {
   const id = 'registered-classic-short-timeout-supervisor-startup';
   const selected = selectCoreRegressions([id]);
-  expect(selected.some((entry) => entry.id === id)).toBe(true);
+  expect(selected.length).toBeGreaterThan(0);
   expect(
-    createCoreRegressionExecutionPlan(CORE_REGRESSIONS).groups.find((entry) => entry.id === id)
-      ?.platform,
-  ).toBe('win32');
+    selected.every((entry) => entry.caseIds?.includes('classic-short-timeout-supervisor-startup')),
+  ).toBe(true);
+  const groups = createCoreRegressionExecutionPlan(CORE_REGRESSIONS).groups;
+  for (const entry of selected)
+    expect(groups.find((group) => group.id === entry.id)?.platform).toBe('win32');
 });
 vi.mock('node:fs', async (importOriginal) => {
   const original = await importOriginal<typeof import('node:fs')>();

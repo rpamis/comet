@@ -1,0 +1,73 @@
+diff --git a/test/domains/comet-native/native-cli-v4-surface.test.ts b/test/domains/comet-native/native-cli-v4-surface.test.ts
+index 88aca22b..27af912c 100644
+--- a/test/domains/comet-native/native-cli-v4-surface.test.ts
++++ b/test/domains/comet-native/native-cli-v4-surface.test.ts
+@@ -2031,13 +2031,27 @@ Run applicable focused checks.
+       ]),
+     });
+ 
++    const reviseRequirementsAlternative = (
++      awaitingPassDecision.data as {
++        continuation: { commandAlternatives: Array<{ name: string; commandArgs: string[] }> };
++      }
++    ).continuation.commandAlternatives.find(({ name }) => name === 'revise-requirements');
++    expect(reviseRequirementsAlternative).toMatchObject({
++      expectedAction: 'revise-requirements',
++      commandArgs: expect.arrayContaining([
++        '--revise-requirements',
++        '--expected-state-version',
++        '--expected-action',
++        'revise-requirements',
++      ]),
++    });
+     const returned = json(
+       await runNativeCli([
+-        'next',
+-        name,
+-        '--summary',
+-        'User-visible acceptance criteria changed',
+-        '--revise-requirements',
++        ...reviseRequirementsAlternative!.commandArgs
++          .slice(2)
++          .map((value) =>
++            value === '<summary>' ? 'User-visible acceptance criteria changed' : value,
++          ),
+         '--json',
+         ...projectArgs(),
+       ]),
+@@ -2196,15 +2210,28 @@ Run applicable focused checks.
+     await prepareBuild(name, ['Original behavior works.']);
+     await runnerStep(name, builderHandoff(['A1']));
+     await runnerStep(name, { kind: 'dispatch-verifier', checks: [] });
+-    await runnerStep(name, finalResponse(1, 1, ['A1']));
+-
++    const awaitingPassDecision = await runnerStep(name, finalResponse(1, 1, ['A1']));
++    const acceptResultAlternative = (
++      awaitingPassDecision.data as {
++        continuation: { commandAlternatives: Array<{ name: string; commandArgs: string[] }> };
++      }
++    ).continuation.commandAlternatives.find(({ name }) => name === 'accept-result');
++    expect(acceptResultAlternative).toMatchObject({
++      expectedAction: 'accept-result',
++      commandArgs: expect.arrayContaining([
++        '--accept-result',
++        '--expected-state-version',
++        '--expected-action',
++        'accept-result',
++      ]),
++    });
+     const accepted = json(
+       await runNativeCli([
+-        'next',
+-        name,
+-        '--summary',
+-        'User accepts the current verification result',
+-        '--accept-result',
++        ...acceptResultAlternative!.commandArgs
++          .slice(2)
++          .map((value) =>
++            value === '<summary>' ? 'User accepts the current verification result' : value,
++          ),
+         '--json',
+         ...projectArgs(),
+       ]),

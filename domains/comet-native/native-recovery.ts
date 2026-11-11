@@ -8,9 +8,6 @@ export type NativeRecoveryCode =
   | 'verification-report-drift'
   | 'shape-drift'
   | 'execution-unresolved'
-  | 'lock-active'
-  | 'lock-stale'
-  | 'lock-owner-unknown'
   | 'runtime-recovery-required'
   | 'workspace-conflict'
   | 'git-lock';

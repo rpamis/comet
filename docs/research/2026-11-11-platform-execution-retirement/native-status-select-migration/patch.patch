@@ -1,0 +1,172 @@
+diff --git a/test/domains/comet-native/native-portable-status.test.ts b/test/domains/comet-native/native-portable-status.test.ts
+index d72a3d48..7169f1bf 100644
+--- a/test/domains/comet-native/native-portable-status.test.ts
++++ b/test/domains/comet-native/native-portable-status.test.ts
+@@ -31,6 +31,21 @@ import {
+ } from '../../../domains/comet-native/native-portable-status.js';
+ import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
+ 
++async function snapshot(root: string): Promise<Record<string, string>> {
++  const result: Record<string, string> = {};
++  async function visit(directory: string) {
++    for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
++      const file = path.join(directory, entry.name);
++      if (entry.isDirectory()) {
++        result[path.relative(root, file)] = 'directory';
++        await visit(file);
++      } else result[path.relative(root, file)] = (await fs.readFile(file)).toString('base64');
++    }
++  }
++  await visit(root);
++  return result;
++}
++
+ describe('Native portable status', () => {
+   const roots: string[] = [];
+ 
+@@ -85,10 +100,10 @@ describe('Native portable status', () => {
+     },
+   );
+ 
+-  it('projects the portable loop even when local execution is missing', async () => {
++  it('projects the complete portable loop read-only without a local execution overlay', async () => {
+     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-status-v2-'));
+     roots.push(root);
+-    // The select command runs the full workspace discovery, which needs a Git repository.
++    // The select command inspects the explicitly supplied workspace and its Git context.
+     execFileSync('git', ['init', '--quiet'], { cwd: root, stdio: 'ignore' });
+     const config = defaultProjectConfig('docs', 'en');
+     await writeProjectConfig(root, config);
+@@ -100,6 +115,7 @@ describe('Native portable status', () => {
+       force: true,
+     });
+ 
++    const before = await snapshot(root);
+     const status = await inspectNativePortableStatus({
+       paths,
+       name: 'portable-status',
+@@ -109,10 +125,21 @@ describe('Native portable status', () => {
+       schema: 'comet.native.status.v2',
+       phase: 'shape',
+       loop: { stage: 'shape', iteration: 0, attempt: 0 },
+-      localExecution: { status: 'missing', operation: null },
+       continuation: { action: 'prepare-shape-confirmation' },
+     });
+-    expect((await listNativePortableStatus({ paths })).items).toHaveLength(1);
++    expect(status).not.toHaveProperty('localExecution');
++    const page = await listNativePortableStatus({ paths });
++    expect(page.items).toHaveLength(1);
++    expect(page.items[0]).toMatchObject({
++      name: 'portable-status',
++      phase: 'shape',
++      loop: status.loop,
++      continuation: status.continuation,
++    });
++    expect(await snapshot(root)).toEqual(before);
++    await expect(
++      fs.stat(path.join(paths.changesRuntimeDir, 'portable-status')),
++    ).rejects.toMatchObject({ code: 'ENOENT' });
+     await expect(nativeSelectCommand(['portable-status'], root)).resolves.toMatchObject({
+       exitCode: 0,
+       data: {
+@@ -125,7 +152,7 @@ describe('Native portable status', () => {
+     });
+   });
+ 
+-  it('does not expose a malformed local overlay as available execution state', async () => {
++  it('does not consume or expose malformed retired execution overlays during read-only status', async () => {
+     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-status-invalid-'));
+     roots.push(root);
+     const config = defaultProjectConfig('docs', 'en');
+@@ -133,16 +160,30 @@ describe('Native portable status', () => {
+     const paths = await nativeProjectPaths(root, 'docs');
+     await ensureNativeDirectories(paths);
+     await createNativePortableChange({ paths, name: 'invalid-overlay', language: 'en' });
++    const overlay = path.join(paths.changesRuntimeDir, 'invalid-overlay', 'state.json');
++    // SIMULATED obsolete local execution file; no process or normal transition is created.
++    await fs.mkdir(path.dirname(overlay), { recursive: true });
+     await fs.writeFile(
+-      path.join(paths.changesRuntimeDir, 'invalid-overlay', 'state.json'),
++      overlay,
+       JSON.stringify({ basedOnStateVersion: 1, execution: { status: 'made-up' } }),
+     );
+ 
+-    await expect(
+-      inspectNativePortableStatus({ paths, name: 'invalid-overlay' }),
+-    ).resolves.toMatchObject({
+-      localExecution: { status: 'invalid', operation: null },
++    const before = await snapshot(root);
++    const read = vi.spyOn(fs, 'readFile');
++    const open = vi.spyOn(fs, 'open');
++    const status = await inspectNativePortableStatus({ paths, name: 'invalid-overlay' });
++    expect(status).toMatchObject({
++      schema: 'comet.native.status.v2',
++      name: 'invalid-overlay',
++      phase: 'shape',
++      loop: { stage: 'shape', iteration: 0, attempt: 0 },
++      continuation: { action: 'prepare-shape-confirmation' },
+     });
++    expect(status).not.toHaveProperty('localExecution');
++    expect(JSON.stringify(status)).not.toContain('made-up');
++    const accessed = [...read.mock.calls, ...open.mock.calls].map(([file]) => String(file));
++    expect(accessed).not.toContain(overlay);
++    expect(await snapshot(root)).toEqual(before);
+   });
+ 
+   it('keeps the default projection compact and pages typed details by state version', async () => {
+diff --git a/test/domains/comet-native/native-select-command.test.ts b/test/domains/comet-native/native-select-command.test.ts
+index 531ad77b..5fd2a885 100644
+--- a/test/domains/comet-native/native-select-command.test.ts
++++ b/test/domains/comet-native/native-select-command.test.ts
+@@ -48,10 +48,11 @@ describe('Native select command branches', () => {
+     await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
+   });
+ 
+-  it('returns the full discovered status projection and routes into the owning workspace', async () => {
++  it('returns the full status projection in the explicitly selected original workspace', async () => {
+     await seedChange(worktreeRoot);
+-    inspectDiscoveredNativeStatus.mockImplementation(async (options) => {
+-      options.onSelectedRoot?.(worktreeRoot);
++    // SIMULATED inspection projection: this unit test checks forwarding, not a Build transition.
++    const primaryConfig = await fs.readFile(path.join(projectRoot, '.comet/config.yaml'), 'utf8');
++    inspectDiscoveredNativeStatus.mockImplementation(async () => {
+       return {
+         schema: 'comet.native.status.v2',
+         name: 'demo',
+@@ -63,7 +64,14 @@ describe('Native select command branches', () => {
+       };
+     });
+ 
+-    const result = await nativeSelectCommand(['demo'], projectRoot);
++    await expect(nativeSelectCommand(['demo'], projectRoot)).rejects.toThrow();
++    expect(await readCometCurrentSelection(projectRoot)).toMatchObject({ status: 'missing' });
++    inspectDiscoveredNativeStatus.mockClear();
++    const result = await nativeSelectCommand(['demo'], worktreeRoot);
++    expect(inspectDiscoveredNativeStatus).toHaveBeenCalledExactlyOnceWith({
++      projectRoot: worktreeRoot,
++      name: 'demo',
++    });
+     expect(result).toMatchObject({
+       command: 'select',
+       exitCode: 0,
+@@ -76,6 +84,20 @@ describe('Native select command branches', () => {
+         continuation: { action: 'advance-children' },
+       },
+     });
++    expect(await readCometCurrentSelection(projectRoot)).toMatchObject({ status: 'missing' });
++    expect(await fs.readFile(path.join(projectRoot, '.comet/config.yaml'), 'utf8')).toBe(
++      primaryConfig,
++    );
++    expect(result.data).toEqual({
++      selected: 'demo',
++      schema: 'comet.native.status.v2',
++      name: 'demo',
++      phase: 'build',
++      status: 'active',
++      stateVersion: 7,
++      workspace: { projectRoot: worktreeRoot },
++      continuation: { schema: 'comet.native.continuation.v2', action: 'advance-children' },
++    });
+     const selection = await readCometCurrentSelection(worktreeRoot);
+     expect(selection).toMatchObject({
+       status: 'selected',

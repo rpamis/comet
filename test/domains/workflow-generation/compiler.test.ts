@@ -494,7 +494,7 @@ it('assembles Classic replacements and order into actual SDK transitions and ret
     }).classic!;
     let run = await runtime.start({
       runId: 'example',
-      workflow: { id: base.workflow.id, version: '1' },
+      workflow: { id: base.workflow.id, version: base.workflow.version },
       input: { change: 'example', changeDir: changeRef, workspaceRoot: project },
       initialState: initial,
     });

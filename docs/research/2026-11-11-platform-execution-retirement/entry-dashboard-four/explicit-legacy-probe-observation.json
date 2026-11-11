@@ -1,0 +1,38 @@
+{
+  "utterance": "继续",
+  "probe": {
+    "schema_version": "comet.resume_probe.v2",
+    "workflow": "native",
+    "skill": "comet-native",
+    "entrySource": "project-config",
+    "action": "ask_user",
+    "changeName": "login-flow",
+    "phase": "shape",
+    "nextCommand": null,
+    "confidence": "low",
+    "reasonCode": "native-change-invalid",
+    "reason": "Native Run state is invalid: ENOENT: no such file or directory, lstat 'C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-prototype-home-LZSarR\\COMET_DATA_DIR\\workspaces\\e90274739b932246e6b84ab1eb276a5183ad6661519a5aaaf28efbec977fe21c\\runtime\\native\\changes\\login-flow'",
+    "evidence": [
+      {
+        "source": "state",
+        "quote": "change: login-flow"
+      },
+      {
+        "source": "state",
+        "quote": "finding: run-state-invalid"
+      }
+    ],
+    "candidates": [
+      {
+        "name": "cache-controls",
+        "phase": "shape",
+        "selected": false
+      },
+      {
+        "name": "login-flow",
+        "phase": "shape",
+        "selected": true
+      }
+    ]
+  }
+}

@@ -142,7 +142,6 @@ async function fixture(
           knownLimits: [],
           review: null,
           submittedAt: new Date().toISOString(),
-          verificationChecks: [],
         },
       },
       context: { requestId: randomUUID(), projectRoot: root },
@@ -153,7 +152,10 @@ async function fixture(
   };
   const request = (file: string, content: string) =>
     parseCometHookRequest(
-      JSON.stringify({ tool_name: 'Write', tool_input: { file_path: file, content } }),
+      JSON.stringify({
+        tool_name: 'Write',
+        tool_input: { file_path: file, content },
+      }),
     );
   return {
     base,
@@ -257,7 +259,6 @@ describe('Native Shape incremental contract', () => {
           knownLimits: [],
           review: null,
           submittedAt: new Date().toISOString(),
-          verificationChecks: [],
         },
       },
       context: { projectRoot: f.root, requestId: randomUUID() },
@@ -276,7 +277,7 @@ describe('Native Shape incremental contract', () => {
     });
   });
 
-  it('reads valid historical Shape fields and rejects malformed historical state', async () => {
+  it('ignores retired historical Shape snapshot fields without changing business state', async () => {
     const f = await fixture();
     const state = await f.state();
     const digest = 'a'.repeat(64);
@@ -298,9 +299,7 @@ describe('Native Shape incremental contract', () => {
         })),
       },
     };
-    expect(parseNativePortableState(historical).shape_semantic_snapshot).toEqual(
-      historical.shape_semantic_snapshot,
-    );
+    expect(parseNativePortableState(historical)).toEqual(state);
     const invalid = {
       ...historical,
       shape_semantic_snapshot: {
@@ -313,6 +312,7 @@ describe('Native Shape incremental contract', () => {
         ],
       },
     };
-    expect(() => parseNativePortableState(invalid)).toThrow('snapshot');
+    expect(parseNativePortableState(invalid)).toEqual(state);
+    expect(() => parseNativePortableState({ ...historical, phase: 'invalid' })).toThrow('phase');
   });
 });

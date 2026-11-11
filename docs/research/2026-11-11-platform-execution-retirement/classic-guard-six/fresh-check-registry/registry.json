@@ -1,0 +1,34 @@
+{
+  "cases": [
+    {
+      "id": "classic-sdk-fresh-check-opt-in-guidance",
+      "behavior": "Classic检查投影明确单次执行为默认，逐阶段真实检查或副作用检查不能误加local复用选项。",
+      "coverageLevel": "unit",
+      "sources": [
+        "report:2026-10-26-051-release-closure"
+      ],
+      "reproduction": "104058在Build与Verify都加--local，Verify复用Build原收据，helper只执行两次；任务明确禁止可复用，原validator与执行计数正确拒绝。当前提示断言在修改前失败。",
+      "expected": "nextAction与continuation共用复用前提，命令模板默认不含--local，不变更Run；完整输入确定且任务允许时仍可显式复用。",
+      "forbidden": "把--local当本机执行位置、要求真实执行时仍复用、删减三次执行或原reused:false断言。",
+      "rootCause": "检查交接只给执行及收据说明，用户的真实执行要求未在复用选择附近得到提示。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-output.test.ts",
+          "namePattern": "keeps fresh-check requirements visible before opting into local reuse",
+          "requiredNames": [
+            "Classic next-step source projection keeps fresh-check requirements visible before opting into local reuse"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real Classic post-archive repair retaining all original non-reusable check and counter assertions",
+          "status": "pending",
+          "evidence": [
+            "Original 104058 failures remain unchanged. Targeted fixtures verify only their declared deterministic boundary; current model acceptance is still required."
+          ]
+        }
+      ]
+    }
+  ]
+}

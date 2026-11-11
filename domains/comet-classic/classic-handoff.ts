@@ -26,7 +26,7 @@ import {
   writeContext,
 } from './classic-run-store.js';
 import { ensureClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-runtime-run.js';
-import { readClassicState, withClassicStateLock, writeClassicState } from './classic-store.js';
+import { readClassicState, withClassicStateMutation, writeClassicState } from './classic-store.js';
 
 export interface ClassicHandoffSource {
   reference: string;
@@ -178,7 +178,7 @@ export const compatHandoffCommand: ClassicCommandHandler = withProjectContext(as
     active = await inspectClassicActiveChangeDirectory(change, layout.projectRoot);
   if (!active.exists || !active.stateExists)
     return { exitCode: 1, stderr: 'Classic change directory or state is missing' };
-  return withClassicStateLock(active.directory, async () => {
+  return withClassicStateMutation(active.directory, async () => {
     const current = await readClassicState(active.directory);
     if (!current.classic || !['design', 'build'].includes(current.classic.phase))
       throw new Error('Design handoff requires phase: design or build');

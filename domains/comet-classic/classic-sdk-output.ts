@@ -11,8 +11,6 @@ import { isClassicSdkRejectedBuildProposal } from './classic-build-configuration
 import { resolveClassicChangeDirectory } from './classic-paths.js';
 import { classicRecoveryContext } from './classic-recovery.js';
 import { inspectClassicSdkActionRecovery } from './classic-sdk-check-recovery.js';
-import { classicSdkCheckPreparationInput } from './classic-sdk-check-preparation.js';
-import { classicSdkCheckRefreshInput } from './classic-sdk-check.js';
 import {
   canRepairClassicDelivery,
   classicDeliveryActionContext,
@@ -26,41 +24,13 @@ import {
 import { inspectClassicSdkRevisionReadiness } from './classic-sdk-revision-readiness.js';
 import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
 import {
-  classicSdkCheckInstruction,
-  classicSdkDeliveryCheckInstruction,
   classicSdkAgentDeliveryCheckInstruction,
   classicSdkNextAction,
   findClassicSdkWorkspace,
 } from './classic-sdk-status.js';
 import type { ClassicState } from './classic-state.js';
 import { classicTaskContextRequest } from './classic-task-context.js';
-
 /** 沿用原检查计划及已选复用语义；实际输入、失败与原收据仍由执行器核对。 */
-function inheritedCheck(run: WorkflowRun) {
-  const previous = [...run.actions].reverse().find((action) => action.ref === 'classic-check');
-  const output = previous?.outcome?.output as
-    { reusable?: boolean; argv?: string[]; cwd?: string; timeoutMs?: number } | undefined;
-  return previous &&
-    ['succeeded', 'failed'].includes(previous.status) &&
-    typeof output?.reusable === 'boolean' &&
-    Array.isArray(output.argv) &&
-    output.argv.length > 0 &&
-    output.argv.every((value) => typeof value === 'string') &&
-    typeof output.cwd === 'string' &&
-    Number.isSafeInteger(output.timeoutMs)
-    ? {
-        argv: [...output.argv],
-        options: [
-          ...(output.reusable ? ['--local'] : []),
-          '--cwd',
-          output.cwd,
-          '--timeout-ms',
-          String(output.timeoutMs),
-        ],
-      }
-    : null;
-}
-
 /** 当前 Run 的有界视图；保留所有并行动作，不把历史输入重复展开。 */
 export function classicSdkRunSummary(run: WorkflowRun, details = false) {
   if (details) return { ...run, id: run.runId };
@@ -99,11 +69,9 @@ export function classicSdkRunSummary(run: WorkflowRun, details = false) {
       })),
   };
 }
-
 function runtimeObject(value: RuntimeValue | undefined): Record<string, RuntimeValue> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value : null;
 }
-
 /** 只裁剪内置宿主契约已知的累计输入；未知 Skill 或输入布局保留原文。 */
 function classicSdkCurrentInput(run: WorkflowRun, action: RuntimeAction) {
   const builtin = /^comet-classic-(full|hotfix|tweak)$/u.test(run.workflow.id);
@@ -226,13 +194,14 @@ function classicSdkCurrentInput(run: WorkflowRun, action: RuntimeAction) {
     },
   };
 }
-
 /** 只把 Run 已安排的工作映射到公开命令，不预测或推进领域状态。 */
 export function classicSdkContinuation(
   run: WorkflowRun,
   projectRoot: string,
   change: string,
-  observation: { openApprovalHash?: string } = {},
+  observation: {
+    openApprovalHash?: string;
+  } = {},
 ) {
   const nextAction = classicSdkNextAction(run);
   const state = run.state as unknown as ClassicState;
@@ -381,9 +350,9 @@ export function classicSdkContinuation(
     return result({
       mode: 'reconcile',
       commandArgs: null,
-      requiredInputs: ['original-execution-stop-evidence'],
+      requiredInputs: ['original-business-task-result'],
       instruction:
-        'Run 已停止派发；原宿主必须确认原执行及子任务已经停止，再通过 runtime dispatch cancel 的 stoppedActions 回报原领取身份与停止证据。此前工作区仍保持占用。',
+        'Run 已取消派发，但原归档或关联子 Run 的业务结果尚未核对。保留原记录并先恢复未完成的业务；普通任务的取消与清理由 Agent 平台处理，不提交进程停止回执。',
     });
   if (run.status === 'completed' || run.status === 'cancelled')
     return result({
@@ -403,7 +372,7 @@ export function classicSdkContinuation(
           'repair-delivery',
           '--expected-revision',
           String(run.revision),
-          ...(run.workflow.version === '2' ? ['--checks', '<checks-json-file>'] : []),
+          ...['--checks', '<checks-json-file>'],
         ),
         requiredInputs: ['保留原实现和原命令；仅移除已声明且可再生成的输出'],
         instruction:
@@ -555,42 +524,8 @@ export function classicSdkContinuation(
           mode: 'execute',
           commandArgs: command('next', '--continue'),
           requiredInputs: [],
-          instruction:
-            run.workflow.version === '2'
-              ? classicSdkAgentDeliveryCheckInstruction
-              : classicSdkDeliveryCheckInstruction,
+          instruction: classicSdkAgentDeliveryCheckInstruction,
         });
-      const scope = action.stepId.includes('.build.') ? 'build' : 'verify';
-      const plans = (run.input as { checkCommands?: Partial<Record<'build' | 'verify', unknown>> })
-        .checkCommands;
-      if (
-        plans?.[scope] ||
-        classicSdkCheckPreparationInput(run, action) ||
-        classicSdkCheckRefreshInput(run, action)
-      )
-        return result({
-          mode: 'execute',
-          commandArgs: command('next', '--continue'),
-          requiredInputs: [],
-          instruction: classicSdkCheckInstruction,
-        });
-      const priorCheck = inheritedCheck(run);
-      return result({
-        mode: 'execute',
-        commandArgs: [
-          'comet',
-          'check',
-          'run',
-          change,
-          scope,
-          ...(priorCheck?.options ?? []),
-          '--json',
-          '--',
-          ...(priorCheck?.argv ?? ['<program>', '<args...>']),
-        ],
-        requiredInputs: priorCheck ? [] : ['当前工作区已确认的完整检查 program 与 args'],
-        instruction: classicSdkCheckInstruction,
-      });
     }
     if (['classic-archive-preflight', 'classic-archive'].includes(action.ref ?? ''))
       return result({
@@ -650,35 +585,12 @@ export function classicSdkContinuation(
       requiredInputs = ['plan-ref: 引用当前 Design Doc 和 task IDs 的真实计划'];
       preparation = '先完成当前计划；仅用户明确要求计划完成后暂停时添加 --pause。';
     } else if (action.stepId.endsWith('.build.execute')) {
-      commandArgs = command(
-        'complete-build',
-        ...(run.workflow.version === '2' ? ['--checks', '<checks-json-file>'] : []),
-      );
+      commandArgs = command('complete-build', ...['--checks', '<checks-json-file>']);
       requiredInputs = ['当前计划任务的真实实现、必要审查和 tasks.md 完成记录'];
       preparation =
-        run.workflow.version === '2'
-          ? '完成实现、任务记录和必要审查，在平台执行检查，将实际 checks 报告保存到 JSON 后提交。空检查列表必须填写 checksReason。'
-          : '先完成实现与任务验收，只补尚未完成任务的完成记录；已有稳定 ID 且已 completed 的任务不得重复 task-complete。缺少 ID 时先读取或补齐，不猜测或使用 None。再提交 Build 完成；后续检查仍由 Runtime 核对，有效收据可复用。';
+        '完成实现、任务记录和必要审查，在平台执行检查，将实际 checks 报告保存到 JSON 后提交。空检查列表必须填写 checksReason。只补尚未完成的任务记录；不得重复 task-complete 已完成任务。';
     } else if (action.stepId.endsWith('.verify.run')) {
-      const priorCheck = inheritedCheck(run);
-      commandArgs = [
-        'comet',
-        'guard',
-        change,
-        'verify',
-        '--report',
-        '<report-ref>',
-        '--apply',
-        ...(priorCheck?.options ?? []),
-        '--json',
-        '--',
-        ...(priorCheck?.argv ?? ['<program>', '<args...>']),
-      ];
-      requiredInputs = [
-        'report-ref: 真实验证与独立审查报告',
-        ...(priorCheck ? [] : ['program 与 args: 当前完整验证命令']),
-      ];
-      if (run.workflow.version === '2') {
+      {
         commandArgs = [
           'comet',
           'guard',
@@ -697,9 +609,7 @@ export function classicSdkContinuation(
         ];
       }
       preparation =
-        run.workflow.version === '2'
-          ? '在平台执行必要检查，保存实际报告与检查结果。Guard 提交当前验收，不重复执行命令。'
-          : '先完成独立验证并保存真实报告；Guard 会预检报告、执行检查并绑定收据。';
+        '在平台执行必要检查，保存实际报告与检查结果。Guard 提交当前验收，不重复执行命令。';
     } else if (action.stepId.endsWith('.archive.prepare')) {
       commandArgs = command('propose-archive', '--summary', '<delivery-summary>');
       requiredInputs = [
@@ -709,7 +619,11 @@ export function classicSdkContinuation(
     } else if (action.stepId.endsWith('.archive.deliver')) {
       const profile = action.stepId.split('.')[0];
       const approved = run.actionContexts[action.id]?.results[`${profile}.archive.preflight`]
-        ?.value as { deliveryAction?: string } | undefined;
+        ?.value as
+        | {
+            deliveryAction?: string;
+          }
+        | undefined;
       commandArgs = command(
         'complete-delivery',
         '--commit',
@@ -744,7 +658,6 @@ export function classicSdkContinuation(
       : '此 Action 需要应用声明的宿主执行器；不要把工具或子流程引用当作 Skill。',
   });
 }
-
 /** SDK 交付只投影本 Run 的审批和结果，不读取 compat 的另一份授权。 */
 function classicSdkDeliverySummary(run: WorkflowRun) {
   const profile = (run.state as unknown as ClassicState).workflow;
@@ -770,13 +683,19 @@ function classicSdkDeliverySummary(run: WorkflowRun) {
     },
   };
 }
-
 /** 查询与写入共用同一响应；使用调用方已经读取或提交的 Run，绝不再次 inspect 推进状态。 */
 export async function classicSdkEntryData(
   change: string,
-  inspected: { run: WorkflowRun; projectRoot: string; owner?: SdkChangeOwner },
+  inspected: {
+    run: WorkflowRun;
+    projectRoot: string;
+    owner?: SdkChangeOwner;
+  },
   details = false,
-  observation: { openApprovalHash?: string; submittedDesign?: WorkflowRun } = {},
+  observation: {
+    openApprovalHash?: string;
+    submittedDesign?: WorkflowRun;
+  } = {},
 ) {
   const { run, projectRoot } = inspected;
   const state = run.state as unknown as ClassicState;
@@ -785,7 +704,7 @@ export async function classicSdkEntryData(
   const base = {
     change,
     runtimeFormat: 'sdk' as const,
-    checksMode: run.workflow.version === '2' ? ('agent' as const) : ('runtime' as const),
+    checksMode: 'agent' as const,
     phase: state.phase,
     nextAction:
       observation.openApprovalHash &&
@@ -894,7 +813,6 @@ export async function classicSdkEntryData(
     };
   }
 }
-
 /** 仅错误路径补读已存在的权威 Run；不恢复检查点、不重试 mutation。 */
 export async function classicSdkErrorData(projectRoot: string, change: string) {
   try {
@@ -905,17 +823,23 @@ export async function classicSdkErrorData(projectRoot: string, change: string) {
     return null;
   }
 }
-
 export interface ClassicSdkGuardAttempt {
   actionIds: string[];
   evidenceIds: string[];
 }
-
 /** Guard 覆盖的工作身份；配置、提案、交付等其他合法工作不因此被阻塞。 */
 export function classicSdkGuardAttempt(
   run: {
-    actions: readonly { id: string; stepId: string; status: string }[];
-    evidenceWaits?: readonly { id: string; stepId: string; status: string }[];
+    actions: readonly {
+      id: string;
+      stepId: string;
+      status: string;
+    }[];
+    evidenceWaits?: readonly {
+      id: string;
+      stepId: string;
+      status: string;
+    }[];
   },
   phase: string,
   previous?: ClassicSdkGuardAttempt,
@@ -945,7 +869,6 @@ export function classicSdkGuardAttempt(
     ],
   };
 }
-
 /** 同一工作仍被明确阻塞时，不能把其失败命令作为自动续行再次发出。 */
 export function classicSdkBlockedContinuation(
   continuation: ReturnType<typeof classicSdkContinuation>,

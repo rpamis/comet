@@ -1,3 +1,4 @@
+import '../../helpers/isolated-agent-home.js';
 import { execFileSync } from 'node:child_process';
 import { ensureClassicRuntimeRun } from '../../../domains/comet-classic/classic-runtime-run.js';
 import { promises as fs } from 'node:fs';
@@ -11,17 +12,16 @@ import {
   readTrajectory,
   appendTrajectory,
 } from '../../../domains/comet-classic/classic-run-store.js';
-import { resolveClassicRunDirectory } from '../../../domains/comet-classic/classic-runtime-paths.js';
+import {
+  resolveClassicRunDirectory,
+  resolveClassicRunDirectoryForRead,
+} from '../../../domains/comet-classic/classic-runtime-paths.js';
 import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
 import {
   classicProjectTargetExists,
   readClassicProjectFile,
-  writeClassicProjectText,
 } from '../../../domains/comet-classic/classic-protected-path.js';
-import {
-  isWorkspaceRuntimeMigrationFence,
-  resolveWorkspaceRuntimeRoot,
-} from '../../../domains/workflow-contract/workspace-runtime.js';
+import { resolveWorkspaceRuntimeRoot } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
 describe('Classic workspace-local runtime storage', () => {
@@ -47,15 +47,11 @@ describe('Classic workspace-local runtime storage', () => {
     expect(result.exitCode, result.stderr).toBe(0);
   }
 
-  it('blocks old compat writers immediately after initialization and permits current writes', async () => {
+  it('initializes current compat storage and permits writes without a legacy writer fence', async () => {
     await initialize('compat');
     const lock = path.join(change, '.comet-state.lock');
-    const runtime = await resolveWorkspaceRuntimeRoot(root);
-    expect(
-      await isWorkspaceRuntimeMigrationFence(lock, path.join(runtime, 'classic-legacy-state.lock')),
-    ).toBe(true);
-    await expect(fs.open(lock, 'wx')).rejects.toMatchObject({ code: 'EEXIST' });
-    await expect(fs.access(path.join(change, '.comet', 'run-state.json'))).rejects.toMatchObject({
+    await expect(fs.access(lock)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.access(path.join(change, '.comet/run-state.json'))).rejects.toMatchObject({
       code: 'ENOENT',
     });
     const result = await withClassicCommandContext({ projectRoot: root, invocationCwd: root }, () =>
@@ -65,17 +61,17 @@ describe('Classic workspace-local runtime storage', () => {
     expect(await fs.readFile(path.join(change, '.comet.yaml'), 'utf8')).toContain(
       'language: zh-CN',
     );
-    expect(await fs.lstat(lock).then((stat) => stat.isDirectory())).toBe(true);
+    await expect(fs.access(lock)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it('blocks old compat writers when adopting YAML with no legacy local records', async () => {
+  it('prepares current storage for legacy YAML without inventing a writer fence', async () => {
     await fs.mkdir(change, { recursive: true });
     await fs.writeFile(path.join(change, '.comet.yaml'), 'workflow: full\nphase: open\n');
     const local = await resolveClassicRunDirectory(change, root);
-    await expect(fs.open(path.join(change, '.comet-state.lock'), 'wx')).rejects.toMatchObject({
-      code: 'EEXIST',
-    });
     expect(await resolveClassicRunDirectory(change, root)).toBe(local);
+    await expect(fs.access(path.join(change, '.comet-state.lock'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
     await expect(fs.access(path.join(local, '.comet-state.lock'))).rejects.toMatchObject({
       code: 'ENOENT',
     });
@@ -110,15 +106,15 @@ describe('Classic workspace-local runtime storage', () => {
     expect(await fs.readFile(path.join(change, '.comet.yaml'), 'utf8')).toContain('run_id:');
   });
 
-  it('stores SDK Run and projection at the workspace root and retains portable YAML', async () => {
+  it('stores the SDK Run at the workspace root and retains its portable checkpoint without a marker', async () => {
     await initialize('sdk');
     const run = await createClassicSdkStateStore(root).read('demo');
     expect(run?.runId).toBe('demo');
     const runtime = await resolveWorkspaceRuntimeRoot(root);
     expect(await fs.readdir(path.join(runtime, 'sdk-runs', 'classic'))).not.toHaveLength(0);
-    expect(
-      await fs.readFile(path.join(runtime, 'state-projections', 'classic', 'demo.json'), 'utf8'),
-    ).toContain('demo');
+    await expect(
+      fs.access(path.join(runtime, 'state-projections/classic/demo.json')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(fs.access(path.join(root, '.comet', 'runtime', 'sdk-runs'))).rejects.toMatchObject(
       { code: expect.stringMatching(/ENOENT|ENOTDIR/) },
     );
@@ -127,7 +123,7 @@ describe('Classic workspace-local runtime storage', () => {
     );
   });
 
-  it('migrates legacy local logs while preserving handoff and resolves them after archive', async () => {
+  it('reads legacy logs and portable handoff after archive without implicit relocation', async () => {
     await fs.mkdir(path.join(change, '.comet', 'checks'), { recursive: true });
     await fs.mkdir(path.join(change, '.comet', 'handoff'));
     await fs.writeFile(path.join(change, '.comet.yaml'), 'workflow: full\nphase: open\n');
@@ -137,10 +133,12 @@ describe('Classic workspace-local runtime storage', () => {
     expect(await readClassicProjectFile(root, ref, { label: 'legacy check' })).toBe(
       'old execution evidence',
     );
-    await writeClassicProjectText(root, ref, 'new execution evidence', { label: 'local check' });
     const local = await resolveClassicRunDirectory(change, root);
-    expect(await fs.readFile(path.join(local, '.comet', 'checks', 'old.log'), 'utf8')).toBe(
-      'new execution evidence',
+    await expect(fs.access(path.join(local, '.comet/checks/old.log'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    expect(await fs.readFile(path.join(change, '.comet/checks/old.log'), 'utf8')).toBe(
+      'old execution evidence',
     );
     expect(
       await fs.readFile(path.join(change, '.comet', 'handoff', 'context.json'), 'utf8'),
@@ -153,7 +151,7 @@ describe('Classic workspace-local runtime storage', () => {
       await readClassicProjectFile(root, path.join(archived, '.comet', 'checks', 'old.log'), {
         label: 'archived check',
       }),
-    ).toBe('new execution evidence');
+    ).toBe('old execution evidence');
   });
 
   it('keeps the same instance after checkout recreation and separates reused names', async () => {
@@ -177,7 +175,7 @@ describe('Classic workspace-local runtime storage', () => {
   });
 
   it.each(['lock', 'transaction', 'execution'])(
-    'preserves legacy YAML byte-for-byte when old %s blocks migration',
+    'preserves legacy YAML and old %s records during read-only discovery',
     async (kind) => {
       await fs.mkdir(change, { recursive: true });
       const source = '# legacy state\nworkflow: full\nphase: open\n';
@@ -211,7 +209,7 @@ describe('Classic workspace-local runtime storage', () => {
           }) + '\n',
         );
       }
-      await expect(resolveClassicRunDirectory(change, root)).rejects.toThrow();
+      expect(await resolveClassicRunDirectoryForRead(change, root)).toBe(change);
       expect(await fs.readFile(path.join(change, '.comet.yaml'), 'utf8')).toBe(source);
     },
   );
@@ -233,17 +231,23 @@ describe('Classic workspace-local runtime storage', () => {
     }
   });
 
-  it('rejects a second same-workspace projection with a copied instance UUID', async () => {
+  it('reads a copied legacy document without scanning or rewriting the original historical Run', async () => {
     await initialize('compat');
     await ensureClassicRuntimeRun(change);
-    const original = await readClassicState(change);
-    const copied = path.join(root, 'openspec', 'changes', 'copied');
+    const original = await readClassicState(change),
+      local = await resolveClassicRunDirectory(change, root),
+      runFile = path.join(local, '.comet/run-state.json'),
+      bytes = await fs.readFile(runFile),
+      copied = path.join(root, 'openspec/changes/copied');
     await fs.cp(change, copied, { recursive: true });
-    await expect(readClassicState(copied)).rejects.toThrow(/Duplicate Classic change_id/);
+    const yaml = await fs.readFile(path.join(copied, '.comet.yaml'));
+    expect((await readClassicState(copied)).run?.runId).toBe(original.run?.runId);
+    expect(await fs.readFile(runFile)).toEqual(bytes);
+    expect(await fs.readFile(path.join(copied, '.comet.yaml'))).toEqual(yaml);
     expect((await readClassicState(change)).run?.runId).toBe(original.run?.runId);
   });
 
-  it('rejects an SDK store retained across git init and recovers into the new workspace identity', async () => {
+  it('retains bound history after git init but rejects mutation before explicit recovery in the new workspace', async () => {
     vi.stubEnv('GIT_CEILING_DIRECTORIES', directory);
     await initialize('sdk');
     const store = createClassicSdkStateStore(root);
@@ -251,13 +255,20 @@ describe('Classic workspace-local runtime storage', () => {
     const previousRoot = await resolveWorkspaceRuntimeRoot(root);
     execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'ignore' });
     expect(await resolveWorkspaceRuntimeRoot(root)).not.toBe(previousRoot);
-    await expect(store.read('demo')).rejects.toThrow('workspace identity changed');
+    const yaml = await fs.readFile(path.join(change, 'comet-state.yaml'));
+    expect(await store.read('demo')).toEqual(original);
     await expect(
       store.compareAndSwap('demo', original!.revision, {
         ...original!,
         revision: original!.revision + 1,
       }),
     ).rejects.toThrow('workspace identity changed');
+    expect(await fs.readFile(path.join(change, 'comet-state.yaml'))).toEqual(yaml);
+    const rawModule = await import('../../../domains/engine/runtime.js');
+    const oldStore = rawModule.createFileRuntimeStore({
+      rootDir: path.join(previousRoot, 'sdk-runs/classic'),
+    });
+    expect(await oldStore.read('demo')).toEqual(original);
     const recovered = await createClassicSdkStateStore(root).read('demo');
     expect(recovered!.actions).toEqual(original!.actions);
     expect(recovered!.revision).toBe(original!.revision);

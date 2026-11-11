@@ -1,0 +1,17 @@
+diff --git a/domains/comet-classic/classic-sdk-state-store.ts b/domains/comet-classic/classic-sdk-state-store.ts
+index 2afe86d..aa811bb 100644
+--- a/domains/comet-classic/classic-sdk-state-store.ts
++++ b/domains/comet-classic/classic-sdk-state-store.ts
+@@ -398,6 +398,12 @@ export function createClassicSdkStateStore(
+           runId,
+           { preserveSourceRevision: true },
+         );
++        if(run.revision===1 && checkpoint && checkpoint.revision>run.revision){
++          if(options.readOnly) recoveryRequired(runId,'the initial checkpoint import is incomplete');
++          const recovered=await recoverFromPortableFile(runId,run);
++          if(!recovered)recoveryRequired(runId,'the initial checkpoint import is incomplete');
++          run=recovered;state=run.state as unknown as ClassicState;
++        }
+         const base = (checkpoint?.state as unknown as ClassicState | undefined) ?? state;
+         const edits = changedFields(base, fileState);
+         if (edits.some((field) => !USER_CONFIG_FIELDS.has(field))) {

@@ -15,7 +15,6 @@ export {
   retryNativeSupervisorBuilder,
   reconnectNativeSupervisorTask,
   reconnectNativeSupervisorTaskWithState,
-  type NativeSupervisorCheckExecutionState,
   type NativeSupervisorChildState,
   type NativeSupervisorChildStatus,
   type NativeSupervisorEvent,
@@ -32,9 +31,6 @@ export {
 } from './native-supervisor-state.js';
 export {
   assertNativeSupervisorTargetUnchanged,
-  finalizeNativeSupervisorDelivery,
-  finalizeNativeSupervisorDeliveryLocked,
-  integrateNativeSupervisorChildWorkspace,
   nativeSupervisorChildWorktree,
   nativeSupervisorIntegrationBranch,
   nativeSupervisorIntegrationWorktree,
@@ -43,9 +39,7 @@ export {
   refreshNativeSupervisorTarget,
 } from './native-supervisor-workspace.js';
 export {
-  advanceNativeSupervisorFinalVerificationHead,
+  advanceNativeSupervisorIntegrationHead,
   dispatchNativeSupervisorReadyTasks,
   rebuildNativeSupervisorStateFromFacts,
-  recordNativeSupervisorFinalVerification,
-  recordNativeSupervisorPortableFinalVerification,
 } from './native-supervisor-coordinator.js';

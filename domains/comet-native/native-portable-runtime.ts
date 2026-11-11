@@ -1,15 +1,6 @@
 export {
-  executeNativePortableCheckPlan,
-  retryNativePortableCheckPlan,
-  sameNativeCheckPlan,
-  type NativePortableRequestChecksOutcome,
-} from './native-portable-checks.js';
-export {
   inspectNativeSupervisorParentReviewReadiness,
-  recoverNativeSupervisorFinalVerificationLocked,
-  recoverNativeSupervisorFinalVerificationOnResume,
   tryAutoAdvanceNativeV1SupervisorParent,
-  type NativeSupervisorFinalVerificationResumeResult,
   type NativeSupervisorParentAdvance,
 } from './native-portable-coordination.js';
 export {
@@ -31,10 +22,8 @@ export {
 } from './native-portable-requirements.js';
 export { confirmNativePortableShape } from './native-portable-shape-coordination.js';
 export {
-  NATIVE_LOCAL_EXECUTION_FILE,
   NATIVE_PORTABLE_STATE_FILE,
   isNativePortableChange,
-  nativeLocalExecutionFile,
   nativePortableChangeDir,
   nativePortableStateFile,
   readNativePortableChange,

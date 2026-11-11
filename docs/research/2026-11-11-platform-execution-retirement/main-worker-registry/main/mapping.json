@@ -1,0 +1,151 @@
+{
+  "cases": [
+    {
+      "id": "native-299-real-integration-parent-verify",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/main/README.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "gates the parent on real child merges and starts dependents from the integrated HEAD",
+          "requiredNames": [
+            "gates the parent on real child merges and starts dependents from the integrated HEAD"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-supervisor-business.test.ts",
+          "namePattern": "^(?:completes Agent-selected Supervisor work through the Native business entry via source|completes Agent-selected Supervisor work through the Native business entry via generated)$",
+          "requiredNames": [
+            "completes Agent-selected Supervisor work through the Native business entry via source",
+            "completes Agent-selected Supervisor work through the Native business entry via generated"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(normal\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(partial-recovery\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(branch-lock-recovery\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(delivery-recovery\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(delivery-ref-lock\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(target-drift\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(child-builder-failure\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(parent-builder-failure\\))$",
+          "requiredNames": [
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (normal)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (partial-recovery)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (branch-lock-recovery)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (delivery-recovery)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (delivery-ref-lock)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (target-drift)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (child-builder-failure)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (parent-builder-failure)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-application.test.ts",
+          "namePattern": "^(?:binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate)$",
+          "requiredNames": [
+            "binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-v4-compact-steps-original-run-recovery",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/main/README.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-definition-selection.test.ts",
+          "namePattern": "omits internal result-transfer Actions from new v4|continues the original v4 Shape Action|retains the original v4 compatibility definition",
+          "requiredNames": [
+            "omits internal result-transfer Actions from new v4 while selecting the original v4 definition",
+            "continues the original v4 Shape Action after compact definitions ship (pending)",
+            "continues the original v4 Shape Action after compact definitions ship (unknown)",
+            "retains the original v4 compatibility definition +0 after internal step removal",
+            "retains the original v4 compatibility definition 1 after internal step removal",
+            "retains the original v4 compatibility definition 2 after internal step removal",
+            "retains the original v4 compatibility definition 3 after internal step removal",
+            "retains the original v4 compatibility definition 4 after internal step removal",
+            "retains the original v4 compatibility definition 5 after internal step removal",
+            "retains the original v4 compatibility definition 6 after internal step removal"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+          "namePattern": "^(?:continues an actually installed old v4 approved result without another decision \\(pending\\)|continues an actually installed old v4 approved result without another decision \\(unknown\\)|rejects an unknown current Native definition instead of rebinding its business records)$",
+          "requiredNames": [
+            "continues an actually installed old v4 approved result without another decision (pending)",
+            "continues an actually installed old v4 approved result without another decision (unknown)",
+            "rejects an unknown current Native definition instead of rebinding its business records"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-unreadable-report",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/main/README.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:preserves the completed Run and warns when its archived report view is not a file \\(route=archive-ready\\)|preserves the completed Run and warns when its archived report view is not a file \\(route=verification-wait\\))$",
+          "requiredNames": [
+            "preserves the completed Run and warns when its archived report view is not a file (route=archive-ready)",
+            "preserves the completed Run and warns when its archived report view is not a file (route=verification-wait)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-optional-archived-view-path-warning",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/main/README.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:preserves the completed Run and warns when its archived report view is not a file \\(route=archive-ready\\)|preserves the completed Run and warns when its archived report view is not a file \\(route=verification-wait\\))$",
+          "requiredNames": [
+            "preserves the completed Run and warns when its archived report view is not a file (route=archive-ready)",
+            "preserves the completed Run and warns when its archived report view is not a file (route=verification-wait)"
+          ]
+        }
+      ]
+    }
+  ],
+  "behaviorSlices": [
+    {
+      "id": "native-299-real-integration-parent-verify",
+      "removedNames": [
+        "repairs failed Supervisor Children and serializes integration after a definition upgrade",
+        "handles parent repair, delivery, and cleanup after Supervisor DAG restart ("
+      ],
+      "reason": "Move only the synthetic pre-Child-archive old-factory driver to current real Git DAG repair/delivery and reverse Child review. Preserve two failed repairs, original proposals, stale-decision refusal and original business records; keep every unrelated historical Child/Agent selector unchanged. Replace the previously incomplete required-name prefix by all eight actually executed full names.",
+      "preserveOtherLinks": true
+    },
+    {
+      "id": "native-v4-compact-steps-original-run-recovery",
+      "removedNames": [
+        "continues the original v4 Supervisor accepted-result Action after compact definitions ship (pending)",
+        "continues the original v4 Supervisor accepted-result Action after compact definitions ship (unknown)"
+      ],
+      "reason": "Move only the main synthetic current-factory/old-hash Supervisor driver to frozen actually installed original v4 pending/unknown approved results and unknown-current-definition refusal. Retire this synthetic old factory reconstruction, not the original Run/claim/approval business. Preserve all other-file definition-selection links for their separate review.",
+      "preserveOtherLinks": true
+    },
+    {
+      "id": "manual-recovery-native-unreadable-report",
+      "removedNames": [
+        "preserves the completed Run and warns when its archived report view is not a file (version=1)",
+        "preserves the completed Run and warns when its archived report view is not a file (version=3)"
+      ],
+      "reason": "Move only the mislabeled version parameter names to the actual current-factory Archive-ready and verification-wait routes. Both old fixtures already used the current factory; preserve every report-directory, original Run/approval/receipt, unchanged status read and completed Archive assertion. This does not claim that old v1/v3 factories are still constructed.",
+      "preserveOtherLinks": true
+    },
+    {
+      "id": "native-optional-archived-view-path-warning",
+      "removedNames": [
+        "preserves the completed Run and warns when its archived report view is not a file (version=1)",
+        "preserves the completed Run and warns when its archived report view is not a file (version=3)"
+      ],
+      "reason": "Move only the mislabeled version parameter names to the actual current-factory Archive-ready and verification-wait routes. Both old fixtures already used the current factory; preserve every report-directory, original Run/approval/receipt, unchanged status read and completed Archive assertion. This does not claim that old v1/v3 factories are still constructed.",
+      "preserveOtherLinks": true
+    }
+  ]
+}

@@ -1,0 +1,116 @@
+{
+  "cases": [
+    {
+      "id": "native-invalid-completed-check-recovery",
+      "behavior": "已停止的 Build 检查保存了无效 outcome 时，确认原执行停止后可沿原 Run 记录中断并恢复 Builder。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/545"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "真实执行 v3 build.checks，保留逐项日志，将持久 outcome 的计划名称替换为旧计划名称，再将原 Action 标记 unknown；旧 doctor 即使收到正确停止证据也无法收敛。",
+      "expected": "正确停止证据将旧 Action 记录为失败中断，保留原记录、日志、Run 和 Shape 批准，恢复 Builder；重复修复不重放，新的显式检查请求仍可完成。",
+      "forbidden": "未确认或错误 claim 推进、跨候选采信结果、丢弃 Run、把坏结果当通过、覆盖坏记录或自动重跑命令。",
+      "rootCause": "中断恢复和校验要求 execution.outcome 不存在，拒绝了存在但校验失败的已停止结果。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "recovers an invalid completed Build check through doctor without replay",
+          "requiredNames": [
+            "Native SDK Workflow Application recovers an invalid completed Build check through doctor without replay (source)",
+            "Native SDK Workflow Application recovers an invalid completed Build check through doctor without replay (bundle)"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "Retire only the invalid-completed Comet-check sidecar validator and stopped-actions/confirmed stop-repair handshake from Issue545. Actual published 0.5.2 pending and claimed Build frontiers preserve the original approved Run, Action/input/claim/history and resume Builder without running checks, inventing a candidate, or asking for stop evidence. The original completed-invalid process experiment was not rerun and is not claimed fixed.",
+        "authorization": "report:2026-11-10-agent-platform-execution",
+        "record": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/README.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-published-build-frontier.test.ts",
+            "namePattern": "^(?:continues published 0\\.5\\.2 Build checks pending at the original Builder without a stop receipt or fabricated candidate|continues published 0\\.5\\.2 Build checks claimed at the original Builder without a stop receipt or fabricated candidate)$",
+            "requiredNames": [
+              "continues published 0.5.2 Build checks pending at the original Builder without a stop receipt or fabricated candidate",
+              "continues published 0.5.2 Build checks claimed at the original Builder without a stop receipt or fabricated candidate"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/registry.json",
+            "sha256": "9e3cb23733dd0b02c32508f171c50fa1a23a2ab05db6f846ba49c4b7207264ae"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/tests.json",
+            "sha256": "68158b65c9c1922adc8923b4080af6ca0641c8eea89b2e6fcdddd81844d3b741"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/mapping.json",
+            "sha256": "4fd47c1006ee01e74c2a30bde05c17c4af2f5f8bc5a60b674c8f0a9bdaafbd7d"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/tests.patch",
+            "sha256": "729139a5cdb94034c4e12a7ba565cfc414cb2108ef6fe3181fcb7817352f4d82"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-invalid-completed-check-guidance",
+      "behavior": "无效完整检查结果被拒绝时，doctor 和 next 提供一致且可执行的停止确认入口与具体校验原因。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/545"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "向已停止的 build.checks 保留计划不匹配的 outcome，执行 doctor 和 next；旧输出只要求补交无法通过校验的原结果，不提供停止确认参数。",
+      "expected": "doctor 说明结果校验失败并给出 confirmed、stopped-actions 参数；next 要求原领取绑定的停止证据，执行该入口后可恢复。",
+      "forbidden": "提供 Build 阶段不可达的 Verifier refreshChecks 指引，或在缺少停止确认入口时静默重复同一无效恢复命令。",
+      "rootCause": "doctor、continuation 与恢复入口分别按 outcome 的存在性判断，没有共享结果校验结论。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "recovers an invalid completed Build check through doctor without replay",
+          "requiredNames": [
+            "Native SDK Workflow Application recovers an invalid completed Build check through doctor without replay (source)",
+            "Native SDK Workflow Application recovers an invalid completed Build check through doctor without replay (bundle)"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "Retire only the invalid-completed Comet-check sidecar validator and stopped-actions/confirmed stop-repair handshake from Issue545. Actual published 0.5.2 pending and claimed Build frontiers preserve the original approved Run, Action/input/claim/history and resume Builder without running checks, inventing a candidate, or asking for stop evidence. The original completed-invalid process experiment was not rerun and is not claimed fixed.",
+        "authorization": "report:2026-11-10-agent-platform-execution",
+        "record": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/README.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-published-build-frontier.test.ts",
+            "namePattern": "^(?:continues published 0\\.5\\.2 Build checks pending at the original Builder without a stop receipt or fabricated candidate|continues published 0\\.5\\.2 Build checks claimed at the original Builder without a stop receipt or fabricated candidate)$",
+            "requiredNames": [
+              "continues published 0.5.2 Build checks pending at the original Builder without a stop receipt or fabricated candidate",
+              "continues published 0.5.2 Build checks claimed at the original Builder without a stop receipt or fabricated candidate"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/registry.json",
+            "sha256": "9e3cb23733dd0b02c32508f171c50fa1a23a2ab05db6f846ba49c4b7207264ae"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/tests.json",
+            "sha256": "68158b65c9c1922adc8923b4080af6ca0641c8eea89b2e6fcdddd81844d3b741"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/mapping.json",
+            "sha256": "4fd47c1006ee01e74c2a30bde05c17c4af2f5f8bc5a60b674c8f0a9bdaafbd7d"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/tests.patch",
+            "sha256": "729139a5cdb94034c4e12a7ba565cfc414cb2108ef6fe3181fcb7817352f4d82"
+          }
+        }
+      }
+    }
+  ]
+}

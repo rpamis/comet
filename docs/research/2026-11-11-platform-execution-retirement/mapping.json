@@ -1,0 +1,418 @@
+{
+  "cases": [
+    {
+      "id": "classic-short-timeout-supervisor-startup",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-platform-command.test.ts",
+          "namePattern": "^routes a legacy check invocation to platform work without executing it or claiming a pass$",
+          "requiredNames": [
+            "routes a legacy check invocation to platform work without executing it or claiming a pass"
+          ]
+        },
+        {
+          "file": "test/platform/process/owned-command-termination.test.ts",
+          "namePattern": "受管命令的整树终止证明 短命令时限不让尚未启动命令的监管器抢先自清理",
+          "requiredNames": [
+            "受管命令的整树终止证明 短命令时限不让尚未启动命令的监管器抢先自清理"
+          ]
+        },
+        {
+          "file": "test/platform/process/owned-command-termination.test.ts",
+          "namePattern": "受管命令的整树终止证明 Windows 等待调用方核对整树终止时保留原监管器身份",
+          "requiredNames": [
+            "受管命令的整树终止证明 Windows 等待调用方核对整树终止时保留原监管器身份"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-supervisor-startup-errors",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^does not ship retired Native execution and snapshot implementations$",
+          "requiredNames": [
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^exposes Agent tasks and acceptance without any managed-check executor or refresh command$",
+          "requiredNames": [
+            "exposes Agent tasks and acceptance without any managed-check executor or refresh command"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-flow.test.ts",
+          "namePattern": "^preserves real approvals and completes Native platform reports through authorized Archive$",
+          "requiredNames": [
+            "preserves real approvals and completes Native platform reports through authorized Archive"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-supervisor-ready-handshake",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^does not ship retired Native execution and snapshot implementations$",
+          "requiredNames": [
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^exposes Agent tasks and acceptance without any managed-check executor or refresh command$",
+          "requiredNames": [
+            "exposes Agent tasks and acceptance without any managed-check executor or refresh command"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-flow.test.ts",
+          "namePattern": "^preserves real approvals and completes Native platform reports through authorized Archive$",
+          "requiredNames": [
+            "preserves real approvals and completes Native platform reports through authorized Archive"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-check-failure-facts",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^does not ship retired Native execution and snapshot implementations$",
+          "requiredNames": [
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^exposes Agent tasks and acceptance without any managed-check executor or refresh command$",
+          "requiredNames": [
+            "exposes Agent tasks and acceptance without any managed-check executor or refresh command"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-flow.test.ts",
+          "namePattern": "^preserves real approvals and completes Native platform reports through authorized Archive$",
+          "requiredNames": [
+            "preserves real approvals and completes Native platform reports through authorized Archive"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-check-pipe-settlement",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^does not ship retired Native execution and snapshot implementations$",
+          "requiredNames": [
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^exposes Agent tasks and acceptance without any managed-check executor or refresh command$",
+          "requiredNames": [
+            "exposes Agent tasks and acceptance without any managed-check executor or refresh command"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-flow.test.ts",
+          "namePattern": "^preserves real approvals and completes Native platform reports through authorized Archive$",
+          "requiredNames": [
+            "preserves real approvals and completes Native platform reports through authorized Archive"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ci-native-process-regression-worker-isolation",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/repository/ci-workflows.test.ts",
+          "namePattern": "^CI workflows runs CLI-owned process cleanup regressions without competing test workers$",
+          "requiredNames": [
+            "CI workflows runs CLI-owned process cleanup regressions without competing test workers"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^does not ship retired Native execution and snapshot implementations$",
+          "requiredNames": [
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-all-reused-checks-without-child",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^does not ship retired Native execution and snapshot implementations$",
+          "requiredNames": [
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^exposes Agent tasks and acceptance without any managed-check executor or refresh command$",
+          "requiredNames": [
+            "exposes Agent tasks and acceptance without any managed-check executor or refresh command"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-flow.test.ts",
+          "namePattern": "^preserves real approvals and completes Native platform reports through authorized Archive$",
+          "requiredNames": [
+            "preserves real approvals and completes Native platform reports through authorized Archive"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "owned-command-timeout-independent-deadline",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/platform/process/owned-command-termination.test.ts",
+          "namePattern": "^keeps its deadline when the owner event loop cannot run its timeout timer$",
+          "requiredNames": [
+            "keeps its deadline when the owner event loop cannot run its timeout timer"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-pid-free-check-stop-and-legacy-receipt",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^does not ship retired Native execution and snapshot implementations$",
+          "requiredNames": [
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^exposes Agent tasks and acceptance without any managed-check executor or refresh command$",
+          "requiredNames": [
+            "exposes Agent tasks and acceptance without any managed-check executor or refresh command"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-flow.test.ts",
+          "namePattern": "^preserves real approvals and completes Native platform reports through authorized Archive$",
+          "requiredNames": [
+            "preserves real approvals and completes Native platform reports through authorized Archive"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-portable-explicit-empty-check-plan",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^does not ship retired Native execution and snapshot implementations$",
+          "requiredNames": [
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^exposes Agent tasks and acceptance without any managed-check executor or refresh command$",
+          "requiredNames": [
+            "exposes Agent tasks and acceptance without any managed-check executor or refresh command"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-flow.test.ts",
+          "namePattern": "^preserves real approvals and completes Native platform reports through authorized Archive$",
+          "requiredNames": [
+            "preserves real approvals and completes Native platform reports through authorized Archive"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-portable-orphan-interruption-persistence",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^does not ship retired Native execution and snapshot implementations$",
+          "requiredNames": [
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^exposes Agent tasks and acceptance without any managed-check executor or refresh command$",
+          "requiredNames": [
+            "exposes Agent tasks and acceptance without any managed-check executor or refresh command"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-flow.test.ts",
+          "namePattern": "^preserves real approvals and completes Native platform reports through authorized Archive$",
+          "requiredNames": [
+            "preserves real approvals and completes Native platform reports through authorized Archive"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-proven-orphan-check-explicit-retry",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^does not ship retired Native execution and snapshot implementations$",
+          "requiredNames": [
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^exposes Agent tasks and acceptance without any managed-check executor or refresh command$",
+          "requiredNames": [
+            "exposes Agent tasks and acceptance without any managed-check executor or refresh command"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-flow.test.ts",
+          "namePattern": "^preserves real approvals and completes Native platform reports through authorized Archive$",
+          "requiredNames": [
+            "preserves real approvals and completes Native platform reports through authorized Archive"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-confirmed-stop-probe-reuse",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^does not ship retired Native execution and snapshot implementations$",
+          "requiredNames": [
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^exposes Agent tasks and acceptance without any managed-check executor or refresh command$",
+          "requiredNames": [
+            "exposes Agent tasks and acceptance without any managed-check executor or refresh command"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-flow.test.ts",
+          "namePattern": "^preserves real approvals and completes Native platform reports through authorized Archive$",
+          "requiredNames": [
+            "preserves real approvals and completes Native platform reports through authorized Archive"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-lightweight-settled-check-inspection",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^does not ship retired Native execution and snapshot implementations$",
+          "requiredNames": [
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^exposes Agent tasks and acceptance without any managed-check executor or refresh command$",
+          "requiredNames": [
+            "exposes Agent tasks and acceptance without any managed-check executor or refresh command"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-flow.test.ts",
+          "namePattern": "^preserves real approvals and completes Native platform reports through authorized Archive$",
+          "requiredNames": [
+            "preserves real approvals and completes Native platform reports through authorized Archive"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-normal-stop-reconciliation",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^does not ship retired Native execution and snapshot implementations$",
+          "requiredNames": [
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^exposes Agent tasks and acceptance without any managed-check executor or refresh command$",
+          "requiredNames": [
+            "exposes Agent tasks and acceptance without any managed-check executor or refresh command"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-flow.test.ts",
+          "namePattern": "^preserves real approvals and completes Native platform reports through authorized Archive$",
+          "requiredNames": [
+            "preserves real approvals and completes Native platform reports through authorized Archive"
+          ]
+        }
+      ]
+    }
+  ]
+}

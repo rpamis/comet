@@ -21,13 +21,13 @@ const CURRENT_CORE_REGRESSIONS = [
     files: ['test/domains/comet-native/native-agent-content-judgment.test.ts'],
     requiredNames: [
       'continues Native Verify and Archive through the generated Runtime without content proof',
-      'keeps a real failed Native check failed after file edits without replay',
+      'keeps an actual Agent-platform failure report failed after file edits without replay',
       'blocks Native Archive when a new real check fails after an accepted pass',
       'continues the original Native Run through a generated Runtime and parent directory alias',
-      'reuses an Agent-selected original Runtime check for a repaired Native candidate',
+      'preserves an Agent-selected prior report for a repaired candidate and requires full new verification',
     ],
     testNamePattern:
-      'continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|continues the original Native Run through a generated Runtime and parent directory alias|reuses an Agent-selected original Runtime check for a repaired Native candidate',
+      'continues Native Verify and Archive through the generated Runtime without content proof|keeps an actual Agent-platform failure report failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|continues the original Native Run through a generated Runtime and parent directory alias|preserves an Agent-selected prior report for a repaired candidate and requires full new verification',
   },
   {
     id: 'classic-continuity',
@@ -46,18 +46,30 @@ const CURRENT_CORE_REGRESSIONS = [
   {
     id: 'classic-check-policy',
     issues: [502],
-    invariant: '项目超时与 CLI 覆盖采用一致的实际执行契约。',
-    files: ['test/domains/comet-classic/classic-check-defaults.test.ts'],
-    requiredNames: ['applies project timeout', 'override the project default'],
-    testNamePattern: 'applies project timeout|override the project default',
+    invariant: '普通检查交给 Agent 平台，旧命令不执行或补造成功；CLI 自有任务保留独立时限清理。',
+    files: [
+      'test/domains/comet-classic/classic-platform-command.test.ts',
+      'test/platform/process/owned-command-termination.test.ts',
+    ],
+    requiredNames: [
+      'routes a legacy check invocation to platform work without executing it or claiming a pass',
+      'keeps its deadline when the owner event loop cannot run its timeout timer',
+    ],
+    testNamePattern:
+      'routes a legacy check invocation to platform work without executing it or claiming a pass|keeps its deadline when the owner event loop cannot run its timeout timer',
   },
   {
     id: 'classic-composed-timeout',
     issues: [502],
-    invariant: '通过公开工厂组合的 Classic SDK 应用采用相同项目超时契约。',
+    invariant: '组合 Classic 应用沿原任务接受平台检查报告，失败或陈旧结果不得推进 Build。',
     files: ['test/domains/comet-classic/classic-application.test.ts'],
-    testNamePattern: 'project default timeout',
-    requiredNames: ['project default timeout'],
+    testNamePattern:
+      'keeps composed Build work on platform reports without a managed check Action|keeps an actual failed platform command from satisfying composed Build acceptance|binds composed work to its original Action input and rejects a stale claim or outcome',
+    requiredNames: [
+      'keeps composed Build work on platform reports without a managed check Action',
+      'keeps an actual failed platform command from satisfying composed Build acceptance',
+      'binds composed work to its original Action input and rejects a stale claim or outcome',
+    ],
     minimumPassed: 3,
   },
   {
@@ -112,13 +124,13 @@ const CURRENT_CORE_REGRESSIONS = [
     files: ['test/domains/comet-native/native-agent-content-judgment.test.ts'],
     requiredNames: [
       'continues Native Verify and Archive through the generated Runtime without content proof',
-      'keeps a real failed Native check failed after file edits without replay',
+      'keeps an actual Agent-platform failure report failed after file edits without replay',
       'blocks Native Archive when a new real check fails after an accepted pass',
       'continues the original Native Run through a generated Runtime and parent directory alias',
-      'reuses an Agent-selected original Runtime check for a repaired Native candidate',
+      'preserves an Agent-selected prior report for a repaired candidate and requires full new verification',
     ],
     testNamePattern:
-      'continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|continues the original Native Run through a generated Runtime and parent directory alias|reuses an Agent-selected original Runtime check for a repaired Native candidate',
+      'continues Native Verify and Archive through the generated Runtime without content proof|keeps an actual Agent-platform failure report failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|continues the original Native Run through a generated Runtime and parent directory alias|preserves an Agent-selected prior report for a repaired candidate and requires full new verification',
   },
   {
     id: 'native-acceptance-boundaries',

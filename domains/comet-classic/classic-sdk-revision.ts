@@ -5,7 +5,6 @@ import {
   hashRuntimeValue,
   preserveRuntimeExecutionOrigins,
   RuntimeProtocolError,
-  type RuntimeValue,
   type WorkflowRun,
 } from '../engine/runtime.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
@@ -40,11 +39,7 @@ export async function rebindClassicSdkWork(
     !state.boundBranch ||
     state.archived ||
     ['completed', 'cancelled'].includes(run.status) ||
-    run.actions.some(
-      (action) =>
-        ['running', 'unknown'].includes(action.status) ||
-        (action.status === 'cancelled' && action.claim && !action.cancellation),
-    )
+    run.actions.some((action) => ['running', 'unknown'].includes(action.status))
   )
     throw new Error('Classic rebind requires an active bound Run with no unresolved execution');
   if (state.boundBranch === branch) return run;
@@ -72,24 +67,15 @@ export async function reviseClassicSdkWork(options: {
     | 'repair-archive'
     | 'repair-delivery'
     | 'continue-build'
-    | 'continue-work'
-    | 'refresh-checks';
+    | 'continue-work';
   expectedRevision: number;
-  refreshInput?: RuntimeValue;
   checksRef?: string;
 }): Promise<WorkflowRun> {
   const { projectRoot, change, name, expectedRevision } = options;
   const { run, state } = await inspectClassicSdkRun(projectRoot, change);
   const commandId = hashRuntimeValue({ runId: run.runId, name, expectedRevision });
   const previousCommand = run.commands?.find((command) => command.id === commandId);
-  if (previousCommand) {
-    if (
-      name === 'refresh-checks' &&
-      previousCommand.inputHash !== hashRuntimeValue(options.refreshInput ?? null)
-    )
-      throw new RuntimeProtocolError('COMMAND_CONFLICT', '同一补充检查请求不能提交不同内容');
-    return run;
-  }
+  if (previousCommand) return run;
   if (run.revision !== expectedRevision)
     throw new RuntimeProtocolError(
       'REVISION_CONFLICT',
@@ -121,8 +107,6 @@ export async function reviseClassicSdkWork(options: {
     true,
     true,
     run,
-    run.workflow.version !== '2',
-    run.workflow.version === '2',
   );
   const deliveryRepair =
     name === 'repair-delivery'
@@ -169,32 +153,29 @@ export async function reviseClassicSdkWork(options: {
     expectedRevision,
     commandId,
     name,
-    input:
-      name === 'refresh-checks'
-        ? (options.refreshInput ?? null)
-        : {
-            expectedRevision,
-            fromPhase: state.phase,
-            ...(deliveryRepair
+    input: {
+      expectedRevision,
+      fromPhase: state.phase,
+      ...(deliveryRepair
+        ? {
+            deliveryRepair:
+              deliveryRepair as unknown as import('../engine/runtime.js').RuntimeValue,
+          }
+        : {}),
+      ...(name === 'continue-work'
+        ? {
+            interruptedActionId: classicInterruptedSkill(run)?.id ?? '',
+            ...(state.archived
               ? {
-                  deliveryRepair:
-                    deliveryRepair as unknown as import('../engine/runtime.js').RuntimeValue,
+                  deliveryCheckpointHash: await classicDeliveryRepairCheckpointHash(
+                    projectRoot,
+                    run,
+                  ),
                 }
               : {}),
-            ...(name === 'continue-work'
-              ? {
-                  interruptedActionId: classicInterruptedSkill(run)?.id ?? '',
-                  ...(state.archived
-                    ? {
-                        deliveryCheckpointHash: await classicDeliveryRepairCheckpointHash(
-                          projectRoot,
-                          run,
-                        ),
-                      }
-                    : {}),
-                }
-              : {}),
-          },
+          }
+        : {}),
+    },
     context: { requestId: commandId, projectRoot },
   });
   if (name === 'continue-work') {

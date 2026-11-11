@@ -173,21 +173,7 @@ Build may span many tasks. To support recovery after context compaction:
 - Required task/section reviews are complete; do not repeat Verify's final integration review in Build.
 - **Phase guard:** `comet guard <change-name> build --apply` passes all checks and advances to `phase: verify`, independently of `auto_transition`.
 
-Prefer Runtime execution and recording to avoid running a check manually and then again through Guard.
-
-Use `--local` only for deterministic local checks. Omit it for external services or uncertain environments; that evidence is single-use. The platform adapter handles ordinary Windows npm/pnpm shims. Batch arguments with shell metacharacters are rejected. Use an explicit entry such as `node <script>` for complex checks, not a whole shell string as a program name.
-
-```bash
-comet check run <change-name> build --local -- <program> [args...]
-```
-
-Guard checks configuration, tasks, artifacts, and actual results without detecting or starting a build. The Agent selects necessary commands and records them through `comet check run`; SDK may use the explicit Guard command template. Judge applicability of original results and add only missing or affected checks. Recover real failures, unknown outcomes, and one-time operations through the original records. Read logs on demand and use the actual cwd required by the current response.
-
-`state record-check --command` only records a manual declaration. Comet **never executes that text**, and it cannot automatically authorize advancement. A manual declaration also becomes the latest record for its scope and shadows earlier still-valid Runtime evidence; guard rejects it and requires a fresh `comet check run` — the only way past it is rerunning one check while the tree is quiet. Build and Verify evidence are separate: Verify can reference a revalidated build result, but a successful build does not replace tests or acceptance scenarios. `COMET_SKIP_BUILD=1` is a legacy bypass, not auditable build evidence.
-
-The Agent selects build commands from the project and current task. package.json, pom.xml, Cargo.toml, and workspace configuration can inform that choice. Runtime does not select a subpackage or start a full build for the Agent.
-
-**Recording evidence:** finish the implementation and make its checks pass, then record the build evidence and run `comet guard <change-name> build --apply`. Build records build evidence only: external (non-`--local`) verify checks must be recorded **after** guard build --apply succeeds — the phase transition expires externally recorded verify evidence (`crossed a phase boundary`), so expensive non-idempotent external checks would run for nothing; `--local` evidence is exempt and can be recorded in one shell call. Runtime reuses recorded evidence automatically when inputs did not change, so a rerun after a documentation edit does not execute the command again. When guard reports invalid evidence, it names the exact reason and changed files — rerun only the listed scope and follow the message for record-check or phase-boundary situations instead of redoing everything. Commit after guard passes; tick tasks with `comet state task-complete`.
+Follow [ordinary commands and checks](../../comet/reference/platform-execution.md). Use platform tools, inspect original tasks and side effects, judge result applicability, and submit actual reports. Comet does not repeat checks or maintain ordinary-command content snapshots, supervision, or recovery. Record actual exit codes with `state record-check`, then run Guard. Guard validates configuration, tasks, artifacts, and reports without executing checks. Complete tasks through `state task-complete`; `COMET_SKIP_BUILD=1` is not acceptance evidence.
 
 Before exiting, advance phase with the guard, independently of `auto_transition`:
 

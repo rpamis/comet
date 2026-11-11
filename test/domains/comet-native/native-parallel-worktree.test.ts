@@ -15,6 +15,7 @@ interface NativeEnvelope {
   exitCode: number;
   data?: {
     phase?: string;
+    stateVersion?: number;
     preparation?: { projectRoot?: string };
     change?: { phase?: string };
     state?: {
@@ -347,6 +348,32 @@ describe('Native parallel linked-worktree Runtime', () => {
     }
     await fs.writeFile(path.join(editedWorktree.root, BUSINESS_SOURCE), userSource);
 
+    const current = await runNativeCommand('status', [editedWorktree.name], editedWorktree.root);
+    assertCompleted(current, 'read the original revision frontier');
+    expect(current.data?.phase).toBe('verify');
+    expect(current.data?.stateVersion).toBeTypeOf('number');
+    const stateFile = (worktree: { root: string; name: string }) =>
+      path.join(worktree.root, 'docs/comet/changes', worktree.name, 'comet-state.yaml');
+    const beforeDecision = await Promise.all(
+      worktrees.map((worktree) => fs.readFile(stateFile(worktree))),
+    );
+    const unbound = await runNativeCommand(
+      'next',
+      [
+        editedWorktree.name,
+        '--revise-implementation',
+        '--summary',
+        'SIMULATED user changes the implementation',
+      ],
+      editedWorktree.root,
+    );
+    expect(unbound.exitCode, unbound.stdout).toBe(64);
+    expect(unbound.error?.message).toContain(
+      'User decisions require --expected-state-version and --expected-action',
+    );
+    expect(
+      await Promise.all(worktrees.map((worktree) => fs.readFile(stateFile(worktree)))),
+    ).toEqual(beforeDecision);
     assertCompleted(
       await runNativeCommand(
         'next',
@@ -354,7 +381,11 @@ describe('Native parallel linked-worktree Runtime', () => {
           editedWorktree.name,
           '--revise-implementation',
           '--summary',
-          'Confirmed business value revision',
+          'SIMULATED user requests the business value revision',
+          '--expected-state-version',
+          String(current.data!.stateVersion),
+          '--expected-action',
+          'revise-implementation',
         ],
         editedWorktree.root,
       ),
@@ -370,6 +401,10 @@ describe('Native parallel linked-worktree Runtime', () => {
     expect(editedStatus.data?.phase).toBe('build');
     expect(editedStatus.data?.continuation?.disposition).not.toBe('blocked');
     expect(untouchedStatus.data?.phase).toBe('verify');
+    expect(await fs.readFile(stateFile(untouchedWorktree))).toEqual(beforeDecision[1]);
+    expect(resolveWorkspaceRuntimeRootSync(editedWorktree.root)).not.toBe(
+      resolveWorkspaceRuntimeRootSync(untouchedWorktree.root),
+    );
     await expect(
       fs.readFile(path.join(untouchedWorktree.root, BUSINESS_SOURCE), 'utf8'),
     ).resolves.toBe('export const value = "parallel-beta-implementation";\n');

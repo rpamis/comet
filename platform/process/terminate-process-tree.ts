@@ -4,6 +4,15 @@ import path from 'node:path';
 const WINDOWS_TASKKILL_ATTEMPT_MS = 1_000;
 const WINDOWS_TASKKILL_ATTEMPTS = 2;
 const POSIX_GROUP_EXIT_WAIT_MS = 1_000;
+const terminationPreparations = new WeakMap<ChildProcess, () => Promise<void>>();
+
+/** 自有监管器在整树清理前完成已启动的子树清理，避免两个 taskkill 互相终止。 */
+export function registerTerminationPreparation(
+  child: ChildProcess,
+  prepare: () => Promise<void>,
+): void {
+  terminationPreparations.set(child, prepare);
+}
 
 async function waitForPosixGroupExit(pid: number): Promise<boolean> {
   const deadline = Date.now() + POSIX_GROUP_EXIT_WAIT_MS;
@@ -35,6 +44,8 @@ export async function terminateProcessTreeConfirmed(child: ChildProcess): Promis
   if (process.platform === 'win32') {
     const exited = () => typeof child.exitCode === 'number' || child.signalCode != null;
     // 已退出的 ChildProcess 句柄不能授权再次按裸 PID 杀树，PID 可能已复用。
+    if (exited()) return false;
+    await terminationPreparations.get(child)?.();
     if (exited()) return false;
     const configuredSystemRoot = process.env.SystemRoot ?? process.env.WINDIR;
     const systemRoot =

@@ -46,6 +46,7 @@ export interface NativeSupervisorChildArchiveActivation {
   integrationCommit: string;
   checksActionId?: string;
   mergeActionId?: string;
+  repairActionId?: string;
   contractRef: string;
 }
 
@@ -130,41 +131,74 @@ async function childArchiveBinding(
     state.phase !== 'build' ||
     state.status !== 'active' ||
     !state.children_contract_ref ||
-    nativeSupervisorContractRef(input) !== state.children_contract_ref ||
+    nativeSupervisorContractRef(input, run) !== state.children_contract_ref ||
     !plan.contract.children.some(({ name }) => name === input.child) ||
     !COMMIT_PATTERN.test(input.candidateCommit) ||
     !COMMIT_PATTERN.test(input.integrationCommit)
   ) {
     throw new Error('Native Supervisor child archive does not match the confirmed plan');
   }
-  const agentChecks = run.workflow.version === '4';
-  const integrationChecks = run.actions.find(
-    (candidate) => candidate.id === (agentChecks ? input.mergeActionId : input.checksActionId),
-  );
-  const integrationChecksOutput = integrationChecks?.outcome?.output as
-    | { candidateId?: unknown; integrationCommit?: unknown; completedAt?: unknown }
-    | null
-    | undefined;
+  // 旧归档输入仅从原已接受记录解析来源，不恢复检查任务。
+  const legacyCheck = input.checksActionId
+    ? run.actions.find((candidate) => candidate.id === input.checksActionId)
+    : undefined;
+  const legacyOutput = legacyCheck?.outcome?.output as
+    { candidateId?: string; completedAt?: string } | undefined;
   if (
-    integrationChecks?.stepId !==
-      (agentChecks ? 'supervisor.child.integrate' : 'supervisor.child.integration-checks') ||
-    integrationChecks.status !== 'succeeded' ||
-    (integrationChecks.input as { activation?: { child?: unknown } } | null)?.activation?.child !==
-      input.child ||
-    (agentChecks
-      ? integrationChecksOutput?.integrationCommit
-      : integrationChecksOutput?.candidateId) !== input.integrationCommit ||
-    (!agentChecks && typeof integrationChecksOutput?.completedAt !== 'string')
-  ) {
-    throw new Error('Native Supervisor child archive lacks its passed integration checks');
-  }
-  const integrationCompletedAt = agentChecks
-    ? runGitCommand(
-        (run.outputs['supervisor.prepare']?.value as { integrationWorktree: string })
-          .integrationWorktree,
-        ['show', '-s', '--format=%cI', input.integrationCommit],
-      ).trim()
-    : (integrationChecksOutput!.completedAt as string);
+    legacyCheck &&
+    (legacyCheck.stepId !== 'supervisor.child.integration-checks' ||
+      legacyCheck.status !== 'succeeded' ||
+      legacyOutput?.candidateId !== input.integrationCommit ||
+      typeof legacyOutput.completedAt !== 'string')
+  )
+    throw new Error('Native legacy archive lacks its original accepted integration result');
+  const mergeActionId =
+    input.mergeActionId ??
+    (legacyCheck?.input as { activation?: { mergeActionId?: string } } | undefined)?.activation
+      ?.mergeActionId;
+  const merge = run.actions.find((candidate) => candidate.id === mergeActionId);
+  const merged = merge?.outcome?.output as
+    { child?: string; integrationCommit?: string } | undefined;
+  const repairActionId =
+    input.repairActionId ??
+    (legacyCheck?.input as { activation?: { repairActionId?: string } } | undefined)?.activation
+      ?.repairActionId;
+  const repair = repairActionId
+    ? run.actions.find((candidate) => candidate.id === repairActionId)
+    : undefined;
+  const repaired = repair?.outcome?.output as
+    { integrationCommit?: string; checks?: unknown } | undefined;
+  if (
+    merge?.stepId !== 'supervisor.child.integrate' ||
+    merge.status !== 'succeeded' ||
+    merged?.child !== input.child ||
+    (repair
+      ? repair.stepId !== 'supervisor.child.integration-repair' ||
+        repair.status !== 'succeeded' ||
+        (
+          repair.input as {
+            activation?: { mergeActionId?: string; child?: string; candidateCommit?: string };
+          }
+        ).activation?.mergeActionId !== merge.id ||
+        (repair.input as { activation: { child: string; candidateCommit: string } }).activation
+          .child !== input.child ||
+        (repair.input as { activation: { candidateCommit: string } }).activation.candidateCommit !==
+          input.candidateCommit ||
+        nativeSupervisorContractRef(
+          (repair.input as { activation: Record<string, unknown> }).activation,
+          run,
+        ) !== state.children_contract_ref ||
+        repaired?.integrationCommit !== input.integrationCommit
+      : merged.integrationCommit !== input.integrationCommit)
+  )
+    throw new Error('Native Supervisor child archive lacks its accepted integration task');
+  const integrationCompletedAt =
+    legacyOutput?.completedAt ??
+    runGitCommand(
+      (run.outputs['supervisor.prepare']?.value as { integrationWorktree: string })
+        .integrationWorktree,
+      ['show', '-s', '--format=%cI', input.integrationCommit],
+    ).trim();
   const verifier = succeededChildAction(run, 'supervisor.child.verifier', input.child, (output) => {
     const evidence = output.evidence as { summary?: unknown } | null | undefined;
     return (
@@ -189,27 +223,21 @@ async function childArchiveBinding(
     input.child,
     (output) => output.candidateCommit === input.candidateCommit,
   );
-  const childChecks = succeededChildAction(
-    run,
-    'supervisor.child.checks',
-    input.child,
-    (output) => output.candidateId === input.candidateCommit,
+  const legacyVerifier = ['1', '2', '3'].includes(
+    verifier.action.executionOrigin?.workflow.version ?? '',
   );
-  if (!agentChecks && !childChecks) {
-    throw new Error('Native Supervisor child archive lacks its completed Child checks');
-  }
-  const childChecksOutput = (
-    agentChecks ? { checks: [], completedAt: integrationCompletedAt } : childChecks!.output
-  ) as {
-    checks?: Array<Record<string, unknown>>;
-    completedAt?: unknown;
-  };
-  if (
-    !Array.isArray(childChecksOutput.checks) ||
-    typeof childChecksOutput.completedAt !== 'string'
-  ) {
-    throw new Error('Native Supervisor child archive has invalid Child check evidence');
-  }
+  const childChecks = legacyVerifier
+    ? succeededChildAction(
+        run,
+        'supervisor.child.checks',
+        input.child,
+        (output) => output.candidateId === input.candidateCommit,
+      )
+    : null;
+  if (legacyVerifier && !childChecks)
+    throw new Error('Legacy Child archive lacks its original accepted checks');
+  const childChecksOutput = childChecks?.output as
+    { checks?: Array<Record<string, unknown>>; completedAt?: string } | undefined;
   const prepared = run.outputs['supervisor.prepare']?.value as
     { integrationWorktree?: unknown; integrationBranch?: unknown } | undefined;
   if (
@@ -258,7 +286,7 @@ async function childArchiveBinding(
       throw new Error(`Native Supervisor child archive evidence does not cover acceptance ${id}`);
     }
   }
-  const childCheckRows = childChecksOutput.checks.map((check) => {
+  const childCheckRows = (childChecksOutput?.checks ?? []).map((check) => {
     if (
       typeof check.id !== 'string' ||
       typeof check.name !== 'string' ||
@@ -300,10 +328,10 @@ async function childArchiveBinding(
     verifierRisks: risks,
     verifierAcceptance,
     childChecks: childCheckRows,
-    ...(agentChecks
-      ? { reportedChecks: parseNativeReportedChecks(verifierEvidence.checks ?? []) }
-      : {}),
-    childChecksCompletedAt: childChecksOutput.completedAt,
+    ...(legacyVerifier
+      ? {}
+      : { reportedChecks: parseNativeReportedChecks(verifierEvidence.checks ?? []) }),
+    childChecksCompletedAt: childChecksOutput?.completedAt ?? integrationCompletedAt,
     integrationChecksCompletedAt: integrationCompletedAt,
     scopedAcceptance,
   };
@@ -341,7 +369,7 @@ async function childArchiveMaterials(
         : specs.length === 1
           ? specs[0].text
           : specs.map((spec) => `# ${spec.ref}\n\n${spec.text}`).join('\n\n'),
-    'archive-source.md': `# ${binding.language === 'zh-CN' ? '归档材料来源' : 'Archive material sources'}\n\n- Parent Run: ${run.runId}\n- Archive Action: ${action.id}\n- Contract: ${nativeSupervisorContractRef(activation(action.input))}\n- Candidate: ${binding.candidateCommit}\n- Verifier: ${binding.verifierSessionId}\n- ${run.workflow.version === '4' ? 'Integration Action' : 'Integration checks'}: ${activation(action.input).mergeActionId ?? activation(action.input).checksActionId}\n\n${sources}\n\n## ${binding.language === 'zh-CN' ? 'Parent 原始简报' : 'Original Parent brief'}\n\n${brief.text}`,
+    'archive-source.md': `# ${binding.language === 'zh-CN' ? '归档材料来源' : 'Archive material sources'}\n\n- Parent Run: ${run.runId}\n- Archive Action: ${action.id}\n- Contract: ${nativeSupervisorContractRef(activation(action.input), run)}\n- Candidate: ${binding.candidateCommit}\n- Verifier: ${binding.verifierSessionId}\n- Integration Action: ${activation(action.input).mergeActionId ?? activation(action.input).checksActionId}\n\n${sources}\n\n## ${binding.language === 'zh-CN' ? 'Parent 原始简报' : 'Original Parent brief'}\n\n${brief.text}`,
   };
 }
 
@@ -393,7 +421,7 @@ export async function restoreNativeSupervisorChildArchiveMaterials(
     (action) =>
       action.stepId === 'supervisor.child.archive' &&
       action.status === 'succeeded' &&
-      nativeSupervisorContractRef(activation(action.input)) === state.children_contract_ref,
+      nativeSupervisorContractRef(activation(action.input), run) === state.children_contract_ref,
   )) {
     if (action.claim?.executorId !== nativeSdkSupervisorChildArchiveExecutor.id)
       throw new Error('Native child archive receipt lacks its Runtime executor');

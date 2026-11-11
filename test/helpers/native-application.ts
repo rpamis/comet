@@ -14,7 +14,6 @@ import { runNativeCli as sourceRunNativeCli } from '../../domains/comet-native/n
 import type { RuntimeAction, RuntimeValue, WorkflowRun } from '../../domains/engine/runtime.js';
 import { fixtureAcceptanceReview } from './native-builder-acceptance-review.js';
 import { ensureCliBuilt } from './ensure-cli-built.js';
-import { inspectNativeSdkCheckExecutions } from '../../domains/comet-native/native-sdk-check-execution.js';
 
 const cliBuilds = new Map<string, Promise<void>>();
 
@@ -105,9 +104,6 @@ export async function prepareNativeApplication(
     const envelope = JSON.parse(result.stdout!);
     if (result.exitCode) {
       const observed = await dispatch({ operation: 'inspect', runId: name }).catch(() => null);
-      const executions = observed
-        ? await inspectNativeSdkCheckExecutions({ projectRoot, run: observed }).catch(() => [])
-        : [];
       throw new Error(
         JSON.stringify({
           ...envelope,
@@ -120,16 +116,6 @@ export async function prepareNativeApplication(
               reason,
               receipts,
             })),
-          executions: executions.map(
-            ({ actionId, owner, process: processState, quiescent, phase, execution }) => ({
-              actionId,
-              owner,
-              process: processState,
-              quiescent,
-              phase,
-              terminationUnconfirmed: execution?.terminationUnconfirmed,
-            }),
-          ),
         }),
       );
     }
@@ -139,7 +125,7 @@ export async function prepareNativeApplication(
     {
       operation: 'start',
       runId: name,
-      workflow: { id: 'comet-native', version: '1' },
+      workflow: { id: 'comet-native', version: '4' },
       input: { name, artifactRootRef: 'docs' },
       initialState: createNativePortableState({
         name,
@@ -154,7 +140,61 @@ export async function prepareNativeApplication(
     },
     true,
   );
-  await native(['next', name]);
+  if (kind === 'custom') {
+    const { collectNativeSdkShapeProposal } = packaged
+      ? await import(
+          pathToFileURL(
+            path.join(runtimePackageRoot, 'dist/domains/comet-native/native-sdk-application.js'),
+          ).href
+        )
+      : await import('../../domains/comet-native/native-sdk-application.js');
+    const { nativeProjectPaths } = packaged
+      ? await import(
+          pathToFileURL(path.join(runtimePackageRoot, 'dist/domains/comet-native/native-paths.js'))
+            .href
+        )
+      : await import('../../domains/comet-native/native-paths.js');
+    const original = await dispatch({ operation: 'inspect', runId: name }),
+      action = original.actions.find(
+        (a) => a.stepId === 'shape.prepare' && a.status === 'pending',
+      )!;
+    const claimed = await claim(action, 'shape-agent');
+    const proposal = await collectNativeSdkShapeProposal({
+      paths: await nativeProjectPaths(projectRoot, 'docs'),
+      state: original.state,
+      acceptance: [
+        { source: 'specs/example/spec.md', text: 'The candidate meets its requirement.' },
+      ],
+    });
+    await record(
+      claimed.actions.find((a) => a.id === action.id)!,
+      proposal,
+    );
+  } else {
+    const shape = await native(['next', name, '--session', 'shape-agent']);
+    const shapeResult = path.join(root, 'shape-result.json');
+    await fs.writeFile(
+      shapeResult,
+      JSON.stringify({
+        status: 'succeeded',
+        output: {
+          acceptance: [
+            { source: 'specs/example/spec.md', text: 'The candidate meets its requirement.' },
+          ],
+        },
+      }),
+    );
+    await native([
+      'next',
+      name,
+      '--action',
+      shape.task.actionId,
+      '--session',
+      'shape-agent',
+      '--result',
+      shapeResult,
+    ]);
+  }
   let run = await dispatch({ operation: 'inspect', runId: name });
   await native([
     'next',
@@ -244,7 +284,13 @@ export async function prepareNativeApplication(
       return record(actual, {
         summary: 'Repaired integrated candidate',
         integrationCommit: git(cwd, ['rev-parse', 'HEAD']),
-        integrationChecks: checks,
+        checks: [
+          {
+            name: 'candidate-process',
+            result: 'passed',
+            note: 'Fixture Agent report; command execution is tested separately.',
+          },
+        ],
       });
     return record(actual, {
       summary: 'Implemented candidate',
@@ -254,7 +300,6 @@ export async function prepareNativeApplication(
       checks: [{ name: 'candidate-process', result: 'passed', note: 'process exited 0' }],
       knownLimits: [],
       submittedAt: new Date().toISOString(),
-      verificationChecks: checks,
     });
   }
   const pending = (value: WorkflowRun, step?: string) =>

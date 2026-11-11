@@ -1,9 +1,9 @@
+import { upgradeClassicRun } from './classic-sdk-run-upgrade.js';
 export { inspectClassicSdkRunDiagnostics } from './classic-sdk-diagnostics.js';
 import { isClassicSdkApprovedUpgrade } from './classic-sdk-profile.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-import { listGitWorktrees, samePath } from '../../platform/paths/git-worktree.js';
 import { createRuntime, type WorkflowRun, type WorkflowRuntime } from '../engine/runtime.js';
 import {
   readChangeRuntimeOwner,
@@ -121,8 +121,20 @@ export async function inspectClassicSdkRun(
     );
   const profile = owner.application.slice('classic-'.length) as ClassicProfile;
   const store = createClassicSdkStateStore(projectRoot, options);
-  const saved = await store.read(owner.runId);
+  let saved = await store.read(owner.runId);
   const application = classicSdkApplicationForRun(profile, saved);
+  if (saved) {
+    const upgraded = upgradeClassicRun(saved, application.workflow);
+    if (upgraded !== saved) {
+      await createRuntime({
+        ...application,
+        workflows: [application.workflow],
+        transitionHandlers: [application.transitionHandler],
+        store: { read: async () => upgraded, compareAndSwap: async () => false },
+      }).inspect(owner.runId);
+      saved = upgraded;
+    }
+  }
   let initialRead = true;
   const runtime = createRuntime({
     store: {
@@ -132,7 +144,8 @@ export async function inspectClassicSdkRun(
           initialRead = false;
           return saved;
         }
-        return store.read(runId);
+        const current = await store.read(runId);
+        return current ? upgradeClassicRun(current, application.workflow) : current;
       },
     },
     workflows: [application.workflow],
@@ -202,30 +215,7 @@ export async function findClassicSdkWorkspace(
       ...(await inspectClassicSdkRun(requestedRoot, name, { ...options, owner })),
     };
   }
-  const candidates: ClassicSdkWorkspace[] = [];
-  for (const worktree of listGitWorktrees(requestedRoot)) {
-    if (samePath(worktree.root, requestedRoot)) continue;
-    const worktreeOwner = await readSdkChangeOwner(worktree.root, 'classic', name, {
-      readOnly: true,
-    });
-    if (!worktreeOwner) continue;
-    const inspected = await inspectClassicSdkRun(worktree.root, name, {
-      ...options,
-      owner: worktreeOwner,
-    });
-    if (
-      inspected.state.isolation !== 'worktree' ||
-      !inspected.state.boundBranch ||
-      inspected.state.boundBranch !== worktree.branch
-    ) {
-      throw new Error(`Classic SDK change '${name}' is not bound to its registered worktree`);
-    }
-    candidates.push({ projectRoot: worktree.root, ...inspected });
-  }
-  if (candidates.length > 1) {
-    throw new Error(`Classic SDK change '${name}' exists in multiple registered worktrees`);
-  }
-  return candidates[0] ?? null;
+  return null;
 }
 
 export async function resolveClassicSdkCommandRoot(

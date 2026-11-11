@@ -61,10 +61,7 @@ import {
   resolveArtifactLanguage,
 } from '../../../domains/skill/languages.js';
 import { assertClassicLayoutInitializationSafe } from '../../../domains/comet-classic/classic-layout-initialization.js';
-import {
-  createNativeChange,
-  writeNativeChange,
-} from '../../../domains/comet-native/native-change.js';
+import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -1155,15 +1152,57 @@ describe('skills', () => {
       await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
       const paths = await nativeProjectPaths(projectRoot, '.');
       await ensureNativeDirectories(paths);
-      const change = await createNativeChange({
-        paths,
-        name: 'trae-cn-build',
-        language: 'en',
-        verificationProtocol: 'legacy-v1',
-      });
-      change.phase = 'build';
-      await writeNativeChange(paths, change);
-      await selectNativeChange(paths, change.name);
+      const invoke = async (args: string[]) => {
+        const result = await runNativeCli([
+          ...args,
+          ...(args.includes('--project-root') ? [] : ['--project-root', projectRoot]),
+          ...(args.includes('--json') ? [] : ['--json']),
+        ]);
+        expect(result.exitCode, result.stdout).toBe(0);
+        return JSON.parse(result.stdout!).data;
+      };
+      const name = 'trae-cn-build';
+      await invoke(['new', name]);
+      const changeDir = path.join(paths.changesDir, name);
+      await fs.writeFile(
+        path.join(changeDir, 'brief.md'),
+        'Allow the installed Hook to enforce the selected phase.',
+      );
+      const task = await invoke(['next', name, '--session', 'hook-fixture-agent']);
+      const resultFile = path.join(projectRoot, 'hook-shape-result.json');
+      await fs.writeFile(
+        resultFile,
+        JSON.stringify({
+          status: 'succeeded',
+          output: {
+            acceptance: [
+              { source: 'brief.md', text: 'The installed Hook enforces the selected phase.' },
+            ],
+          },
+        }),
+      );
+      const prepared = await invoke([
+        'next',
+        name,
+        '--session',
+        'hook-fixture-agent',
+        '--action',
+        task.task.actionId,
+        '--result',
+        resultFile,
+      ]);
+      const choice = prepared.next.commandAlternatives.find((item: { commandArgs: string[] }) =>
+        item.commandArgs.includes('--confirmed'),
+      );
+      // 模拟批准只用于安装夹具，保留真实公开 CLI 的阶段转换。
+      await invoke(
+        choice.commandArgs
+          .slice(2)
+          .map((value: string) =>
+            value === '<summary>' ? 'SIMULATED-USER fixture approval' : value,
+          ),
+      );
+      await invoke(['select', name]);
     };
 
     it('installs the Claude Code Router as an exec-form Node Hook', async () => {
@@ -2681,7 +2720,11 @@ describe('skills', () => {
       expect(zhOpen).toContain(
         '遵守 `context` 和 `rules` 中的约束，**不得将这些内容复制到产物中**',
       );
-      expect(zhOpen).toContain('每创建一个产物后');
+      expect(zhOpen).toContain('适配器在同一次 status 调用中校验完整闭包和实际文件');
+      expect(zhOpen).toContain('`data.artifactRequirements.problems` 为空时退出循环');
+      expect(zhOpen).toContain('每创建一个产物并确认实际输出文件存在且非空后');
+      expect(zhOpen).toContain('执行 instructions 响应中 `data.nextAction` 指定的 status 命令');
+      expect(zhOpen).toContain('循环中不插入 `state artifacts`');
       expect(zhOpen).toContain(
         'comet classic openspec --agent-json -- status --change "<name>" --json',
       );
@@ -2718,8 +2761,16 @@ describe('skills', () => {
       }
       expect(enOpen).toContain('do not copy them into the artifact');
       expect(enOpen).toContain(
-        'After each artifact is created, validate the closure locally with `comet state artifacts <name> --json`',
+        'the adapter validates the complete closure and actual files in that same status call',
       );
+      expect(enOpen).toContain('`data.artifactRequirements.problems` is empty');
+      expect(enOpen).toContain(
+        'After creating each artifact and confirming its actual output files exist and are nonempty',
+      );
+      expect(enOpen).toContain(
+        "execute the status command in the instructions response's `data.nextAction`",
+      );
+      expect(enOpen).toContain('Do not insert `state artifacts` into this loop');
       expect(enOpen).toContain(
         'comet classic openspec --agent-json -- status --change "<name>" --json',
       );
@@ -3012,20 +3063,15 @@ describe('skills', () => {
       expect(zhBuild).toContain('不新建 Worktree、重新选择隔离、追加最终审查');
       expect(zhBuild).toContain('验收任务后进入 Verify');
       expect(zhBuild).toContain('必须解决 CRITICAL/IMPORTANT 问题');
-      expect(zhBuild).toContain(
-        'comet check run <change-name> build --local -- <program> [args...]',
+      const execution = await fs.readFile(
+        path.resolve('assets/skills-zh/comet/reference/platform-execution.md'),
+        'utf8',
       );
-      expect(zhVerify).toContain(
-        'comet check run <change-name> verify --local -- <program> [args...]',
-      );
-      expect(zhBuild).toContain('Comet **绝不会执行该文本**，也不能据此自动推进');
-      expect(zhVerify).toContain('手工 `record-check` 只保存声明，不能据此自动推进阶段');
-      expect(zhBuild).toContain('构建通过不替代测试和验收场景');
-      expect(zhVerify).toContain('verify 与 build 的检查结果彼此独立，不能互相替代');
-      expect(zhBuild).toContain(
-        '`COMET_SKIP_BUILD=1` 仅是旧流程的兼容绕过方式，不是可审计的构建证据',
-      );
-      expect(zhVerify).toContain('`COMET_SKIP_BUILD=1` 不能作为可核实的检查记录');
+      expect(execution).toContain('直接使用 Agent 平台工具');
+      expect(execution).toContain('该命令只记录结果，不执行命令');
+      expect(execution).toContain('报告不能代替任务完成、用户批准或验收');
+      expect(execution).toContain('不伪造检查通过或进程已停止');
+      expect(execution).toContain('完整验收须覆盖当前候选的全部验收项');
 
       // MEDIUM: comet-verify Step 1b auto-repairs CRITICAL/IMPORTANT findings
       // without turning mandatory work into a user decision.
@@ -3565,30 +3611,21 @@ describe('skills', () => {
       expect(enBuild).toContain('Verify owns the single final integration review');
       expect(enBuild).toContain('accept tasks and enter Verify');
       expect(enBuild).toContain('Resolve CRITICAL/IMPORTANT findings.');
-      expect
-        .soft(enBuild)
-        .toContain('comet check run <change-name> build --local -- <program> [args...]');
-      expect
-        .soft(enVerify)
-        .toContain('comet check run <change-name> verify --local -- <program> [args...]');
-      expect
-        .soft(enBuild)
-        .toContain(
-          'Comet **never executes that text**, and it cannot automatically authorize advancement',
-        );
-      expect
-        .soft(enVerify)
-        .toContain(
-          'Manual `record-check` only stores a declaration, cannot automatically advance the phase, and shadows earlier valid Runtime evidence',
-        );
-      expect(enBuild).toContain('Build and Verify evidence are separate');
-      expect
-        .soft(enVerify)
-        .toContain('Verify and Build evidence are separate and cannot substitute for one another');
-      expect
-        .soft(enBuild)
-        .toContain('`COMET_SKIP_BUILD=1` is a legacy bypass, not auditable build evidence');
-      expect(enVerify).toContain('`COMET_SKIP_BUILD=1` is not a verifiable check record');
+      const execution = await fs.readFile(
+        path.resolve('assets/skills/comet/reference/platform-execution.md'),
+        'utf8',
+      );
+      expect(execution).toContain('Use Agent platform tools directly');
+      expect(execution).toContain(
+        'This command records results without executing the command text',
+      );
+      expect(execution).toContain(
+        'Reports do not replace task completion, user approval, or acceptance',
+      );
+      expect(execution).toContain('never fabricate a pass or a stopped process');
+      expect(execution).toContain(
+        'Complete acceptance covers every requirement for the current candidate',
+      );
       expect(enVerify).toContain('Do not add “should I fix it?” approval');
       expect(enVerify).toContain('CRITICAL/IMPORTANT findings can never be waived');
       expect

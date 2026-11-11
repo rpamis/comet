@@ -1,6 +1,6 @@
 import {
   assertNoArguments,
-  NativeUsageError,
+  success,
   requiredPositional,
   type DispatchResult,
 } from './native-cli-shared.js';
@@ -10,11 +10,10 @@ export async function nativeCheckCommand(
 ): Promise<DispatchResult> {
   const name = requiredPositional(args, 'change name');
   assertNoArguments(args);
-  throw new NativeUsageError(
-    'Native 内容证明检查已移除。运行 comet native status ' +
-      name +
-      ' --json，按原 Run 的 continuation 执行实际检查；旧需求通过 comet native next ' +
-      name +
-      ' --summary <迁移说明> 使用现有迁移入口。',
-  );
+  return success('check', {
+    name,
+    status: 'platform-execution-required',
+    checksExecuted: false,
+    next: '使用 Agent 平台工具执行实际检查，并按 comet native next 返回的任务模板报告结果。',
+  });
 }

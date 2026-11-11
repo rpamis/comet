@@ -1,0 +1,963 @@
+{
+  "kind": "composition-of-two-actual-runs-not-a-single-run",
+  "sources": [
+    "entry-dashboard-pre-malformed-fix-results.json (other three files only)",
+    "resume-final-green-results.json"
+  ],
+  "passed": 76,
+  "failed": 0,
+  "skipped": 1,
+  "results": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "packaged Hook Router worktree isolation"
+          ],
+          "fullName": "packaged Hook Router worktree isolation blocks direct Runtime writes through the project Router with no selected change",
+          "status": "passed",
+          "title": "blocks direct Runtime writes through the project Router with no selected change",
+          "duration": 1512.2749,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "packaged Hook Router worktree isolation"
+          ],
+          "fullName": "packaged Hook Router worktree isolation blocks direct Runtime writes through the global Router with no selected change",
+          "status": "passed",
+          "title": "blocks direct Runtime writes through the global Router with no selected change",
+          "duration": 1160.5732999999996,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "packaged Hook Router worktree isolation"
+          ],
+          "fullName": "packaged Hook Router worktree isolation blocks relative Runtime writes from the primary runtime cwd without selection",
+          "status": "passed",
+          "title": "blocks relative Runtime writes from the primary runtime cwd without selection",
+          "duration": 894.6701000000003,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "packaged Hook Router worktree isolation"
+          ],
+          "fullName": "packaged Hook Router worktree isolation blocks relative Runtime writes from the primary project-subdirectory cwd without selection",
+          "status": "passed",
+          "title": "blocks relative Runtime writes from the primary project-subdirectory cwd without selection",
+          "duration": 884.3086000000003,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "packaged Hook Router worktree isolation"
+          ],
+          "fullName": "packaged Hook Router worktree isolation blocks relative Runtime writes from the linked runtime cwd without selection",
+          "status": "passed",
+          "title": "blocks relative Runtime writes from the linked runtime cwd without selection",
+          "duration": 891.5729999999994,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "packaged Hook Router worktree isolation"
+          ],
+          "fullName": "packaged Hook Router worktree isolation blocks relative Runtime writes from the linked project-subdirectory cwd without selection",
+          "status": "passed",
+          "title": "blocks relative Runtime writes from the linked project-subdirectory cwd without selection",
+          "duration": 878.1223,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "packaged Hook Router worktree isolation"
+          ],
+          "fullName": "packaged Hook Router worktree isolation keeps the explicit relative base when Runtime belongs to a nested linked worktree",
+          "status": "passed",
+          "title": "keeps the explicit relative base when Runtime belongs to a nested linked worktree",
+          "duration": 991.1110999999992,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "packaged Hook Router worktree isolation"
+          ],
+          "fullName": "packaged Hook Router worktree isolation uses the linked worktree state even when the installed command still names the primary root",
+          "status": "passed",
+          "title": "uses the linked worktree state even when the installed command still names the primary root",
+          "duration": 1588.2733000000007,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "packaged Hook Router worktree isolation"
+          ],
+          "fullName": "packaged Hook Router worktree isolation uses the host working directory for a legacy global Router invocation",
+          "status": "passed",
+          "title": "uses the host working directory for a legacy global Router invocation",
+          "duration": 967.9061000000002,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "packaged Hook Router worktree isolation"
+          ],
+          "fullName": "packaged Hook Router worktree isolation keeps a legacy global Router neutral when the host omits its working directory",
+          "status": "passed",
+          "title": "keeps a legacy global Router neutral when the host omits its working directory",
+          "duration": 900.9463000000014,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "packaged Hook Router worktree isolation"
+          ],
+          "fullName": "packaged Hook Router worktree isolation enforces Native Shape for raw Codex apply_patch input",
+          "status": "passed",
+          "title": "enforces Native Shape for raw Codex apply_patch input",
+          "duration": 1027.0376000000015,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "packaged Hook Router worktree isolation"
+          ],
+          "fullName": "packaged Hook Router worktree isolation allows raw Shape brief patches while denying business source patches through the packaged Router",
+          "status": "passed",
+          "title": "allows raw Shape brief patches while denying business source patches through the packaged Router",
+          "duration": 2352.2076000000015,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "packaged Hook Router worktree isolation"
+          ],
+          "fullName": "packaged Hook Router worktree isolation routes a linked worktree SDK Native change through the packaged Hook",
+          "status": "passed",
+          "title": "routes a linked worktree SDK Native change through the packaged Hook",
+          "duration": 1755.5509000000002,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "packaged Hook Router worktree isolation"
+          ],
+          "fullName": "packaged Hook Router worktree isolation routes a linked worktree SDK Classic change through the packaged Hook",
+          "status": "passed",
+          "title": "routes a linked worktree SDK Classic change through the packaged Hook",
+          "duration": 1900.1723999999995,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "packaged Hook Router worktree isolation"
+          ],
+          "fullName": "packaged Hook Router worktree isolation executes Native artifact attribution and recovery through the packaged Router",
+          "status": "passed",
+          "title": "executes Native artifact attribution and recovery through the packaged Router",
+          "duration": 1203.5828000000001,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "packaged Hook Router worktree isolation"
+          ],
+          "fullName": "packaged Hook Router worktree isolation enforces Native Shape for trae write payloads through the packaged router",
+          "status": "passed",
+          "title": "enforces Native Shape for trae write payloads through the packaged router",
+          "duration": 1087.6679000000004,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "packaged Hook Router worktree isolation"
+          ],
+          "fullName": "packaged Hook Router worktree isolation enforces Native Shape for trae-cn write payloads through the packaged router",
+          "status": "passed",
+          "title": "enforces Native Shape for trae-cn write payloads through the packaged router",
+          "duration": 1051.5308000000005,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "packaged Hook Router worktree isolation"
+          ],
+          "fullName": "packaged Hook Router worktree isolation enforces Native Shape for dsh write payloads through the packaged router",
+          "status": "passed",
+          "title": "enforces Native Shape for dsh write payloads through the packaged router",
+          "duration": 1034.7524999999987,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "packaged Hook Router worktree isolation"
+          ],
+          "fullName": "packaged Hook Router worktree isolation allows trae write payloads through the packaged router during Native Build",
+          "status": "passed",
+          "title": "allows trae write payloads through the packaged router during Native Build",
+          "duration": 1105.9415999999983,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "packaged Hook Router worktree isolation"
+          ],
+          "fullName": "packaged Hook Router worktree isolation allows trae-cn write payloads through the packaged router during Native Build",
+          "status": "passed",
+          "title": "allows trae-cn write payloads through the packaged router during Native Build",
+          "duration": 1124.8162999999986,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "packaged Hook Router worktree isolation"
+          ],
+          "fullName": "packaged Hook Router worktree isolation allows dsh write payloads through the packaged router during Native Build",
+          "status": "passed",
+          "title": "allows dsh write payloads through the packaged router during Native Build",
+          "duration": 1142.5617999999995,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        }
+      ],
+      "startTime": 1794353841852,
+      "endTime": 1794353867307.5618,
+      "status": "passed",
+      "message": "",
+      "name": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/entry-dashboard-four/hook-router-runtime.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "Comet project status"
+          ],
+          "fullName": "Comet project status reuses the inspected config for entry resolution and observes later config edits",
+          "status": "passed",
+          "title": "reuses the inspected config for entry resolution and observes later config edits",
+          "duration": 55.16520000000003,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet project status"
+          ],
+          "fullName": "Comet project status bounds Native inspections and preserves discovery order",
+          "status": "passed",
+          "title": "bounds Native inspections and preserves discovery order",
+          "duration": 65.60860000000002,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet project status"
+          ],
+          "fullName": "Comet project status inspects Classic changes concurrently while retaining stable sorted output",
+          "status": "passed",
+          "title": "inspects Classic changes concurrently while retaining stable sorted output",
+          "duration": 122.5009,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet project status"
+          ],
+          "fullName": "Comet project status partitions configured Native changes under a versioned status contract",
+          "status": "passed",
+          "title": "partitions configured Native changes under a versioned status contract",
+          "duration": 330.6685,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet project status"
+          ],
+          "fullName": "Comet project status uses the portable status projection for Native v4 changes",
+          "status": "passed",
+          "title": "uses the portable status projection for Native v4 changes",
+          "duration": 190.70849999999996,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet project status"
+          ],
+          "fullName": "Comet project status keeps plain OpenSpec changes outside both Comet workflows",
+          "status": "passed",
+          "title": "keeps plain OpenSpec changes outside both Comet workflows",
+          "duration": 18.16099999999983,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet project status"
+          ],
+          "fullName": "Comet project status fails closed for a valid Classic change name backed by a directory link",
+          "status": "passed",
+          "title": "fails closed for a valid Classic change name backed by a directory link",
+          "duration": 15.964299999999866,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet project status"
+          ],
+          "fullName": "Comet project status fails closed when a Classic runtime directory is a directory link",
+          "status": "passed",
+          "title": "fails closed when a Classic runtime directory is a directory link",
+          "duration": 437.5318,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet project status"
+          ],
+          "fullName": "Comet project status reports configured Classic as unavailable when its root is missing",
+          "status": "passed",
+          "title": "reports configured Classic as unavailable when its root is missing",
+          "duration": 7.539899999999989,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet project status"
+          ],
+          "fullName": "Comet project status reports Classic-managed changes only in the Classic workflow",
+          "status": "passed",
+          "title": "reports Classic-managed changes only in the Classic workflow",
+          "duration": 466.73670000000016,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet project status"
+          ],
+          "fullName": "Comet project status reads each Classic projection once per status request and observes subsequent edits",
+          "status": "passed",
+          "title": "reads each Classic projection once per status request and observes subsequent edits",
+          "duration": 480.8381999999997,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet project status"
+          ],
+          "fullName": "Comet project status reports Classic unavailable without guessing a legacy root when project config is malformed",
+          "status": "passed",
+          "title": "reports Classic unavailable without guessing a legacy root when project config is malformed",
+          "duration": 430.5131000000001,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet project status"
+          ],
+          "fullName": "Comet project status reports only the configured Classic root when a standalone root coexists",
+          "status": "passed",
+          "title": "reports only the configured Classic root when a standalone root coexists",
+          "duration": 25.757900000000063,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet project status"
+          ],
+          "fullName": "Comet project status does not inspect project-external Classic state through a changes-root junction",
+          "status": "passed",
+          "title": "does not inspect project-external Classic state through a changes-root junction",
+          "duration": 10.413300000000163,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet project status"
+          ],
+          "fullName": "Comet project status does not inspect project-external Classic state through a change-dir junction",
+          "status": "passed",
+          "title": "does not inspect project-external Classic state through a change-dir junction",
+          "duration": 14.86409999999978,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet project status"
+          ],
+          "fullName": "Comet project status ignores unrelated invalid names but fails closed for a legal-name non-directory",
+          "status": "passed",
+          "title": "ignores unrelated invalid names but fails closed for a legal-name non-directory",
+          "duration": 13.478599999999915,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet project status"
+          ],
+          "fullName": "Comet project status keeps same-name Native and Classic changes separate under a custom artifact root",
+          "status": "passed",
+          "title": "keeps same-name Native and Classic changes separate under a custom artifact root",
+          "duration": 648.5278000000003,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet project status"
+          ],
+          "fullName": "Comet project status reports an incomplete Native artifact-root move instead of projecting stale changes",
+          "status": "passed",
+          "title": "reports an incomplete Native artifact-root move instead of projecting stale changes",
+          "duration": 115.33169999999973,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet project status"
+          ],
+          "fullName": "Comet project status discovers the configured project from a nested working directory",
+          "status": "passed",
+          "title": "discovers the configured project from a nested working directory",
+          "duration": 668.8106999999995,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet project status"
+          ],
+          "fullName": "Comet project status does not let corrupt changes on either workflow hide healthy changes",
+          "status": "passed",
+          "title": "does not let corrupt changes on either workflow hide healthy changes",
+          "duration": 1101.7380000000003,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet project status"
+          ],
+          "fullName": "Comet project status keeps an unreadable portable change as an error entry instead of failing the Native section",
+          "status": "passed",
+          "title": "keeps an unreadable portable change as an error entry instead of failing the Native section",
+          "duration": 181.39850000000024,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet project status"
+          ],
+          "fullName": "Comet project status reads mixed Native, Classic, and OpenSpec status without changing project files",
+          "status": "passed",
+          "title": "reads mixed Native, Classic, and OpenSpec status without changing project files",
+          "duration": 692.0153,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        }
+      ],
+      "startTime": 1794353867957,
+      "endTime": 1794353874051.0154,
+      "status": "passed",
+      "message": "",
+      "name": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/entry-dashboard-four/project-status.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "startDashboardServer"
+          ],
+          "fullName": "startDashboardServer closes static file descriptors after aborted responses",
+          "status": "skipped",
+          "title": "closes static file descriptors after aborted responses",
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "startDashboardServer"
+          ],
+          "fullName": "startDashboardServer removes a missing project only through a trusted JSON POST without deleting files",
+          "status": "passed",
+          "title": "removes a missing project only through a trusted JSON POST without deleting files",
+          "duration": 93.45750000000044,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "startDashboardServer"
+          ],
+          "fullName": "startDashboardServer preserves the launch identity after a symlink target is deleted",
+          "status": "passed",
+          "title": "preserves the launch identity after a symlink target is deleted",
+          "duration": 22.736399999999776,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "startDashboardServer"
+          ],
+          "fullName": "startDashboardServer keeps reads and writes bound to the launch target when an alias is retargeted (registered=false)",
+          "status": "passed",
+          "title": "keeps reads and writes bound to the launch target when an alias is retargeted (registered=false)",
+          "duration": 519.2235000000001,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "startDashboardServer"
+          ],
+          "fullName": "startDashboardServer keeps reads and writes bound to the launch target when an alias is retargeted (registered=true)",
+          "status": "passed",
+          "title": "keeps reads and writes bound to the launch target when an alias is retargeted (registered=true)",
+          "duration": 399.9916999999996,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "startDashboardServer"
+          ],
+          "fullName": "startDashboardServer routes same-remote worktrees to their own overview and current change details",
+          "status": "passed",
+          "title": "routes same-remote worktrees to their own overview and current change details",
+          "duration": 1406.0830000000005,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "startDashboardServer"
+          ],
+          "fullName": "startDashboardServer serves /api/dashboard with a valid snapshot payload",
+          "status": "passed",
+          "title": "serves /api/dashboard with a valid snapshot payload",
+          "duration": 630.1413000000011,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "startDashboardServer"
+          ],
+          "fullName": "startDashboardServer lists the current project and only resolves snapshot requests by registered project id",
+          "status": "passed",
+          "title": "lists the current project and only resolves snapshot requests by registered project id",
+          "duration": 643.1589000000004,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "startDashboardServer"
+          ],
+          "fullName": "startDashboardServer serves paginated change rows and loads a selected change detail on demand",
+          "status": "passed",
+          "title": "serves paginated change rows and loads a selected change detail on demand",
+          "duration": 653.0056000000004,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "startDashboardServer"
+          ],
+          "fullName": "startDashboardServer serves Native changes from a paginated endpoint instead of embedding them in overview",
+          "status": "passed",
+          "title": "serves Native changes from a paginated endpoint instead of embedding them in overview",
+          "duration": 1129.1039999999994,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "startDashboardServer"
+          ],
+          "fullName": "startDashboardServer rejects a Native page limit above the Classic Dashboard maximum",
+          "status": "passed",
+          "title": "rejects a Native page limit above the Classic Dashboard maximum",
+          "duration": 133.67669999999998,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "startDashboardServer"
+          ],
+          "fullName": "startDashboardServer serves the static index for the root path",
+          "status": "passed",
+          "title": "serves the static index for the root path",
+          "duration": 4016.6551999999992,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "startDashboardServer"
+          ],
+          "fullName": "startDashboardServer serves static assets next to index.html",
+          "status": "passed",
+          "title": "serves static assets next to index.html",
+          "duration": 4011.714600000001,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "startDashboardServer"
+          ],
+          "fullName": "startDashboardServer rejects static paths that escape its web root",
+          "status": "passed",
+          "title": "rejects static paths that escape its web root",
+          "duration": 3.8130999999993946,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "startDashboardServer"
+          ],
+          "fullName": "startDashboardServer rejects encoded path traversal attempts",
+          "status": "passed",
+          "title": "rejects encoded path traversal attempts",
+          "duration": 5.7334999999984575,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "startDashboardServer"
+          ],
+          "fullName": "startDashboardServer falls back to the next available port when the requested one is taken",
+          "status": "passed",
+          "title": "falls back to the next available port when the requested one is taken",
+          "duration": 6.521099999998114,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "serves one actual current Native Shape through Dashboard pagination without rewriting its state",
+          "status": "passed",
+          "title": "serves one actual current Native Shape through Dashboard pagination without rewriting its state",
+          "duration": 659.4272000000019,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        }
+      ],
+      "startTime": 1794353817720,
+      "endTime": 1794353832055.4272,
+      "status": "passed",
+      "message": "",
+      "name": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/entry-dashboard-four/server.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "Comet entry resume intent priority"
+          ],
+          "fullName": "Comet entry resume intent priority gives explicit exclusions precedence over resume keywords in a empty Native project",
+          "status": "passed",
+          "title": "gives explicit exclusions precedence over resume keywords in a empty Native project",
+          "duration": 65.33100000000013,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet entry resume intent priority"
+          ],
+          "fullName": "Comet entry resume intent priority gives explicit exclusions precedence over resume keywords in a single Native project",
+          "status": "passed",
+          "title": "gives explicit exclusions precedence over resume keywords in a single Native project",
+          "duration": 180.1993999999995,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet entry resume intent priority"
+          ],
+          "fullName": "Comet entry resume intent priority gives explicit exclusions precedence over resume keywords in a multiple Native project",
+          "status": "passed",
+          "title": "gives explicit exclusions precedence over resume keywords in a multiple Native project",
+          "duration": 240.74559999999929,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet entry resume intent priority"
+          ],
+          "fullName": "Comet entry resume intent priority gives explicit exclusions precedence over resume keywords in a selected Native project",
+          "status": "passed",
+          "title": "gives explicit exclusions precedence over resume keywords in a selected Native project",
+          "duration": 288.14469999999983,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet entry resume intent priority"
+          ],
+          "fullName": "Comet entry resume intent priority does not infer commit ownership from single Native changes or dirty files",
+          "status": "passed",
+          "title": "does not infer commit ownership from single Native changes or dirty files",
+          "duration": 500.9197000000004,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet entry resume intent priority"
+          ],
+          "fullName": "Comet entry resume intent priority does not infer commit ownership from multiple Native changes or dirty files",
+          "status": "passed",
+          "title": "does not infer commit ownership from multiple Native changes or dirty files",
+          "duration": 571.9651999999996,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet entry resume intent priority"
+          ],
+          "fullName": "Comet entry resume intent priority does not infer commit ownership from selected Native changes or dirty files",
+          "status": "passed",
+          "title": "does not infer commit ownership from selected Native changes or dirty files",
+          "duration": 676.3911000000007,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet entry resume intent priority"
+          ],
+          "fullName": "Comet entry resume intent priority keeps commit-only probes with no active Native change read-only and empty",
+          "status": "passed",
+          "title": "keeps commit-only probes with no active Native change read-only and empty",
+          "duration": 48.54600000000028,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet entry resume intent priority"
+          ],
+          "fullName": "Comet entry resume intent priority preserves explicit resume and commit targets without treating refusals as candidate names",
+          "status": "passed",
+          "title": "preserves explicit resume and commit targets without treating refusals as candidate names",
+          "duration": 2365.8320000000003,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet entry resume intent priority"
+          ],
+          "fullName": "Comet entry resume intent priority asks for one target when a current-change commit has no selection or names multiple changes",
+          "status": "passed",
+          "title": "asks for one target when a current-change commit has no selection or names multiple changes",
+          "duration": 217.72049999999945,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet entry resume intent priority"
+          ],
+          "fullName": "Comet entry resume intent priority applies commit intent before Classic dirty-worktree attribution (dirty=false)",
+          "status": "passed",
+          "title": "applies commit intent before Classic dirty-worktree attribution (dirty=false)",
+          "duration": 432.80059999999867,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet entry resume intent priority"
+          ],
+          "fullName": "Comet entry resume intent priority applies commit intent before Classic dirty-worktree attribution (dirty=true)",
+          "status": "passed",
+          "title": "applies commit intent before Classic dirty-worktree attribution (dirty=true)",
+          "duration": 406.07900000000154,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet entry resume intent priority"
+          ],
+          "fullName": "Comet entry resume intent priority honors workflow refusal before malformed configuration or workflow state can redirect it",
+          "status": "passed",
+          "title": "honors workflow refusal before malformed configuration or workflow state can redirect it",
+          "duration": 7.90979999999945,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Comet entry resume intent priority"
+          ],
+          "fullName": "Comet entry resume intent priority does not create or advance Native Runs or tool actions for excluded and commit-only requests",
+          "status": "passed",
+          "title": "does not create or advance Native Runs or tool actions for excluded and commit-only requests",
+          "duration": 530.6854999999996,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "resumes a SIMULATED legacy Shape document read-only without creating its absent Runtime directory",
+          "status": "passed",
+          "title": "resumes a SIMULATED legacy Shape document read-only without creating its absent Runtime directory",
+          "duration": 126.97050000000127,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "keeps a SIMULATED legacy declared-run-missing invalid and unchanged during readonly resume",
+          "status": "passed",
+          "title": "keeps a SIMULATED legacy declared-run-missing invalid and unchanged during readonly resume",
+          "duration": 58.698999999998705,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "keeps a SIMULATED legacy malformed-run invalid and unchanged during readonly resume",
+          "status": "passed",
+          "title": "keeps a SIMULATED legacy malformed-run invalid and unchanged during readonly resume",
+          "duration": 55.98949999999968,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        }
+      ],
+      "startTime": 1794353952170,
+      "endTime": 1794353958945.9895,
+      "status": "passed",
+      "message": "",
+      "name": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/entry-dashboard-four/resume-probe-intent.test.ts"
+    }
+  ]
+}

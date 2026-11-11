@@ -1,0 +1,15 @@
+{
+  "sourceCatalog": [
+    {
+      "file": "config/workflow-regressions.json",
+      "sha256": "5e84bfe54fd66d323d091f02e59712034676ebc8f9e99d601c8fe3d1fa3f549b"
+    },
+    {
+      "file": "config/historical-workflow-regressions.json",
+      "sha256": "fb090b0be6071526ceefa05fde3d4c7059fb20ed00b283dc2ebfbc484a87b70f"
+    }
+  ],
+  "method": "Actual schema: current cases plus frozen issues[].cases overlaid by historicalTestMigrations, terminal supersededBy tests",
+  "affectedEffectiveTargets": [],
+  "action": "No effective selector or case references this file; no CAS/ID change required"
+}

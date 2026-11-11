@@ -1,0 +1,1558 @@
+{
+  "schema": "comet.fixture.published-native-build-frontier.v1",
+  "kind": "pending",
+  "provenance": {
+    "package": "@rpamis/comet",
+    "version": "0.5.2",
+    "packageRoot": "C:/Users/BENYM/AppData/Local/Temp/comet-052-cli-package-626acda290b5479fb72b05334de5c0e5/package",
+    "actualFactory": "defineNativeWorkflowApplication(3)",
+    "simulated": "User approval and Builder request are explicitly simulated Agent protocol inputs to actual published Runtime. No factory/definition graph was changed.",
+    "executorsRegistered": 0,
+    "managedCommandsExecuted": false,
+    "claimOnly": false,
+    "source": "Actual npm @rpamis/comet@0.5.2 public factory/Runtime accepted Builder request-checks; no definition mutation. Simulated User/Agent protocol messages explicitly recorded.",
+    "originalRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-build-check-frontier-xto3Ac\\project-pending",
+    "portableMaterialization": "Original Run/input/claim/proposal bytes are unchanged. Only test-owned business material paths and SDK storage are materialized through public store APIs; original machine .comet/runtime binding and process/cache/lock files are excluded."
+  },
+  "run": {
+    "protocolVersion": 1,
+    "schemaVersion": 1,
+    "runId": "published-build-pending",
+    "revision": 8,
+    "workflow": {
+      "id": "comet-native",
+      "version": "3",
+      "hash": "2ad17ce994b28ee081494a62e7f68eeae671bf8cc9c7af893940a5920db43dbd"
+    },
+    "definitionHashes": {
+      "[\"comet-native\",\"3\"]": "2ad17ce994b28ee081494a62e7f68eeae671bf8cc9c7af893940a5920db43dbd"
+    },
+    "initialStateHash": "1d75ed12798660e76b220b429fd9cb5926be8596e456f350c27d03c60ccabe9e",
+    "input": {
+      "artifactRootRef": "docs",
+      "name": "published-build-pending",
+      "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-build-check-frontier-xto3Ac\\project-pending"
+    },
+    "state": {
+      "acceptance": [
+        {
+          "id": "A1",
+          "reason": null,
+          "result": "pending",
+          "source": "brief.md",
+          "text": "The selected workflow resumes."
+        }
+      ],
+      "archived": false,
+      "blockers": [],
+      "brief": "brief.md",
+      "builder_handoff": null,
+      "created_at": "2026-11-10T22:18:41.182Z",
+      "document_constraints_version": 3,
+      "history": [],
+      "history_overflow": {
+        "dropped_entries": 0,
+        "first_dropped_at": null,
+        "last_dropped_at": null,
+        "outcome_counts": {
+          "blocked": 0,
+          "execution-error": 0,
+          "fail": 0,
+          "pass": 0,
+          "recovery": 0
+        }
+      },
+      "language": "en",
+      "loop": {
+        "attempt": 0,
+        "execution_failure_count": 0,
+        "failed_iteration_count": 0,
+        "goal_cycle": 1,
+        "iteration": 1,
+        "next_action": "submit-builder-candidate",
+        "no_progress_count": 0,
+        "previous_unresolved_ids": [],
+        "retry_epoch": 0,
+        "stage": "building"
+      },
+      "name": "published-build-pending",
+      "phase": "build",
+      "schema": "comet.native.v4",
+      "shape_confirmation_hash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+      "shape_semantic_snapshot": {
+        "artifacts": [
+          {
+            "auxiliary": [],
+            "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+            "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+            "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+            "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+            "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+            "source": "brief.md"
+          },
+          {
+            "auxiliary": [],
+            "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+            "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+            "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+            "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+            "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+            "source": "specs/workflow/spec.md"
+          }
+        ],
+        "schema": "comet.native.shape-semantics.v1"
+      },
+      "spec_changes": [
+        {
+          "capability": "workflow",
+          "operation": "create",
+          "source": "specs/workflow/spec.md"
+        }
+      ],
+      "state_version": 3,
+      "status": "active",
+      "verification": null,
+      "verification_report": null,
+      "verification_result": "pending",
+      "workspace": {
+        "change_branch": null,
+        "finish": null,
+        "isolation": "current",
+        "target_branch": null
+      }
+    },
+    "status": "running",
+    "sequence": 5,
+    "actions": [
+      {
+        "protocolVersion": 1,
+        "id": "published-build-pending:1",
+        "runId": "published-build-pending",
+        "stepId": "shape.prepare",
+        "type": "call_tool",
+        "ref": "native-shape-prepare",
+        "attempt": 1,
+        "input": {
+          "input": {
+            "artifactRootRef": "docs",
+            "name": "published-build-pending",
+            "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-build-check-frontier-xto3Ac\\project-pending"
+          },
+          "outputs": {}
+        },
+        "inputHash": "30dbdc4983c77dffdfe658f900b47b528579217f90f4493a17cb11eaba148f18",
+        "status": "succeeded",
+        "retry": "manual",
+        "requiredCapabilities": [],
+        "receipts": [
+          {
+            "outcomeId": "SIMULATED-result-published-build-pending:1",
+            "hash": "75eec86a576242095a276ad7111be9da4408d2caacba3970111ae58c151837bd"
+          }
+        ],
+        "reconciliations": [],
+        "claim": {
+          "executorId": "actual-published-pure-proposal",
+          "token": "SIMULATED-claim-published-build-pending:1",
+          "sessionId": "actual-published-pure-proposal"
+        },
+        "executionOrigin": {
+          "workflow": {
+            "id": "comet-native",
+            "version": "3",
+            "hash": "2ad17ce994b28ee081494a62e7f68eeae671bf8cc9c7af893940a5920db43dbd"
+          }
+        },
+        "outcome": {
+          "actionId": "published-build-pending:1",
+          "attempt": 1,
+          "claimToken": "SIMULATED-claim-published-build-pending:1",
+          "inputHash": "30dbdc4983c77dffdfe658f900b47b528579217f90f4493a17cb11eaba148f18",
+          "outcomeId": "SIMULATED-result-published-build-pending:1",
+          "output": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "The selected workflow resumes."
+              }
+            ],
+            "children": null,
+            "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+            "semanticSnapshot": {
+              "artifacts": [
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                  "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                  "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                  "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                  "source": "brief.md"
+                },
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                  "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                  "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                  "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                  "source": "specs/workflow/spec.md"
+                }
+              ],
+              "schema": "comet.native.shape-semantics.v1"
+            },
+            "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+            "specChanges": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ]
+          },
+          "status": "succeeded"
+        }
+      },
+      {
+        "protocolVersion": 1,
+        "id": "published-build-pending:3",
+        "runId": "published-build-pending",
+        "stepId": "shape.revalidate",
+        "type": "call_tool",
+        "ref": "native-shape-revalidate",
+        "attempt": 1,
+        "input": {
+          "input": {
+            "artifactRootRef": "docs",
+            "name": "published-build-pending",
+            "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-build-check-frontier-xto3Ac\\project-pending"
+          },
+          "outputs": {
+            "shape.prepare": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                    "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                    "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                    "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                    "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                    "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                    "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            },
+            "shape.confirm": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "name": "published-build-pending",
+                  "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-build-check-frontier-xto3Ac\\project-pending"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "The selected workflow resumes."
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+                    "semanticSnapshot": {
+                      "artifacts": [
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                          "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                          "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                          "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                          "source": "brief.md"
+                        },
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                          "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                          "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                          "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                          "source": "specs/workflow/spec.md"
+                        }
+                      ],
+                      "schema": "comet.native.shape-semantics.v1"
+                    },
+                    "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+                    "specChanges": [
+                      {
+                        "capability": "workflow",
+                        "operation": "create",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "inputHash": "684d00d905d4d6dc90b8544dc081df563e8331d59ab823d1bff83d54a3033dab",
+        "status": "succeeded",
+        "retry": "manual",
+        "requiredCapabilities": [],
+        "receipts": [
+          {
+            "outcomeId": "SIMULATED-result-published-build-pending:3",
+            "hash": "cdbe0ade75cad00cf1122ea58326df5af930140310c55247c9818b1b62f1c765"
+          }
+        ],
+        "reconciliations": [],
+        "claim": {
+          "executorId": "actual-published-pure-proposal",
+          "token": "SIMULATED-claim-published-build-pending:3",
+          "sessionId": "actual-published-pure-proposal"
+        },
+        "executionOrigin": {
+          "workflow": {
+            "id": "comet-native",
+            "version": "3",
+            "hash": "2ad17ce994b28ee081494a62e7f68eeae671bf8cc9c7af893940a5920db43dbd"
+          }
+        },
+        "outcome": {
+          "actionId": "published-build-pending:3",
+          "attempt": 1,
+          "claimToken": "SIMULATED-claim-published-build-pending:3",
+          "inputHash": "684d00d905d4d6dc90b8544dc081df563e8331d59ab823d1bff83d54a3033dab",
+          "outcomeId": "SIMULATED-result-published-build-pending:3",
+          "output": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "The selected workflow resumes."
+              }
+            ],
+            "children": null,
+            "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+            "semanticSnapshot": {
+              "artifacts": [
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                  "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                  "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                  "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                  "source": "brief.md"
+                },
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                  "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                  "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                  "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                  "source": "specs/workflow/spec.md"
+                }
+              ],
+              "schema": "comet.native.shape-semantics.v1"
+            },
+            "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+            "specChanges": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ]
+          },
+          "status": "succeeded"
+        }
+      },
+      {
+        "protocolVersion": 1,
+        "id": "published-build-pending:4",
+        "runId": "published-build-pending",
+        "stepId": "build.builder",
+        "type": "handoff",
+        "ref": "native-builder",
+        "attempt": 1,
+        "input": {
+          "input": {
+            "artifactRootRef": "docs",
+            "name": "published-build-pending",
+            "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-build-check-frontier-xto3Ac\\project-pending"
+          },
+          "outputs": {
+            "shape.prepare": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                    "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                    "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                    "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                    "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                    "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                    "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            },
+            "shape.confirm": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "name": "published-build-pending",
+                  "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-build-check-frontier-xto3Ac\\project-pending"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "The selected workflow resumes."
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+                    "semanticSnapshot": {
+                      "artifacts": [
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                          "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                          "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                          "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                          "source": "brief.md"
+                        },
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                          "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                          "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                          "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                          "source": "specs/workflow/spec.md"
+                        }
+                      ],
+                      "schema": "comet.native.shape-semantics.v1"
+                    },
+                    "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+                    "specChanges": [
+                      {
+                        "capability": "workflow",
+                        "operation": "create",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "shape.revalidate": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                    "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                    "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                    "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                    "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                    "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                    "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          }
+        },
+        "inputHash": "1623ba952f11a26fbadde5c40e809fe68794a94951aad83a99dc59fddc7e389b",
+        "status": "succeeded",
+        "retry": "manual",
+        "requiredCapabilities": [],
+        "receipts": [
+          {
+            "outcomeId": "SIMULATED-result-published-build-pending:4",
+            "hash": "471618bfee563fa9c094dfaf4467182878ffce4592dc63c74eb9d362b72dfa4b"
+          }
+        ],
+        "reconciliations": [],
+        "claim": {
+          "executorId": "SIMULATED-Builder",
+          "token": "SIMULATED-claim-published-build-pending:4",
+          "sessionId": "SIMULATED-Builder"
+        },
+        "executionOrigin": {
+          "workflow": {
+            "id": "comet-native",
+            "version": "3",
+            "hash": "2ad17ce994b28ee081494a62e7f68eeae671bf8cc9c7af893940a5920db43dbd"
+          }
+        },
+        "outcome": {
+          "actionId": "published-build-pending:4",
+          "attempt": 1,
+          "claimToken": "SIMULATED-claim-published-build-pending:4",
+          "inputHash": "1623ba952f11a26fbadde5c40e809fe68794a94951aad83a99dc59fddc7e389b",
+          "outcomeId": "SIMULATED-result-published-build-pending:4",
+          "output": {
+            "response": {
+              "checks": [
+                {
+                  "argv": [
+                    "-e",
+                    "require('node:fs').writeFileSync('FORBIDDEN-CHECK-SIDE-EFFECT','executed')"
+                  ],
+                  "cwdRef": ".",
+                  "executable": "D:\\nodejs\\node.exe",
+                  "id": "not-executed",
+                  "name": "UNEXECUTED Build check fixture",
+                  "repeatable": true,
+                  "timeoutMs": 5000
+                }
+              ],
+              "kind": "request-checks"
+            }
+          },
+          "status": "succeeded"
+        }
+      },
+      {
+        "protocolVersion": 1,
+        "id": "published-build-pending:5",
+        "runId": "published-build-pending",
+        "stepId": "build.checks",
+        "type": "call_tool",
+        "ref": "native-build-checks",
+        "attempt": 1,
+        "input": {
+          "input": {
+            "artifactRootRef": "docs",
+            "name": "published-build-pending",
+            "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-build-check-frontier-xto3Ac\\project-pending"
+          },
+          "outputs": {
+            "shape.prepare": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                    "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                    "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                    "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                    "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                    "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                    "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            },
+            "shape.confirm": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "name": "published-build-pending",
+                  "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-build-check-frontier-xto3Ac\\project-pending"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "The selected workflow resumes."
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+                    "semanticSnapshot": {
+                      "artifacts": [
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                          "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                          "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                          "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                          "source": "brief.md"
+                        },
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                          "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                          "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                          "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                          "source": "specs/workflow/spec.md"
+                        }
+                      ],
+                      "schema": "comet.native.shape-semantics.v1"
+                    },
+                    "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+                    "specChanges": [
+                      {
+                        "capability": "workflow",
+                        "operation": "create",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "shape.revalidate": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                    "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                    "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                    "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                    "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                    "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                    "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            },
+            "build.builder": {
+              "response": {
+                "checks": [
+                  {
+                    "argv": [
+                      "-e",
+                      "require('node:fs').writeFileSync('FORBIDDEN-CHECK-SIDE-EFFECT','executed')"
+                    ],
+                    "cwdRef": ".",
+                    "executable": "D:\\nodejs\\node.exe",
+                    "id": "not-executed",
+                    "name": "UNEXECUTED Build check fixture",
+                    "repeatable": true,
+                    "timeoutMs": 5000
+                  }
+                ],
+                "kind": "request-checks"
+              }
+            }
+          },
+          "activation": {
+            "checks": [
+              {
+                "argv": [
+                  "-e",
+                  "require('node:fs').writeFileSync('FORBIDDEN-CHECK-SIDE-EFFECT','executed')"
+                ],
+                "cwdRef": ".",
+                "executable": "D:\\nodejs\\node.exe",
+                "id": "not-executed",
+                "name": "UNEXECUTED Build check fixture",
+                "repeatable": true,
+                "timeoutMs": 5000
+              }
+            ]
+          }
+        },
+        "inputHash": "514efa689223b5ca09d0a100cce09bbb6e33f84ca902693d5317fb08c3420428",
+        "status": "pending",
+        "retry": "manual",
+        "requiredCapabilities": [],
+        "receipts": [],
+        "reconciliations": []
+      }
+    ],
+    "actionContexts": {
+      "published-build-pending:1": {
+        "sequence": 1,
+        "results": {}
+      },
+      "published-build-pending:3": {
+        "sequence": 3,
+        "results": {
+          "shape.prepare": {
+            "sequence": 1,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                    "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                    "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                    "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                    "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                    "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                    "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          },
+          "shape.confirm": {
+            "sequence": 2,
+            "value": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "name": "published-build-pending",
+                  "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-build-check-frontier-xto3Ac\\project-pending"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "The selected workflow resumes."
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+                    "semanticSnapshot": {
+                      "artifacts": [
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                          "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                          "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                          "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                          "source": "brief.md"
+                        },
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                          "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                          "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                          "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                          "source": "specs/workflow/spec.md"
+                        }
+                      ],
+                      "schema": "comet.native.shape-semantics.v1"
+                    },
+                    "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+                    "specChanges": [
+                      {
+                        "capability": "workflow",
+                        "operation": "create",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "published-build-pending:4": {
+        "sequence": 4,
+        "results": {
+          "shape.prepare": {
+            "sequence": 1,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                    "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                    "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                    "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                    "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                    "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                    "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          },
+          "shape.confirm": {
+            "sequence": 2,
+            "value": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "name": "published-build-pending",
+                  "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-build-check-frontier-xto3Ac\\project-pending"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "The selected workflow resumes."
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+                    "semanticSnapshot": {
+                      "artifacts": [
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                          "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                          "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                          "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                          "source": "brief.md"
+                        },
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                          "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                          "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                          "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                          "source": "specs/workflow/spec.md"
+                        }
+                      ],
+                      "schema": "comet.native.shape-semantics.v1"
+                    },
+                    "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+                    "specChanges": [
+                      {
+                        "capability": "workflow",
+                        "operation": "create",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "shape.revalidate": {
+            "sequence": 3,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                    "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                    "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                    "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                    "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                    "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                    "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "published-build-pending:5": {
+        "sequence": 5,
+        "results": {
+          "shape.prepare": {
+            "sequence": 1,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                    "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                    "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                    "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                    "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                    "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                    "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          },
+          "shape.confirm": {
+            "sequence": 2,
+            "value": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "name": "published-build-pending",
+                  "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-build-check-frontier-xto3Ac\\project-pending"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "The selected workflow resumes."
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+                    "semanticSnapshot": {
+                      "artifacts": [
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                          "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                          "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                          "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                          "source": "brief.md"
+                        },
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                          "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                          "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                          "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                          "source": "specs/workflow/spec.md"
+                        }
+                      ],
+                      "schema": "comet.native.shape-semantics.v1"
+                    },
+                    "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+                    "specChanges": [
+                      {
+                        "capability": "workflow",
+                        "operation": "create",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "shape.revalidate": {
+            "sequence": 3,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                    "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                    "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                    "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                    "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                    "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                    "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          },
+          "build.builder": {
+            "sequence": 4,
+            "value": {
+              "response": {
+                "checks": [
+                  {
+                    "argv": [
+                      "-e",
+                      "require('node:fs').writeFileSync('FORBIDDEN-CHECK-SIDE-EFFECT','executed')"
+                    ],
+                    "cwdRef": ".",
+                    "executable": "D:\\nodejs\\node.exe",
+                    "id": "not-executed",
+                    "name": "UNEXECUTED Build check fixture",
+                    "repeatable": true,
+                    "timeoutMs": 5000
+                  }
+                ],
+                "kind": "request-checks"
+              }
+            }
+          }
+        }
+      }
+    },
+    "waits": [
+      {
+        "id": "published-build-pending:2",
+        "stepId": "shape.confirm",
+        "sequence": 2,
+        "status": "resolved",
+        "proposal": {
+          "input": {
+            "artifactRootRef": "docs",
+            "name": "published-build-pending",
+            "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-build-check-frontier-xto3Ac\\project-pending"
+          },
+          "outputs": {
+            "shape.prepare": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                    "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                    "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                    "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                    "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                    "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                    "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          }
+        },
+        "proposalHash": "0c13908e89d6e822706b7a151e1514c2cc0a3b16ca552e0230f2ad9d72f205e8",
+        "choices": [
+          "approved",
+          "rejected"
+        ],
+        "results": {
+          "shape.prepare": {
+            "sequence": 1,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                    "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                    "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                    "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                    "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                    "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                    "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          }
+        },
+        "decision": {
+          "id": "SIMULATED-USER-approval-pending",
+          "choice": "approved",
+          "proposalHash": "0c13908e89d6e822706b7a151e1514c2cc0a3b16ca552e0230f2ad9d72f205e8",
+          "reason": "SIMULATED USER approval only for isolated published-data probe"
+        }
+      }
+    ],
+    "ready": [],
+    "joins": {},
+    "outputs": {
+      "shape.prepare": {
+        "sequence": 1,
+        "value": {
+          "acceptance": [
+            {
+              "id": "A1",
+              "source": "brief.md",
+              "text": "The selected workflow resumes."
+            }
+          ],
+          "children": null,
+          "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+          "semanticSnapshot": {
+            "artifacts": [
+              {
+                "auxiliary": [],
+                "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                "source": "brief.md"
+              },
+              {
+                "auxiliary": [],
+                "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                "source": "specs/workflow/spec.md"
+              }
+            ],
+            "schema": "comet.native.shape-semantics.v1"
+          },
+          "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+          "specChanges": [
+            {
+              "capability": "workflow",
+              "operation": "create",
+              "source": "specs/workflow/spec.md"
+            }
+          ]
+        }
+      },
+      "shape.confirm": {
+        "sequence": 2,
+        "value": {
+          "choice": "approved",
+          "proposal": {
+            "input": {
+              "artifactRootRef": "docs",
+              "name": "published-build-pending",
+              "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-build-check-frontier-xto3Ac\\project-pending"
+            },
+            "outputs": {
+              "shape.prepare": {
+                "acceptance": [
+                  {
+                    "id": "A1",
+                    "source": "brief.md",
+                    "text": "The selected workflow resumes."
+                  }
+                ],
+                "children": null,
+                "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+                "semanticSnapshot": {
+                  "artifacts": [
+                    {
+                      "auxiliary": [],
+                      "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                      "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                      "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                      "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                      "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                      "source": "brief.md"
+                    },
+                    {
+                      "auxiliary": [],
+                      "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                      "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                      "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                      "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                      "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                      "source": "specs/workflow/spec.md"
+                    }
+                  ],
+                  "schema": "comet.native.shape-semantics.v1"
+                },
+                "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+                "specChanges": [
+                  {
+                    "capability": "workflow",
+                    "operation": "create",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "shape.revalidate": {
+        "sequence": 3,
+        "value": {
+          "acceptance": [
+            {
+              "id": "A1",
+              "source": "brief.md",
+              "text": "The selected workflow resumes."
+            }
+          ],
+          "children": null,
+          "formalHash": "b22ea3cba57ae683084cbdd1b68dc297a1cb256c52305b82f6a5e265dc0e4d10",
+          "semanticSnapshot": {
+            "artifacts": [
+              {
+                "auxiliary": [],
+                "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                "contentHash": "559d74579fdba684b412886ae8c270735ee53d5ae126d6c581584e44ebd21995",
+                "contractHash": "cd2f17cbdba720b69689bac529ea4b893d1414f9fef31ef1c40f156398544c4e",
+                "inputHash": "fdb4a91a53db8c8563a05247cb47172202458541e1acb33e2e645ac108e3c5d3",
+                "legacyFingerprint": "c1c145d09f4a66d5678af0dc2c5b8f4cb7b1c367501c17d6d57ed3152ba84883",
+                "source": "brief.md"
+              },
+              {
+                "auxiliary": [],
+                "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                "contentHash": "560201dc7848a13dec461eb1e9533b8bfe60003ab4ff8b398836a286fcc10e4e",
+                "contractHash": "87559c77557b344b28ed52414105aca52f41788642110db7fbc16d4c12d1d3dd",
+                "inputHash": "6c767a2451b76a6ac6e17aa5d5247b1b24ef3d57bcd4fcd2cf11c817e17f42e5",
+                "legacyFingerprint": "cd98bc521067e56252592013b107037710769a741caba31af7abe2444914c840",
+                "source": "specs/workflow/spec.md"
+              }
+            ],
+            "schema": "comet.native.shape-semantics.v1"
+          },
+          "shapeConfirmationHash": "e88b2c6d27bd1e8a7ba96943e5ab0f754f0f7e9bccae84f25e29b6e637458653",
+          "specChanges": [
+            {
+              "capability": "workflow",
+              "operation": "create",
+              "source": "specs/workflow/spec.md"
+            }
+          ]
+        }
+      },
+      "build.builder": {
+        "sequence": 4,
+        "value": {
+          "response": {
+            "checks": [
+              {
+                "argv": [
+                  "-e",
+                  "require('node:fs').writeFileSync('FORBIDDEN-CHECK-SIDE-EFFECT','executed')"
+                ],
+                "cwdRef": ".",
+                "executable": "D:\\nodejs\\node.exe",
+                "id": "not-executed",
+                "name": "UNEXECUTED Build check fixture",
+                "repeatable": true,
+                "timeoutMs": 5000
+              }
+            ],
+            "kind": "request-checks"
+          }
+        }
+      }
+    },
+    "children": [],
+    "lineage": []
+  },
+  "projectMaterials": [
+    {
+      "ref": ".comet/config.yaml",
+      "bytesBase64": "c2NoZW1hOiBjb21ldC5wcm9qZWN0LnYxCmRlZmF1bHRfd29ya2Zsb3c6IG5hdGl2ZQphbWJpZW50X3Jlc3VtZTogdHJ1ZQpjaGFuZ2Vfd2Fsa3Rocm91Z2g6IHRydWUKbWVtb3J5OgogIGxlYXJuaW5nOiB0cnVlCiAgcmV0cmlldmFsOiB0cnVlCmtub3dsZWRnZToKICBwcm92aWRlcjogbG9jYWwKbmF0aXZlOgogIGFydGlmYWN0X3Jvb3Q6IGRvY3MKICBsYW5ndWFnZTogZW4KICBjbGFyaWZpY2F0aW9uX21vZGU6IGJhdGNoCiAgYXJjaGl2ZV9jb25maXJtYXRpb246IGF1dG9tYXRpYwogIG1heF92ZXJpZnlfZmFpbHVyZXM6IDUKICBzbmFwc2hvdDoKICAgIGluY2x1ZGU6CiAgICAgIC0gIioqLyoiCiAgICBleGNsdWRlOgogICAgICAtIC5hZ2VudHMvc2tpbGxzLyoqCiAgICAgIC0gLmFtYXpvbnEvc2tpbGxzLyoqCiAgICAgIC0gLmF1Z21lbnQvc2tpbGxzLyoqCiAgICAgIC0gLmJvYi9za2lsbHMvKioKICAgICAgLSAuY2xhdWRlL3NraWxscy8qKgogICAgICAtIC5jbGluZS9za2lsbHMvKioKICAgICAgLSAuY29kZWJ1ZGR5L3NraWxscy8qKgogICAgICAtIC5jb2RleC9za2lsbHMvKioKICAgICAgLSAuY29udGludWUvc2tpbGxzLyoqCiAgICAgIC0gLmNvc3BlYy9za2lsbHMvKioKICAgICAgLSAuY3J1c2gvc2tpbGxzLyoqCiAgICAgIC0gLmN1cnNvci9za2lsbHMvKioKICAgICAgLSAuZGV2aW4vc2tpbGxzLyoqCiAgICAgIC0gLmRzaC9za2lsbHMvKioKICAgICAgLSAuZmFjdG9yeS9za2lsbHMvKioKICAgICAgLSAuZm9yZ2Uvc2tpbGxzLyoqCiAgICAgIC0gLmdlbWluaS9za2lsbHMvKioKICAgICAgLSAuZ2l0aHViL3NraWxscy8qKgogICAgICAtIC5ncm9rL3NraWxscy8qKgogICAgICAtIC5pZmxvdy9za2lsbHMvKioKICAgICAgLSAuanVuaWUvc2tpbGxzLyoqCiAgICAgIC0gLmtpbG9jb2RlL3NraWxscy8qKgogICAgICAtIC5raW1pLWNvZGUvc2tpbGxzLyoqCiAgICAgIC0gLmtpcm8vc2tpbGxzLyoqCiAgICAgIC0gLmxpbmdtYS9za2lsbHMvKioKICAgICAgLSAubWltb2NvZGUvc2tpbGxzLyoqCiAgICAgIC0gLm1pbmltYXgvc2tpbGxzLyoqCiAgICAgIC0gLm9tcC9za2lsbHMvKioKICAgICAgLSAub3BlbmNvZGUvc2tpbGxzLyoqCiAgICAgIC0gLnBpL3NraWxscy8qKgogICAgICAtIC5wcmltZS9hZ2VudC9za2lsbHMvKioKICAgICAgLSAucW9kZXIvc2tpbGxzLyoqCiAgICAgIC0gLnF3ZW4vc2tpbGxzLyoqCiAgICAgIC0gLnJvby9za2lsbHMvKioKICAgICAgLSAudHJhZS1jbi9za2lsbHMvKioKICAgICAgLSAudHJhZS9za2lsbHMvKioKICAgICAgLSAud2luZHN1cmYvc2tpbGxzLyoqCiAgICAgIC0gLndvcmtidWRkeS9za2lsbHMvKioKICAgICAgLSAuemNvZGUvc2tpbGxzLyoqCiAgICAgIC0gIioqL19fcHljYWNoZV9fLyoqIgogICAgICAtICIqKi8uY2FjaGUvKioiCiAgICAgIC0gIioqLy5jeHgvKioiCiAgICAgIC0gIioqLy5EU19TdG9yZSIKICAgICAgLSAiKiovLmV4dGVybmFsTmF0aXZlQnVpbGQvKioiCiAgICAgIC0gIioqLy5ncmFkbGUvKioiCiAgICAgIC0gIioqLy5pZGVhLyoqIgogICAgICAtICIqKi8ubXlweV9jYWNoZS8qKiIKICAgICAgLSAiKiovLm5leHQvKioiCiAgICAgIC0gIioqLy5ub3gvKioiCiAgICAgIC0gIioqLy5udXh0LyoqIgogICAgICAtICIqKi8ubngvY2FjaGUvKioiCiAgICAgIC0gIioqLy5ueWNfb3V0cHV0LyoqIgogICAgICAtICIqKi8ub3V0cHV0LyoqIgogICAgICAtICIqKi8ucGFyY2VsLWNhY2hlLyoqIgogICAgICAtICIqKi8ucHl0ZXN0X2NhY2hlLyoqIgogICAgICAtICIqKi8ucnVmZl9jYWNoZS8qKiIKICAgICAgLSAiKiovLnN2ZWx0ZS1raXQvKioiCiAgICAgIC0gIioqLy50b3gvKioiCiAgICAgIC0gIioqLy50dXJiby8qKiIKICAgICAgLSAiKiovLnZlbnYvKioiCiAgICAgIC0gIioqLy52aXRlLyoqIgogICAgICAtICIqKi8udnNjb2RlLyoqIgogICAgICAtICIqKi8qLmxvZyIKICAgICAgLSAiKiovKi50c2J1aWxkaW5mbyIKICAgICAgLSAiKiovYnVpbGQvKioiCiAgICAgIC0gIioqL2NhcHR1cmVzLyoqIgogICAgICAtICIqKi9jbWFrZS1idWlsZC0qLyoqIgogICAgICAtICIqKi9DTWFrZUZpbGVzLyoqIgogICAgICAtICIqKi9jb3ZlcmFnZS8qKiIKICAgICAgLSAiKiovZGlzdC8qKiIKICAgICAgLSAiKiovbG9ncy8qKiIKICAgICAgLSAiKiovbm9kZV9tb2R1bGVzLyoqIgogICAgICAtICIqKi9vYmovKioiCiAgICAgIC0gIioqL291dC8qKiIKICAgICAgLSAiKiovdGFyZ2V0LyoqIgogICAgICAtICIqKi90ZW1wLyoqIgogICAgICAtICIqKi9UaHVtYnMuZGIiCiAgICAgIC0gIioqL3RtcC8qKiIKICAgICAgLSAiKiovdmVudi8qKiIKICAgIG1heF9maWxlczogMTAwMDAKICAgIG1heF90b3RhbF9ieXRlczogMTA3Mzc0MTgyNAogICAgbWF4X2R1cmF0aW9uX21zOiA2MDAwMAogICAgbWF4X3NlbGVjdGlvbl9yZWNvcmRzOiAyMDAwMAogIGRvY3VtZW50X3dyaXRlczogYWxsb3cK"
+    },
+    {
+      "ref": "docs/comet/changes/published-build-pending/brief.md",
+      "bytesBase64": "IyBPdXRjb21lCkluc3BlY3QgdGhlIG9yaWdpbmFsIEJ1aWxkIGZyb250aWVyLgojIFNjb3BlClByZXNlcnZlIG9yaWdpbmFsIGFwcHJvdmFsIGFuZCB1bmZpbmlzaGVkIEJ1aWxkZXIgd29yay4KIyMgRGlyZWN0b3J5IHN0cnVjdHVyZQojIyMgTW9kaWZpZWQKLSBleGFtcGxlLnRzOiBTSU1VTEFURUQgQWdlbnQgd29yazsgbm8gaW1wbGVtZW50YXRpb24gY29tbWFuZC4KIyBOb24tZ29hbHMKTm8gY29tbWFuZCBleGVjdXRpb24gb3IgRXZhbC4KIyBBY2NlcHRhbmNlIGV4YW1wbGVzCi0gVGhlIHNlbGVjdGVkIHdvcmtmbG93IHJlc3VtZXMuCiMgQ29uc3RyYWludHMgYW5kIGludmFyaWFudHMKUHJlc2VydmUgb3JpZ2luYWwgYXBwcm92ZWQgU2hhcGUuCiMgRGVjaXNpb25zCk5vbmUuCiMgT3BlbiBxdWVzdGlvbnMKTm9uZS4KIyBWZXJpZmljYXRpb24gZXhwZWN0YXRpb25zClNJTVVMQVRFRCBwcm90b2NvbCBmaXh0dXJlLCBubyBjb21tYW5kIGV4ZWN1dGlvbi4K"
+    },
+    {
+      "ref": "docs/comet/changes/published-build-pending/comet-state.yaml",
+      "bytesBase64": "IyBjb21ldC1leGVjdXRpb246IG1hbmFnZWQtcnVuCnNjaGVtYTogY29tZXQubmF0aXZlLnY0Cm5hbWU6IHB1Ymxpc2hlZC1idWlsZC1wZW5kaW5nCmxhbmd1YWdlOiBlbgpwaGFzZTogYnVpbGQKc3RhdHVzOiBhY3RpdmUKc3RhdGVfdmVyc2lvbjogMwpicmllZjogYnJpZWYubWQKZG9jdW1lbnRfY29uc3RyYWludHNfdmVyc2lvbjogMwpzaGFwZV9jb25maXJtYXRpb25faGFzaDogZTg4YjJjNmQyN2JkMWU4YTdiYTk2OTQzZTVhYjBmNzU0ZjBmN2U5YmNjYWU4NGYyNWUyOWI2ZTYzNzQ1ODY1MwpzaGFwZV9zZW1hbnRpY19zbmFwc2hvdDoKICBhcnRpZmFjdHM6CiAgICAtIGF1eGlsaWFyeTogW10KICAgICAgY29tbWVudHNIYXNoOiBjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyCiAgICAgIGNvbnRlbnRIYXNoOiA1NTlkNzQ1NzlmZGJhNjg0YjQxMjg4NmFlOGMyNzA3MzVlZTUzZDVhZTEyNmQ2YzU4MTU4NGU0NGViZDIxOTk1CiAgICAgIGNvbnRyYWN0SGFzaDogY2QyZjE3Y2JkYmE3MjBiNjk2ODliYWM1MjllYTRiODkzZDE0MTRmOWZlZjMxZWYxYzQwZjE1NjM5ODU0NGM0ZQogICAgICBpbnB1dEhhc2g6IGZkYjRhOTFhNTNkYjhjODU2M2EwNTI0N2NiNDcxNzIyMDI0NTg1NDFlMWFjYjMzZTJlNjQ1YWMxMDhlM2M1ZDMKICAgICAgbGVnYWN5RmluZ2VycHJpbnQ6IGMxYzE0NWQwOWY0YTY2ZDU2NzhhZjBkYzJjNWI4ZjRjYjdiMWMzNjc1MDFjMTdkNmQ1N2VkMzE1MmJhODQ4ODMKICAgICAgc291cmNlOiBicmllZi5tZAogICAgLSBhdXhpbGlhcnk6IFtdCiAgICAgIGNvbW1lbnRzSGFzaDogY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MgogICAgICBjb250ZW50SGFzaDogNTYwMjAxZGM3ODQ4YTEzZGVjNDYxZWIxZTk1MzNiOGJmZTYwMDAzYWI0ZmY4YjM5ODgzNmEyODZmY2MxMGU0ZQogICAgICBjb250cmFjdEhhc2g6IDg3NTU5Yzc3NTU3YjM0NGIyOGVkNTI0MTQxMDVhY2E1MmY0MTc4ODY0MjExMGRiN2ZiYzE2ZDRjMTJkMWQzZGQKICAgICAgaW5wdXRIYXNoOiA2Yzc2N2EyNDUxYjc2YTZhYzZlMTdhYTVkNTI0N2IxYjI0ZWYzZDU3YmNkNGZjZDJjZjExYzgxN2UxN2Y0MmU1CiAgICAgIGxlZ2FjeUZpbmdlcnByaW50OiBjZDk4YmM1MjEwNjdlNTYyNTI1OTIwMTNiMTA3MDM3NzEwNzY5YTc0MWNhYmEzMWFmN2FiZTI0NDQ5MTRjODQwCiAgICAgIHNvdXJjZTogc3BlY3Mvd29ya2Zsb3cvc3BlYy5tZAogIHNjaGVtYTogY29tZXQubmF0aXZlLnNoYXBlLXNlbWFudGljcy52MQpzcGVjX2NoYW5nZXM6CiAgLSBjYXBhYmlsaXR5OiB3b3JrZmxvdwogICAgb3BlcmF0aW9uOiBjcmVhdGUKICAgIHNvdXJjZTogc3BlY3Mvd29ya2Zsb3cvc3BlYy5tZAp3b3Jrc3BhY2U6CiAgaXNvbGF0aW9uOiBjdXJyZW50CiAgY2hhbmdlX2JyYW5jaDogbnVsbAogIHRhcmdldF9icmFuY2g6IG51bGwKICBmaW5pc2g6IG51bGwKbG9vcDoKICBzdGFnZTogYnVpbGRpbmcKICBnb2FsX2N5Y2xlOiAxCiAgaXRlcmF0aW9uOiAxCiAgYXR0ZW1wdDogMAogIHJldHJ5X2Vwb2NoOiAwCiAgZmFpbGVkX2l0ZXJhdGlvbl9jb3VudDogMAogIG5vX3Byb2dyZXNzX2NvdW50OiAwCiAgZXhlY3V0aW9uX2ZhaWx1cmVfY291bnQ6IDAKICBwcmV2aW91c191bnJlc29sdmVkX2lkczogW10KICBuZXh0X2FjdGlvbjogc3VibWl0LWJ1aWxkZXItY2FuZGlkYXRlCmFjY2VwdGFuY2U6CiAgLSBpZDogQTEKICAgIHNvdXJjZTogYnJpZWYubWQKICAgIHRleHQ6IFRoZSBzZWxlY3RlZCB3b3JrZmxvdyByZXN1bWVzLgogICAgcmVzdWx0OiBwZW5kaW5nCiAgICByZWFzb246IG51bGwKYnVpbGRlcl9oYW5kb2ZmOiBudWxsCmJsb2NrZXJzOiBbXQp2ZXJpZmljYXRpb246IG51bGwKaGlzdG9yeTogW10KaGlzdG9yeV9vdmVyZmxvdzoKICBkcm9wcGVkX2VudHJpZXM6IDAKICBmaXJzdF9kcm9wcGVkX2F0OiBudWxsCiAgbGFzdF9kcm9wcGVkX2F0OiBudWxsCiAgb3V0Y29tZV9jb3VudHM6CiAgICBwYXNzOiAwCiAgICBmYWlsOiAwCiAgICBibG9ja2VkOiAwCiAgICBleGVjdXRpb24tZXJyb3I6IDAKICAgIHJlY292ZXJ5OiAwCnZlcmlmaWNhdGlvbl9yZXN1bHQ6IHBlbmRpbmcKdmVyaWZpY2F0aW9uX3JlcG9ydDogbnVsbAphcmNoaXZlZDogZmFsc2UKY3JlYXRlZF9hdDogMjAyNi0xMS0xMFQyMjoxODo0MS4xODJaCnJ1bl9jaGVja3BvaW50OiB7InNjaGVtYSI6ImNvbWV0LndvcmtmbG93LXJ1bi1jaGVja3BvaW50LnYxIiwiaGFzaCI6ImU1MzRmMTZjMzc4YTY0OGY3MTc2Yjg3MTIzODFkNWY4MDQ4YmE4OWZlM2E1MWFjNTRmYTNkZDFiYmQ1NWU2OTQiLCJydW4iOnsicHJvdG9jb2xWZXJzaW9uIjoxLCJzY2hlbWFWZXJzaW9uIjoxLCJydW5JZCI6InB1Ymxpc2hlZC1idWlsZC1wZW5kaW5nIiwicmV2aXNpb24iOjEsIndvcmtmbG93Ijp7ImlkIjoiY29tZXQtbmF0aXZlIiwidmVyc2lvbiI6IjMiLCJoYXNoIjoiMmFkMTdjZTk5NGIyOGVlMDgxNDk0YTYyZTdmNjhlZWFlNjcxYmY4Y2M5YzdhZjg5Mzk0MGE1OTIwZGI0M2RiZCJ9LCJkZWZpbml0aW9uSGFzaGVzIjp7IltcImNvbWV0LW5hdGl2ZVwiLFwiM1wiXSI6IjJhZDE3Y2U5OTRiMjhlZTA4MTQ5NGE2MmU3ZjY4ZWVhZTY3MWJmOGNjOWM3YWY4OTM5NDBhNTkyMGRiNDNkYmQifSwiaW5pdGlhbFN0YXRlSGFzaCI6IjFkNzVlZDEyNzk4NjYwZTc2YjIyMGI0MjlmZDljYjU5MjZiZTg1OTZlNDU2ZjM1MGMyN2QwM2M2MGNjYWJlOWUiLCJpbnB1dCI6eyJhcnRpZmFjdFJvb3RSZWYiOiJkb2NzIiwibmFtZSI6InB1Ymxpc2hlZC1idWlsZC1wZW5kaW5nIiwicHJvamVjdFJvb3QiOiJDOlxcVXNlcnNcXEJFTllNXFxBcHBEYXRhXFxMb2NhbFxcVGVtcFxcbmF0aXZlLTA1Mi1idWlsZC1jaGVjay1mcm9udGllci14dG8zQWNcXHByb2plY3QtcGVuZGluZyJ9LCJzdGF0ZSI6eyJhY2NlcHRhbmNlIjpbeyJpZCI6IkExIiwicmVhc29uIjpudWxsLCJyZXN1bHQiOiJwZW5kaW5nIiwic291cmNlIjoiYnJpZWYubWQiLCJ0ZXh0IjoiVGhlIHNlbGVjdGVkIHdvcmtmbG93IHJlc3VtZXMuIn1dLCJhcmNoaXZlZCI6ZmFsc2UsImJsb2NrZXJzIjpbXSwiYnJpZWYiOiJicmllZi5tZCIsImJ1aWxkZXJfaGFuZG9mZiI6bnVsbCwiY3JlYXRlZF9hdCI6IjIwMjYtMTEtMTBUMjI6MTg6NDEuMTgyWiIsImRvY3VtZW50X2NvbnN0cmFpbnRzX3ZlcnNpb24iOjMsImhpc3RvcnkiOltdLCJoaXN0b3J5X292ZXJmbG93Ijp7ImRyb3BwZWRfZW50cmllcyI6MCwiZmlyc3RfZHJvcHBlZF9hdCI6bnVsbCwibGFzdF9kcm9wcGVkX2F0IjpudWxsLCJvdXRjb21lX2NvdW50cyI6eyJibG9ja2VkIjowLCJleGVjdXRpb24tZXJyb3IiOjAsImZhaWwiOjAsInBhc3MiOjAsInJlY292ZXJ5IjowfX0sImxhbmd1YWdlIjoiZW4iLCJsb29wIjp7ImF0dGVtcHQiOjAsImV4ZWN1dGlvbl9mYWlsdXJlX2NvdW50IjowLCJmYWlsZWRfaXRlcmF0aW9uX2NvdW50IjowLCJnb2FsX2N5Y2xlIjoxLCJpdGVyYXRpb24iOjEsIm5leHRfYWN0aW9uIjoic3VibWl0LWJ1aWxkZXItY2FuZGlkYXRlIiwibm9fcHJvZ3Jlc3NfY291bnQiOjAsInByZXZpb3VzX3VucmVzb2x2ZWRfaWRzIjpbXSwicmV0cnlfZXBvY2giOjAsInN0YWdlIjoiYnVpbGRpbmcifSwibmFtZSI6InB1Ymxpc2hlZC1idWlsZC1wZW5kaW5nIiwicGhhc2UiOiJidWlsZCIsInNjaGVtYSI6ImNvbWV0Lm5hdGl2ZS52NCIsInNoYXBlX2NvbmZpcm1hdGlvbl9oYXNoIjoiZTg4YjJjNmQyN2JkMWU4YTdiYTk2OTQzZTVhYjBmNzU0ZjBmN2U5YmNjYWU4NGYyNWUyOWI2ZTYzNzQ1ODY1MyIsInNoYXBlX3NlbWFudGljX3NuYXBzaG90Ijp7ImFydGlmYWN0cyI6W3siYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiNTU5ZDc0NTc5ZmRiYTY4NGI0MTI4ODZhZThjMjcwNzM1ZWU1M2Q1YWUxMjZkNmM1ODE1ODRlNDRlYmQyMTk5NSIsImNvbnRyYWN0SGFzaCI6ImNkMmYxN2NiZGJhNzIwYjY5Njg5YmFjNTI5ZWE0Yjg5M2QxNDE0ZjlmZWYzMWVmMWM0MGYxNTYzOTg1NDRjNGUiLCJpbnB1dEhhc2giOiJmZGI0YTkxYTUzZGI4Yzg1NjNhMDUyNDdjYjQ3MTcyMjAyNDU4NTQxZTFhY2IzM2UyZTY0NWFjMTA4ZTNjNWQzIiwibGVnYWN5RmluZ2VycHJpbnQiOiJjMWMxNDVkMDlmNGE2NmQ1Njc4YWYwZGMyYzViOGY0Y2I3YjFjMzY3NTAxYzE3ZDZkNTdlZDMxNTJiYTg0ODgzIiwic291cmNlIjoiYnJpZWYubWQifSx7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6IjU2MDIwMWRjNzg0OGExM2RlYzQ2MWViMWU5NTMzYjhiZmU2MDAwM2FiNGZmOGIzOTg4MzZhMjg2ZmNjMTBlNGUiLCJjb250cmFjdEhhc2giOiI4NzU1OWM3NzU1N2IzNDRiMjhlZDUyNDE0MTA1YWNhNTJmNDE3ODg2NDIxMTBkYjdmYmMxNmQ0YzEyZDFkM2RkIiwiaW5wdXRIYXNoIjoiNmM3NjdhMjQ1MWI3NmE2YWM2ZTE3YWE1ZDUyNDdiMWIyNGVmM2Q1N2JjZDRmY2QyY2YxMWM4MTdlMTdmNDJlNSIsImxlZ2FjeUZpbmdlcnByaW50IjoiY2Q5OGJjNTIxMDY3ZTU2MjUyNTkyMDEzYjEwNzAzNzcxMDc2OWE3NDFjYWJhMzFhZjdhYmUyNDQ0OTE0Yzg0MCIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV0sInNjaGVtYSI6ImNvbWV0Lm5hdGl2ZS5zaGFwZS1zZW1hbnRpY3MudjEifSwic3BlY19jaGFuZ2VzIjpbeyJjYXBhYmlsaXR5Ijoid29ya2Zsb3ciLCJvcGVyYXRpb24iOiJjcmVhdGUiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dLCJzdGF0ZV92ZXJzaW9uIjozLCJzdGF0dXMiOiJhY3RpdmUiLCJ2ZXJpZmljYXRpb24iOm51bGwsInZlcmlmaWNhdGlvbl9yZXBvcnQiOm51bGwsInZlcmlmaWNhdGlvbl9yZXN1bHQiOiJwZW5kaW5nIiwid29ya3NwYWNlIjp7ImNoYW5nZV9icmFuY2giOm51bGwsImZpbmlzaCI6bnVsbCwiaXNvbGF0aW9uIjoiY3VycmVudCIsInRhcmdldF9icmFuY2giOm51bGx9fSwic3RhdHVzIjoicnVubmluZyIsInNlcXVlbmNlIjo1LCJhY3Rpb25zIjpbeyJhdHRlbXB0IjoxLCJjbGFpbSI6eyJleGVjdXRvcklkIjoiYWN0dWFsLXB1Ymxpc2hlZC1wdXJlLXByb3Bvc2FsIiwic2Vzc2lvbklkIjoiYWN0dWFsLXB1Ymxpc2hlZC1wdXJlLXByb3Bvc2FsIiwidG9rZW4iOiJwb3J0YWJsZS02NTI1MTY5MmIxZmIyMzAwYWFjZGY2MjhlNDU1ZmZjOGExMTQ1NDJjM2Y0YzhlODViZGYyYzJmMTIxMDhhMjc0In0sImV4ZWN1dGlvbk9yaWdpbiI6eyJ3b3JrZmxvdyI6eyJoYXNoIjoiMmFkMTdjZTk5NGIyOGVlMDgxNDk0YTYyZTdmNjhlZWFlNjcxYmY4Y2M5YzdhZjg5Mzk0MGE1OTIwZGI0M2RiZCIsImlkIjoiY29tZXQtbmF0aXZlIiwidmVyc2lvbiI6IjMifX0sImlkIjoicHVibGlzaGVkLWJ1aWxkLXBlbmRpbmc6MSIsImlucHV0Ijp7ImlucHV0Ijp7ImFydGlmYWN0Um9vdFJlZiI6ImRvY3MiLCJuYW1lIjoicHVibGlzaGVkLWJ1aWxkLXBlbmRpbmciLCJwcm9qZWN0Um9vdCI6IkM6XFxVc2Vyc1xcQkVOWU1cXEFwcERhdGFcXExvY2FsXFxUZW1wXFxuYXRpdmUtMDUyLWJ1aWxkLWNoZWNrLWZyb250aWVyLXh0bzNBY1xccHJvamVjdC1wZW5kaW5nIn0sIm91dHB1dHMiOnt9fSwiaW5wdXRIYXNoIjoiMzBkYmRjNDk4M2M3N2RmZmRmZTY1OGY5MDBiNDdiNTI4NTc5MjE3ZjkwZjQ0OTNhMTdjYjExZWFiYTE0OGYxOCIsIm91dGNvbWUiOnsiYWN0aW9uSWQiOiJwdWJsaXNoZWQtYnVpbGQtcGVuZGluZzoxIiwiYXR0ZW1wdCI6MSwiY2xhaW1Ub2tlbiI6InBvcnRhYmxlLTY1MjUxNjkyYjFmYjIzMDBhYWNkZjYyOGU0NTVmZmM4YTExNDU0MmMzZjRjOGU4NWJkZjJjMmYxMjEwOGEyNzQiLCJpbnB1dEhhc2giOiIzMGRiZGM0OTgzYzc3ZGZmZGZlNjU4ZjkwMGI0N2I1Mjg1NzkyMTdmOTBmNDQ5M2ExN2NiMTFlYWJhMTQ4ZjE4Iiwib3V0Y29tZUlkIjoiU0lNVUxBVEVELXJlc3VsdC1wdWJsaXNoZWQtYnVpbGQtcGVuZGluZzoxIiwib3V0cHV0Ijp7ImFjY2VwdGFuY2UiOlt7ImlkIjoiQTEiLCJzb3VyY2UiOiJicmllZi5tZCIsInRleHQiOiJUaGUgc2VsZWN0ZWQgd29ya2Zsb3cgcmVzdW1lcy4ifV0sImNoaWxkcmVuIjpudWxsLCJmb3JtYWxIYXNoIjoiYjIyZWEzY2JhNTdhZTY4MzA4NGNiZGQxYjY4ZGMyOTdhMWNiMjU2YzUyMzA1YjgyZjZhNWUyNjVkYzBlNGQxMCIsInNlbWFudGljU25hcHNob3QiOnsiYXJ0aWZhY3RzIjpbeyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiI1NTlkNzQ1NzlmZGJhNjg0YjQxMjg4NmFlOGMyNzA3MzVlZTUzZDVhZTEyNmQ2YzU4MTU4NGU0NGViZDIxOTk1IiwiY29udHJhY3RIYXNoIjoiY2QyZjE3Y2JkYmE3MjBiNjk2ODliYWM1MjllYTRiODkzZDE0MTRmOWZlZjMxZWYxYzQwZjE1NjM5ODU0NGM0ZSIsImlucHV0SGFzaCI6ImZkYjRhOTFhNTNkYjhjODU2M2EwNTI0N2NiNDcxNzIyMDI0NTg1NDFlMWFjYjMzZTJlNjQ1YWMxMDhlM2M1ZDMiLCJsZWdhY3lGaW5nZXJwcmludCI6ImMxYzE0NWQwOWY0YTY2ZDU2NzhhZjBkYzJjNWI4ZjRjYjdiMWMzNjc1MDFjMTdkNmQ1N2VkMzE1MmJhODQ4ODMiLCJzb3VyY2UiOiJicmllZi5tZCJ9LHsiYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiNTYwMjAxZGM3ODQ4YTEzZGVjNDYxZWIxZTk1MzNiOGJmZTYwMDAzYWI0ZmY4YjM5ODgzNmEyODZmY2MxMGU0ZSIsImNvbnRyYWN0SGFzaCI6Ijg3NTU5Yzc3NTU3YjM0NGIyOGVkNTI0MTQxMDVhY2E1MmY0MTc4ODY0MjExMGRiN2ZiYzE2ZDRjMTJkMWQzZGQiLCJpbnB1dEhhc2giOiI2Yzc2N2EyNDUxYjc2YTZhYzZlMTdhYTVkNTI0N2IxYjI0ZWYzZDU3YmNkNGZjZDJjZjExYzgxN2UxN2Y0MmU1IiwibGVnYWN5RmluZ2VycHJpbnQiOiJjZDk4YmM1MjEwNjdlNTYyNTI1OTIwMTNiMTA3MDM3NzEwNzY5YTc0MWNhYmEzMWFmN2FiZTI0NDQ5MTRjODQwIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XSwic2NoZW1hIjoiY29tZXQubmF0aXZlLnNoYXBlLXNlbWFudGljcy52MSJ9LCJzaGFwZUNvbmZpcm1hdGlvbkhhc2giOiJlODhiMmM2ZDI3YmQxZThhN2JhOTY5NDNlNWFiMGY3NTRmMGY3ZTliY2NhZTg0ZjI1ZTI5YjZlNjM3NDU4NjUzIiwic3BlY0NoYW5nZXMiOlt7ImNhcGFiaWxpdHkiOiJ3b3JrZmxvdyIsIm9wZXJhdGlvbiI6ImNyZWF0ZSIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV19LCJzdGF0dXMiOiJzdWNjZWVkZWQifSwicHJvdG9jb2xWZXJzaW9uIjoxLCJyZWNlaXB0cyI6W3siaGFzaCI6ImExOWFjNjVhNTdhODc4NmRjZDdkZDZlMjM2MTg5Njc5ZmU5ODllNGZmMjBjODRkMmI3OGJlYzM4Nzg4N2VkNzkiLCJvdXRjb21lSWQiOiJTSU1VTEFURUQtcmVzdWx0LXB1Ymxpc2hlZC1idWlsZC1wZW5kaW5nOjEifV0sInJlY29uY2lsaWF0aW9ucyI6W10sInJlZiI6Im5hdGl2ZS1zaGFwZS1wcmVwYXJlIiwicmVxdWlyZWRDYXBhYmlsaXRpZXMiOltdLCJyZXRyeSI6Im1hbnVhbCIsInJ1bklkIjoicHVibGlzaGVkLWJ1aWxkLXBlbmRpbmciLCJzdGF0dXMiOiJzdWNjZWVkZWQiLCJzdGVwSWQiOiJzaGFwZS5wcmVwYXJlIiwidHlwZSI6ImNhbGxfdG9vbCJ9LHsiYXR0ZW1wdCI6MSwiY2xhaW0iOnsiZXhlY3V0b3JJZCI6ImFjdHVhbC1wdWJsaXNoZWQtcHVyZS1wcm9wb3NhbCIsInNlc3Npb25JZCI6ImFjdHVhbC1wdWJsaXNoZWQtcHVyZS1wcm9wb3NhbCIsInRva2VuIjoicG9ydGFibGUtMDJhN2Y2MTc0MTNmODI2YmNmYzI3ODYyZDg0ZTg2NDc3NjkwMDQ3NDMwYTM1YjU0NmI0ZTE4MDFhOGIzMDgzYSJ9LCJleGVjdXRpb25PcmlnaW4iOnsid29ya2Zsb3ciOnsiaGFzaCI6IjJhZDE3Y2U5OTRiMjhlZTA4MTQ5NGE2MmU3ZjY4ZWVhZTY3MWJmOGNjOWM3YWY4OTM5NDBhNTkyMGRiNDNkYmQiLCJpZCI6ImNvbWV0LW5hdGl2ZSIsInZlcnNpb24iOiIzIn19LCJpZCI6InB1Ymxpc2hlZC1idWlsZC1wZW5kaW5nOjMiLCJpbnB1dCI6eyJpbnB1dCI6eyJhcnRpZmFjdFJvb3RSZWYiOiJkb2NzIiwibmFtZSI6InB1Ymxpc2hlZC1idWlsZC1wZW5kaW5nIiwicHJvamVjdFJvb3QiOiJDOlxcVXNlcnNcXEJFTllNXFxBcHBEYXRhXFxMb2NhbFxcVGVtcFxcbmF0aXZlLTA1Mi1idWlsZC1jaGVjay1mcm9udGllci14dG8zQWNcXHByb2plY3QtcGVuZGluZyJ9LCJvdXRwdXRzIjp7InNoYXBlLmNvbmZpcm0iOnsiY2hvaWNlIjoiYXBwcm92ZWQiLCJwcm9wb3NhbCI6eyJpbnB1dCI6eyJhcnRpZmFjdFJvb3RSZWYiOiJkb2NzIiwibmFtZSI6InB1Ymxpc2hlZC1idWlsZC1wZW5kaW5nIiwicHJvamVjdFJvb3QiOiJDOlxcVXNlcnNcXEJFTllNXFxBcHBEYXRhXFxMb2NhbFxcVGVtcFxcbmF0aXZlLTA1Mi1idWlsZC1jaGVjay1mcm9udGllci14dG8zQWNcXHByb2plY3QtcGVuZGluZyJ9LCJvdXRwdXRzIjp7InNoYXBlLnByZXBhcmUiOnsiYWNjZXB0YW5jZSI6W3siaWQiOiJBMSIsInNvdXJjZSI6ImJyaWVmLm1kIiwidGV4dCI6IlRoZSBzZWxlY3RlZCB3b3JrZmxvdyByZXN1bWVzLiJ9XSwiY2hpbGRyZW4iOm51bGwsImZvcm1hbEhhc2giOiJiMjJlYTNjYmE1N2FlNjgzMDg0Y2JkZDFiNjhkYzI5N2ExY2IyNTZjNTIzMDViODJmNmE1ZTI2NWRjMGU0ZDEwIiwic2VtYW50aWNTbmFwc2hvdCI6eyJhcnRpZmFjdHMiOlt7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6IjU1OWQ3NDU3OWZkYmE2ODRiNDEyODg2YWU4YzI3MDczNWVlNTNkNWFlMTI2ZDZjNTgxNTg0ZTQ0ZWJkMjE5OTUiLCJjb250cmFjdEhhc2giOiJjZDJmMTdjYmRiYTcyMGI2OTY4OWJhYzUyOWVhNGI4OTNkMTQxNGY5ZmVmMzFlZjFjNDBmMTU2Mzk4NTQ0YzRlIiwiaW5wdXRIYXNoIjoiZmRiNGE5MWE1M2RiOGM4NTYzYTA1MjQ3Y2I0NzE3MjIwMjQ1ODU0MWUxYWNiMzNlMmU2NDVhYzEwOGUzYzVkMyIsImxlZ2FjeUZpbmdlcnByaW50IjoiYzFjMTQ1ZDA5ZjRhNjZkNTY3OGFmMGRjMmM1YjhmNGNiN2IxYzM2NzUwMWMxN2Q2ZDU3ZWQzMTUyYmE4NDg4MyIsInNvdXJjZSI6ImJyaWVmLm1kIn0seyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiI1NjAyMDFkYzc4NDhhMTNkZWM0NjFlYjFlOTUzM2I4YmZlNjAwMDNhYjRmZjhiMzk4ODM2YTI4NmZjYzEwZTRlIiwiY29udHJhY3RIYXNoIjoiODc1NTljNzc1NTdiMzQ0YjI4ZWQ1MjQxNDEwNWFjYTUyZjQxNzg4NjQyMTEwZGI3ZmJjMTZkNGMxMmQxZDNkZCIsImlucHV0SGFzaCI6IjZjNzY3YTI0NTFiNzZhNmFjNmUxN2FhNWQ1MjQ3YjFiMjRlZjNkNTdiY2Q0ZmNkMmNmMTFjODE3ZTE3ZjQyZTUiLCJsZWdhY3lGaW5nZXJwcmludCI6ImNkOThiYzUyMTA2N2U1NjI1MjU5MjAxM2IxMDcwMzc3MTA3NjlhNzQxY2FiYTMxYWY3YWJlMjQ0NDkxNGM4NDAiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dLCJzY2hlbWEiOiJjb21ldC5uYXRpdmUuc2hhcGUtc2VtYW50aWNzLnYxIn0sInNoYXBlQ29uZmlybWF0aW9uSGFzaCI6ImU4OGIyYzZkMjdiZDFlOGE3YmE5Njk0M2U1YWIwZjc1NGYwZjdlOWJjY2FlODRmMjVlMjliNmU2Mzc0NTg2NTMiLCJzcGVjQ2hhbmdlcyI6W3siY2FwYWJpbGl0eSI6IndvcmtmbG93Iiwib3BlcmF0aW9uIjoiY3JlYXRlIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XX19fX0sInNoYXBlLnByZXBhcmUiOnsiYWNjZXB0YW5jZSI6W3siaWQiOiJBMSIsInNvdXJjZSI6ImJyaWVmLm1kIiwidGV4dCI6IlRoZSBzZWxlY3RlZCB3b3JrZmxvdyByZXN1bWVzLiJ9XSwiY2hpbGRyZW4iOm51bGwsImZvcm1hbEhhc2giOiJiMjJlYTNjYmE1N2FlNjgzMDg0Y2JkZDFiNjhkYzI5N2ExY2IyNTZjNTIzMDViODJmNmE1ZTI2NWRjMGU0ZDEwIiwic2VtYW50aWNTbmFwc2hvdCI6eyJhcnRpZmFjdHMiOlt7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6IjU1OWQ3NDU3OWZkYmE2ODRiNDEyODg2YWU4YzI3MDczNWVlNTNkNWFlMTI2ZDZjNTgxNTg0ZTQ0ZWJkMjE5OTUiLCJjb250cmFjdEhhc2giOiJjZDJmMTdjYmRiYTcyMGI2OTY4OWJhYzUyOWVhNGI4OTNkMTQxNGY5ZmVmMzFlZjFjNDBmMTU2Mzk4NTQ0YzRlIiwiaW5wdXRIYXNoIjoiZmRiNGE5MWE1M2RiOGM4NTYzYTA1MjQ3Y2I0NzE3MjIwMjQ1ODU0MWUxYWNiMzNlMmU2NDVhYzEwOGUzYzVkMyIsImxlZ2FjeUZpbmdlcnByaW50IjoiYzFjMTQ1ZDA5ZjRhNjZkNTY3OGFmMGRjMmM1YjhmNGNiN2IxYzM2NzUwMWMxN2Q2ZDU3ZWQzMTUyYmE4NDg4MyIsInNvdXJjZSI6ImJyaWVmLm1kIn0seyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiI1NjAyMDFkYzc4NDhhMTNkZWM0NjFlYjFlOTUzM2I4YmZlNjAwMDNhYjRmZjhiMzk4ODM2YTI4NmZjYzEwZTRlIiwiY29udHJhY3RIYXNoIjoiODc1NTljNzc1NTdiMzQ0YjI4ZWQ1MjQxNDEwNWFjYTUyZjQxNzg4NjQyMTEwZGI3ZmJjMTZkNGMxMmQxZDNkZCIsImlucHV0SGFzaCI6IjZjNzY3YTI0NTFiNzZhNmFjNmUxN2FhNWQ1MjQ3YjFiMjRlZjNkNTdiY2Q0ZmNkMmNmMTFjODE3ZTE3ZjQyZTUiLCJsZWdhY3lGaW5nZXJwcmludCI6ImNkOThiYzUyMTA2N2U1NjI1MjU5MjAxM2IxMDcwMzc3MTA3NjlhNzQxY2FiYTMxYWY3YWJlMjQ0NDkxNGM4NDAiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dLCJzY2hlbWEiOiJjb21ldC5uYXRpdmUuc2hhcGUtc2VtYW50aWNzLnYxIn0sInNoYXBlQ29uZmlybWF0aW9uSGFzaCI6ImU4OGIyYzZkMjdiZDFlOGE3YmE5Njk0M2U1YWIwZjc1NGYwZjdlOWJjY2FlODRmMjVlMjliNmU2Mzc0NTg2NTMiLCJzcGVjQ2hhbmdlcyI6W3siY2FwYWJpbGl0eSI6IndvcmtmbG93Iiwib3BlcmF0aW9uIjoiY3JlYXRlIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XX19fSwiaW5wdXRIYXNoIjoiNjg0ZDAwZDkwNWQ0ZDZkYzkwYjg1NDRkYzA4MWRmNTYzZTgzMzFkNTlhYjgyM2QxYmZmODNkNTRhMzAzM2RhYiIsIm91dGNvbWUiOnsiYWN0aW9uSWQiOiJwdWJsaXNoZWQtYnVpbGQtcGVuZGluZzozIiwiYXR0ZW1wdCI6MSwiY2xhaW1Ub2tlbiI6InBvcnRhYmxlLTAyYTdmNjE3NDEzZjgyNmJjZmMyNzg2MmQ4NGU4NjQ3NzY5MDA0NzQzMGEzNWI1NDZiNGUxODAxYThiMzA4M2EiLCJpbnB1dEhhc2giOiI2ODRkMDBkOTA1ZDRkNmRjOTBiODU0NGRjMDgxZGY1NjNlODMzMWQ1OWFiODIzZDFiZmY4M2Q1NGEzMDMzZGFiIiwib3V0Y29tZUlkIjoiU0lNVUxBVEVELXJlc3VsdC1wdWJsaXNoZWQtYnVpbGQtcGVuZGluZzozIiwib3V0cHV0Ijp7ImFjY2VwdGFuY2UiOlt7ImlkIjoiQTEiLCJzb3VyY2UiOiJicmllZi5tZCIsInRleHQiOiJUaGUgc2VsZWN0ZWQgd29ya2Zsb3cgcmVzdW1lcy4ifV0sImNoaWxkcmVuIjpudWxsLCJmb3JtYWxIYXNoIjoiYjIyZWEzY2JhNTdhZTY4MzA4NGNiZGQxYjY4ZGMyOTdhMWNiMjU2YzUyMzA1YjgyZjZhNWUyNjVkYzBlNGQxMCIsInNlbWFudGljU25hcHNob3QiOnsiYXJ0aWZhY3RzIjpbeyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiI1NTlkNzQ1NzlmZGJhNjg0YjQxMjg4NmFlOGMyNzA3MzVlZTUzZDVhZTEyNmQ2YzU4MTU4NGU0NGViZDIxOTk1IiwiY29udHJhY3RIYXNoIjoiY2QyZjE3Y2JkYmE3MjBiNjk2ODliYWM1MjllYTRiODkzZDE0MTRmOWZlZjMxZWYxYzQwZjE1NjM5ODU0NGM0ZSIsImlucHV0SGFzaCI6ImZkYjRhOTFhNTNkYjhjODU2M2EwNTI0N2NiNDcxNzIyMDI0NTg1NDFlMWFjYjMzZTJlNjQ1YWMxMDhlM2M1ZDMiLCJsZWdhY3lGaW5nZXJwcmludCI6ImMxYzE0NWQwOWY0YTY2ZDU2NzhhZjBkYzJjNWI4ZjRjYjdiMWMzNjc1MDFjMTdkNmQ1N2VkMzE1MmJhODQ4ODMiLCJzb3VyY2UiOiJicmllZi5tZCJ9LHsiYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiNTYwMjAxZGM3ODQ4YTEzZGVjNDYxZWIxZTk1MzNiOGJmZTYwMDAzYWI0ZmY4YjM5ODgzNmEyODZmY2MxMGU0ZSIsImNvbnRyYWN0SGFzaCI6Ijg3NTU5Yzc3NTU3YjM0NGIyOGVkNTI0MTQxMDVhY2E1MmY0MTc4ODY0MjExMGRiN2ZiYzE2ZDRjMTJkMWQzZGQiLCJpbnB1dEhhc2giOiI2Yzc2N2EyNDUxYjc2YTZhYzZlMTdhYTVkNTI0N2IxYjI0ZWYzZDU3YmNkNGZjZDJjZjExYzgxN2UxN2Y0MmU1IiwibGVnYWN5RmluZ2VycHJpbnQiOiJjZDk4YmM1MjEwNjdlNTYyNTI1OTIwMTNiMTA3MDM3NzEwNzY5YTc0MWNhYmEzMWFmN2FiZTI0NDQ5MTRjODQwIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XSwic2NoZW1hIjoiY29tZXQubmF0aXZlLnNoYXBlLXNlbWFudGljcy52MSJ9LCJzaGFwZUNvbmZpcm1hdGlvbkhhc2giOiJlODhiMmM2ZDI3YmQxZThhN2JhOTY5NDNlNWFiMGY3NTRmMGY3ZTliY2NhZTg0ZjI1ZTI5YjZlNjM3NDU4NjUzIiwic3BlY0NoYW5nZXMiOlt7ImNhcGFiaWxpdHkiOiJ3b3JrZmxvdyIsIm9wZXJhdGlvbiI6ImNyZWF0ZSIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV19LCJzdGF0dXMiOiJzdWNjZWVkZWQifSwicHJvdG9jb2xWZXJzaW9uIjoxLCJyZWNlaXB0cyI6W3siaGFzaCI6ImE0ODhiNzVlYjM4MmI4ZTJmMmMwYWVhMTYxNDBmNjZkY2E2YTZlNmI3ODUyYTE5N2QzNTM4ZTVkZDdiMjVmZTEiLCJvdXRjb21lSWQiOiJTSU1VTEFURUQtcmVzdWx0LXB1Ymxpc2hlZC1idWlsZC1wZW5kaW5nOjMifV0sInJlY29uY2lsaWF0aW9ucyI6W10sInJlZiI6Im5hdGl2ZS1zaGFwZS1yZXZhbGlkYXRlIiwicmVxdWlyZWRDYXBhYmlsaXRpZXMiOltdLCJyZXRyeSI6Im1hbnVhbCIsInJ1bklkIjoicHVibGlzaGVkLWJ1aWxkLXBlbmRpbmciLCJzdGF0dXMiOiJzdWNjZWVkZWQiLCJzdGVwSWQiOiJzaGFwZS5yZXZhbGlkYXRlIiwidHlwZSI6ImNhbGxfdG9vbCJ9LHsiYXR0ZW1wdCI6MSwiY2xhaW0iOnsiZXhlY3V0b3JJZCI6IlNJTVVMQVRFRC1CdWlsZGVyIiwic2Vzc2lvbklkIjoiU0lNVUxBVEVELUJ1aWxkZXIiLCJ0b2tlbiI6InBvcnRhYmxlLTI4M2ZmYWUyMmZlMjU0OGUyNGZmN2I0NmZhNDI2YjgwNjk2MTJlMjgxMmQxZmYyMDMxZTA2OWZiNzExNTM2NzQifSwiZXhlY3V0aW9uT3JpZ2luIjp7IndvcmtmbG93Ijp7Imhhc2giOiIyYWQxN2NlOTk0YjI4ZWUwODE0OTRhNjJlN2Y2OGVlYWU2NzFiZjhjYzljN2FmODkzOTQwYTU5MjBkYjQzZGJkIiwiaWQiOiJjb21ldC1uYXRpdmUiLCJ2ZXJzaW9uIjoiMyJ9fSwiaWQiOiJwdWJsaXNoZWQtYnVpbGQtcGVuZGluZzo0IiwiaW5wdXQiOnsiaW5wdXQiOnsiYXJ0aWZhY3RSb290UmVmIjoiZG9jcyIsIm5hbWUiOiJwdWJsaXNoZWQtYnVpbGQtcGVuZGluZyIsInByb2plY3RSb290IjoiQzpcXFVzZXJzXFxCRU5ZTVxcQXBwRGF0YVxcTG9jYWxcXFRlbXBcXG5hdGl2ZS0wNTItYnVpbGQtY2hlY2stZnJvbnRpZXIteHRvM0FjXFxwcm9qZWN0LXBlbmRpbmcifSwib3V0cHV0cyI6eyJzaGFwZS5jb25maXJtIjp7ImNob2ljZSI6ImFwcHJvdmVkIiwicHJvcG9zYWwiOnsiaW5wdXQiOnsiYXJ0aWZhY3RSb290UmVmIjoiZG9jcyIsIm5hbWUiOiJwdWJsaXNoZWQtYnVpbGQtcGVuZGluZyIsInByb2plY3RSb290IjoiQzpcXFVzZXJzXFxCRU5ZTVxcQXBwRGF0YVxcTG9jYWxcXFRlbXBcXG5hdGl2ZS0wNTItYnVpbGQtY2hlY2stZnJvbnRpZXIteHRvM0FjXFxwcm9qZWN0LXBlbmRpbmcifSwib3V0cHV0cyI6eyJzaGFwZS5wcmVwYXJlIjp7ImFjY2VwdGFuY2UiOlt7ImlkIjoiQTEiLCJzb3VyY2UiOiJicmllZi5tZCIsInRleHQiOiJUaGUgc2VsZWN0ZWQgd29ya2Zsb3cgcmVzdW1lcy4ifV0sImNoaWxkcmVuIjpudWxsLCJmb3JtYWxIYXNoIjoiYjIyZWEzY2JhNTdhZTY4MzA4NGNiZGQxYjY4ZGMyOTdhMWNiMjU2YzUyMzA1YjgyZjZhNWUyNjVkYzBlNGQxMCIsInNlbWFudGljU25hcHNob3QiOnsiYXJ0aWZhY3RzIjpbeyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiI1NTlkNzQ1NzlmZGJhNjg0YjQxMjg4NmFlOGMyNzA3MzVlZTUzZDVhZTEyNmQ2YzU4MTU4NGU0NGViZDIxOTk1IiwiY29udHJhY3RIYXNoIjoiY2QyZjE3Y2JkYmE3MjBiNjk2ODliYWM1MjllYTRiODkzZDE0MTRmOWZlZjMxZWYxYzQwZjE1NjM5ODU0NGM0ZSIsImlucHV0SGFzaCI6ImZkYjRhOTFhNTNkYjhjODU2M2EwNTI0N2NiNDcxNzIyMDI0NTg1NDFlMWFjYjMzZTJlNjQ1YWMxMDhlM2M1ZDMiLCJsZWdhY3lGaW5nZXJwcmludCI6ImMxYzE0NWQwOWY0YTY2ZDU2NzhhZjBkYzJjNWI4ZjRjYjdiMWMzNjc1MDFjMTdkNmQ1N2VkMzE1MmJhODQ4ODMiLCJzb3VyY2UiOiJicmllZi5tZCJ9LHsiYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiNTYwMjAxZGM3ODQ4YTEzZGVjNDYxZWIxZTk1MzNiOGJmZTYwMDAzYWI0ZmY4YjM5ODgzNmEyODZmY2MxMGU0ZSIsImNvbnRyYWN0SGFzaCI6Ijg3NTU5Yzc3NTU3YjM0NGIyOGVkNTI0MTQxMDVhY2E1MmY0MTc4ODY0MjExMGRiN2ZiYzE2ZDRjMTJkMWQzZGQiLCJpbnB1dEhhc2giOiI2Yzc2N2EyNDUxYjc2YTZhYzZlMTdhYTVkNTI0N2IxYjI0ZWYzZDU3YmNkNGZjZDJjZjExYzgxN2UxN2Y0MmU1IiwibGVnYWN5RmluZ2VycHJpbnQiOiJjZDk4YmM1MjEwNjdlNTYyNTI1OTIwMTNiMTA3MDM3NzEwNzY5YTc0MWNhYmEzMWFmN2FiZTI0NDQ5MTRjODQwIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XSwic2NoZW1hIjoiY29tZXQubmF0aXZlLnNoYXBlLXNlbWFudGljcy52MSJ9LCJzaGFwZUNvbmZpcm1hdGlvbkhhc2giOiJlODhiMmM2ZDI3YmQxZThhN2JhOTY5NDNlNWFiMGY3NTRmMGY3ZTliY2NhZTg0ZjI1ZTI5YjZlNjM3NDU4NjUzIiwic3BlY0NoYW5nZXMiOlt7ImNhcGFiaWxpdHkiOiJ3b3JrZmxvdyIsIm9wZXJhdGlvbiI6ImNyZWF0ZSIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV19fX19LCJzaGFwZS5wcmVwYXJlIjp7ImFjY2VwdGFuY2UiOlt7ImlkIjoiQTEiLCJzb3VyY2UiOiJicmllZi5tZCIsInRleHQiOiJUaGUgc2VsZWN0ZWQgd29ya2Zsb3cgcmVzdW1lcy4ifV0sImNoaWxkcmVuIjpudWxsLCJmb3JtYWxIYXNoIjoiYjIyZWEzY2JhNTdhZTY4MzA4NGNiZGQxYjY4ZGMyOTdhMWNiMjU2YzUyMzA1YjgyZjZhNWUyNjVkYzBlNGQxMCIsInNlbWFudGljU25hcHNob3QiOnsiYXJ0aWZhY3RzIjpbeyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiI1NTlkNzQ1NzlmZGJhNjg0YjQxMjg4NmFlOGMyNzA3MzVlZTUzZDVhZTEyNmQ2YzU4MTU4NGU0NGViZDIxOTk1IiwiY29udHJhY3RIYXNoIjoiY2QyZjE3Y2JkYmE3MjBiNjk2ODliYWM1MjllYTRiODkzZDE0MTRmOWZlZjMxZWYxYzQwZjE1NjM5ODU0NGM0ZSIsImlucHV0SGFzaCI6ImZkYjRhOTFhNTNkYjhjODU2M2EwNTI0N2NiNDcxNzIyMDI0NTg1NDFlMWFjYjMzZTJlNjQ1YWMxMDhlM2M1ZDMiLCJsZWdhY3lGaW5nZXJwcmludCI6ImMxYzE0NWQwOWY0YTY2ZDU2NzhhZjBkYzJjNWI4ZjRjYjdiMWMzNjc1MDFjMTdkNmQ1N2VkMzE1MmJhODQ4ODMiLCJzb3VyY2UiOiJicmllZi5tZCJ9LHsiYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiNTYwMjAxZGM3ODQ4YTEzZGVjNDYxZWIxZTk1MzNiOGJmZTYwMDAzYWI0ZmY4YjM5ODgzNmEyODZmY2MxMGU0ZSIsImNvbnRyYWN0SGFzaCI6Ijg3NTU5Yzc3NTU3YjM0NGIyOGVkNTI0MTQxMDVhY2E1MmY0MTc4ODY0MjExMGRiN2ZiYzE2ZDRjMTJkMWQzZGQiLCJpbnB1dEhhc2giOiI2Yzc2N2EyNDUxYjc2YTZhYzZlMTdhYTVkNTI0N2IxYjI0ZWYzZDU3YmNkNGZjZDJjZjExYzgxN2UxN2Y0MmU1IiwibGVnYWN5RmluZ2VycHJpbnQiOiJjZDk4YmM1MjEwNjdlNTYyNTI1OTIwMTNiMTA3MDM3NzEwNzY5YTc0MWNhYmEzMWFmN2FiZTI0NDQ5MTRjODQwIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XSwic2NoZW1hIjoiY29tZXQubmF0aXZlLnNoYXBlLXNlbWFudGljcy52MSJ9LCJzaGFwZUNvbmZpcm1hdGlvbkhhc2giOiJlODhiMmM2ZDI3YmQxZThhN2JhOTY5NDNlNWFiMGY3NTRmMGY3ZTliY2NhZTg0ZjI1ZTI5YjZlNjM3NDU4NjUzIiwic3BlY0NoYW5nZXMiOlt7ImNhcGFiaWxpdHkiOiJ3b3JrZmxvdyIsIm9wZXJhdGlvbiI6ImNyZWF0ZSIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV19LCJzaGFwZS5yZXZhbGlkYXRlIjp7ImFjY2VwdGFuY2UiOlt7ImlkIjoiQTEiLCJzb3VyY2UiOiJicmllZi5tZCIsInRleHQiOiJUaGUgc2VsZWN0ZWQgd29ya2Zsb3cgcmVzdW1lcy4ifV0sImNoaWxkcmVuIjpudWxsLCJmb3JtYWxIYXNoIjoiYjIyZWEzY2JhNTdhZTY4MzA4NGNiZGQxYjY4ZGMyOTdhMWNiMjU2YzUyMzA1YjgyZjZhNWUyNjVkYzBlNGQxMCIsInNlbWFudGljU25hcHNob3QiOnsiYXJ0aWZhY3RzIjpbeyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiI1NTlkNzQ1NzlmZGJhNjg0YjQxMjg4NmFlOGMyNzA3MzVlZTUzZDVhZTEyNmQ2YzU4MTU4NGU0NGViZDIxOTk1IiwiY29udHJhY3RIYXNoIjoiY2QyZjE3Y2JkYmE3MjBiNjk2ODliYWM1MjllYTRiODkzZDE0MTRmOWZlZjMxZWYxYzQwZjE1NjM5ODU0NGM0ZSIsImlucHV0SGFzaCI6ImZkYjRhOTFhNTNkYjhjODU2M2EwNTI0N2NiNDcxNzIyMDI0NTg1NDFlMWFjYjMzZTJlNjQ1YWMxMDhlM2M1ZDMiLCJsZWdhY3lGaW5nZXJwcmludCI6ImMxYzE0NWQwOWY0YTY2ZDU2NzhhZjBkYzJjNWI4ZjRjYjdiMWMzNjc1MDFjMTdkNmQ1N2VkMzE1MmJhODQ4ODMiLCJzb3VyY2UiOiJicmllZi5tZCJ9LHsiYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiNTYwMjAxZGM3ODQ4YTEzZGVjNDYxZWIxZTk1MzNiOGJmZTYwMDAzYWI0ZmY4YjM5ODgzNmEyODZmY2MxMGU0ZSIsImNvbnRyYWN0SGFzaCI6Ijg3NTU5Yzc3NTU3YjM0NGIyOGVkNTI0MTQxMDVhY2E1MmY0MTc4ODY0MjExMGRiN2ZiYzE2ZDRjMTJkMWQzZGQiLCJpbnB1dEhhc2giOiI2Yzc2N2EyNDUxYjc2YTZhYzZlMTdhYTVkNTI0N2IxYjI0ZWYzZDU3YmNkNGZjZDJjZjExYzgxN2UxN2Y0MmU1IiwibGVnYWN5RmluZ2VycHJpbnQiOiJjZDk4YmM1MjEwNjdlNTYyNTI1OTIwMTNiMTA3MDM3NzEwNzY5YTc0MWNhYmEzMWFmN2FiZTI0NDQ5MTRjODQwIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XSwic2NoZW1hIjoiY29tZXQubmF0aXZlLnNoYXBlLXNlbWFudGljcy52MSJ9LCJzaGFwZUNvbmZpcm1hdGlvbkhhc2giOiJlODhiMmM2ZDI3YmQxZThhN2JhOTY5NDNlNWFiMGY3NTRmMGY3ZTliY2NhZTg0ZjI1ZTI5YjZlNjM3NDU4NjUzIiwic3BlY0NoYW5nZXMiOlt7ImNhcGFiaWxpdHkiOiJ3b3JrZmxvdyIsIm9wZXJhdGlvbiI6ImNyZWF0ZSIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV19fX0sImlucHV0SGFzaCI6IjE2MjNiYTk1MmYxMWEyNmZiYWRkZTVjNDBlODA5ZmU2ODc5NGE5NDk1MWFhZDgzYTk5ZGM1OWZkZGM3ZTM4OWIiLCJvdXRjb21lIjp7ImFjdGlvbklkIjoicHVibGlzaGVkLWJ1aWxkLXBlbmRpbmc6NCIsImF0dGVtcHQiOjEsImNsYWltVG9rZW4iOiJwb3J0YWJsZS0yODNmZmFlMjJmZTI1NDhlMjRmZjdiNDZmYTQyNmI4MDY5NjEyZTI4MTJkMWZmMjAzMWUwNjlmYjcxMTUzNjc0IiwiaW5wdXRIYXNoIjoiMTYyM2JhOTUyZjExYTI2ZmJhZGRlNWM0MGU4MDlmZTY4Nzk0YTk0OTUxYWFkODNhOTlkYzU5ZmRkYzdlMzg5YiIsIm91dGNvbWVJZCI6IlNJTVVMQVRFRC1yZXN1bHQtcHVibGlzaGVkLWJ1aWxkLXBlbmRpbmc6NCIsIm91dHB1dCI6eyJyZXNwb25zZSI6eyJjaGVja3MiOlt7ImFyZ3YiOlsiLWUiLCJyZXF1aXJlKCdub2RlOmZzJykud3JpdGVGaWxlU3luYygnRk9SQklEREVOLUNIRUNLLVNJREUtRUZGRUNUJywnZXhlY3V0ZWQnKSJdLCJjd2RSZWYiOiIuIiwiZXhlY3V0YWJsZSI6IkQ6XFxub2RlanNcXG5vZGUuZXhlIiwiaWQiOiJub3QtZXhlY3V0ZWQiLCJuYW1lIjoiVU5FWEVDVVRFRCBCdWlsZCBjaGVjayBmaXh0dXJlIiwicmVwZWF0YWJsZSI6dHJ1ZSwidGltZW91dE1zIjo1MDAwfV0sImtpbmQiOiJyZXF1ZXN0LWNoZWNrcyJ9fSwic3RhdHVzIjoic3VjY2VlZGVkIn0sInByb3RvY29sVmVyc2lvbiI6MSwicmVjZWlwdHMiOlt7Imhhc2giOiI4Y2FlODk2ZTZiNGJjMTY4MmM1M2NmZmI4ZTU2MWJmNTYxODM4NTQ2M2NhMmE0NDkyM2RhMWUzZDJjNWY1ZDQzIiwib3V0Y29tZUlkIjoiU0lNVUxBVEVELXJlc3VsdC1wdWJsaXNoZWQtYnVpbGQtcGVuZGluZzo0In1dLCJyZWNvbmNpbGlhdGlvbnMiOltdLCJyZWYiOiJuYXRpdmUtYnVpbGRlciIsInJlcXVpcmVkQ2FwYWJpbGl0aWVzIjpbXSwicmV0cnkiOiJtYW51YWwiLCJydW5JZCI6InB1Ymxpc2hlZC1idWlsZC1wZW5kaW5nIiwic3RhdHVzIjoic3VjY2VlZGVkIiwic3RlcElkIjoiYnVpbGQuYnVpbGRlciIsInR5cGUiOiJoYW5kb2ZmIn0seyJhdHRlbXB0IjoxLCJpZCI6InB1Ymxpc2hlZC1idWlsZC1wZW5kaW5nOjUiLCJpbnB1dCI6eyJhY3RpdmF0aW9uIjp7ImNoZWNrcyI6W3siYXJndiI6WyItZSIsInJlcXVpcmUoJ25vZGU6ZnMnKS53cml0ZUZpbGVTeW5jKCdGT1JCSURERU4tQ0hFQ0stU0lERS1FRkZFQ1QnLCdleGVjdXRlZCcpIl0sImN3ZFJlZiI6Ii4iLCJleGVjdXRhYmxlIjoiRDpcXG5vZGVqc1xcbm9kZS5leGUiLCJpZCI6Im5vdC1leGVjdXRlZCIsIm5hbWUiOiJVTkVYRUNVVEVEIEJ1aWxkIGNoZWNrIGZpeHR1cmUiLCJyZXBlYXRhYmxlIjp0cnVlLCJ0aW1lb3V0TXMiOjUwMDB9XX0sImlucHV0Ijp7ImFydGlmYWN0Um9vdFJlZiI6ImRvY3MiLCJuYW1lIjoicHVibGlzaGVkLWJ1aWxkLXBlbmRpbmciLCJwcm9qZWN0Um9vdCI6IkM6XFxVc2Vyc1xcQkVOWU1cXEFwcERhdGFcXExvY2FsXFxUZW1wXFxuYXRpdmUtMDUyLWJ1aWxkLWNoZWNrLWZyb250aWVyLXh0bzNBY1xccHJvamVjdC1wZW5kaW5nIn0sIm91dHB1dHMiOnsiYnVpbGQuYnVpbGRlciI6eyJyZXNwb25zZSI6eyJjaGVja3MiOlt7ImFyZ3YiOlsiLWUiLCJyZXF1aXJlKCdub2RlOmZzJykud3JpdGVGaWxlU3luYygnRk9SQklEREVOLUNIRUNLLVNJREUtRUZGRUNUJywnZXhlY3V0ZWQnKSJdLCJjd2RSZWYiOiIuIiwiZXhlY3V0YWJsZSI6IkQ6XFxub2RlanNcXG5vZGUuZXhlIiwiaWQiOiJub3QtZXhlY3V0ZWQiLCJuYW1lIjoiVU5FWEVDVVRFRCBCdWlsZCBjaGVjayBmaXh0dXJlIiwicmVwZWF0YWJsZSI6dHJ1ZSwidGltZW91dE1zIjo1MDAwfV0sImtpbmQiOiJyZXF1ZXN0LWNoZWNrcyJ9fSwic2hhcGUuY29uZmlybSI6eyJjaG9pY2UiOiJhcHByb3ZlZCIsInByb3Bvc2FsIjp7ImlucHV0Ijp7ImFydGlmYWN0Um9vdFJlZiI6ImRvY3MiLCJuYW1lIjoicHVibGlzaGVkLWJ1aWxkLXBlbmRpbmciLCJwcm9qZWN0Um9vdCI6IkM6XFxVc2Vyc1xcQkVOWU1cXEFwcERhdGFcXExvY2FsXFxUZW1wXFxuYXRpdmUtMDUyLWJ1aWxkLWNoZWNrLWZyb250aWVyLXh0bzNBY1xccHJvamVjdC1wZW5kaW5nIn0sIm91dHB1dHMiOnsic2hhcGUucHJlcGFyZSI6eyJhY2NlcHRhbmNlIjpbeyJpZCI6IkExIiwic291cmNlIjoiYnJpZWYubWQiLCJ0ZXh0IjoiVGhlIHNlbGVjdGVkIHdvcmtmbG93IHJlc3VtZXMuIn1dLCJjaGlsZHJlbiI6bnVsbCwiZm9ybWFsSGFzaCI6ImIyMmVhM2NiYTU3YWU2ODMwODRjYmRkMWI2OGRjMjk3YTFjYjI1NmM1MjMwNWI4MmY2YTVlMjY1ZGMwZTRkMTAiLCJzZW1hbnRpY1NuYXBzaG90Ijp7ImFydGlmYWN0cyI6W3siYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiNTU5ZDc0NTc5ZmRiYTY4NGI0MTI4ODZhZThjMjcwNzM1ZWU1M2Q1YWUxMjZkNmM1ODE1ODRlNDRlYmQyMTk5NSIsImNvbnRyYWN0SGFzaCI6ImNkMmYxN2NiZGJhNzIwYjY5Njg5YmFjNTI5ZWE0Yjg5M2QxNDE0ZjlmZWYzMWVmMWM0MGYxNTYzOTg1NDRjNGUiLCJpbnB1dEhhc2giOiJmZGI0YTkxYTUzZGI4Yzg1NjNhMDUyNDdjYjQ3MTcyMjAyNDU4NTQxZTFhY2IzM2UyZTY0NWFjMTA4ZTNjNWQzIiwibGVnYWN5RmluZ2VycHJpbnQiOiJjMWMxNDVkMDlmNGE2NmQ1Njc4YWYwZGMyYzViOGY0Y2I3YjFjMzY3NTAxYzE3ZDZkNTdlZDMxNTJiYTg0ODgzIiwic291cmNlIjoiYnJpZWYubWQifSx7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6IjU2MDIwMWRjNzg0OGExM2RlYzQ2MWViMWU5NTMzYjhiZmU2MDAwM2FiNGZmOGIzOTg4MzZhMjg2ZmNjMTBlNGUiLCJjb250cmFjdEhhc2giOiI4NzU1OWM3NzU1N2IzNDRiMjhlZDUyNDE0MTA1YWNhNTJmNDE3ODg2NDIxMTBkYjdmYmMxNmQ0YzEyZDFkM2RkIiwiaW5wdXRIYXNoIjoiNmM3NjdhMjQ1MWI3NmE2YWM2ZTE3YWE1ZDUyNDdiMWIyNGVmM2Q1N2JjZDRmY2QyY2YxMWM4MTdlMTdmNDJlNSIsImxlZ2FjeUZpbmdlcnByaW50IjoiY2Q5OGJjNTIxMDY3ZTU2MjUyNTkyMDEzYjEwNzAzNzcxMDc2OWE3NDFjYWJhMzFhZjdhYmUyNDQ0OTE0Yzg0MCIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV0sInNjaGVtYSI6ImNvbWV0Lm5hdGl2ZS5zaGFwZS1zZW1hbnRpY3MudjEifSwic2hhcGVDb25maXJtYXRpb25IYXNoIjoiZTg4YjJjNmQyN2JkMWU4YTdiYTk2OTQzZTVhYjBmNzU0ZjBmN2U5YmNjYWU4NGYyNWUyOWI2ZTYzNzQ1ODY1MyIsInNwZWNDaGFuZ2VzIjpbeyJjYXBhYmlsaXR5Ijoid29ya2Zsb3ciLCJvcGVyYXRpb24iOiJjcmVhdGUiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dfX19fSwic2hhcGUucHJlcGFyZSI6eyJhY2NlcHRhbmNlIjpbeyJpZCI6IkExIiwic291cmNlIjoiYnJpZWYubWQiLCJ0ZXh0IjoiVGhlIHNlbGVjdGVkIHdvcmtmbG93IHJlc3VtZXMuIn1dLCJjaGlsZHJlbiI6bnVsbCwiZm9ybWFsSGFzaCI6ImIyMmVhM2NiYTU3YWU2ODMwODRjYmRkMWI2OGRjMjk3YTFjYjI1NmM1MjMwNWI4MmY2YTVlMjY1ZGMwZTRkMTAiLCJzZW1hbnRpY1NuYXBzaG90Ijp7ImFydGlmYWN0cyI6W3siYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiNTU5ZDc0NTc5ZmRiYTY4NGI0MTI4ODZhZThjMjcwNzM1ZWU1M2Q1YWUxMjZkNmM1ODE1ODRlNDRlYmQyMTk5NSIsImNvbnRyYWN0SGFzaCI6ImNkMmYxN2NiZGJhNzIwYjY5Njg5YmFjNTI5ZWE0Yjg5M2QxNDE0ZjlmZWYzMWVmMWM0MGYxNTYzOTg1NDRjNGUiLCJpbnB1dEhhc2giOiJmZGI0YTkxYTUzZGI4Yzg1NjNhMDUyNDdjYjQ3MTcyMjAyNDU4NTQxZTFhY2IzM2UyZTY0NWFjMTA4ZTNjNWQzIiwibGVnYWN5RmluZ2VycHJpbnQiOiJjMWMxNDVkMDlmNGE2NmQ1Njc4YWYwZGMyYzViOGY0Y2I3YjFjMzY3NTAxYzE3ZDZkNTdlZDMxNTJiYTg0ODgzIiwic291cmNlIjoiYnJpZWYubWQifSx7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6IjU2MDIwMWRjNzg0OGExM2RlYzQ2MWViMWU5NTMzYjhiZmU2MDAwM2FiNGZmOGIzOTg4MzZhMjg2ZmNjMTBlNGUiLCJjb250cmFjdEhhc2giOiI4NzU1OWM3NzU1N2IzNDRiMjhlZDUyNDE0MTA1YWNhNTJmNDE3ODg2NDIxMTBkYjdmYmMxNmQ0YzEyZDFkM2RkIiwiaW5wdXRIYXNoIjoiNmM3NjdhMjQ1MWI3NmE2YWM2ZTE3YWE1ZDUyNDdiMWIyNGVmM2Q1N2JjZDRmY2QyY2YxMWM4MTdlMTdmNDJlNSIsImxlZ2FjeUZpbmdlcnByaW50IjoiY2Q5OGJjNTIxMDY3ZTU2MjUyNTkyMDEzYjEwNzAzNzcxMDc2OWE3NDFjYWJhMzFhZjdhYmUyNDQ0OTE0Yzg0MCIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV0sInNjaGVtYSI6ImNvbWV0Lm5hdGl2ZS5zaGFwZS1zZW1hbnRpY3MudjEifSwic2hhcGVDb25maXJtYXRpb25IYXNoIjoiZTg4YjJjNmQyN2JkMWU4YTdiYTk2OTQzZTVhYjBmNzU0ZjBmN2U5YmNjYWU4NGYyNWUyOWI2ZTYzNzQ1ODY1MyIsInNwZWNDaGFuZ2VzIjpbeyJjYXBhYmlsaXR5Ijoid29ya2Zsb3ciLCJvcGVyYXRpb24iOiJjcmVhdGUiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dfSwic2hhcGUucmV2YWxpZGF0ZSI6eyJhY2NlcHRhbmNlIjpbeyJpZCI6IkExIiwic291cmNlIjoiYnJpZWYubWQiLCJ0ZXh0IjoiVGhlIHNlbGVjdGVkIHdvcmtmbG93IHJlc3VtZXMuIn1dLCJjaGlsZHJlbiI6bnVsbCwiZm9ybWFsSGFzaCI6ImIyMmVhM2NiYTU3YWU2ODMwODRjYmRkMWI2OGRjMjk3YTFjYjI1NmM1MjMwNWI4MmY2YTVlMjY1ZGMwZTRkMTAiLCJzZW1hbnRpY1NuYXBzaG90Ijp7ImFydGlmYWN0cyI6W3siYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiNTU5ZDc0NTc5ZmRiYTY4NGI0MTI4ODZhZThjMjcwNzM1ZWU1M2Q1YWUxMjZkNmM1ODE1ODRlNDRlYmQyMTk5NSIsImNvbnRyYWN0SGFzaCI6ImNkMmYxN2NiZGJhNzIwYjY5Njg5YmFjNTI5ZWE0Yjg5M2QxNDE0ZjlmZWYzMWVmMWM0MGYxNTYzOTg1NDRjNGUiLCJpbnB1dEhhc2giOiJmZGI0YTkxYTUzZGI4Yzg1NjNhMDUyNDdjYjQ3MTcyMjAyNDU4NTQxZTFhY2IzM2UyZTY0NWFjMTA4ZTNjNWQzIiwibGVnYWN5RmluZ2VycHJpbnQiOiJjMWMxNDVkMDlmNGE2NmQ1Njc4YWYwZGMyYzViOGY0Y2I3YjFjMzY3NTAxYzE3ZDZkNTdlZDMxNTJiYTg0ODgzIiwic291cmNlIjoiYnJpZWYubWQifSx7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6IjU2MDIwMWRjNzg0OGExM2RlYzQ2MWViMWU5NTMzYjhiZmU2MDAwM2FiNGZmOGIzOTg4MzZhMjg2ZmNjMTBlNGUiLCJjb250cmFjdEhhc2giOiI4NzU1OWM3NzU1N2IzNDRiMjhlZDUyNDE0MTA1YWNhNTJmNDE3ODg2NDIxMTBkYjdmYmMxNmQ0YzEyZDFkM2RkIiwiaW5wdXRIYXNoIjoiNmM3NjdhMjQ1MWI3NmE2YWM2ZTE3YWE1ZDUyNDdiMWIyNGVmM2Q1N2JjZDRmY2QyY2YxMWM4MTdlMTdmNDJlNSIsImxlZ2FjeUZpbmdlcnByaW50IjoiY2Q5OGJjNTIxMDY3ZTU2MjUyNTkyMDEzYjEwNzAzNzcxMDc2OWE3NDFjYWJhMzFhZjdhYmUyNDQ0OTE0Yzg0MCIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV0sInNjaGVtYSI6ImNvbWV0Lm5hdGl2ZS5zaGFwZS1zZW1hbnRpY3MudjEifSwic2hhcGVDb25maXJtYXRpb25IYXNoIjoiZTg4YjJjNmQyN2JkMWU4YTdiYTk2OTQzZTVhYjBmNzU0ZjBmN2U5YmNjYWU4NGYyNWUyOWI2ZTYzNzQ1ODY1MyIsInNwZWNDaGFuZ2VzIjpbeyJjYXBhYmlsaXR5Ijoid29ya2Zsb3ciLCJvcGVyYXRpb24iOiJjcmVhdGUiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dfX19LCJpbnB1dEhhc2giOiI1MTRlZmE2ODkyMjNiNWNhMDlkMGExMDBjY2UwOWJiYjZlMzNmODRjYTkwMjY5M2Q1MzE3ZmIwOGMzNDIwNDI4IiwicHJvdG9jb2xWZXJzaW9uIjoxLCJyZWNlaXB0cyI6W10sInJlY29uY2lsaWF0aW9ucyI6W10sInJlZiI6Im5hdGl2ZS1idWlsZC1jaGVja3MiLCJyZXF1aXJlZENhcGFiaWxpdGllcyI6W10sInJldHJ5IjoibWFudWFsIiwicnVuSWQiOiJwdWJsaXNoZWQtYnVpbGQtcGVuZGluZyIsInN0YXR1cyI6InBlbmRpbmciLCJzdGVwSWQiOiJidWlsZC5jaGVja3MiLCJ0eXBlIjoiY2FsbF90b29sIn1dLCJhY3Rpb25Db250ZXh0cyI6eyJwdWJsaXNoZWQtYnVpbGQtcGVuZGluZzoxIjp7InJlc3VsdHMiOnt9LCJzZXF1ZW5jZSI6MX0sInB1Ymxpc2hlZC1idWlsZC1wZW5kaW5nOjMiOnsicmVzdWx0cyI6eyJzaGFwZS5jb25maXJtIjp7InNlcXVlbmNlIjoyLCJ2YWx1ZSI6eyJjaG9pY2UiOiJhcHByb3ZlZCIsInByb3Bvc2FsIjp7ImlucHV0Ijp7ImFydGlmYWN0Um9vdFJlZiI6ImRvY3MiLCJuYW1lIjoicHVibGlzaGVkLWJ1aWxkLXBlbmRpbmciLCJwcm9qZWN0Um9vdCI6IkM6XFxVc2Vyc1xcQkVOWU1cXEFwcERhdGFcXExvY2FsXFxUZW1wXFxuYXRpdmUtMDUyLWJ1aWxkLWNoZWNrLWZyb250aWVyLXh0bzNBY1xccHJvamVjdC1wZW5kaW5nIn0sIm91dHB1dHMiOnsic2hhcGUucHJlcGFyZSI6eyJhY2NlcHRhbmNlIjpbeyJpZCI6IkExIiwic291cmNlIjoiYnJpZWYubWQiLCJ0ZXh0IjoiVGhlIHNlbGVjdGVkIHdvcmtmbG93IHJlc3VtZXMuIn1dLCJjaGlsZHJlbiI6bnVsbCwiZm9ybWFsSGFzaCI6ImIyMmVhM2NiYTU3YWU2ODMwODRjYmRkMWI2OGRjMjk3YTFjYjI1NmM1MjMwNWI4MmY2YTVlMjY1ZGMwZTRkMTAiLCJzZW1hbnRpY1NuYXBzaG90Ijp7ImFydGlmYWN0cyI6W3siYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiNTU5ZDc0NTc5ZmRiYTY4NGI0MTI4ODZhZThjMjcwNzM1ZWU1M2Q1YWUxMjZkNmM1ODE1ODRlNDRlYmQyMTk5NSIsImNvbnRyYWN0SGFzaCI6ImNkMmYxN2NiZGJhNzIwYjY5Njg5YmFjNTI5ZWE0Yjg5M2QxNDE0ZjlmZWYzMWVmMWM0MGYxNTYzOTg1NDRjNGUiLCJpbnB1dEhhc2giOiJmZGI0YTkxYTUzZGI4Yzg1NjNhMDUyNDdjYjQ3MTcyMjAyNDU4NTQxZTFhY2IzM2UyZTY0NWFjMTA4ZTNjNWQzIiwibGVnYWN5RmluZ2VycHJpbnQiOiJjMWMxNDVkMDlmNGE2NmQ1Njc4YWYwZGMyYzViOGY0Y2I3YjFjMzY3NTAxYzE3ZDZkNTdlZDMxNTJiYTg0ODgzIiwic291cmNlIjoiYnJpZWYubWQifSx7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6IjU2MDIwMWRjNzg0OGExM2RlYzQ2MWViMWU5NTMzYjhiZmU2MDAwM2FiNGZmOGIzOTg4MzZhMjg2ZmNjMTBlNGUiLCJjb250cmFjdEhhc2giOiI4NzU1OWM3NzU1N2IzNDRiMjhlZDUyNDE0MTA1YWNhNTJmNDE3ODg2NDIxMTBkYjdmYmMxNmQ0YzEyZDFkM2RkIiwiaW5wdXRIYXNoIjoiNmM3NjdhMjQ1MWI3NmE2YWM2ZTE3YWE1ZDUyNDdiMWIyNGVmM2Q1N2JjZDRmY2QyY2YxMWM4MTdlMTdmNDJlNSIsImxlZ2FjeUZpbmdlcnByaW50IjoiY2Q5OGJjNTIxMDY3ZTU2MjUyNTkyMDEzYjEwNzAzNzcxMDc2OWE3NDFjYWJhMzFhZjdhYmUyNDQ0OTE0Yzg0MCIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV0sInNjaGVtYSI6ImNvbWV0Lm5hdGl2ZS5zaGFwZS1zZW1hbnRpY3MudjEifSwic2hhcGVDb25maXJtYXRpb25IYXNoIjoiZTg4YjJjNmQyN2JkMWU4YTdiYTk2OTQzZTVhYjBmNzU0ZjBmN2U5YmNjYWU4NGYyNWUyOWI2ZTYzNzQ1ODY1MyIsInNwZWNDaGFuZ2VzIjpbeyJjYXBhYmlsaXR5Ijoid29ya2Zsb3ciLCJvcGVyYXRpb24iOiJjcmVhdGUiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dfX19fX0sInNoYXBlLnByZXBhcmUiOnsic2VxdWVuY2UiOjEsInZhbHVlIjp7ImFjY2VwdGFuY2UiOlt7ImlkIjoiQTEiLCJzb3VyY2UiOiJicmllZi5tZCIsInRleHQiOiJUaGUgc2VsZWN0ZWQgd29ya2Zsb3cgcmVzdW1lcy4ifV0sImNoaWxkcmVuIjpudWxsLCJmb3JtYWxIYXNoIjoiYjIyZWEzY2JhNTdhZTY4MzA4NGNiZGQxYjY4ZGMyOTdhMWNiMjU2YzUyMzA1YjgyZjZhNWUyNjVkYzBlNGQxMCIsInNlbWFudGljU25hcHNob3QiOnsiYXJ0aWZhY3RzIjpbeyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiI1NTlkNzQ1NzlmZGJhNjg0YjQxMjg4NmFlOGMyNzA3MzVlZTUzZDVhZTEyNmQ2YzU4MTU4NGU0NGViZDIxOTk1IiwiY29udHJhY3RIYXNoIjoiY2QyZjE3Y2JkYmE3MjBiNjk2ODliYWM1MjllYTRiODkzZDE0MTRmOWZlZjMxZWYxYzQwZjE1NjM5ODU0NGM0ZSIsImlucHV0SGFzaCI6ImZkYjRhOTFhNTNkYjhjODU2M2EwNTI0N2NiNDcxNzIyMDI0NTg1NDFlMWFjYjMzZTJlNjQ1YWMxMDhlM2M1ZDMiLCJsZWdhY3lGaW5nZXJwcmludCI6ImMxYzE0NWQwOWY0YTY2ZDU2NzhhZjBkYzJjNWI4ZjRjYjdiMWMzNjc1MDFjMTdkNmQ1N2VkMzE1MmJhODQ4ODMiLCJzb3VyY2UiOiJicmllZi5tZCJ9LHsiYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiNTYwMjAxZGM3ODQ4YTEzZGVjNDYxZWIxZTk1MzNiOGJmZTYwMDAzYWI0ZmY4YjM5ODgzNmEyODZmY2MxMGU0ZSIsImNvbnRyYWN0SGFzaCI6Ijg3NTU5Yzc3NTU3YjM0NGIyOGVkNTI0MTQxMDVhY2E1MmY0MTc4ODY0MjExMGRiN2ZiYzE2ZDRjMTJkMWQzZGQiLCJpbnB1dEhhc2giOiI2Yzc2N2EyNDUxYjc2YTZhYzZlMTdhYTVkNTI0N2IxYjI0ZWYzZDU3YmNkNGZjZDJjZjExYzgxN2UxN2Y0MmU1IiwibGVnYWN5RmluZ2VycHJpbnQiOiJjZDk4YmM1MjEwNjdlNTYyNTI1OTIwMTNiMTA3MDM3NzEwNzY5YTc0MWNhYmEzMWFmN2FiZTI0NDQ5MTRjODQwIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XSwic2NoZW1hIjoiY29tZXQubmF0aXZlLnNoYXBlLXNlbWFudGljcy52MSJ9LCJzaGFwZUNvbmZpcm1hdGlvbkhhc2giOiJlODhiMmM2ZDI3YmQxZThhN2JhOTY5NDNlNWFiMGY3NTRmMGY3ZTliY2NhZTg0ZjI1ZTI5YjZlNjM3NDU4NjUzIiwic3BlY0NoYW5nZXMiOlt7ImNhcGFiaWxpdHkiOiJ3b3JrZmxvdyIsIm9wZXJhdGlvbiI6ImNyZWF0ZSIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV19fX0sInNlcXVlbmNlIjozfSwicHVibGlzaGVkLWJ1aWxkLXBlbmRpbmc6NCI6eyJyZXN1bHRzIjp7InNoYXBlLmNvbmZpcm0iOnsic2VxdWVuY2UiOjIsInZhbHVlIjp7ImNob2ljZSI6ImFwcHJvdmVkIiwicHJvcG9zYWwiOnsiaW5wdXQiOnsiYXJ0aWZhY3RSb290UmVmIjoiZG9jcyIsIm5hbWUiOiJwdWJsaXNoZWQtYnVpbGQtcGVuZGluZyIsInByb2plY3RSb290IjoiQzpcXFVzZXJzXFxCRU5ZTVxcQXBwRGF0YVxcTG9jYWxcXFRlbXBcXG5hdGl2ZS0wNTItYnVpbGQtY2hlY2stZnJvbnRpZXIteHRvM0FjXFxwcm9qZWN0LXBlbmRpbmcifSwib3V0cHV0cyI6eyJzaGFwZS5wcmVwYXJlIjp7ImFjY2VwdGFuY2UiOlt7ImlkIjoiQTEiLCJzb3VyY2UiOiJicmllZi5tZCIsInRleHQiOiJUaGUgc2VsZWN0ZWQgd29ya2Zsb3cgcmVzdW1lcy4ifV0sImNoaWxkcmVuIjpudWxsLCJmb3JtYWxIYXNoIjoiYjIyZWEzY2JhNTdhZTY4MzA4NGNiZGQxYjY4ZGMyOTdhMWNiMjU2YzUyMzA1YjgyZjZhNWUyNjVkYzBlNGQxMCIsInNlbWFudGljU25hcHNob3QiOnsiYXJ0aWZhY3RzIjpbeyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiI1NTlkNzQ1NzlmZGJhNjg0YjQxMjg4NmFlOGMyNzA3MzVlZTUzZDVhZTEyNmQ2YzU4MTU4NGU0NGViZDIxOTk1IiwiY29udHJhY3RIYXNoIjoiY2QyZjE3Y2JkYmE3MjBiNjk2ODliYWM1MjllYTRiODkzZDE0MTRmOWZlZjMxZWYxYzQwZjE1NjM5ODU0NGM0ZSIsImlucHV0SGFzaCI6ImZkYjRhOTFhNTNkYjhjODU2M2EwNTI0N2NiNDcxNzIyMDI0NTg1NDFlMWFjYjMzZTJlNjQ1YWMxMDhlM2M1ZDMiLCJsZWdhY3lGaW5nZXJwcmludCI6ImMxYzE0NWQwOWY0YTY2ZDU2NzhhZjBkYzJjNWI4ZjRjYjdiMWMzNjc1MDFjMTdkNmQ1N2VkMzE1MmJhODQ4ODMiLCJzb3VyY2UiOiJicmllZi5tZCJ9LHsiYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiNTYwMjAxZGM3ODQ4YTEzZGVjNDYxZWIxZTk1MzNiOGJmZTYwMDAzYWI0ZmY4YjM5ODgzNmEyODZmY2MxMGU0ZSIsImNvbnRyYWN0SGFzaCI6Ijg3NTU5Yzc3NTU3YjM0NGIyOGVkNTI0MTQxMDVhY2E1MmY0MTc4ODY0MjExMGRiN2ZiYzE2ZDRjMTJkMWQzZGQiLCJpbnB1dEhhc2giOiI2Yzc2N2EyNDUxYjc2YTZhYzZlMTdhYTVkNTI0N2IxYjI0ZWYzZDU3YmNkNGZjZDJjZjExYzgxN2UxN2Y0MmU1IiwibGVnYWN5RmluZ2VycHJpbnQiOiJjZDk4YmM1MjEwNjdlNTYyNTI1OTIwMTNiMTA3MDM3NzEwNzY5YTc0MWNhYmEzMWFmN2FiZTI0NDQ5MTRjODQwIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XSwic2NoZW1hIjoiY29tZXQubmF0aXZlLnNoYXBlLXNlbWFudGljcy52MSJ9LCJzaGFwZUNvbmZpcm1hdGlvbkhhc2giOiJlODhiMmM2ZDI3YmQxZThhN2JhOTY5NDNlNWFiMGY3NTRmMGY3ZTliY2NhZTg0ZjI1ZTI5YjZlNjM3NDU4NjUzIiwic3BlY0NoYW5nZXMiOlt7ImNhcGFiaWxpdHkiOiJ3b3JrZmxvdyIsIm9wZXJhdGlvbiI6ImNyZWF0ZSIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV19fX19fSwic2hhcGUucHJlcGFyZSI6eyJzZXF1ZW5jZSI6MSwidmFsdWUiOnsiYWNjZXB0YW5jZSI6W3siaWQiOiJBMSIsInNvdXJjZSI6ImJyaWVmLm1kIiwidGV4dCI6IlRoZSBzZWxlY3RlZCB3b3JrZmxvdyByZXN1bWVzLiJ9XSwiY2hpbGRyZW4iOm51bGwsImZvcm1hbEhhc2giOiJiMjJlYTNjYmE1N2FlNjgzMDg0Y2JkZDFiNjhkYzI5N2ExY2IyNTZjNTIzMDViODJmNmE1ZTI2NWRjMGU0ZDEwIiwic2VtYW50aWNTbmFwc2hvdCI6eyJhcnRpZmFjdHMiOlt7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6IjU1OWQ3NDU3OWZkYmE2ODRiNDEyODg2YWU4YzI3MDczNWVlNTNkNWFlMTI2ZDZjNTgxNTg0ZTQ0ZWJkMjE5OTUiLCJjb250cmFjdEhhc2giOiJjZDJmMTdjYmRiYTcyMGI2OTY4OWJhYzUyOWVhNGI4OTNkMTQxNGY5ZmVmMzFlZjFjNDBmMTU2Mzk4NTQ0YzRlIiwiaW5wdXRIYXNoIjoiZmRiNGE5MWE1M2RiOGM4NTYzYTA1MjQ3Y2I0NzE3MjIwMjQ1ODU0MWUxYWNiMzNlMmU2NDVhYzEwOGUzYzVkMyIsImxlZ2FjeUZpbmdlcnByaW50IjoiYzFjMTQ1ZDA5ZjRhNjZkNTY3OGFmMGRjMmM1YjhmNGNiN2IxYzM2NzUwMWMxN2Q2ZDU3ZWQzMTUyYmE4NDg4MyIsInNvdXJjZSI6ImJyaWVmLm1kIn0seyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiI1NjAyMDFkYzc4NDhhMTNkZWM0NjFlYjFlOTUzM2I4YmZlNjAwMDNhYjRmZjhiMzk4ODM2YTI4NmZjYzEwZTRlIiwiY29udHJhY3RIYXNoIjoiODc1NTljNzc1NTdiMzQ0YjI4ZWQ1MjQxNDEwNWFjYTUyZjQxNzg4NjQyMTEwZGI3ZmJjMTZkNGMxMmQxZDNkZCIsImlucHV0SGFzaCI6IjZjNzY3YTI0NTFiNzZhNmFjNmUxN2FhNWQ1MjQ3YjFiMjRlZjNkNTdiY2Q0ZmNkMmNmMTFjODE3ZTE3ZjQyZTUiLCJsZWdhY3lGaW5nZXJwcmludCI6ImNkOThiYzUyMTA2N2U1NjI1MjU5MjAxM2IxMDcwMzc3MTA3NjlhNzQxY2FiYTMxYWY3YWJlMjQ0NDkxNGM4NDAiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dLCJzY2hlbWEiOiJjb21ldC5uYXRpdmUuc2hhcGUtc2VtYW50aWNzLnYxIn0sInNoYXBlQ29uZmlybWF0aW9uSGFzaCI6ImU4OGIyYzZkMjdiZDFlOGE3YmE5Njk0M2U1YWIwZjc1NGYwZjdlOWJjY2FlODRmMjVlMjliNmU2Mzc0NTg2NTMiLCJzcGVjQ2hhbmdlcyI6W3siY2FwYWJpbGl0eSI6IndvcmtmbG93Iiwib3BlcmF0aW9uIjoiY3JlYXRlIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XX19LCJzaGFwZS5yZXZhbGlkYXRlIjp7InNlcXVlbmNlIjozLCJ2YWx1ZSI6eyJhY2NlcHRhbmNlIjpbeyJpZCI6IkExIiwic291cmNlIjoiYnJpZWYubWQiLCJ0ZXh0IjoiVGhlIHNlbGVjdGVkIHdvcmtmbG93IHJlc3VtZXMuIn1dLCJjaGlsZHJlbiI6bnVsbCwiZm9ybWFsSGFzaCI6ImIyMmVhM2NiYTU3YWU2ODMwODRjYmRkMWI2OGRjMjk3YTFjYjI1NmM1MjMwNWI4MmY2YTVlMjY1ZGMwZTRkMTAiLCJzZW1hbnRpY1NuYXBzaG90Ijp7ImFydGlmYWN0cyI6W3siYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiNTU5ZDc0NTc5ZmRiYTY4NGI0MTI4ODZhZThjMjcwNzM1ZWU1M2Q1YWUxMjZkNmM1ODE1ODRlNDRlYmQyMTk5NSIsImNvbnRyYWN0SGFzaCI6ImNkMmYxN2NiZGJhNzIwYjY5Njg5YmFjNTI5ZWE0Yjg5M2QxNDE0ZjlmZWYzMWVmMWM0MGYxNTYzOTg1NDRjNGUiLCJpbnB1dEhhc2giOiJmZGI0YTkxYTUzZGI4Yzg1NjNhMDUyNDdjYjQ3MTcyMjAyNDU4NTQxZTFhY2IzM2UyZTY0NWFjMTA4ZTNjNWQzIiwibGVnYWN5RmluZ2VycHJpbnQiOiJjMWMxNDVkMDlmNGE2NmQ1Njc4YWYwZGMyYzViOGY0Y2I3YjFjMzY3NTAxYzE3ZDZkNTdlZDMxNTJiYTg0ODgzIiwic291cmNlIjoiYnJpZWYubWQifSx7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6IjU2MDIwMWRjNzg0OGExM2RlYzQ2MWViMWU5NTMzYjhiZmU2MDAwM2FiNGZmOGIzOTg4MzZhMjg2ZmNjMTBlNGUiLCJjb250cmFjdEhhc2giOiI4NzU1OWM3NzU1N2IzNDRiMjhlZDUyNDE0MTA1YWNhNTJmNDE3ODg2NDIxMTBkYjdmYmMxNmQ0YzEyZDFkM2RkIiwiaW5wdXRIYXNoIjoiNmM3NjdhMjQ1MWI3NmE2YWM2ZTE3YWE1ZDUyNDdiMWIyNGVmM2Q1N2JjZDRmY2QyY2YxMWM4MTdlMTdmNDJlNSIsImxlZ2FjeUZpbmdlcnByaW50IjoiY2Q5OGJjNTIxMDY3ZTU2MjUyNTkyMDEzYjEwNzAzNzcxMDc2OWE3NDFjYWJhMzFhZjdhYmUyNDQ0OTE0Yzg0MCIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV0sInNjaGVtYSI6ImNvbWV0Lm5hdGl2ZS5zaGFwZS1zZW1hbnRpY3MudjEifSwic2hhcGVDb25maXJtYXRpb25IYXNoIjoiZTg4YjJjNmQyN2JkMWU4YTdiYTk2OTQzZTVhYjBmNzU0ZjBmN2U5YmNjYWU4NGYyNWUyOWI2ZTYzNzQ1ODY1MyIsInNwZWNDaGFuZ2VzIjpbeyJjYXBhYmlsaXR5Ijoid29ya2Zsb3ciLCJvcGVyYXRpb24iOiJjcmVhdGUiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dfX19LCJzZXF1ZW5jZSI6NH0sInB1Ymxpc2hlZC1idWlsZC1wZW5kaW5nOjUiOnsicmVzdWx0cyI6eyJidWlsZC5idWlsZGVyIjp7InNlcXVlbmNlIjo0LCJ2YWx1ZSI6eyJyZXNwb25zZSI6eyJjaGVja3MiOlt7ImFyZ3YiOlsiLWUiLCJyZXF1aXJlKCdub2RlOmZzJykud3JpdGVGaWxlU3luYygnRk9SQklEREVOLUNIRUNLLVNJREUtRUZGRUNUJywnZXhlY3V0ZWQnKSJdLCJjd2RSZWYiOiIuIiwiZXhlY3V0YWJsZSI6IkQ6XFxub2RlanNcXG5vZGUuZXhlIiwiaWQiOiJub3QtZXhlY3V0ZWQiLCJuYW1lIjoiVU5FWEVDVVRFRCBCdWlsZCBjaGVjayBmaXh0dXJlIiwicmVwZWF0YWJsZSI6dHJ1ZSwidGltZW91dE1zIjo1MDAwfV0sImtpbmQiOiJyZXF1ZXN0LWNoZWNrcyJ9fX0sInNoYXBlLmNvbmZpcm0iOnsic2VxdWVuY2UiOjIsInZhbHVlIjp7ImNob2ljZSI6ImFwcHJvdmVkIiwicHJvcG9zYWwiOnsiaW5wdXQiOnsiYXJ0aWZhY3RSb290UmVmIjoiZG9jcyIsIm5hbWUiOiJwdWJsaXNoZWQtYnVpbGQtcGVuZGluZyIsInByb2plY3RSb290IjoiQzpcXFVzZXJzXFxCRU5ZTVxcQXBwRGF0YVxcTG9jYWxcXFRlbXBcXG5hdGl2ZS0wNTItYnVpbGQtY2hlY2stZnJvbnRpZXIteHRvM0FjXFxwcm9qZWN0LXBlbmRpbmcifSwib3V0cHV0cyI6eyJzaGFwZS5wcmVwYXJlIjp7ImFjY2VwdGFuY2UiOlt7ImlkIjoiQTEiLCJzb3VyY2UiOiJicmllZi5tZCIsInRleHQiOiJUaGUgc2VsZWN0ZWQgd29ya2Zsb3cgcmVzdW1lcy4ifV0sImNoaWxkcmVuIjpudWxsLCJmb3JtYWxIYXNoIjoiYjIyZWEzY2JhNTdhZTY4MzA4NGNiZGQxYjY4ZGMyOTdhMWNiMjU2YzUyMzA1YjgyZjZhNWUyNjVkYzBlNGQxMCIsInNlbWFudGljU25hcHNob3QiOnsiYXJ0aWZhY3RzIjpbeyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiI1NTlkNzQ1NzlmZGJhNjg0YjQxMjg4NmFlOGMyNzA3MzVlZTUzZDVhZTEyNmQ2YzU4MTU4NGU0NGViZDIxOTk1IiwiY29udHJhY3RIYXNoIjoiY2QyZjE3Y2JkYmE3MjBiNjk2ODliYWM1MjllYTRiODkzZDE0MTRmOWZlZjMxZWYxYzQwZjE1NjM5ODU0NGM0ZSIsImlucHV0SGFzaCI6ImZkYjRhOTFhNTNkYjhjODU2M2EwNTI0N2NiNDcxNzIyMDI0NTg1NDFlMWFjYjMzZTJlNjQ1YWMxMDhlM2M1ZDMiLCJsZWdhY3lGaW5nZXJwcmludCI6ImMxYzE0NWQwOWY0YTY2ZDU2NzhhZjBkYzJjNWI4ZjRjYjdiMWMzNjc1MDFjMTdkNmQ1N2VkMzE1MmJhODQ4ODMiLCJzb3VyY2UiOiJicmllZi5tZCJ9LHsiYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiNTYwMjAxZGM3ODQ4YTEzZGVjNDYxZWIxZTk1MzNiOGJmZTYwMDAzYWI0ZmY4YjM5ODgzNmEyODZmY2MxMGU0ZSIsImNvbnRyYWN0SGFzaCI6Ijg3NTU5Yzc3NTU3YjM0NGIyOGVkNTI0MTQxMDVhY2E1MmY0MTc4ODY0MjExMGRiN2ZiYzE2ZDRjMTJkMWQzZGQiLCJpbnB1dEhhc2giOiI2Yzc2N2EyNDUxYjc2YTZhYzZlMTdhYTVkNTI0N2IxYjI0ZWYzZDU3YmNkNGZjZDJjZjExYzgxN2UxN2Y0MmU1IiwibGVnYWN5RmluZ2VycHJpbnQiOiJjZDk4YmM1MjEwNjdlNTYyNTI1OTIwMTNiMTA3MDM3NzEwNzY5YTc0MWNhYmEzMWFmN2FiZTI0NDQ5MTRjODQwIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XSwic2NoZW1hIjoiY29tZXQubmF0aXZlLnNoYXBlLXNlbWFudGljcy52MSJ9LCJzaGFwZUNvbmZpcm1hdGlvbkhhc2giOiJlODhiMmM2ZDI3YmQxZThhN2JhOTY5NDNlNWFiMGY3NTRmMGY3ZTliY2NhZTg0ZjI1ZTI5YjZlNjM3NDU4NjUzIiwic3BlY0NoYW5nZXMiOlt7ImNhcGFiaWxpdHkiOiJ3b3JrZmxvdyIsIm9wZXJhdGlvbiI6ImNyZWF0ZSIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV19fX19fSwic2hhcGUucHJlcGFyZSI6eyJzZXF1ZW5jZSI6MSwidmFsdWUiOnsiYWNjZXB0YW5jZSI6W3siaWQiOiJBMSIsInNvdXJjZSI6ImJyaWVmLm1kIiwidGV4dCI6IlRoZSBzZWxlY3RlZCB3b3JrZmxvdyByZXN1bWVzLiJ9XSwiY2hpbGRyZW4iOm51bGwsImZvcm1hbEhhc2giOiJiMjJlYTNjYmE1N2FlNjgzMDg0Y2JkZDFiNjhkYzI5N2ExY2IyNTZjNTIzMDViODJmNmE1ZTI2NWRjMGU0ZDEwIiwic2VtYW50aWNTbmFwc2hvdCI6eyJhcnRpZmFjdHMiOlt7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6IjU1OWQ3NDU3OWZkYmE2ODRiNDEyODg2YWU4YzI3MDczNWVlNTNkNWFlMTI2ZDZjNTgxNTg0ZTQ0ZWJkMjE5OTUiLCJjb250cmFjdEhhc2giOiJjZDJmMTdjYmRiYTcyMGI2OTY4OWJhYzUyOWVhNGI4OTNkMTQxNGY5ZmVmMzFlZjFjNDBmMTU2Mzk4NTQ0YzRlIiwiaW5wdXRIYXNoIjoiZmRiNGE5MWE1M2RiOGM4NTYzYTA1MjQ3Y2I0NzE3MjIwMjQ1ODU0MWUxYWNiMzNlMmU2NDVhYzEwOGUzYzVkMyIsImxlZ2FjeUZpbmdlcnByaW50IjoiYzFjMTQ1ZDA5ZjRhNjZkNTY3OGFmMGRjMmM1YjhmNGNiN2IxYzM2NzUwMWMxN2Q2ZDU3ZWQzMTUyYmE4NDg4MyIsInNvdXJjZSI6ImJyaWVmLm1kIn0seyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiI1NjAyMDFkYzc4NDhhMTNkZWM0NjFlYjFlOTUzM2I4YmZlNjAwMDNhYjRmZjhiMzk4ODM2YTI4NmZjYzEwZTRlIiwiY29udHJhY3RIYXNoIjoiODc1NTljNzc1NTdiMzQ0YjI4ZWQ1MjQxNDEwNWFjYTUyZjQxNzg4NjQyMTEwZGI3ZmJjMTZkNGMxMmQxZDNkZCIsImlucHV0SGFzaCI6IjZjNzY3YTI0NTFiNzZhNmFjNmUxN2FhNWQ1MjQ3YjFiMjRlZjNkNTdiY2Q0ZmNkMmNmMTFjODE3ZTE3ZjQyZTUiLCJsZWdhY3lGaW5nZXJwcmludCI6ImNkOThiYzUyMTA2N2U1NjI1MjU5MjAxM2IxMDcwMzc3MTA3NjlhNzQxY2FiYTMxYWY3YWJlMjQ0NDkxNGM4NDAiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dLCJzY2hlbWEiOiJjb21ldC5uYXRpdmUuc2hhcGUtc2VtYW50aWNzLnYxIn0sInNoYXBlQ29uZmlybWF0aW9uSGFzaCI6ImU4OGIyYzZkMjdiZDFlOGE3YmE5Njk0M2U1YWIwZjc1NGYwZjdlOWJjY2FlODRmMjVlMjliNmU2Mzc0NTg2NTMiLCJzcGVjQ2hhbmdlcyI6W3siY2FwYWJpbGl0eSI6IndvcmtmbG93Iiwib3BlcmF0aW9uIjoiY3JlYXRlIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XX19LCJzaGFwZS5yZXZhbGlkYXRlIjp7InNlcXVlbmNlIjozLCJ2YWx1ZSI6eyJhY2NlcHRhbmNlIjpbeyJpZCI6IkExIiwic291cmNlIjoiYnJpZWYubWQiLCJ0ZXh0IjoiVGhlIHNlbGVjdGVkIHdvcmtmbG93IHJlc3VtZXMuIn1dLCJjaGlsZHJlbiI6bnVsbCwiZm9ybWFsSGFzaCI6ImIyMmVhM2NiYTU3YWU2ODMwODRjYmRkMWI2OGRjMjk3YTFjYjI1NmM1MjMwNWI4MmY2YTVlMjY1ZGMwZTRkMTAiLCJzZW1hbnRpY1NuYXBzaG90Ijp7ImFydGlmYWN0cyI6W3siYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiNTU5ZDc0NTc5ZmRiYTY4NGI0MTI4ODZhZThjMjcwNzM1ZWU1M2Q1YWUxMjZkNmM1ODE1ODRlNDRlYmQyMTk5NSIsImNvbnRyYWN0SGFzaCI6ImNkMmYxN2NiZGJhNzIwYjY5Njg5YmFjNTI5ZWE0Yjg5M2QxNDE0ZjlmZWYzMWVmMWM0MGYxNTYzOTg1NDRjNGUiLCJpbnB1dEhhc2giOiJmZGI0YTkxYTUzZGI4Yzg1NjNhMDUyNDdjYjQ3MTcyMjAyNDU4NTQxZTFhY2IzM2UyZTY0NWFjMTA4ZTNjNWQzIiwibGVnYWN5RmluZ2VycHJpbnQiOiJjMWMxNDVkMDlmNGE2NmQ1Njc4YWYwZGMyYzViOGY0Y2I3YjFjMzY3NTAxYzE3ZDZkNTdlZDMxNTJiYTg0ODgzIiwic291cmNlIjoiYnJpZWYubWQifSx7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6IjU2MDIwMWRjNzg0OGExM2RlYzQ2MWViMWU5NTMzYjhiZmU2MDAwM2FiNGZmOGIzOTg4MzZhMjg2ZmNjMTBlNGUiLCJjb250cmFjdEhhc2giOiI4NzU1OWM3NzU1N2IzNDRiMjhlZDUyNDE0MTA1YWNhNTJmNDE3ODg2NDIxMTBkYjdmYmMxNmQ0YzEyZDFkM2RkIiwiaW5wdXRIYXNoIjoiNmM3NjdhMjQ1MWI3NmE2YWM2ZTE3YWE1ZDUyNDdiMWIyNGVmM2Q1N2JjZDRmY2QyY2YxMWM4MTdlMTdmNDJlNSIsImxlZ2FjeUZpbmdlcnByaW50IjoiY2Q5OGJjNTIxMDY3ZTU2MjUyNTkyMDEzYjEwNzAzNzcxMDc2OWE3NDFjYWJhMzFhZjdhYmUyNDQ0OTE0Yzg0MCIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV0sInNjaGVtYSI6ImNvbWV0Lm5hdGl2ZS5zaGFwZS1zZW1hbnRpY3MudjEifSwic2hhcGVDb25maXJtYXRpb25IYXNoIjoiZTg4YjJjNmQyN2JkMWU4YTdiYTk2OTQzZTVhYjBmNzU0ZjBmN2U5YmNjYWU4NGYyNWUyOWI2ZTYzNzQ1ODY1MyIsInNwZWNDaGFuZ2VzIjpbeyJjYXBhYmlsaXR5Ijoid29ya2Zsb3ciLCJvcGVyYXRpb24iOiJjcmVhdGUiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dfX19LCJzZXF1ZW5jZSI6NX19LCJ3YWl0cyI6W3siaWQiOiJwdWJsaXNoZWQtYnVpbGQtcGVuZGluZzoyIiwic3RlcElkIjoic2hhcGUuY29uZmlybSIsInNlcXVlbmNlIjoyLCJzdGF0dXMiOiJyZXNvbHZlZCIsInByb3Bvc2FsIjp7ImlucHV0Ijp7ImFydGlmYWN0Um9vdFJlZiI6ImRvY3MiLCJuYW1lIjoicHVibGlzaGVkLWJ1aWxkLXBlbmRpbmciLCJwcm9qZWN0Um9vdCI6IkM6XFxVc2Vyc1xcQkVOWU1cXEFwcERhdGFcXExvY2FsXFxUZW1wXFxuYXRpdmUtMDUyLWJ1aWxkLWNoZWNrLWZyb250aWVyLXh0bzNBY1xccHJvamVjdC1wZW5kaW5nIn0sIm91dHB1dHMiOnsic2hhcGUucHJlcGFyZSI6eyJhY2NlcHRhbmNlIjpbeyJpZCI6IkExIiwic291cmNlIjoiYnJpZWYubWQiLCJ0ZXh0IjoiVGhlIHNlbGVjdGVkIHdvcmtmbG93IHJlc3VtZXMuIn1dLCJjaGlsZHJlbiI6bnVsbCwiZm9ybWFsSGFzaCI6ImIyMmVhM2NiYTU3YWU2ODMwODRjYmRkMWI2OGRjMjk3YTFjYjI1NmM1MjMwNWI4MmY2YTVlMjY1ZGMwZTRkMTAiLCJzZW1hbnRpY1NuYXBzaG90Ijp7ImFydGlmYWN0cyI6W3siYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiNTU5ZDc0NTc5ZmRiYTY4NGI0MTI4ODZhZThjMjcwNzM1ZWU1M2Q1YWUxMjZkNmM1ODE1ODRlNDRlYmQyMTk5NSIsImNvbnRyYWN0SGFzaCI6ImNkMmYxN2NiZGJhNzIwYjY5Njg5YmFjNTI5ZWE0Yjg5M2QxNDE0ZjlmZWYzMWVmMWM0MGYxNTYzOTg1NDRjNGUiLCJpbnB1dEhhc2giOiJmZGI0YTkxYTUzZGI4Yzg1NjNhMDUyNDdjYjQ3MTcyMjAyNDU4NTQxZTFhY2IzM2UyZTY0NWFjMTA4ZTNjNWQzIiwibGVnYWN5RmluZ2VycHJpbnQiOiJjMWMxNDVkMDlmNGE2NmQ1Njc4YWYwZGMyYzViOGY0Y2I3YjFjMzY3NTAxYzE3ZDZkNTdlZDMxNTJiYTg0ODgzIiwic291cmNlIjoiYnJpZWYubWQifSx7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6IjU2MDIwMWRjNzg0OGExM2RlYzQ2MWViMWU5NTMzYjhiZmU2MDAwM2FiNGZmOGIzOTg4MzZhMjg2ZmNjMTBlNGUiLCJjb250cmFjdEhhc2giOiI4NzU1OWM3NzU1N2IzNDRiMjhlZDUyNDE0MTA1YWNhNTJmNDE3ODg2NDIxMTBkYjdmYmMxNmQ0YzEyZDFkM2RkIiwiaW5wdXRIYXNoIjoiNmM3NjdhMjQ1MWI3NmE2YWM2ZTE3YWE1ZDUyNDdiMWIyNGVmM2Q1N2JjZDRmY2QyY2YxMWM4MTdlMTdmNDJlNSIsImxlZ2FjeUZpbmdlcnByaW50IjoiY2Q5OGJjNTIxMDY3ZTU2MjUyNTkyMDEzYjEwNzAzNzcxMDc2OWE3NDFjYWJhMzFhZjdhYmUyNDQ0OTE0Yzg0MCIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV0sInNjaGVtYSI6ImNvbWV0Lm5hdGl2ZS5zaGFwZS1zZW1hbnRpY3MudjEifSwic2hhcGVDb25maXJtYXRpb25IYXNoIjoiZTg4YjJjNmQyN2JkMWU4YTdiYTk2OTQzZTVhYjBmNzU0ZjBmN2U5YmNjYWU4NGYyNWUyOWI2ZTYzNzQ1ODY1MyIsInNwZWNDaGFuZ2VzIjpbeyJjYXBhYmlsaXR5Ijoid29ya2Zsb3ciLCJvcGVyYXRpb24iOiJjcmVhdGUiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dfX19LCJwcm9wb3NhbEhhc2giOiIwYzEzOTA4ZTg5ZDZlODIyNzA2YjdhMTUxZTE1MTRjMmNjMGEzYjE2Y2E1NTJlMDIzMGYyYWQ5ZDcyZjIwNWU4IiwiY2hvaWNlcyI6WyJhcHByb3ZlZCIsInJlamVjdGVkIl0sInJlc3VsdHMiOnsic2hhcGUucHJlcGFyZSI6eyJzZXF1ZW5jZSI6MSwidmFsdWUiOnsiYWNjZXB0YW5jZSI6W3siaWQiOiJBMSIsInNvdXJjZSI6ImJyaWVmLm1kIiwidGV4dCI6IlRoZSBzZWxlY3RlZCB3b3JrZmxvdyByZXN1bWVzLiJ9XSwiY2hpbGRyZW4iOm51bGwsImZvcm1hbEhhc2giOiJiMjJlYTNjYmE1N2FlNjgzMDg0Y2JkZDFiNjhkYzI5N2ExY2IyNTZjNTIzMDViODJmNmE1ZTI2NWRjMGU0ZDEwIiwic2VtYW50aWNTbmFwc2hvdCI6eyJhcnRpZmFjdHMiOlt7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6IjU1OWQ3NDU3OWZkYmE2ODRiNDEyODg2YWU4YzI3MDczNWVlNTNkNWFlMTI2ZDZjNTgxNTg0ZTQ0ZWJkMjE5OTUiLCJjb250cmFjdEhhc2giOiJjZDJmMTdjYmRiYTcyMGI2OTY4OWJhYzUyOWVhNGI4OTNkMTQxNGY5ZmVmMzFlZjFjNDBmMTU2Mzk4NTQ0YzRlIiwiaW5wdXRIYXNoIjoiZmRiNGE5MWE1M2RiOGM4NTYzYTA1MjQ3Y2I0NzE3MjIwMjQ1ODU0MWUxYWNiMzNlMmU2NDVhYzEwOGUzYzVkMyIsImxlZ2FjeUZpbmdlcnByaW50IjoiYzFjMTQ1ZDA5ZjRhNjZkNTY3OGFmMGRjMmM1YjhmNGNiN2IxYzM2NzUwMWMxN2Q2ZDU3ZWQzMTUyYmE4NDg4MyIsInNvdXJjZSI6ImJyaWVmLm1kIn0seyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiI1NjAyMDFkYzc4NDhhMTNkZWM0NjFlYjFlOTUzM2I4YmZlNjAwMDNhYjRmZjhiMzk4ODM2YTI4NmZjYzEwZTRlIiwiY29udHJhY3RIYXNoIjoiODc1NTljNzc1NTdiMzQ0YjI4ZWQ1MjQxNDEwNWFjYTUyZjQxNzg4NjQyMTEwZGI3ZmJjMTZkNGMxMmQxZDNkZCIsImlucHV0SGFzaCI6IjZjNzY3YTI0NTFiNzZhNmFjNmUxN2FhNWQ1MjQ3YjFiMjRlZjNkNTdiY2Q0ZmNkMmNmMTFjODE3ZTE3ZjQyZTUiLCJsZWdhY3lGaW5nZXJwcmludCI6ImNkOThiYzUyMTA2N2U1NjI1MjU5MjAxM2IxMDcwMzc3MTA3NjlhNzQxY2FiYTMxYWY3YWJlMjQ0NDkxNGM4NDAiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dLCJzY2hlbWEiOiJjb21ldC5uYXRpdmUuc2hhcGUtc2VtYW50aWNzLnYxIn0sInNoYXBlQ29uZmlybWF0aW9uSGFzaCI6ImU4OGIyYzZkMjdiZDFlOGE3YmE5Njk0M2U1YWIwZjc1NGYwZjdlOWJjY2FlODRmMjVlMjliNmU2Mzc0NTg2NTMiLCJzcGVjQ2hhbmdlcyI6W3siY2FwYWJpbGl0eSI6IndvcmtmbG93Iiwib3BlcmF0aW9uIjoiY3JlYXRlIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XX19fSwiZGVjaXNpb24iOnsiaWQiOiJTSU1VTEFURUQtVVNFUi1hcHByb3ZhbC1wZW5kaW5nIiwiY2hvaWNlIjoiYXBwcm92ZWQiLCJwcm9wb3NhbEhhc2giOiIwYzEzOTA4ZTg5ZDZlODIyNzA2YjdhMTUxZTE1MTRjMmNjMGEzYjE2Y2E1NTJlMDIzMGYyYWQ5ZDcyZjIwNWU4IiwicmVhc29uIjoiU0lNVUxBVEVEIFVTRVIgYXBwcm92YWwgb25seSBmb3IgaXNvbGF0ZWQgcHVibGlzaGVkLWRhdGEgcHJvYmUifX1dLCJyZWFkeSI6W10sImpvaW5zIjp7fSwib3V0cHV0cyI6eyJidWlsZC5idWlsZGVyIjp7InNlcXVlbmNlIjo0LCJ2YWx1ZSI6eyJyZXNwb25zZSI6eyJjaGVja3MiOlt7ImFyZ3YiOlsiLWUiLCJyZXF1aXJlKCdub2RlOmZzJykud3JpdGVGaWxlU3luYygnRk9SQklEREVOLUNIRUNLLVNJREUtRUZGRUNUJywnZXhlY3V0ZWQnKSJdLCJjd2RSZWYiOiIuIiwiZXhlY3V0YWJsZSI6IkQ6XFxub2RlanNcXG5vZGUuZXhlIiwiaWQiOiJub3QtZXhlY3V0ZWQiLCJuYW1lIjoiVU5FWEVDVVRFRCBCdWlsZCBjaGVjayBmaXh0dXJlIiwicmVwZWF0YWJsZSI6dHJ1ZSwidGltZW91dE1zIjo1MDAwfV0sImtpbmQiOiJyZXF1ZXN0LWNoZWNrcyJ9fX0sInNoYXBlLmNvbmZpcm0iOnsic2VxdWVuY2UiOjIsInZhbHVlIjp7ImNob2ljZSI6ImFwcHJvdmVkIiwicHJvcG9zYWwiOnsiaW5wdXQiOnsiYXJ0aWZhY3RSb290UmVmIjoiZG9jcyIsIm5hbWUiOiJwdWJsaXNoZWQtYnVpbGQtcGVuZGluZyIsInByb2plY3RSb290IjoiQzpcXFVzZXJzXFxCRU5ZTVxcQXBwRGF0YVxcTG9jYWxcXFRlbXBcXG5hdGl2ZS0wNTItYnVpbGQtY2hlY2stZnJvbnRpZXIteHRvM0FjXFxwcm9qZWN0LXBlbmRpbmcifSwib3V0cHV0cyI6eyJzaGFwZS5wcmVwYXJlIjp7ImFjY2VwdGFuY2UiOlt7ImlkIjoiQTEiLCJzb3VyY2UiOiJicmllZi5tZCIsInRleHQiOiJUaGUgc2VsZWN0ZWQgd29ya2Zsb3cgcmVzdW1lcy4ifV0sImNoaWxkcmVuIjpudWxsLCJmb3JtYWxIYXNoIjoiYjIyZWEzY2JhNTdhZTY4MzA4NGNiZGQxYjY4ZGMyOTdhMWNiMjU2YzUyMzA1YjgyZjZhNWUyNjVkYzBlNGQxMCIsInNlbWFudGljU25hcHNob3QiOnsiYXJ0aWZhY3RzIjpbeyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiI1NTlkNzQ1NzlmZGJhNjg0YjQxMjg4NmFlOGMyNzA3MzVlZTUzZDVhZTEyNmQ2YzU4MTU4NGU0NGViZDIxOTk1IiwiY29udHJhY3RIYXNoIjoiY2QyZjE3Y2JkYmE3MjBiNjk2ODliYWM1MjllYTRiODkzZDE0MTRmOWZlZjMxZWYxYzQwZjE1NjM5ODU0NGM0ZSIsImlucHV0SGFzaCI6ImZkYjRhOTFhNTNkYjhjODU2M2EwNTI0N2NiNDcxNzIyMDI0NTg1NDFlMWFjYjMzZTJlNjQ1YWMxMDhlM2M1ZDMiLCJsZWdhY3lGaW5nZXJwcmludCI6ImMxYzE0NWQwOWY0YTY2ZDU2NzhhZjBkYzJjNWI4ZjRjYjdiMWMzNjc1MDFjMTdkNmQ1N2VkMzE1MmJhODQ4ODMiLCJzb3VyY2UiOiJicmllZi5tZCJ9LHsiYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiNTYwMjAxZGM3ODQ4YTEzZGVjNDYxZWIxZTk1MzNiOGJmZTYwMDAzYWI0ZmY4YjM5ODgzNmEyODZmY2MxMGU0ZSIsImNvbnRyYWN0SGFzaCI6Ijg3NTU5Yzc3NTU3YjM0NGIyOGVkNTI0MTQxMDVhY2E1MmY0MTc4ODY0MjExMGRiN2ZiYzE2ZDRjMTJkMWQzZGQiLCJpbnB1dEhhc2giOiI2Yzc2N2EyNDUxYjc2YTZhYzZlMTdhYTVkNTI0N2IxYjI0ZWYzZDU3YmNkNGZjZDJjZjExYzgxN2UxN2Y0MmU1IiwibGVnYWN5RmluZ2VycHJpbnQiOiJjZDk4YmM1MjEwNjdlNTYyNTI1OTIwMTNiMTA3MDM3NzEwNzY5YTc0MWNhYmEzMWFmN2FiZTI0NDQ5MTRjODQwIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XSwic2NoZW1hIjoiY29tZXQubmF0aXZlLnNoYXBlLXNlbWFudGljcy52MSJ9LCJzaGFwZUNvbmZpcm1hdGlvbkhhc2giOiJlODhiMmM2ZDI3YmQxZThhN2JhOTY5NDNlNWFiMGY3NTRmMGY3ZTliY2NhZTg0ZjI1ZTI5YjZlNjM3NDU4NjUzIiwic3BlY0NoYW5nZXMiOlt7ImNhcGFiaWxpdHkiOiJ3b3JrZmxvdyIsIm9wZXJhdGlvbiI6ImNyZWF0ZSIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV19fX19fSwic2hhcGUucHJlcGFyZSI6eyJzZXF1ZW5jZSI6MSwidmFsdWUiOnsiYWNjZXB0YW5jZSI6W3siaWQiOiJBMSIsInNvdXJjZSI6ImJyaWVmLm1kIiwidGV4dCI6IlRoZSBzZWxlY3RlZCB3b3JrZmxvdyByZXN1bWVzLiJ9XSwiY2hpbGRyZW4iOm51bGwsImZvcm1hbEhhc2giOiJiMjJlYTNjYmE1N2FlNjgzMDg0Y2JkZDFiNjhkYzI5N2ExY2IyNTZjNTIzMDViODJmNmE1ZTI2NWRjMGU0ZDEwIiwic2VtYW50aWNTbmFwc2hvdCI6eyJhcnRpZmFjdHMiOlt7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6IjU1OWQ3NDU3OWZkYmE2ODRiNDEyODg2YWU4YzI3MDczNWVlNTNkNWFlMTI2ZDZjNTgxNTg0ZTQ0ZWJkMjE5OTUiLCJjb250cmFjdEhhc2giOiJjZDJmMTdjYmRiYTcyMGI2OTY4OWJhYzUyOWVhNGI4OTNkMTQxNGY5ZmVmMzFlZjFjNDBmMTU2Mzk4NTQ0YzRlIiwiaW5wdXRIYXNoIjoiZmRiNGE5MWE1M2RiOGM4NTYzYTA1MjQ3Y2I0NzE3MjIwMjQ1ODU0MWUxYWNiMzNlMmU2NDVhYzEwOGUzYzVkMyIsImxlZ2FjeUZpbmdlcnByaW50IjoiYzFjMTQ1ZDA5ZjRhNjZkNTY3OGFmMGRjMmM1YjhmNGNiN2IxYzM2NzUwMWMxN2Q2ZDU3ZWQzMTUyYmE4NDg4MyIsInNvdXJjZSI6ImJyaWVmLm1kIn0seyJhdXhpbGlhcnkiOltdLCJjb21tZW50c0hhc2giOiJjZGE3MzhkNGZiN2QwZGJkZmYyMGRmMWNkMDliODU5NzQwZTA2NzFkZTMxYmNmNzhiOGRkYzhmZjgxOGRhYjkyIiwiY29udGVudEhhc2giOiI1NjAyMDFkYzc4NDhhMTNkZWM0NjFlYjFlOTUzM2I4YmZlNjAwMDNhYjRmZjhiMzk4ODM2YTI4NmZjYzEwZTRlIiwiY29udHJhY3RIYXNoIjoiODc1NTljNzc1NTdiMzQ0YjI4ZWQ1MjQxNDEwNWFjYTUyZjQxNzg4NjQyMTEwZGI3ZmJjMTZkNGMxMmQxZDNkZCIsImlucHV0SGFzaCI6IjZjNzY3YTI0NTFiNzZhNmFjNmUxN2FhNWQ1MjQ3YjFiMjRlZjNkNTdiY2Q0ZmNkMmNmMTFjODE3ZTE3ZjQyZTUiLCJsZWdhY3lGaW5nZXJwcmludCI6ImNkOThiYzUyMTA2N2U1NjI1MjU5MjAxM2IxMDcwMzc3MTA3NjlhNzQxY2FiYTMxYWY3YWJlMjQ0NDkxNGM4NDAiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dLCJzY2hlbWEiOiJjb21ldC5uYXRpdmUuc2hhcGUtc2VtYW50aWNzLnYxIn0sInNoYXBlQ29uZmlybWF0aW9uSGFzaCI6ImU4OGIyYzZkMjdiZDFlOGE3YmE5Njk0M2U1YWIwZjc1NGYwZjdlOWJjY2FlODRmMjVlMjliNmU2Mzc0NTg2NTMiLCJzcGVjQ2hhbmdlcyI6W3siY2FwYWJpbGl0eSI6IndvcmtmbG93Iiwib3BlcmF0aW9uIjoiY3JlYXRlIiwic291cmNlIjoic3BlY3Mvd29ya2Zsb3cvc3BlYy5tZCJ9XX19LCJzaGFwZS5yZXZhbGlkYXRlIjp7InNlcXVlbmNlIjozLCJ2YWx1ZSI6eyJhY2NlcHRhbmNlIjpbeyJpZCI6IkExIiwic291cmNlIjoiYnJpZWYubWQiLCJ0ZXh0IjoiVGhlIHNlbGVjdGVkIHdvcmtmbG93IHJlc3VtZXMuIn1dLCJjaGlsZHJlbiI6bnVsbCwiZm9ybWFsSGFzaCI6ImIyMmVhM2NiYTU3YWU2ODMwODRjYmRkMWI2OGRjMjk3YTFjYjI1NmM1MjMwNWI4MmY2YTVlMjY1ZGMwZTRkMTAiLCJzZW1hbnRpY1NuYXBzaG90Ijp7ImFydGlmYWN0cyI6W3siYXV4aWxpYXJ5IjpbXSwiY29tbWVudHNIYXNoIjoiY2RhNzM4ZDRmYjdkMGRiZGZmMjBkZjFjZDA5Yjg1OTc0MGUwNjcxZGUzMWJjZjc4YjhkZGM4ZmY4MThkYWI5MiIsImNvbnRlbnRIYXNoIjoiNTU5ZDc0NTc5ZmRiYTY4NGI0MTI4ODZhZThjMjcwNzM1ZWU1M2Q1YWUxMjZkNmM1ODE1ODRlNDRlYmQyMTk5NSIsImNvbnRyYWN0SGFzaCI6ImNkMmYxN2NiZGJhNzIwYjY5Njg5YmFjNTI5ZWE0Yjg5M2QxNDE0ZjlmZWYzMWVmMWM0MGYxNTYzOTg1NDRjNGUiLCJpbnB1dEhhc2giOiJmZGI0YTkxYTUzZGI4Yzg1NjNhMDUyNDdjYjQ3MTcyMjAyNDU4NTQxZTFhY2IzM2UyZTY0NWFjMTA4ZTNjNWQzIiwibGVnYWN5RmluZ2VycHJpbnQiOiJjMWMxNDVkMDlmNGE2NmQ1Njc4YWYwZGMyYzViOGY0Y2I3YjFjMzY3NTAxYzE3ZDZkNTdlZDMxNTJiYTg0ODgzIiwic291cmNlIjoiYnJpZWYubWQifSx7ImF1eGlsaWFyeSI6W10sImNvbW1lbnRzSGFzaCI6ImNkYTczOGQ0ZmI3ZDBkYmRmZjIwZGYxY2QwOWI4NTk3NDBlMDY3MWRlMzFiY2Y3OGI4ZGRjOGZmODE4ZGFiOTIiLCJjb250ZW50SGFzaCI6IjU2MDIwMWRjNzg0OGExM2RlYzQ2MWViMWU5NTMzYjhiZmU2MDAwM2FiNGZmOGIzOTg4MzZhMjg2ZmNjMTBlNGUiLCJjb250cmFjdEhhc2giOiI4NzU1OWM3NzU1N2IzNDRiMjhlZDUyNDE0MTA1YWNhNTJmNDE3ODg2NDIxMTBkYjdmYmMxNmQ0YzEyZDFkM2RkIiwiaW5wdXRIYXNoIjoiNmM3NjdhMjQ1MWI3NmE2YWM2ZTE3YWE1ZDUyNDdiMWIyNGVmM2Q1N2JjZDRmY2QyY2YxMWM4MTdlMTdmNDJlNSIsImxlZ2FjeUZpbmdlcnByaW50IjoiY2Q5OGJjNTIxMDY3ZTU2MjUyNTkyMDEzYjEwNzAzNzcxMDc2OWE3NDFjYWJhMzFhZjdhYmUyNDQ0OTE0Yzg0MCIsInNvdXJjZSI6InNwZWNzL3dvcmtmbG93L3NwZWMubWQifV0sInNjaGVtYSI6ImNvbWV0Lm5hdGl2ZS5zaGFwZS1zZW1hbnRpY3MudjEifSwic2hhcGVDb25maXJtYXRpb25IYXNoIjoiZTg4YjJjNmQyN2JkMWU4YTdiYTk2OTQzZTVhYjBmNzU0ZjBmN2U5YmNjYWU4NGYyNWUyOWI2ZTYzNzQ1ODY1MyIsInNwZWNDaGFuZ2VzIjpbeyJjYXBhYmlsaXR5Ijoid29ya2Zsb3ciLCJvcGVyYXRpb24iOiJjcmVhdGUiLCJzb3VyY2UiOiJzcGVjcy93b3JrZmxvdy9zcGVjLm1kIn1dfX19LCJjaGlsZHJlbiI6W10sImxpbmVhZ2UiOltdfSwic291cmNlUmV2aXNpb24iOjgsInNvdXJjZUhhc2giOiJmZWM0ZmZiOGQxZjNkYTNhOTQ5NGJhMGU5ZTNjZDM0YWM1ZTdmODZlYmU1ZGI1MTEyNDJjZWQyZDI4MWU4NmU3In0K"
+    },
+    {
+      "ref": "docs/comet/changes/published-build-pending/specs/workflow/spec.md",
+      "bytesBase64": "IyBXb3JrZmxvdwpVbmZpbmlzaGVkIEJ1aWxkZXIgd29yayByZW1haW5zIGF0IEJ1aWxkLgo="
+    }
+  ]
+}

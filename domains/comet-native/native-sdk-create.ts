@@ -1,5 +1,4 @@
 import { promises as fs } from 'node:fs';
-import { createHash } from 'node:crypto';
 import path from 'node:path';
 
 import {
@@ -21,14 +20,13 @@ import {
   NativeWorkspaceIsolationRequiredError,
 } from './native-change.js';
 import { readProjectConfig, writeProjectConfig } from './native-config.js';
-import { withNativeMutationLock } from './native-mutation-lock.js';
+import { withNativeMutation } from './native-mutation.js';
 import {
   assertNativeSdkStartAvailable,
   defineNativeWorkflowApplication,
 } from './native-sdk-application.js';
 import {
   nativePortableChangeDir,
-  nativeLocalExecutionFile,
   portableWorkspace,
   assertPortableWorkspaceBindingCurrent,
   NAME_PATTERN,
@@ -42,7 +40,6 @@ import { resolveContainedNativePath } from './native-paths.js';
 import {
   createNativeSdkStateStore,
   hasNativeManagedRunMarker,
-  readNativeSdkRunRecord,
   writeNativeManagedRunState,
 } from './native-sdk-state-store.js';
 import type { CometProjectConfig, NativeProjectPaths } from './native-types.js';
@@ -53,11 +50,8 @@ async function startNativeSdkRun(options: {
   name: string;
   initialState: ReturnType<typeof createNativePortableState>;
   task?: string;
-  recoverySourceHash?: string;
-  recoverySource?: string;
-  workflowVersion?: '1' | '2' | '3' | '4';
 }): Promise<WorkflowRun> {
-  const application = defineNativeWorkflowApplication(options.workflowVersion ?? '1');
+  const application = defineNativeWorkflowApplication();
   const persistentStore = createNativeSdkStateStore(options.paths.projectRoot);
   const store: RuntimeStore<WorkflowRun> = {
     async read(runId) {
@@ -103,8 +97,6 @@ async function startNativeSdkRun(options: {
       name: options.name,
       ...(options.task === undefined ? {} : { task: options.task }),
       artifactRootRef: options.paths.artifactRootRef,
-      ...(options.recoverySourceHash ? { recoverySourceHash: options.recoverySourceHash } : {}),
-      ...(options.recoverySource ? { recoverySource: options.recoverySource } : {}),
     },
     initialState: options.initialState,
   });
@@ -139,75 +131,6 @@ export async function recoverPristineNativeSdkChange(
   return startNativeSdkRun({ paths, name, initialState });
 }
 
-/** Restore a portable Run when present; older states explicitly restart at Shape. */
-export async function restoreNativeSdkChange(
-  paths: NativeProjectPaths,
-  name: string,
-): Promise<WorkflowRun> {
-  return withNativeMutationLock(paths, `restore SDK change ${name}`, async () => {
-    const owner = await readChangeRuntimeOwner(paths.projectRoot, 'native', name);
-    if (
-      owner &&
-      (owner.format !== 'sdk' ||
-        owner.application !== 'native' ||
-        owner.runId !== name ||
-        (await readNativeSdkRunRecord(paths.projectRoot, name)) !== null)
-    ) {
-      throw new Error(`Native change ${name} already has Runtime ownership`);
-    }
-    const resumed = await createNativeSdkStateStore(paths.projectRoot).read(name);
-    if (resumed) return resumed;
-    const local = await fs
-      .stat(nativeLocalExecutionFile(paths, name))
-      .catch((error: NodeJS.ErrnoException) => {
-        if (error.code === 'ENOENT') return null;
-        throw error;
-      });
-    if (local)
-      throw new Error(
-        `Native change ${name} still has local execution records; reconcile them before restoring`,
-      );
-    const file = path.join(nativePortableChangeDir(paths, name), 'comet-state.yaml');
-    const source = await fs.readFile(file, 'utf8');
-    if (!(await hasNativeManagedRunMarker(file))) {
-      throw new Error(`Native change ${name} is not a managed Run`);
-    }
-    const state = await readNativePortableState(file);
-    if (state.name !== name || state.archived || state.phase === 'archive') {
-      throw new Error(`Native change ${name} cannot be restored from this state file`);
-    }
-    if (
-      state.coordination_mode ||
-      (state.verifier_action &&
-        ['pending', 'running', 'unknown'].includes(state.verifier_action.status))
-    ) {
-      throw new Error(
-        `Native change ${name} has unresolved external work; restore the original Run history and reconcile its outcome`,
-      );
-    }
-    assertPortableWorkspaceBindingCurrent(paths.projectRoot, {
-      isolation: state.workspace.isolation,
-      changeBranch: state.workspace.change_branch,
-      targetBranch: state.workspace.target_branch,
-    });
-    const initialState = createNativePortableState({
-      name,
-      language: state.language,
-      workspace: { ...state.workspace, finish: null },
-      createdAt: state.created_at,
-      nextAction: 'prepare-shape-confirmation',
-    });
-    const run = await startNativeSdkRun({
-      paths,
-      name,
-      initialState,
-      recoverySourceHash: createHash('sha256').update(source).digest('hex'),
-      recoverySource: source,
-    });
-    return run;
-  });
-}
-
 export async function createNativeSdkChange(options: {
   paths: NativeProjectPaths;
   name: string;
@@ -216,7 +139,7 @@ export async function createNativeSdkChange(options: {
   workspaceBinding: NativeWorkspaceBinding;
   initialProjectConfig?: CometProjectConfig;
 }): Promise<WorkflowRun> {
-  return withNativeMutationLock(options.paths, `create SDK change ${options.name}`, async () => {
+  return withNativeMutation(options.paths, async () => {
     if (!NAME_PATTERN.test(options.name))
       throw new Error(`Invalid Native change name: ${options.name}`);
     assertPortableWorkspaceBindingCurrent(options.paths.projectRoot, options.workspaceBinding);
@@ -252,7 +175,6 @@ export async function createNativeSdkChange(options: {
       paths: options.paths,
       name: options.name,
       task: options.task,
-      workflowVersion: '4',
       initialState: createNativePortableState({
         name: options.name,
         language: options.language,

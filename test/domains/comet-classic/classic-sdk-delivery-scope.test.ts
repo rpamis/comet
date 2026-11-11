@@ -1,3 +1,5 @@
+import { writeClassicPlatformChecks } from '../../helpers/classic-platform-checks.js';
+import { requireFileSymlink } from '../../helpers/file-symlink.js';
 import { readClassicArchiveManifest } from '../../../domains/comet-classic/classic-sdk-archive-manifest.js';
 import { defineClassicWorkflowApplication } from '../../../domains/comet-classic/classic-sdk-application.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
@@ -22,18 +24,6 @@ import {
   parseClassicStateDocument,
 } from '../../../domains/comet-classic/classic-state.js';
 
-// Preserve the original v1 managed-check contract; default v2 Runs have separate public CLI coverage.
-vi.mock('../../../domains/comet-classic/classic-sdk-application.js', async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import('../../../domains/comet-classic/classic-sdk-application.js')
-    >();
-  return {
-    ...actual,
-    defineClassicAgentWorkflowApplication: actual.defineClassicWorkflowApplication,
-  };
-});
-
 const roots: string[] = [];
 // Both transient directories that `migrationFiles` can record a fence from. They are
 // omitted from the archived tree, so the fence reaches `optionalFiles` instead.
@@ -43,8 +33,9 @@ it('keeps foreign drafts out of legacy deliveryInputs without changing the origi
   const f = await hotfix({ parked: true });
   f.commitImplementation();
   f.commitArchive();
+  // SIMULATED legacy path encoding on an actually completed Archive preflight.
   const legacy = structuredClone(f.archived);
-  const check = legacy.actions.findLast((action) => action.stepId === 'hotfix.verify.check')!;
+  const check = legacy.actions.findLast((action) => action.stepId === 'hotfix.archive.preflight')!;
   const output = check.outcome!.output as {
     deliveryInputs?: Record<string, string>;
     deliveryPaths?: string[];
@@ -181,7 +172,10 @@ async function hotfix(
     expect(native.exitCode, native.stderr).toBe(0);
     await put('openspec/changes/parked-classic/proposal.md', '# Parked Classic proposal\n');
   }
-  if (options.initialDraft) await put('unrelated-draft.ts', 'export const unfinished = true;\n');
+  if (options.initialDraft) {
+    await put('unrelated-draft.ts', 'export const unfinished = true;\n');
+    await put('private-notes.ts', '// Existing work outside this change.\n');
+  }
   const invoke = async (...args: string[]) => {
     const separator = args.indexOf('--');
     args.splice(separator < 0 ? args.length : separator, 0, '--json');
@@ -205,7 +199,10 @@ async function hotfix(
       JSON.stringify({
         operation: 'start',
         runId: 'example',
-        workflow: { id: 'comet-classic-hotfix', version: '1' },
+        workflow: {
+          id: 'comet-classic-hotfix',
+          version: defineClassicWorkflowApplication('hotfix').workflow.version,
+        },
         input: {
           change: 'example',
           changeDir: 'openspec/changes/example',
@@ -268,7 +265,8 @@ async function hotfix(
         ],
       }),
     );
-  await cli('guard', 'example', 'build', '--apply', '--local', '--', ...argv);
+  const checks = await writeClassicPlatformChecks(projectRoot, argv);
+  await cli('guard', 'example', 'build', '--apply', '--checks', checks);
   const reportRef = 'docs/superpowers/reports/hotfix.md';
   await put(
     reportRef,
@@ -281,9 +279,8 @@ async function hotfix(
     '--report',
     reportRef,
     '--apply',
-    '--local',
-    '--',
-    ...argv,
+    '--checks',
+    await writeClassicPlatformChecks(projectRoot, argv),
   );
   const inspect = () => inspectClassicSdkRun(projectRoot, 'example');
   const verified = (await inspect()).run;
@@ -317,6 +314,16 @@ async function hotfix(
     'example',
     '--summary',
     'Archive the verified hotfix.',
+    ...(options.initialDraft === 'modified'
+      ? [
+          '--delivery-path',
+          'source.js',
+          '--delivery-path',
+          'src/changes/adapter.ts',
+          '--delivery-path',
+          'unrelated-draft.ts',
+        ]
+      : []),
     ...(options.deliveryAction === 'push' ? ['--remote', 'origin'] : []),
   );
   await cli(
@@ -406,7 +413,7 @@ it('delivers without an unchanged untracked draft that predates the change', asy
   );
 });
 
-it('requires delivery of an initial draft modified during the change', async () => {
+it('requires delivery of an explicitly selected initial draft', async () => {
   const f = await hotfix({ initialDraft: 'modified' });
   f.commitImplementation();
   const commit = f.commitArchive();
@@ -415,10 +422,35 @@ it('requires delivery of an initial draft modified during the change', async () 
   expect(rejected.response.stderr).toContain('unrelated-draft.ts');
 });
 
+it('delivers an explicitly approved initial draft without including an unrelated draft', async () => {
+  const f = await hotfix({ initialDraft: 'modified' });
+  f.commitImplementation();
+  f.git('add', '--', 'unrelated-draft.ts');
+  f.git('commit', '-m', 'complete the approved initial draft');
+  const commit = f.commitArchive();
+  const completed = await f.cli('state', 'complete-delivery', 'example', '--commit', commit);
+  expect(completed.nextAction.kind).toBe('done');
+  expect(f.git('show', 'HEAD:unrelated-draft.ts')).toContain('unfinished = false');
+  expect(f.git('status', '--porcelain')).toContain('?? private-notes.ts');
+  expect(await fs.readFile(path.join(f.projectRoot, 'private-notes.ts'), 'utf8')).toBe(
+    '// Existing work outside this change.\n',
+  );
+  const approval = f.archived.waits.find((wait) => wait.stepId === 'hotfix.archive.confirm')!;
+  expect(approval.status).toBe('resolved');
+  expect(approval.proposal).toMatchObject({
+    outputs: {
+      'hotfix.archive.prepare': {
+        deliveryPaths: ['source.js', 'src/changes/adapter.ts', 'unrelated-draft.ts'],
+      },
+    },
+  });
+});
+
 it('does not trust a workspace baseline supplied through public dispatch start', async () => {
   const f = await hotfix({ forgedBaseline: true });
-  const output = f.verified.actions.findLast((action) => action.stepId === 'hotfix.verify.check')!
-    .outcome!.output as { deliveryPaths: string[] };
+  const output = f.archived.actions.findLast(
+    (action) => action.stepId === 'hotfix.archive.preflight',
+  )!.outcome!.output as { deliveryPaths: string[] };
   expect(output.deliveryPaths).toContain('source.js');
   f.git('add', '--', 'src/changes/adapter.ts');
   f.git('commit', '-m', 'adapter only');
@@ -472,8 +504,9 @@ it.each(['docs', 'specifications/custom'])(
   'keeps parked Native Shape and Classic drafts out of hotfix delivery inputs under %s',
   async (nativeRoot) => {
     const f = await hotfix({ parked: true, nativeRoot });
-    const output = f.verified.actions.findLast((action) => action.stepId === 'hotfix.verify.check')!
-      .outcome!.output as { deliveryPaths: string[] };
+    const output = f.archived.actions.findLast(
+      (action) => action.stepId === 'hotfix.archive.preflight',
+    )!.outcome!.output as { deliveryPaths: string[] };
     expect(output.deliveryPaths).toEqual(['source.js', 'src/changes/adapter.ts']);
     expect(output).not.toHaveProperty('manifestRef');
     expect(
@@ -682,7 +715,7 @@ it('recovers polluted 0.5.0 delivery paths without changing the Run and rejects 
   f.commitImplementation();
   f.commitArchive();
   const oldRun = structuredClone(f.archived);
-  const output = oldRun.actions.findLast((action) => action.stepId === 'hotfix.verify.check')!
+  const output = oldRun.actions.findLast((action) => action.stepId === 'hotfix.archive.preflight')!
     .outcome!.output as { deliveryInputs?: Record<string, string>; deliveryPaths?: string[] };
   output.deliveryInputs = Object.fromEntries(
     output.deliveryPaths!.map((ref) => [ref, 'legacy-file-digest']),
@@ -780,7 +813,8 @@ it('delivers with portable archive evidence when the original local execution st
   ).toBe('done');
 });
 
-it('rejects a replaced archive manifest symlink and keeps the same Run pending', async () => {
+it('rejects a replaced archive manifest symlink and keeps the same Run pending', async (context) => {
+  await requireFileSymlink(context);
   const f = await hotfix();
   const ref = `${f.archiveRef}/.comet/archive-manifest.json`;
   const file = path.join(f.projectRoot, ref);
@@ -1016,7 +1050,7 @@ it('revalidates a portable historical archive outcome without inventing new exec
 });
 
 it.each([false, true])(
-  'reads completed archived history across worktrees after amend=%s without importing a duplicate Run',
+  'reads completed history in the explicit worktree after amend=%s without importing a duplicate Run',
   async (amend) => {
     const f = await hotfix({ isolation: 'worktree' });
     f.commitImplementation();
@@ -1038,9 +1072,15 @@ it.each([false, true])(
     const stateFile = path.join(integration, f.archiveRef, 'comet-state.yaml');
     const state = await fs.readFile(stateFile);
     const runtime = await publicStateRuntime(f.root);
+    const primary = spawnSync(process.execPath, [runtime, 'next', 'example', '--json'], {
+      cwd: integration,
+      encoding: 'utf8',
+    });
+    expect(primary.status).not.toBe(0);
+    expect(primary.stdout).toContain('original completed Run history');
     for (const command of ['next', 'checkpoint', 'select']) {
       const result = spawnSync(process.execPath, [runtime, command, 'example', '--json'], {
-        cwd: integration,
+        cwd: f.projectRoot,
         encoding: 'utf8',
       });
       expect(result.status, result.stdout || result.stderr).toBe(command === 'select' ? 1 : 0);

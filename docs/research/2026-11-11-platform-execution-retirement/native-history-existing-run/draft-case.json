@@ -1,0 +1,114 @@
+{
+  "id": "native-cancelled-history-import-guards",
+  "behavior": "历史导入拒绝不完整停止、损坏或不适格来源及任何无导入凭据的既有目的地",
+  "sources": [
+    "https://github.com/rpamis/comet/issues/513"
+  ],
+  "coverageLevel": "runtime",
+  "reproduction": "以同一公开 Native CLI 导入活跃、缺 stop、坏 hash、未知定义、Archive 义务、child lineage、固定应用、未清选择、已有 Run/投影样本。",
+  "expected": "所有不适格导入失败且 owner、Run、portable 和既有投影保持不变；未具名迁移不隐式导入",
+  "forbidden": "将损坏或仍有执行/清理义务的 checkpoint 变成健康历史",
+  "rootCause": "跨分支终态导入必须独立证明来源、执行停止和目的地空缺，不能借普通恢复放宽绑定",
+  "tests": [
+    {
+      "file": "test/domains/comet-native/native-sdk-history.test.ts",
+      "namePattern": "(?:rejects portable history import with active without overwriting local evidence|rejects portable history import with missing-stop without overwriting local evidence|rejects portable history import with corrupt-hash without overwriting local evidence|rejects portable history import with unknown-definition without overwriting local evidence|rejects portable history import with archive-obligation without overwriting local evidence|rejects portable history import with child-lineage without overwriting local evidence|rejects portable history import with fixed-application without overwriting local evidence|rejects portable history import with pending-cleanup without overwriting local evidence|rejects portable history import with existing-run without overwriting local evidence|rejects portable history import with existing-projection without overwriting local evidence)$",
+      "requiredNames": [
+        "Native terminal history lifecycle rejects portable history import with active without overwriting local evidence",
+        "Native terminal history lifecycle rejects portable history import with missing-stop without overwriting local evidence",
+        "Native terminal history lifecycle rejects portable history import with corrupt-hash without overwriting local evidence",
+        "Native terminal history lifecycle rejects portable history import with unknown-definition without overwriting local evidence",
+        "Native terminal history lifecycle rejects portable history import with archive-obligation without overwriting local evidence",
+        "Native terminal history lifecycle rejects portable history import with child-lineage without overwriting local evidence",
+        "Native terminal history lifecycle rejects portable history import with fixed-application without overwriting local evidence",
+        "Native terminal history lifecycle rejects portable history import with pending-cleanup without overwriting local evidence",
+        "Native terminal history lifecycle rejects portable history import with existing-run without overwriting local evidence",
+        "Native terminal history lifecycle rejects portable history import with existing-projection without overwriting local evidence"
+      ]
+    }
+  ],
+  "testMigration": {
+    "kind": "feature-removed",
+    "authorization": "report:2026-11-10-agent-platform-execution",
+    "record": "docs/research/2026-11-11-native-history-test-migration.zh.md",
+    "tests": [
+      {
+        "file": "test/domains/comet-native/native-sdk-history.test.ts",
+        "namePattern": "^(?:Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: active|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: missing-stop|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: corrupt-hash|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: unknown-definition|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: archive-obligation|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: child-lineage|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: fixed-application|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: pending-cleanup|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: existing-run|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: existing-projection)$",
+        "requiredNames": [
+          "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: active",
+          "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: missing-stop",
+          "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: corrupt-hash",
+          "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: unknown-definition",
+          "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: archive-obligation",
+          "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: child-lineage",
+          "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: fixed-application",
+          "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: pending-cleanup",
+          "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: existing-run",
+          "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: existing-projection"
+        ]
+      }
+    ],
+    "reason": "保损坏checkpoint/未知当前定义/Child lineage/fixed Application拒绝且不落地、不覆盖原本地Run；原active-only拒绝、停止握手、仅按Archive步骤名称拒绝、旧projection marker占位和同名selection一律拒绝是已删除专用import机制。当前共同恢复允许原活动任务或无stopreceipt的取消记录；保原claim/批准/portable-token合同、selection清理、源字节。真实Archive事务义务由既有冻结WAL/Archive原测试继续覆盖，真实052公开Native cancel在实际applied WAL时拒绝且原Run不变。",
+    "evidence": {
+      "registry": {
+        "file": "docs/research/2026-11-11-native-history-test-migration/registry.json",
+        "sha256": "01efc4061a768db5aea3da1b66aa313647b5cd6a113a79edd057ca3b578e60a1"
+      },
+      "tests": {
+        "file": "docs/research/2026-11-11-native-history-test-migration/tests.json",
+        "sha256": "e121709d02e3421aac72efc361550501fb6ffaa20c1532945fbdab44c6c03af6"
+      },
+      "patch": {
+        "file": "docs/research/2026-11-11-native-history-test-migration/tests.patch",
+        "sha256": "853a10c79b586c2227160e09d2693460fce41fe929d9cca457d450c6bb8ac638"
+      },
+      "mapping": {
+        "file": "docs/research/2026-11-11-native-history-test-migration/mapping-final.json",
+        "sha256": "418c7d079a07d3eb345f9a07758c2c82bb6b799d1d7acfe45b018a442df5a666"
+      }
+    },
+    "supersededBy": {
+      "kind": "tests-moved",
+      "reason": "同一份已取消 Run 与其 portable checkpoint 一致、仅缺 owner 时，现有显式 Doctor 恢复应验证已知定义和 root lineage 后恢复并封存该 owner。撤下把任何 existing Run 一概当冲突的旧专用 import 前置条件；仍保原 Run、Action/claim、原来源与目标 checkpoint/portable 字节及重复调用不变，原损坏 checkpoint/未知定义/Child/fixed Application 和其他九个展开项保留。并未允许 portable 覆盖不同或更新的本地权威。",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-history-existing-run/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-history.test.ts",
+          "namePattern": "^(?:Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: active|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: missing-stop|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: corrupt-hash|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: unknown-definition|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: archive-obligation|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: child-lineage|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: fixed-application|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: pending-cleanup|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: existing-run|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: existing-projection)$",
+          "requiredNames": [
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: active",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: missing-stop",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: corrupt-hash",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: unknown-definition",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: archive-obligation",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: child-lineage",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: fixed-application",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: pending-cleanup",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: existing-run",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: existing-projection"
+          ]
+        }
+      ],
+      "evidence": {
+        "registry": {
+          "file": "docs/research/2026-11-11-platform-execution-retirement/native-history-existing-run/registry.json",
+          "sha256": "f93a2d30f7057147da5c4d753540db46f3d5f6ec3d34bdb86caec45274f3bad8"
+        },
+        "tests": {
+          "file": "docs/research/2026-11-11-platform-execution-retirement/native-history-existing-run/tests.json",
+          "sha256": "0c0c8d4c4165a35905484226d1fcd2a0129420c69c537eeb9eda8c1d0caaa45a"
+        },
+        "mapping": {
+          "file": "docs/research/2026-11-11-platform-execution-retirement/native-history-existing-run/mapping.json",
+          "sha256": "ba54aa7ac5b7ecd964e26eeb996e751d9a5f9974c350193a8697a57355a3f4f7"
+        },
+        "patch": {
+          "file": "docs/research/2026-11-11-platform-execution-retirement/native-history-existing-run/patch.patch",
+          "sha256": "8ca8cba3ac4d6e1f9d13f8c3e2c0a67a21a1443217682f07f919d070958820c1"
+        }
+      }
+    }
+  }
+}

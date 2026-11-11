@@ -48,10 +48,11 @@ describe('Native select command branches', () => {
     await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
   });
 
-  it('returns the full discovered status projection and routes into the owning workspace', async () => {
+  it('returns the full status projection in the explicitly selected original workspace', async () => {
     await seedChange(worktreeRoot);
-    inspectDiscoveredNativeStatus.mockImplementation(async (options) => {
-      options.onSelectedRoot?.(worktreeRoot);
+    // SIMULATED inspection projection: this unit test checks forwarding, not a Build transition.
+    const primaryConfig = await fs.readFile(path.join(projectRoot, '.comet/config.yaml'), 'utf8');
+    inspectDiscoveredNativeStatus.mockImplementation(async () => {
       return {
         schema: 'comet.native.status.v2',
         name: 'demo',
@@ -63,7 +64,14 @@ describe('Native select command branches', () => {
       };
     });
 
-    const result = await nativeSelectCommand(['demo'], projectRoot);
+    await expect(nativeSelectCommand(['demo'], projectRoot)).rejects.toThrow();
+    expect(await readCometCurrentSelection(projectRoot)).toMatchObject({ status: 'missing' });
+    inspectDiscoveredNativeStatus.mockClear();
+    const result = await nativeSelectCommand(['demo'], worktreeRoot);
+    expect(inspectDiscoveredNativeStatus).toHaveBeenCalledExactlyOnceWith({
+      projectRoot: worktreeRoot,
+      name: 'demo',
+    });
     expect(result).toMatchObject({
       command: 'select',
       exitCode: 0,
@@ -75,6 +83,20 @@ describe('Native select command branches', () => {
         workspace: { projectRoot: worktreeRoot },
         continuation: { action: 'advance-children' },
       },
+    });
+    expect(await readCometCurrentSelection(projectRoot)).toMatchObject({ status: 'missing' });
+    expect(await fs.readFile(path.join(projectRoot, '.comet/config.yaml'), 'utf8')).toBe(
+      primaryConfig,
+    );
+    expect(result.data).toEqual({
+      selected: 'demo',
+      schema: 'comet.native.status.v2',
+      name: 'demo',
+      phase: 'build',
+      status: 'active',
+      stateVersion: 7,
+      workspace: { projectRoot: worktreeRoot },
+      continuation: { schema: 'comet.native.continuation.v2', action: 'advance-children' },
     });
     const selection = await readCometCurrentSelection(worktreeRoot);
     expect(selection).toMatchObject({

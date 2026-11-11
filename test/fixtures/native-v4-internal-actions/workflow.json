@@ -1,0 +1,614 @@
+{
+  "id": "comet-native",
+  "version": "4",
+  "entry": "shape.prepare",
+  "commands": {
+    "revise-implementation": {
+      "stepId": "repair.implementation",
+      "validator": {
+        "id": "comet-native-implementation-revision-command",
+        "version": "1"
+      }
+    },
+    "revise-requirements": {
+      "stepId": "shape.revise",
+      "validator": {
+        "id": "comet-native-revise-command",
+        "version": "1"
+      }
+    },
+    "remove-capability": {
+      "stepId": "shape.remove",
+      "validator": {
+        "id": "comet-native-remove-command",
+        "version": "1"
+      }
+    },
+    "disassociate-capability": {
+      "stepId": "shape.disassociate",
+      "validator": {
+        "id": "comet-native-disassociate-command",
+        "version": "1"
+      }
+    }
+  },
+  "stateSchema": {
+    "type": "object",
+    "required": [
+      "schema",
+      "name",
+      "phase",
+      "status",
+      "state_version",
+      "loop",
+      "acceptance"
+    ],
+    "properties": {
+      "schema": {
+        "const": "comet.native.v4"
+      },
+      "name": {
+        "type": "string"
+      },
+      "phase": {
+        "enum": [
+          "shape",
+          "build",
+          "verify",
+          "archive"
+        ]
+      },
+      "status": {
+        "enum": [
+          "active",
+          "await-user",
+          "blocked",
+          "done"
+        ]
+      },
+      "state_version": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "loop": {
+        "type": "object"
+      },
+      "acceptance": {
+        "type": "array"
+      }
+    }
+  },
+  "transitionHandler": {
+    "id": "comet-native-transition",
+    "version": "1"
+  },
+  "stateValidator": {
+    "id": "comet-native-state",
+    "version": "1"
+  },
+  "steps": {
+    "repair.implementation": {
+      "type": "call_tool",
+      "ref": "native-revise-implementation",
+      "validator": {
+        "id": "comet-native-implementation-revision-outcome",
+        "version": "1"
+      }
+    },
+    "shape.revise": {
+      "type": "call_tool",
+      "ref": "native-revise-requirements",
+      "validator": {
+        "id": "comet-native-revise-outcome",
+        "version": "1"
+      }
+    },
+    "shape.remove": {
+      "type": "call_tool",
+      "ref": "native-remove",
+      "validator": {
+        "id": "comet-native-remove-outcome",
+        "version": "1"
+      }
+    },
+    "shape.disassociate": {
+      "type": "call_tool",
+      "ref": "native-disassociate",
+      "validator": {
+        "id": "comet-native-disassociate-outcome",
+        "version": "1"
+      }
+    },
+    "shape.prepare": {
+      "type": "call_tool",
+      "ref": "native-shape-prepare",
+      "validator": {
+        "id": "comet-native-shape-outcome",
+        "version": "1"
+      }
+    },
+    "shape.confirm": {
+      "type": "ask_user",
+      "proposalFrom": "shape.prepare",
+      "choices": [
+        "approved",
+        "rejected"
+      ]
+    },
+    "supervisor.shape.confirm": {
+      "type": "ask_user",
+      "proposalFrom": "shape.prepare",
+      "choices": [
+        "multi-session",
+        "single-session",
+        "rejected"
+      ]
+    },
+    "shape.revalidate": {
+      "type": "call_tool",
+      "ref": "native-shape-revalidate",
+      "validator": {
+        "id": "comet-native-shape-outcome",
+        "version": "1"
+      }
+    },
+    "build.builder": {
+      "type": "handoff",
+      "ref": "native-builder",
+      "validator": {
+        "id": "comet-native-builder-outcome",
+        "version": "1"
+      }
+    },
+    "build.resume": {
+      "type": "ask_user",
+      "proposalFrom": "build.builder",
+      "choices": [
+        "continue"
+      ]
+    },
+    "supervisor.prepare": {
+      "type": "call_tool",
+      "ref": "native-supervisor-prepare",
+      "validator": {
+        "id": "native-supervisor-prepare-outcome",
+        "version": "1"
+      }
+    },
+    "supervisor.child.prepare": {
+      "type": "call_tool",
+      "ref": "native-supervisor-child-prepare",
+      "validator": {
+        "id": "native-supervisor-child-prepare-outcome",
+        "version": "1"
+      }
+    },
+    "supervisor.child.builder": {
+      "type": "handoff",
+      "ref": "native-supervisor-builder",
+      "validator": {
+        "id": "native-supervisor-builder-outcome",
+        "version": "1"
+      }
+    },
+    "supervisor.child.resume": {
+      "type": "ask_user",
+      "proposalFrom": "supervisor.child.builder",
+      "choices": [
+        "continue"
+      ]
+    },
+    "supervisor.child.verifier": {
+      "type": "handoff",
+      "ref": "native-supervisor-verifier",
+      "validator": {
+        "id": "native-supervisor-verifier-outcome",
+        "version": "1"
+      }
+    },
+    "supervisor.child.verifier-retry": {
+      "type": "ask_user",
+      "proposalFrom": "supervisor.child.verifier",
+      "choices": [
+        "retry",
+        "repair"
+      ]
+    },
+    "supervisor.child.integrate": {
+      "type": "call_tool",
+      "ref": "native-supervisor-integrate",
+      "validator": {
+        "id": "native-supervisor-integrate-outcome",
+        "version": "1"
+      }
+    },
+    "supervisor.child.archive": {
+      "type": "call_tool",
+      "ref": "native-supervisor-child-archive",
+      "validator": {
+        "id": "native-supervisor-child-archive-outcome",
+        "version": "1"
+      }
+    },
+    "supervisor.parent.builder": {
+      "type": "handoff",
+      "ref": "native-supervisor-parent-builder",
+      "validator": {
+        "id": "native-supervisor-parent-builder-outcome",
+        "version": "1"
+      }
+    },
+    "supervisor.parent.resume": {
+      "type": "ask_user",
+      "proposalFrom": "supervisor.parent.builder",
+      "choices": [
+        "continue"
+      ]
+    },
+    "supervisor.parent.deliver": {
+      "type": "call_tool",
+      "ref": "native-supervisor-parent-deliver",
+      "validator": {
+        "id": "native-supervisor-parent-deliver-outcome",
+        "version": "1"
+      }
+    },
+    "supervisor.cleanup": {
+      "type": "call_tool",
+      "ref": "native-supervisor-cleanup",
+      "validator": {
+        "id": "native-supervisor-cleanup-outcome",
+        "version": "1"
+      }
+    },
+    "verify.verifier": {
+      "type": "handoff",
+      "ref": "native-verifier",
+      "validator": {
+        "id": "comet-native-verifier-outcome",
+        "version": "1"
+      }
+    },
+    "verify.retry": {
+      "type": "ask_user",
+      "proposalFrom": "verify.verifier",
+      "choices": [
+        "retry"
+      ]
+    },
+    "verify.stop": {
+      "type": "ask_user",
+      "proposalFrom": "verify.verifier",
+      "choices": [
+        "retry",
+        "repair"
+      ]
+    },
+    "verify.confirm": {
+      "type": "ask_user",
+      "proposalFrom": "verify.verifier",
+      "choices": [
+        "approved",
+        "rejected",
+        "reverify"
+      ]
+    },
+    "verify.revalidate": {
+      "type": "call_tool",
+      "ref": "native-report-revalidate",
+      "validator": {
+        "id": "comet-native-report-revalidation-outcome",
+        "version": "1"
+      }
+    },
+    "archive.prepare": {
+      "type": "call_tool",
+      "ref": "native-archive-preflight",
+      "retry": "idempotent",
+      "validator": {
+        "id": "comet-native-archive-preflight-outcome",
+        "version": "1"
+      }
+    },
+    "archive.execute": {
+      "type": "call_tool",
+      "ref": "native-archive",
+      "validator": {
+        "id": "comet-native-archive-apply-outcome",
+        "version": "1"
+      }
+    },
+    "archive.finalize": {
+      "type": "call_tool",
+      "ref": "native-archive-finalize",
+      "validator": {
+        "id": "comet-native-archive-finalize-outcome",
+        "version": "1"
+      }
+    }
+  },
+  "transitions": [
+    {
+      "from": "repair.implementation",
+      "to": "archive.prepare"
+    },
+    {
+      "from": "repair.implementation",
+      "to": "archive.execute"
+    },
+    {
+      "from": "repair.implementation",
+      "to": "shape.prepare"
+    },
+    {
+      "from": "repair.implementation",
+      "to": "build.builder"
+    },
+    {
+      "from": "repair.implementation",
+      "to": "supervisor.parent.builder"
+    },
+    {
+      "from": "shape.revise",
+      "to": "shape.prepare"
+    },
+    {
+      "from": "shape.remove",
+      "to": "shape.prepare"
+    },
+    {
+      "from": "shape.disassociate",
+      "to": "shape.prepare"
+    },
+    {
+      "from": "shape.prepare",
+      "to": "shape.confirm"
+    },
+    {
+      "from": "shape.prepare",
+      "to": "supervisor.shape.confirm"
+    },
+    {
+      "from": "shape.confirm",
+      "to": "shape.revalidate",
+      "on": "approved"
+    },
+    {
+      "from": "shape.confirm",
+      "to": "shape.prepare",
+      "on": "rejected"
+    },
+    {
+      "from": "supervisor.shape.confirm",
+      "to": "shape.revalidate",
+      "on": "multi-session"
+    },
+    {
+      "from": "supervisor.shape.confirm",
+      "to": "shape.revalidate",
+      "on": "single-session"
+    },
+    {
+      "from": "supervisor.shape.confirm",
+      "to": "shape.prepare",
+      "on": "rejected"
+    },
+    {
+      "from": "shape.revalidate",
+      "to": "build.builder"
+    },
+    {
+      "from": "shape.revalidate",
+      "to": "supervisor.prepare"
+    },
+    {
+      "from": "supervisor.prepare",
+      "to": "supervisor.child.prepare"
+    },
+    {
+      "from": "supervisor.child.prepare",
+      "to": "supervisor.child.builder"
+    },
+    {
+      "from": "supervisor.child.builder",
+      "to": "supervisor.child.resume",
+      "on": "failed"
+    },
+    {
+      "from": "supervisor.child.resume",
+      "to": "supervisor.child.builder",
+      "on": "continue"
+    },
+    {
+      "from": "supervisor.child.verifier",
+      "to": "supervisor.child.verifier-retry",
+      "on": "failed"
+    },
+    {
+      "from": "supervisor.child.verifier-retry",
+      "to": "supervisor.child.verifier",
+      "on": "retry"
+    },
+    {
+      "from": "supervisor.child.verifier-retry",
+      "to": "supervisor.child.builder",
+      "on": "repair"
+    },
+    {
+      "from": "supervisor.child.verifier",
+      "to": "supervisor.child.integrate"
+    },
+    {
+      "from": "supervisor.child.verifier",
+      "to": "supervisor.child.builder"
+    },
+    {
+      "from": "supervisor.child.archive",
+      "to": "supervisor.child.integrate"
+    },
+    {
+      "from": "supervisor.child.archive",
+      "to": "supervisor.child.prepare"
+    },
+    {
+      "from": "supervisor.child.archive",
+      "to": "supervisor.parent.builder"
+    },
+    {
+      "from": "supervisor.parent.builder",
+      "to": "supervisor.parent.resume",
+      "on": "failed"
+    },
+    {
+      "from": "supervisor.parent.resume",
+      "to": "supervisor.parent.builder",
+      "on": "continue"
+    },
+    {
+      "from": "shape.revalidate",
+      "to": "shape.prepare",
+      "on": "failed"
+    },
+    {
+      "from": "build.builder",
+      "to": "build.resume",
+      "on": "failed"
+    },
+    {
+      "from": "build.resume",
+      "to": "build.builder",
+      "on": "continue"
+    },
+    {
+      "from": "verify.verifier",
+      "to": "verify.confirm"
+    },
+    {
+      "from": "verify.verifier",
+      "to": "build.builder"
+    },
+    {
+      "from": "verify.verifier",
+      "to": "supervisor.parent.builder"
+    },
+    {
+      "from": "verify.verifier",
+      "to": "verify.verifier",
+      "on": "failed"
+    },
+    {
+      "from": "verify.verifier",
+      "to": "verify.retry",
+      "on": "failed"
+    },
+    {
+      "from": "verify.retry",
+      "to": "verify.verifier",
+      "on": "retry"
+    },
+    {
+      "from": "verify.verifier",
+      "to": "verify.stop"
+    },
+    {
+      "from": "verify.stop",
+      "to": "verify.verifier",
+      "on": "retry"
+    },
+    {
+      "from": "verify.stop",
+      "to": "build.builder",
+      "on": "repair"
+    },
+    {
+      "from": "verify.stop",
+      "to": "supervisor.parent.builder",
+      "on": "repair"
+    },
+    {
+      "from": "verify.confirm",
+      "to": "verify.revalidate",
+      "on": "approved"
+    },
+    {
+      "from": "verify.confirm",
+      "to": "archive.prepare",
+      "on": "approved"
+    },
+    {
+      "from": "verify.confirm",
+      "to": "build.builder",
+      "on": "rejected"
+    },
+    {
+      "from": "verify.confirm",
+      "to": "supervisor.parent.builder",
+      "on": "rejected"
+    },
+    {
+      "from": "verify.revalidate",
+      "to": "archive.prepare"
+    },
+    {
+      "from": "verify.revalidate",
+      "to": "supervisor.parent.deliver"
+    },
+    {
+      "from": "supervisor.parent.deliver",
+      "to": "archive.prepare"
+    },
+    {
+      "from": "verify.revalidate",
+      "to": "verify.confirm",
+      "on": "failed"
+    },
+    {
+      "from": "verify.revalidate",
+      "to": "verify.stop",
+      "on": "failed"
+    },
+    {
+      "from": "archive.prepare",
+      "to": "archive.execute"
+    },
+    {
+      "from": "archive.prepare",
+      "to": "verify.stop",
+      "on": "failed"
+    },
+    {
+      "from": "archive.execute",
+      "to": "verify.stop",
+      "on": "failed"
+    },
+    {
+      "from": "archive.execute",
+      "to": "archive.finalize"
+    },
+    {
+      "from": "archive.finalize",
+      "to": "supervisor.cleanup"
+    },
+    {
+      "from": "verify.confirm",
+      "to": "verify.verifier",
+      "on": "reverify"
+    },
+    {
+      "from": "build.builder",
+      "to": "verify.verifier"
+    },
+    {
+      "from": "supervisor.parent.builder",
+      "to": "verify.verifier"
+    },
+    {
+      "from": "supervisor.child.builder",
+      "to": "supervisor.child.verifier"
+    },
+    {
+      "from": "supervisor.child.integrate",
+      "to": "supervisor.child.archive"
+    }
+  ]
+}

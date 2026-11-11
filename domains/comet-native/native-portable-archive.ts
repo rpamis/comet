@@ -1,42 +1,32 @@
 import type { RuntimeStore, WorkflowRun } from '../engine/runtime.js';
+import {
+  nativePortableSupervisorCleanupBinding,
+  preflightNativeSupervisorCleanup,
+  executeNativeSupervisorCleanup,
+  nativeSupervisorCleanupComplete,
+} from './native-supervisor-workspace.js';
+import { writePortableMutation } from './native-portable-storage.js';
+import { clearNativeSelectionIfLocked } from './native-selection.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { parseDocument } from 'yaml';
+import { renameWithRetry } from '../../platform/fs/transient-retry.js';
 import { hasNativeManagedRunMarker } from './native-state-document.js';
-import { readCurrentLocalExecution } from './native-portable-checks.js';
-import { isNativeSdkChangeCancellationComplete } from './native-sdk-cancellation.js';
-
-import { listGitWorktreeRoots } from '../../platform/paths/git-worktree.js';
 
 import { atomicWriteJson, atomicWriteText } from './native-atomic-file.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
-import { inspectNativeChangeStateDocument } from './native-change.js';
-import { readProjectConfig } from './native-config.js';
+
 import {
   mergeNativeDeltaAgainstCurrent,
   parseNativeDelta,
   type NativeDeltaOperationResult,
 } from './native-delta-spec.js';
-import { withNativeMutationLock } from './native-mutation-lock.js';
-import {
-  isInsidePath,
-  nativePreferredChangeRuntimeDir,
-  nativeProjectPaths,
-} from './native-paths.js';
+import { withNativeMutation } from './native-mutation.js';
+import { isInsidePath, nativeProjectPaths } from './native-paths.js';
 import { validateNativePortableDocuments } from './native-portable-requirements.js';
-import {
-  nativePortableChangeDir,
-  nativePortableStateFile,
-  readNativePortableChange,
-  rebaseNativePortableDeltasLocked,
-  recoverNativeSupervisorFinalVerificationLocked,
-  returnNativePortableStateToFinalVerificationLocked,
-} from './native-portable-runtime.js';
-import {
-  compareAndSwapNativePortableState,
-  readNativePortableState,
-} from './native-portable-state.js';
+import { nativePortableChangeDir, readNativePortableChange } from './native-portable-storage.js';
+import { readNativePortableState } from './native-portable-state.js';
 import {
   NATIVE_PORTABLE_ARCHIVE_TRANSACTION_SCHEMA,
   nativePortableTransactionFile,
@@ -45,32 +35,17 @@ import {
   type NativePortableArchiveTransaction,
 } from './native-portable-transactions.js';
 import type { NativePortableSpecChange, NativePortableState } from './native-portable-types.js';
-import { clearNativeSelectionIfLocked } from './native-selection.js';
-import {
-  finalizeNativeSupervisorDeliveryLocked,
-  readNativeSupervisorState,
-} from './native-supervisor.js';
 import type { NativeProjectPaths } from './native-types.js';
 import {
   inspectNativeVerificationReportAlignment,
   writeNativeVerificationReport,
 } from './native-verification-report-v2.js';
-
-export interface NativePortableArchiveHooks {
-  afterSpecApplied?: (index: number) => void | Promise<void>;
-  afterFinalState?: () => void | Promise<void>;
-  afterReportAligned?: () => void | Promise<void>;
-  afterMove?: () => void | Promise<void>;
-  afterRuntimeCleanup?: () => void | Promise<void>;
-}
-
 export interface NativePortableArchiveResult {
   change: string;
   archiveDir: string;
   transactionId: string;
   state: NativePortableState;
 }
-
 export interface NativePortableArchiveSpecPreview {
   readonly capability: string;
   readonly operation: NativePortableSpecChange['operation'];
@@ -78,24 +53,8 @@ export interface NativePortableArchiveSpecPreview {
   readonly delta_source?: string;
   readonly delta_operations?: readonly NativeDeltaOperationResult[];
 }
-
-export class NativePortableArchiveOrderRequiredError extends Error {
-  readonly peers: string[];
-
-  constructor(peers: readonly string[]) {
-    super(
-      peers.length === 0
-        ? 'Native Archive serial capability decision is stale'
-        : `Native Archive requires a serial capability decision: ${peers.join(', ')}`,
-    );
-    this.name = 'NativePortableArchiveOrderRequiredError';
-    this.peers = [...peers];
-  }
-}
-
 export class NativePortableArchiveRequiresReverificationError extends Error {
   readonly state: NativePortableState;
-
   constructor(state: NativePortableState) {
     super(
       'Native canonical Spec changed independently; the merged delta requires fresh verification',
@@ -104,12 +63,10 @@ export class NativePortableArchiveRequiresReverificationError extends Error {
     this.state = state;
   }
 }
-
 function archiveRef(state: NativePortableState): string {
   const date = (state.verification?.completed_at ?? state.created_at).slice(0, 10);
   return `${date}-${state.name}`;
 }
-
 function archiveDirectory(paths: NativeProjectPaths, ref: string): string {
   if (!/^\d{4}-\d{2}-\d{2}-[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u.test(ref)) {
     throw new Error('Native portable Archive ref is invalid');
@@ -118,14 +75,12 @@ function archiveDirectory(paths: NativeProjectPaths, ref: string): string {
   if (!isInsidePath(paths.archiveDir, target)) throw new Error('Native Archive path escaped');
   return target;
 }
-
 export function nativePortableArchiveDirectory(
   paths: NativeProjectPaths,
   state: NativePortableState,
 ): string {
   return archiveDirectory(paths, archiveRef(state));
 }
-
 async function exists(file: string): Promise<boolean> {
   try {
     await fs.lstat(file);
@@ -135,19 +90,13 @@ async function exists(file: string): Promise<boolean> {
     throw error;
   }
 }
-
-function samePath(left: string, right: string): boolean {
-  const normalizedLeft = path.normalize(path.resolve(left));
-  const normalizedRight = path.normalize(path.resolve(right));
-  return process.platform === 'win32'
-    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
-    : normalizedLeft === normalizedRight;
-}
-
 async function findArchivedPortableChange(
   paths: NativeProjectPaths,
   name: string,
-): Promise<{ dir: string; state: NativePortableState } | null> {
+): Promise<{
+  dir: string;
+  state: NativePortableState;
+} | null> {
   let entries: import('node:fs').Dirent[];
   try {
     entries = await fs.readdir(paths.archiveDir, { withFileTypes: true });
@@ -155,7 +104,10 @@ async function findArchivedPortableChange(
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;
   }
-  const matches: Array<{ dir: string; state: NativePortableState }> = [];
+  const matches: Array<{
+    dir: string;
+    state: NativePortableState;
+  }> = [];
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
     const dir = path.join(paths.archiveDir, entry.name);
@@ -172,15 +124,16 @@ async function findArchivedPortableChange(
   }
   return matches[0] ?? null;
 }
-
 async function readTransaction(
   paths: NativeProjectPaths,
   name: string,
 ): Promise<NativePortableArchiveTransaction | null> {
-  const transaction = await readNativePortableTransaction(paths, { kind: 'archive', change: name });
+  const transaction = await readNativePortableTransaction(paths, {
+    kind: 'archive',
+    change: name,
+  });
   return transaction?.kind === 'archive' ? transaction.journal : null;
 }
-
 export async function hasNativePortableArchiveRecovery(
   paths: NativeProjectPaths,
   name: string,
@@ -190,97 +143,29 @@ export async function hasNativePortableArchiveRecovery(
     (await findArchivedPortableChange(paths, name)) !== null
   );
 }
-
 async function writeTransaction(
   paths: NativeProjectPaths,
   transaction: NativePortableArchiveTransaction,
 ): Promise<void> {
   await fs.mkdir(paths.transactionsDir, { recursive: true });
   await atomicWriteJson(
-    nativePortableTransactionFile(paths, { kind: 'archive', change: transaction.change }),
+    nativePortableTransactionFile(paths, {
+      kind: 'archive',
+      change: transaction.change,
+    }),
     transaction,
     {
       containedRoot: paths.runtimeDir,
     },
   );
 }
-
-async function otherPortableCapabilityOwners(options: {
-  paths: NativeProjectPaths;
-  state: NativePortableState;
-}): Promise<string[]> {
-  const capabilities = new Set(options.state.spec_changes.map(({ capability }) => capability));
-  if (capabilities.size === 0) return [];
-  const roots = listGitWorktreeRoots(options.paths.projectRoot);
-  if (!roots.some((root) => samePath(root, options.paths.projectRoot))) {
-    roots.push(options.paths.projectRoot);
-  }
-  const workspacePaths: NativeProjectPaths[] = [];
-  for (const root of roots) {
-    const config = await readProjectConfig(root);
-    if (!config) continue;
-    const sourcePaths = await nativeProjectPaths(root, config.native.artifact_root, {
-      readOnly: true,
-    });
-    if (!workspacePaths.some((entry) => samePath(entry.changesDir, sourcePaths.changesDir))) {
-      workspacePaths.push(sourcePaths);
-    }
-  }
-  if (workspacePaths.length === 0) workspacePaths.push(options.paths);
-
-  const peers = new Set<string>();
-  for (const sourcePaths of workspacePaths) {
-    let entries: import('node:fs').Dirent[];
-    try {
-      entries = await fs.readdir(sourcePaths.changesDir, { withFileTypes: true });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
-      throw error;
-    }
-    for (const entry of entries) {
-      if (!entry.isDirectory() || entry.isSymbolicLink() || entry.name === options.state.name) {
-        continue;
-      }
-      if (await isNativeSdkChangeCancellationComplete(sourcePaths.projectRoot, entry.name))
-        continue;
-      try {
-        const peer = await readNativePortableState(
-          path.join(sourcePaths.changesDir, entry.name, 'comet-state.yaml'),
-        );
-        if (
-          peer.status !== 'done' &&
-          peer.spec_changes.some(({ capability }) => capabilities.has(capability))
-        ) {
-          peers.add(peer.name);
-        }
-      } catch {
-        const legacy = await inspectNativeChangeStateDocument(sourcePaths, entry.name).catch(
-          () => null,
-        );
-        if (
-          legacy?.state &&
-          legacy.state.spec_changes.some(({ capability }) => capabilities.has(capability))
-        ) {
-          peers.add(legacy.state.name);
-        }
-      }
-    }
-  }
-  return [...peers].sort((left, right) => left.localeCompare(right, 'en'));
-}
-
-function normalizeSerialDecision(change: string | undefined): string | null {
-  if (change === undefined) return null;
-  if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u.test(change)) {
-    throw new Error('Native Archive serial capability decision is invalid');
-  }
-  return change;
-}
-
 async function readOptionalCanonicalSpec(
   paths: NativeProjectPaths,
   capability: string,
-): Promise<{ text: string; exists: boolean }> {
+): Promise<{
+  text: string;
+  exists: boolean;
+}> {
   const capabilityDirectory = path.join(paths.specsDir, capability);
   const target = path.join(capabilityDirectory, 'spec.md');
   if (!isInsidePath(paths.specsDir, target)) {
@@ -339,7 +224,6 @@ async function readOptionalCanonicalSpec(
     throw error;
   }
 }
-
 async function applySpecChange(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
@@ -397,7 +281,6 @@ async function applySpecChange(options: {
   if (options.change.source === null || options.change.content === null) {
     throw new Error(`Native ${options.change.operation} spec requires frozen source content`);
   }
-
   const current = await readOptionalCanonicalSpec(options.paths, options.change.capability);
   const content = options.change.delta_content
     ? mergeNativeDeltaAgainstCurrent({
@@ -411,7 +294,6 @@ async function applySpecChange(options: {
       `Canonical Native spec conflicts with the pending create: ${options.change.capability}`,
     );
   }
-
   const sourceTarget = path.join(
     nativePortableChangeDir(options.paths, options.state.name),
     options.change.source,
@@ -425,7 +307,6 @@ async function applySpecChange(options: {
     containedRoot: options.paths.nativeRoot,
   });
 }
-
 function assertArchiveReady(state: NativePortableState): void {
   if (
     state.phase !== 'archive' ||
@@ -438,7 +319,6 @@ function assertArchiveReady(state: NativePortableState): void {
     throw new Error(`Native change ${state.name} is not archive-ready`);
   }
 }
-
 async function freezeArchiveSpecChanges(
   paths: NativeProjectPaths,
   state: NativePortableState,
@@ -469,7 +349,6 @@ async function freezeArchiveSpecChanges(
           `Native delta capability ${delta.capability} does not match ${change.capability}`,
         );
       }
-
       const current = await readOptionalCanonicalSpec(paths, change.capability);
       const merged = mergeNativeDeltaAgainstCurrent({
         currentMarkdown: current.text,
@@ -483,7 +362,6 @@ async function freezeArchiveSpecChanges(
       });
       continue;
     }
-
     frozen.push({
       ...change,
       content: source.text,
@@ -491,7 +369,6 @@ async function freezeArchiveSpecChanges(
   }
   return frozen;
 }
-
 function assertTransactionState(
   transaction: NativePortableArchiveTransaction,
   state: NativePortableState,
@@ -516,7 +393,6 @@ function assertTransactionState(
     );
   }
 }
-
 async function inspectNativePortableDeltaChanges(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
@@ -548,11 +424,12 @@ async function inspectNativePortableDeltaChanges(options: {
         const delta = parseNativeDelta(source.text);
         if (delta.capability !== change.capability)
           throw new Error('Native delta capability does not match its target');
-
         const current = await readOptionalCanonicalSpec(options.paths, change.capability);
         operations = [
-          ...mergeNativeDeltaAgainstCurrent({ currentMarkdown: current.text, delta })
-            .operationResults,
+          ...mergeNativeDeltaAgainstCurrent({
+            currentMarkdown: current.text,
+            delta,
+          }).operationResults,
         ];
       }
       specPreview.push({
@@ -569,19 +446,6 @@ async function inspectNativePortableDeltaChanges(options: {
   }
   return { blockers, requiresReverification: false, specPreview };
 }
-
-async function assertPortableChecksCompleted(
-  paths: NativeProjectPaths,
-  state: NativePortableState,
-) {
-  const local = await readCurrentLocalExecution({ paths, state });
-  if (
-    local?.execution?.status === 'running' ||
-    local?.checks.some((check) => check.status !== 'passed' || check.exitCode !== 0)
-  )
-    throw new Error('Native 最新检查未通过或尚未结束；保留实际结果，完成所选检查后再归档');
-}
-
 export async function inspectNativePortableArchive(options: {
   paths: NativeProjectPaths;
   name: string;
@@ -591,8 +455,7 @@ export async function inspectNativePortableArchive(options: {
   requireCurrentAcceptance?: boolean;
   /** SDK 已校验用户确认报告的 hash，沿用该报告的版本，不在预检中改写。 */
   verificationReportStateVersion?: number;
-  /** 新 SDK 在提交时比较实际 Spec，旧流程保留同能力的串行安排。 */
-  checkCapabilityOwners?: boolean;
+
   derivedReport?: boolean;
 }): Promise<{
   ready: boolean;
@@ -607,6 +470,15 @@ export async function inspectNativePortableArchive(options: {
   if (state.name !== options.name)
     throw new Error('Native Archive state belongs to another change');
   const blockers: string[] = [];
+  if (options.state === undefined) {
+    try {
+      const cleanup = await nativePortableSupervisorCleanupBinding(options.paths, state);
+      if (cleanup && !nativeSupervisorCleanupComplete(cleanup))
+        preflightNativeSupervisorCleanup(cleanup);
+    } catch (error) {
+      blockers.push((error as Error).message);
+    }
+  }
   let requiresReverification = false;
   let specPreview: NativePortableArchiveSpecPreview[];
   if (state.document_constraints_version === 1) {
@@ -622,15 +494,9 @@ export async function inspectNativePortableArchive(options: {
     blockers.push((error as Error).message);
   }
   const transaction = await readTransaction(options.paths, options.name);
-  if (!options.state && transaction === null) {
-    try {
-      await assertPortableChecksCompleted(options.paths, state);
-    } catch (error) {
-      blockers.push((error as Error).message);
-    }
-  }
-
   if (transaction === null) {
+    const target = archiveDirectory(options.paths, archiveRef(state));
+    if (await exists(target)) blockers.push(`Native Archive target already exists: ${target}`);
     const deltaInspection = await inspectNativePortableDeltaChanges({
       paths: options.paths,
       state,
@@ -670,34 +536,27 @@ export async function inspectNativePortableArchive(options: {
           stateVersion: options.verificationReportStateVersion ?? state.state_version,
         });
   if (alignment !== 'aligned') blockers.push(`verification.md is ${alignment}`);
-  const peers =
-    options.checkCapabilityOwners === false
-      ? []
-      : await otherPortableCapabilityOwners({ paths: options.paths, state });
-  if (peers.length > 0) blockers.push(`capabilities are also declared by: ${peers.join(', ')}`);
   return {
     ready: blockers.length === 0,
     blockers,
     requiresReverification,
     specPreview,
-    capabilityPeers: peers,
+    capabilityPeers: [],
     archiveDir: archiveDirectory(options.paths, archiveRef(state)),
     stateVersion: state.state_version,
   };
 }
-
 /** Apply canonical Specs for an SDK-owned Run without committing a second workflow state file. */
 export async function applyNativeSdkArchiveSpecs(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
   verificationReportStateVersion?: number;
-  checkCapabilityOwners?: boolean;
+
   derivedReport?: boolean;
 }): Promise<NativePortableArchiveTransaction> {
   const { paths, state } = options;
-  return withNativeMutationLock(
+  return withNativeMutation(
     paths,
-    `apply SDK Archive specs ${state.name}`,
     async () => {
       assertArchiveReady(state);
       let transaction = await readTransaction(paths, state.name);
@@ -707,7 +566,7 @@ export async function applyNativeSdkArchiveSpecs(options: {
           name: state.name,
           state,
           verificationReportStateVersion: options.verificationReportStateVersion,
-          checkCapabilityOwners: options.checkCapabilityOwners,
+
           derivedReport: options.derivedReport,
         });
         if (!preflight.ready) {
@@ -736,7 +595,11 @@ export async function applyNativeSdkArchiveSpecs(options: {
           index < transaction.spec_changes.length;
           index += 1
         ) {
-          await applySpecChange({ paths, state, change: transaction.spec_changes[index] });
+          await applySpecChange({
+            paths,
+            state,
+            change: transaction.spec_changes[index],
+          });
           transaction = { ...transaction, next_spec_index: index + 1 };
           await writeTransaction(paths, transaction);
         }
@@ -748,7 +611,6 @@ export async function applyNativeSdkArchiveSpecs(options: {
     { allowedPortableTransaction: { kind: 'archive', change: state.name } },
   );
 }
-
 export async function inspectNativeSdkArchiveSpecs(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
@@ -773,7 +635,6 @@ export async function inspectNativeSdkArchiveSpecs(options: {
     specCount: transaction.spec_changes.length,
   };
 }
-
 interface NativeSdkArchiveReceipt {
   runId: string;
   change: string;
@@ -783,11 +644,13 @@ interface NativeSdkArchiveReceipt {
   reportSha256?: string | null;
   verificationResultHash?: string;
   preservedReportsRef?: string;
-  specs: Array<{ capability: string; operation?: string; resultHash?: string | null }>;
+  specs: Array<{
+    capability: string;
+    operation?: string;
+    resultHash?: string | null;
+  }>;
 }
-
 const PORTABLE_ARCHIVE_RECEIPT_KEY = 'archive_receipt';
-
 async function writePortableArchiveReceipt(
   paths: NativeProjectPaths,
   archiveRef: string,
@@ -807,9 +670,10 @@ async function writePortableArchiveReceipt(
   const document = parseDocument(source, { uniqueKeys: true });
   if (document.errors.length > 0) throw new Error('Native SDK Archive state is invalid');
   document.set(PORTABLE_ARCHIVE_RECEIPT_KEY, receipt);
-  await atomicWriteText(file, document.toString(), { containedRoot: paths.nativeRoot });
+  await atomicWriteText(file, document.toString(), {
+    containedRoot: paths.nativeRoot,
+  });
 }
-
 async function readPortableArchiveReceipt(
   paths: NativeProjectPaths,
   archiveRef: string,
@@ -829,13 +693,11 @@ async function readPortableArchiveReceipt(
     PORTABLE_ARCHIVE_RECEIPT_KEY
   ] as NativeSdkArchiveReceipt;
 }
-
 function sdkArchiveReceiptFile(paths: NativeProjectPaths, runId: string): string {
   if (!runId.trim()) throw new Error('Native SDK Archive Run ID is missing');
   const key = createHash('sha256').update(runId).digest('hex');
   return path.join(paths.runtimeDir, 'sdk-archive-receipts', `${key}.json`);
 }
-
 export async function finalizeNativeSdkArchive(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
@@ -852,9 +714,8 @@ export async function finalizeNativeSdkArchive(options: {
   };
 }): Promise<NativeSdkArchiveReceipt> {
   const { paths, state, runId } = options;
-  return withNativeMutationLock(
+  return withNativeMutation(
     paths,
-    'finalize SDK Archive ' + state.name,
     async () => {
       if (
         state.phase !== 'archive' ||
@@ -915,7 +776,7 @@ export async function finalizeNativeSdkArchive(options: {
           throw new Error('Native Archive layout contradicts its transaction');
         if (active) {
           await fs.mkdir(paths.archiveDir, { recursive: true });
-          await fs.rename(activeDir, target);
+          await renameWithRetry(activeDir, target);
         }
         transaction = { ...transaction, status: 'moved' };
         await writeTransaction(paths, transaction);
@@ -936,16 +797,23 @@ export async function finalizeNativeSdkArchive(options: {
       await writePortableArchiveReceipt(paths, transaction.archive_ref, receipt);
       const receiptFile = sdkArchiveReceiptFile(paths, runId);
       await fs.mkdir(path.dirname(receiptFile), { recursive: true });
-      await atomicWriteJson(receiptFile, receipt, { containedRoot: paths.runtimeDir });
-      await fs.rm(nativePortableTransactionFile(paths, { kind: 'archive', change: state.name }), {
-        force: true,
+      await atomicWriteJson(receiptFile, receipt, {
+        containedRoot: paths.runtimeDir,
       });
+      await fs.rm(
+        nativePortableTransactionFile(paths, {
+          kind: 'archive',
+          change: state.name,
+        }),
+        {
+          force: true,
+        },
+      );
       return receipt;
     },
     { allowedPortableTransaction: { kind: 'archive', change: state.name } },
   );
 }
-
 export async function inspectNativeSdkArchiveFinalization(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
@@ -985,321 +853,91 @@ export async function inspectNativeSdkArchiveFinalization(options: {
     throw new Error('Native SDK Archive destination is missing');
   return receipt;
 }
-
+/** 旧文档流程复用当前 Spec/归档事务，只转换业务状态，不恢复检查执行。 */
 export async function archiveNativePortableChange(options: {
   paths: NativeProjectPaths;
   name: string;
-  serialFirstChange?: string;
-  hooks?: NativePortableArchiveHooks;
 }): Promise<NativePortableArchiveResult> {
-  return withNativeMutationLock(
-    options.paths,
-    `archive portable change ${options.name}`,
-    async () => {
-      const serialDecision = normalizeSerialDecision(options.serialFirstChange);
-      if (serialDecision !== null && serialDecision !== options.name) {
-        throw new Error('Native Archive --serial-first must name the change being archived');
-      }
-      let transaction = await readTransaction(options.paths, options.name);
-      const activeDir = nativePortableChangeDir(options.paths, options.name);
-      const activeExists = await exists(activeDir);
-      const archived = activeExists
-        ? null
-        : await findArchivedPortableChange(options.paths, options.name);
-      let state: NativePortableState;
-      if (activeExists) {
-        state = await readNativePortableChange(options.paths, options.name);
-      } else if (transaction) {
-        state = await readNativePortableState(
-          path.join(archiveDirectory(options.paths, transaction.archive_ref), 'comet-state.yaml'),
-        );
-      } else if (archived) {
-        state = archived.state;
-      } else {
-        throw new Error(`Native active change is missing: ${options.name}`);
-      }
-      if (
-        activeExists &&
-        transaction !== null &&
-        !state.archived &&
-        state.phase === 'verify' &&
-        state.verification_result === 'pending' &&
-        state.loop.stage === 'verify-ready' &&
-        state.state_version > transaction.start_state_version
-      ) {
-        // The recovery state is authoritative once it has been persisted. If
-        // local execution bookkeeping failed after that write, discard the
-        // now-stale Archive journal before the next Archive attempt.
-        await fs.rm(
-          nativePortableTransactionFile(options.paths, {
-            kind: 'archive',
-            change: options.name,
-          }),
-          { force: true },
-        );
-        transaction = null;
-      }
-      let supervisor = await readNativeSupervisorState(options.paths, options.name);
-
-      if (activeExists && !state.archived && transaction === null) {
-        await assertPortableChecksCompleted(options.paths, state);
-        if (
-          state.phase === 'archive' &&
-          state.verification_result === 'pass' &&
-          state.verification !== null
-        ) {
-          const deltaInspection = await inspectNativePortableDeltaChanges({
-            paths: options.paths,
-            state,
-          });
-          if (!deltaInspection.requiresReverification && deltaInspection.blockers.length)
-            throw new Error(deltaInspection.blockers.join('\n'));
-          if (deltaInspection.requiresReverification) {
-            const rebased = await rebaseNativePortableDeltasLocked({
-              paths: options.paths,
-              state,
-            });
-            const recovered = await returnNativePortableStateToFinalVerificationLocked({
-              paths: options.paths,
-              state: rebased.state,
-              reason:
-                'Native canonical Spec changed independently; the delta was re-based before fresh verification.',
-            });
-            throw new NativePortableArchiveRequiresReverificationError(recovered);
-          }
-        }
-      }
-      if (
-        activeExists &&
-        !state.archived &&
-        supervisor?.finalVerification.status === 'pending' &&
-        state.verification_result === 'pass'
-      ) {
-        const supervisorRecovery = await recoverNativeSupervisorFinalVerificationLocked({
-          paths: options.paths,
-          name: options.name,
-        });
-        state = supervisorRecovery.state;
-        if (supervisorRecovery.action === 'rerun-final-verification') {
-          throw new Error(
-            'Native Supervisor final verification must be rerun for the current integration commit',
-          );
-        }
-        if (supervisorRecovery.action === 'recorded-final-verification') {
-          supervisor = await readNativeSupervisorState(options.paths, options.name);
-        }
-      }
-      const target = archiveDirectory(options.paths, transaction?.archive_ref ?? archiveRef(state));
-      const targetExists = await exists(target);
-      if (transaction) assertTransactionState(transaction, state);
-      if (activeExists && targetExists) {
-        throw new Error(
-          'Native active and archive directories both exist; doctor intervention is required',
-        );
-      }
-      if (!activeExists && !transaction && archived) {
-        if (!state.archived || state.status !== 'done' || state.loop.stage !== 'done') {
-          throw new Error('Native archive exists without a completed portable state');
-        }
-        await clearNativeSelectionIfLocked(options.paths, state.name);
-        await fs.rm(nativePreferredChangeRuntimeDir(options.paths, state.name), {
-          recursive: true,
-          force: true,
-        });
-        return {
-          change: state.name,
-          archiveDir: archived.dir,
-          transactionId: `recovered-${state.state_version}`,
-          state,
-        };
-      }
-      if (!transaction) {
-        if (!state.archived) {
-          assertArchiveReady(state);
-          if (state.builder_handoff?.raw_input_ref) {
-            const local = await readCurrentLocalExecution({ paths: options.paths, state });
-            if (!local) throw new Error('Native 原始执行记录缺失；不能直接归档旧摘要');
-          }
-        } else if (state.status !== 'done' || state.loop.stage !== 'done') {
-          throw new Error('Native active archived state is inconsistent');
-        }
-        const peers = await otherPortableCapabilityOwners({ paths: options.paths, state });
-        if (!state.archived && peers.length > 0 && serialDecision !== state.name) {
-          throw new NativePortableArchiveOrderRequiredError(peers);
-        }
-        transaction = {
-          schema: NATIVE_PORTABLE_ARCHIVE_TRANSACTION_SCHEMA,
-          id: randomUUID(),
-          change: state.name,
-          start_state_version: state.archived ? state.state_version - 1 : state.state_version,
-          archive_ref: archiveRef(state),
-          status: state.archived ? 'state-finalized' : 'prepared',
-          next_spec_index: state.archived ? state.spec_changes.length : 0,
-          spec_changes: await freezeArchiveSpecChanges(options.paths, state),
-          created_at: new Date().toISOString(),
-        };
-        await writeTransaction(options.paths, transaction);
-      }
-
-      if (!activeExists && targetExists && transaction.status === 'report-aligned') {
-        transaction = { ...transaction, status: 'moved' };
-        await writeTransaction(options.paths, transaction);
-      } else if (!activeExists && targetExists && transaction.status !== 'moved') {
-        throw new Error(
-          `Native Archive layout contradicts transaction state ${transaction.status}; doctor intervention is required`,
-        );
-      }
-      const archiveOwnedPaths = transaction.spec_changes.map(({ capability }) =>
-        path
-          .relative(
-            options.paths.projectRoot,
-            path.join(options.paths.specsDir, capability, 'spec.md'),
-          )
-          .replaceAll('\\', '/'),
+  const { paths, name } = options;
+  let transaction = await readTransaction(paths, name);
+  let state: NativePortableState;
+  try {
+    state = await readNativePortableChange(paths, name);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    if (transaction) {
+      state = await readNativePortableState(
+        path.join(archiveDirectory(paths, transaction.archive_ref), 'comet-state.yaml'),
       );
-      let supervisorDelivered = false;
-      if (transaction.status === 'prepared' && supervisor && !state.archived) {
-        // Do not publish the parent's canonical Specs before Supervisor has
-        // delivered its verified integration result to the real target.
-        const delivered = await finalizeNativeSupervisorDeliveryLocked({
-          paths: options.paths,
-          state: supervisor,
-          archiveOwnedPaths,
-          deferCleanup: true,
-        });
-        supervisor = delivered.state;
-      }
-      if (transaction.status === 'prepared') {
-        if (!state.archived && state.builder_handoff?.raw_input_ref) {
-          const local = await readCurrentLocalExecution({ paths: options.paths, state });
-          if (!local) throw new Error('Native 原始执行记录缺失；保留原归档事务并恢复证据');
-        }
-        for (
-          let index = transaction.next_spec_index;
-          index < transaction.spec_changes.length;
-          index += 1
-        ) {
-          await applySpecChange({
-            paths: options.paths,
-            state,
-            change: transaction.spec_changes[index],
-          });
-          transaction = { ...transaction, next_spec_index: index + 1 };
-          await writeTransaction(options.paths, transaction);
-          await options.hooks?.afterSpecApplied?.(index);
-        }
-        transaction = { ...transaction, status: 'specs-applied' };
-        await writeTransaction(options.paths, transaction);
-      }
-
-      if (transaction.status === 'specs-applied') {
-        if (!state.archived && state.builder_handoff?.raw_input_ref) {
-          const local = await readCurrentLocalExecution({ paths: options.paths, state });
-          if (!local) throw new Error('Native 原始执行记录缺失；保留已应用步骤并恢复证据');
-        }
-        // Supervisor delivery is the parent-level commit boundary. Do it before
-        // finalizing the portable parent as archived so a target-drift blocker
-        // cannot expose a false archived state while delivery is still pending.
-        if (supervisor && !state.archived && !supervisorDelivered) {
-          const delivered = await finalizeNativeSupervisorDeliveryLocked({
-            paths: options.paths,
-            state: supervisor,
-            archiveOwnedPaths,
-          });
-          supervisor = delivered.state;
-          supervisorDelivered = true;
-        }
-        if (!state.archived) {
-          const next: NativePortableState = {
-            ...state,
-            phase: 'archive',
-            status: 'done',
-            state_version: state.state_version + 1,
-            archived: true,
-            blockers: [],
-            loop: { ...state.loop, stage: 'done', next_action: null },
-          };
-          state = await compareAndSwapNativePortableState({
-            file: nativePortableStateFile(options.paths, state.name),
-            expectedStateVersion: state.state_version,
-            next,
-            containedRoot: options.paths.nativeRoot,
-          });
-        }
-        transaction = { ...transaction, status: 'state-finalized' };
-        await writeTransaction(options.paths, transaction);
-        await options.hooks?.afterFinalState?.();
-      }
-
-      if (transaction.status === 'state-finalized') {
-        const reportRoot = (await exists(activeDir)) ? activeDir : target;
-        await writeNativeVerificationReport({
-          file: path.join(reportRoot, 'verification.md'),
-          state,
-          ...(supervisor ? { supervisor } : {}),
-        });
-        const alignment = await inspectNativeVerificationReportAlignment({
-          file: path.join(reportRoot, 'verification.md'),
-          stateVersion: state.state_version,
-        });
-        if (alignment !== 'aligned')
-          throw new Error('Native final verification report is not aligned');
-        transaction = { ...transaction, status: 'report-aligned' };
-        await writeTransaction(options.paths, transaction);
-        if (supervisor && !supervisorDelivered) {
-          await finalizeNativeSupervisorDeliveryLocked({
-            paths: options.paths,
-            state: supervisor,
-            archiveOwnedPaths,
-          });
-          supervisorDelivered = true;
-        }
-        await options.hooks?.afterReportAligned?.();
-      }
-
-      if (transaction.status === 'report-aligned') {
-        if (supervisor && !supervisorDelivered) {
-          await finalizeNativeSupervisorDeliveryLocked({
-            paths: options.paths,
-            state: supervisor,
-            archiveOwnedPaths,
-          });
-        }
-        await fs.mkdir(options.paths.archiveDir, { recursive: true });
-        if (await exists(target)) {
-          throw new Error(`Native Archive target already exists: ${target}`);
-        }
-        await fs.rename(activeDir, target);
-        transaction = { ...transaction, status: 'moved' };
-        await writeTransaction(options.paths, transaction);
-        await options.hooks?.afterMove?.();
-      }
-
-      if (transaction.status === 'moved') {
-        await clearNativeSelectionIfLocked(options.paths, state.name);
-        await fs.rm(nativePreferredChangeRuntimeDir(options.paths, state.name), {
-          recursive: true,
-          force: true,
-        });
-        await options.hooks?.afterRuntimeCleanup?.();
-        await fs.rm(
-          nativePortableTransactionFile(options.paths, {
-            kind: 'archive',
-            change: state.name,
-          }),
-          { force: true },
-        );
-      }
-
-      return {
-        change: state.name,
-        archiveDir: target,
-        transactionId: transaction.id,
+      if (state.name !== name || !state.archived || state.status !== 'done')
+        throw new Error('Moved Archive does not match its original transaction', { cause: error });
+    } else {
+      const archived = await findArchivedPortableChange(paths, name);
+      if (!archived) throw error;
+      state = archived.state;
+      const receipt = await inspectNativeSdkArchiveFinalization({
+        paths,
         state,
+        runId: name,
+        archiveRef: path.basename(archived.dir),
+        history: true,
+      });
+      const cleanup = await nativePortableSupervisorCleanupBinding(paths, state);
+      if (cleanup) await executeNativeSupervisorCleanup(cleanup);
+      return {
+        change: name,
+        state,
+        transactionId: receipt.transactionId,
+        archiveDir: archived.dir,
       };
-    },
-    { allowedPortableTransaction: { kind: 'archive', change: options.name } },
-  );
+    }
+  }
+  const cleanup = await nativePortableSupervisorCleanupBinding(paths, state);
+  if (cleanup && !nativeSupervisorCleanupComplete(cleanup))
+    preflightNativeSupervisorCleanup(cleanup);
+  if (!state.archived) {
+    transaction = await applyNativeSdkArchiveSpecs({ paths, state });
+    state = await withNativeMutation(
+      paths,
+      async () => {
+        const current = await readNativePortableChange(paths, name);
+        if (current.state_version !== state.state_version)
+          throw new Error('Archive state changed; retain the original transaction and retry');
+        return writePortableMutation({
+          paths,
+          previous: current,
+          next: {
+            ...current,
+            status: 'done',
+            archived: true,
+            state_version: current.state_version + 1,
+            blockers: [],
+            loop: { ...current.loop, stage: 'done', next_action: null },
+          },
+        });
+      },
+      { allowedPortableTransaction: { kind: 'archive', change: name } },
+    );
+  }
+  if (!transaction)
+    throw new Error(
+      'Original Archive transaction is unavailable; inspect its retained receipt before continuing',
+    );
+  await finalizeNativeSdkArchive({
+    paths,
+    state,
+    runId: name,
+    transactionId: transaction.id,
+    archiveRef: transaction.archive_ref,
+  });
+  if (cleanup) await executeNativeSupervisorCleanup(cleanup);
+  await withNativeMutation(paths, () => clearNativeSelectionIfLocked(paths, name));
+  return {
+    change: name,
+    state,
+    transactionId: transaction.id,
+    archiveDir: archiveDirectory(paths, transaction.archive_ref),
+  };
 }
 
 /** Commit a recovered prewrite failure only while no Archive writer has started. */
@@ -1317,9 +955,8 @@ export async function commitNativeSdkArchiveFailure(options: {
     projectRoot,
     (next.input as { artifactRootRef: string }).artifactRootRef,
   );
-  return withNativeMutationLock(
+  return withNativeMutation(
     paths,
-    `commit SDK Archive failure ${runId}`,
     async () => {
       const current = await store.read(runId);
       if (current?.revision !== expectedRevision) return false;

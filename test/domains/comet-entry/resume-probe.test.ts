@@ -1,3 +1,14 @@
+import '../../helpers/isolated-agent-home.js';
+import { writeNativePortableState as writeDiscoveryFixture } from '../../../domains/comet-native/native-portable-state.js';
+import { confirmNativePortableShape as simulatedConfirmShape } from '../../helpers/native-portable-confirmed-transition.js';
+import { createNativeRunnerChannel as simulatedRunner } from '../../../domains/comet-native/native-runner-protocol.js';
+import {
+  submitNativePortableBuilderCandidate as simulatedBuilder,
+  dispatchNativePortableVerifier as simulatedDispatch,
+  submitNativePortableVerifierResult as simulatedVerify,
+  confirmNativePortableSkillCoordinatedPass as simulatedAccept,
+  readNativePortableChange as simulatedRead,
+} from '../../../domains/comet-native/native-portable-runtime.js';
 import { createHash } from 'node:crypto';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { promises as fs } from 'fs';
@@ -20,10 +31,7 @@ import {
   COMET_RESUME_PROBE_SCHEMA_VERSION,
   resolveCometEntryResumeProbe,
 } from '../../../domains/comet-entry/resume-probe.js';
-import {
-  createNativeChange,
-  nativeChangeDir,
-} from '../../../domains/comet-native/native-change.js';
+import { nativeChangeDir } from '../../../domains/comet-native/native-change.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -37,12 +45,9 @@ import {
   nativeSelectionFile,
   selectNativeChange,
 } from '../../../domains/comet-native/native-selection.js';
-import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
-import {
-  createNativePortableChange,
-  nativeLocalExecutionFile,
-} from '../../../domains/comet-native/native-portable-runtime.js';
-import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
+
+import { createNativePortableChange } from '../../../domains/comet-native/native-portable-runtime.js';
+
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
 const VALID_BRIEF = `# Outcome
@@ -86,12 +91,79 @@ async function writeFile(file: string, content: string): Promise<void> {
   await fs.writeFile(file, content, 'utf8');
 }
 
-async function createNative(projectRoot: string, name: string, artifactRoot = '.'): Promise<void> {
+async function createNative(projectRoot: string, name: string, artifactRoot = '.') {
   const initialized = spawnSync('git', ['init', '-q', projectRoot]);
   expect(initialized.status).toBe(0);
   const paths = await nativeProjectPaths(projectRoot, artifactRoot);
-  const state = await createNativeChange({ paths, name, language: 'en' });
-  await fs.writeFile(path.join(nativeChangeDir(paths, name), state.brief), VALID_BRIEF, 'utf8');
+  const dir = nativeChangeDir(paths, name);
+  await fs.mkdir(dir, { recursive: true });
+  // Static Shape-only discovery fixture, using the current pure model. No phase, approval, claim, or transition is forged.
+  await writeDiscoveryFixture(
+    path.join(dir, 'comet-state.yaml'),
+    createNativePortableState({ name, language: 'en' }),
+  );
+  await fs.writeFile(path.join(nativeChangeDir(paths, name), 'brief.md'), VALID_BRIEF, 'utf8');
+}
+async function advanceNativeChange(options: any) {
+  const { paths, name } = options;
+  let state = await simulatedRead(paths, name);
+  const runner = simulatedRunner();
+  if (state.phase === 'shape') {
+    state = await simulatedConfirmShape({ paths, name });
+  } else if (state.phase === 'build') {
+    await simulatedBuilder({
+      paths,
+      name,
+      input: {
+        identity: runner.captureExecutionIdentity({
+          identityProvider: 'SIMULATED',
+          executionRef: 'SIMULATED-builder',
+        }),
+        candidateId: 'SIMULATED-' + name,
+        summary: 'SIMULATED phase routing work',
+        addressedAcceptanceIds: state.acceptance.map((a: any) => a.id),
+        acceptanceReview: state.acceptance.map((a: any) => ({
+          id: a.id,
+          status: 'implemented-with-evidence',
+          evidence: ['SIMULATED isolated fixture evidence'],
+          note: 'SIMULATED phase fixture',
+        })),
+        checks: [],
+        knownLimits: [],
+      },
+    });
+    state = await simulatedDispatch({ paths, name, verifierExecutionId: 'SIMULATED-verifier' });
+  } else if (state.phase === 'verify') {
+    await simulatedVerify({
+      paths,
+      name,
+      maxVerifyFailures: 5,
+      envelope: runner.envelopeVerifierResponse({
+        candidateId: 'SIMULATED-' + name,
+        identity: runner.captureExecutionIdentity({
+          identityProvider: 'SIMULATED',
+          executionRef: 'SIMULATED-verifier',
+        }),
+        payload: {
+          kind: 'final-result',
+          result: {
+            iteration: state.loop.iteration,
+            attempt: state.loop.attempt,
+            verdict: 'pass',
+            acceptance: state.acceptance.map((a: any) => ({
+              id: a.id,
+              result: 'passed',
+              reason: 'SIMULATED routing verification',
+            })),
+            risks: [],
+            summary: 'SIMULATED phase routing verification',
+          },
+        },
+      }),
+    });
+    state = await simulatedAccept({ paths, name });
+  }
+  return { change: state, findings: [] };
 }
 
 async function createClassic(projectRoot: string, name: string): Promise<void> {
@@ -334,7 +406,7 @@ describe('Comet entry resume probe v2', () => {
     const paths = await nativeProjectPaths(projectRoot, '.');
     await createNativePortableChange({ paths, name: 'portable-resume', language: 'en' });
     await selectNativeChange(paths, 'portable-resume');
-    await fs.rm(nativeLocalExecutionFile(paths, 'portable-resume'), { force: true });
+    // Removed local execution overlay is never created by the current API.
 
     await expect(
       resolveCometEntryResumeProbe(projectRoot, input('继续 portable-resume')),
@@ -356,7 +428,7 @@ describe('Comet entry resume probe v2', () => {
       JSON.stringify({
         operation: 'start',
         runId: 'sdk-resume',
-        workflow: { id: 'comet-native', version: '1' },
+        workflow: { id: 'comet-native', version: '4' },
         input: { name: 'sdk-resume', artifactRootRef: '.' },
         initialState: createNativePortableState({
           name: 'sdk-resume',
@@ -455,7 +527,23 @@ describe('Comet entry resume probe v2', () => {
       projectRoot,
       '--json',
     ]);
-    expect(diagnosis.stdout).toContain('sdk-run-recoverable');
+    expect(JSON.parse(diagnosis.stdout)).toMatchObject({
+      data: {
+        recovery: {
+          code: 'runtime-recovery-required',
+          reason: expect.stringContaining('checkpoint recovery'),
+        },
+      },
+    });
+    expect(diagnosis.exitCode).toBe(0);
+    expect(JSON.parse(diagnosis.stdout).data.recovery.commandArgs).toEqual([
+      'comet',
+      'native',
+      'doctor',
+      'missing-run',
+      '--repair',
+      '--confirmed',
+    ]);
     expect(await snapshot(projectRoot)).toEqual(beforeProject);
     expect(await snapshot(runtimeRoot)).toEqual(beforeRuntime);
     const repaired = await runNativeCli([
@@ -656,7 +744,7 @@ describe('Comet entry resume probe v2', () => {
       JSON.stringify({
         operation: 'start',
         runId: 'sdk-cancelled',
-        workflow: { id: 'comet-native', version: '1' },
+        workflow: { id: 'comet-native', version: '4' },
         input: { name: 'sdk-cancelled', artifactRootRef: '.' },
         initialState: createNativePortableState({
           name: 'sdk-cancelled',
@@ -997,11 +1085,6 @@ describe('Comet entry resume probe v2', () => {
         });
         expect(advanced.findings).toEqual([]);
       } else if (phase === 'verify') {
-        await fs.writeFile(
-          path.join(changeDir, 'verification.md'),
-          await nativeVerificationFixtureReport({ paths, name: 'phase-routing' }),
-          'utf8',
-        );
         const advanced = await advanceNativeChange({
           paths,
           name: 'phase-routing',

@@ -14,8 +14,8 @@ async function typescriptFiles(root: string): Promise<string[]> {
   return nested.flat().sort();
 }
 
-// The old boundary asserted the removed snapshot/receipt providers. v4 uses
-// the platform spawn adapter and portable Runtime tests for this contract.
+// Historical snapshot/receipt assertions remain as reference below. Ordinary
+// checks now belong to the Agent platform; the active test enforces that boundary.
 describe('Native self-contained runtime boundary (legacy)', () => {
   it.skip('keeps process execution inside the bounded snapshot and receipt providers', async () => {
     const root = path.resolve('domains', 'comet-native');
@@ -159,18 +159,22 @@ describe('Native self-contained runtime boundary (legacy)', () => {
     }
   });
 
-  it('routes v4 checks through the platform process adapter', async () => {
-    const executor = await fs.readFile(
-      path.resolve('domains', 'comet-native', 'native-check-executor.ts'),
+  it('leaves ordinary checks to the Agent platform without a local executor', async () => {
+    const command = await fs.readFile(
+      path.resolve('domains', 'comet-native', 'native-check-command.ts'),
       'utf8',
     );
     const runtime = await fs.readFile(
       path.resolve('domains', 'comet-native', 'native-portable-runtime.ts'),
       'utf8',
     );
-    expect(executor).toContain("from '../../platform/process/spawn-command.js'");
-    expect(executor).toContain('terminateProcessTree');
-    expect(runtime).toContain('executeNativePortableCheckPlan');
+    await expect(
+      fs.access(path.resolve('domains', 'comet-native', 'native-check-executor.ts')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(command).toContain("status: 'platform-execution-required'");
+    expect(command).toContain('checksExecuted: false');
+    expect(command).not.toMatch(/child_process|spawn-command|terminateProcessTree/u);
+    expect(runtime).not.toContain('executeNativePortableCheckPlan');
     expect(runtime).not.toContain('buildNativeVerificationReceipt');
   });
 });

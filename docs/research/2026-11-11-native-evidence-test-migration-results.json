@@ -1,0 +1,38 @@
+{
+  "ordinaryOnly": true,
+  "noEval": true,
+  "noModel": true,
+  "noRepositoryProductTestOrRegistryEdits": true,
+  "commands": [
+    {
+      "command": "node D:/Project/Comet/node_modules/vitest/vitest.mjs run --config C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/evidence-five/vitest.config.cjs native-current-verification-business.test.ts",
+      "result": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/evidence-five/current-report-business-initial-results.json",
+      "passed": 17
+    },
+    {
+      "command": "node D:/Project/Comet/node_modules/vitest/vitest.mjs run --config C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/evidence-five/redaction.config.cjs native-current-redaction-boundary.test.ts",
+      "result": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/evidence-five/current-redaction-boundary-results.json",
+      "failed": 2,
+      "meaning": "Native processed Builder summary/known_limits persisted raw simulated credential markers; compact stdout already did not echo them"
+    },
+    {
+      "command": "node D:/Project/Comet/node_modules/vitest/vitest.mjs run --config C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/evidence-five/redaction-final.config.cjs native-current-redaction-boundary.test.ts",
+      "result": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/evidence-five/current-redaction-boundary-final-results.json",
+      "passed": 3,
+      "meaning": "Original2 RED→GREEN plus actual public Verifier state/rendered report redaction; original caller input preserved"
+    },
+    {
+      "command": "node D:/Project/Comet/node_modules/vitest/vitest.mjs run --config C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/evidence-five/whole.config.cjs native-current-verification-business.test.ts",
+      "result": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/evidence-five/current-verification-business-whole-results.json",
+      "passed": 20,
+      "durationSeconds": 11.07
+    }
+  ],
+  "notRun": [
+    "repository copied-file test/type/lint/build checks",
+    "latest generated Runtime bundle for new20 probes",
+    "install or real platform Hook",
+    "model/container Eval",
+    "full suite"
+  ]
+}
