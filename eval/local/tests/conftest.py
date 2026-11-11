@@ -1852,7 +1852,13 @@ def _docker_environment_dirs_for_request(request, tasks_dir: Path) -> list[Path]
 @pytest.fixture(scope="session", autouse=True)
 def prebuild_docker_image(request):
     """Pre-build Docker image once per session to avoid race conditions."""
-    if _is_unit_tests_only(request.config) or request.config.option.collectonly:
+    if (
+        _is_unit_tests_only(request.config)
+        or request.config.option.collectonly
+        or _getoption(request.config, "--treatment") == "COMET_NATIVE_SDK_CURRENT"
+    ):
+        # Current Native builds after its case workspace installs the selected
+        # CLI snapshot and adapts legacy business environments to Node 22.
         yield
         return
 
@@ -2601,19 +2607,16 @@ def _build_docker_image_with_lock(
         if context is not None
         else DOCKER_BUILD_LOCK
     )
-    with file_lock(lock_path):
+    build_timeout = 900
+    if (environment_dir / ".dataset-task.json").is_file():
+        metadata = json.loads((environment_dir / ".dataset-task.json").read_text(encoding="utf-8"))
+        build_timeout = metadata.get("execution", {}).get("buildTimeoutSeconds", 1800)
+    with file_lock(lock_path, timeout=build_timeout):
         # A cold image build downloads Debian packages and installs the selected CLI.
         # Five minutes is insufficient after cache cleanup or on a proxied connection.
         command = ["docker.sh", "build", str(environment_dir)]
         if agent:
             command.extend(["--agent", agent])
-        # 内置数据集还需安装原题和独立评分环境，首次下载允许最多 30 分钟。
-        build_timeout = 900
-        if (environment_dir / ".dataset-task.json").is_file():
-            metadata = json.loads(
-                (environment_dir / ".dataset-task.json").read_text(encoding="utf-8")
-            )
-            build_timeout = metadata.get("execution", {}).get("buildTimeoutSeconds", 1800)
         run_options = {"timeout": build_timeout, "check": False, "terminate_process_tree": True}
         if environment is not None:
             run_options["env"] = environment
