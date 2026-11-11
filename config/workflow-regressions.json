@@ -33876,6 +33876,83 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-archive-prewrite-rejection-recovery",
+      "behavior": "旧 Run 的事务创建前失败被拒后，公开归档恢复命令补记原失败，保留修复与重新验收入口。",
+      "sources": ["report:2026-11-11-native-archive-prewrite-race"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 053 基线 9acb00ff 上通过真实 Runtime 保存旧执行器 candidate-drift 失败的拒绝记录，再执行 native archive --recover；原 Action 仍为 unknown。",
+      "expected": "无事务且原失败身份匹配时将原 Action 收尾为 failed；重复恢复不写入，修复、验收和接受后可正常归档。",
+      "forbidden": "凭空恢复无失败记录的未知执行；接受错误身份、候选或修改后的失败；用失败覆盖已有事务；将失败改成成功或重复归档。",
+      "rootCause": "053 删除候选内容检查后仍只按冻结事务恢复 archive.execute，未处理旧版本保存的无事务失败回报。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers a rejected Archive prewrite failure through the CLI without creating a transaction|keeps legacy Archive recovery blocked without a rejected prewrite failure|rejects mismatched legacy Archive failure identities and preflight candidates|recovers an existing Archive transaction instead of a rejected prewrite failure)$",
+          "requiredNames": [
+            "recovers a rejected Archive prewrite failure through the CLI without creating a transaction",
+            "keeps legacy Archive recovery blocked without a rejected prewrite failure",
+            "rejects mismatched legacy Archive failure identities and preflight candidates",
+            "recovers an existing Archive transaction instead of a rejected prewrite failure"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-recovery-change-name",
+      "behavior": "Run ID 与 change 名称不同时仍按原 change 查找归档事务，不能把已有事务当成事务创建前失败。",
+      "sources": ["report:2026-11-11-native-archive-prewrite-race"],
+      "coverageLevel": "runtime",
+      "reproduction": "创建 Run ID 不同于 change 名称的 Run，执行原归档写入后保留一个被拒失败，再恢复未知 Action。",
+      "expected": "找到原 change 的事务并保留实际成功结果。",
+      "forbidden": "因按 Run ID 查找而遗漏原事务，转而补记失败或重复写入。",
+      "rootCause": "恢复入口首次查找使用 run.runId，实际事务以 state.name 保存。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^recovers Archive transactions by change name when the Run ID differs$",
+          "requiredNames": ["recovers Archive transactions by change name when the Run ID differs"]
+        }
+      ]
+    },
+    {
+      "id": "native-cancelled-archive-recovery-change-name",
+      "behavior": "取消归档恢复按 change 名称查找原事务，Run ID 不同也能收尾且保留取消终态。",
+      "sources": ["https://github.com/rpamis/comet/pull/549#discussion_r4534747591"],
+      "coverageLevel": "runtime",
+      "reproduction": "使用 Run ID 与 change 名称不同的真实 Runtime 执行归档写入，以旧取消语义留下事务，再执行取消归档恢复。",
+      "expected": "收尾原 change 事务并可重复读取原收据，Run 保持 cancelled。",
+      "forbidden": "按 Run ID 漏掉事务，创建错误名称的事务或重新调度已取消 Run。",
+      "rootCause": "取消恢复分支仍将 run.runId 当作以 state.name 命名的事务键。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^recovers a cancelled Archive transaction by change name when the Run ID differs$",
+          "requiredNames": [
+            "recovers a cancelled Archive transaction by change name when the Run ID differs"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-prewrite-recovery-commit-race",
+      "behavior": "旧失败恢复与归档事务写入共享提交边界，已有事务优先恢复真实进度。",
+      "sources": ["https://github.com/rpamis/comet/pull/549#discussion_r4534747584"],
+      "coverageLevel": "runtime",
+      "reproduction": "在失败 validator 接受后、Run CAS 前调用持原 claim 的延迟执行器写入归档事务，再继续失败提交。",
+      "expected": "拒绝失败提交，原 Action 保留 unknown，并允许从已有事务恢复成功。",
+      "forbidden": "Specs 已应用却把原 Action 收尾为失败并进入修复路线。",
+      "rootCause": "无事务校验与失败状态 CAS 之间没有与归档写入共用 mutation lock。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^rejects Archive prewrite recovery when a transaction appears before its commit$",
+          "requiredNames": [
+            "rejects Archive prewrite recovery when a transaction appears before its commit"
+          ]
+        }
+      ]
     }
   ],
   "historicalTestMigrations": [
