@@ -567,7 +567,11 @@ describeBash('Classic 0.3.9 differential contract', () => {
 
     expect(active.status).toBe(reference.status);
     expect(active.stdout).toBe(reference.stdout);
-    expect(handoffMarkerLines(active.stderr)).toEqual(handoffMarkerLines(reference.stderr));
+    const activeMarkers = handoffMarkerLines(active.stderr);
+    expect(activeMarkers).toContain('[HANDOFF] source openspec/changes/full-handoff/proposal.md');
+    expect(activeMarkers.filter((line) => !line.startsWith('[HANDOFF] source '))).toEqual(
+      handoffMarkerLines(reference.stderr),
+    );
     const activeYaml = { ...active.yaml };
     const referenceYaml = { ...reference.yaml };
     expect(activeYaml.handoff_hash).toMatch(/^[a-f0-9]{64}$/u);

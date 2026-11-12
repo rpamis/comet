@@ -1063,6 +1063,7 @@ def test_native_interrupted_transition_fixture_is_recovered_by_current_runtime(t
     assert status["data"]["name"] == "add-character-counting"
     assert status["data"]["phase"] == "shape"
     assert status["data"]["migrationRequired"] is True
+    legacy_runtime = {str(p.relative_to(change)): p.read_bytes() for p in (change / "runtime").rglob("*") if p.is_file()}
 
     repaired = run_native(
         "doctor",
@@ -1072,26 +1073,17 @@ def test_native_interrupted_transition_fixture_is_recovered_by_current_runtime(t
 
     assert repaired["data"]["healthy"] is True
     assert repaired["data"]["repaired"] is True
-    assert repaired["data"]["migration"] == {
-        "from": "legacy",
-        "to": "comet.native.v4",
-        "stateVersion": 1,
-    }
+    assert repaired["data"]["runtimeFormat"] == "compat"
     state = yaml.safe_load((change / "comet-state.yaml").read_text(encoding="utf-8"))
     assert state["schema"] == "comet.native.v4"
     assert state["phase"] == "shape"
     assert state["loop"]["stage"] == "shape"
     assert state["verification"] is None
     assert state["history"][-1]["outcome"] == "recovery"
-    assert not (change / "runtime/transition.json").exists()
+    assert {str(p.relative_to(change)): p.read_bytes() for p in (change / "runtime").rglob("*") if p.is_file()} == legacy_runtime
 
     repeated = run_native("doctor", "add-character-counting", "--repair")
     assert repeated["data"]["healthy"] is True
 
-    local_runtimes = list(
-        data_root.glob("workspaces/*/runtime/native/changes/add-character-counting")
-    )
-    assert len(local_runtimes) == 1
-    local_runtime = local_runtimes[0]
-    assert (local_runtime / "state.json").exists()
-    assert not (local_runtime / "trajectory.jsonl").exists()
+    # Import keeps historical files and creates no retired platform executor.
+    assert not list(data_root.glob("workspaces/*/runtime/native/changes/add-character-counting/state.json"))

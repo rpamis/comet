@@ -111,7 +111,7 @@ describe('Classic handoff material reuse', () => {
       throw error;
     }
     await expect(validateClassicSdkDesignContext({ ...options, ...prepared })).rejects.toThrow(
-      /symbolic link|junction/i,
+      /regular file|symbolic link|junction/i,
     );
   });
 });

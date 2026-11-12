@@ -177,6 +177,7 @@ describe('Classic read-only state and Archive identity', () => {
   it('rejects a symbolic link at an absolute home read target', async (context) => {
     await requireFileSymlink(context);
     const runtime = await workspaceRuntime.resolveWorkspaceRuntimeRoot(root);
+    await fs.mkdir(runtime, { recursive: true });
     const outside = path.join(directory, 'outside.json');
     await fs.writeFile(outside, 'untouched');
     const target = path.join(runtime, 'record.json');

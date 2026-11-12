@@ -480,6 +480,37 @@ describe('DeepSeek Harness plugin package', () => {
     }
   }, 30_000);
 
+  it.runIf(process.platform === 'win32')(
+    'passes literal percent and bang paths through Windows npm shims',
+    async () => {
+      const temporary = await mkdtemp(path.join(os.tmpdir(), 'comet dsh literal '));
+      try {
+        const { dashboardCommand } = (await import(
+          pathToFileURL(path.join(repositoryRoot, 'plugin/dsh/index.js')).href
+        )) as HostModule;
+        const entry = path.join(temporary, 'args.mjs');
+        await writeFile(entry, 'console.log(JSON.stringify(process.argv.slice(2)));');
+        const shim = path.join(temporary, 'comet.cmd');
+        await writeFile(shim, `@echo off\r\n"${process.execPath}" "${entry}" %*\r\n`);
+        const cwd = path.join(temporary, '%COMET_DSH_LITERAL% & !COMET_DSH_LITERAL!');
+        const spec = dashboardCommand({ command: shim, argsPrefix: [] }, cwd);
+        const result = spawnSync(spec.command, spec.args, {
+          env: { ...process.env, COMET_DSH_LITERAL: 'must-not-expand', ...spec.env },
+          encoding: 'utf8',
+          windowsHide: true,
+          windowsVerbatimArguments: spec.verbatim,
+        });
+        expect(result.status, result.stderr).toBe(0);
+        expect(JSON.parse(result.stdout)).toEqual(['dashboard', cwd, '--no-open']);
+        for (const invalid of ['bad"path', 'bad\npath', 'bad\rpath', 'bad\0path']) {
+          expect(() => dashboardCommand({ command: shim, argsPrefix: [] }, invalid)).toThrow();
+        }
+      } finally {
+        await rm(temporary, { recursive: true, force: true });
+      }
+    },
+  );
+
   it('launches, rewrites, reuses and stops the dashboard process', async () => {
     const temporary = await mkdtemp(path.join(os.tmpdir(), 'comet dsh launcher '));
     try {
@@ -510,9 +541,15 @@ describe('DeepSeek Harness plugin package', () => {
         ),
       ).toEqual({
         command: 'cmd.exe',
-        args: ['/d', '/s', '/c', '""C:\\npm\\comet.cmd" dashboard "C:\\work project" --no-open"'],
+        args: [
+          '/d',
+          '/v:off',
+          '/s',
+          '/c',
+          '""%COMET_DSH_CLI%" dashboard "%COMET_DSH_CWD%" --no-open"',
+        ],
         verbatim: true,
-        env: {},
+        env: { COMET_DSH_CLI: 'C:\\npm\\comet.cmd', COMET_DSH_CWD: 'C:\\work project' },
       });
       expect(
         dashboardCommand(

@@ -106,7 +106,7 @@ describe('Classic project config', () => {
 
       await expect(
         readClassicConfigValue('review_mode', { cwd: projectRoot, homeDir }),
-      ).rejects.toThrow(/symbolic link or junction/iu);
+      ).rejects.toThrow(/regular file|symbolic link or junction/iu);
     } finally {
       await fs.rm(outsideRoot, { recursive: true, force: true });
     }

@@ -220,7 +220,7 @@ describe('Classic SDK read work budgets', () => {
       await fs.writeFile(target, source);
       await fs.rm(stateFile);
       await fs.symlink(target, stateFile);
-      await expect(store.read('demo')).rejects.toThrow(/symbolic link/u);
+      await expect(store.read('demo')).rejects.toThrow(/regular file/u);
       expect(await fs.readFile(target, 'utf8')).toBe(source);
     },
   );

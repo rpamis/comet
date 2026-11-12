@@ -7,6 +7,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import traceback
 from pathlib import Path
 
@@ -79,11 +80,12 @@ def assert_recovery(run: dict, archived: Path, context: dict) -> None:
     builders = [a for a in actions if a["stepId"] == "build.builder"]
     checks = [a for a in actions if a["stepId"] == "verify.checks"]
     verifiers = [a for a in actions if a["stepId"] == "verify.verifier"]
-    assert len(builders) == len(checks) == 1 and len(verifiers) == 2, (
+    managed = run["workflow"]["version"] != "4"
+    assert len(builders) == 1 and len(checks) == int(managed) and len(verifiers) == 2, (
         "Candidate/checks were replaced or recovery skipped"
     )
-    builder, check = builders[0], checks[0]
-    assert all(a["status"] == "succeeded" for a in [builder, check, *verifiers])
+    builder = builders[0]
+    assert all(a["status"] == "succeeded" for a in [builder, *checks, *verifiers])
 
     def result(action):
         return action["outcome"]["output"]
@@ -93,7 +95,7 @@ def assert_recovery(run: dict, archived: Path, context: dict) -> None:
     assert passed["response"]["result"]["verdict"] == "pass", "Missing passing replacement verifier"
     candidate = state["builder_handoff"]["candidate_id"]
     assert (
-        blocked["candidateId"] == passed["candidateId"] == result(check)["candidateId"] == candidate
+        blocked["candidateId"] == passed["candidateId"] == candidate
     ), "Candidate changed"
     sessions = [a["claim"]["sessionId"] for a in [builder, *verifiers]]
     assert len(set(sessions)) == 3 and all(sessions), "Verifier is not independent"
@@ -108,21 +110,32 @@ def assert_recovery(run: dict, archived: Path, context: dict) -> None:
         assert {a["id"] for a in items} == acceptance and all(
             a["result"] == expected for a in items
         )
-    receipt = result(check)
-    assert receipt["inputSnapshot"]["schema"] == "comet.native.check-input.v2"
-    assert (
-        receipt["inputSnapshot"]["complete"] is True
-        and receipt["inputSnapshot"]["diagnostics"] == []
-    )
-    assert receipt["inputSnapshot"]["before"] == receipt["inputSnapshot"]["after"], (
-        "Check mutated candidate inputs"
-    )
-    plans = result(builder)["verificationChecks"]
-    assert_once_evidence(plans, receipt["checks"])
-    business = {p["id"] for p in plans if "pytest" in p.get("argv", [])}
-    assert business and any(
-        c["id"] in business and c["status"] == "passed" for c in receipt["checks"]
-    ), "No Runtime business-test evidence"
+    if managed:
+        check = checks[0]
+        assert result(check)["candidateId"] == candidate
+        receipt = result(check)
+        assert receipt["inputSnapshot"]["schema"] == "comet.native.check-input.v2"
+        assert (
+            receipt["inputSnapshot"]["complete"] is True
+            and receipt["inputSnapshot"]["diagnostics"] == []
+        )
+        assert receipt["inputSnapshot"]["before"] == receipt["inputSnapshot"]["after"], (
+            "Check mutated candidate inputs"
+        )
+        plans = result(builder)["verificationChecks"]
+        assert_once_evidence(plans, receipt["checks"])
+        business = {p["id"] for p in plans if "pytest" in p.get("argv", [])}
+        assert business and any(
+            c["id"] in business and c["status"] == "passed" for c in receipt["checks"]
+        ), "No Runtime business-test evidence"
+    else:
+        for reports in (result(builder)["checks"], passed["checks"]):
+            names = [report["name"] for report in reports]
+            assert len(names) == len(set(names)) and set(names) == {"business tests", "recovery-once"}
+            assert all(report["result"] == "passed" and report.get("note") for report in reports), (
+                "Platform checks must report actual passing results"
+            )
+        assert result(builder)["checks"] == passed["checks"], "Original platform reports changed"
     assert_once_artifacts(context)
     history = [entry["outcome"] for entry in state["history"]]
     assert (
@@ -131,10 +144,14 @@ def assert_recovery(run: dict, archived: Path, context: dict) -> None:
     )
     assert any(a["stepId"] == "archive.finalize" and a["status"] == "succeeded" for a in actions)
     # Approved auxiliary fields retain planned values; final brief must contain resolved lines.
-    auxiliary = [
-        x for a in state["shape_semantic_snapshot"]["artifacts"] for x in a.get("auxiliary", [])
-    ]
-    assert any(x["kind"] == "test-plan-line" and x["value"] == "planned" for x in auxiliary)
+    if managed:
+        auxiliary = [
+            x for a in state["shape_semantic_snapshot"]["artifacts"] for x in a.get("auxiliary", [])
+        ]
+        assert any(x["kind"] == "test-plan-line" and x["value"] == "planned" for x in auxiliary)
+    else:
+        approved = [w for w in run["waits"] if w["stepId"] == "shape.confirm" and w["status"] == "resolved"]
+        assert len(approved) == 1 and approved[0]["decision"]["choice"] == "approved"
     brief = (archived / "brief.md").read_text()
     assert re.search(r"\|\s*\d+(?:\s*[-–]\s*\d+)?\s*\|", brief), "No resolved test line range"
     assert not re.search(r"\|\s*planned\s*\|", brief), "Test line plan was not resolved"
@@ -157,8 +174,8 @@ def assert_boundary(run, interaction):
     assert boundary["counterHash"] == digest(
         (WORKSPACE / ".cache/comet-sdk-recovery/check-count").read_text()
     )
-    assert boundary["shapeHash"] == state["shape_confirmation_hash"]
-    assert len(boundary["actions"]) == 3
+    assert boundary["shapeHash"] == (state["shape_confirmation_hash"] if run["workflow"]["version"] != "4" else next(w["proposalHash"] for w in run["waits"] if w["stepId"] == "shape.confirm" and w["status"] == "resolved"))
+    assert len(boundary["actions"]) == (2 if run["workflow"]["version"] == "4" else 3)
     for original in boundary["actions"]:
         action = next(a for a in run["actions"] if a["id"] == original["id"])
         assert (
@@ -246,7 +263,7 @@ def check_feature() -> dict:
             ("Hello. Why?! Fine!", 3, 3),
         ]:
             output = subprocess.run(
-                ["python3", "wordcount.py", "--sentences", "--lines"],
+                [sys.executable, "wordcount.py", "--sentences", "--lines"],
                 input=text,
                 cwd=WORKSPACE,
                 capture_output=True,

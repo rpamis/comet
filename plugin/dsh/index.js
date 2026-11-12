@@ -187,14 +187,21 @@ export function dashboardCommand(
   const lower = executable.toLowerCase();
   const env = cli.env ?? {};
   if (platform === 'win32' && (lower.endsWith('.cmd') || lower.endsWith('.bat'))) {
-    if (executable.includes('"') || cwd.includes('"')) {
+    if (/["\r\n\0]/u.test(executable) || /["\r\n\0]/u.test(cwd)) {
       throw new Error('Comet Dashboard paths cannot contain double quotes');
     }
     return {
       command: comspec || 'cmd.exe',
-      args: ['/d', '/s', '/c', `""${executable}" dashboard "${cwd}" --no-open"`],
+      args: [
+        '/d',
+        '/v:off',
+        '/s',
+        '/c',
+        '""%COMET_DSH_CLI%" dashboard "%COMET_DSH_CWD%" --no-open"',
+      ],
       verbatim: true,
-      env,
+      // 参数值在环境变量展开后不会再次展开其中的 %NAME% 或 !NAME!。
+      env: { ...env, COMET_DSH_CLI: executable, COMET_DSH_CWD: cwd },
     };
   }
   return {

@@ -7,6 +7,7 @@ import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
+import { createOpenSpecArchiveFixture } from '../../helpers/classic-openspec-fixture.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -171,8 +172,9 @@ async function archiveFixture() {
 it.each(['running', 'unknown'] as const)(
   'rejects cancelling the original %s Classic Archive before changing its Run or files and recovers only that Archive claim',
   async (status) => {
-    vi.stubEnv('COMET_OPENSPEC', process.env.COMET_OPENSPEC || 'openspec');
     const f = await archiveFixture();
+    const openspec = await createOpenSpecArchiveFixture(f.root, 'demo');
+    vi.stubEnv('COMET_OPENSPEC', openspec.command);
     // The unknown sample performs the real local OpenSpec archive before losing its result.
     if (status === 'unknown') {
       const result = await runClassicSdkArchive(f.claimed, f.action, f.root);

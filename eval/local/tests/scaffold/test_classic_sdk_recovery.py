@@ -208,6 +208,7 @@ def completed(tmp_path_factory):
         "USERPROFILE": str(home),
         "XDG_CONFIG_HOME": str(home / ".config"),
         "GIT_CONFIG_NOSYSTEM": "1",
+        "COMET_DATA_DIR": str(root / "data"),
     }
 
     def put(ref, text):
@@ -251,6 +252,11 @@ def completed(tmp_path_factory):
         response = json.loads(result.stdout)
         assert response.get("exitCode", 0) == 0, response
         return response.get("data")
+
+    def platform_checks(argv, ref):
+        result = subprocess.run(argv, cwd=project, env=env, capture_output=True, text=True, timeout=60)
+        assert result.returncode == 0, result.stdout + result.stderr
+        put(ref, json.dumps({"checks": [{"name": " ".join(argv), "result": "passed", "note": f"Actual platform exit {result.returncode}"}]}))
 
     put(
         ".comet/config.yaml",
@@ -420,30 +426,12 @@ fs.renameSync(path.join(base,name), target);
         )
         put("test_wordcount.py", tests)
         put(f"{change}/tasks.md", "- [x] Implement and test CLI <!-- comet-task:impl -->\n")
-        cli("guard", name, "build", "--apply", "--local", "--", "python3", "test_wordcount.py")
+        checks = f".comet/{name}-checks.json"
+        platform_checks([sys.executable, "test_wordcount.py"], checks)
+        cli("guard", name, "build", "--apply", "--checks", checks)
         report = f"docs/superpowers/reports/{name}.md"
         put(report, "# Verification\nBaseline and feature behavior checked.\n")
-        if profile != "full":
-            put(
-                ".comet/check-policy.json",
-                json.dumps(
-                    {
-                        "version": 2,
-                        "commands": [
-                            {
-                                "argv": [sys.executable, "-I", "verify_coexistence.py"],
-                                "cwd": ".",
-                                "files": [
-                                    "wordcount.py",
-                                    "test_wordcount.py",
-                                    "verify_coexistence.py",
-                                ],
-                                "outputs": ["__pycache__/**", ".pytest_cache/**"],
-                            }
-                        ],
-                    }
-                ),
-            )
+        platform_checks([sys.executable, "-I", "verify_coexistence.py"], checks)
         cli(
             "guard",
             name,
@@ -451,13 +439,8 @@ fs.renameSync(path.join(base,name), target);
             "--report",
             report,
             "--apply",
-            "--local",
-            "--",
-            *(
-                ["python3", "test_wordcount.py"]
-                if profile == "full"
-                else [sys.executable, "-I", "verify_coexistence.py"]
-            ),
+            "--checks",
+            checks,
         )
         proposed = cli("state", "propose-archive", name, "--summary", f"Deliver {name}")
         cli(

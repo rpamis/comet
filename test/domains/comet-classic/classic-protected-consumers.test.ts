@@ -108,7 +108,7 @@ describe.sequential('Classic protected path consumers', () => {
     ]);
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toMatch(/symbolic link or junction/iu);
+    expect(result.stderr).toMatch(/regular file|symbolic link or junction/iu);
     expect(await fs.readFile(stateFile, 'utf8')).toBe(before);
     expect(await fs.readFile(path.join(outsideRoot, 'design.md'), 'utf8')).toBe('outside design\n');
   });
@@ -267,7 +267,7 @@ describe.sequential('Classic protected path consumers', () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toMatch(/design_doc=.*unsafe/iu);
-    expect(result.stderr).toMatch(/symbolic link or junction/iu);
+    expect(result.stderr).toMatch(/regular file|symbolic link or junction/iu);
   });
 
   it('keeps validator path rules aligned with state-set repository-relative pointers', async () => {
@@ -293,7 +293,7 @@ describe.sequential('Classic protected path consumers', () => {
     const result = await runClassicCli(['state', 'set', 'demo', 'review_mode', 'off']);
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toMatch(/symbolic link or junction/iu);
+    expect(result.stderr).toMatch(/regular file|symbolic link or junction/iu);
     expect(await fs.readFile(stateFile, 'utf8')).toBe(before);
     expect(await fs.readFile(path.join(outsideRoot, 'marker.txt'), 'utf8')).toBe('unchanged\n');
     expect(await fs.readdir(outsideRoot)).toEqual(['marker.txt']);
@@ -330,7 +330,7 @@ describe.sequential('Classic protected path consumers', () => {
     const result = await runClassicCli(['guard', 'demo', 'design']);
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toMatch(/symbolic link or junction/iu);
+    expect(result.stderr).toMatch(/regular file|symbolic link or junction/iu);
     expect(await fs.readFile(outsideConfig, 'utf8')).toBe(CLASSIC_CONFIG);
   });
 });

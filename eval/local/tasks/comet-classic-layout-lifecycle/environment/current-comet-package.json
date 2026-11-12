@@ -4,11 +4,14 @@
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
     "@babel/parser": "7.29.8",
+    "@fission-ai/openspec": "^1.11.0",
     "@inquirer/ansi": "^2.0.7",
     "@inquirer/core": "^12.0.1",
     "@inquirer/figures": "^2.0.8",
     "@inquirer/prompts": "^8.7.0",
     "@inquirer/type": "^4.1.0",
+    "@modelcontextprotocol/ext-apps": "1.7.5",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@vscode/ripgrep": "^1.18.0",
     "ajv": "^8.17.1",
     "antd": "^6.6.2",
@@ -21,7 +24,7 @@
     "mermaid": "11.17.2",
     "smol-toml": "^1.9.0",
     "yaml": "^2.9.0",
-    "@fission-ai/openspec": "^1.11.0"
+    "zod": "4.6.7"
   },
   "overrides": {
     "brace-expansion": "5.0.12",

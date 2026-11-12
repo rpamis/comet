@@ -9,6 +9,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -293,8 +294,8 @@ def pending(run, step):
 
 
 def build_recovery(driver):
-    # One-shot recovery belongs to existing v1 Runs. Create that version through
-    # the current public SDK CLI so its compatibility assertions remain intact.
+    # Current Runs report platform checks; historical managed-check evidence is
+    # still checked by the validator's legacy branch and receipt unit tests.
     state_module = (ROOT / "dist/domains/comet-native/native-application.js").as_uri()
     initial_state = json.loads(
         driver.run([
@@ -311,12 +312,12 @@ def build_recovery(driver):
     started = driver.dispatch(
         dict(
             operation="start",
-            workflow={"id": "comet-native", "version": "1"},
+            workflow={"id": "comet-native", "version": "4"},
             input={"name": driver.name, "artifactRootRef": "docs"},
             initialState=initial_state,
         )
     )["data"]
-    assert started["workflow"]["version"] == "1"
+    assert started["workflow"]["version"] == "4"
     change = driver.root / "docs/comet/changes" / driver.name
     change.mkdir(parents=True)
     brief = """# Outcome
@@ -405,6 +406,13 @@ Run test_wordcount.py.
         for plan in plans:
             plan["argv"] = ["PATH=" + driver.env["PATH"], plan["executable"], *plan["argv"]]
             plan["executable"] = "/usr/bin/env"
+    reports = []
+    for plan in plans:
+        command = [plan["executable"], *plan["argv"]]
+        if os.name == "nt":
+            command = [sys.executable, *(["-m", "pytest", "-q", "test_wordcount.py"] if plan["id"] == "business-tests" else ["recovery_once.py"])]
+        executed = driver.run(command)
+        reports.append(dict(name=plan["name"], result="passed", note=f"Actual platform exit {executed.returncode}; {command!r}"))
     run = driver.record(
         builder,
         "builder-session",
@@ -420,21 +428,18 @@ Run test_wordcount.py.
                 )
                 for i in ids
             ],
-            checks=[],
+            checks=reports,
             knownLimits=[],
             submittedAt="2026-10-24T00:00:00.000Z",
-            verificationChecks=plans,
         ),
     )
-    check = pending(run, "verify.checks")
-    run = driver.dispatch(
-        dict(operation="execute", actionId=check["id"], executorId="comet-native-checks")
-    )["data"]
-    original_check = next(a for a in run["actions"] if a["id"] == check["id"])
+    assert not any(a["stepId"] == "verify.checks" for a in run["actions"])
+    original_builder = next(a for a in run["actions"] if a["id"] == builder["id"])
     original_handoff = run["state"]["builder_handoff"]
 
     def result(run, verdict, session):
         return dict(
+            checks=reports,
             candidateId=run["state"]["builder_handoff"]["candidate_id"],
             verifierExecutionRef=session,
             response=dict(
@@ -472,13 +477,13 @@ Run test_wordcount.py.
     driver.alternative("resolve-verifier-blocker")
     run = driver.inspect()
     assert (
-        next(a for a in run["actions"] if a["id"] == check["id"])["outcome"]
-        == original_check["outcome"]
+        next(a for a in run["actions"] if a["id"] == builder["id"])["outcome"]
+        == original_builder["outcome"]
     )
     assert run["state"]["builder_handoff"] == original_handoff
     action = pending(run, "verify.verifier")
     # Separate CLI processes and independent shell execution, no inherited JS Runtime object.
-    driver.run(["python3", "-m", "pytest", "-q", "test_wordcount.py"])
+    driver.run([sys.executable, "-m", "pytest", "-q", "test_wordcount.py"])
     driver.env["TEMP"] = str(driver.root.parent / "verifier-temp")
     driver.env["HTTP_PROXY"] = "http://offline-verifier.invalid:3128"
     run = driver.record(action, "independent-verifier", result(run, "pass", "independent-verifier"))
@@ -548,7 +553,7 @@ def exercise_cli_recovery_to_archive(tmp_path, monkeypatch, *, explicit_path):
         lambda r: r.update(status="running"),
         lambda r: r["state"]["loop"].update(goal_cycle=2),
         lambda r: r["actions"].append(
-            copy.deepcopy(next(a for a in r["actions"] if a["stepId"] == "verify.checks"))
+            copy.deepcopy(next(a for a in r["actions"] if a["stepId"] == "build.builder"))
         ),
         lambda r: next(a for a in r["actions"] if a["stepId"] == "verify.verifier")["outcome"][
             "output"
@@ -559,9 +564,9 @@ def exercise_cli_recovery_to_archive(tmp_path, monkeypatch, *, explicit_path):
         lambda r: next(a for a in reversed(r["actions"]) if a["stepId"] == "verify.verifier")[
             "outcome"
         ]["output"].update(candidateId="foreign"),
-        lambda r: next(a for a in r["actions"] if a["stepId"] == "verify.checks")["outcome"][
+        lambda r: next(a for a in r["actions"] if a["stepId"] == "build.builder")["outcome"][
             "output"
-        ]["inputSnapshot"].update(complete=False),
+        ]["checks"][0].update(result="not-run"),
         lambda r: next(a for a in r["actions"] if a["stepId"] == "archive.finalize").update(
             status="pending"
         ),
@@ -571,12 +576,12 @@ def exercise_cli_recovery_to_archive(tmp_path, monkeypatch, *, explicit_path):
         mutate(invalid)
         with pytest.raises((AssertionError, KeyError, ValueError)):
             module.assert_recovery(invalid, archived, provided)
-    for field, value in [("executable", "echo"), ("argv", ["other.py"]), ("cwdRef", "other")]:
+    for field, value in [("name", "other"), ("result", "failed"), ("note", "")]:
         invalid = copy.deepcopy(run)
         plans = next(a for a in invalid["actions"] if a["stepId"] == "build.builder")["outcome"][
             "output"
-        ]["verificationChecks"]
-        next(p for p in plans if p["id"] == "recovery-once")[field] = value
+        ]["checks"]
+        next(p for p in plans if p["name"] == "recovery-once")[field] = value
         with pytest.raises(AssertionError):
             module.assert_recovery(invalid, archived, provided)
     valid_interaction = json.loads(context.read_text())["interaction"]

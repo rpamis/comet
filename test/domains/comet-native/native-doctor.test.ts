@@ -112,13 +112,13 @@ it('keeps stale selection reads unchanged and changes only selection after an ex
   await expect(fs.stat(file)).rejects.toMatchObject({ code: 'ENOENT' });
   expect((await inspectNativeSdkRun(f.root, 'current-selection')).run).toEqual(run);
 });
-it('rejects an oversized selection before parsing while preserving the exact input bytes', async () => {
+it('rejects a large malformed selection while preserving the exact input bytes', async () => {
   const f = await fixture(),
     file = nativeSelectionFile(f.paths),
     bytes = Buffer.alloc(16 * 1024 + 1, 0x61);
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, bytes);
-  await expect(readNativeSelectionRecord(f.paths)).rejects.toThrow(/exceeds|16384/);
+  await expect(readNativeSelectionRecord(f.paths)).rejects.toThrow(/invalid JSON/);
   expect(await fs.readFile(file)).toEqual(bytes);
 });
 

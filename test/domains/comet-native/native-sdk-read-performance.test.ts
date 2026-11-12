@@ -726,7 +726,7 @@ describe('Native SDK read work budgets', () => {
       await fs.rm(runtimeDir, { recursive: true, force: true });
       for (const readOnly of [true, false]) {
         await expect(createNativeSdkStateStore(root, { readOnly }).read(name)).rejects.toThrow(
-          /symbolic link/u,
+          /regular file/u,
         );
       }
       // Failed recovery must not publish the checkpoint as a new authority.

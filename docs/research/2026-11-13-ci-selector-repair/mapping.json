@@ -1,0 +1,129 @@
+{
+  "cases": [
+    {
+      "id": "native-299-real-integration-parent-verify",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-13-053-ci-review",
+      "record": "docs/research/2026-11-13-ci-selector-repair/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "^(?:Native parent and child changes continues the approved v1 parent from actual merged Child archives at its explicit root)$",
+          "requiredNames": [
+            "Native parent and child changes continues the approved v1 parent from actual merged Child archives at its explicit root"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-supervisor-current-delivery-boundaries.test.ts",
+          "namePattern": "^(?:keeps the parent Builder unavailable until the original dependent Child graph is integrated)$",
+          "requiredNames": [
+            "keeps the parent Builder unavailable until the original dependent Child graph is integrated"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-supervisor-current-delivery-boundaries.test.ts",
+          "namePattern": "^(?:preserves real Supervisor delivery and all cleanup targets through the current public CLI: complete)$",
+          "requiredNames": [
+            "preserves real Supervisor delivery and all cleanup targets through the current public CLI: complete"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-supervisor-business.test.ts",
+          "namePattern": "^(?:completes Agent-selected Supervisor work through the Native business entry via source|completes Agent-selected Supervisor work through the Native business entry via generated)$",
+          "requiredNames": [
+            "completes Agent-selected Supervisor work through the Native business entry via source",
+            "completes Agent-selected Supervisor work through the Native business entry via generated"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(normal\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(partial-recovery\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(branch-lock-recovery\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(delivery-recovery\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(delivery-ref-lock\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(target-drift\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(child-builder-failure\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(parent-builder-failure\\))$",
+          "requiredNames": [
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (normal)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (partial-recovery)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (branch-lock-recovery)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (delivery-recovery)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (delivery-ref-lock)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (target-drift)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (child-builder-failure)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (parent-builder-failure)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-application.test.ts",
+          "namePattern": "^(?:binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate)$",
+          "requiredNames": [
+            "binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-487-workspace-binding-screenshot",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-13-053-ci-review",
+      "record": "docs/research/2026-11-13-ci-selector-repair/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-workspace.test.ts",
+          "namePattern": "^(?:Classic workspace preparation and routing keeps a copied change local when its worktree branch needs rebinding|Classic workspace preparation and routing selects an SDK-owned Classic change in its linked worktree with its explicit linked-worktree root|Classic workspace preparation and routing recovers an SDK-owned Classic change in a linked worktree with its explicit linked-worktree root)$",
+          "requiredNames": [
+            "Classic workspace preparation and routing keeps a copied change local when its worktree branch needs rebinding",
+            "Classic workspace preparation and routing selects an SDK-owned Classic change in its linked worktree with its explicit linked-worktree root",
+            "Classic workspace preparation and routing recovers an SDK-owned Classic change in a linked worktree with its explicit linked-worktree root"
+          ]
+        },
+        {
+          "file": "test/domains/comet-entry/hook-router-runtime.test.ts",
+          "namePattern": "routes a linked worktree SDK Classic change through the packaged Hook",
+          "requiredNames": [
+            "routes a linked worktree SDK Classic change through the packaged Hook"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-314-integration-target-fence",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-13-053-ci-review",
+      "record": "docs/research/2026-11-13-ci-selector-repair/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-supervisor.test.ts",
+          "namePattern": "^(?:Native Supervisor v2 state serially merges a verified commit into integration while protecting target)$",
+          "requiredNames": [
+            "Native Supervisor v2 state serially merges a verified commit into integration while protecting target"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-supervisor-current-delivery-boundaries.test.ts",
+          "namePattern": "^(?:preserves real Supervisor delivery and all cleanup targets through the current public CLI: complete)$",
+          "requiredNames": [
+            "preserves real Supervisor delivery and all cleanup targets through the current public CLI: complete"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-supervisor-current-delivery-boundaries.test.ts",
+          "namePattern": "^(?:preserves real Supervisor delivery and all cleanup targets through the current public CLI: target-drift)$",
+          "requiredNames": [
+            "preserves real Supervisor delivery and all cleanup targets through the current public CLI: target-drift"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-supervisor-current-delivery-boundaries.test.ts",
+          "namePattern": "^(?:preserves real Supervisor delivery and all cleanup targets through the current public CLI: wrong-child-branch)$",
+          "requiredNames": [
+            "preserves real Supervisor delivery and all cleanup targets through the current public CLI: wrong-child-branch"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(",
+          "requiredNames": [
+            "handles parent repair, delivery, and cleanup after Supervisor DAG restart ("
+          ]
+        }
+      ]
+    }
+  ]
+}

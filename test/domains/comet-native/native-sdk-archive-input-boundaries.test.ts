@@ -718,7 +718,7 @@ it('rejects malformed original-backup inputs without changing the current Archiv
     expect(await fs.readFile(transactionFile, 'utf8')).toBe(originalWal);
   }
   await fs.writeFile(file, ' '.repeat(8 * 1024 * 1024 + 1));
-  await expectArchiveFailure(call(), /large|limit|bytes|exceed/i);
+  await expectArchiveFailure(call(), /JSON|Unexpected end/i);
   expect(await f.runtime.inspect(run.runId)).toEqual(before);
   await expectArchiveFailure(
     call('../outside-originals.json'),

@@ -4334,7 +4334,7 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '检查结果' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '阻塞项' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '执行历史' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '恢复状态' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '任务状态' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Git 摘要' })).toBeVisible();
   await expect(page.getByRole('tab', { name: '活跃', exact: true })).toBeVisible();
   await expect(page.getByRole('tab', { name: '已归档', exact: true })).toBeVisible();
@@ -6816,12 +6816,12 @@ test('keeps Classic and Native side panels within the center panel height', asyn
       const nativeProgress = selectedNativeRow.getByRole('progressbar');
       await expect(nativeProgress).toHaveCount(1);
       await expect(nativeProgress).toHaveAttribute('aria-valuenow', '33');
-      const recoverySection = rightPanel
-        .getByRole('heading', { name: '恢复状态' })
+      const taskSection = rightPanel
+        .getByRole('heading', { name: '任务状态' })
         .locator('..')
         .locator('..');
-      await expect(recoverySection).toContainText('与当前 YAML 一致');
-      await expect(recoverySection).toContainText('Builder');
+      await expect(taskSection).toContainText('已领取任务');
+      await expect(taskSection).toContainText('Builder');
     }
 
     const metrics = await workspace.evaluate((element) => {

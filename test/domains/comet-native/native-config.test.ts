@@ -113,7 +113,7 @@ describe('Native project configuration', () => {
       }
 
       await expect(writeProjectConfig(projectRoot, defaultProjectConfig('docs'))).rejects.toThrow(
-        /symbolic link, junction or invalid directory/iu,
+        /regular file|symbolic link, junction or invalid directory/iu,
       );
       await expect(fs.readFile(outsideConfig, 'utf8')).resolves.toBe('keep: true\n');
     } finally {
