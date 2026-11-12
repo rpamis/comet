@@ -6,6 +6,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Added
 
+- **Unbounded Eval image builds**: Set `COMET_EVAL_BUILD_TIMEOUT_SECONDS=0` to prepare task images without a fixed wall-clock deadline. Explicit build errors still fail, and task and scoring budgets remain unchanged.
 - **Shared-store lock recovery**: Diagnose legacy records for shared plugin and installation stores with `comet doctor --lock-file`, preserving live transactions. Ordinary workflow upgrades ignore obsolete workflow lock records.
 - **Dashboard change walkthrough setting**: Enable or disable HTML change walkthroughs for both Native and Classic in project settings, with the existing default and saved configuration preserved.
 - **Codex plugin package**: Build a local or private Comet plugin in the `comet-market` marketplace with workflow Skills, Comet branding and repository details, and the full Dashboard in the sidebar or beside a conversation. Activation prepares the matching CLI, registers native user-level Hooks, and delivers workflow rules to new sessions without a manual project init. Reuse healthy same-version or newer CLI installations, preserve user Hooks, and stop enforcing when the plugin is disabled or removed. Automatically disable recognized file-based Skill paths with configuration backups, while preserving shared files and customized definitions. The bundled interface accesses local data through app-only MCP tools. Hook execution still requires reviewed trust.
@@ -30,6 +31,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Classic task context**: Share layout and edit-continuation instructions across phases, reuse fully delivered profile context during uninterrupted sessions, and restore full context after handoff or compression. Skip empty learning files and review queries when there is no observation, feedback, or known pending review; actual reviews and explicit learning requests remain available.
 
 ### Fixed
+
+- **Dataset Eval image preparation**: Honor each task's declared build budget while preparing candidate workspaces, so cold dependency installation is not cancelled by an unrelated five-minute limit. Ordinary image build limits remain unchanged.
 
 - **Eval image preparation**: Finish image preparation before reading execution identity, and let parallel workers wait for the configured build budget instead of failing while a permitted cold build is still running.
 - **Native Archive directory moves**: Retry brief file-sharing errors when moving a change into the archive, while preserving the original transaction for recovery if the directory remains unavailable.

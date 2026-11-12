@@ -2,6 +2,44 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "eval-unlimited-image-build",
+      "behavior": "显式取消Eval镜像构建总时限，工作区装配与会话预构建一致，Windows锁在可用后继续并正常释放。",
+      "sources": ["report:2026-11-12-eval-no-build-deadline"],
+      "coverageLevel": "unit",
+      "reproduction": "将COMET_EVAL_BUILD_TIMEOUT_SECONDS设为0；旧工作区装配和会话预构建仍传递有限秒数，Windows file_lock也不能接受None。",
+      "expected": "两个构建入口都传递timeout=None；原任务预算记录不改写，Windows锁等待与释放可完成。",
+      "forbidden": "继续套用固定5分钟或30分钟时限、改写原题评分预算，或未释放已领取锁。",
+      "rootCause": "构建入口各自选择固定预算，Windows锁以数值加法计算截止时间，没有无总时限路径。",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "supports explicit unlimited image builds without changing task budgets or lock cleanup",
+          "requiredNames": [
+            "supports explicit unlimited image builds without changing task budgets or lock cleanup"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-dataset-workspace-build-budget",
+      "behavior": "内置数据集候选工作区装配遵守该题声明的镜像构建预算，不在固定300秒提前取消。",
+      "sources": ["report:2026-11-12-builtin-dataset-workspace-build-timeout"],
+      "coverageLevel": "unit",
+      "reproduction": "公开comet eval运行WorkBuddy与SkillsBench，prepare_dataset_workspace调用build_docker_image；声明1800秒的冷构建在约300秒被取消。定向测试模拟需要301秒的构建，旧代码返回None。",
+      "expected": "声明1800秒的冷构建可继续；更短的显式预算照常传递，普通非数据集镜像仍使用300秒。",
+      "forbidden": "用固定300秒覆盖数据集预算，忽略显式短预算，或无条件放宽普通镜像构建时间。",
+      "rootCause": "会话级预构建读取了任务预算，工作区装配调用的utils.build_docker_image仍硬编码timeout=300。",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "honors dataset workspace build budgets without extending ordinary image builds",
+          "requiredNames": [
+            "honors dataset workspace build budgets without extending ordinary image builds"
+          ]
+        }
+      ]
+    },
+    {
       "id": "native-invalid-completed-check-recovery",
       "behavior": "已停止的 Build 检查保存了无效 outcome 时，确认原执行停止后可沿原 Run 记录中断并恢复 Builder。",
       "sources": ["https://github.com/rpamis/comet/issues/545"],

@@ -1,0 +1,119 @@
+{
+  "schema": "comet.eval.sample-selection.v1",
+  "createdAt": "2026-11-12T07:08:32.998991+00:00",
+  "selectedBeforeModelExecution": true,
+  "repetitions": 3,
+  "treatments": ["native", "goal"],
+  "totalModelSamples": 36,
+  "tasksPerDataset": 3,
+  "selectionMethod": "User requested one task per difficulty in each built-in dataset; selected before any real model output; preserve aborted 16-task preparation separately",
+  "supersedes": "2026-11-12-native-053-vs-goal",
+  "datasets": {
+    "workbuddy-code": {
+      "dataset": {
+        "id": "workbuddy-code",
+        "version": "1.0",
+        "revision": "625b2233093ae4f23e76be28c1f341d41cc70373",
+        "tasks": 80,
+        "source": "https://huggingface.co/datasets/tencent/workbuddy-bench",
+        "license": "Tencent WorkBuddy Bench License",
+        "format": "harbor",
+        "subset": "code"
+      },
+      "root": "D:\\Project\\Comet\\.comet\\eval\\cache\\datasets\\workbuddy-code",
+      "supportedTasks": 72,
+      "totalCatalogTasks": 80,
+      "excludedDebugTasks": ["bug_fix-easy-a_crash_in_local"],
+      "provenance": {
+        "dataset": "workbuddy-code",
+        "revision": "3e8ad839685c589d83a1dd60fe2d15eabb75f27a",
+        "url": "https://huggingface.co/datasets/tencent/workbuddy-bench/resolve/3e8ad839685c589d83a1dd60fe2d15eabb75f27a/wb-bench-code-v1.0.tar.gz",
+        "archiveSha256": "f60394e44341f45f66af17ba69efc51ceadc61f17c08aa89e4af35b51f6f34e1",
+        "kind": "download-receipt",
+        "verifiedRelease": false
+      },
+      "tasks": [
+        {
+          "id": "feature-easy-lru_caching_to_tzoffset",
+          "category": "feature",
+          "difficulty": "easy",
+          "workdir": "/workspace",
+          "contentHash": "sha256:2e1cf7d880561e0e0802c65f37911c326ed7567ab0d7c706258538623e2fcf1f",
+          "instructionHash": "sha256:5c8f8c85846df4f28a53c522eebe341e027d446d180df89c34feab2dc26780a1",
+          "controllerUid": 1000
+        },
+        {
+          "id": "data_reporting-medium-audit_event_export",
+          "category": "data-reporting",
+          "difficulty": "medium",
+          "workdir": "/workspace",
+          "contentHash": "sha256:99efae0a0be082ae4ae9f64234ef32642292e1b70ee101f6238066bbcc3eef8c",
+          "instructionHash": "sha256:8e0376447358219e89bb93e00fe3f646e47e7913f6386a4d5aacc885260e34c1",
+          "controllerUid": 1000
+        },
+        {
+          "id": "product_analytics-hard-day7_retention",
+          "category": "product-analytics",
+          "difficulty": "hard",
+          "workdir": "/workspace",
+          "contentHash": "sha256:df428e8245209f4bd085d33a9d0ffe169b10083defa33d766c3602031462704e",
+          "instructionHash": "sha256:c7310a8cdc7cc0b3cda7d72f1447f300b9fa973a19de1690d7112a4a5f858ab0",
+          "controllerUid": 1000
+        }
+      ]
+    },
+    "skillsbench": {
+      "dataset": {
+        "id": "skillsbench",
+        "version": "1.1",
+        "revision": "b63b7b2850226b6aa4fb5929a8c1ac7bc4d9a6af",
+        "tasks": 87,
+        "source": "https://github.com/benchflow-ai/skillsbench",
+        "license": "Apache-2.0",
+        "format": "benchflow",
+        "subset": "tasks"
+      },
+      "root": "D:\\Project\\Comet\\.comet\\eval\\cache\\datasets\\skillsbench",
+      "supportedTasks": 79,
+      "totalCatalogTasks": 87,
+      "excludedDebugTasks": ["dialogue-parser"],
+      "provenance": {
+        "dataset": "skillsbench",
+        "revision": "b63b7b2850226b6aa4fb5929a8c1ac7bc4d9a6af",
+        "url": "https://codeload.github.com/benchflow-ai/skillsbench/tar.gz/b63b7b2850226b6aa4fb5929a8c1ac7bc4d9a6af",
+        "archiveSha256": "525bf1559a1eb3511ca2daaf2a307e2dd882efd646c130a730de0f9f37da34d7",
+        "kind": "download-receipt",
+        "verifiedRelease": false
+      },
+      "tasks": [
+        {
+          "id": "court-form-filling",
+          "category": "office-white-collar",
+          "difficulty": "easy",
+          "workdir": "/root",
+          "contentHash": "sha256:69ac5f9aa2fa0adba96e0ee636eeef1999ebc29eff63ea5c7cd6e751d199a9f6",
+          "instructionHash": "sha256:32458adf65865443dab72f0100ec5122d05aa837838405998e0b3021f406fc72",
+          "controllerUid": 1001
+        },
+        {
+          "id": "manufacturing-codebook-normalization",
+          "category": "industrial-physical-systems",
+          "difficulty": "medium",
+          "workdir": "/app",
+          "contentHash": "sha256:ea89f6249236c4deab162b3557197bd067b2be38e6bd6781bf4c236b68347ba1",
+          "instructionHash": "sha256:f990edce1effbff4d301e46d32a6474a43ef3f63bda3bbe10f979124c1942bb0",
+          "controllerUid": 1000
+        },
+        {
+          "id": "paratransit-routing",
+          "category": "mathematics-or-formal-reasoning",
+          "difficulty": "hard",
+          "workdir": "/root",
+          "contentHash": "sha256:9305c8b4b7a6f4e2603e2f7ce49e140904f0e187a08965e4b22a396d16416757",
+          "instructionHash": "sha256:8b74018039b9ec8e9a0d43b6486137852b205ee96a5985e9ceb54e051ba5f30b",
+          "controllerUid": 1000
+        }
+      ]
+    }
+  }
+}

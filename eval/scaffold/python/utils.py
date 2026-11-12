@@ -353,12 +353,34 @@ def check_docker_available():
         return False
 
 
+def docker_build_timeout(test_dir, default=300):
+    override = os.environ.get("COMET_EVAL_BUILD_TIMEOUT_SECONDS")
+    if override is not None:
+        try:
+            seconds = int(override)
+        except ValueError as exc:
+            raise ValueError(
+                "COMET_EVAL_BUILD_TIMEOUT_SECONDS requires non-negative seconds; 0 disables the deadline"
+            ) from exc
+        if seconds < 0:
+            raise ValueError(
+                "COMET_EVAL_BUILD_TIMEOUT_SECONDS requires non-negative seconds; 0 disables the deadline"
+            )
+        return seconds or None
+    metadata_file = Path(test_dir) / ".dataset-task.json"
+    if metadata_file.is_file():
+        metadata = json.loads(metadata_file.read_text(encoding="utf-8"))
+        return metadata.get("execution", {}).get("buildTimeoutSeconds", 1800)
+    return default
+
+
 def build_docker_image(test_dir, force=False, verbose=False, agent=None):
+    timeout = docker_build_timeout(test_dir)
     try:
         args = ["build", str(test_dir)] + (["--force"] if force else [])
         if agent:
             args.extend(["--agent", validate_agent_id(agent)])
-        result = run_shell("docker.sh", *args, timeout=300, check=False)
+        result = run_shell("docker.sh", *args, timeout=timeout, check=False)
         return result.stdout.strip() if result.returncode == 0 else None
     except subprocess.TimeoutExpired:
         return None
