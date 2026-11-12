@@ -903,13 +903,14 @@ describe('Native Dashboard v2 collector', () => {
     });
   });
 
-  it('previews a large artifact from a fixed 48 KiB read budget', async () => {
+  it('reads complete Native artifact previews beyond former byte limits', async () => {
     await enableNative();
     const state = activeShapeState('large-preview');
     const changeDir = await writeActiveState(state);
-    const size = 2 * 1024 * 1024;
+    const content = '# Brief\n' + 'a'.repeat(17 * 1024 * 1024) + '\n完整结尾🙂\n';
+    const size = Buffer.byteLength(content);
     const briefFile = path.join(changeDir, 'brief.md');
-    await fs.writeFile(briefFile, Buffer.alloc(size, 0x61));
+    await fs.writeFile(briefFile, content);
 
     const originalOpen = fs.open.bind(fs);
     let bytesRead = 0;
@@ -931,12 +932,15 @@ describe('Native Dashboard v2 collector', () => {
     });
 
     const briefArtifact = detail?.artifacts.find((artifact) => artifact.key === 'brief');
-    expect(briefArtifact).toEqual(
-      expect.objectContaining({ key: 'brief', exists: true, size, truncated: true }),
-    );
-    expect(briefArtifact?.content).toHaveLength(48 * 1024);
-    expect(briefArtifact?.content).toMatch(/^a+$/u);
-    expect(bytesRead).toBe(48 * 1024);
+    expect(briefArtifact).toEqual(expect.objectContaining({ key: 'brief', exists: true, size }));
+    expect(briefArtifact?.content?.length).toBe(content.length);
+    expect(briefArtifact?.content?.endsWith('\n完整结尾🙂\n')).toBe(true);
+    expect(briefArtifact?.truncated).not.toBe(true);
+    expect(bytesRead).toBe(size);
+    const snapshot = await collectNativeDashboardProjection(projectRoot);
+    const snapshotArtifact = snapshot?.changes[0].artifacts.find((item) => item.key === 'brief');
+    expect(snapshotArtifact?.content?.length).toBe(content.length);
+    expect(snapshotArtifact?.content?.endsWith('\n完整结尾🙂\n')).toBe(true);
   });
 
   it('ignores stale local execution files and derives task state from business records', async () => {

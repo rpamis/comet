@@ -89,6 +89,22 @@ describe('collectDashboardSnapshot', () => {
     await fs.rm(cacheRoot, { recursive: true, force: true });
   });
 
+  it('reads complete Classic artifact previews beyond former byte limits', async () => {
+    await writeChange(root, {
+      name: 'complete-preview',
+      yaml: { phase: 'build', workflow: 'full' },
+      proposal: true,
+    });
+    const content = '# Proposal\n' + 'a'.repeat(3 * 1024 * 1024) + '\n完整结尾🙂\n';
+    await fs.writeFile(path.join(root, 'openspec/changes/complete-preview/proposal.md'), content);
+    const detail = await collectDashboardChangeDetail(root, 'openspec/changes/complete-preview');
+    const preview = detail!.artifactPreviews!.find((item) => item.key === 'proposal')!;
+    expect(preview.exists).toBe(true);
+    expect(preview.content?.length).toBe(content.length);
+    expect(preview.content?.endsWith('\n完整结尾🙂\n')).toBe(true);
+    expect(preview.truncated).not.toBe(true);
+  });
+
   it('reads complete Classic summary once beyond page limits and checks external edits', async () => {
     await Promise.all(
       Array.from({ length: 70 }, (_, index) =>

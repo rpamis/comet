@@ -2,6 +2,118 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "dashboard-native-complete-artifact-preview",
+      "behavior": "Native Dashboard 关键产物完整展示，不按字节截断或追加截断提示。",
+      "sources": ["report:2026-11-12-dashboard-full-artifacts"],
+      "coverageLevel": "unit",
+      "reproduction": "npm 0.5.2 与修改前当前分支对17MiB brief只返回前49152字符、缺少末尾；完整投影另有16MiB总大小限制。新回归在旧实现失败。",
+      "expected": "详情和完整投影保留全部正文及中文表情结尾；浏览器可导航到长文档末尾，不追加256KB提示。",
+      "forbidden": "截断正文、丢失末尾、仍受整体字节预算阻止，或完整正文被追加虚假的截断说明。",
+      "rootCause": "Native采集器使用48KiB前缀读取，投影还限制16MiB序列化大小；共享前端把truncated标记写成固定256KB提示。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/native-collector.test.ts",
+          "namePattern": "^Native Dashboard v2 collector reads complete Native artifact previews beyond former byte limits$",
+          "requiredNames": [
+            "Native Dashboard v2 collector reads complete Native artifact previews beyond former byte limits"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "browser",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-12-dashboard-full-artifacts.zh.md",
+            "Playwright: shows the complete Native artifact without a truncation notice；当前构建、超过256KB的API正文、旧truncated标记、末尾标题及全屏目录跳转均通过。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard-classic-complete-artifact-preview",
+      "behavior": "Classic Dashboard 关键产物完整展示，不按字节截断或追加截断提示。",
+      "sources": ["report:2026-11-12-dashboard-full-artifacts"],
+      "coverageLevel": "unit",
+      "reproduction": "npm0.5.2对300KiB proposal只返回前262144字符，3MiB proposal被标记不存在；修改前当前分支的3MiB回归同样失败。",
+      "expected": "保留全部正文及中文表情结尾；浏览器可导航到长文档末尾，不追加256KB提示。",
+      "forbidden": "继续裁剪到256KB、把超过2MiB的可读文件当作不存在，或完整正文被追加虚假的截断说明。",
+      "rootCause": "Classic采集器先以2MiB读取预算读取，再裁剪到256KiB；共享前端把truncated标记渲染成固定说明。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/collector.test.ts",
+          "namePattern": "^collectDashboardSnapshot reads complete Classic artifact previews beyond former byte limits$",
+          "requiredNames": [
+            "collectDashboardSnapshot reads complete Classic artifact previews beyond former byte limits"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "browser",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-12-dashboard-full-artifacts.zh.md",
+            "Playwright: shows the complete Classic artifact without a truncation notice；当前构建、超过256KB的API正文、旧truncated标记、末尾标题及全屏目录跳转均通过。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard-native-artifact-fullscreen",
+      "behavior": "Native 关键产物右上角按钮放大全屏并可还原，不直接关闭预览。",
+      "sources": ["https://github.com/rpamis/comet/issues/548"],
+      "coverageLevel": "unit",
+      "reproduction": "已在 npm 0.5.2 Dashboard 与修改前 00956d7c 的实际浏览器中复现：打开 Native 需求简报，右上角只有关闭按钮，没有全屏入口；同一新增回归在修改前失败。",
+      "expected": "原位置显示全屏按钮，点击占满视口并显示文档目录；可点击还原，Escape 先还原再关闭，重开仍为抽屉。",
+      "forbidden": "点击放大直接关闭、全屏丢失正文、Escape 一次同时关闭全屏与抽屉，或重开遗留全屏。",
+      "rootCause": "共享 ArtifactDrawer 没有取出 toggleFullscreen，头部按钮直接绑定 onClose，使已有全屏和目录逻辑不可达。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/artifact-fullscreen.test.ts",
+          "namePattern": "^expands Native artifacts without dismissing the preview$",
+          "requiredNames": ["expands Native artifacts without dismissing the preview"]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "browser",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-12-issue-548-dashboard-artifact-fullscreen.zh.md",
+            "Playwright: expands Native artifact previews and restores them without closing；当前源码构建，1440px 与 390px，正文、目录跳转、全屏尺寸、还原、Escape、背景关闭及重开通过。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard-classic-artifact-fullscreen",
+      "behavior": "Classic 关键产物右上角按钮放大全屏并可还原，不直接关闭预览。",
+      "sources": ["https://github.com/rpamis/comet/issues/548"],
+      "coverageLevel": "unit",
+      "reproduction": "已在 npm 0.5.2 Dashboard 与修改前 00956d7c 的实际浏览器中复现：打开 Classic proposal，右上角只有关闭按钮，没有全屏入口；同一新增回归在修改前失败。",
+      "expected": "原位置显示全屏按钮，点击占满视口并显示文档目录；可点击还原，Escape 先还原再关闭，重开仍为抽屉。",
+      "forbidden": "点击放大直接关闭、全屏丢失正文、Escape 一次同时关闭全屏与抽屉，或重开遗留全屏。",
+      "rootCause": "Classic 与 Native 共用 ArtifactDrawer，关闭按钮替换了此前的全屏入口。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/artifact-fullscreen.test.ts",
+          "namePattern": "^expands Classic artifacts without dismissing the preview$",
+          "requiredNames": ["expands Classic artifacts without dismissing the preview"]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "browser",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-12-issue-548-dashboard-artifact-fullscreen.zh.md",
+            "Playwright: expands Classic artifact previews and restores them without closing；当前源码构建，1440px 与 390px，正文、目录跳转、全屏尺寸、还原、Escape、背景关闭及重开通过。"
+          ]
+        }
+      ]
+    },
+    {
       "id": "eval-unlimited-image-build",
       "behavior": "显式取消Eval镜像构建总时限，工作区装配与会话预构建一致，Windows锁在可用后继续并正常释放。",
       "sources": ["report:2026-11-12-eval-no-build-deadline"],

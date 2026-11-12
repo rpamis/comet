@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import { fingerprintDashboardFiles } from './source-version.js';
 import path from 'node:path';
 import os from 'node:os';
-import { readNativeTextFilePrefix } from '../comet-native/native-bounded-file.js';
+import { readNativeBoundedTextFile } from '../comet-native/native-bounded-file.js';
 import {
   NATIVE_CHILDREN_FILE,
   inspectNativeChildren,
@@ -155,16 +155,17 @@ async function readArtifactPreview(
 ): Promise<NativeDashboardArtifactPreview> {
   const missing: NativeDashboardArtifactPreview = { key, label, path: ref, exists: false };
   try {
-    const artifact = await readNativeTextFilePrefix({
+    const artifact = await readNativeBoundedTextFile({
       root,
       ref,
-      maxBytes: NATIVE_DASHBOARD_LIMITS.maxArtifactPreviewBytes,
+      maxBytes: null,
+      includeHash: false,
     });
     return {
       ...missing,
       exists: true,
       content: artifact.text,
-      truncated: artifact.truncated,
+      truncated: false,
       size: artifact.size,
     };
   } catch {

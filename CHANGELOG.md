@@ -14,6 +14,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Complete workflow artifact previews**: Display complete Native and Classic artifact documents in Dashboard, including large briefs, proposals, plans, and verification reports, without byte-based truncation or truncation notices.
+
 - **Workflow file sizes**: Remove remaining built-in byte caps from Native and Classic workflow materials, archive recovery, and shared Runtime records so growing documents remain complete and do not block continuation ([#551](https://github.com/rpamis/comet/issues/551)).
 - **Plugin startup context**: Deliver a short workflow entry and a readable Rule path on session startup or recovery. Reuse applicable rules already in context and reread missing rules after compaction, while retaining the write Guard and complete workflow requirements.
 - **Native task continuation**: Return guarded Shape confirmation and revision choices directly with the high-level task result, avoiding an extra full status query. Keep detailed execution instructions in one place and preserve the required user decision.
@@ -32,6 +34,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Classic task context**: Share layout and edit-continuation instructions across phases, reuse fully delivered profile context during uninterrupted sessions, and restore full context after handoff or compression. Skip empty learning files and review queries when there is no observation, feedback, or known pending review; actual reviews and explicit learning requests remain available.
 
 ### Fixed
+
+- **Dashboard artifact fullscreen**: Restore the fullscreen control in Native and Classic artifact previews, with a document directory for long materials. Toggle back to the drawer or press Escape to leave fullscreen before closing the preview ([#548](https://github.com/rpamis/comet/issues/548)).
 
 - **Dataset Eval image preparation**: Honor each task's declared build budget while preparing candidate workspaces, so cold dependency installation is not cancelled by an unrelated five-minute limit. Ordinary image build limits remain unchanged.
 

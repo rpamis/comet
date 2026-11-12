@@ -64,6 +64,8 @@ import {
   EditOutlined,
   FileTextOutlined,
   FlagOutlined,
+  ExpandOutlined,
+  CompressOutlined,
   InfoCircleOutlined,
   MenuFoldOutlined,
   MenuOutlined,
@@ -3131,9 +3133,11 @@ function ArtifactDrawer({ artifact, embedded = false, onClose }) {
   const dashboardLanguage = useDashboardLanguage();
   const { message: messageApi } = AntApp.useApp();
   const [loadState, setLoadState] = useState({ status: 'idle' });
-  const { fullscreen: requestedFullscreen, requestClose } = useDashboardModalState(
-    Boolean(artifact),
-  );
+  const {
+    fullscreen: requestedFullscreen,
+    toggleFullscreen,
+    requestClose,
+  } = useDashboardModalState(Boolean(artifact));
   const fullscreen = !embedded && requestedFullscreen;
   const [toc, setToc] = useState([]);
   const [activeTocId, setActiveTocId] = useState('');
@@ -3185,7 +3189,7 @@ function ArtifactDrawer({ artifact, embedded = false, onClose }) {
     const content = preview?.exists
       ? useStructuredPreview
         ? preview.content?.trimEnd() || ''
-        : `${preview.content?.trimEnd() || t('这个产物是空文件。')}${preview.truncated ? t('\n\n> 内容过长，已截取前 256KB。') : ''}`
+        : preview.content?.trimEnd() || t('这个产物是空文件。')
       : preview
         ? t('尚未生成 {0}。', [artifact.name])
         : t(
@@ -3208,9 +3212,6 @@ function ArtifactDrawer({ artifact, embedded = false, onClose }) {
               : await renderYamlTable(content, {
                   schema: isNativeStatePreview ? 'native-state' : undefined,
                 });
-            if (preview.truncated) {
-              html += t('<p><em>内容过长，已截取前 256KB。</em></p>');
-            }
           }
         } else {
           html = await renderMarkdown(content);
@@ -3359,15 +3360,32 @@ function ArtifactDrawer({ artifact, embedded = false, onClose }) {
               </div>
             )}
           </div>
-          <button
-            type="button"
-            className="dashboard-artifact-preview-close grid size-8 shrink-0 place-items-center rounded-lg text-fg-2 hover:bg-surface"
-            onClick={onClose}
-            aria-label={t('关闭产物预览')}
-            title={t('关闭产物预览')}
-          >
-            <CloseOutlined aria-hidden="true" />
-          </button>
+          {embedded ? (
+            <button
+              type="button"
+              className="dashboard-artifact-preview-close grid size-8 shrink-0 place-items-center rounded-lg text-fg-2 hover:bg-surface"
+              onClick={onClose}
+              aria-label={t('关闭产物预览')}
+              title={t('关闭产物预览')}
+            >
+              <CloseOutlined aria-hidden="true" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="dashboard-artifact-preview-expand grid size-8 shrink-0 place-items-center rounded-lg text-fg-2 hover:bg-surface"
+              onClick={toggleFullscreen}
+              aria-label={fullscreen ? t('退出全屏') : t('全屏展示')}
+              title={fullscreen ? t('退出全屏') : t('全屏展示')}
+              aria-pressed={fullscreen}
+            >
+              {fullscreen ? (
+                <CompressOutlined style={{ fontSize: 18 }} aria-hidden="true" />
+              ) : (
+                <ExpandOutlined style={{ fontSize: 18 }} aria-hidden="true" />
+              )}
+            </button>
+          )}
         </header>
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {fullscreen && toc.length > 0 && (

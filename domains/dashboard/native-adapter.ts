@@ -20,9 +20,7 @@ export const NATIVE_DASHBOARD_SCHEMA = 'comet.dashboard.native.v2' as const;
 export const NATIVE_DASHBOARD_LIMITS = Object.freeze({
   maxChanges: 32,
   maxArtifactPreviews: 8,
-  maxArtifactPreviewBytes: 48 * 1024,
   maxCapabilities: 8,
-  maxSerializedBytes: 16 * 1024 * 1024,
 });
 
 export type NativeDashboardMigrationStatus =
@@ -409,10 +407,5 @@ export function adaptNativeDashboardProjection(input: {
     changesTruncated: totalChangeCount > visible.length,
     changes: visible,
   };
-  if (
-    Buffer.byteLength(JSON.stringify(result), 'utf8') > NATIVE_DASHBOARD_LIMITS.maxSerializedBytes
-  ) {
-    throw new Error('Native Dashboard projection exceeds its serialized output budget');
-  }
   return result;
 }
