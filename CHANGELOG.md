@@ -35,6 +35,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **OpenSpec shared Skills**: Install OpenSpec 2.0 shared Skill links as independent files, so project initialization and staged user-level mirrors work after temporary files are removed. Reject links outside the staging directory and cyclic links ([#550](https://github.com/rpamis/comet/issues/550)).
+
 - **Dashboard artifact fullscreen**: Restore the fullscreen control in Native and Classic artifact previews, with a document directory for long materials. Toggle back to the drawer or press Escape to leave fullscreen before closing the preview ([#548](https://github.com/rpamis/comet/issues/548)).
 
 - **Dataset Eval image preparation**: Honor each task's declared build budget while preparing candidate workspaces, so cold dependency installation is not cancelled by an unrelated five-minute limit. Ordinary image build limits remain unchanged.

@@ -2,6 +2,65 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "issue-550-openspec-shared-skill-links",
+      "behavior": "OpenSpec 2.0 的 staging 内共享技能链接可安装为实体副本，重复安装和用户级镜像不依赖已清理的 staging。",
+      "sources": ["https://github.com/rpamis/comet/issues/550"],
+      "coverageLevel": "unit",
+      "reproduction": "旧版复制遇到真实目录链接直接失败；使用同一共享目标的两个链接并重复调用安装入口，旧代码项目级返回 failed、用户级镜像无法完成。WSL 的真实 OpenSpec 2.0 产物另见研究记录。",
+      "expected": "项目安装及用户级 staging 镜像返回 installed，技能目录为实体且清理 staging 后仍可读取；两个别名均完成复制。",
+      "forbidden": "拒绝合法共享链接、保留指向临时目录的链接、把同一目标的独立别名误判为循环。",
+      "rootCause": "生成物复制拒绝所有符号链接；用户级 DSH 额外镜像使用 cp 默认保留链接，与 OpenSpec 2.0 共享技能目录布局不兼容。",
+      "tests": [
+        {
+          "file": "test/domains/integrations/openspec.test.ts",
+          "namePattern": "expands OpenSpec 2 shared skill links into independent files in (project|global) scope",
+          "requiredNames": [
+            "openspec installOpenSpec expands OpenSpec 2 shared skill links into independent files in project scope",
+            "openspec installOpenSpec expands OpenSpec 2 shared skill links into independent files in global scope"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-550-openspec-link-boundaries",
+      "behavior": "展开 OpenSpec 生成链接时仍拒绝 staging 外目标和目录循环，并保留目标路径保护。",
+      "sources": ["https://github.com/rpamis/comet/issues/550"],
+      "coverageLevel": "unit",
+      "reproduction": "在真实临时 staging 中创建越界目录链接和指向父目录的循环链接，执行安装入口。",
+      "expected": "明确拒绝越界或循环，外部文件保持原样，安装结果中不包含外部内容。",
+      "forbidden": "跟随链接读取 staging 以外的内容、无限递归，或移除既有安装目标路径保护。",
+      "rootCause": "支持共享技能链接必须保留解析后的 staging 边界，并按当前递归路径检测目录循环。",
+      "tests": [
+        {
+          "file": "test/domains/integrations/openspec.test.ts",
+          "namePattern": "rejects an OpenSpec generated (outside|cycle) link without writing outside the install root",
+          "requiredNames": [
+            "openspec installOpenSpec rejects an OpenSpec generated outside link without writing outside the install root",
+            "openspec installOpenSpec rejects an OpenSpec generated cycle link without writing outside the install root"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-552-native-create-spec-rejected-result-recovery",
+      "behavior": "Native 新建 canonical Spec 后补记被拒收的结果，沿公开续行完成归档并可重复历史恢复，保留原批准且不重复发布 Spec。",
+      "sources": ["https://github.com/rpamis/comet/issues/552"],
+      "coverageLevel": "public-cli",
+      "reproduction": "0.5.2 原报告未在本次最小项目复现。确定性伴随测试在 docs/current 的真实执行器写入 create Spec 后注入错误传输结果，造成原 Action 结果拒收，再通过公开 archive --recover 和返回的 archive 命令完成并重复恢复。",
+      "expected": "保留原 Run、Action、claim、批准和拒收记录，归档完成，canonical 文件内容、inode 和修改时间不变。",
+      "forbidden": "归档自己的 Spec 写入触发候选漂移、要求重新批准、重复发布已完成的 Spec 或跨 Run 补记结果。",
+      "rootCause": "报告中的候选内容绑定和恢复检查已在 053 的流程简化中撤下；本次只补该恢复路径覆盖，没有新增 Native 生产修补，也不把注入的拒收冒充原版故障复现。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-archive-input-boundaries.test.ts",
+          "namePattern": "^recovers a rejected create-Spec Archive result without republishing canonical Specs$",
+          "requiredNames": [
+            "recovers a rejected create-Spec Archive result without republishing canonical Specs"
+          ]
+        }
+      ]
+    },
+    {
       "id": "dashboard-native-complete-artifact-preview",
       "behavior": "Native Dashboard 关键产物完整展示，不按字节截断或追加截断提示。",
       "sources": ["report:2026-11-12-dashboard-full-artifacts"],

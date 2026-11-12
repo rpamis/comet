@@ -30,6 +30,7 @@ import { createNativeSdkStateStore } from '../../../domains/comet-native/native-
 import { refreshNativeSdkVerificationReport } from '../../../domains/comet-native/native-sdk-report.js';
 import { archiveNativeSdkChange } from '../../../domains/comet-native/native-sdk-archive-command.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
+import { ensureCliBuilt } from '../../helpers/ensure-cli-built.js';
 type NativeApplication = ReturnType<typeof nativeDomain.defineNativeWorkflowApplication>;
 const roots: string[] = [];
 afterEach(async () => {
@@ -343,6 +344,109 @@ async function initializeArchiveGit(root: string) {
 }
 
 import * as atomic from '../../../domains/comet-native/native-atomic-file.js';
+it('recovers a rejected create-Spec Archive result without republishing canonical Specs', async () => {
+  await ensureCliBuilt(path.resolve('.'));
+  const application = nativeApplication();
+  const f = await awaitingArchiveApplication(
+    'sdk',
+    undefined,
+    false,
+    undefined,
+    application,
+    initializeArchiveGit,
+  );
+  const pending = f.run.actions.at(-1)!;
+  const executor = application.executors.find(
+    (entry) => entry.id === 'comet-native-archive-apply',
+  )!;
+  const claimed = await f.runtime.claim({
+    runId: f.run.runId,
+    actionId: pending.id,
+    attempt: pending.attempt,
+    inputHash: pending.inputHash,
+    executorId: executor.id,
+    claimToken: 'actual-create-spec-apply',
+    context: { projectRoot: f.root, requestId: 'claim-create-spec-apply' },
+  });
+  const action = claimed.actions.find((entry) => entry.id === pending.id)!;
+  const result = await executor.execute(
+    action,
+    { projectRoot: f.root, requestId: 'actual-create-spec-apply' },
+    claimed,
+  );
+  const canonical = path.join(f.paths.specsDir, 'workflow/spec.md');
+  const content = await fs.readFile(canonical, 'utf8');
+  const identity = await fs.stat(canonical, { bigint: true });
+  expect((claimed.state as NativePortableState).spec_changes).toMatchObject([
+    { capability: 'workflow', operation: 'create' },
+  ]);
+  // Inject a malformed transport result after the real executor wrote the Spec.
+  // This is deterministic rejection coverage, not a captured 0.5.2 failure.
+  await expect(
+    f.runtime.recordOutcome({
+      runId: claimed.runId,
+      context: { projectRoot: f.root, requestId: 'rejected-create-spec-apply' },
+      outcome: {
+        ...result,
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        claimToken: action.claim!.token,
+        outcomeId: 'SIMULATED-corrupt-transport-result',
+        output: { ...(result.output as Record<string, string | number>), specCount: -1 },
+      },
+    }),
+  ).rejects.toMatchObject({ code: 'OUTCOME_REJECTED' });
+  const before = await f.runtime.inspect(claimed.runId);
+  expect(before.actions.at(-1)?.rejectedOutcomes).toHaveLength(1);
+  const recoverArgs = [
+    'native',
+    'archive',
+    claimed.runId,
+    '--recover',
+    '--project-root',
+    f.root,
+    '--json',
+  ];
+  let nextArgs = recoverArgs;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const cli = spawnSync(process.execPath, [path.resolve('dist/app/cli/index.js'), ...nextArgs], {
+      cwd: f.root,
+      encoding: 'utf8',
+      timeout: 30000,
+      windowsHide: true,
+      env: { ...process.env, COMET_DAEMON: 'off', COMET_SKIP_UPDATE_CHECK: '1' },
+    });
+    expect(cli.status, cli.stderr || cli.stdout).toBe(0);
+    const response = JSON.parse(cli.stdout);
+    if (attempt === 0) {
+      expect(response.data.recoveredAction).toMatchObject({
+        id: action.id,
+        stepId: 'archive.execute',
+      });
+      const continuation = response.data.continuation.commandArgs;
+      expect(continuation.slice(0, 4)).toEqual(['comet', 'native', 'archive', claimed.runId]);
+      expect(continuation).not.toContain('--recover');
+      nextArgs = continuation.slice(1);
+    } else nextArgs = recoverArgs;
+    expect(await fs.readFile(canonical, 'utf8')).toBe(content);
+    expect(await fs.stat(canonical, { bigint: true })).toMatchObject({
+      dev: identity.dev,
+      ino: identity.ino,
+      mtimeNs: identity.mtimeNs,
+      size: identity.size,
+    });
+  }
+  const completed = await f.runtime.inspect(claimed.runId);
+  expect(completed.status).toBe('completed');
+  expect(completed.waits).toEqual(before.waits);
+  expect(completed.actions.filter((entry) => entry.stepId === 'archive.execute')).toHaveLength(1);
+  expect(completed.actions.find((entry) => entry.id === action.id)).toMatchObject({
+    status: 'succeeded',
+    claim: action.claim,
+    rejectedOutcomes: before.actions.at(-1)!.rejectedOutcomes,
+  });
+});
 import { requireFileSymlink } from '../../helpers/file-symlink.js';
 async function multiCapabilityArchive(git = true) {
   return awaitingArchiveApplication(

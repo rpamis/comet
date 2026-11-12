@@ -211,7 +211,22 @@ async function copyGeneratedToolDirectory(
   projectPath: string,
   destination: string,
   projectMutationGuard?: ProjectMutationGuard,
+  ancestors: ReadonlySet<string> = new Set(),
 ): Promise<void> {
+  const stagingRoot = await fs.promises.realpath(stagingProject);
+  const sourceRoot = await fs.promises.realpath(source);
+  const sourceRelative = path.relative(stagingRoot, sourceRoot);
+  if (
+    path.isAbsolute(sourceRelative) ||
+    sourceRelative === '..' ||
+    sourceRelative.startsWith(`..${path.sep}`)
+  ) {
+    throw new Error('OpenSpec generated tool source escaped its staging root');
+  }
+  if (ancestors.has(sourceRoot)) {
+    throw new Error(`OpenSpec generated tool source contains a cyclic link: ${source}`);
+  }
+  const directoryAncestors = new Set([...ancestors, sourceRoot]);
   const destinationRelative = projectRelativePath(
     projectPath,
     destination,
@@ -221,33 +236,32 @@ async function copyGeneratedToolDirectory(
   await ensureProtectedProjectDirectory(projectPath, destinationRelative, {
     label: 'OpenSpec generated tool directory',
   });
-  const entries = await fs.promises.readdir(source, { withFileTypes: true });
+  const entries = await fs.promises.readdir(sourceRoot, { withFileTypes: true });
   for (const entry of entries) {
-    if (entry.isSymbolicLink()) {
-      throw new Error(`OpenSpec generated tool source must not contain links: ${entry.name}`);
-    }
-    const sourceEntry = path.join(source, entry.name);
-    const destinationEntry = path.join(destination, entry.name);
-    if (entry.isDirectory()) {
-      await copyGeneratedToolDirectory(
-        stagingProject,
-        sourceEntry,
-        projectPath,
-        destinationEntry,
-        projectMutationGuard,
-      );
-      continue;
-    }
-    if (!entry.isFile()) {
-      throw new Error(`OpenSpec generated tool source must contain only files: ${entry.name}`);
-    }
-    const sourceRelative = path.relative(stagingProject, sourceEntry);
+    const sourceEntry = await fs.promises.realpath(path.join(sourceRoot, entry.name));
+    const sourceRelative = path.relative(stagingRoot, sourceEntry);
     if (
       path.isAbsolute(sourceRelative) ||
       sourceRelative === '..' ||
       sourceRelative.startsWith(`..${path.sep}`)
     ) {
       throw new Error('OpenSpec generated tool source escaped its staging root');
+    }
+    const destinationEntry = path.join(destination, entry.name);
+    const sourceStat = entry.isSymbolicLink() ? await fs.promises.stat(sourceEntry) : entry;
+    if (sourceStat.isDirectory()) {
+      await copyGeneratedToolDirectory(
+        stagingProject,
+        sourceEntry,
+        projectPath,
+        destinationEntry,
+        projectMutationGuard,
+        directoryAncestors,
+      );
+      continue;
+    }
+    if (!sourceStat.isFile()) {
+      throw new Error(`OpenSpec generated tool source must contain only files: ${entry.name}`);
     }
     const destinationFileRelative = projectRelativePath(
       projectPath,
@@ -729,18 +743,13 @@ async function copyDshOpenSpecPaths(
       const destination = path.join(destinationRoot, directory, entry.name);
       if (fs.existsSync(destination) && !owned.has(relative)) continue;
 
-      if (scope === 'project') {
-        await copyGeneratedToolDirectory(
-          sourceBaseDir,
-          source,
-          destinationBaseDir,
-          destination,
-          projectMutationGuard,
-        );
-      } else {
-        fs.mkdirSync(path.dirname(destination), { recursive: true });
-        fs.cpSync(source, destination, { recursive: true, force: true });
-      }
+      await copyGeneratedToolDirectory(
+        sourceBaseDir,
+        source,
+        destinationBaseDir,
+        destination,
+        projectMutationGuard,
+      );
       copied.push(relative);
     }
   }

@@ -173,6 +173,110 @@ describe('openspec', () => {
   });
 
   describe('installOpenSpec', () => {
+    it.each(['project', 'global'] as const)(
+      'expands OpenSpec 2 shared skill links into independent files in %s scope',
+      async (scope) => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-shared-'));
+        const home = path.join(root, 'home');
+        fs.mkdirSync(home);
+        vi.spyOn(os, 'homedir').mockReturnValue(home);
+        const cli = createStagedOpenSpecCliMock();
+        mockedExecFileSync.mockImplementation((command, args) => {
+          if (command === 'openspec' && args?.[0] === 'init') {
+            const target = unquoteWindowsArg(args[1]);
+            if (args[args.indexOf('--tools') + 1] !== 'none') {
+              const shared = path.join(target, '.agents/skills/openspec-apply-change');
+              const platform = path.join(target, '.claude/skills');
+              fs.mkdirSync(shared, { recursive: true });
+              fs.writeFileSync(path.join(shared, 'SKILL.md'), '# shared skill\n');
+              fs.mkdirSync(platform, { recursive: true });
+              for (const name of ['openspec-apply-change', 'openspec-alias']) {
+                fs.symlinkSync(
+                  shared,
+                  path.join(platform, name),
+                  process.platform === 'win32' ? 'junction' : 'dir',
+                );
+              }
+              return Buffer.from('ok');
+            }
+          }
+          return cli(String(command), args ?? []);
+        });
+        try {
+          const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+          // Repeating the shared installer also covers the update merge path.
+          for (let attempt = 0; attempt < 2; attempt++) {
+            expect(
+              await installOpenSpec(root, ['claude'], scope, {
+                shouldInstallCli: false,
+                mirrorPlatformIds: scope === 'global' ? ['dsh'] : [],
+                selectedPlatformIds: ['claude', 'dsh'],
+              }),
+            ).toBe('installed');
+            for (const name of ['openspec-apply-change', 'openspec-alias']) {
+              const installed = path.join(scope === 'global' ? home : root, '.claude/skills', name);
+              expect(fs.lstatSync(installed).isSymbolicLink()).toBe(false);
+              expect(fs.readFileSync(path.join(installed, 'SKILL.md'), 'utf8')).toBe(
+                '# shared skill\n',
+              );
+            }
+          }
+        } finally {
+          fs.rmSync(root, { recursive: true, force: true });
+        }
+      },
+    );
+
+    it.each(['outside', 'cycle'] as const)(
+      'rejects an OpenSpec generated %s link without writing outside the install root',
+      async (kind) => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-link-boundary-'));
+        const outside = path.join(root, 'outside');
+        const project = path.join(root, 'project');
+        fs.mkdirSync(outside);
+        fs.mkdirSync(project);
+        fs.writeFileSync(path.join(outside, 'SKILL.md'), 'preserve outside');
+        const cli = createStagedOpenSpecCliMock();
+        mockedExecFileSync.mockImplementation((command, args) => {
+          if (command === 'openspec' && args?.[0] === 'init') {
+            const target = unquoteWindowsArg(args[1]);
+            if (args[args.indexOf('--tools') + 1] !== 'none') {
+              const platform = path.join(target, '.claude/skills');
+              fs.mkdirSync(platform, { recursive: true });
+              fs.symlinkSync(
+                kind === 'outside' ? outside : platform,
+                path.join(platform, 'openspec-link'),
+                process.platform === 'win32' ? 'junction' : 'dir',
+              );
+              return Buffer.from('ok');
+            }
+          }
+          return cli(String(command), args ?? []);
+        });
+        try {
+          let failure: Error | undefined;
+          const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+          expect(
+            await installOpenSpec(project, ['claude'], 'project', {
+              shouldInstallCli: false,
+              failureObserver: (error) => {
+                failure = error;
+              },
+            }),
+          ).toBe('failed');
+          expect(failure?.message).toMatch(
+            kind === 'outside' ? /escaped.*staging/i : /cyclic|cycle/i,
+          );
+          expect(fs.readFileSync(path.join(outside, 'SKILL.md'), 'utf8')).toBe('preserve outside');
+          expect(fs.existsSync(path.join(project, '.claude/skills/openspec-link/SKILL.md'))).toBe(
+            false,
+          );
+        } finally {
+          fs.rmSync(root, { recursive: true, force: true });
+        }
+      },
+    );
+
     it('copies native Oh My Pi OpenSpec skills into .omp', async () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-oh-my-pi-'));
       try {
