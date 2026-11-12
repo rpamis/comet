@@ -80,3 +80,9 @@ Native 通过当前 Native Skill 和公开 CLI 完成自身流程；Goal 通过 
 修订题 `syzkaller-ppdev-syzlang` 成功构建后，仍因原始源码的相对符号链接导致普通权限 `docker cp` 失败。以管理员权限执行同一 Docker 复制操作的最小探针已保留 `../../../pkg/html/pages/common.js` 相对链接，未展开或修改链接。后续两组的准备进程及公开 Eval 调度进程采用相同的管理员权限；模型仍在各自非 root 容器中执行，未提高容器内模型权限。没有启用系统开发者模式、修改全局代理或放宽原题评分。
 
 该办法是在选题 v2 提交后、任何模型调用前发现；本轮继续固定 v2 的 16 题，不再次换题，保留 v1 与此前失败记录。
+
+### 用户纠正后的任务范围 v3
+
+用户指出本轮重点是 Skill 评估，不需要选语音模型。已停止视频配音题的无模型准备，并将 `multilingual-video-dubbing` 替换为 `threejs-structure-parser`（media-content-production / medium）。同样需要下载预训练模型的 `earthquake-phase-association` 替换为 `mars-clouds-clustering`（natural-science / hard），后者仅使用常规科学计算库处理 CSV 与聚类参数优化。没有更换执行 Comet / Goal 的 DeepSeek 模型。
+
+两项替换均保留原领域及难度配额；其他 14 题不变。修订时真实模型调用仍为 0/96，尚无任何模型成绩。v1、v2 和原准备日志保留；v3 四份公开 CLI 静态计划均为 8 题 × 3 次，同一数据集两组原题与评分器绑定一致。后续选题清单以 `selection.json` v3 为准。

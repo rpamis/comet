@@ -213,32 +213,24 @@
           ]
         },
         {
-          "id": "multilingual-video-dubbing",
+          "id": "threejs-structure-parser",
           "category": "media-content-production",
           "difficulty": "medium",
           "workdir": "/root",
-          "contentHash": "sha256:e1ab9ea23c393e2d40bdc09b3e342740d31ffdb018dbacf0d59400f2839a6674",
-          "instructionHash": "sha256:b9196c63baa91a4f8335c87d34e810b8e44a064f9dffc0e87539c82cc6547119",
-          "selectionPool": [
-            "mario-coin-counting",
-            "multilingual-video-dubbing",
-            "threejs-structure-parser",
-            "threejs-to-obj"
-          ]
+          "contentHash": "sha256:04793a31c41052a25749f5b479db73f4081cd3f57cbe8b74a49cc9dfb7b30220",
+          "instructionHash": "sha256:c2bedc04b157bafbe9283baa72eb81c11137c118e0bb17d2276dc755c38de55d",
+          "selectionMethod": "Pre-model scope correction following user feedback; retain category and difficulty; no pretrained neural model dependency",
+          "originalSelection": "multilingual-video-dubbing"
         },
         {
-          "id": "earthquake-phase-association",
+          "id": "mars-clouds-clustering",
           "category": "natural-science",
           "difficulty": "hard",
           "workdir": "/root",
-          "contentHash": "sha256:7076e5a7894bfcfea22a5e5d776c73c5291ddbb80504edba4b81d5f9e969bdf0",
-          "instructionHash": "sha256:705c515f027fa7a98aa5a068d4dfc455797e237c1a1bbd0a08340041927043ce",
-          "selectionPool": [
-            "earthquake-phase-association",
-            "glm-lake-mendota",
-            "mars-clouds-clustering",
-            "seismic-phase-picking"
-          ]
+          "contentHash": "sha256:69ae537c14b68711448682be4e4d9726ab2216292377c88d7eb62c7bcd0d92cb",
+          "instructionHash": "sha256:2fb19d9e124c958f02a740a98109cc24e0bce10cb13959c44d221558b7ca1a47",
+          "selectionMethod": "Pre-model scope correction following user feedback; retain category and difficulty; no pretrained neural model dependency",
+          "originalSelection": "earthquake-phase-association"
         },
         {
           "id": "court-form-filling",
@@ -272,7 +264,7 @@
       ]
     }
   },
-  "selectionVersion": 2,
+  "selectionVersion": 3,
   "amendments": [
     {
       "at": "2026-11-12T01:16:16.071677+00:00",
@@ -284,6 +276,15 @@
         "suricata-custom-exfil": "dnf-based base image does not match current Debian/Ubuntu runtime layer",
         "setup-fuzzing-py": "OSS-Fuzz base image not validated for this Windows preparation path; not selected for this run"
       }
+    },
+    {
+      "at": "2026-11-12T02:44:07.265205+00:00",
+      "modelSamplesStarted": 0,
+      "replacements": {
+        "multilingual-video-dubbing": "threejs-structure-parser",
+        "earthquake-phase-association": "mars-clouds-clustering"
+      },
+      "reason": "User clarified that the focus is Comet Skill evaluation. Replace tasks requiring pretrained voice or seismic neural model downloads with Three.js structure extraction and CSV clustering optimization. Preserve category/difficulty quotas and all prior preparation records; no model scores have been observed."
     }
   ]
 }
