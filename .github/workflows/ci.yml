@@ -107,7 +107,8 @@ jobs:
           const files = [
             'test/domains/comet-native/native-parallel-worktree.test.ts',
             'test/platform/workspace-runtime.test.ts',
-            'test/domains/workflow-contract/workspace-runtime.test.ts',
+            'test/domains/workflow-contract/workspace-runtime-entrypoints.test.ts',
+            'test/domains/workflow-contract/workspace-runtime-current-business.test.ts',
             'test/domains/skill/dsh-hooks.test.ts',
             'test/platform/dsh-profiles.test.ts',
             'test/domains/comet-entry/hook-adapter.test.ts',
@@ -253,7 +254,8 @@ jobs:
         run: >-
           pnpm exec vitest run
           test/platform/workspace-runtime.test.ts
-          test/domains/workflow-contract/workspace-runtime.test.ts
+          test/domains/workflow-contract/workspace-runtime-entrypoints.test.ts
+          test/domains/workflow-contract/workspace-runtime-current-business.test.ts
       - name: DSH Hook installation and denial regressions
         if: matrix.os != 'ubuntu-latest'
         run: >-

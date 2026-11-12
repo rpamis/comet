@@ -188,7 +188,8 @@ describe('CI workflows', () => {
         }),
       ),
     ];
-    expect(files).toHaveLength(19);
+    expect(files).toHaveLength(20);
+    await Promise.all(files.map((file) => fs.access(file)));
     const linux = workflow.jobs['core-regression-report'];
     expect(linux.needs).toBe('quality');
     const download = linux.steps.findIndex((step: { uses?: string }) =>
@@ -271,7 +272,13 @@ describe('CI workflows', () => {
     expect(runtime.strategy.matrix.os).toEqual(['ubuntu-latest', 'macos-latest', 'windows-latest']);
     const commands = runtime.steps.map((step: { run?: string }) => step.run ?? '').join('\n');
     expect(commands).toContain('test/platform/workspace-runtime.test.ts');
-    expect(commands).toContain('test/domains/workflow-contract/workspace-runtime.test.ts');
+    expect(commands).toContain(
+      'test/domains/workflow-contract/workspace-runtime-entrypoints.test.ts',
+    );
+    expect(commands).toContain(
+      'test/domains/workflow-contract/workspace-runtime-current-business.test.ts',
+    );
+    expect(commands).not.toContain('test/domains/workflow-contract/workspace-runtime.test.ts');
   });
 
   it('runs CLI-owned process cleanup regressions without competing test workers', async () => {
