@@ -229,7 +229,7 @@ export function createNativeWorkflowApplication(
                   await readProtectedProjectFile(
                     paths.workspaceRuntimeRoot,
                     `transfers/native/${state.name}.json`,
-                    1024 * 1024,
+                    Number.MAX_SAFE_INTEGER,
                     { label: 'Native 转移回执' },
                   )
                 ).bytes.toString('utf8'),

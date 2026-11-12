@@ -20,7 +20,7 @@ import {
   resolveWorkflowApplicationFile,
 } from '../workflow-application/application.js';
 
-export const NATIVE_SELECTION_MAX_BYTES = 16 * 1024;
+export const NATIVE_SELECTION_MAX_BYTES = Number.MAX_SAFE_INTEGER;
 
 export async function readNativeSelectionRecord(
   paths: NativeProjectPaths,

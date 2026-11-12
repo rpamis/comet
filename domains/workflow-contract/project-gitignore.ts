@@ -5,7 +5,7 @@ import { atomicWriteContainedText } from './contained-atomic-write.js';
 import { inspectProtectedProjectPath, readProtectedProjectFile } from './protected-project-path.js';
 
 const PROJECT_GITIGNORE_PATH = '.gitignore';
-const PROJECT_GITIGNORE_MAX_BYTES = 4 * 1024 * 1024;
+const PROJECT_GITIGNORE_MAX_BYTES = Number.MAX_SAFE_INTEGER;
 const MANAGED_BLOCK_START = '# >>> Comet managed project state >>>';
 const MANAGED_BLOCK_END = '# <<< Comet managed project state <<<';
 const LOCAL_ARTIFACT_PATTERNS = [

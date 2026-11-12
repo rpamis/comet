@@ -53270,6 +53270,137 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-default-large-brief",
+      "behavior": "默认 Native 产物读取完整 brief，不因超过 1 MiB 拒绝。",
+      "sources": ["https://github.com/rpamis/comet/issues/551"],
+      "coverageLevel": "unit",
+      "reproduction": "在隔离临时项目写入超过原字节上限的合法完整材料，执行精确登记测试。默认读取、Runner 输入、能力发现、selection、Git 原文五项已取得旧代码失败证据；公开 brief 主流程属于原有放宽行为的回归保护。",
+      "expected": "默认 Native 产物读取完整 brief，不因超过 1 MiB 拒绝。",
+      "forbidden": "按固定字节上限拒绝、静默遗漏或截断材料；未批准的 Shape 不得直接进入 Build。",
+      "rootCause": "旧默认读取器使用固定 1 MiB 上限。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-bounded-file.test.ts",
+          "namePattern": "reads complete briefs beyond 1 MiB by default",
+          "requiredNames": [
+            "Native bounded artifact reader reads complete briefs beyond 1 MiB by default"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-large-runner-input",
+      "behavior": "超过 8 MiB 的合法 Runner 输入完整校验并保留登记。",
+      "sources": ["https://github.com/rpamis/comet/issues/551"],
+      "coverageLevel": "runtime",
+      "reproduction": "在隔离临时项目写入超过原字节上限的合法完整材料，执行精确登记测试。默认读取、Runner 输入、能力发现、selection、Git 原文五项已取得旧代码失败证据；公开 brief 主流程属于原有放宽行为的回归保护。",
+      "expected": "超过 8 MiB 的合法 Runner 输入完整校验并保留登记。",
+      "forbidden": "按固定字节上限拒绝、静默遗漏或截断材料；未批准的 Shape 不得直接进入 Build。",
+      "rootCause": "Runner 输入读取硬编码 8 MiB，登记读取另有 256 KiB 限制。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-file-size.test.ts",
+          "namePattern": "retains complete runner input artifacts beyond 8 MiB",
+          "requiredNames": [
+            "Native workflow file sizes retains complete runner input artifacts beyond 8 MiB"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-large-capability-spec",
+      "behavior": "能力发现完整读取超过旧单文件和总字节预算的 Spec。",
+      "sources": ["https://github.com/rpamis/comet/issues/551"],
+      "coverageLevel": "runtime",
+      "reproduction": "在隔离临时项目写入超过原字节上限的合法完整材料，执行精确登记测试。默认读取、Runner 输入、能力发现、selection、Git 原文五项已取得旧代码失败证据；公开 brief 主流程属于原有放宽行为的回归保护。",
+      "expected": "能力发现完整读取超过旧单文件和总字节预算的 Spec。",
+      "forbidden": "按固定字节上限拒绝、静默遗漏或截断材料；未批准的 Shape 不得直接进入 Build。",
+      "rootCause": "能力来源在 256 KiB 被静默跳过，总语料另限制为 8 MiB。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-file-size.test.ts",
+          "namePattern": "includes complete capability Specs beyond the former per-file and total byte budgets",
+          "requiredNames": [
+            "Native workflow file sizes includes complete capability Specs beyond the former per-file and total byte budgets"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-large-current-selection",
+      "behavior": "合法 selection 超过 16 KiB 时仍保留原 workflow 和 change 归属。",
+      "sources": ["https://github.com/rpamis/comet/issues/551"],
+      "coverageLevel": "runtime",
+      "reproduction": "在隔离临时项目写入超过原字节上限的合法完整材料，执行精确登记测试。默认读取、Runner 输入、能力发现、selection、Git 原文五项已取得旧代码失败证据；公开 brief 主流程属于原有放宽行为的回归保护。",
+      "expected": "合法 selection 超过 16 KiB 时仍保留原 workflow 和 change 归属。",
+      "forbidden": "按固定字节上限拒绝、静默遗漏或截断材料；未批准的 Shape 不得直接进入 Build。",
+      "rootCause": "共享 selection 读取固定限制 16 KiB。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-file-size.test.ts",
+          "namePattern": "reads a valid current selection beyond 16 KiB without losing its ownership",
+          "requiredNames": [
+            "Native workflow file sizes reads a valid current selection beyond 16 KiB without losing its ownership"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-large-brief-public-continuation",
+      "behavior": "大于 1 MiB 的 brief 可经公开 bundle 准备 Shape 并在明确确认后进入 Build。",
+      "sources": ["https://github.com/rpamis/comet/issues/551"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在隔离临时项目写入超过原字节上限的合法完整材料，执行精确登记测试。默认读取、Runner 输入、能力发现、selection、Git 原文五项已取得旧代码失败证据；公开 brief 主流程属于原有放宽行为的回归保护。",
+      "expected": "大于 1 MiB 的 brief 可经公开 bundle 准备 Shape 并在明确确认后进入 Build。",
+      "forbidden": "按固定字节上限拒绝、静默遗漏或截断材料；未批准的 Shape 不得直接进入 Build。",
+      "rootCause": "用户报告 brief 超过 1 MB 阻塞；当前主路径已放宽，新增公开 bundle 回归固定合法推进及确认边界，原用户具体命令仍未知。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-file-size.test.ts",
+          "namePattern": "advances a brief beyond 1 MiB through public command bundles only after confirmation",
+          "requiredNames": [
+            "Native workflow file sizes advances a brief beyond 1 MiB through public command bundles only after confirmation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-large-main-spec-archive",
+      "behavior": "Classic 归档完整保留超过 64 MiB 的主 Spec 原文。",
+      "sources": ["https://github.com/rpamis/comet/issues/551"],
+      "coverageLevel": "runtime",
+      "reproduction": "在隔离临时项目写入超过原字节上限的合法完整材料，执行精确登记测试。默认读取、Runner 输入、能力发现、selection、Git 原文五项已取得旧代码失败证据；公开 brief 主流程属于原有放宽行为的回归保护。",
+      "expected": "Classic 归档完整保留超过 64 MiB 的主 Spec 原文。",
+      "forbidden": "按固定字节上限拒绝、静默遗漏或截断材料；未批准的 Shape 不得直接进入 Build。",
+      "rootCause": "Classic 主规格备份对单文件及总内容硬编码 64 MiB。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-progress.test.ts",
+          "namePattern": "preserves complete Classic archive Specs beyond 64 MiB",
+          "requiredNames": ["preserves complete Classic archive Specs beyond 64 MiB"]
+        }
+      ]
+    },
+    {
+      "id": "workflow-large-git-originals",
+      "behavior": "Git 原文读取默认保留大于 1 MiB 和旧 8 MiB 输出缓冲的对象。",
+      "sources": ["https://github.com/rpamis/comet/issues/551"],
+      "coverageLevel": "unit",
+      "reproduction": "在隔离临时项目写入超过原字节上限的合法完整材料，执行精确登记测试。默认读取、Runner 输入、能力发现、selection、Git 原文五项已取得旧代码失败证据；公开 brief 主流程属于原有放宽行为的回归保护。",
+      "expected": "Git 原文读取默认保留大于 1 MiB 和旧 8 MiB 输出缓冲的对象。",
+      "forbidden": "按固定字节上限拒绝、静默遗漏或截断材料；未批准的 Shape 不得直接进入 Build。",
+      "rootCause": "批量 Git 原文读取默认跳过超过 1 MiB 的 blob，输出缓冲固定 8 MiB 且总内容限制为 64 MiB。",
+      "tests": [
+        {
+          "file": "test/platform/git-process.test.ts",
+          "namePattern": "reads complete Git blobs beyond the former file and process buffer limits by default",
+          "requiredNames": [
+            "Git process helpers reads complete Git blobs beyond the former file and process buffer limits by default"
+          ]
+        }
+      ]
     }
   ],
   "historicalTestMigrations": [

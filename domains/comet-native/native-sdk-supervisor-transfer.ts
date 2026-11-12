@@ -52,7 +52,7 @@ import {
 } from './native-supervisor-workspace.js';
 
 const SCHEMA = 'comet.native.supervisor-transfer.v1';
-const MAX_BUFFER = 100 * 1024 * 1024;
+const MAX_BUFFER = Number.MAX_SAFE_INTEGER;
 
 interface TransferFile {
   path: string;

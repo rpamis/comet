@@ -43,14 +43,13 @@ export async function isWorkspaceRuntimeMigrationFence(
     if (stat.isSymbolicLink()) throw new Error('旧 Runtime 路径不能是符号链接：' + source);
     const file = stat.isDirectory() ? path.join(source, '.comet-runtime-migration.json') : source;
     const fileStat = await fs.lstat(file);
-    if (!fileStat.isFile() || fileStat.isSymbolicLink() || fileStat.size > 1024 * 1024)
-      return false;
+    if (!fileStat.isFile() || fileStat.isSymbolicLink()) return false;
     let value;
     try {
       value = JSON.parse(
-        (await readFileRaceSafe(file, 1024 * 1024, { label: '旧 Runtime 标记' })).bytes.toString(
-          'utf8',
-        ),
+        (
+          await readFileRaceSafe(file, Number.MAX_SAFE_INTEGER, { label: '旧 Runtime 标记' })
+        ).bytes.toString('utf8'),
       );
     } catch (error) {
       if (error instanceof SyntaxError) return false;

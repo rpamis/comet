@@ -10,7 +10,7 @@ import { inspectProtectedProjectPath, readProtectedProjectFile } from './protect
 
 const CONFIG_TRANSACTION_SCHEMA = 'comet.project-config-write.v1';
 const CONFIG_TRANSACTION_PATH = '.comet/config-write-transaction.json';
-const CONFIG_TRANSACTION_MAX_BYTES = 16 * 1024;
+const CONFIG_TRANSACTION_MAX_BYTES = Number.MAX_SAFE_INTEGER;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 

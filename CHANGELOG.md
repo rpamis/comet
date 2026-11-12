@@ -14,6 +14,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Workflow file sizes**: Remove remaining built-in byte caps from Native and Classic workflow materials, archive recovery, and shared Runtime records so growing documents remain complete and do not block continuation ([#551](https://github.com/rpamis/comet/issues/551)).
 - **Plugin startup context**: Deliver a short workflow entry and a readable Rule path on session startup or recovery. Reuse applicable rules already in context and reread missing rules after compaction, while retaining the write Guard and complete workflow requirements.
 - **Native task continuation**: Return guarded Shape confirmation and revision choices directly with the high-level task result, avoiding an extra full status query. Keep detailed execution instructions in one place and preserve the required user decision.
 - **Workflow Runtime overhead**: Remove Native and Classic workflow locks and lock-recovery steps. Each workspace has one state writer; parallel children work in isolated worktrees and return results for the parent to submit in sequence with their original identities. Combine internal transitions with existing approvals and avoid rewriting unchanged progress.

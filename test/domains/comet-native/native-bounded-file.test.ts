@@ -18,6 +18,14 @@ describe('Native bounded artifact reader', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
+  it('reads complete briefs beyond 1 MiB by default', async () => {
+    const text = '# Outcome\n' + '需求正文\n'.repeat(100_000) + '\nEND';
+    await fs.writeFile(path.join(root, 'brief.md'), text);
+    const result = await readNativeBoundedTextFile({ root, ref: 'brief.md', includeHash: false });
+    expect(result.text).toBe(text);
+    expect(result.size).toBe(Buffer.byteLength(text));
+  });
+
   it('rejects a partial Windows identity when the available inode differs', async () => {
     const file = path.join(root, 'report.md');
     await fs.writeFile(file, 'stable');

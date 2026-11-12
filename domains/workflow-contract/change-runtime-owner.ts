@@ -118,7 +118,7 @@ async function readOwnerFile(
 ): Promise<ChangeRuntimeOwner | null> {
   let bytes: Buffer;
   try {
-    ({ bytes } = await readProtectedProjectFile(root, reference, 16 * 1024, {
+    ({ bytes } = await readProtectedProjectFile(root, reference, Number.MAX_SAFE_INTEGER, {
       label: 'change runtime owner',
     }));
   } catch (error) {
@@ -168,7 +168,7 @@ async function readCanonicalOwnerRecord(
     observed = await readProtectedProjectFile(
       root,
       canonicalOwnerRef(workflow, change),
-      16 * 1024,
+      Number.MAX_SAFE_INTEGER,
       {
         label: 'canonical change runtime owner',
         bigint: true,

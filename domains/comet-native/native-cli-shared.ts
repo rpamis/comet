@@ -66,8 +66,6 @@ export interface DispatchResult {
   envelope?: CliOutputEnvelope;
 }
 
-export const NATIVE_SHOW_MAX_SERIALIZED_BYTES = 10 * 1024 * 1024;
-
 export class NativeUsageError extends Error {}
 
 export function takeFlag(args: string[], name: string): boolean {

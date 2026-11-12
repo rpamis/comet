@@ -33,7 +33,6 @@ export interface WorkflowApplicationDefinition {
   presentation?: WorkflowApplicationPresentation;
 }
 
-const MAX_DEFINITION_BYTES = 8 * 1024 * 1024;
 const MAX_WORKFLOWS = 256;
 const MAX_STEPS = 4096;
 const MAX_TRANSITIONS = 16384;
@@ -121,8 +120,6 @@ export function parseWorkflowApplicationDefinition(
   manifest?: Pick<WorkflowApplicationManifest, 'id' | 'version'>,
 ): WorkflowApplicationDefinition {
   const source = typeof value === 'string' ? value : canonicalRuntimeJson(value);
-  if (Buffer.byteLength(source, 'utf8') > MAX_DEFINITION_BYTES)
-    applicationError('应用流程定义超过大小限制');
   const definition = object(
     JSON.parse(source),
     ['schema', 'application', 'workflows', 'presentation'],

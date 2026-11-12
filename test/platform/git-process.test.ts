@@ -47,6 +47,16 @@ describe('Git process helpers', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
+  it('reads complete Git blobs beyond the former file and process buffer limits by default', () => {
+    const text = 'x'.repeat(9 * 1024 * 1024) + '\nEND\n';
+    const id = execFileSync('git', ['hash-object', '-w', '--stdin'], {
+      cwd: projectRoot,
+      input: text,
+      encoding: 'utf8',
+    }).trim();
+    expect(readGitBlobs(projectRoot, [id]).get(id) === text).toBe(true);
+  });
+
   it('derives exactly the untracked paths from the existing full porcelain observation', async () => {
     await fs.mkdir(path.join(projectRoot, 'nested'));
     for (const ref of ['two words.txt', '中文.txt', 'nested/added.txt', 'excluded.txt'])

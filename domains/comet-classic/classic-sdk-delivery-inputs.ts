@@ -19,7 +19,7 @@ function git(root: string, args: string[]) {
     encoding: 'utf8',
     windowsHide: true,
     timeout: 30000,
-    maxBuffer: 32 * 1024 * 1024,
+    maxBuffer: Number.MAX_SAFE_INTEGER,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 }

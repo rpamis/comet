@@ -52,6 +52,42 @@ it('reads an absent optional Runtime record without creating its root', async ()
   }
 });
 
+it('preserves complete Classic archive Specs beyond 64 MiB', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'classic-large-archive-'));
+  const change = path.join(root, 'docs/openspec/changes/demo');
+  try {
+    await mkdir(change, { recursive: true });
+    await writeFile(
+      path.join(change, '.comet.yaml'),
+      'phase: archive\nverify_result: pass\narchived: false\nrun_id: large-document-run\n',
+    );
+    const source = '# Feature\n' + 'x'.repeat(64 * 1024 * 1024 + 1) + '\nEND';
+    const spec = path.join(root, 'docs/openspec/specs/feature/spec.md');
+    await mkdir(path.dirname(spec), { recursive: true });
+    await writeFile(spec, source);
+    await writeClassicDelivery(
+      root,
+      change,
+      { action: 'archive-only' },
+      { phase: 'archive', verifyResult: 'pass', archived: false },
+    );
+    await writeFile(
+      path.join(change, '.comet.yaml'),
+      'phase: archive\nverify_result: pass\narchived: true\nrun_id: large-document-run\n',
+    );
+    const archived = path.join(root, 'docs/openspec/changes/archive/2026-11-12-demo');
+    await mkdir(path.dirname(archived), { recursive: true });
+    await rename(change, archived);
+    await recordClassicDocumentArchive(root, archived);
+    const saved = JSON.parse(await readFile(path.join(archived, '.comet/main-specs.json'), 'utf8'));
+    expect(Buffer.from(saved.files['feature/spec.md'], 'base64').toString('utf8') === source).toBe(
+      true,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 it('archives documents in a non-Git coordinator without claiming a child repository commit', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'classic-document-delivery-'));
   const change = path.join(root, 'docs', 'openspec', 'changes', 'demo');

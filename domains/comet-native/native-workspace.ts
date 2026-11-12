@@ -20,7 +20,7 @@ import type { NativeProjectPaths, NativeWorkspaceProjection } from './native-typ
 
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
 const GIT_COMMIT_PATTERN = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
-const MAX_WORKSPACE_IDENTITY_BYTES = 16 * 1024;
+const MAX_WORKSPACE_IDENTITY_BYTES = Number.MAX_SAFE_INTEGER;
 const HOST_PLATFORM = process.platform;
 
 export type NativeWorkspaceIsolation = 'current' | 'branch' | 'worktree';

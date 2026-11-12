@@ -17,7 +17,7 @@ import {
 } from './native-portable-transactions.js';
 import type { NativeProjectPaths } from './native-types.js';
 
-const MAX_BYTES = 8 * 1024 * 1024;
+const MAX_BYTES = Number.MAX_SAFE_INTEGER;
 const SCHEMA = 'comet.native.archive-originals.v1';
 function evidenceRef(runId: string, transactionId: string) {
   return `archive-originals/${hashRuntimeValue({ runId, transactionId })}.json`;

@@ -15,7 +15,6 @@ import {
 import {
   assertNoArguments,
   configuredPaths,
-  NATIVE_SHOW_MAX_SERIALIZED_BYTES,
   requiredPositional,
   success,
   type DispatchResult,
@@ -130,8 +129,5 @@ export async function nativeShowCommand(
     brief: brief.text,
     proposedSpecs,
   };
-  if (Buffer.byteLength(JSON.stringify(payload), 'utf8') > NATIVE_SHOW_MAX_SERIALIZED_BYTES) {
-    throw new Error('Native show output exceeds its serialized byte budget');
-  }
   return { ...success('show', payload), executionCwd };
 }

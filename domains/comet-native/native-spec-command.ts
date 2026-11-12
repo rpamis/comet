@@ -45,8 +45,8 @@ export async function nativeSpecCommand(
     const stat = await fs.lstat(file).catch(() => {
       throw new NativeUsageError(`Spec sync input file is unreadable: ${inputFile}`);
     });
-    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 1024 * 1024)
-      throw new NativeUsageError('Spec sync input must be a bounded regular JSON file');
+    if (!stat.isFile() || stat.isSymbolicLink())
+      throw new NativeUsageError('Spec sync input must be a regular JSON file');
     let input;
     try {
       input = JSON.parse(await fs.readFile(file, 'utf8'));

@@ -547,7 +547,6 @@ async function preserveMainSpecSnapshot(root: string, changeDir: string): Promis
     return;
   const specsDir = path.join(path.dirname(path.dirname(path.dirname(changeDir))), 'specs');
   const files: Record<string, string> = {};
-  let totalBytes = 0;
   const visit = async (directory: string): Promise<void> => {
     await inspectClassicProjectTarget(root, directory, {
       label: 'Classic main specs',
@@ -560,12 +559,11 @@ async function preserveMainSpecSnapshot(root: string, changeDir: string): Promis
         const file = await readProtectedProjectFile(
           root,
           path.relative(root, target).replaceAll('\\', '/'),
-          64 * 1024 * 1024,
+          Number.MAX_SAFE_INTEGER,
           { label: 'Classic main spec snapshot input' },
         );
-        totalBytes += file.bytes.length;
-        if (totalBytes > 64 * 1024 * 1024 || Object.keys(files).length >= 10000)
-          throw new Error('Classic main spec snapshot exceeds its size limit');
+        if (Object.keys(files).length >= 10000)
+          throw new Error('Classic main spec snapshot exceeds its file count limit');
         files[path.relative(specsDir, target).replaceAll('\\', '/')] =
           file.bytes.toString('base64');
       } else throw new Error(`Classic main specs contain unsupported entry: ${target}`);
