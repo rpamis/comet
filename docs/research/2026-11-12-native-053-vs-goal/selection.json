@@ -32,12 +32,14 @@
       },
       "tasks": [
         {
-          "id": "bug_fix-easy-filtered_relation_queryset_arg",
+          "id": "bug_fix-easy-invalid_filterwarnings_regex_error",
           "category": "bug-fix",
           "difficulty": "easy",
           "workdir": "/workspace",
-          "contentHash": "sha256:2b674508e5af0fce5d87061a45827282884735f2a6e279330234058f1989fbef",
-          "instructionHash": "sha256:b3a79a54bc452466d5e1f1a14342bf19cdc170c5a9d5faccc6d91829a3254006",
+          "contentHash": "sha256:b3885b22e38b369f17c46f392ba90625dcebf5c44ebc5bf8d3eb8e0e9ff66224",
+          "instructionHash": "sha256:2ad58d36ffb7b2e74ff6ff3b8130065b6d21cae9ab0f8dcd7789b7d0a591ae5c",
+          "selectionMethod": "Pre-model Windows workspace compatibility amendment; the only other candidate in the same initial category/difficulty pool",
+          "originalSelection": "bug_fix-easy-filtered_relation_queryset_arg",
           "selectionPool": [
             "bug_fix-easy-filtered_relation_queryset_arg",
             "bug_fix-easy-invalid_filterwarnings_regex_error"
@@ -264,7 +266,7 @@
       ]
     }
   },
-  "selectionVersion": 3,
+  "selectionVersion": 4,
   "amendments": [
     {
       "at": "2026-11-12T01:16:16.071677+00:00",
@@ -285,6 +287,13 @@
         "earthquake-phase-association": "mars-clouds-clustering"
       },
       "reason": "User clarified that the focus is Comet Skill evaluation. Replace tasks requiring pretrained voice or seismic neural model downloads with Three.js structure extraction and CSV clustering optimization. Preserve category/difficulty quotas and all prior preparation records; no model scores have been observed."
+    },
+    {
+      "at": "2026-11-12T04:00:21.421010+00:00",
+      "modelSamplesStarted": 0,
+      "replaced": "bug_fix-easy-filtered_relation_queryset_arg",
+      "replacement": "bug_fix-easy-invalid_filterwarnings_regex_error",
+      "reason": "Elevated Windows preparation still fails while copying Django documentation symlinks with shutil.Error / WinError 123. Use the only other candidate in the original bug-fix/easy pool. Preserve prior plans and preparation failures; no scoring or model runs have started."
     }
   ]
 }

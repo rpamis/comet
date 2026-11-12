@@ -86,3 +86,19 @@ Native 通过当前 Native Skill 和公开 CLI 完成自身流程；Goal 通过 
 用户指出本轮重点是 Skill 评估，不需要选语音模型。已停止视频配音题的无模型准备，并将 `multilingual-video-dubbing` 替换为 `threejs-structure-parser`（media-content-production / medium）。同样需要下载预训练模型的 `earthquake-phase-association` 替换为 `mars-clouds-clustering`（natural-science / hard），后者仅使用常规科学计算库处理 CSV 与聚类参数优化。没有更换执行 Comet / Goal 的 DeepSeek 模型。
 
 两项替换均保留原领域及难度配额；其他 14 题不变。修订时真实模型调用仍为 0/96，尚无任何模型成绩。v1、v2 和原准备日志保留；v3 四份公开 CLI 静态计划均为 8 题 × 3 次，同一数据集两组原题与评分器绑定一致。后续选题清单以 `selection.json` v3 为准。
+
+### 运行镜像预热与第三次空间回收
+
+Native 无模型预检发现：工作区装配移除未使用的 Skill 输入后，运行镜像的缓存键与装配镜像不同。工具查询因此可能触发第二层构建，超过原预检查询的 180 秒限制。准备脚本改为先按任务原有构建预算显式预热最终运行镜像，再执行短工具查询；只改本次准备脚本，未改产品源码、公开 Eval 或模型预算。原始超时和补检日志均保留。16 个 SkillsBench 任务 / 组别环境已核验通过，实测 Node 22.23.5、Claude Code 2.1.318；Native 为 0.5.3，Goal 不安装 Comet。
+
+再次回收未使用缓存，CLI 分别报告 8.554 GB 与 3.532 GB。第三次离线压缩使数据盘从 74,918,658,048 降至 70,235,717,632 字节，D 盘恢复至约 19.5 GiB。重启核对 60 个镜像 ID、73 个卷和 29 个容器保留。后续 WorkBuddy 无模型准备采用 2 并行，正式模型计划仍为四组各 1 个执行器。
+
+### 用户授权迁移 Docker 数据盘
+
+新镜像继续增长后，用户明确授权通过 Docker Desktop 设置将数据盘迁至 G 盘。已确认 G 为固定 NTFS / NVMe 磁盘、迁移前约 126 GiB 空余，目标目录原不存在。原设置的 C 盘 `wsl/disk` 是指向 `D:/VirtualMachines/DockerDisk` 的目录联接；Docker 自动将目标设为 `G:/VirtualMachines/DockerDisk/DockerDesktopWSL`。迁移通过官方设置入口完成，未改 Docker 版本或安全设置。
+
+Docker 引擎恢复后，迁移前的 65 个镜像 ID、73 个卷和 33 个容器均核对保留，旧 D 盘数据文件已由 Docker 移除，新文件位于 `G:/VirtualMachines/DockerDisk/DockerDesktopWSL/disk/docker_data.vhdx`，约 73.6 GiB。D 盘恢复至约 84.3 GiB，G 盘约 52.7 GiB。以上验证是对象清单与服务恢复核验，未逐字节比对数据盘内容。模型调用仍为 0/96，全部真实模型样本将在迁移后使用同一存储环境执行。
+
+### Windows 兼容性修订 v4
+
+WorkBuddy 的 `bug_fix-easy-filtered_relation_queryset_arg` 已成功构建，但管理员权限下复制 Django 文档符号链接仍触发 `shutil.Error` / `WinError 123`。在尚未调用任何模型、没有任何原题评分时，将它替换为原 bug-fix / easy 候选池中唯一另一题 `bug_fix-easy-invalid_filterwarnings_regex_error`，其余 15 题保持 v3 不变。原 v3 清单保存在 `selection-v3.json`，全部失败准备日志保留。最终清单按 `selection.json` v4 执行；四份公开 CLI 计划仍各为 8 题 × 3 次，同一数据集两组的题面与评分器绑定一致。
