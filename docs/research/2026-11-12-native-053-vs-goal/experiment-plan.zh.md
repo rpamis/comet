@@ -102,3 +102,7 @@ Docker 引擎恢复后，迁移前的 65 个镜像 ID、73 个卷和 33 个容�
 ### Windows 兼容性修订 v4
 
 WorkBuddy 的 `bug_fix-easy-filtered_relation_queryset_arg` 已成功构建，但管理员权限下复制 Django 文档符号链接仍触发 `shutil.Error` / `WinError 123`。在尚未调用任何模型、没有任何原题评分时，将它替换为原 bug-fix / easy 候选池中唯一另一题 `bug_fix-easy-invalid_filterwarnings_regex_error`，其余 15 题保持 v3 不变。原 v3 清单保存在 `selection-v3.json`，全部失败准备日志保留。最终清单按 `selection.json` v4 执行；四份公开 CLI 计划仍各为 8 题 × 3 次，同一数据集两组的题面与评分器绑定一致。
+
+### 已就绪数据集先行启动
+
+24 个环境核验通过，剩余 8 个 WorkBuddy Native 环境因 Docker Hub / PyPI / GitHub 连接重置和 TLS EOF 未完成准备，原始日志保留，尚未产生模型结果。为继续完成已授权评估，先同时启动已经全部就绪的 SkillsBench Native 与 Goal 两组，每组 8 题 × 3 次、1 个执行器，共 48 个样本；WorkBuddy 两组在其环境就绪后加入。每组仍只有 1 个执行器，总并发上限 4，总范围保持 16 题、两组各 3 次、96 个样本，不重跑已运行槽位。该执行时序调整发生在首个真实模型调用前；同一数据集的 Native / Goal 同时开始。
