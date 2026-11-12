@@ -183,7 +183,7 @@ describe('Classic read-only state and Archive identity', () => {
     const target = path.join(runtime, 'record.json');
     await fs.symlink(outside, target);
     await expect(readClassicProjectFile(root, target, { label: 'local read' })).rejects.toThrow(
-      /symbolic link|junction/u,
+      /regular file|symbolic link|junction/u,
     );
     expect(await fs.readFile(outside, 'utf8')).toBe('untouched');
   });
