@@ -2,6 +2,31 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "darwin-process-group-signal-exit-confirmation",
+      "behavior": "Darwin 接受整组终止信号后，只有探测到整组退出才返回已确认，仍存活或状态未知不生成成功证明。",
+      "sources": [
+        "report:2026-11-13-macos-orphan-cleanup",
+        "https://github.com/rpamis/comet/actions/runs/43279810282/job/131398013761"
+      ],
+      "coverageLevel": "unit",
+      "reproduction": "ef832ae8 macOS 真实进程测试出现 confirmed=true 且孤儿后代仍存活；新增四项确定性回归在旧代码全部失败。",
+      "expected": "成功信号后等待整组退出；已消失可确认，延迟退出等待后确认，仍存活或探测失败返回未确认；ESRCH 不重复探测或发信号。",
+      "forbidden": "仅凭 SIGKILL 已发送或组长退出确认成功、重发进程组信号、降低原孤儿后代断言。",
+      "rootCause": "Darwin 成功发送 SIGKILL 的分支立即返回 true，仅 EPERM 分支等待整组消失。",
+      "tests": [
+        {
+          "file": "test/platform/process/owned-command-termination.test.ts",
+          "namePattern": "^受管命令的整树终止证明 Darwin 成功发送 SIGKILL 后整组为 (gone|delayed|alive|unknown) 时按退出探测确认$",
+          "requiredNames": [
+            "受管命令的整树终止证明 Darwin 成功发送 SIGKILL 后整组为 gone 时按退出探测确认",
+            "受管命令的整树终止证明 Darwin 成功发送 SIGKILL 后整组为 delayed 时按退出探测确认",
+            "受管命令的整树终止证明 Darwin 成功发送 SIGKILL 后整组为 alive 时按退出探测确认",
+            "受管命令的整树终止证明 Darwin 成功发送 SIGKILL 后整组为 unknown 时按退出探测确认"
+          ]
+        }
+      ]
+    },
+    {
       "id": "dsh-dashboard-literal-windows-paths",
       "behavior": "DSH Dashboard 经 Windows npm 启动器保留 CLI 和工作区路径原文，不展开环境变量或执行路径文本。",
       "sources": [

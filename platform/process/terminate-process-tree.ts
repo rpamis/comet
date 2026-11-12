@@ -34,7 +34,7 @@ export async function terminateProcessTree(child: ChildProcess): Promise<void> {
   await terminateProcessTreeConfirmed(child);
 }
 
-/** 返回整树终止是否已确认；只杀掉组长不能证明 Windows 后代已退出。 */
+/** 返回整树终止是否已确认；只杀掉组长不能证明后代已退出。 */
 export async function terminateProcessTreeConfirmed(child: ChildProcess): Promise<boolean> {
   const pid = child.pid;
   if (pid === undefined) {
@@ -92,6 +92,7 @@ export async function terminateProcessTreeConfirmed(child: ChildProcess): Promis
     child.stderr?.destroy();
     return false;
   }
+  let groupExited = false;
   try {
     process.kill(-pid, 'SIGKILL');
   } catch (error) {
@@ -103,7 +104,11 @@ export async function terminateProcessTreeConfirmed(child: ChildProcess): Promis
       !(process.platform === 'darwin' && code === 'EPERM' && (await waitForPosixGroupExit(pid)))
     )
       throw error;
+    groupExited = true;
   }
   child.kill('SIGKILL');
+  // Darwin 接受组信号后，忽略 stdio 的后代仍可能尚未退出。
+  // 沿用自清理分支的整组探测，不把信号已发送当成退出证明。
+  if (process.platform === 'darwin' && !groupExited) return waitForPosixGroupExit(pid);
   return true;
 }

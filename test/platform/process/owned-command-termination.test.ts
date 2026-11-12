@@ -266,6 +266,35 @@ describe('受管命令的整树终止证明', () => {
     expect(kill.mock.calls.filter(([, signal]) => signal === 'SIGKILL')).toHaveLength(1);
   });
 
+  it.each(['gone', 'delayed', 'alive', 'unknown'] as const)(
+    'Darwin 成功发送 SIGKILL 后整组为 %s 时按退出探测确认',
+    async (state) => {
+      Object.defineProperty(process, 'platform', { ...platform, value: 'darwin' });
+      const pid = 2147483002;
+      let probes = 0;
+      const now = Date.now();
+      vi.spyOn(Date, 'now').mockImplementation(() => now + (probes > 0 ? 2000 : 0));
+      const kill = vi.spyOn(process, 'kill').mockImplementation((target, signal) => {
+        expect(target).toBe(-pid);
+        if (signal === 'SIGKILL') return true;
+        expect(signal).toBe(0);
+        probes += 1;
+        if (state === 'gone' || (state === 'delayed' && probes === 2))
+          throw Object.assign(new Error('kill ESRCH'), { code: 'ESRCH' });
+        if (state === 'unknown') throw Object.assign(new Error('probe EIO'), { code: 'EIO' });
+        return true;
+      });
+      // delayed 的首轮仍存活，保留一次真实等待，第二轮退出。
+      if (state === 'delayed') vi.mocked(Date.now).mockReturnValue(now);
+      const child = { pid, kill: vi.fn(() => false) } as unknown as ChildProcess;
+      await expect(terminateProcessTreeConfirmed(child)).resolves.toBe(
+        state === 'gone' || state === 'delayed',
+      );
+      expect(probes).toBe(state === 'delayed' ? 2 : 1);
+      expect(kill.mock.calls.filter(([, signal]) => signal === 'SIGKILL')).toHaveLength(1);
+    },
+  );
+
   it.each(['alive', 'unknown'] as const)(
     'POSIX kill 被拒绝且整组仍为 %s 时不能只凭组长退出确认',
     async (state) => {
