@@ -1,0 +1,9 @@
+{
+  "sourceCommit": "e4cfe675d52159555d3452f28d85ec1293d29501",
+  "adapterHash": "sha256:d5763a89028204fb78090cc84ee92fc73e6fe6538abf1bfe427abd0e899b88a9",
+  "verified": true,
+  "lineEndings": {
+    "eval/scaffold/python/utils.py": "CRLF",
+    "eval/local/tests/conftest.py": "CRLF"
+  }
+}

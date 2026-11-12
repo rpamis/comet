@@ -1,0 +1,434 @@
+{
+  "schema": "comet.eval.execution-accounting.v1",
+  "logicalScoringPositions": 36,
+  "actualModelTrajectories": 37,
+  "byTreatment": {
+    "native": 19,
+    "goal": 18
+  },
+  "discardedEnvironmentTrajectories": [
+    {
+      "sourceRun": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+      "task": "product_analytics-hard-day7_retention",
+      "repetition": 2,
+      "reason": "Dataset storage observer interrupted the agent with exit 122 and dataset_storage_incomplete; original reward 1 retained but execution is environment-invalid.",
+      "originalChecksFailed": ["Agent execution failed with exit code 122"],
+      "reward": 1.0,
+      "telemetry": {
+        "duration_seconds": 236.067,
+        "subject_invocations": 2,
+        "num_turns": 48,
+        "input_tokens": 60118,
+        "output_tokens": 28823,
+        "cache_read_input_tokens": 1911936,
+        "cache_creation_input_tokens": 0,
+        "total_tokens": 2000877,
+        "total_cost_usd": 1.977133,
+        "cost_basis": "cli-reported-estimate",
+        "model_usage": {
+          "deepseek-flash[1m]": {
+            "inputTokens": 60118,
+            "outputTokens": 28823,
+            "cacheReadInputTokens": 1911936,
+            "cacheCreationInputTokens": 0,
+            "webSearchRequests": 0,
+            "costUSD": 1.977133,
+            "contextWindow": 1000000,
+            "maxOutputTokens": 32000
+          }
+        },
+        "token_scope": "subject-invocations",
+        "duration_scope": "subject-active",
+        "telemetry_warnings": [],
+        "peak_context_input_tokens": 91032,
+        "tools": 54
+      },
+      "countedInMainCohort": false,
+      "replacementRun": "comet-eval-db552f6d-adfc-4689-aa03-d5a546603831",
+      "replacementSourceRepetition": 1
+    }
+  ],
+  "preModelPreparationModelCalls": 0,
+  "rawRecordingAudit": {
+    "schema": "comet.eval.saved-recording-audit.v1",
+    "modelReexecuted": false,
+    "capturedTrajectories": 37,
+    "byTreatment": {
+      "native": 19,
+      "goal": 18
+    },
+    "recordings": [
+      {
+        "runId": "comet-eval-709d71f7-f74d-49fc-87c6-a34bbf91a8ec",
+        "group": "skillsbench-goal",
+        "rawFile": "court_form_filling_CLAUDE_CODE_GOAL_r1_rep1_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 118,
+        "globalNativeCommands": 0,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-db552f6d-adfc-4689-aa03-d5a546603831",
+        "group": "workbuddy-code-native",
+        "rawFile": "product_analytics_hard_day7_retention_COMET_NATIVE_SDK_CURRENT_r1_rep1_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 190,
+        "globalNativeCommands": 9,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-ae574d65-f8b9-4ab0-91ff-d5b7a7f4adcb",
+        "group": "workbuddy-code-native",
+        "rawFile": "feature_easy_lru_caching_to_tzoffset_COMET_NATIVE_SDK_CURRENT_r1_rep1_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 193,
+        "globalNativeCommands": 10,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1",
+        "group": "skillsbench-goal",
+        "rawFile": "manufacturing_codebook_normalization_CLAUDE_CODE_GOAL_r1_rep1_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 303,
+        "globalNativeCommands": 0,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1",
+        "group": "skillsbench-goal",
+        "rawFile": "manufacturing_codebook_normalization_CLAUDE_CODE_GOAL_r2_rep2_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 354,
+        "globalNativeCommands": 0,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1",
+        "group": "skillsbench-goal",
+        "rawFile": "manufacturing_codebook_normalization_CLAUDE_CODE_GOAL_r3_rep3_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 163,
+        "globalNativeCommands": 0,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1",
+        "group": "skillsbench-goal",
+        "rawFile": "paratransit_routing_CLAUDE_CODE_GOAL_r1_rep1_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 536,
+        "globalNativeCommands": 0,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1",
+        "group": "skillsbench-goal",
+        "rawFile": "paratransit_routing_CLAUDE_CODE_GOAL_r2_rep2_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 225,
+        "globalNativeCommands": 0,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1",
+        "group": "skillsbench-goal",
+        "rawFile": "paratransit_routing_CLAUDE_CODE_GOAL_r3_rep3_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 246,
+        "globalNativeCommands": 0,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-fc0a8ab4-e28f-43d8-a3df-f8fa6eafc75f",
+        "group": "skillsbench-native",
+        "rawFile": "manufacturing_codebook_normalization_COMET_NATIVE_SDK_CURRENT_r1_rep1_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 373,
+        "globalNativeCommands": 15,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-fc0a8ab4-e28f-43d8-a3df-f8fa6eafc75f",
+        "group": "skillsbench-native",
+        "rawFile": "manufacturing_codebook_normalization_COMET_NATIVE_SDK_CURRENT_r2_rep2_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 323,
+        "globalNativeCommands": 12,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-fc0a8ab4-e28f-43d8-a3df-f8fa6eafc75f",
+        "group": "skillsbench-native",
+        "rawFile": "manufacturing_codebook_normalization_COMET_NATIVE_SDK_CURRENT_r3_rep3_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 186,
+        "globalNativeCommands": 11,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-fc0a8ab4-e28f-43d8-a3df-f8fa6eafc75f",
+        "group": "skillsbench-native",
+        "rawFile": "paratransit_routing_COMET_NATIVE_SDK_CURRENT_r1_rep1_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 248,
+        "globalNativeCommands": 12,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-fc0a8ab4-e28f-43d8-a3df-f8fa6eafc75f",
+        "group": "skillsbench-native",
+        "rawFile": "paratransit_routing_COMET_NATIVE_SDK_CURRENT_r2_rep2_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 433,
+        "globalNativeCommands": 18,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-fc0a8ab4-e28f-43d8-a3df-f8fa6eafc75f",
+        "group": "skillsbench-native",
+        "rawFile": "paratransit_routing_COMET_NATIVE_SDK_CURRENT_r3_rep3_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 409,
+        "globalNativeCommands": 9,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-0e3c17c0-fb5d-4bda-ad7f-a4084165f422",
+        "group": "skillsbench-goal",
+        "rawFile": "court_form_filling_CLAUDE_CODE_GOAL_r2_rep2_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 228,
+        "globalNativeCommands": 0,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-0e3c17c0-fb5d-4bda-ad7f-a4084165f422",
+        "group": "skillsbench-goal",
+        "rawFile": "court_form_filling_CLAUDE_CODE_GOAL_r3_rep3_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 125,
+        "globalNativeCommands": 0,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-554d8e00-c048-4069-a5a4-bb18f385ee67",
+        "group": "skillsbench-native",
+        "rawFile": "court_form_filling_COMET_NATIVE_SDK_CURRENT_r1_rep1_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 342,
+        "globalNativeCommands": 10,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-554d8e00-c048-4069-a5a4-bb18f385ee67",
+        "group": "skillsbench-native",
+        "rawFile": "court_form_filling_COMET_NATIVE_SDK_CURRENT_r2_rep2_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 159,
+        "globalNativeCommands": 10,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-554d8e00-c048-4069-a5a4-bb18f385ee67",
+        "group": "skillsbench-native",
+        "rawFile": "court_form_filling_COMET_NATIVE_SDK_CURRENT_r3_rep3_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 151,
+        "globalNativeCommands": 11,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+        "group": "workbuddy-code-goal",
+        "rawFile": "data_reporting_medium_audit_event_export_CLAUDE_CODE_GOAL_r1_rep1_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 60,
+        "globalNativeCommands": 0,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+        "group": "workbuddy-code-goal",
+        "rawFile": "data_reporting_medium_audit_event_export_CLAUDE_CODE_GOAL_r2_rep2_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 59,
+        "globalNativeCommands": 0,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+        "group": "workbuddy-code-goal",
+        "rawFile": "data_reporting_medium_audit_event_export_CLAUDE_CODE_GOAL_r3_rep3_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 29,
+        "globalNativeCommands": 0,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+        "group": "workbuddy-code-goal",
+        "rawFile": "feature_easy_lru_caching_to_tzoffset_CLAUDE_CODE_GOAL_r1_rep1_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 141,
+        "globalNativeCommands": 0,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+        "group": "workbuddy-code-goal",
+        "rawFile": "feature_easy_lru_caching_to_tzoffset_CLAUDE_CODE_GOAL_r2_rep2_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 155,
+        "globalNativeCommands": 0,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+        "group": "workbuddy-code-goal",
+        "rawFile": "feature_easy_lru_caching_to_tzoffset_CLAUDE_CODE_GOAL_r3_rep3_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 80,
+        "globalNativeCommands": 0,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+        "group": "workbuddy-code-goal",
+        "rawFile": "product_analytics_hard_day7_retention_CLAUDE_CODE_GOAL_r1_rep1_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 38,
+        "globalNativeCommands": 0,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+        "group": "workbuddy-code-goal",
+        "rawFile": "product_analytics_hard_day7_retention_CLAUDE_CODE_GOAL_r2_rep2_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 52,
+        "globalNativeCommands": 0,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+        "group": "workbuddy-code-goal",
+        "rawFile": "product_analytics_hard_day7_retention_CLAUDE_CODE_GOAL_r3_rep3_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 55,
+        "globalNativeCommands": 0,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+        "group": "workbuddy-code-native",
+        "rawFile": "data_reporting_medium_audit_event_export_COMET_NATIVE_SDK_CURRENT_r1_rep1_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 110,
+        "globalNativeCommands": 9,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+        "group": "workbuddy-code-native",
+        "rawFile": "data_reporting_medium_audit_event_export_COMET_NATIVE_SDK_CURRENT_r2_rep2_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 147,
+        "globalNativeCommands": 13,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+        "group": "workbuddy-code-native",
+        "rawFile": "data_reporting_medium_audit_event_export_COMET_NATIVE_SDK_CURRENT_r3_rep3_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 150,
+        "globalNativeCommands": 14,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+        "group": "workbuddy-code-native",
+        "rawFile": "feature_easy_lru_caching_to_tzoffset_COMET_NATIVE_SDK_CURRENT_r2_rep2_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 208,
+        "globalNativeCommands": 13,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+        "group": "workbuddy-code-native",
+        "rawFile": "feature_easy_lru_caching_to_tzoffset_COMET_NATIVE_SDK_CURRENT_r3_rep3_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 169,
+        "globalNativeCommands": 13,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 1
+      },
+      {
+        "runId": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+        "group": "workbuddy-code-native",
+        "rawFile": "product_analytics_hard_day7_retention_COMET_NATIVE_SDK_CURRENT_r1_rep1_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 170,
+        "globalNativeCommands": 14,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+        "group": "workbuddy-code-native",
+        "rawFile": "product_analytics_hard_day7_retention_COMET_NATIVE_SDK_CURRENT_r2_rep2_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 102,
+        "globalNativeCommands": 11,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      },
+      {
+        "runId": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+        "group": "workbuddy-code-native",
+        "rawFile": "product_analytics_hard_day7_retention_COMET_NATIVE_SDK_CURRENT_r3_rep3_stdout.json",
+        "capturedModelInit": true,
+        "capturedAssistantMessages": 135,
+        "globalNativeCommands": 10,
+        "localNativeRuntimeCommands": 0,
+        "localNativeRuntimeReads": 0
+      }
+    ]
+  },
+  "modelRerunsForScoringRecovery": 0
+}

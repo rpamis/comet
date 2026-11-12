@@ -17,5 +17,14 @@
   "haikuRouteAlignment": "Both treatments use the main model for the Haiku route, matching the existing Goal executor requirement. Other source model routes are retained.",
   "judgeEnabled": false,
   "concurrentTasks": 4,
-  "workflowTimeoutSeconds": 0
+  "buildTimeoutSecondsForRecoveryRuns": null,
+  "agentTimeoutPolicy": "Fixed per-task execution budgets remain enforced; model execution is not unlimited.",
+  "taskExecutionTimeoutSeconds": {
+    "feature-easy-lru_caching_to_tzoffset": 7200,
+    "data_reporting-medium-audit_event_export": 7200,
+    "product_analytics-hard-day7_retention": 7200,
+    "court-form-filling": 7200,
+    "manufacturing-codebook-normalization": 7200,
+    "paratransit-routing": 3600
+  }
 }

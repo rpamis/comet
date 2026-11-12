@@ -1,0 +1,49 @@
+{
+  "checkedAt": "2026-11-12T08:40:33.610555+00:00",
+  "treatment": "COMET_NATIVE_SDK_CURRENT",
+  "frozenVersion": "0.5.3",
+  "frozenSourceCommit": "e4cfe675d52159555d3452f28d85ec1293d29501",
+  "productionEquivalentThroughCommit": "c4ef978380af8b5268cf8330a393da22d7cce341",
+  "productionEquivalenceCheck": "git diff of app, domains, platform, assets, bin and package.json between these commits is empty",
+  "nativeSkillTextCheck": "assets/skills/comet-native/SKILL.md and references have no diff from the frozen source commit at report preparation",
+  "excludedLaterProductionCommit": "00956d7cb5eb18f943667bd07ceef980047b2a55",
+  "containers": [
+    {
+      "container": "comet-eval-loop-5cf5ff69dcc0ae0aa3f7b59f",
+      "actualVersion": "0.5.3",
+      "fileCount": 841,
+      "differsFromFrozenController": []
+    },
+    {
+      "container": "comet-eval-loop-bb838676bd00df5c126fadb8",
+      "actualVersion": "0.5.3",
+      "fileCount": 841,
+      "differsFromFrozenController": []
+    }
+  ],
+  "comparison": "All regular files in dist, bin and assets compared byte-for-byte via existing content digests; metadata identity is regenerated for published snapshots.",
+  "productSourceEquivalentThroughCommit": "c4ef978380af8b5268cf8330a393da22d7cce341",
+  "originalFrozenBuildIdentity": {
+    "sourceHash": "9df49eec3f5e9e060107c76e3dceace28660da386518cd79ae7be3916ea42f73",
+    "snapshotHash": "5290ce28e11e21d008c46d91f849fe0f153850ab2edb6ef4631e34c246ccdb4c",
+    "entryHash": "cedf638ae586846b0618ca766f52683c448555d25af0692fb27a8f132401908a",
+    "compilerVersion": "5.9.3"
+  },
+  "savedInvocationAudit": {
+    "nativeTrajectoriesIncludingRetired": 19,
+    "globalNativeCommandMentions": 224,
+    "localNativeRuntimeCommandMentions": 0,
+    "allHaveCapturedAssistantOutput": true,
+    "source": "execution-accounting.json",
+    "localNativeRuntimeReads": 1
+  },
+  "readableContextLimitation": {
+    "runId": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+    "task": "feature-easy-lru_caching_to_tzoffset",
+    "repetition": 3,
+    "action": "grep read of Spec-path-related code in installed .mjs scripts; no local runtime execution",
+    "localScriptsDifferentFromFrozenCliAssets": 14,
+    "modelRerun": false,
+    "effectiveLowScoreRetained": true
+  }
+}
