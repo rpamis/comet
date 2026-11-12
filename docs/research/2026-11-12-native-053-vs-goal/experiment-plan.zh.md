@@ -106,3 +106,11 @@ WorkBuddy 的 `bug_fix-easy-filtered_relation_queryset_arg` 已成功构建，�
 ### 已就绪数据集先行启动
 
 24 个环境核验通过，剩余 8 个 WorkBuddy Native 环境因 Docker Hub / PyPI / GitHub 连接重置和 TLS EOF 未完成准备，原始日志保留，尚未产生模型结果。为继续完成已授权评估，先同时启动已经全部就绪的 SkillsBench Native 与 Goal 两组，每组 8 题 × 3 次、1 个执行器，共 48 个样本；WorkBuddy 两组在其环境就绪后加入。每组仍只有 1 个执行器，总并发上限 4，总范围保持 16 题、两组各 3 次、96 个样本，不重跑已运行槽位。该执行时序调整发生在首个真实模型调用前；同一数据集的 Native / Goal 同时开始。
+
+### Windows 启动失败与 Linux 控制端
+
+Windows 上首次启动的 SkillsBench Goal Run 为 `comet-eval-33bc102d-4850-4cf5-9a88-674027172c20`，在会话级原始环境预构建时因 Docker Hub 清单请求 EOF 退出，未启动模型。Native Run 为 `comet-eval-ab14f503-3838-42ca-afb4-37da7d5830b0`，Docker 无法挂载管理员创建的私有临时目录，已停止重复准备失败的执行；8 份原始 stdout 均为空，7 份已生成报告保留，未形成模型完成结果或有效原题评分。这两份启动失败的记录保留，不作为模型成功样本。
+
+改用临时 Linux 控制容器调用同一公开 `comet eval`，复用现有 Docker 引擎与 Linux 数据卷；没有修改产品代码或 Windows 安全设置。已以确定性探针验证：Docker API 可用、Linux 私有目录可挂载、相对符号链接保留、非 root 模型用户在正确目录所有权下可读，CLI 为 0.5.3。控制端 Python 为 3.12.3；模型容器的 Node 与 Claude Code 仍固定为 22.23.5 和 2.1.318。Native 使用已冻结的 0.5.3 编译产物，来源身份与本轮 7 份 Windows Native 记录一致；避免在 Linux 控制容器里重新构建产品源码。
+
+另查明当时的代理配置优先将 Docker 域名及进程设为 DIRECT，实际镜像清单请求失败。用户明确表示已自行恢复网络并要求重试，随后镜像清单端点验证成功。本任务未修改这些全局代理规则，不会回写用户已恢复的设置。新启动仍只覆盖原定 16 题、两组各 3 次；不增加模型样本或重新选题。
