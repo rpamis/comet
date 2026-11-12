@@ -5004,7 +5004,7 @@ function ContextUsageCenter({
   const [timeSelection, setTimeSelection] = useDashboardViewState(
     `${demo ? 'demo' : projectId}:context-usage`,
     'timeRange',
-    { preset: '7d' },
+    { preset: 'all' },
   );
   const timeRange = useMemo(
     () => resolveObservabilityRange(timeSelection),

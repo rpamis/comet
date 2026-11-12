@@ -8,9 +8,13 @@ export function observabilityRangeLabel(selection) {
   return selection.preset === 'custom'
     ? `${new Date(selection.from).toLocaleString(getDashboardLocale(), { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })} – ${new Date(selection.to).toLocaleString(getDashboardLocale(), { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}`
     : t(
-        { '1h': '最近 1 小时', '24h': '最近 24 小时', '3d': '最近 3 天', '7d': '最近 7 天' }[
-          selection.preset
-        ] ?? '最近 7 天',
+        {
+          all: '所有',
+          '1h': '最近 1 小时',
+          '24h': '最近 24 小时',
+          '3d': '最近 3 天',
+          '7d': '最近 7 天',
+        }[selection.preset] ?? '最近 7 天',
       );
 }
 
@@ -21,9 +25,8 @@ export function ObservabilityTimeFilter({ value, onChange }) {
     draft?.[0] &&
     draft?.[1] &&
     draft[0].valueOf() <= draft[1].valueOf() &&
-    draft[0].valueOf() >= Date.now() - 7 * 86400000 &&
     draft[1].valueOf() <= Date.now();
-  const options = ['1h', '24h', '3d', '7d'].map((preset) => ({
+  const options = ['all', '1h', '24h', '3d', '7d'].map((preset) => ({
     key: preset,
     label: observabilityRangeLabel({ preset }),
   }));
@@ -76,7 +79,7 @@ export function ObservabilityTimeFilter({ value, onChange }) {
           </>
         }
       >
-        <p>{t('选择最近 7 天内的时间。时间筛选不影响实时状态快照。')}</p>
+        <p>{t('选择需要查看的时间范围。时间筛选不影响实时状态快照。')}</p>
         <DatePicker.RangePicker
           key={String(open)}
           showTime
@@ -85,11 +88,7 @@ export function ObservabilityTimeFilter({ value, onChange }) {
           onChange={setDraft}
           style={{ width: '100%' }}
           classNames={{ popup: { root: 'observability-time-picker-popup' } }}
-          disabledDate={(current) =>
-            current &&
-            (current.endOf('day').valueOf() < Date.now() - 7 * 86400000 ||
-              current.startOf('day').valueOf() > Date.now())
-          }
+          disabledDate={(current) => current && current.startOf('day').valueOf() > Date.now()}
         />
       </DashboardModal>
     </>

@@ -1551,6 +1551,7 @@ test('filters observability metrics and traces with one shared time range', asyn
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/?demo');
   await page.getByRole('menuitem', { name: '可观测' }).click();
+  await expect(page.getByRole('button', { name: '时间范围：所有', exact: true })).toBeVisible();
   await page.getByRole('tab', { name: '运行性能', exact: true }).click();
   const calls = page.locator('.runtime-performance-metrics > div').first().locator('dd');
   const allCalls = await calls.innerText();
@@ -1568,11 +1569,17 @@ test('filters observability metrics and traces with one shared time range', asyn
   );
   await choose('最近 7 天');
   await expect(page.locator('.change-trace-list > button')).toHaveCount(3);
+  await choose('所有');
+  await expect(page.getByRole('button', { name: '时间范围：所有', exact: true })).toBeVisible();
+  await expect(page.locator('.change-trace-list > button')).toHaveCount(3);
   await page.getByRole('tab', { name: '个人记忆', exact: true }).click();
   const hitDetail = page.locator('.usage-summary-stat-0 > small');
   await expect(hitDetail).toContainText('/24');
   await choose('最近 1 小时');
   await expect(hitDetail).toContainText('1/1');
+  await choose('所有');
+  await expect(hitDetail).toContainText('/24');
+  await choose('最近 1 小时');
   await page.getByRole('tab', { name: '项目知识', exact: true }).click();
   await expect(hitDetail).toContainText('1/1');
   await page.getByRole('button', { name: /^时间范围：/ }).click();
@@ -1590,6 +1597,20 @@ test('filters observability metrics and traces with one shared time range', asyn
     .locator('.ant-picker-input input')
     .nth(1)
     .fill(format(new Date(Date.now() - 300000)));
+  await custom.locator('.ant-picker-input input').nth(1).press('Tab');
+  await custom.getByRole('button', { name: '应用时间范围', exact: true }).click();
+  await expect(hitDetail).toContainText('0/0');
+  await page.getByRole('button', { name: /^时间范围：/ }).click();
+  await page.getByRole('menuitem', { name: '自定义时间范围', exact: true }).click();
+  await custom
+    .locator('.ant-picker-input input')
+    .nth(0)
+    .fill(format(new Date(Date.now() - 14 * 86400000)));
+  await custom.locator('.ant-picker-input input').nth(0).press('Tab');
+  await custom
+    .locator('.ant-picker-input input')
+    .nth(1)
+    .fill(format(new Date(Date.now() - 13 * 86400000)));
   await custom.locator('.ant-picker-input input').nth(1).press('Tab');
   await custom.getByRole('button', { name: '应用时间范围', exact: true }).click();
   await expect(hitDetail).toContainText('0/0');

@@ -1,0 +1,19 @@
+{
+  "dataset": "workbuddy-code",
+  "mode": "native",
+  "task": "feature-easy-lru_caching_to_tzoffset",
+  "logicalRepetition": 2,
+  "sourceRepetition": 1,
+  "sourceRun": "comet-eval-78572c9c-82c2-4770-9895-7ffb3d16bd86",
+  "sourceRaw": "feature_easy_lru_caching_to_tzoffset_COMET_NATIVE_SDK_CURRENT_r1_rep1_stdout.json",
+  "reward": 0.25,
+  "verifierStatus": "assertion_failed",
+  "originalIntegrityVerified": true,
+  "candidateModified": false,
+  "modelReexecutedForSupplementalScoring": false,
+  "scoreDetails": {
+    "reward": 0.25,
+    "tests_passed": 1,
+    "tests_total": 4
+  }
+}

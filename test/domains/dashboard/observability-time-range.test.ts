@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   filterContextUsage,
+  inObservabilityRange,
+  observabilityRangeQuery,
   resolveObservabilityRange,
 } from '../../../domains/dashboard/web/src/observability-time-range.js';
 import {
@@ -9,6 +11,21 @@ import {
 } from '../../../domains/dashboard/observability-range.js';
 
 describe('observability time filtering', () => {
+  it('keeps all retained history unbounded when the all preset is selected', () => {
+    const range = resolveObservabilityRange({ preset: 'all' }, Date.parse('2026-11-13T12:00:00Z'));
+    expect(range).toBeUndefined();
+    expect(observabilityRangeQuery(range)).toBe('');
+    expect(inObservabilityRange('2026-01-01T00:00:00Z', range)).toBe(true);
+    expect(withinObservationRange(null, readObservabilityRange(new URLSearchParams()))).toBe(true);
+  });
+
+  it('preserves complete context aggregates for the all preset without requiring bounded samples', () => {
+    const snapshot = { available: true, requests: 42, recentTasks: [] };
+    expect(filterContextUsage(snapshot, resolveObservabilityRange({ preset: 'all' }))).toBe(
+      snapshot,
+    );
+  });
+
   it('rejects partial, invalid and reversed ranges and excludes unknown timestamps', () => {
     for (const query of ['from=bad&to=bad', 'from=2026-10-17', 'from=2026-10-17&to=2026-10-16'])
       expect(() => readObservabilityRange(new URLSearchParams(query))).toThrow();

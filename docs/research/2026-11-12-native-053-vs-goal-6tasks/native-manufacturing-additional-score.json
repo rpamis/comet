@@ -1,0 +1,24 @@
+{
+  "dataset": "skillsbench",
+  "mode": "native",
+  "task": "manufacturing-codebook-normalization",
+  "logicalRepetition": 2,
+  "sourceRepetition": 1,
+  "sourceRun": "comet-eval-6666ff0f-b28e-4cb4-858c-cd22aba38345",
+  "sourceRaw": "manufacturing_codebook_normalization_COMET_NATIVE_SDK_CURRENT_r1_rep1_stdout.json",
+  "reward": 0,
+  "verifierStatus": "assertion_failed",
+  "originalIntegrityVerified": true,
+  "candidateModified": false,
+  "modelReexecutedForSupplementalScoring": false,
+  "scoreDetails": "0\n",
+  "verifierBudgetOverride": {
+    "originalSeconds": 300,
+    "effectiveSeconds": 1800,
+    "reason": "Dependency downloads exhausted the original preparation-plus-verification time budget; tests and scoring thresholds unchanged",
+    "scorerCodeUnchanged": true,
+    "modelReexecuted": false
+  },
+  "observedTestWallSeconds": 2.07,
+  "originalEnvironmentTimeoutRetained": true
+}

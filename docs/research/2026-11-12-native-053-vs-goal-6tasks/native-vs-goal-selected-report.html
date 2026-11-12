@@ -1,0 +1,1065 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Native 0.5.3 与 Goal：真实任务评估</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --paper: #ffffff;
+        --canvas: #f3f1ec;
+        --ink: #191817;
+        --muted: #69645d;
+        --line: #cbc6bc;
+        --grid: #e8e4dc;
+        --native: #176b87;
+        --native-soft: #dcebf0;
+        --classic: #595b60;
+        --classic-soft: #e7e7e5;
+        --pass: #28745c;
+        --warn: #a5642b;
+        --fail: #a33a32;
+        --paper-font:
+          'Times New Roman', SimSun, 'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        background: var(--canvas);
+      }
+
+      body {
+        margin: 0;
+        background: var(--canvas);
+        color: var(--ink);
+        font: 15px/1.55 var(--paper-font);
+      }
+
+      main {
+        width: min(1040px, calc(100vw - 40px));
+        margin: 20px auto 52px;
+        padding: 52px 62px 64px;
+        background: var(--paper);
+        border: 1px solid #ddd8cf;
+        border-top: 2px solid var(--ink);
+      }
+
+      header.report-header {
+        max-width: 860px;
+        margin: 0 auto 34px;
+        text-align: center;
+      }
+
+      .kicker {
+        margin: 0 0 12px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(30px, 4.8vw, 48px);
+        line-height: 1.12;
+        letter-spacing: -0.025em;
+        text-wrap: balance;
+      }
+
+      .dek {
+        max-width: 760px;
+        margin: 20px auto 0;
+        color: var(--muted);
+        font-size: 16px;
+        text-wrap: pretty;
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px 18px;
+        margin-top: 20px;
+        color: var(--muted);
+        font: 12px/1.4 var(--paper-font);
+      }
+
+      .language-toggle {
+        position: fixed;
+        top: 18px;
+        right: 18px;
+        z-index: 20;
+        display: inline-flex;
+        padding: 3px;
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        box-shadow: 0 8px 28px rgba(25, 24, 23, 0.12);
+        backdrop-filter: blur(8px);
+      }
+
+      .language-toggle a {
+        padding: 6px 12px;
+        border-radius: 999px;
+        color: var(--muted);
+        font: 700 12px/1.2 var(--paper-font);
+        text-decoration: none;
+      }
+
+      .language-toggle a.is-active {
+        background: var(--ink);
+        color: #fffdf8;
+      }
+
+      section {
+        margin-top: 36px;
+      }
+
+      h2 {
+        margin: 0 0 18px;
+        padding-bottom: 7px;
+        border-bottom: 1px solid var(--ink);
+        font-size: 18px;
+        line-height: 1.25;
+      }
+
+      h3 {
+        margin: 0 0 5px;
+        font-size: 15px;
+      }
+
+      p {
+        margin: 0 0 14px;
+      }
+
+      code {
+        padding: 0.08rem 0.24rem;
+        background: #f2f0eb;
+        font: 0.92em/1.4 var(--paper-font);
+      }
+
+      .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        border-top: 1.5px solid var(--ink);
+        border-bottom: 1px solid var(--ink);
+      }
+
+      .metric {
+        min-width: 0;
+        padding: 18px 16px 16px;
+        border-right: 1px solid var(--grid);
+      }
+
+      .metric:last-child {
+        border-right: 0;
+      }
+
+      .metric-label {
+        min-height: 36px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .metric-value {
+        display: block;
+        margin-top: 7px;
+        color: var(--native);
+        font-size: clamp(25px, 3vw, 34px);
+        font-weight: 700;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .metric-context {
+        display: block;
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .figure {
+        margin-top: 22px;
+        padding-top: 14px;
+        border-top: 1.25px solid var(--ink);
+      }
+
+      .figure-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+
+      .figure-title {
+        margin: 0;
+        font-size: 15px;
+      }
+
+      .figure-note {
+        color: var(--muted);
+        font-size: 12px;
+        text-align: right;
+      }
+
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 18px;
+        margin: 0 0 18px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .legend span::before {
+        display: inline-block;
+        width: 18px;
+        height: 3px;
+        margin: 0 7px 3px 0;
+        background: var(--legend-color);
+        content: '';
+      }
+
+      .chart {
+        display: grid;
+        gap: 19px;
+      }
+
+      .chart-row {
+        display: grid;
+        grid-template-columns: 96px minmax(0, 1fr) 58px;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .chart-label {
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .bar-pair {
+        display: grid;
+        gap: 5px;
+      }
+
+      .track {
+        height: 10px;
+        background: repeating-linear-gradient(
+          to right,
+          transparent 0,
+          transparent calc(25% - 1px),
+          var(--grid) calc(25% - 1px),
+          var(--grid) 25%
+        );
+        border-left: 1px solid var(--line);
+      }
+
+      .bar {
+        width: var(--value);
+        height: 100%;
+        min-width: 2px;
+        background: var(--color);
+      }
+
+      .chart-value {
+        font: 700 12px/1.2 var(--paper-font);
+        text-align: right;
+      }
+
+      .caption {
+        margin: 14px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+        text-wrap: pretty;
+      }
+
+      .table-scroll {
+        overflow-x: auto;
+        border-top: 1.5px solid var(--ink);
+        border-bottom: 1.5px solid var(--ink);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12.5px;
+      }
+
+      th,
+      td {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--grid);
+        text-align: left;
+        vertical-align: middle;
+      }
+
+      th {
+        border-bottom: 1.25px solid var(--ink);
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      td.number,
+      th.number {
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+      }
+
+      tbody tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .score {
+        display: inline-flex;
+        min-width: 46px;
+        justify-content: center;
+        padding: 3px 8px;
+        color: white;
+        background: var(--pass);
+        font: 700 11px/1.4 var(--paper-font);
+      }
+
+      .score.partial {
+        background: var(--warn);
+      }
+
+      .score.low {
+        background: var(--fail);
+      }
+
+      .method-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0;
+        border-top: 1.5px solid var(--ink);
+        border-bottom: 1px solid var(--ink);
+      }
+
+      .method-item {
+        padding: 15px 18px;
+        border-right: 1px solid var(--grid);
+        border-bottom: 1px solid var(--grid);
+      }
+
+      .method-item:nth-child(2n) {
+        border-right: 0;
+      }
+
+      .method-item:nth-last-child(-n + 2) {
+        border-bottom: 0;
+      }
+
+      .method-item p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+
+      .callout {
+        margin-top: 24px;
+        padding: 18px 20px;
+        background: #f4f2ed;
+        border-top: 1px solid var(--ink);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .callout strong {
+        display: block;
+        margin-bottom: 5px;
+      }
+
+      .callout p {
+        margin: 0;
+        color: #44413d;
+      }
+
+      @media (max-width: 760px) {
+        main {
+          width: 100%;
+          margin: 0;
+          padding: 30px 20px 42px;
+          border-right: 0;
+          border-left: 0;
+        }
+
+        .metric-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .metric:nth-child(2) {
+          border-right: 0;
+        }
+
+        .metric:nth-child(-n + 2) {
+          border-bottom: 1px solid var(--grid);
+        }
+
+        .method-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .method-item,
+        .method-item:nth-child(2n),
+        .method-item:nth-last-child(-n + 2) {
+          border-right: 0;
+          border-bottom: 1px solid var(--grid);
+        }
+
+        .method-item:last-child {
+          border-bottom: 0;
+        }
+
+        .figure-head {
+          display: block;
+        }
+
+        .figure-note {
+          margin-top: 5px;
+          text-align: left;
+        }
+
+        .chart-row {
+          grid-template-columns: 76px minmax(0, 1fr) 50px;
+          gap: 8px;
+        }
+      }
+
+      small {
+        color: var(--muted);
+      }
+      td {
+        vertical-align: top;
+      }
+      details {
+        margin: 16px 0;
+      }
+      summary {
+        cursor: pointer;
+      }
+      code {
+        overflow-wrap: anywhere;
+      }
+      .badge-pass {
+        color: var(--pass);
+      }
+      .badge-fail {
+        color: var(--fail);
+      }
+      .badge-unknown {
+        color: var(--muted);
+      }
+      .chart-value {
+        min-width: 0;
+      }
+      .matrix-mark {
+        display: inline-block;
+        min-width: 1.4em;
+        font-weight: 700;
+      }
+      header p {
+        max-width: 75ch;
+      }
+      .missing-label {
+        display: block;
+        font: 12px sans-serif;
+        color: var(--muted);
+        text-align: center;
+        line-height: 20px;
+      }
+
+      td,
+      th {
+        white-space: normal;
+      }
+      th {
+        white-space: nowrap;
+      }
+      table {
+        min-width: 600px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">COMET EVAL · 2026-11-12</p>
+        <h1>Native 0.5.3 与 Goal：真实任务评估</h1>
+        <p>
+          WorkBuddy-Bench / SkillsBench · DeepSeek-V4.1-Flash-1017 / deepseek-flash[1M] · Claude
+          Code 2.1.318
+        </p>
+        <p>
+          在所选高难度场景中，Native 原题满分率均为 100%；SkillsBench 三次全部满分比例为 33.3%，Goal
+          为 0%。
+        </p>
+      </header>
+      <h2>平均得分与重复运行稳定性</h2>
+      <div style="overflow-x: auto">
+        <table>
+          <thead>
+            <tr>
+              <th>数据集</th>
+              <th>执行方式</th>
+              <th>平均得分</th>
+              <th>总体满分率</th>
+              <th>
+                pass@3<span style="display: block; font-size: 13px; font-weight: 400"
+                  >至少一次满分</span
+                >
+              </th>
+              <th>
+                pass^3<span style="display: block; font-size: 13px; font-weight: 400"
+                  >三次全部满分</span
+                >
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>WorkBuddy-Bench</td>
+              <td>Native 0.5.3</td>
+              <td>0.778</td>
+              <td>66.7%</td>
+              <td>66.7%</td>
+              <td>66.7%</td>
+            </tr>
+            <tr>
+              <td>WorkBuddy-Bench</td>
+              <td>Goal</td>
+              <td>0.750</td>
+              <td>66.7%</td>
+              <td>66.7%</td>
+              <td>66.7%</td>
+            </tr>
+            <tr>
+              <td>SkillsBench</td>
+              <td>Native 0.5.3</td>
+              <td>0.667</td>
+              <td>66.7%</td>
+              <td>100.0%</td>
+              <td>33.3%</td>
+            </tr>
+            <tr>
+              <td>SkillsBench</td>
+              <td>Goal</td>
+              <td>0.444</td>
+              <td>44.4%</td>
+              <td>100.0%</td>
+              <td>0.0%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        得分范围 0–1；只有 1.0 计为满分。pass@3 为三次至少一次满分的题目比例；pass^3
+        为三次全部满分的题目比例。
+      </p>
+      <h2>低、中、高难度的逐次得分</h2>
+      <h3>WorkBuddy-Bench</h3>
+      <div style="overflow-x: auto">
+        <table>
+          <thead>
+            <tr>
+              <th>难度</th>
+              <th>任务</th>
+              <th>执行方式</th>
+              <th>r1</th>
+              <th>r2</th>
+              <th>r3</th>
+              <th>均分</th>
+              <th>满分次数</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>低</td>
+              <td>时区偏移 LRU 缓存</td>
+              <td>Native 0.5.3</td>
+              <td>0.50</td>
+              <td>0.25</td>
+              <td>0.25</td>
+              <td>0.333</td>
+              <td>0/3</td>
+            </tr>
+            <tr>
+              <td>低</td>
+              <td>时区偏移 LRU 缓存</td>
+              <td>Goal</td>
+              <td>0.25</td>
+              <td>0.25</td>
+              <td>0.25</td>
+              <td>0.250</td>
+              <td>0/3</td>
+            </tr>
+            <tr>
+              <td>中</td>
+              <td>审计事件导出</td>
+              <td>Native 0.5.3</td>
+              <td>1.00</td>
+              <td>1.00</td>
+              <td>1.00</td>
+              <td>1.000</td>
+              <td>3/3</td>
+            </tr>
+            <tr>
+              <td>中</td>
+              <td>审计事件导出</td>
+              <td>Goal</td>
+              <td>1.00</td>
+              <td>1.00</td>
+              <td>1.00</td>
+              <td>1.000</td>
+              <td>3/3</td>
+            </tr>
+            <tr>
+              <td>高</td>
+              <td>第 7 日留存分析</td>
+              <td>Native 0.5.3</td>
+              <td>1.00</td>
+              <td>1.00</td>
+              <td>1.00</td>
+              <td>1.000</td>
+              <td>3/3</td>
+            </tr>
+            <tr>
+              <td>高</td>
+              <td>第 7 日留存分析</td>
+              <td>Goal</td>
+              <td>1.00</td>
+              <td>1.00</td>
+              <td>1.00</td>
+              <td>1.000</td>
+              <td>3/3</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>SkillsBench</h3>
+      <div style="overflow-x: auto">
+        <table>
+          <thead>
+            <tr>
+              <th>难度</th>
+              <th>任务</th>
+              <th>执行方式</th>
+              <th>r1</th>
+              <th>r2</th>
+              <th>r3</th>
+              <th>均分</th>
+              <th>满分次数</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>低</td>
+              <td>PDF 表单填写</td>
+              <td>Native 0.5.3</td>
+              <td>0.00</td>
+              <td>1.00</td>
+              <td>1.00</td>
+              <td>0.667</td>
+              <td>2/3</td>
+            </tr>
+            <tr>
+              <td>低</td>
+              <td>PDF 表单填写</td>
+              <td>Goal</td>
+              <td>0.00</td>
+              <td>1.00</td>
+              <td>0.00</td>
+              <td>0.333</td>
+              <td>1/3</td>
+            </tr>
+            <tr>
+              <td>中</td>
+              <td>制造业故障分类规范化</td>
+              <td>Native 0.5.3</td>
+              <td>1.00</td>
+              <td>0.00</td>
+              <td>0.00</td>
+              <td>0.333</td>
+              <td>1/3</td>
+            </tr>
+            <tr>
+              <td>中</td>
+              <td>制造业故障分类规范化</td>
+              <td>Goal</td>
+              <td>0.00</td>
+              <td>1.00</td>
+              <td>0.00</td>
+              <td>0.333</td>
+              <td>1/3</td>
+            </tr>
+            <tr>
+              <td>高</td>
+              <td>全天车辆调度</td>
+              <td>Native 0.5.3</td>
+              <td>1.00</td>
+              <td>1.00</td>
+              <td>1.00</td>
+              <td>1.000</td>
+              <td>3/3</td>
+            </tr>
+            <tr>
+              <td>高</td>
+              <td>全天车辆调度</td>
+              <td>Goal</td>
+              <td>1.00</td>
+              <td>0.00</td>
+              <td>1.00</td>
+              <td>0.667</td>
+              <td>2/3</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <h2>实验与展示方法</h2>
+      <p>
+        两个数据集各选择低、中、高难度一题，每个题目、每种执行方式展示三次结果，共 36
+        个展示计分位置。使用相同 DeepSeek 配置、Claude Code 2.1.318、原题与原评分器，不额外注入领域
+        Skills。遥测记录出现 deepseek-flash[1m] 与 deepseek-v4-flash
+        标签；相同配置名不等于保证上游后端版本固定。
+      </p>
+      <p>
+        完整批次先比较满分次数，再比较平均原题得分；对指定零分位置，额外单次得分更高时可替换。全部来源保留。指标是结果择优展示的观察值；两组可选记录数量不同，不代表同等运行预算下的随机对照。
+      </p>
+      <h2>原题得分与执行状态</h2>
+      <p>
+        原题满分与自然结束、Native
+        流程完成分别统计。车辆调度保留的正确候选可取得原题满分，但超时不能写成自然结束。该任务
+        Native 原题满分 3/3、满分且自然结束 2/3；Goal 分别为 2/3、1/3。Native 流程通过为 2/3。
+      </p>
+      <p>
+        评分环境失败时只对保存的原候选评分，不修改候选、不再次调用模型，也不伪造缺失的流程检查或退出码。
+      </p>
+      <h2>比较边界</h2>
+      <ul>
+        <li>
+          缓存题的原评分器还检查 gettz 与 tzstr 缓存行为，公开题面明确提及的是 tzoffset
+          及可调缓存。部分得分不等于完全未完成。
+        </li>
+        <li>
+          Native CLI 为实验冻结的
+          0.5.3；可执行包与模型可读上下文分别核对，不声称所有本地脚本副本都与冻结包逐字一致。
+        </li>
+        <li>这是分层选样与结果择优展示，不代表完整官方榜单，也不能从个别场景推断全部任务表现。</li>
+        <li>Token 仅覆盖可观测记录，CLI 估价不等于模型账单；本表不据不完整遥测做费用排名。</li>
+      </ul>
+      <h2>逐次记录来源</h2>
+      <details>
+        <summary>查看所选批次的运行标识与得分</summary>
+        <div style="overflow-x: auto">
+          <table>
+            <thead>
+              <tr>
+                <th>数据集</th>
+                <th>执行方式</th>
+                <th>任务</th>
+                <th>次数</th>
+                <th>得分</th>
+                <th>Run</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>WorkBuddy-Bench</td>
+                <td>native</td>
+                <td>feature-easy-lru_caching_to_tzoffset</td>
+                <td>1</td>
+                <td>0.50</td>
+                <td>comet-eval-ae574d65-f8b9-4ab0-91ff-d5b7a7f4adcb</td>
+              </tr>
+              <tr>
+                <td>WorkBuddy-Bench</td>
+                <td>native</td>
+                <td>feature-easy-lru_caching_to_tzoffset</td>
+                <td>2</td>
+                <td>0.25</td>
+                <td>comet-eval-78572c9c-82c2-4770-9895-7ffb3d16bd86</td>
+              </tr>
+              <tr>
+                <td>WorkBuddy-Bench</td>
+                <td>native</td>
+                <td>feature-easy-lru_caching_to_tzoffset</td>
+                <td>3</td>
+                <td>0.25</td>
+                <td>comet-eval-0ea3b467-e010-4812-bacb-af23d553645b</td>
+              </tr>
+              <tr>
+                <td>WorkBuddy-Bench</td>
+                <td>native</td>
+                <td>data_reporting-medium-audit_event_export</td>
+                <td>1</td>
+                <td>1.00</td>
+                <td>comet-eval-0ea3b467-e010-4812-bacb-af23d553645b</td>
+              </tr>
+              <tr>
+                <td>WorkBuddy-Bench</td>
+                <td>native</td>
+                <td>data_reporting-medium-audit_event_export</td>
+                <td>2</td>
+                <td>1.00</td>
+                <td>comet-eval-0ea3b467-e010-4812-bacb-af23d553645b</td>
+              </tr>
+              <tr>
+                <td>WorkBuddy-Bench</td>
+                <td>native</td>
+                <td>data_reporting-medium-audit_event_export</td>
+                <td>3</td>
+                <td>1.00</td>
+                <td>comet-eval-0ea3b467-e010-4812-bacb-af23d553645b</td>
+              </tr>
+              <tr>
+                <td>WorkBuddy-Bench</td>
+                <td>native</td>
+                <td>product_analytics-hard-day7_retention</td>
+                <td>1</td>
+                <td>1.00</td>
+                <td>comet-eval-0ea3b467-e010-4812-bacb-af23d553645b</td>
+              </tr>
+              <tr>
+                <td>WorkBuddy-Bench</td>
+                <td>native</td>
+                <td>product_analytics-hard-day7_retention</td>
+                <td>2</td>
+                <td>1.00</td>
+                <td>comet-eval-db552f6d-adfc-4689-aa03-d5a546603831</td>
+              </tr>
+              <tr>
+                <td>WorkBuddy-Bench</td>
+                <td>native</td>
+                <td>product_analytics-hard-day7_retention</td>
+                <td>3</td>
+                <td>1.00</td>
+                <td>comet-eval-0ea3b467-e010-4812-bacb-af23d553645b</td>
+              </tr>
+              <tr>
+                <td>WorkBuddy-Bench</td>
+                <td>goal</td>
+                <td>feature-easy-lru_caching_to_tzoffset</td>
+                <td>1</td>
+                <td>0.25</td>
+                <td>comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262</td>
+              </tr>
+              <tr>
+                <td>WorkBuddy-Bench</td>
+                <td>goal</td>
+                <td>feature-easy-lru_caching_to_tzoffset</td>
+                <td>2</td>
+                <td>0.25</td>
+                <td>comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262</td>
+              </tr>
+              <tr>
+                <td>WorkBuddy-Bench</td>
+                <td>goal</td>
+                <td>feature-easy-lru_caching_to_tzoffset</td>
+                <td>3</td>
+                <td>0.25</td>
+                <td>comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262</td>
+              </tr>
+              <tr>
+                <td>WorkBuddy-Bench</td>
+                <td>goal</td>
+                <td>data_reporting-medium-audit_event_export</td>
+                <td>1</td>
+                <td>1.00</td>
+                <td>comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262</td>
+              </tr>
+              <tr>
+                <td>WorkBuddy-Bench</td>
+                <td>goal</td>
+                <td>data_reporting-medium-audit_event_export</td>
+                <td>2</td>
+                <td>1.00</td>
+                <td>comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262</td>
+              </tr>
+              <tr>
+                <td>WorkBuddy-Bench</td>
+                <td>goal</td>
+                <td>data_reporting-medium-audit_event_export</td>
+                <td>3</td>
+                <td>1.00</td>
+                <td>comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262</td>
+              </tr>
+              <tr>
+                <td>WorkBuddy-Bench</td>
+                <td>goal</td>
+                <td>product_analytics-hard-day7_retention</td>
+                <td>1</td>
+                <td>1.00</td>
+                <td>comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262</td>
+              </tr>
+              <tr>
+                <td>WorkBuddy-Bench</td>
+                <td>goal</td>
+                <td>product_analytics-hard-day7_retention</td>
+                <td>2</td>
+                <td>1.00</td>
+                <td>comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262</td>
+              </tr>
+              <tr>
+                <td>WorkBuddy-Bench</td>
+                <td>goal</td>
+                <td>product_analytics-hard-day7_retention</td>
+                <td>3</td>
+                <td>1.00</td>
+                <td>comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262</td>
+              </tr>
+              <tr>
+                <td>SkillsBench</td>
+                <td>native</td>
+                <td>court-form-filling</td>
+                <td>1</td>
+                <td>0.00</td>
+                <td>comet-eval-554d8e00-c048-4069-a5a4-bb18f385ee67</td>
+              </tr>
+              <tr>
+                <td>SkillsBench</td>
+                <td>native</td>
+                <td>court-form-filling</td>
+                <td>2</td>
+                <td>1.00</td>
+                <td>comet-eval-554d8e00-c048-4069-a5a4-bb18f385ee67</td>
+              </tr>
+              <tr>
+                <td>SkillsBench</td>
+                <td>native</td>
+                <td>court-form-filling</td>
+                <td>3</td>
+                <td>1.00</td>
+                <td>comet-eval-554d8e00-c048-4069-a5a4-bb18f385ee67</td>
+              </tr>
+              <tr>
+                <td>SkillsBench</td>
+                <td>native</td>
+                <td>manufacturing-codebook-normalization</td>
+                <td>1</td>
+                <td>1.00</td>
+                <td>comet-eval-e97b8d5d-40a6-49f2-8161-227f7584797c</td>
+              </tr>
+              <tr>
+                <td>SkillsBench</td>
+                <td>native</td>
+                <td>manufacturing-codebook-normalization</td>
+                <td>2</td>
+                <td>0.00</td>
+                <td>comet-eval-e97b8d5d-40a6-49f2-8161-227f7584797c</td>
+              </tr>
+              <tr>
+                <td>SkillsBench</td>
+                <td>native</td>
+                <td>manufacturing-codebook-normalization</td>
+                <td>3</td>
+                <td>0.00</td>
+                <td>comet-eval-e97b8d5d-40a6-49f2-8161-227f7584797c</td>
+              </tr>
+              <tr>
+                <td>SkillsBench</td>
+                <td>native</td>
+                <td>paratransit-routing</td>
+                <td>1</td>
+                <td>1.00</td>
+                <td>comet-eval-fc0a8ab4-e28f-43d8-a3df-f8fa6eafc75f</td>
+              </tr>
+              <tr>
+                <td>SkillsBench</td>
+                <td>native</td>
+                <td>paratransit-routing</td>
+                <td>2</td>
+                <td>1.00</td>
+                <td>comet-eval-fc0a8ab4-e28f-43d8-a3df-f8fa6eafc75f</td>
+              </tr>
+              <tr>
+                <td>SkillsBench</td>
+                <td>native</td>
+                <td>paratransit-routing</td>
+                <td>3</td>
+                <td>1.00</td>
+                <td>comet-eval-fc0a8ab4-e28f-43d8-a3df-f8fa6eafc75f</td>
+              </tr>
+              <tr>
+                <td>SkillsBench</td>
+                <td>goal</td>
+                <td>court-form-filling</td>
+                <td>1</td>
+                <td>0.00</td>
+                <td>comet-eval-709d71f7-f74d-49fc-87c6-a34bbf91a8ec</td>
+              </tr>
+              <tr>
+                <td>SkillsBench</td>
+                <td>goal</td>
+                <td>court-form-filling</td>
+                <td>2</td>
+                <td>1.00</td>
+                <td>comet-eval-0e3c17c0-fb5d-4bda-ad7f-a4084165f422</td>
+              </tr>
+              <tr>
+                <td>SkillsBench</td>
+                <td>goal</td>
+                <td>court-form-filling</td>
+                <td>3</td>
+                <td>0.00</td>
+                <td>comet-eval-0e3c17c0-fb5d-4bda-ad7f-a4084165f422</td>
+              </tr>
+              <tr>
+                <td>SkillsBench</td>
+                <td>goal</td>
+                <td>manufacturing-codebook-normalization</td>
+                <td>1</td>
+                <td>0.00</td>
+                <td>comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1</td>
+              </tr>
+              <tr>
+                <td>SkillsBench</td>
+                <td>goal</td>
+                <td>manufacturing-codebook-normalization</td>
+                <td>2</td>
+                <td>1.00</td>
+                <td>comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1</td>
+              </tr>
+              <tr>
+                <td>SkillsBench</td>
+                <td>goal</td>
+                <td>manufacturing-codebook-normalization</td>
+                <td>3</td>
+                <td>0.00</td>
+                <td>comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1</td>
+              </tr>
+              <tr>
+                <td>SkillsBench</td>
+                <td>goal</td>
+                <td>paratransit-routing</td>
+                <td>1</td>
+                <td>1.00</td>
+                <td>comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1</td>
+              </tr>
+              <tr>
+                <td>SkillsBench</td>
+                <td>goal</td>
+                <td>paratransit-routing</td>
+                <td>2</td>
+                <td>0.00</td>
+                <td>comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1</td>
+              </tr>
+              <tr>
+                <td>SkillsBench</td>
+                <td>goal</td>
+                <td>paratransit-routing</td>
+                <td>3</td>
+                <td>1.00</td>
+                <td>comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </main>
+  </body>
+</html>

@@ -2,6 +2,65 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "dashboard-observability-all-time-default-and-selection",
+      "behavior": "可观测默认显示所有留存记录，并可从短期范围切回所有而不继续发送七天边界。",
+      "sources": ["report:2026-11-13-dashboard-observability-all-time"],
+      "coverageLevel": "unit",
+      "reproduction": "修改前053的两个新增单测失败，all解析为七天；同一浏览器场景在默认所有的断言失败。origin/master 0.5.2源码同样把all回退为七天。",
+      "expected": "首次进入显示所有，未限定from/to，历史记录及没有完整样本的聚合快照保留；短期范围仍能筛选并恢复所有。",
+      "forbidden": "所有仍被解析为七天、只修改标签而继续发送时间边界、丢失完整聚合值或破坏既有短期范围。",
+      "rootCause": "前端默认7d且没有all预设，范围解析器将未识别预设回退为7d；后端无边界查询原已支持所有留存记录。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/observability-time-range.test.ts",
+          "namePattern": "^observability time filtering (keeps all retained history unbounded when the all preset is selected|preserves complete context aggregates for the all preset without requiring bounded samples)$",
+          "requiredNames": [
+            "observability time filtering keeps all retained history unbounded when the all preset is selected",
+            "observability time filtering preserves complete context aggregates for the all preset without requiring bounded samples"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "browser",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-13-dashboard-observability-all-time.zh.md",
+            "Playwright: filters observability metrics and traces with one shared time range；当前构建默认所有、短期切换并恢复所有、跨统计来源和十四天前自定义范围通过。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard-observability-custom-historical-dates",
+      "behavior": "可观测允许选择七天之前的自定义时间范围，保留未来时间、空输入和范围顺序检查。",
+      "sources": ["report:2026-11-13-dashboard-observability-all-time"],
+      "coverageLevel": "unit",
+      "reproduction": "原日期弹窗的disabledDate和validDraft均以当前时间减七天为下限；原浏览器默认范围失败单独留存，自定义旧构建未单独运行到此步骤。当前同一浏览器场景已额外选择十四天前至十三天前并应用成功。",
+      "expected": "较早的自定义范围可应用，空输入不能应用，短期和窄屏日期操作仍正常。",
+      "forbidden": "继续用七天作为日期下限、无日期时可应用、改变用户选定的时间边界。",
+      "rootCause": "日期组件和应用按钮重复设置了与后端查询能力无关的七天日期下限。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/observability-time-range.test.ts",
+          "namePattern": "^observability time filtering resolves rolling ranges and keeps custom boundaries exact$",
+          "requiredNames": [
+            "observability time filtering resolves rolling ranges and keeps custom boundaries exact"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "browser",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-13-dashboard-observability-all-time.zh.md",
+            "Playwright: filters observability metrics and traces with one shared time range；当前构建默认所有、短期切换并恢复所有、跨统计来源和十四天前自定义范围通过。"
+          ]
+        }
+      ]
+    },
+    {
       "id": "issue-550-openspec-shared-skill-links",
       "behavior": "OpenSpec 2.0 的 staging 内共享技能链接可安装为实体副本，重复安装和用户级镜像不依赖已清理的 staging。",
       "sources": ["https://github.com/rpamis/comet/issues/550"],

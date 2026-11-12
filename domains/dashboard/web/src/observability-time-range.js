@@ -1,6 +1,7 @@
 const durations = { '1h': 3600000, '24h': 86400000, '3d': 3 * 86400000, '7d': 7 * 86400000 };
 
 export function resolveObservabilityRange(selection, now = Date.now()) {
+  if (selection.preset === 'all') return undefined;
   if (selection.preset === 'custom') return { from: selection.from, to: selection.to };
   return {
     from: new Date(now - (durations[selection.preset] ?? durations['7d'])).toISOString(),

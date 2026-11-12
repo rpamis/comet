@@ -1,0 +1,899 @@
+{
+  "schema": "comet.eval.selected-triplets.v1",
+  "displayedScoringPositions": 36,
+  "tasksPerDataset": 3,
+  "repetitions": 3,
+  "selectionPolicy": {
+    "unit": "three displayed results per task and treatment; compare whole batches, with the user-authorized zero-score slot replacement if higher",
+    "ranking": ["full-score count", "mean original reward"],
+    "ties": "retain existing batch",
+    "generalization": "selected-batch observations, not a random-sample population success estimate"
+  },
+  "model": "deepseek-flash[1M]",
+  "modelRouting": "same DeepSeek configuration for both treatments",
+  "agent": "Claude Code 2.1.318",
+  "nativeVersion": "frozen 0.5.3",
+  "selectionDecisions": [
+    {
+      "dataset": "workbuddy-code",
+      "mode": "native",
+      "task": "feature-easy-lru_caching_to_tzoffset",
+      "selectedRunRepetitions": [
+        {
+          "run": "comet-eval-ae574d65-f8b9-4ab0-91ff-d5b7a7f4adcb",
+          "repetition": 1
+        },
+        {
+          "run": "comet-eval-78572c9c-82c2-4770-9895-7ffb3d16bd86",
+          "repetition": 1
+        },
+        {
+          "run": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+          "repetition": 3
+        }
+      ],
+      "selectedWholeTriplet": false,
+      "additionalSingleReplacement": true,
+      "additionalSingleCandidateReward": 0.25,
+      "candidateBatchRanks": [
+        [0, 0.25],
+        [0, 0.25]
+      ],
+      "selectedCandidateBatchIndex": 0
+    },
+    {
+      "dataset": "workbuddy-code",
+      "mode": "native",
+      "task": "data_reporting-medium-audit_event_export",
+      "selectedRunRepetitions": [
+        {
+          "run": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+          "repetition": 1
+        },
+        {
+          "run": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+          "repetition": 2
+        },
+        {
+          "run": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+          "repetition": 3
+        }
+      ],
+      "selectedWholeTriplet": true,
+      "additionalSingleReplacement": false,
+      "additionalSingleCandidateReward": null,
+      "candidateBatchRanks": [[3, 1.0]],
+      "selectedCandidateBatchIndex": 0
+    },
+    {
+      "dataset": "workbuddy-code",
+      "mode": "native",
+      "task": "product_analytics-hard-day7_retention",
+      "selectedRunRepetitions": [
+        {
+          "run": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+          "repetition": 1
+        },
+        {
+          "run": "comet-eval-db552f6d-adfc-4689-aa03-d5a546603831",
+          "repetition": 1
+        },
+        {
+          "run": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+          "repetition": 3
+        }
+      ],
+      "selectedWholeTriplet": true,
+      "additionalSingleReplacement": false,
+      "additionalSingleCandidateReward": null,
+      "candidateBatchRanks": [[3, 1.0]],
+      "selectedCandidateBatchIndex": 0
+    },
+    {
+      "dataset": "workbuddy-code",
+      "mode": "goal",
+      "task": "feature-easy-lru_caching_to_tzoffset",
+      "selectedRunRepetitions": [
+        {
+          "run": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+          "repetition": 1
+        },
+        {
+          "run": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+          "repetition": 2
+        },
+        {
+          "run": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+          "repetition": 3
+        }
+      ],
+      "selectedWholeTriplet": true,
+      "additionalSingleReplacement": false,
+      "additionalSingleCandidateReward": null,
+      "candidateBatchRanks": [
+        [0, 0.25],
+        [0, 0.25]
+      ],
+      "selectedCandidateBatchIndex": 0
+    },
+    {
+      "dataset": "workbuddy-code",
+      "mode": "goal",
+      "task": "data_reporting-medium-audit_event_export",
+      "selectedRunRepetitions": [
+        {
+          "run": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+          "repetition": 1
+        },
+        {
+          "run": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+          "repetition": 2
+        },
+        {
+          "run": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+          "repetition": 3
+        }
+      ],
+      "selectedWholeTriplet": true,
+      "additionalSingleReplacement": false,
+      "additionalSingleCandidateReward": null,
+      "candidateBatchRanks": [[3, 1.0]],
+      "selectedCandidateBatchIndex": 0
+    },
+    {
+      "dataset": "workbuddy-code",
+      "mode": "goal",
+      "task": "product_analytics-hard-day7_retention",
+      "selectedRunRepetitions": [
+        {
+          "run": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+          "repetition": 1
+        },
+        {
+          "run": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+          "repetition": 2
+        },
+        {
+          "run": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+          "repetition": 3
+        }
+      ],
+      "selectedWholeTriplet": true,
+      "additionalSingleReplacement": false,
+      "additionalSingleCandidateReward": null,
+      "candidateBatchRanks": [[3, 1.0]],
+      "selectedCandidateBatchIndex": 0
+    },
+    {
+      "dataset": "skillsbench",
+      "mode": "native",
+      "task": "court-form-filling",
+      "selectedRunRepetitions": [
+        {
+          "run": "comet-eval-554d8e00-c048-4069-a5a4-bb18f385ee67",
+          "repetition": 1
+        },
+        {
+          "run": "comet-eval-554d8e00-c048-4069-a5a4-bb18f385ee67",
+          "repetition": 2
+        },
+        {
+          "run": "comet-eval-554d8e00-c048-4069-a5a4-bb18f385ee67",
+          "repetition": 3
+        }
+      ],
+      "selectedWholeTriplet": true,
+      "additionalSingleReplacement": false,
+      "additionalSingleCandidateReward": null,
+      "candidateBatchRanks": [[2, 0.6666666666666666]],
+      "selectedCandidateBatchIndex": 0
+    },
+    {
+      "dataset": "skillsbench",
+      "mode": "native",
+      "task": "manufacturing-codebook-normalization",
+      "selectedRunRepetitions": [
+        {
+          "run": "comet-eval-e97b8d5d-40a6-49f2-8161-227f7584797c",
+          "repetition": 1
+        },
+        {
+          "run": "comet-eval-e97b8d5d-40a6-49f2-8161-227f7584797c",
+          "repetition": 2
+        },
+        {
+          "run": "comet-eval-e97b8d5d-40a6-49f2-8161-227f7584797c",
+          "repetition": 3
+        }
+      ],
+      "selectedWholeTriplet": true,
+      "additionalSingleReplacement": false,
+      "additionalSingleCandidateReward": null,
+      "candidateBatchRanks": [
+        [0, 0.0],
+        [1, 0.3333333333333333]
+      ],
+      "selectedCandidateBatchIndex": 1
+    },
+    {
+      "dataset": "skillsbench",
+      "mode": "native",
+      "task": "paratransit-routing",
+      "selectedRunRepetitions": [
+        {
+          "run": "comet-eval-fc0a8ab4-e28f-43d8-a3df-f8fa6eafc75f",
+          "repetition": 1
+        },
+        {
+          "run": "comet-eval-fc0a8ab4-e28f-43d8-a3df-f8fa6eafc75f",
+          "repetition": 2
+        },
+        {
+          "run": "comet-eval-fc0a8ab4-e28f-43d8-a3df-f8fa6eafc75f",
+          "repetition": 3
+        }
+      ],
+      "selectedWholeTriplet": true,
+      "additionalSingleReplacement": false,
+      "additionalSingleCandidateReward": null,
+      "candidateBatchRanks": [[3, 1.0]],
+      "selectedCandidateBatchIndex": 0
+    },
+    {
+      "dataset": "skillsbench",
+      "mode": "goal",
+      "task": "court-form-filling",
+      "selectedRunRepetitions": [
+        {
+          "run": "comet-eval-709d71f7-f74d-49fc-87c6-a34bbf91a8ec",
+          "repetition": 1
+        },
+        {
+          "run": "comet-eval-0e3c17c0-fb5d-4bda-ad7f-a4084165f422",
+          "repetition": 2
+        },
+        {
+          "run": "comet-eval-0e3c17c0-fb5d-4bda-ad7f-a4084165f422",
+          "repetition": 3
+        }
+      ],
+      "selectedWholeTriplet": true,
+      "additionalSingleReplacement": false,
+      "additionalSingleCandidateReward": null,
+      "candidateBatchRanks": [[1, 0.3333333333333333]],
+      "selectedCandidateBatchIndex": 0
+    },
+    {
+      "dataset": "skillsbench",
+      "mode": "goal",
+      "task": "manufacturing-codebook-normalization",
+      "selectedRunRepetitions": [
+        {
+          "run": "comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1",
+          "repetition": 1
+        },
+        {
+          "run": "comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1",
+          "repetition": 2
+        },
+        {
+          "run": "comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1",
+          "repetition": 3
+        }
+      ],
+      "selectedWholeTriplet": true,
+      "additionalSingleReplacement": false,
+      "additionalSingleCandidateReward": null,
+      "candidateBatchRanks": [[1, 0.3333333333333333]],
+      "selectedCandidateBatchIndex": 0
+    },
+    {
+      "dataset": "skillsbench",
+      "mode": "goal",
+      "task": "paratransit-routing",
+      "selectedRunRepetitions": [
+        {
+          "run": "comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1",
+          "repetition": 1
+        },
+        {
+          "run": "comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1",
+          "repetition": 2
+        },
+        {
+          "run": "comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1",
+          "repetition": 3
+        }
+      ],
+      "selectedWholeTriplet": true,
+      "additionalSingleReplacement": false,
+      "additionalSingleCandidateReward": null,
+      "candidateBatchRanks": [[2, 0.6666666666666666]],
+      "selectedCandidateBatchIndex": 0
+    }
+  ],
+  "groups": [
+    {
+      "dataset": "workbuddy-code",
+      "mode": "native",
+      "rows": [
+        {
+          "task": "feature-easy-lru_caching_to_tzoffset",
+          "difficulty": "easy",
+          "rep": 1,
+          "reward": 0.5,
+          "artifactOutcome": false,
+          "sourceRun": "comet-eval-ae574d65-f8b9-4ab0-91ff-d5b7a7f4adcb",
+          "sourceRepetition": 1,
+          "agentReturnCode": null,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "assertion_failed",
+          "sourceRaw": null,
+          "selectedWholeTriplet": false
+        },
+        {
+          "task": "feature-easy-lru_caching_to_tzoffset",
+          "difficulty": "easy",
+          "rep": 2,
+          "reward": 0.25,
+          "artifactOutcome": false,
+          "sourceRun": "comet-eval-78572c9c-82c2-4770-9895-7ffb3d16bd86",
+          "sourceRepetition": 1,
+          "agentReturnCode": null,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "assertion_failed",
+          "sourceRaw": "feature_easy_lru_caching_to_tzoffset_COMET_NATIVE_SDK_CURRENT_r1_rep1_stdout.json",
+          "selectedWholeTriplet": false
+        },
+        {
+          "task": "feature-easy-lru_caching_to_tzoffset",
+          "difficulty": "easy",
+          "rep": 3,
+          "reward": 0.25,
+          "artifactOutcome": false,
+          "sourceRun": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+          "sourceRepetition": 3,
+          "agentReturnCode": null,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "assertion_failed",
+          "sourceRaw": null,
+          "selectedWholeTriplet": false
+        },
+        {
+          "task": "data_reporting-medium-audit_event_export",
+          "difficulty": "medium",
+          "rep": 1,
+          "reward": 1.0,
+          "artifactOutcome": true,
+          "sourceRun": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+          "sourceRepetition": 1,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": true,
+          "verifierStatus": "unknown",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "data_reporting-medium-audit_event_export",
+          "difficulty": "medium",
+          "rep": 2,
+          "reward": 1.0,
+          "artifactOutcome": true,
+          "sourceRun": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+          "sourceRepetition": 2,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": true,
+          "verifierStatus": "unknown",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "data_reporting-medium-audit_event_export",
+          "difficulty": "medium",
+          "rep": 3,
+          "reward": 1.0,
+          "artifactOutcome": true,
+          "sourceRun": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+          "sourceRepetition": 3,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": true,
+          "verifierStatus": "unknown",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "product_analytics-hard-day7_retention",
+          "difficulty": "hard",
+          "rep": 1,
+          "reward": 1.0,
+          "artifactOutcome": true,
+          "sourceRun": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+          "sourceRepetition": 1,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": true,
+          "verifierStatus": "unknown",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "product_analytics-hard-day7_retention",
+          "difficulty": "hard",
+          "rep": 2,
+          "reward": 1.0,
+          "artifactOutcome": true,
+          "sourceRun": "comet-eval-db552f6d-adfc-4689-aa03-d5a546603831",
+          "sourceRepetition": 1,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": true,
+          "verifierStatus": "unknown",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "product_analytics-hard-day7_retention",
+          "difficulty": "hard",
+          "rep": 3,
+          "reward": 1.0,
+          "artifactOutcome": true,
+          "sourceRun": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+          "sourceRepetition": 3,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": true,
+          "verifierStatus": "unknown",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        }
+      ],
+      "summary": {
+        "fullCount": 6,
+        "averageReward": 0.7777777777777778,
+        "pass1": 0.6666666666666666,
+        "pass3": 0.6666666666666666,
+        "all3": 0.6666666666666666
+      }
+    },
+    {
+      "dataset": "workbuddy-code",
+      "mode": "goal",
+      "rows": [
+        {
+          "task": "feature-easy-lru_caching_to_tzoffset",
+          "difficulty": "easy",
+          "rep": 1,
+          "reward": 0.25,
+          "artifactOutcome": false,
+          "sourceRun": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+          "sourceRepetition": 1,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "assertion_failed",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "feature-easy-lru_caching_to_tzoffset",
+          "difficulty": "easy",
+          "rep": 2,
+          "reward": 0.25,
+          "artifactOutcome": false,
+          "sourceRun": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+          "sourceRepetition": 2,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "assertion_failed",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "feature-easy-lru_caching_to_tzoffset",
+          "difficulty": "easy",
+          "rep": 3,
+          "reward": 0.25,
+          "artifactOutcome": false,
+          "sourceRun": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+          "sourceRepetition": 3,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "assertion_failed",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "data_reporting-medium-audit_event_export",
+          "difficulty": "medium",
+          "rep": 1,
+          "reward": 1.0,
+          "artifactOutcome": true,
+          "sourceRun": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+          "sourceRepetition": 1,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "unknown",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "data_reporting-medium-audit_event_export",
+          "difficulty": "medium",
+          "rep": 2,
+          "reward": 1.0,
+          "artifactOutcome": true,
+          "sourceRun": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+          "sourceRepetition": 2,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "unknown",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "data_reporting-medium-audit_event_export",
+          "difficulty": "medium",
+          "rep": 3,
+          "reward": 1.0,
+          "artifactOutcome": true,
+          "sourceRun": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+          "sourceRepetition": 3,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "unknown",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "product_analytics-hard-day7_retention",
+          "difficulty": "hard",
+          "rep": 1,
+          "reward": 1.0,
+          "artifactOutcome": true,
+          "sourceRun": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+          "sourceRepetition": 1,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "unknown",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "product_analytics-hard-day7_retention",
+          "difficulty": "hard",
+          "rep": 2,
+          "reward": 1.0,
+          "artifactOutcome": true,
+          "sourceRun": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+          "sourceRepetition": 2,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "unknown",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "product_analytics-hard-day7_retention",
+          "difficulty": "hard",
+          "rep": 3,
+          "reward": 1.0,
+          "artifactOutcome": true,
+          "sourceRun": "comet-eval-7f55142c-1e65-4fbd-8d5d-e97cb2e50262",
+          "sourceRepetition": 3,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "unknown",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        }
+      ],
+      "summary": {
+        "fullCount": 6,
+        "averageReward": 0.75,
+        "pass1": 0.6666666666666666,
+        "pass3": 0.6666666666666666,
+        "all3": 0.6666666666666666
+      }
+    },
+    {
+      "dataset": "skillsbench",
+      "mode": "native",
+      "rows": [
+        {
+          "task": "court-form-filling",
+          "difficulty": "easy",
+          "rep": 1,
+          "reward": 0,
+          "artifactOutcome": false,
+          "sourceRun": "comet-eval-554d8e00-c048-4069-a5a4-bb18f385ee67",
+          "sourceRepetition": 1,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": true,
+          "verifierStatus": "assertion_failed",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "court-form-filling",
+          "difficulty": "easy",
+          "rep": 2,
+          "reward": 1,
+          "artifactOutcome": true,
+          "sourceRun": "comet-eval-554d8e00-c048-4069-a5a4-bb18f385ee67",
+          "sourceRepetition": 2,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": true,
+          "verifierStatus": "completed",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "court-form-filling",
+          "difficulty": "easy",
+          "rep": 3,
+          "reward": 1,
+          "artifactOutcome": true,
+          "sourceRun": "comet-eval-554d8e00-c048-4069-a5a4-bb18f385ee67",
+          "sourceRepetition": 3,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": true,
+          "verifierStatus": "completed",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "manufacturing-codebook-normalization",
+          "difficulty": "medium",
+          "rep": 1,
+          "reward": 1,
+          "artifactOutcome": true,
+          "sourceRun": "comet-eval-e97b8d5d-40a6-49f2-8161-227f7584797c",
+          "sourceRepetition": 1,
+          "agentReturnCode": null,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "completed",
+          "sourceRaw": "manufacturing_codebook_normalization_COMET_NATIVE_SDK_CURRENT_r1_rep1_stdout.json",
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "manufacturing-codebook-normalization",
+          "difficulty": "medium",
+          "rep": 2,
+          "reward": 0,
+          "artifactOutcome": false,
+          "sourceRun": "comet-eval-e97b8d5d-40a6-49f2-8161-227f7584797c",
+          "sourceRepetition": 2,
+          "agentReturnCode": null,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "assertion_failed",
+          "sourceRaw": "manufacturing_codebook_normalization_COMET_NATIVE_SDK_CURRENT_r2_rep2_stdout.json",
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "manufacturing-codebook-normalization",
+          "difficulty": "medium",
+          "rep": 3,
+          "reward": 0,
+          "artifactOutcome": false,
+          "sourceRun": "comet-eval-e97b8d5d-40a6-49f2-8161-227f7584797c",
+          "sourceRepetition": 3,
+          "agentReturnCode": null,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "assertion_failed",
+          "sourceRaw": "manufacturing_codebook_normalization_COMET_NATIVE_SDK_CURRENT_r3_rep3_stdout.json",
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "paratransit-routing",
+          "difficulty": "hard",
+          "rep": 1,
+          "reward": 1,
+          "artifactOutcome": true,
+          "sourceRun": "comet-eval-fc0a8ab4-e28f-43d8-a3df-f8fa6eafc75f",
+          "sourceRepetition": 1,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": true,
+          "verifierStatus": "completed",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "paratransit-routing",
+          "difficulty": "hard",
+          "rep": 2,
+          "reward": 1,
+          "artifactOutcome": true,
+          "sourceRun": "comet-eval-fc0a8ab4-e28f-43d8-a3df-f8fa6eafc75f",
+          "sourceRepetition": 2,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": true,
+          "verifierStatus": "completed",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "paratransit-routing",
+          "difficulty": "hard",
+          "rep": 3,
+          "reward": 1,
+          "artifactOutcome": true,
+          "sourceRun": "comet-eval-fc0a8ab4-e28f-43d8-a3df-f8fa6eafc75f",
+          "sourceRepetition": 3,
+          "agentReturnCode": 124,
+          "nativeWorkflowPassed": false,
+          "verifierStatus": "completed",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        }
+      ],
+      "summary": {
+        "fullCount": 6,
+        "averageReward": 0.6666666666666666,
+        "pass1": 0.6666666666666666,
+        "pass3": 1.0,
+        "all3": 0.3333333333333333
+      }
+    },
+    {
+      "dataset": "skillsbench",
+      "mode": "goal",
+      "rows": [
+        {
+          "task": "court-form-filling",
+          "difficulty": "easy",
+          "rep": 1,
+          "reward": 0,
+          "artifactOutcome": false,
+          "sourceRun": "comet-eval-709d71f7-f74d-49fc-87c6-a34bbf91a8ec",
+          "sourceRepetition": 1,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "assertion_failed",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "court-form-filling",
+          "difficulty": "easy",
+          "rep": 2,
+          "reward": 1,
+          "artifactOutcome": true,
+          "sourceRun": "comet-eval-0e3c17c0-fb5d-4bda-ad7f-a4084165f422",
+          "sourceRepetition": 2,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "completed",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "court-form-filling",
+          "difficulty": "easy",
+          "rep": 3,
+          "reward": 0,
+          "artifactOutcome": false,
+          "sourceRun": "comet-eval-0e3c17c0-fb5d-4bda-ad7f-a4084165f422",
+          "sourceRepetition": 3,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "assertion_failed",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "manufacturing-codebook-normalization",
+          "difficulty": "medium",
+          "rep": 1,
+          "reward": 0,
+          "artifactOutcome": false,
+          "sourceRun": "comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1",
+          "sourceRepetition": 1,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "assertion_failed",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "manufacturing-codebook-normalization",
+          "difficulty": "medium",
+          "rep": 2,
+          "reward": 1,
+          "artifactOutcome": true,
+          "sourceRun": "comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1",
+          "sourceRepetition": 2,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "completed",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "manufacturing-codebook-normalization",
+          "difficulty": "medium",
+          "rep": 3,
+          "reward": 0,
+          "artifactOutcome": false,
+          "sourceRun": "comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1",
+          "sourceRepetition": 3,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "assertion_failed",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "paratransit-routing",
+          "difficulty": "hard",
+          "rep": 1,
+          "reward": 1,
+          "artifactOutcome": true,
+          "sourceRun": "comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1",
+          "sourceRepetition": 1,
+          "agentReturnCode": 124,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "completed",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "paratransit-routing",
+          "difficulty": "hard",
+          "rep": 2,
+          "reward": 0,
+          "artifactOutcome": false,
+          "sourceRun": "comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1",
+          "sourceRepetition": 2,
+          "agentReturnCode": 124,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "assertion_failed",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        },
+        {
+          "task": "paratransit-routing",
+          "difficulty": "hard",
+          "rep": 3,
+          "reward": 1,
+          "artifactOutcome": true,
+          "sourceRun": "comet-eval-9b40cea1-79d7-43a3-89ea-d4c4fb539ea1",
+          "sourceRepetition": 3,
+          "agentReturnCode": 0,
+          "nativeWorkflowPassed": null,
+          "verifierStatus": "completed",
+          "sourceRaw": null,
+          "selectedWholeTriplet": true
+        }
+      ],
+      "summary": {
+        "fullCount": 4,
+        "averageReward": 0.4444444444444444,
+        "pass1": 0.4444444444444444,
+        "pass3": 1.0,
+        "all3": 0.0
+      }
+    }
+  ],
+  "retainedExecutionAccounting": {
+    "actualModelTrials": 48,
+    "unselectedRecordsRetained": true,
+    "environmentInvalidAttemptsRetained": true
+  },
+  "additionalSingleAttempts": [
+    {
+      "dataset": "skillsbench",
+      "mode": "native",
+      "task": "manufacturing-codebook-normalization",
+      "logicalRepetition": 2,
+      "sourceRun": "comet-eval-6666ff0f-b28e-4cb4-858c-cd22aba38345",
+      "sourceRepetition": 1,
+      "reward": 0,
+      "selected": false,
+      "verifierBudgetOverride": {
+        "originalSeconds": 300,
+        "effectiveSeconds": 1800,
+        "reason": "Dependency downloads exhausted the original preparation-plus-verification time budget; tests and scoring thresholds unchanged",
+        "scorerCodeUnchanged": true,
+        "modelReexecuted": false
+      },
+      "observedTestWallSeconds": 2.07
+    }
+  ],
+  "modelDisplayName": "DeepSeek-V4.1-Flash-1017"
+}
