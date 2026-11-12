@@ -6,7 +6,9 @@ async function openSettings(page: Page) {
     await page.getByRole('button', { name: /^(打开导航|Open navigation)$/u }).click();
   }
   await settings.click();
-  return page.getByRole('dialog', { name: /Comet (设置|settings)/iu });
+  const dialog = page.getByRole('dialog', { name: /Comet (设置|settings)/iu });
+  await expect(dialog).toHaveCSS('transform', 'none');
+  return dialog;
 }
 
 for (const language of ['zh', 'en'] as const) {
