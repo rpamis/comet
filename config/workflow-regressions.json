@@ -27,6 +27,15 @@
           "requiredNames": [
             "Comet entry resume probe v2 always resumes every valid Native phase through the permanent Native entry"
           ]
+        },
+        {
+          "file": "test/app/resume-probe.test.ts",
+          "namePattern": "returns JSON using top-level CLI invocation and --utterance|renders the resolved workflow and permanent entry in text mode|uses stdin over --utterance when --stdin is set",
+          "requiredNames": [
+            "resumeProbe command returns JSON using top-level CLI invocation and --utterance",
+            "resumeProbe command renders the resolved workflow and permanent entry in text mode",
+            "resumeProbe command uses stdin over --utterance when --stdin is set"
+          ]
         }
       ]
     },
