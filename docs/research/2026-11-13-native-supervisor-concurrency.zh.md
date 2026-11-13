@@ -33,3 +33,4 @@ SDK 的 `supervisor.prepare` 和 `supervisor.child.archive` 状态转换将多�
 - 中文 1280px、英文 390px 的浏览器保存、重载、拒绝 0、无横向溢出检查通过；截图核对新设置行。界面复用现有 Input 与设置布局，没有修改字体或主题。
 - `pnpm build`、`pnpm check:generated`、`pnpm check:sdk-api`、badcase 登记与基线保留、受影响文件格式检查通过；`pnpm lint` 无错误，保留 9 条既有警告。
 - 查看了 `verify:changed --plan` 的通用检查清单，本地采用上述定向检查；全量与跨平台检查由 PR 最新 head 的 CI 执行。本机没有启动全量测试、真实平台 Hook 或新模型 Eval。
+- `07ac88ad` 的 Node 22 第一分片检出帮助文案把句号紧接在 `.comet/config.yaml` 后，仓库边界检查据此识别出额外的 `.comet/config.yaml.`。本机同一检查已复现；帮助中改用分号分隔，保留原路径集合断言，不新增路径许可或缩窄检查。
