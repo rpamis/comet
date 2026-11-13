@@ -36,6 +36,13 @@
             "resumeProbe command renders the resolved workflow and permanent entry in text mode",
             "resumeProbe command uses stdin over --utterance when --stdin is set"
           ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-cancellation.test.ts",
+          "namePattern": "^resumes the remaining active Run without a cancelled Run creating an ambiguous choice$",
+          "requiredNames": [
+            "resumes the remaining active Run without a cancelled Run creating an ambiguous choice"
+          ]
         }
       ]
     },

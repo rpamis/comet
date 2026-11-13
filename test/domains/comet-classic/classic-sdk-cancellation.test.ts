@@ -132,10 +132,22 @@ it('resumes the remaining active Run without a cancelled Run creating an ambiguo
     0,
   );
   commitFixture(f.root);
+  const candidate = await resolveCometEntryResumeProbe(f.root, {
+    ...resumeInput,
+    schema_version: 'comet.resume_probe.v2',
+  });
+  expect(candidate).toMatchObject({
+    action: 'ask_user',
+    changeName: 'other',
+    reasonCode: 'ambient-resume-confirmation-required',
+    nextCommand: null,
+  });
+  expect(candidate.candidates.map(({ name }) => name)).toEqual(['other']);
   expect(
     await resolveCometEntryResumeProbe(f.root, {
       ...resumeInput,
       schema_version: 'comet.resume_probe.v2',
+      utterance: '继续 other',
     }),
   ).toMatchObject({
     action: 'auto_resume',
