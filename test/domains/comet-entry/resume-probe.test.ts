@@ -230,6 +230,97 @@ describe('Comet entry resume probe v2', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
+  it.each([
+    ['native', 'source'],
+    ['classic', 'source'],
+    ['native', 'public CLI'],
+    ['classic', 'public CLI'],
+  ] as const)(
+    'requires confirmation before implicitly resuming a related %s change through %s',
+    async (workflow, boundary) => {
+      const name = 'cache-controls';
+      if (workflow === 'native') {
+        await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+        const paths = await nativeProjectPaths(projectRoot, '.');
+        await createNativeSdkChange({
+          paths,
+          name,
+          language: 'en',
+          workspaceBinding: { isolation: 'current', changeBranch: null, targetBranch: null },
+        });
+        await writeFile(path.join(nativeChangeDir(paths, name), 'brief.md'), VALID_BRIEF);
+        await selectNativeChange(paths, name);
+      } else {
+        await prepareClassicLegacyProject(projectRoot);
+        const created = await withClassicCommandContext(
+          { projectRoot, invocationCwd: projectRoot },
+          () => runClassicCli(['state', 'init', name, 'full', '--runtime', 'sdk', '--json']),
+        );
+        expect(created.exitCode, created.stderr).toBe(0);
+        await writeFile(
+          path.join(projectRoot, 'openspec', 'changes', name, 'proposal.md'),
+          VALID_BRIEF,
+        );
+      }
+      const probeFor = async (utterance: string, alreadyInCometFlow = false) => {
+        if (boundary === 'source')
+          return resolveCometEntryResumeProbe(projectRoot, {
+            ...input(utterance),
+            agent_context: { non_trivial_work: true, already_in_comet_flow: alreadyInCometFlow },
+          });
+        const response = spawnSync(
+          process.execPath,
+          [
+            path.resolve('dist/app/cli/index.js'),
+            'resume-probe',
+            projectRoot,
+            '--stdin',
+            '--json',
+            ...(alreadyInCometFlow ? ['--already-in-comet-flow'] : []),
+          ],
+          { input: utterance, encoding: 'utf8', windowsHide: true, timeout: 30_000 },
+        );
+        expect(response.status, response.stderr).toBe(0);
+        return JSON.parse(response.stdout);
+      };
+      const before = await snapshot(projectRoot);
+      const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
+      const beforeRuntime = await snapshot(runtimeRoot);
+      for (const utterance of [
+        'Adjust cache expiration behavior',
+        '验证 cache expiration behavior',
+        '调整 cache-controls 的描述',
+        '继续',
+      ]) {
+        const probe = await probeFor(utterance);
+        expect(probe, utterance).toMatchObject({
+          workflow,
+          action: 'ask_user',
+          changeName: name,
+          reasonCode: 'ambient-resume-confirmation-required',
+          nextCommand: null,
+        });
+      }
+      expect(await probeFor('Adjust cache expiration behavior', true)).toMatchObject({
+        action: 'out_of_scope',
+        reasonCode: 'already-in-comet-flow',
+      });
+      expect(await probeFor('不要继续 Comet，调整缓存过期')).toMatchObject({
+        action: 'out_of_scope',
+        reasonCode: 'user-opted-out',
+        nextCommand: null,
+      });
+      expect(await snapshot(projectRoot)).toEqual(before);
+      expect(await snapshot(runtimeRoot)).toEqual(beforeRuntime);
+      expect(await probeFor(`继续 ${name}`)).toMatchObject({
+        workflow,
+        action: 'auto_resume',
+        changeName: name,
+        nextCommand: workflow === 'native' ? '/comet-native' : '/comet-classic',
+      });
+    },
+  );
+
   it('routes a configured Native project only through the permanent Native entry', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     await createNative(projectRoot, 'cache-controls');
@@ -509,6 +600,14 @@ describe('Comet entry resume probe v2', () => {
       reasonCode: 'native-checkpoint-recoverable',
       diagnosticCommand: 'comet native doctor missing-run --json',
     });
+    const unconfirmed = await resolveCometEntryResumeProbe(projectRoot, input('继续'));
+    expect(unconfirmed).toMatchObject({
+      action: 'ask_user',
+      reasonCode: 'ambient-resume-confirmation-required',
+      diagnosticCommand: 'comet native doctor missing-run --json',
+      nextCommand: null,
+    });
+    expect(unconfirmed.reason).toContain('confirm the original execution has stopped');
     expect(await snapshot(projectRoot)).toEqual(beforeProject);
     expect(await snapshot(runtimeRoot)).toEqual(beforeRuntime);
     const selected = await runNativeCli([
@@ -589,11 +688,13 @@ describe('Comet entry resume probe v2', () => {
     );
     const beforeProject = await snapshot(projectRoot);
     const beforeRuntime = await snapshot(runtimeRoot);
-    expect(await resolveCometEntryResumeProbe(projectRoot, input('继续'))).toMatchObject({
-      action: 'auto_resume',
-      changeName: 'target-run',
-      nextCommand: '/comet-native',
-    });
+    expect(await resolveCometEntryResumeProbe(projectRoot, input('继续当前 change'))).toMatchObject(
+      {
+        action: 'auto_resume',
+        changeName: 'target-run',
+        nextCommand: '/comet-native',
+      },
+    );
     expect(await snapshot(projectRoot)).toEqual(beforeProject);
     expect(await snapshot(runtimeRoot)).toEqual(beforeRuntime);
   });
@@ -695,7 +796,9 @@ describe('Comet entry resume probe v2', () => {
     await expect(
       resolveCometEntryResumeProbe(projectRoot, input('继续 target-run')),
     ).resolves.toMatchObject({ action: 'auto_resume', changeName: 'target-run' });
-    await expect(resolveCometEntryResumeProbe(projectRoot, input('继续'))).resolves.toMatchObject({
+    await expect(
+      resolveCometEntryResumeProbe(projectRoot, input('继续当前 change')),
+    ).resolves.toMatchObject({
       action: 'auto_resume',
       changeName: 'target-run',
     });
@@ -964,7 +1067,15 @@ describe('Comet entry resume probe v2', () => {
     });
 
     await selectNativeChange(paths, 'login-flow');
-    const selected = await resolveCometEntryResumeProbe(projectRoot, input('继续'));
+    const selected = await resolveCometEntryResumeProbe(projectRoot, input('继续当前 change'));
+    expect(
+      await resolveCometEntryResumeProbe(projectRoot, input('Adjust cache expiration behavior')),
+    ).toMatchObject({
+      action: 'ask_user',
+      changeName: 'login-flow',
+      reasonCode: 'ambient-resume-confirmation-required',
+      nextCommand: null,
+    });
     expect(selected).toMatchObject({
       action: 'auto_resume',
       changeName: 'login-flow',
@@ -1003,13 +1114,13 @@ describe('Comet entry resume probe v2', () => {
     });
 
     try {
-      await expect(resolveCometEntryResumeProbe(projectRoot, input('继续'))).resolves.toMatchObject(
-        {
-          action: 'auto_resume',
-          changeName: 'login-flow',
-          nextCommand: '/comet-native',
-        },
-      );
+      await expect(
+        resolveCometEntryResumeProbe(projectRoot, input('继续当前 change')),
+      ).resolves.toMatchObject({
+        action: 'auto_resume',
+        changeName: 'login-flow',
+        nextCommand: '/comet-native',
+      });
     } finally {
       openSpy.mockRestore();
     }
@@ -1033,13 +1144,21 @@ describe('Comet entry resume probe v2', () => {
 
     const sole = await resolveCometEntryResumeProbe(projectRoot, input('继续'));
     expect(sole).toMatchObject({
-      action: 'auto_resume',
+      action: 'ask_user',
       changeName: 'only-active',
-      nextCommand: '/comet-native',
+      nextCommand: null,
+      reasonCode: 'ambient-resume-confirmation-required',
     });
     expect(sole.evidence).toContainEqual(
       expect.objectContaining({ source: 'state', quote: expect.stringContaining('ENOENT') }),
     );
+    await expect(
+      resolveCometEntryResumeProbe(projectRoot, input('继续 only-active')),
+    ).resolves.toMatchObject({
+      action: 'auto_resume',
+      changeName: 'only-active',
+      nextCommand: '/comet-native',
+    });
 
     await createNative(projectRoot, 'second-active');
     await expect(resolveCometEntryResumeProbe(projectRoot, input('继续'))).resolves.toMatchObject({
@@ -1058,6 +1177,14 @@ describe('Comet entry resume probe v2', () => {
     const phases = ['shape', 'build', 'verify', 'archive'] as const;
 
     for (const phase of phases) {
+      expect(
+        await resolveCometEntryResumeProbe(projectRoot, input('Adjust cache expiration behavior')),
+      ).toMatchObject({
+        action: 'ask_user',
+        changeName: 'phase-routing',
+        phase,
+        nextCommand: null,
+      });
       const probe = await resolveCometEntryResumeProbe(projectRoot, input('继续 phase-routing'));
       expect(probe).toMatchObject({
         workflow: 'native',

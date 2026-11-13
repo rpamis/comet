@@ -2,6 +2,54 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "issue-543-ambient-resume-confirmation",
+      "behavior": "新会话仅发现相关 Native 或 Classic change 时先确认，明确续行和已在流程中的会话保持原入口。",
+      "sources": ["https://github.com/rpamis/comet/issues/543"],
+      "coverageLevel": "public-cli",
+      "reproduction": "203532ba 的公开 CLI 在真实 SDK 临时项目中，将 Adjust cache expiration behavior 判为 auto_resume；同一输入的新确认断言在 Native、Classic 两项上失败。",
+      "expected": "唯一相关目标、已有 selection、只提名称或泛泛验证均返回 ask_user 和目标，不提供 nextCommand；明确指定目标继续仍可进入，已在流程或拒绝恢复保持中立，项目和原 SDK Run 不写入。",
+      "forbidden": "将语义相关或项目 selection 当作新会话确认，拒绝后仍加载入口，或为确认修改原状态及批准。",
+      "rootCause": "共享入口直接返回两个 workflow 的自动恢复结论，未区分语义关联与用户对本次请求的明确恢复决定。",
+      "tests": [
+        {
+          "file": "test/domains/comet-entry/resume-probe.test.ts",
+          "namePattern": "requires confirmation before implicitly resuming a related",
+          "requiredNames": [
+            "Comet entry resume probe v2 requires confirmation before implicitly resuming a related native change through source",
+            "Comet entry resume probe v2 requires confirmation before implicitly resuming a related classic change through source",
+            "Comet entry resume probe v2 requires confirmation before implicitly resuming a related native change through public CLI",
+            "Comet entry resume probe v2 requires confirmation before implicitly resuming a related classic change through public CLI"
+          ]
+        },
+        {
+          "file": "test/domains/comet-entry/resume-probe.test.ts",
+          "namePattern": "always resumes every valid Native phase through the permanent Native entry",
+          "requiredNames": [
+            "Comet entry resume probe v2 always resumes every valid Native phase through the permanent Native entry"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-543-ambient-entry-instructions",
+      "behavior": "生成的项目引导与共享 Rule 明确先确认本次恢复，selection 不替代会话确认，已有流程继续沿原协议推进。",
+      "sources": ["https://github.com/rpamis/comet/issues/543"],
+      "coverageLevel": "unit",
+      "reproduction": "旧引导直接消费 auto_resume，共享 Rule 根据选中的 workflow 指示立即恢复，没有新会话确认条件。",
+      "expected": "恢复确认后直接加载原 skill，不重复扫描；Rule 的 Native 和 Classic 恢复指令以本会话已确认进入为条件；拒绝保留原状态及写入边界。",
+      "forbidden": "通过 Rule 绕过探针确认，重复询问已在流程的会话，或把拒绝恢复作为取消原 change 或放宽 Guard 的授权。",
+      "rootCause": "项目所有权读取与本次请求是否进入工作流的确认混在同一恢复指令中。",
+      "tests": [
+        {
+          "file": "test/domains/skill/project-instructions.test.ts",
+          "namePattern": "requires ambient confirmation without treating project selection as session consent",
+          "requiredNames": [
+            "Comet project instructions requires ambient confirmation without treating project selection as session consent"
+          ]
+        }
+      ]
+    },
+    {
       "id": "issue-553-supervisor-concurrency-config",
       "behavior": "Supervisor 子任务并发上限可持久配置，旧项目默认 2，全局模板、配置更新和根目录迁移保留显式值。",
       "sources": ["https://github.com/rpamis/comet/issues/553"],

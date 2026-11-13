@@ -15,6 +15,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Ambient Resume confirmation**: Ask before a new session enters a semantically related Native or Classic change, even when it is the only candidate or already selected. Explicit requests to resume a specified change and ongoing sessions retain their existing entry paths; declining preserves the original workflow and write constraints ([#543](https://github.com/rpamis/comet/issues/543)).
+
 - **Complete workflow artifact previews**: Display complete Native and Classic artifact documents in Dashboard, including large briefs, proposals, plans, and verification reports, without byte-based truncation or truncation notices.
 - **Dashboard observation history**: Default the shared observability filter to All and allow custom historical dates beyond seven days while preserving each view’s read limits and data retention.
 

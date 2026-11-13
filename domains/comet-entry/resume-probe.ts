@@ -306,6 +306,23 @@ function result(options: ResultOptions): CometEntryResumeProbeResult {
   };
 }
 
+function requireAmbientResumeConfirmation(
+  probe: CometEntryResumeProbeResult,
+  intent: ResumeIntent,
+): CometEntryResumeProbeResult {
+  if (probe.action !== 'auto_resume' || !probe.changeName) return probe;
+  const explicitTarget =
+    intent.currentChange || namesInUtterance(intent.positiveText, [probe.changeName]).length > 0;
+  if (explicitTarget && (intent.resumeLike || intent.commitLike)) return probe;
+  return {
+    ...probe,
+    action: 'ask_user',
+    nextCommand: null,
+    reasonCode: 'ambient-resume-confirmation-required',
+    reason: `${probe.reason} Confirm whether this request should continue the ${probe.workflow} change ${probe.changeName} before entering its workflow.`,
+  };
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
@@ -932,7 +949,7 @@ async function resolveCometEntryResumeProbeImpl(
             evidence: [{ source: 'user', quote: utterance }],
             candidates: classic.candidates,
           })
-        : classic;
+        : requireAmbientResumeConfirmation(classic, intent);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return result({
@@ -949,7 +966,10 @@ async function resolveCometEntryResumeProbeImpl(
   }
 
   try {
-    return await resolveNativeResumeProbe(projectRoot, input, entry.source, intent);
+    return requireAmbientResumeConfirmation(
+      await resolveNativeResumeProbe(projectRoot, input, entry.source, intent),
+      intent,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return result({

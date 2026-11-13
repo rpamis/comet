@@ -276,8 +276,8 @@ describe('Comet entry resume intent priority', () => {
     await writeFile(path.join(projectRoot, 'README.md'), 'Unrelated typo fix.\n');
     const before = await snapshot(projectRoot);
     for (const [utterance, changeName] of [
-      ['继续', 'login-flow'],
-      ['continue', 'login-flow'],
+      ['继续当前 change', 'login-flow'],
+      ['continue the selected change', 'login-flow'],
       ['提交当前 change', 'login-flow'],
       ['只提交当前的 change', 'login-flow'],
       ['Commit the current change', 'login-flow'],
