@@ -16,7 +16,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Changed
 
 - **Complete workflow artifact previews**: Display complete Native and Classic artifact documents in Dashboard, including large briefs, proposals, plans, and verification reports, without byte-based truncation or truncation notices.
-- **Dashboard observation history**: Default the shared observability filter to All, restore every retained record after a bounded filter, and allow custom historical dates beyond seven days without changing data retention.
+- **Dashboard observation history**: Default the shared observability filter to All and allow custom historical dates beyond seven days while preserving each view’s read limits and data retention.
 
 - **Workflow file sizes**: Remove remaining built-in byte caps from Native and Classic workflow materials, archive recovery, and shared Runtime records so growing documents remain complete and do not block continuation ([#551](https://github.com/rpamis/comet/issues/551)).
 - **Plugin startup context**: Deliver a short workflow entry and a readable Rule path on session startup or recovery. Reuse applicable rules already in context and reread missing rules after compaction, while retaining the write Guard and complete workflow requirements.
