@@ -78,6 +78,8 @@ export async function buildDshPlugin({ outputRoot, language = 'zh', cliSpec } = 
   }
   const resolvedCliSpec = cliSpec ?? pkg.version;
   manifest.version = pkg.version;
+  delete manifest.private;
+  manifest.publishConfig = { access: 'public', registry: 'https://registry.npmjs.org/' };
   manifest.dependencies = { ...manifest.dependencies, '@rpamis/comet': resolvedCliSpec };
   const root = path.resolve(
     outputRoot ?? resolveRepositoryPath(`dist/dsh-plugin/${pkg.version}-${language}`),

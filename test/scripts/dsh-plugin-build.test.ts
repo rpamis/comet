@@ -283,7 +283,11 @@ describe('DeepSeek Harness plugin package', () => {
       const packageJson = await readJson(path.join(repositoryRoot, 'package.json'));
       expect(manifest.name).toBe('comet-dsh-plugin');
       expect(manifest.version).toBe(packageJson.version);
-      expect(manifest.private).toBe(true);
+      expect(manifest).not.toHaveProperty('private');
+      expect(manifest.publishConfig).toEqual({
+        access: 'public',
+        registry: 'https://registry.npmjs.org/',
+      });
       expect(manifest.dsh.bundle.patch).toBe('./cordis.patch.yml');
       expect(manifest.dsh.client.platform).toBe('web');
       expect(manifest.dsh.client.inject).toContain('@deepseek-ai/dsh-client-ui-sidebar-right');

@@ -62,6 +62,25 @@ English Skills. `--cli-spec <pnpm spec>` overrides the CLI version or source in 
 dependency and defaults to the plugin version; for local checks it can point at a
 published version or a `file:` path.
 
+## Publish to npm
+
+`comet-dsh-plugin` and `@rpamis/comet` are separate npm packages and must be published
+separately. Confirm that the matching `@rpamis/comet` version exists on public npm,
+then run `pnpm build:dsh-plugin`. The source template keeps `private: true` to prevent
+publishing placeholder metadata; the built package removes that flag and targets public
+npm. After package tests and release-file checks pass, publish the build directory,
+not the source template:
+
+```text
+npm publish dist/dsh-plugin/<version>-zh/comet-dsh-plugin --access public --dry-run
+npm publish dist/dsh-plugin/<version>-zh/comet-dsh-plugin --access public
+npm view comet-dsh-plugin@<version> version --registry=https://registry.npmjs.org/
+```
+
+Use `npm pack comet-dsh-plugin@<version>` afterward to confirm it can be downloaded.
+A package version can only be published once. Local and private builds can still be
+installed from their directory as described below.
+
 ## Install and uninstall
 
 The plugin is an npm/Cordis bundle, so installing it makes it a bundle of that profile and
@@ -69,8 +88,12 @@ affects every session in the profile. Install the plugin directory by its absolu
 through the DSH Plugin Manager, or with the DSH CLI:
 
 ```text
-dsh plugin --profile <profile> add <absolute plugin directory>
+dsh plugin --profile <profile> add comet-dsh-plugin --ignore-scripts
 ```
+
+For local build checks, replace the package name with the absolute plugin directory.
+Use `comet-dsh-plugin@<version>` to install a specific version. The public npm package
+includes Chinese Skills by default.
 
 The desktop app owns its own profile (`desktop` by default). Manage that profile with the
 Desktop's own `dsh plugin` or the desktop Plugins page; a successful `--profile web`

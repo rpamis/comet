@@ -2,6 +2,25 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "dsh-plugin-public-npm-package",
+      "behavior": "DSH 正式构建包可独立发布到公共 npm，源码模板保持私有以防误发占位版本。",
+      "sources": ["report:dsh-plugin-public-npm-053"],
+      "coverageLevel": "public-cli",
+      "reproduction": "master e4f9987b 的公开插件构建命令生成 private:true 的正式包；新增公开发布元数据断言在同一构建产物上失败，公共 registry 查询 comet-dsh-plugin 返回 E404。",
+      "expected": "正式包使用主包版本和匹配的 CLI 依赖，不含 private 标记，publishConfig 指向公共 npm 且 access 为 public；Skills、Hook、Rule 和插件入口仍完整。",
+      "forbidden": "将源码模板的私有标记复制进正式发布包，或仅发布主包后宣称独立插件已经可从 npm 安装。",
+      "rootCause": "构建器只替换模板版本与 CLI 依赖，仍保留 private:true；发布说明未要求单独发布插件。",
+      "tests": [
+        {
+          "file": "test/scripts/dsh-plugin-build.test.ts",
+          "namePattern": "builds an installable bundle whose Host half registers skills and serves the dashboard endpoints",
+          "requiredNames": [
+            "DeepSeek Harness plugin package builds an installable bundle whose Host half registers skills and serves the dashboard endpoints"
+          ]
+        }
+      ]
+    },
+    {
       "id": "issue-543-ambient-resume-confirmation",
       "behavior": "新会话仅发现相关 Native 或 Classic change 时先确认，明确续行和已在流程中的会话保持原入口。",
       "sources": ["https://github.com/rpamis/comet/issues/543"],

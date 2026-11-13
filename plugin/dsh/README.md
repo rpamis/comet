@@ -53,14 +53,33 @@ pnpm build:dsh-plugin
 英文 Skills。`--cli-spec <pnpm 规格>` 覆盖依赖里的 CLI 版本/来源，默认与插件版本相同；
 本地验证时可以指向已发布版本或 `file:` 路径。
 
+## 发布到 npm
+
+`comet-dsh-plugin` 与 `@rpamis/comet` 是两个独立的 npm 包，需要分别发布。
+先确认公共 npm 中已有匹配版本的 `@rpamis/comet`，再运行 `pnpm build:dsh-plugin`。
+源码模板的 `private: true` 防止误发占位版本；正式构建包会移除此标记，并指定公共 npm。
+在完成打包测试与发布文件检查后，从构建目录发布，不直接发布源码模板：
+
+```text
+npm publish dist/dsh-plugin/<版本>-zh/comet-dsh-plugin --access public --dry-run
+npm publish dist/dsh-plugin/<版本>-zh/comet-dsh-plugin --access public
+npm view comet-dsh-plugin@<版本> version --registry=https://registry.npmjs.org/
+```
+
+发布后使用 `npm pack comet-dsh-plugin@<版本>` 确认用户可以拉取。
+同名同版本只能发布一次；本地或私有构建仍可使用前述目录安装方式。
+
 ## 安装与卸载
 
 插件是 npm/Cordis bundle，安装后作为该 profile 的 bundle 生效，影响该 profile 的所有
 会话。通过 DSH 的 Plugin Manager 安装插件目录的绝对路径；也可以使用 DSH CLI：
 
 ```text
-dsh plugin --profile <profile> add <插件目录绝对路径> --ignore-scripts
+dsh plugin --profile <profile> add comet-dsh-plugin --ignore-scripts
 ```
+
+本地构建验证时，将包名替换为插件目录绝对路径。安装指定版本时使用
+`comet-dsh-plugin@<版本>`；公开 npm 包默认包含中文 Skills。
 
 桌面端有自己的 profile（默认 `desktop`）。用 Desktop 自带的 `dsh plugin` 管理该
 profile，或从桌面 Plugins 页面安装；`--profile web` 安装成功不代表桌面已生效。
