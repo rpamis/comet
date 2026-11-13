@@ -6,6 +6,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Added
 
+- **Evaluation experiment journal**: Browse real evaluation experiments in a date-ordered technical-blog section with distinct cover art, bilingual article layouts, and complete embedded HTML reports shared with the evaluation documentation.
 - **Supervisor child concurrency**: Configure `native.max_parallel_children` in project settings or `.comet/config.yaml` to adjust how many Native Supervisor children may await integration and archive. Apply changes at the next dispatch without interrupting existing children, retain single-session execution at one, and preserve dispatch decisions across recovery ([#553](https://github.com/rpamis/comet/issues/553)).
 - **Unbounded Eval image builds**: Set `COMET_EVAL_BUILD_TIMEOUT_SECONDS=0` to prepare task images without a fixed wall-clock deadline. Explicit build errors still fail, and task and scoring budgets remain unchanged.
 - **Shared-store lock recovery**: Diagnose legacy records for shared plugin and installation stores with `comet doctor --lock-file`, preserving live transactions. Ordinary workflow upgrades ignore obsolete workflow lock records.
@@ -16,22 +17,16 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Changed
 
 - **Ambient Resume confirmation**: Ask before a new session enters a semantically related Native or Classic change, even when it is the only candidate or already selected. Explicit requests to resume a specified change and ongoing sessions retain their existing entry paths; declining preserves the original workflow and write constraints ([#543](https://github.com/rpamis/comet/issues/543)).
-
 - **Complete workflow artifact previews**: Display complete Native and Classic artifact documents in Dashboard, including large briefs, proposals, plans, and verification reports, without byte-based truncation or truncation notices.
 - **Dashboard observation history**: Default the shared observability filter to All and allow custom historical dates beyond seven days while preserving each view’s read limits and data retention.
-
 - **Workflow file sizes**: Remove remaining built-in byte caps from Native and Classic workflow materials, archive recovery, and shared Runtime records so growing documents remain complete and do not block continuation ([#551](https://github.com/rpamis/comet/issues/551)).
 - **Plugin startup context**: Deliver a short workflow entry and a readable Rule path on session startup or recovery. Reuse applicable rules already in context and reread missing rules after compaction, while retaining the write Guard and complete workflow requirements.
 - **Native task continuation**: Return guarded Shape confirmation and revision choices directly with the high-level task result, avoiding an extra full status query. Keep detailed execution instructions in one place and preserve the required user decision.
 - **Workflow Runtime overhead**: Remove Native and Classic workflow locks and lock-recovery steps. Each workspace has one state writer; parallel children work in isolated worktrees and return results for the parent to submit in sequence with their original identities. Combine internal transitions with existing approvals and avoid rewriting unchanged progress.
 - **Workflow execution**: Run ordinary development commands and tests through Agent platform tools. Native and Classic no longer supervise those commands, bind PIDs, wait for stop receipts, recover historical processes, or capture content snapshots for check reuse. Existing business Runs adapt automatically with original approvals, claims and results; uncertain platform work must be reconciled before retrying. Eval and downloads retain cleanup for processes started by the CLI.
-
 - **Agent checks**: New built-in Native and Classic Runs accept actual checks performed with Agent platform tools. Native hands Builder results directly to the Verifier, including Supervisor children and parent acceptance; Classic accepts check reports through `--checks` during Build and Verify. Remove ordinary managed-check rounds and receipts while retaining user approval, requested independent review, complete acceptance, Git delivery, Archive recovery, and original business records when upgrading existing Runs and fixed applications.
-
 - **Workflow business commands**: Continue built-in Native Shape, Child, parent, and integration-repair tasks through `native next --session`, and advance authorized Classic internal steps through `state next --continue`. CLI supplies SDK identity and concurrency fields, preserves the original Run and execution receipts, and stops for actual Agent work, user decisions, failures, or external waits.
-
 - **Agent-directed workflow continuation**: Remove Native and Classic file fingerprints, candidate and document content hashes, and log integrity proofs. Agents judge the impact of edits and choose necessary checks without automatically withdrawing approval or restarting verification. Archive recovery retains actual progress and original execution records; SDK request identities, installation digests, and Git commit IDs remain unchanged.
-
 - **Native Shape authoring**: Generate associated capabilities' complete target Specs from Delta changes before confirmation while preserving independent target edits. Supervisor plans can reference acceptance IDs without copying their text; Agents assign valid criteria to children and may retain integration criteria at the parent; final parent acceptance still covers the complete approved catalog.
 - **Agent-selected workflow checks and documents**: Let Agents judge document meaning, choose checks, and assess repair progress. Freeform briefs, designs, plans, and reports no longer need prescribed headings, language ratios, metadata, or Spec exemption phrases. Guard and status do not infer and launch Build, and repeated unresolved acceptance IDs do not force a stop; real failures and user budgets remain effective. Classic handoff uses original materials by default, with one readable Markdown view available on explicit request.
 - **Workflow command latency**: Reduce repeated state, path, workflow-definition, checkpoint, and Git reads in Native and Classic commands. Plain state reads and repeated Native outcomes no longer start completion learning. Preserve approvals, actual check reports, and file-transaction recovery.
@@ -40,17 +35,13 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Fixed
 
 - **OpenSpec shared Skills**: Install OpenSpec 2.0 shared Skill links as independent files, so project initialization and staged user-level mirrors work after temporary files are removed. Reject links outside the staging directory and cyclic links ([#550](https://github.com/rpamis/comet/issues/550)).
-
 - **Dashboard artifact fullscreen**: Restore the fullscreen control in Native and Classic artifact previews, with a document directory for long materials. Toggle back to the drawer or press Escape to leave fullscreen before closing the preview ([#548](https://github.com/rpamis/comet/issues/548)).
-
 - **Dataset Eval image preparation**: Honor each task's declared build budget while preparing candidate workspaces, so cold dependency installation is not cancelled by an unrelated five-minute limit. Ordinary image build limits remain unchanged.
-
 - **Eval image preparation**: Finish image preparation before reading execution identity, and let parallel workers wait for the configured build budget instead of failing while a permitted cold build is still running.
 - **Native Archive directory moves**: Retry brief file-sharing errors when moving a change into the archive, while preserving the original transaction for recovery if the directory remains unavailable.
 - **Classic tool responses**: Keep complete Run history out of default compact dispatch replies, so earlier proposals and execution records do not repeatedly consume Agent context. Preserve current decisions, claim context, and full inspection through `inspect` or `--details`.
 - **Archived Native recovery**: Repair completed Native history after switching branches without upgrading its accepted workflow definition or repeating completed work. Restore a lost local Run while retaining its archived owner, original completion receipt, and portable checkpoint, including Windows line endings; active changes still require their original workspace binding.
 - **Legacy Native Archive recovery**: Settle a previously rejected prewrite failure on its original Action when no Archive transaction exists, preserving the failure and the repair path instead of leaving the Run blocked on a missing transaction. Identify the failed stage correctly and recover cancelled transactions by change name when it differs from the Run ID.
-
 - **Project update preservation**: Keep custom ignore rules, their precedence, and user-authored YAML comments when updating managed project configuration ([#540](https://github.com/rpamis/comet/issues/540)).
 - **ZCode Hook diagnostics**: Recognize valid user-level Hooks, repair disabled or duplicate entries, and preserve them during project updates instead of replacing them with project Hooks that ZCode does not execute ([#541](https://github.com/rpamis/comet/issues/541)).
 - **Cancelled Native history**: Diagnose closed, cancelled legacy Runs after their active documents are removed, while retaining checks for original business transactions and storage integrity ([#542](https://github.com/rpamis/comet/issues/542)).
