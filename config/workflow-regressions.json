@@ -53821,6 +53821,25 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-dense-markdown-block-parsing",
+      "behavior": "密集验收列表在原有时限内拒绝超出验收项预算的输入",
+      "sources": ["report:2026-11-13-native-dense-markdown-ci-timeout"],
+      "coverageLevel": "unit",
+      "reproduction": "14a5d032 的 CI 43343127127 在覆盖率并发运行中解析 1,048,000 条列表项，超过原 10 秒时限；相同输入在本地覆盖率隔离运行约 3.9 秒。",
+      "expected": "保持原 1024 项验收预算和 10 秒断言，拒绝密集超额列表；合法 Markdown 原文及列表边界不变。",
+      "forbidden": "为未使用的行内格式构造完整 token 树导致拒绝超额输入超时，或通过放宽原断言规避失败。",
+      "rootCause": "验收提取只消费块级 heading/list 和 item.raw，原 Lexer.lex 仍为百万项执行额外的行内 token 解析。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-contract.test.ts",
+          "namePattern": "near-maximum dense Markdown list",
+          "requiredNames": [
+            "Native contract snapshot rejects a near-maximum dense Markdown list without materializing every criterion"
+          ]
+        }
+      ]
     }
   ],
   "historicalTestMigrations": [

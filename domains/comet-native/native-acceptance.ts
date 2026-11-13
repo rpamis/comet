@@ -476,7 +476,8 @@ export function deriveBriefAcceptanceCriteria(
   if (!Number.isSafeInteger(maxCriteria) || maxCriteria < 0) {
     throw new Error('Native brief acceptance budget is invalid');
   }
-  const blocks = Lexer.lex(markdown.replace(/\r\n?/gu, '\n'));
+  // 这里只读取块边界和原文；不解析每条验收中未使用的行内格式。
+  const blocks = new Lexer().blockTokens(markdown.replace(/\r\n?/gu, '\n'));
   const sections = blocks.flatMap((block, index) =>
     block.type === 'heading' && nativeHeadingKey(block.text) === 'acceptanceExamples'
       ? [{ index, depth: block.depth }]

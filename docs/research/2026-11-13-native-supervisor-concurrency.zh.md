@@ -34,3 +34,4 @@ SDK 的 `supervisor.prepare` 和 `supervisor.child.archive` 状态转换将多�
 - `pnpm build`、`pnpm check:generated`、`pnpm check:sdk-api`、badcase 登记与基线保留、受影响文件格式检查通过；`pnpm lint` 无错误，保留 9 条既有警告。
 - 查看了 `verify:changed --plan` 的通用检查清单，本地采用上述定向检查；全量与跨平台检查由 PR 最新 head 的 CI 执行。本机没有启动全量测试、真实平台 Hook 或新模型 Eval。
 - `07ac88ad` 的 Node 22 第一分片检出帮助文案把句号紧接在 `.comet/config.yaml` 后，仓库边界检查据此识别出额外的 `.comet/config.yaml.`。本机同一检查已复现；帮助中改用分号分隔，保留原路径集合断言，不新增路径许可或缩窄检查。
+- `14a5d032` 的 CI `43343127127` 中，8773 项通过、1 项密集 Markdown 用例超过原 10 秒断言，其余矩阵检查通过。验收提取只读取块边界与列表原文，原 `Lexer.lex` 仍对百万条列表逐一解析未使用的行内格式。改用同一解析器的块级入口，保留 Markdown 边界、原文、1024 项限制及原测试断言。两文件 54 项通过；本地隔离覆盖率运行中，同一密集输入由约 3.9 秒降至 2.6 秒。隔离覆盖率只用于耗时诊断，不代表仓库覆盖率达标，完整阈值由最新 CI 检查。
