@@ -2572,5 +2572,9 @@
   "已领取任务": "Task claimed",
   "任务状态": "Task status",
   "业务检查点": "Business checkpoint",
-  "任务来源": "Task source"
+  "任务来源": "Task source",
+  "Supervisor 子任务并发上限": "Supervisor child concurrency limit",
+  "Native Supervisor 子任务并发上限": "Native Supervisor child concurrency limit",
+  "Supervisor 子任务并发上限必须是正整数。": "The Supervisor child concurrency limit must be a positive integer.",
+  "默认 2；单会话固定为 1。调整从下一轮派发生效，不中断已派发的子任务。": "Defaults to 2; single-session always uses 1. Changes apply at the next dispatch without interrupting dispatched children."
 }

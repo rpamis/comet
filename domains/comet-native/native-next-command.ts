@@ -131,8 +131,8 @@ export async function nativeNextCommand(
     throw new NativeUsageError('--validate-only requires --runner-input');
   }
   const maxParallelText = takeOption(args, '--max-parallel');
-  const maxParallel = maxParallelText === undefined ? 2 : Number(maxParallelText);
-  if (!Number.isSafeInteger(maxParallel) || maxParallel < 1) {
+  const maxParallel = maxParallelText === undefined ? undefined : Number(maxParallelText);
+  if (maxParallel !== undefined && (!Number.isSafeInteger(maxParallel) || maxParallel < 1)) {
     throw new NativeUsageError('--max-parallel must be a positive integer');
   }
   const expectedContinuation = expectedContinuationOption(args);

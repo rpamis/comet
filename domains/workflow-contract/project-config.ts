@@ -34,6 +34,7 @@ export const WORKFLOW_PROJECT_CONFIG_MAX_BYTES = Number.MAX_SAFE_INTEGER;
 export const MAX_WORKFLOW_KNOWLEDGE_INCLUDE_PATTERN_LENGTH = 1024;
 export const MAX_WORKFLOW_KNOWLEDGE_INCLUDE_PATTERN_WILDCARDS = 64;
 export const DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES = 5;
+export const DEFAULT_WORKFLOW_NATIVE_MAX_PARALLEL_CHILDREN = 2;
 export const DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG: WorkflowMemoryProjectConfig = {
   learning: true,
   retrieval: true,
@@ -80,6 +81,7 @@ type ProjectConfigCommentKey =
   | 'native.clarification_mode'
   | 'native.archive_confirmation'
   | 'native.max_verify_failures'
+  | 'native.max_parallel_children'
   | 'native.document_writes'
   | 'native.finish'
   | 'classic'
@@ -133,6 +135,8 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
       '# Controls whether Native archives automatically after a successful preview or waits for explicit user confirmation.\n# archive_confirmation: automatic | required',
     'native.max_verify_failures':
       '# Maximum failed Verify outcomes allowed for one confirmed acceptance target before Native stops the completion loop.',
+    'native.max_parallel_children':
+      '# Maximum dispatched Supervisor children awaiting integration and archive. Defaults to 2; single-session always uses 1. Changes apply at the next dispatch.',
     'native.document_writes':
       '# Controls documentation file writes during Shape, Verify, and Archive: allow treats them as neutral instead of returning the change to Build, revert restores the strict behavior.\n# document_writes: allow | revert',
     'native.finish':
@@ -189,6 +193,8 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
       '# Native 归档检查成功后自动归档，或等待用户明确确认。\n# 可选值：automatic | required',
     'native.max_verify_failures':
       '# 同一个已确认验收目标最多允许的 Verify 失败次数；达到上限后停止完成循环。',
+    'native.max_parallel_children':
+      '# Supervisor 已派发且尚未完成集成归档的子任务上限；默认 2，single-session 固定为 1；调整从下一轮派发生效。',
     'native.document_writes':
       '# Shape、Verify 和 Archive 阶段的文档类写入处理方式：allow 视为中性写入、不再把 change 打回 Build，revert 恢复严格行为。\n# 可选值：allow | revert',
     'native.finish':
@@ -663,6 +669,13 @@ function normalizeWorkflowNativeProjectConfig(
   if (!Number.isSafeInteger(maxVerifyFailures) || (maxVerifyFailures as number) < 1) {
     throw new Error('native.max_verify_failures must be a positive integer');
   }
+  const maxParallelChildren =
+    native.max_parallel_children === undefined
+      ? DEFAULT_WORKFLOW_NATIVE_MAX_PARALLEL_CHILDREN
+      : native.max_parallel_children;
+  if (!Number.isSafeInteger(maxParallelChildren) || (maxParallelChildren as number) < 1) {
+    throw new Error('native.max_parallel_children must be a positive integer');
+  }
   const documentWrites = native.document_writes ?? 'allow';
   if (documentWrites !== 'allow' && documentWrites !== 'revert') {
     throw new Error('native.document_writes must be allow or revert');
@@ -675,6 +688,7 @@ function normalizeWorkflowNativeProjectConfig(
     clarification_mode: clarificationMode,
     archive_confirmation: archiveConfirmation,
     max_verify_failures: maxVerifyFailures as number,
+    max_parallel_children: maxParallelChildren as number,
     ...(documentWrites === 'revert' ? { document_writes: documentWrites } : {}),
     ...(finish ? { finish } : {}),
     ...(pending ? { pending_root_move: pending } : {}),
@@ -1117,6 +1131,8 @@ export function workflowProjectConfigManagedValue(
             clarification_mode: config.native.clarification_mode,
             archive_confirmation: config.native.archive_confirmation,
             max_verify_failures: config.native.max_verify_failures,
+            max_parallel_children:
+              config.native.max_parallel_children ?? DEFAULT_WORKFLOW_NATIVE_MAX_PARALLEL_CHILDREN,
             ...(config.native.document_writes
               ? { document_writes: config.native.document_writes }
               : {}),
@@ -1244,6 +1260,7 @@ export function mergeWorkflowProjectConfigDocument(
       clarification_mode: validated.native.clarification_mode,
       archive_confirmation: validated.native.archive_confirmation,
       max_verify_failures: validated.native.max_verify_failures,
+      max_parallel_children: validated.native.max_parallel_children,
       ...(validated.native.document_writes
         ? { document_writes: validated.native.document_writes }
         : {}),
@@ -1319,6 +1336,7 @@ export function defaultWorkflowProjectConfig(
       clarification_mode: 'batch',
       archive_confirmation: 'automatic',
       max_verify_failures: DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES,
+      max_parallel_children: DEFAULT_WORKFLOW_NATIVE_MAX_PARALLEL_CHILDREN,
     },
   };
 }
@@ -2318,6 +2336,10 @@ function managedWorkflowConfigFields(source) {
     const maxVerifyFailures = native.max_verify_failures ?? 5;
     if (!Number.isSafeInteger(maxVerifyFailures) || maxVerifyFailures < 1) {
       throw new Error('native.max_verify_failures must be a positive integer');
+    }
+    const maxParallelChildren = native.max_parallel_children === undefined ? 2 : native.max_parallel_children;
+    if (!Number.isSafeInteger(maxParallelChildren) || maxParallelChildren < 1) {
+      throw new Error('native.max_parallel_children must be a positive integer');
     }
     const documentWrites = native.document_writes ?? 'allow';
     if (documentWrites !== 'allow' && documentWrites !== 'revert') {

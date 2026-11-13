@@ -1421,12 +1421,14 @@ function createNativeWorkflowApplication(): NativeWorkflowApplication {
             integrationWorktree: string;
             targetCommit: string;
             integrationCommit?: string;
+            maxParallelChildren?: number;
           };
           const ready = selectNativeSdkReadyChildren({
             contract: proposal.children.contract,
             integrated: [],
             active: [],
-            maxParallel: state.coordination_mode === 'single-session' ? 1 : 2,
+            maxParallel:
+              state.coordination_mode === 'single-session' ? 1 : (output.maxParallelChildren ?? 2),
           });
           return {
             state: state as unknown as RuntimeValue,
@@ -1848,7 +1850,11 @@ function createNativeWorkflowApplication(): NativeWorkflowApplication {
             contract: proposal.children.contract,
             integrated: [...integrated],
             active: [...active],
-            maxParallel: state.coordination_mode === 'single-session' ? 1 : 2,
+            maxParallel:
+              state.coordination_mode === 'single-session'
+                ? 1
+                : ((event.outcome.output as { maxParallelChildren?: number }).maxParallelChildren ??
+                  2),
           });
           const output = event.outcome.output as {
             integrationCommit: string;

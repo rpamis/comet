@@ -107,6 +107,7 @@ describe('Native artifact root recovery', () => {
       clarification_mode: 'batch',
       archive_confirmation: 'automatic',
       max_verify_failures: 5,
+      max_parallel_children: 2,
     });
     await expect(fs.access(source)).rejects.toMatchObject({ code: 'ENOENT' });
     const destinationPaths = await nativeProjectPaths(projectRoot, 'docs');
@@ -147,6 +148,7 @@ describe('Native artifact root recovery', () => {
       clarification_mode: 'batch',
       archive_confirmation: 'automatic',
       max_verify_failures: 5,
+      max_parallel_children: 2,
     });
     expect(
       (await readNativeTransaction(await nativeProjectPaths(projectRoot, '.'), transactionId))
@@ -229,6 +231,7 @@ describe('Native artifact root recovery', () => {
       clarification_mode: 'batch',
       archive_confirmation: 'automatic',
       max_verify_failures: 5,
+      max_parallel_children: 2,
     });
   });
 
@@ -261,6 +264,7 @@ describe('Native artifact root recovery', () => {
       clarification_mode: 'batch',
       archive_confirmation: 'automatic',
       max_verify_failures: 5,
+      max_parallel_children: 2,
     });
     await expect(fs.access(quarantine)).rejects.toMatchObject({ code: 'ENOENT' });
   });
@@ -350,6 +354,7 @@ describe('Native artifact root recovery', () => {
       clarification_mode: 'batch',
       archive_confirmation: 'automatic',
       max_verify_failures: 5,
+      max_parallel_children: 2,
     });
     await expect(fs.access(quarantine)).rejects.toMatchObject({ code: 'ENOENT' });
   });

@@ -7,7 +7,7 @@ import {
 } from '../../platform/paths/git-worktree.js';
 import { runGitCommand } from '../../platform/process/git.js';
 import type { NativeChildrenContract } from './native-children-contract.js';
-import { readProjectConfig } from './native-config.js';
+import { DEFAULT_NATIVE_MAX_PARALLEL_CHILDREN, readProjectConfig } from './native-config.js';
 import { withNativeMutation } from './native-mutation.js';
 import {
   cloneState,
@@ -89,14 +89,17 @@ export async function dispatchNativeSupervisorReadyTasks(options: {
   return withNativeMutation(options.paths, async () => {
     const state = await readNativeSupervisorState(options.paths, options.parent);
     if (!state) throw new Error(`Native Supervisor state is missing for ${options.parent}`);
-    const maxParallel = options.maxParallel ?? 2;
+    const sourceConfig = await readProjectConfig(options.paths.projectRoot);
+    const maxParallel =
+      options.maxParallel ??
+      sourceConfig?.native.max_parallel_children ??
+      DEFAULT_NATIVE_MAX_PARALLEL_CHILDREN;
     if (!Number.isSafeInteger(maxParallel) || maxParallel < 1) {
       throw new Error('Native Supervisor maxParallel must be a positive integer');
     }
     const activeTasks = state.children.filter(({ task }) => task !== null).length;
     const capacity = Math.max(0, maxParallel - activeTasks);
     if (capacity === 0) return { state, tasks: [] };
-    const sourceConfig = await readProjectConfig(options.paths.projectRoot);
     let next = state;
     const tasks: NativeSupervisorTask[] = [];
     let stateChanged = false;

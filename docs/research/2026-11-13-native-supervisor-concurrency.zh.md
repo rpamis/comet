@@ -1,0 +1,35 @@
+# Issue #553：Supervisor 子任务并发配置
+
+来源：[Issue #553](https://github.com/rpamis/comet/issues/553)。实施前基线：`0e67d8a15a4bfc7263cd63891854ce7cf608bebc`，053；当前版本 0.5.3，master 0.5.2。
+
+## 行为与根因
+
+SDK 的 `supervisor.prepare` 和 `supervisor.child.archive` 状态转换将多会话并发写为 `2`，配置解析、生成和 Dashboard 均没有可用字段。Compat 有显式命令参数，但默认值也独立写为 `2`。
+
+公开 CLI 隔离项目含五个独立子任务和一个依赖子任务。项目配置为 4，原构建实际只生成两个 Child prepare Action，新增断言“应为四个”失败。配置与 Dashboard 的 14 项新增回归在基线行为上失败：缺少默认值、配置未生效、非法值未拒绝。
+
+## 实现决定
+
+- 使用 `native.max_parallel_children`，保持已有 `maxParallel` 的用词并明确对象；全局沿用初始化模板语义，项目配置为运行时权威。
+- 复用现有依赖图和在途数量计算。Parent 准备与 Child 归档执行器读取 Parent 配置，将当轮数值放入原 Action 结果；纯状态转换只消费原结果。旧结果缺字段时继续按原上限 2 解释。
+- 单会话仍为 1；上限变化只影响后续派发，不撤回已有任务、Shape 批准或验收。
+- 排队后的 Child 准备原先比较整段 Native 配置；修改并发上限会被误判为 worktree 配置冲突。绑定比较只排除这一 Parent 调度字段，保留其他 Native 配置的原保护，Child 文件保留原文。
+- Dashboard 数值输入、请求、读取和写回 YAML 使用同一字段。旧客户端省略字段时保留当前配置。
+- 现有 Skill 的派发协议未变；补充独立使用说明、配置注释及 CLI 帮助，不修改 Skill 的执行步骤。
+
+## 验证边界
+
+公开 CLI 测试覆盖未配置时默认 2、配置 4、多会话与单会话、下一轮升降上限、依赖未就绪不派发、保留在途 Action 和新进程恢复。测试中的 Agent 结果与用户批准均明确标为 SIMULATED，只验证确定性协议，不代表真实模型验收。
+
+配置、全局模板、Dashboard API 与浏览器分别验证；后续实际结果以本轮测试记录和 PR 最新 head 的 CI 为准。没有新增模型 Eval 授权，本轮不启动模型评估。
+
+## 本轮实际结果
+
+- 配置、全局模板、Dashboard API、worktree 准备与 root move 五文件共 80 项通过；root move 的原完整对象断言增加并核对显式值 4。
+- 根目录恢复及项目激活两文件 17 项通过；保留原完整对象断言，增加新字段的默认值。
+- 既有 SDK Supervisor 相关场景 16 项通过，包括父级修复、交付、未知集成恢复和独立审查。
+- 公开 CLI 并发与 Compat Runtime 场景共 7 项通过；单会话记录实际上限 1 的分支在最后构建后再次通过。
+- 调度选择器原 3 项测试通过。登记器按文件合并案例后，核对了新增五个 case ID 的实际必过名称，不使用 `--list` 代替执行。
+- 中文 1280px、英文 390px 的浏览器保存、重载、拒绝 0、无横向溢出检查通过；截图核对新设置行。界面复用现有 Input 与设置布局，没有修改字体或主题。
+- `pnpm build`、`pnpm check:generated`、`pnpm check:sdk-api`、badcase 登记与基线保留、受影响文件格式检查通过；`pnpm lint` 无错误，保留 9 条既有警告。
+- 查看了 `verify:changed --plan` 的通用检查清单，本地采用上述定向检查；全量与跨平台检查由 PR 最新 head 的 CI 执行。本机没有启动全量测试、真实平台 Hook 或新模型 Eval。

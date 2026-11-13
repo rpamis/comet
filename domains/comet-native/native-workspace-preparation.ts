@@ -48,7 +48,10 @@ function isInside(parent: string, target: string): boolean {
 }
 
 function nativeConfigIdentity(config: CometProjectConfig): string {
-  return JSON.stringify(config.native);
+  // 派发上限由 Parent 逐轮读取，Child worktree 保留原值不影响工作区绑定。
+  const workspaceConfig = { ...config.native };
+  delete workspaceConfig.max_parallel_children;
+  return JSON.stringify(workspaceConfig);
 }
 
 async function ensureConfig(

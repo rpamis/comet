@@ -15,7 +15,7 @@ import type {
 } from '../engine/runtime.js';
 import { atomicWriteText } from './native-atomic-file.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
-import { readProjectConfig } from './native-config.js';
+import { DEFAULT_NATIVE_MAX_PARALLEL_CHILDREN, readProjectConfig } from './native-config.js';
 import { nativeProjectPaths } from './native-paths.js';
 import {
   createNativePortableState,
@@ -51,6 +51,7 @@ export interface NativeSupervisorChildArchiveActivation {
 }
 
 interface NativeSupervisorChildArchiveBinding {
+  maxParallelChildren: number;
   parent: string;
   child: string;
   language: 'en' | 'zh-CN';
@@ -312,6 +313,10 @@ async function childArchiveBinding(
     : [];
   return {
     parent: state.name,
+    maxParallelChildren:
+      plan.state.coordination_mode === 'single-session'
+        ? 1
+        : (plan.config.native.max_parallel_children ?? DEFAULT_NATIVE_MAX_PARALLEL_CHILDREN),
     child: input.child,
     language: state.language,
     targetBranch: plan.targetBranch,
@@ -833,6 +838,7 @@ export const nativeSdkSupervisorChildArchiveExecutor: RuntimeExecutor = {
         archiveCommit,
         baseCommit: binding.integrationCommit,
         integrationCommit,
+        maxParallelChildren: binding.maxParallelChildren,
       } as unknown as RuntimeValue,
     };
   },

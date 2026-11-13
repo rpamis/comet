@@ -18,6 +18,7 @@ for (const language of ['zh', 'en'] as const) {
     const { DEMO_PROJECT_CONFIG } = await import('../../../domains/dashboard/web/demo.js');
     let config = { ...DEMO_PROJECT_CONFIG, changeWalkthrough: true };
     const writes: boolean[] = [];
+    const parallelLimits: number[] = [];
     await page.setViewportSize({ width: language === 'zh' ? 1280 : 390, height: 900 });
     await page.addInitScript(
       (language) => localStorage.setItem('comet-dashboard-language', language),
@@ -56,6 +57,7 @@ for (const language of ['zh', 'en'] as const) {
           const input = route.request().postDataJSON();
           expect(input.expectedRevision).toBe(config.revision);
           writes.push(input.config.changeWalkthrough);
+          parallelLimits.push(input.config.native.maxParallelChildren);
           config = { ...config, ...input.config, revision: `revision-${writes.length}` };
         }
         return route.fulfill({ json: config });
@@ -93,6 +95,34 @@ for (const language of ['zh', 'en'] as const) {
       });
     }
     expect(writes).toEqual([false, true]);
+    const limitName =
+      language === 'zh'
+        ? 'Native Supervisor 子任务并发上限'
+        : 'Native Supervisor child concurrency limit';
+    const saveName = language === 'zh' ? '保存 Comet 配置' : 'Save Comet configuration';
+    await dialog.getByRole('textbox', { name: limitName, exact: true }).fill('4');
+    await dialog.getByRole('button', { name: saveName, exact: true }).click();
+    await expect.poll(() => parallelLimits.at(-1)).toBe(4);
+    await page.reload();
+    dialog = await openConfig();
+    const limit = dialog.getByRole('textbox', { name: limitName, exact: true });
+    await expect(limit).toHaveValue('4');
+    await limit.fill('0');
+    await dialog.getByRole('button', { name: saveName, exact: true }).click();
+    await expect(
+      dialog.getByText(
+        language === 'zh'
+          ? 'Supervisor 子任务并发上限必须是正整数。'
+          : 'The Supervisor child concurrency limit must be a positive integer.',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    expect(parallelLimits).toEqual([2, 2, 4]);
+    await limit.fill('4');
+    await limit.evaluate((element) =>
+      element.closest('.dashboard-memory-setting')?.scrollIntoView({ block: 'center' }),
+    );
+    await page.screenshot({ path: testInfo.outputPath(`supervisor-limit-${language}.png`) });
     await dialog.getByRole('switch', { name: switchName }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: testInfo.outputPath(`walkthrough-${language}.png`) });
     expect(

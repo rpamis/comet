@@ -23,6 +23,35 @@ describe('Native project configuration', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
+  it('defaults Supervisor parallel children to two and preserves a configured limit on write', async () => {
+    await fs.writeFile(
+      path.join(projectRoot, '.comet/config.yaml'),
+      'schema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: docs\n  language: en\n',
+    );
+    const config = (await readProjectConfig(projectRoot))!;
+    expect(config.native.max_parallel_children).toBe(2);
+    config.native.max_parallel_children = 4;
+    await writeProjectConfig(projectRoot, config);
+    expect((await readProjectConfig(projectRoot))!.native.max_parallel_children).toBe(4);
+    expect(await fs.readFile(path.join(projectRoot, '.comet/config.yaml'), 'utf8')).toContain(
+      'max_parallel_children: 4',
+    );
+  });
+
+  it.each([0, -1, 1.5, '4', null, true])(
+    'rejects an invalid Supervisor parallel children limit %s',
+    async (limit) => {
+      const config = defaultProjectConfig();
+      await fs.writeFile(
+        path.join(projectRoot, '.comet/config.yaml'),
+        JSON.stringify({ ...config, native: { ...config.native, max_parallel_children: limit } }),
+      );
+      await expect(readProjectConfig(projectRoot)).rejects.toThrow(
+        'native.max_parallel_children must be a positive integer',
+      );
+    },
+  );
+
   it('builds the shared default project config with docs as the Native artifact root', () => {
     expect(defaultProjectConfig().native.artifact_root).toBe('docs');
     expect(defaultProjectConfig().native.clarification_mode).toBe('batch');
@@ -53,6 +82,7 @@ describe('Native project configuration', () => {
         clarification_mode: 'batch',
         archive_confirmation: 'automatic',
         max_verify_failures: 5,
+        max_parallel_children: 2,
       },
     });
     const source = await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8');

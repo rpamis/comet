@@ -3,6 +3,7 @@ import path from 'path';
 import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
 import {
   DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG,
+  DEFAULT_WORKFLOW_NATIVE_MAX_PARALLEL_CHILDREN,
   defaultWorkflowProjectConfig,
   mergeWorkflowProjectConfigDocument,
   parseWorkflowProjectConfigDocument,
@@ -39,6 +40,7 @@ export interface DashboardNativeConfigSettings {
   clarificationMode: 'sequential' | 'batch';
   archiveConfirmation: 'automatic' | 'required';
   maxVerifyFailures: number;
+  maxParallelChildren?: number;
 }
 
 export interface DashboardClassicConfigSettings {
@@ -210,6 +212,14 @@ function parseUpdate(value: unknown): DashboardProjectConfigUpdate {
           'native.archiveConfirmation',
         ),
         maxVerifyFailures: positiveInteger(native.maxVerifyFailures, 'native.maxVerifyFailures'),
+        ...(native.maxParallelChildren === undefined
+          ? {}
+          : {
+              maxParallelChildren: positiveInteger(
+                native.maxParallelChildren,
+                'native.maxParallelChildren',
+              ),
+            }),
       },
       classic: {
         artifactLayout: enumValue(
@@ -243,6 +253,8 @@ function nativeSettings(config: WorkflowProjectConfig): DashboardNativeConfigSet
     clarificationMode: native.clarification_mode,
     archiveConfirmation: native.archive_confirmation,
     maxVerifyFailures: native.max_verify_failures,
+    maxParallelChildren:
+      native.max_parallel_children ?? DEFAULT_WORKFLOW_NATIVE_MAX_PARALLEL_CHILDREN,
   };
 }
 
@@ -305,6 +317,10 @@ function nextNativeConfig(
     clarification_mode: input.clarificationMode,
     archive_confirmation: input.archiveConfirmation,
     max_verify_failures: input.maxVerifyFailures,
+    max_parallel_children:
+      input.maxParallelChildren ??
+      fallback.max_parallel_children ??
+      DEFAULT_WORKFLOW_NATIVE_MAX_PARALLEL_CHILDREN,
   };
 }
 

@@ -7,7 +7,7 @@ import type {
   RuntimeValidator,
   WorkflowRun,
 } from '../engine/runtime.js';
-import { readProjectConfig } from './native-config.js';
+import { DEFAULT_NATIVE_MAX_PARALLEL_CHILDREN, readProjectConfig } from './native-config.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import { nativeSupervisorRevisionWorkspace } from './native-sdk-supervisor-revision.js';
 import {
@@ -152,6 +152,10 @@ export const nativeSdkSupervisorPrepareExecutor: RuntimeExecutor = {
         targetBranch: plan.targetBranch,
         targetCommit: plan.targetCommit,
         integrationCommit: retained?.head ?? plan.targetCommit,
+        maxParallelChildren:
+          plan.state.coordination_mode === 'single-session'
+            ? 1
+            : (plan.config.native.max_parallel_children ?? DEFAULT_NATIVE_MAX_PARALLEL_CHILDREN),
       },
     };
   },

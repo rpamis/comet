@@ -6,6 +6,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Added
 
+- **Supervisor child concurrency**: Configure `native.max_parallel_children` in project settings or `.comet/config.yaml` to adjust how many Native Supervisor children may await integration and archive. Apply changes at the next dispatch without interrupting existing children, retain single-session execution at one, and preserve dispatch decisions across recovery ([#553](https://github.com/rpamis/comet/issues/553)).
 - **Unbounded Eval image builds**: Set `COMET_EVAL_BUILD_TIMEOUT_SECONDS=0` to prepare task images without a fixed wall-clock deadline. Explicit build errors still fail, and task and scoring budgets remain unchanged.
 - **Shared-store lock recovery**: Diagnose legacy records for shared plugin and installation stores with `comet doctor --lock-file`, preserving live transactions. Ordinary workflow upgrades ignore obsolete workflow lock records.
 - **Dashboard change walkthrough setting**: Enable or disable HTML change walkthroughs for both Native and Classic in project settings, with the existing default and saved configuration preserved.

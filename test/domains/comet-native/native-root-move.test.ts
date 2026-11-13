@@ -222,6 +222,7 @@ describe('Native artifact root moves', () => {
     const config = await readProjectConfig(projectRoot);
     config!.native.clarification_mode = 'batch';
     config!.native.archive_confirmation = 'required';
+    config!.native.max_parallel_children = 4;
     await writeProjectConfig(projectRoot, config!);
     const sourcePaths = await nativeProjectPaths(projectRoot, from);
     await createPortableWithWorkspace({
@@ -263,6 +264,7 @@ describe('Native artifact root moves', () => {
         clarification_mode: 'batch',
         archive_confirmation: 'required',
         max_verify_failures: 5,
+        max_parallel_children: 4,
       },
     });
     const workspace = await readNativeWorkspaceIdentity(destinationPaths, 'identity-change');

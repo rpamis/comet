@@ -208,7 +208,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--retry-verifier    Retry a failed or unavailable Verifier when the continuation allows it.',
       '--continue-builder  After a failed SDK Builder Action, explicitly continue from its preserved workspace in a new Action.',
       '--resolve-verifier-blocker  Resume an SDK or compat blocked Verifier with the retained candidate and valid checks; a completed SDK Supervisor Child resumes with a new Builder. SDK recovery requires the current proposal hash and both expected guards; original outcomes are preserved.',
-      '--max-parallel <n>  Supervisor task concurrency cap; defaults to 2, use 1 for serial fallback.',
+      '--max-parallel <n>  Compat-only Supervisor concurrency override. SDK and Compat use native.max_parallel_children (default 2); configure it in project settings or .comet/config.yaml. Single-session always uses 1.',
       '--expected-state-version <n>  Continuation-issued guard that rejects stale public transition decisions.',
       '--expected-action <action>    Continuation-issued guard that binds the public transition decision to its intended action.',
       '--proposal-hash <hash>       SDK decision guard from the current Wait or blocked Child continuation; required with --accept-result, --revise-implementation, --retry-verifier, --continue-builder, or --resolve-verifier-blocker, and with --revise-requirements for pending Shape or failed ordinary Builder recovery.',

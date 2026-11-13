@@ -5472,6 +5472,7 @@ function toCometConfigDraft(data) {
     native: {
       ...data.native,
       maxVerifyFailures: String(data.native.maxVerifyFailures),
+      maxParallelChildren: String(data.native.maxParallelChildren ?? 2),
     },
     classic: { ...data.classic },
   };
@@ -5512,6 +5513,11 @@ function CometConfigSettings({ data, readOnly = false, onSave }) {
       return;
     }
     const maxVerifyFailures = Number(draft.native.maxVerifyFailures);
+    const maxParallelChildren = Number(draft.native.maxParallelChildren);
+    if (!Number.isSafeInteger(maxParallelChildren) || maxParallelChildren <= 0) {
+      setSaveError(t('Supervisor 子任务并发上限必须是正整数。'));
+      return;
+    }
     if (!Number.isSafeInteger(maxVerifyFailures) || maxVerifyFailures <= 0) {
       setSaveError(t('Verify 失败上限必须是正整数。'));
       return;
@@ -5548,7 +5554,7 @@ function CometConfigSettings({ data, readOnly = false, onSave }) {
           maxFileMb,
           maxTotalMb,
         },
-        native: { ...draft.native, maxVerifyFailures },
+        native: { ...draft.native, maxVerifyFailures, maxParallelChildren },
         classic: draft.classic,
       });
     } catch (error) {
@@ -5793,6 +5799,19 @@ function CometConfigSettings({ data, readOnly = false, onSave }) {
               { value: 'required', label: t('需要确认') },
             ]}
             onChange={(value) => setNative('archiveConfirmation', value)}
+          />
+        </div>
+        <div className="dashboard-memory-setting">
+          <div className="dashboard-memory-setting-copy">
+            <strong>{t('Supervisor 子任务并发上限')}</strong>
+            <span>{t('默认 2；单会话固定为 1。调整从下一轮派发生效，不中断已派发的子任务。')}</span>
+          </div>
+          <Input
+            className="dashboard-config-control"
+            inputMode="numeric"
+            value={draft.native.maxParallelChildren}
+            aria-label={t('Native Supervisor 子任务并发上限')}
+            onChange={(event) => setNative('maxParallelChildren', event.target.value)}
           />
         </div>
         <div className="dashboard-memory-setting">

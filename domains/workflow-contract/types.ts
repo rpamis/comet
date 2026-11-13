@@ -70,6 +70,7 @@ export interface WorkflowNativeProjectConfig {
   clarification_mode: WorkflowNativeClarificationMode;
   archive_confirmation: WorkflowNativeArchiveConfirmation;
   max_verify_failures: number;
+  max_parallel_children?: number;
   document_writes?: WorkflowNativeDocumentWrites;
   finish?: WorkflowNativeFinishConfig;
   pending_root_move?: WorkflowNativePendingRootMove;

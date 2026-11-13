@@ -2,6 +2,7 @@ import path from 'path';
 
 import {
   DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES,
+  DEFAULT_WORKFLOW_NATIVE_MAX_PARALLEL_CHILDREN,
   defaultWorkflowProjectConfig,
   mergeWorkflowProjectConfigDocument,
   renderStructuredProjectConfig,
@@ -21,6 +22,7 @@ import {
 } from './native-paths.js';
 import type { CometProjectConfig, NativeProjectPaths } from './native-types.js';
 export const DEFAULT_NATIVE_MAX_VERIFY_FAILURES = DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES;
+export const DEFAULT_NATIVE_MAX_PARALLEL_CHILDREN = DEFAULT_WORKFLOW_NATIVE_MAX_PARALLEL_CHILDREN;
 
 export function defaultProjectConfig(
   artifactRoot = 'docs',

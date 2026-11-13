@@ -2930,6 +2930,7 @@ export const DEMO_PROJECT_CONFIG = {
     clarificationMode: 'sequential',
     archiveConfirmation: 'required',
     maxVerifyFailures: 3,
+    maxParallelChildren: 2,
   },
   classic: {
     artifactLayout: 'docs',

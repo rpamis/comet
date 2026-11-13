@@ -2,6 +2,140 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "issue-553-supervisor-concurrency-config",
+      "behavior": "Supervisor 子任务并发上限可持久配置，旧项目默认 2，全局模板、配置更新和根目录迁移保留显式值。",
+      "sources": ["https://github.com/rpamis/comet/issues/553"],
+      "coverageLevel": "unit",
+      "reproduction": "0e67d8a1 的配置与 Dashboard 新增 14 项回归失败；解析器丢弃新字段。排队后修改上限还曾触发配置整段比较失败。",
+      "expected": "正整数写回并读回原值；缺省为 2；只排除派发策略字段的 worktree 绑定比较，其余 Native 字段仍保护。",
+      "forbidden": "非法值被忽略、更新或迁移丢失值、降低上限导致正常 Child 准备失败、放宽其他工作区绑定。",
+      "rootCause": "配置解析、生成、迁移投影未定义并发字段，工作区绑定比较整段 Native 配置。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-config.test.ts",
+          "namePattern": "^(?:Native project configuration defaults Supervisor parallel children to two and preserves a configured limit on write|Native project configuration rejects an invalid Supervisor parallel children limit 0|Native project configuration rejects an invalid Supervisor parallel children limit -1|Native project configuration rejects an invalid Supervisor parallel children limit 1\\.5|Native project configuration rejects an invalid Supervisor parallel children limit 4|Native project configuration rejects an invalid Supervisor parallel children limit null|Native project configuration rejects an invalid Supervisor parallel children limit true)$",
+          "requiredNames": [
+            "Native project configuration defaults Supervisor parallel children to two and preserves a configured limit on write",
+            "Native project configuration rejects an invalid Supervisor parallel children limit 0",
+            "Native project configuration rejects an invalid Supervisor parallel children limit -1",
+            "Native project configuration rejects an invalid Supervisor parallel children limit 1.5",
+            "Native project configuration rejects an invalid Supervisor parallel children limit 4",
+            "Native project configuration rejects an invalid Supervisor parallel children limit null",
+            "Native project configuration rejects an invalid Supervisor parallel children limit true"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-root-move.test.ts",
+          "namePattern": "^(?:Native artifact root moves moves \\. to docs with file-by-file hash equivalence|Native artifact root moves moves docs to \\. with file-by-file hash equivalence|Native artifact root moves moves docs to artifacts/native with file-by-file hash equivalence)$",
+          "requiredNames": [
+            "Native artifact root moves moves . to docs with file-by-file hash equivalence",
+            "Native artifact root moves moves docs to . with file-by-file hash equivalence",
+            "Native artifact root moves moves docs to artifacts/native with file-by-file hash equivalence"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-workspace-preparation.test.ts",
+          "namePattern": "^(?:Native workspace preparation allows Parent dispatch limits to change while retaining other Native workspace bindings)$",
+          "requiredNames": [
+            "Native workspace preparation allows Parent dispatch limits to change while retaining other Native workspace bindings"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/global-config.test.ts",
+          "namePattern": "^(?:global workflow configuration preserves a Supervisor concurrency default in the global project template)$",
+          "requiredNames": [
+            "global workflow configuration preserves a Supervisor concurrency default in the global project template"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-553-supervisor-dashboard-config",
+      "behavior": "Dashboard 可读写 Supervisor 子任务并发上限，拒绝非法值，旧客户端保存保留当前值。",
+      "sources": ["https://github.com/rpamis/comet/issues/553"],
+      "coverageLevel": "unit",
+      "reproduction": "旧实现的七项新增 Dashboard 回归失败：没有可用字段且未拒绝无效输入。",
+      "expected": "保存与重载同一项目 YAML 数值，正整数校验，省略字段保留已有值。",
+      "forbidden": "保存失败却写入文件、非法数值进入配置、旧客户端覆盖并发设置。",
+      "rootCause": "Dashboard 设置视图与更新结构未接入该字段。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/project-config-settings.test.ts",
+          "namePattern": "^(?:Dashboard project config settings round-trips Supervisor parallel children and retains the limit from an older settings client|Dashboard project config settings rejects an invalid Supervisor limit 0 without writing settings|Dashboard project config settings rejects an invalid Supervisor limit -1 without writing settings|Dashboard project config settings rejects an invalid Supervisor limit 1\\.5 without writing settings|Dashboard project config settings rejects an invalid Supervisor limit 4 without writing settings|Dashboard project config settings rejects an invalid Supervisor limit null without writing settings|Dashboard project config settings rejects an invalid Supervisor limit true without writing settings)$",
+          "requiredNames": [
+            "Dashboard project config settings round-trips Supervisor parallel children and retains the limit from an older settings client",
+            "Dashboard project config settings rejects an invalid Supervisor limit 0 without writing settings",
+            "Dashboard project config settings rejects an invalid Supervisor limit -1 without writing settings",
+            "Dashboard project config settings rejects an invalid Supervisor limit 1.5 without writing settings",
+            "Dashboard project config settings rejects an invalid Supervisor limit 4 without writing settings",
+            "Dashboard project config settings rejects an invalid Supervisor limit null without writing settings",
+            "Dashboard project config settings rejects an invalid Supervisor limit true without writing settings"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-553-supervisor-dispatch-capacity",
+      "behavior": "Native SDK 通过公开 CLI 使用配置的子任务上限，默认 2、配置 4，单会话保持 1。",
+      "sources": ["https://github.com/rpamis/comet/issues/553"],
+      "coverageLevel": "public-cli",
+      "reproduction": "0e67d8a1 的公开 CLI 在五个可并行 Child、配置 4 时仅生成两个 Child prepare Action；同一新增断言期望四个而失败。",
+      "expected": "按配置派发，保留单会话决定和依赖阻塞；新进程继续已派发 Action 不重复调度。",
+      "forbidden": "多会话仍固定 2、单会话按 4 派发、依赖未集成就派发、冷续行替换已有 Action。",
+      "rootCause": "SDK Supervisor 首轮与后续派发将并发上限固定为 2。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-supervisor-concurrency.test.ts",
+          "namePattern": "^(?:uses the configured Supervisor limit through the public CLI \\('multi-session', limit=undefined\\)|uses the configured Supervisor limit through the public CLI \\('multi-session', limit=4\\)|uses the configured Supervisor limit through the public CLI \\('single-session', limit=4\\))$",
+          "requiredNames": [
+            "uses the configured Supervisor limit through the public CLI ('multi-session', limit=undefined)",
+            "uses the configured Supervisor limit through the public CLI ('multi-session', limit=4)",
+            "uses the configured Supervisor limit through the public CLI ('single-session', limit=4)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-553-supervisor-next-dispatch-recovery",
+      "behavior": "Parent 上限调整从下一轮派发生效，保留在途 Child 和原批准，恢复沿用已记录派发结果。",
+      "sources": ["https://github.com/rpamis/comet/issues/553"],
+      "coverageLevel": "public-cli",
+      "reproduction": "原派发分支固定上限 2，执行结果没有记录本轮上限；新测试通过真实 Git Child 集成归档验证 2 到 4 和 4 到 1。",
+      "expected": "下一轮采样 Parent 配置并记录当轮值，扩大补足容量，缩小不取消在途任务，冷续行保留结果。",
+      "forbidden": "Child 旧配置覆盖 Parent、新配置重写既有派发、并发改变撤销批准或提前执行依赖。",
+      "rootCause": "派发点未消费 Parent 配置，原 Action 结果缺少当轮策略。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-supervisor-concurrency.test.ts",
+          "namePattern": "^(?:applies the parent limit at the next dispatch without replacing active children \\(2 to 4\\)|applies the parent limit at the next dispatch without replacing active children \\(4 to 1\\))$",
+          "requiredNames": [
+            "applies the parent limit at the next dispatch without replacing active children (2 to 4)",
+            "applies the parent limit at the next dispatch without replacing active children (4 to 1)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-553-supervisor-compat-config",
+      "behavior": "Compat 默认使用同一项目并发配置，并保留显式上限覆盖和在途任务。",
+      "sources": ["https://github.com/rpamis/comet/issues/553"],
+      "coverageLevel": "runtime",
+      "reproduction": "原 Compat 默认值独立固定为 2；直接 Runtime 派发用真实 worktree 验证配置 4 与显式覆盖 1。",
+      "expected": "未传参数读取项目值；显式旧参数优先；下调配置保留在途任务。",
+      "forbidden": "Compat 与 SDK 默认值不一致、忽略显式参数、下调删除已有任务。",
+      "rootCause": "Compat 调度与 next 参数解析各自提供硬编码默认值。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-supervisor-concurrency.test.ts",
+          "namePattern": "^(?:uses the same project limit for Compat and retains an explicit override undefined|uses the same project limit for Compat and retains an explicit override 1)$",
+          "requiredNames": [
+            "uses the same project limit for Compat and retains an explicit override undefined",
+            "uses the same project limit for Compat and retains an explicit override 1"
+          ]
+        }
+      ]
+    },
+    {
       "id": "darwin-process-group-signal-exit-confirmation",
       "behavior": "Darwin 接受整组终止信号后，只有探测到整组退出才返回已确认，仍存活或状态未知不生成成功证明。",
       "sources": [
