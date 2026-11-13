@@ -1,0 +1,18 @@
+{
+  "registry": {
+    "file": "docs/research/2026-11-11-platform-execution-retirement/runtime-classic-owner-retirement/registry.json",
+    "sha256": "3ac92d6f46f27b35b2f8ad9b2b8c8d76842ffc74622b182122dc7eec722a8d2a"
+  },
+  "tests": {
+    "file": "docs/research/2026-11-11-platform-execution-retirement/runtime-classic-owner-retirement/tests.json",
+    "sha256": "46b855a149b0a17534447e419c252387eae2b4db5f44055f0f07763e0d2a02a7"
+  },
+  "mapping": {
+    "file": "docs/research/2026-11-11-platform-execution-retirement/runtime-classic-owner-retirement/mapping.json",
+    "sha256": "371fb0da9ab9f2f3576c1cf62cf00557250cbc0b20da8bc977bd11d7d82db9f1"
+  },
+  "patch": {
+    "file": "docs/research/2026-11-11-platform-execution-retirement/runtime-classic-owner-retirement/patch.patch",
+    "sha256": "e2fe0682d2c25118d3ed6e92e2bbaf9520a58a84516330204570e8f929b92ce8"
+  }
+}

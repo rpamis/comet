@@ -24,67 +24,17 @@ When the previous phase's guard already returned this phase's state, continue fr
 
 **Recovery**: Check existing artifacts and confirmation records, then complete only unfinished steps. Both normal entry and recovery preserve a registered, still-valid design and inspect `data.designReadiness`, `data.issues`, and `data.nextAction`. Restore missing files, correct the change associated with a file, or refresh an outdated handoff without clearing `design_doc`. Once the user has confirmed the design, execute the returned complete-design action; it preserves completed work. If Runtime is already in Build, the command only returns that phase's entry information.
 
-### 1a. Generate the OpenSpec → Superpowers Context Pack
+### 1a. Reference the Original Requirements
 
-**The script must generate this pack; an Agent-written summary cannot replace it.**
+Run `comet handoff <change-name> design --write` to register source references and continue the original Run without copying artifact bodies. This change proposal, existing design, tasks, and `specs/**/spec.md` define the requirements. Read original text needed for design and retain confirmed requirements. `handoff_context` references the original proposal; historical derived indexes only support reference recovery.
 
-```bash
-comet handoff <change-name> design --write
-```
-
-The script generates and records the pack using the `context_compression` snapshot in the change's `.comet.yaml`.
-
-The default `context_compression: off` generates:
-
-```text
-<classic-change-dir>/.comet/handoff/design-context.json
-<classic-change-dir>/.comet/handoff/design-context.md
-```
-
-With beta enabled through `classic.context_compression: beta` in project `.comet/config.yaml`, copied into `.comet.yaml` when the change is created, it generates:
-
-```text
-<classic-change-dir>/.comet/handoff/spec-context.json
-<classic-change-dir>/.comet/handoff/spec-context.md
-```
-
-It also records these fields in `.comet.yaml`:
-
-```yaml
-handoff_context: <classic-change-ref>/.comet/handoff/design-context.json
-handoff_hash: <sha256>
-```
-
-The default pack contains script-generated source excerpts and their provenance:
-
-- `design-context.json`: a machine-readable index with change, phase, canonical spec, source paths, and hash.
-- `design-context.md`: context for Superpowers with script markers, source path, line range, sha256, and excerpts produced by fixed rules.
-- Content beyond the excerpt limit is marked `[TRUNCATED]`, with a Full source path retained.
-
-The beta pack organizes specification content in a fixed structure, reducing the OpenSpec text loaded into context while retaining the requirements needed for implementation:
-
-- `spec-context.json`: a machine-readable index with change, phase, mode=beta, source paths, context_hash, and each file's role under files.
-- `spec-context.md`: context for Superpowers that preserves delta spec files verbatim and references related artifacts by hash.
-- OpenSpec delta specs remain authoritative. If specification content in the pack is missing or outdated, regenerate the pack or read the source spec; do not substitute an Agent summary.
-
-When full source context is actually needed, run:
-
-```bash
-comet handoff <change-name> design --write --full
-```
-
-The pack uses OpenSpec Open artifacts:
-
-- `proposal.md`: goals, motivation, scope, and non-goals.
-- `design.md`, when present: existing technical decisions and constraints.
-- `tasks.md`: initial task scope.
-- `specs/**/spec.md`: capability delta specs, preserving complete paths for nested capabilities.
+When a complete readable handoff is needed, explicitly run `comet handoff <change-name> design --write --full`. This generates one view at `<classic-change-dir>/.comet/handoff/design-context.md`, without JSON proof. The view does not replace source files or user approval.
 
 ### 1b. Run Brainstorming with Context
 
 **Immediately execute:** Use the Skill tool to load the Superpowers `brainstorming` skill. Skipping this step is prohibited.
 
-Include this in ARGUMENTS when loading the skill:
+After the skill loads, use the following language requirement:
 
 ```text
 Language: Use the Comet artifact language from entry configuration.language
@@ -94,24 +44,17 @@ After the skill loads, follow its guidance and use the following context:
 
 ```text
 Change: <change-name>
-OpenSpec Context Pack: <classic-change-dir>/.comet/handoff/design-context.md
+OpenSpec Sources: <classic-change-dir>/proposal.md, design.md, tasks.md, specs/**/spec.md
 
-For context_compression: beta, use:
-OpenSpec Context Pack: <classic-change-dir>/.comet/handoff/spec-context.md
+Read source files needed for design, retain confirmed requirements, and clarify only unresolved technical decisions. An optional handoff view aids reading; original files and user records remain authoritative.
 
-OpenSpec artifacts define the confirmed requirements. Reference them during brainstorming and discuss only unresolved technical choices; do not ask again about confirmed requirements.
-Read only the selected Markdown context pack by default. Runtime validates the machine JSON; read it only to diagnose index problems. When excerpts are truncated or acceptance clauses are missing, use source path/line range to read the relevant source text. Do not read the JSON, Markdown, and every source file together.
-Use the pack for technical design: implementation approach, technical risks, test strategy, and boundary conditions.
+
+Use the original requirements for technical design: implementation approach, technical risks, test strategy, and boundary conditions.
 Clarify any remaining gaps in goals, scope, non-goals, acceptance scenarios, or key constraints. If the information is sufficient, develop the design directly; there is no minimum number of question rounds.
 Before asking questions, read comet-classic/reference/decision-point.md. Each question needs a clear decision, a recommendation with reasons based on current constraints, and the effects of each option. Prefer an available AskUserQuestion and wait for the answer. If missing facts do not support genuine options, request the missing information directly. Reuse valid confirmations; a single technical solution does not replace the formal design confirmation in Step 1c.
 Do not rewrite proposal/spec. If an OpenSpec delta spec lacks acceptance scenarios, propose a Spec Patch and write it back to that delta spec, rather than creating another requirements spec in the Design Doc. Limit Spec Patches to missing acceptance scenarios, ambiguous wording, or boundary conditions; do not substantially rewrite the delta spec's structure or scope. If a larger change is needed, record the requirements issue found during design and return to brainstorming for user confirmation.
 
-Keep Design Doc frontmatter minimal, with only:
----
-comet_change: <change-name>
-role: technical-design
-canonical_spec: openspec
----
+Organize the Design Doc using project conventions. The Agent judges coverage of confirmed requirements; frontmatter is not required to pass Guard.
 
 Match design depth to risk. Compare 2-3 options when there are real tradeoffs. When existing architecture already determines the solution, explain why rather than inventing alternatives. High-risk interfaces, migrations, security, and concurrency require failure paths and a validation strategy.
 Use only brainstorming's exploration and design methods. Present related design sections together and obtain formal confirmation once in Comet Step 1c. The external Skill must not require another approval of the complete design document, automatically invoke writing-plans, switch workspaces, or begin implementation. Do not write the Design Doc before confirmation.
@@ -185,7 +128,7 @@ Structure of `<classic-change-dir>/.comet/handoff/brainstorm-summary.md`:
 **Context compression**: Use brainstorm-summary.md to resume interrupted discussions. Defer proactive compression until the formal design, state, and handoff are saved. If compression has already occurred, load the following as needed before continuing to Step 2:
 
 - `<classic-change-dir>/.comet/handoff/brainstorm-summary.md`.
-- Relevant sections of `<classic-change-dir>/.comet/handoff/design-context.md`, or beta `spec-context.md`, and missing source passages. Machine JSON is not required reading.
+- Read the original proposal, design, tasks, and relevant Specs needed for this task; an optional handoff view only aids reading.
 
 ### 1e. Continue Writing the Design Before Compressing Context
 
@@ -195,15 +138,7 @@ Structure of `<classic-change-dir>/.comet/handoff/brainstorm-summary.md`:
 
 Create the Design Doc from the full brainstorming context in the main session.
 
-Keep frontmatter minimal:
-
-```yaml
----
-comet_change: <change-name>
-role: technical-design
-canonical_spec: openspec
----
-```
+Record the implementation approach, actual tradeoffs, effects, and validation. The Agent judges sufficiency; Runtime requires the registered file to exist, be readable, and be nonempty.
 
 Choose one `<design-doc-path>`: preserve an existing `design_doc`; otherwise prefer `<classic-change-dir>/design.md` and extend the Open-stage technical decisions in place. Use `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` only when an existing project convention requires a separate Superpowers document. In that case, Open's design.md keeps only the summary required by the schema and a link to the formal design, without duplicating technical detail. Match detail to risk instead of creating empty sections or repetitive alternatives.
 
@@ -223,7 +158,7 @@ Refresh the handoff whenever any source content changes, including proposal, des
 
 ### 3a. Optional Proactive Context Compression
 
-Consider proactive compression only **after the Design Doc and state records are saved**, before Build. Confirm that `design_doc`, the latest handoff, `handoff_hash`, and the design guard result are all saved so recovery can use files without losing unrecorded design decisions.
+Consider proactive compression after the Design Doc and state records are saved, before Build. Confirm that the original Run, design path, user decisions, and next step can be recovered.
 
 - If context capacity is under pressure and a native compression mechanism is callable, invoke it once. Include the change, next step, and Design Doc/handoff files to reload in the recovery prompt.
 - If compression requires a manual user action, offer one nonblocking suggestion and continue. **Do not block** or create another confirmation step.
@@ -232,11 +167,7 @@ Consider proactive compression only **after the Design Doc and state records are
 ## Exit Conditions
 
 - The Design Doc has been created and saved.
-- Its frontmatter includes `comet_change`, `role: technical-design`, and `canonical_spec: openspec`.
-- `handoff_context` and `handoff_hash` are recorded in `.comet.yaml`, enforced by the guard.
-- `handoff_hash` matches the current OpenSpec Open artifacts, enforced by the guard.
-- `design-context.md`, or beta `spec-context.md`, is script-generated with traceable source path, mode, and sha256 markers, enforced by the guard.
-- In beta mode, `spec-context.json` is structurally valid and references current source files, enforced by the guard.
+- Handoff references this change original requirements, and the original user decisions and Run remain recoverable.
 - OpenSpec delta specs have been created or updated for any new capabilities or additional acceptance scenarios.
 - `design_doc` is recorded in `.comet.yaml`.
 - **Phase guard**: Run `comet guard <change-name> design --apply`. After all checks PASS, the guard advances to `phase: build`; this updates `phase` independently of `auto_transition`.

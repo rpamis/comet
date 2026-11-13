@@ -1,0 +1,95 @@
+{
+  "cases": [
+    {
+      "id": "classic-527-archived-worktree-routing",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "^(?:reads completed history in the explicit worktree after amend=false without importing a duplicate Run|reads completed history in the explicit worktree after amend=true without importing a duplicate Run)$",
+          "requiredNames": [
+            "reads completed history in the explicit worktree after amend=false without importing a duplicate Run",
+            "reads completed history in the explicit worktree after amend=true without importing a duplicate Run"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-527-archived-copy-integrity",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "^(?:reads completed history in the explicit worktree after amend=false without importing a duplicate Run|reads completed history in the explicit worktree after amend=true without importing a duplicate Run)$",
+          "requiredNames": [
+            "reads completed history in the explicit worktree after amend=false without importing a duplicate Run",
+            "reads completed history in the explicit worktree after amend=true without importing a duplicate Run"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "^(?:rejects changed archived checkpoint and branch state after completed delivery)$",
+          "requiredNames": [
+            "rejects changed archived checkpoint and branch state after completed delivery"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-527-missing-original-history",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "^(?:reads completed history in the explicit worktree after amend=false without importing a duplicate Run|reads completed history in the explicit worktree after amend=true without importing a duplicate Run)$",
+          "requiredNames": [
+            "reads completed history in the explicit worktree after amend=false without importing a duplicate Run",
+            "reads completed history in the explicit worktree after amend=true without importing a duplicate Run"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-preexisting-workspace-delivery-scope",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/classic-delivery-current/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "delivers without an unchanged untracked draft that predates the change",
+          "requiredNames": [
+            "delivers without an unchanged untracked draft that predates the change"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "^(?:requires delivery of an explicitly selected initial draft)$",
+          "requiredNames": [
+            "requires delivery of an explicitly selected initial draft"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "does not trust a workspace baseline supplied through public dispatch start",
+          "requiredNames": [
+            "does not trust a workspace baseline supplied through public dispatch start"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "^(?:delivers an explicitly approved initial draft without including an unrelated draft)$",
+          "requiredNames": [
+            "delivers an explicitly approved initial draft without including an unrelated draft"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -97,11 +97,11 @@ describe('Classic atomic configuration', () => {
     expect(await fs.readFile(stateFile(), 'utf8')).toBe(before);
   });
 
-  it('serializes concurrent updates without dropping unrelated fields', async () => {
-    const results = await Promise.all([
-      cli('state', 'set', 'demo', 'build_mode', 'executing-plans', 'tdd_mode', 'direct'),
-      cli('state', 'set', 'demo', 'review_mode', 'thorough', 'verify_mode', 'full'),
-    ]);
+  it('preserves unrelated fields across successive updates by one writer', async () => {
+    const results = [
+      await cli('state', 'set', 'demo', 'build_mode', 'executing-plans', 'tdd_mode', 'direct'),
+      await cli('state', 'set', 'demo', 'review_mode', 'thorough', 'verify_mode', 'full'),
+    ];
     for (const result of results) expect(result.exitCode, result.stderr).toBe(0);
     expect(parse(await fs.readFile(stateFile(), 'utf8'))).toMatchObject({
       build_mode: 'executing-plans',
@@ -154,7 +154,7 @@ describe('Classic atomic configuration', () => {
     expect(await fs.readFile(stateFile(), 'utf8')).toBe(before);
   });
 
-  it('lists stable tasks and serializes completion without losing another task update', async () => {
+  it('lists stable tasks and preserves previous completions for one writer', async () => {
     const taskFile = path.join(root, 'openspec/changes/demo/tasks.md');
     await fs.writeFile(taskFile, '- [ ] one\n- [ ] two\n');
     const assigned = await cli('state', 'tasks', 'demo', '--assign-ids', '--json');
@@ -173,18 +173,30 @@ describe('Classic atomic configuration', () => {
       stateFile(),
       (await fs.readFile(stateFile(), 'utf8')).replace('phase: open', 'phase: build'),
     );
-    const completed = await Promise.all(
-      tasks.map((task: { id: string }) =>
-        cli('state', 'task-complete', 'demo', task.id, '--expect', revision, '--json'),
-      ),
-    );
+    const completed = [];
+    for (const task of tasks as { id: string }[]) {
+      completed.push(
+        await cli('state', 'task-complete', 'demo', task.id, '--expect', revision, '--json'),
+      );
+      const current = JSON.parse((await cli('state', 'tasks', 'demo', '--json')).stdout!).data;
+      expect(current.tasks.map((item: { id: string }) => item.id)).toEqual(
+        tasks.map((item: { id: string }) => item.id),
+      );
+      expect(current.tasks.map((item: { completed: boolean }) => item.completed)).toEqual(
+        tasks.map((_: unknown, index: number) => index < completed.length),
+      );
+    }
     for (const result of completed) expect(result.exitCode, result.stdout).toBe(0);
     const listing = JSON.parse((await cli('state', 'tasks', 'demo', '--json')).stdout!).data;
     expect(listing.progress).toEqual({ total: 2, completed: 2 });
     expect(listing.revision).toBe(revision);
+    const completedSource = await fs.readFile(taskFile, 'utf8');
+    const repeated = await cli('state', 'task-complete', 'demo', tasks[0].id, '--json');
+    expect(repeated.exitCode, repeated.stdout).toBe(0);
+    expect(await fs.readFile(taskFile, 'utf8')).toBe(completedSource);
     const renamed = (await fs.readFile(taskFile, 'utf8')).replace('one', 'changed');
     await fs.writeFile(taskFile, renamed);
-    const stale = await cli('state', 'task-complete', 'demo', tasks[0].id, '--expect', revision);
+    const stale = await cli('state', 'task-complete', 'demo', 'missing-task', '--expect', revision);
     expect(stale.exitCode).not.toBe(0);
     expect(await fs.readFile(taskFile, 'utf8')).toBe(renamed);
   });

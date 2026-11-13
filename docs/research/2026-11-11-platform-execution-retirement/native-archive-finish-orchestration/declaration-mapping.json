@@ -1,0 +1,49 @@
+{
+  "authorization": "report:2026-11-10-agent-platform-execution",
+  "fixtureOnlyChange": "Partial module mock defaults nativePortableSupervisorCleanupBinding to null because this test models ordinary non-Supervisor archived records. Original narrow configuredPaths was never a complete NativeProjectPaths; real filesystem reads were outside this orchestration unit boundary.",
+  "files": [
+    {
+      "file": "test/domains/comet-native/native-archive-command-recovery.test.ts",
+      "originalDeclarations": 4,
+      "currentDeclarations": 4,
+      "declarations": [
+        {
+          "originalTitle": "rejects SDK-only legacy Spec backups for portable changes",
+          "currentTitle": "rejects SDK-only legacy Spec backups for portable changes",
+          "originalBody": "it('rejects SDK-only legacy Spec backups for portable changes', async () => {\n    mocks.isNativePortableChange.mockResolvedValue(true);\n    await expect(\n      nativeArchiveCommand(\n        ['finish-change', '--legacy-spec-backup', '/outside/originals.json'],\n        root,\n      ),\n    ).rejects.toThrow('SDK');\n    expect(mocks.recoverPortableChange).not.toHaveBeenCalled();\n  })",
+          "currentBody": "it('rejects SDK-only legacy Spec backups for portable changes', async () => {\n    mocks.isNativePortableChange.mockResolvedValue(true);\n    await expect(\n      nativeArchiveCommand(\n        ['finish-change', '--legacy-spec-backup', '/outside/originals.json'],\n        root,\n      ),\n    ).rejects.toThrow('SDK');\n    expect(mocks.recoverPortableChange).not.toHaveBeenCalled();\n  })",
+          "unchangedBody": true,
+          "classification": "business-retained",
+          "reason": "All original assertions unchanged. Shared orchestration fixture explicitly models the absence of Supervisor workspaces."
+        },
+        {
+          "originalTitle": "reports a pending workspace finish during dry-run and validates retry flags",
+          "currentTitle": "reports a pending workspace finish during dry-run and validates retry flags",
+          "originalBody": "it('reports a pending workspace finish during dry-run and validates retry flags', async () => {\n    await expect(nativeArchiveCommand(['finish-change', '--dry-run'], root)).resolves.toMatchObject(\n      {\n        command: 'archive --dry-run',\n        exitCode: 73,\n        data: { change: 'finish-change', archived: true },\n        error: { code: 'conflict' },\n      },\n    );\n    await expect(\n      nativeArchiveCommand(['finish-change', '--expect-preflight', 'hash'], root),\n    ).rejects.toThrow('A recorded workspace finish does not use preflight hashes');\n    mocks.readJournal.mockResolvedValue({\n      ...journal,\n      result: {\n        action: 'merge',\n        status: 'blocked',\n        blockedPaths: [],\n        recoveryArgs: ['comet', 'native', 'archive', 'finish-change', '--confirmed'],\n      },\n    });\n    await expect(nativeArchiveCommand(['finish-change', '--finish', 'push'], root)).rejects.toThrow(\n      \"Recorded workspace finish is 'merge'; retry it without changing --finish\",\n    );\n  })",
+          "currentBody": "it('reports a pending workspace finish during dry-run and validates retry flags', async () => {\n    await expect(nativeArchiveCommand(['finish-change', '--dry-run'], root)).resolves.toMatchObject(\n      {\n        command: 'archive --dry-run',\n        exitCode: 73,\n        data: { change: 'finish-change', archived: true },\n        error: { code: 'conflict' },\n      },\n    );\n    await expect(\n      nativeArchiveCommand(['finish-change', '--expect-preflight', 'hash'], root),\n    ).rejects.toThrow('A recorded workspace finish does not use preflight hashes');\n    mocks.readJournal.mockResolvedValue({\n      ...journal,\n      result: {\n        action: 'merge',\n        status: 'blocked',\n        blockedPaths: [],\n        recoveryArgs: ['comet', 'native', 'archive', 'finish-change', '--confirmed'],\n      },\n    });\n    await expect(nativeArchiveCommand(['finish-change', '--finish', 'push'], root)).rejects.toThrow(\n      \"Recorded workspace finish is 'merge'; retry it without changing --finish\",\n    );\n  })",
+          "unchangedBody": true,
+          "classification": "business-retained",
+          "reason": "All original assertions unchanged. Shared orchestration fixture explicitly models the absence of Supervisor workspaces."
+        },
+        {
+          "originalTitle": "clears a completed finish journal when the archived record is valid",
+          "currentTitle": "clears a completed finish journal when the archived record is valid",
+          "originalBody": "it('clears a completed finish journal when the archived record is valid', async () => {\n    mocks.readStatusRecord.mockResolvedValue({\n      state: {\n        name: 'finish-change',\n        archived: true,\n        status: 'done',\n        workspace: { finish: 'keep' },\n      },\n    });\n    await expect(\n      nativeArchiveCommand(['finish-change', '--confirmed'], root),\n    ).resolves.toMatchObject({\n      command: 'archive',\n      exitCode: 0,\n      data: { archived: true, archiveDir: journal.archiveDir, workspaceFinish: 'keep' },\n    });\n    expect(mocks.clearJournal).toHaveBeenCalledWith(expect.anything(), 'finish-change');\n  })",
+          "currentBody": "it('clears a completed finish journal when the archived record is valid', async () => {\n    mocks.readStatusRecord.mockResolvedValue({\n      state: {\n        name: 'finish-change',\n        archived: true,\n        status: 'done',\n        workspace: { finish: 'keep' },\n      },\n    });\n    await expect(\n      nativeArchiveCommand(['finish-change', '--confirmed'], root),\n    ).resolves.toMatchObject({\n      command: 'archive',\n      exitCode: 0,\n      data: { archived: true, archiveDir: journal.archiveDir, workspaceFinish: 'keep' },\n    });\n    expect(mocks.clearJournal).toHaveBeenCalledWith(expect.anything(), 'finish-change');\n    expect(mocks.supervisorCleanupBinding).toHaveBeenCalledExactlyOnceWith(\n      expect.objectContaining({ projectRoot: root }),\n      expect.objectContaining({ name: 'finish-change', archived: true, status: 'done' }),\n    );\n  })",
+          "unchangedBody": false,
+          "classification": "business-retained",
+          "reason": "All original completed-journal / blocked retry / original error and recovery assertions unchanged; additionally verify the Supervisor cleanup boundary receives the original archived record and explicit project root."
+        },
+        {
+          "originalTitle": "records a blocked retry when workspace finish preparation still fails",
+          "currentTitle": "records a blocked retry when workspace finish preparation still fails",
+          "originalBody": "it('records a blocked retry when workspace finish preparation still fails', async () => {\n    mocks.readStatusRecord.mockResolvedValue({\n      state: {\n        name: 'finish-change',\n        archived: true,\n        status: 'done',\n        workspace: { finish: 'keep' },\n      },\n    });\n    mocks.prepareFinish.mockRejectedValue(new Error('workspace is dirty'));\n    await expect(\n      nativeArchiveCommand(['finish-change', '--confirmed'], root),\n    ).resolves.toMatchObject({\n      command: 'archive',\n      exitCode: 73,\n      data: {\n        archived: true,\n        workspaceFinishResult: { status: 'blocked', message: 'workspace is dirty' },\n        continuation: { mode: 'reconcile', disposition: 'blocked' },\n      },\n      error: { code: 'conflict', message: 'workspace is dirty' },\n    });\n    expect(mocks.writeJournal).toHaveBeenCalledWith(\n      expect.anything(),\n      expect.objectContaining({ status: 'blocked' }),\n    );\n  })",
+          "currentBody": "it('records a blocked retry when workspace finish preparation still fails', async () => {\n    mocks.readStatusRecord.mockResolvedValue({\n      state: {\n        name: 'finish-change',\n        archived: true,\n        status: 'done',\n        workspace: { finish: 'keep' },\n      },\n    });\n    mocks.prepareFinish.mockRejectedValue(new Error('workspace is dirty'));\n    await expect(\n      nativeArchiveCommand(['finish-change', '--confirmed'], root),\n    ).resolves.toMatchObject({\n      command: 'archive',\n      exitCode: 73,\n      data: {\n        archived: true,\n        workspaceFinishResult: { status: 'blocked', message: 'workspace is dirty' },\n        continuation: { mode: 'reconcile', disposition: 'blocked' },\n      },\n      error: { code: 'conflict', message: 'workspace is dirty' },\n    });\n    expect(mocks.writeJournal).toHaveBeenCalledWith(\n      expect.anything(),\n      expect.objectContaining({ status: 'blocked' }),\n    );\n    expect(mocks.supervisorCleanupBinding).toHaveBeenCalledExactlyOnceWith(\n      expect.objectContaining({ projectRoot: root }),\n      expect.objectContaining({ name: 'finish-change', archived: true, status: 'done' }),\n    );\n  })",
+          "unchangedBody": false,
+          "classification": "business-retained",
+          "reason": "All original completed-journal / blocked retry / original error and recovery assertions unchanged; additionally verify the Supervisor cleanup boundary receives the original archived record and explicit project root."
+        }
+      ]
+    }
+  ]
+}

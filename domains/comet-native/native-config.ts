@@ -2,13 +2,9 @@ import path from 'path';
 
 import {
   DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES,
-  DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG,
+  DEFAULT_WORKFLOW_NATIVE_MAX_PARALLEL_CHILDREN,
   defaultWorkflowProjectConfig,
-  mergeWorkflowNativeSnapshotExcludes,
-  MAX_WORKFLOW_SNAPSHOT_PATTERN_LENGTH,
-  MAX_WORKFLOW_SNAPSHOT_PATTERN_WILDCARDS,
   mergeWorkflowProjectConfigDocument,
-  normalizeWorkflowSnapshotPattern,
   renderStructuredProjectConfig,
 } from '../workflow-contract/project-config.js';
 import {
@@ -24,19 +20,9 @@ import {
   normalizeArtifactRootRef,
   PROJECT_CONFIG_FILE,
 } from './native-paths.js';
-import type {
-  CometProjectConfig,
-  NativeProjectPaths,
-  NativeSnapshotConfig,
-} from './native-types.js';
-
-export const MAX_NATIVE_SNAPSHOT_PATTERN_LENGTH = MAX_WORKFLOW_SNAPSHOT_PATTERN_LENGTH;
-export const MAX_NATIVE_SNAPSHOT_PATTERN_WILDCARDS = MAX_WORKFLOW_SNAPSHOT_PATTERN_WILDCARDS;
-export const DEFAULT_NATIVE_SNAPSHOT_CONFIG: NativeSnapshotConfig =
-  DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG;
+import type { CometProjectConfig, NativeProjectPaths } from './native-types.js';
 export const DEFAULT_NATIVE_MAX_VERIFY_FAILURES = DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES;
-export const normalizeNativeSnapshotPattern = normalizeWorkflowSnapshotPattern;
-export const mergeNativeSnapshotExcludes = mergeWorkflowNativeSnapshotExcludes;
+export const DEFAULT_NATIVE_MAX_PARALLEL_CHILDREN = DEFAULT_WORKFLOW_NATIVE_MAX_PARALLEL_CHILDREN;
 
 export function defaultProjectConfig(
   artifactRoot = 'docs',
@@ -87,6 +73,7 @@ export async function resolveNativeProject(options: {
   startPath: string;
   explicitArtifactRoot?: string;
   allowMissingConfig?: boolean;
+  change?: string;
 }): Promise<{ config: CometProjectConfig; paths: NativeProjectPaths; configured: boolean }> {
   const projectRoot = await discoverNativeProject(options.startPath);
   const existing = await readProjectConfig(projectRoot);
@@ -107,6 +94,8 @@ export async function resolveNativeProject(options: {
     );
   }
   const config = existing ?? defaultProjectConfig(explicit ?? 'docs');
-  const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
+  const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root, {
+    change: options.change,
+  });
   return { config, paths, configured: existing !== null };
 }

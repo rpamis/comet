@@ -99,7 +99,7 @@ describe('Native portable transaction records', () => {
     expect(describeNativePortableTransactionEntry('unrelated.json')).toBeNull();
   });
 
-  it('validates the frozen delta and complete target binding in an archive transaction', () => {
+  it('keeps frozen Delta source text separate from the canonical transaction target', () => {
     const baseline = '# Authentication\n';
     const baseHash = createHash('sha256').update(baseline).digest('hex');
     const deltaContent = `schema: comet.native.delta.v1\ncapability: authentication\nbase_hash: ${baseHash}\nbase_version: 1\nlegacy_hash: ${nativeLegacySectionHash(baseline)}\noperations:\n  - id: authentication.password\n    operation: add\n    title: Password login\n    body: Password login MUST be available.\n`;
@@ -130,7 +130,7 @@ describe('Native portable transaction records', () => {
       capability: 'authentication',
       result_hash: nativeTotalSpecHash(target),
     });
-    expect(() =>
+    expect(
       parseNativePortableArchiveTransaction(
         validJournal({
           spec_changes: [
@@ -149,7 +149,9 @@ describe('Native portable transaction records', () => {
           ],
         }),
       ),
-    ).toThrow('source_content does not match result_hash');
+    ).toMatchObject({
+      spec_changes: [{ source_content: '# Different target\n', content: target }],
+    });
   });
 
   it.each([

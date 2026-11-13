@@ -1,0 +1,978 @@
+diff --git a/test/domains/comet-native/native-archive-inspection.test.ts b/test/domains/comet-native/native-archive-inspection.test.ts
+deleted file mode 100644
+--- a/test/domains/comet-native/native-archive-inspection.test.ts
++++ /dev/null
+@@ -1,412 +0,0 @@
+-import { promises as fs } from 'node:fs';
+-import { execFileSync } from 'node:child_process';
+-import os from 'node:os';
+-import path from 'node:path';
+-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+-
+-import { inspectNativeArchivePreflight } from '../../../domains/comet-native/native-archive-inspection.js';
+-import { prepareNativeBuildEvidence } from '../../../domains/comet-native/native-build-evidence.js';
+-import {
+-  compareAndSwapNativeChangeFile,
+-  createNativeChange,
+-  nativeChangeDir,
+-  writeNativeChange,
+-} from '../../../domains/comet-native/native-change.js';
+-import { collectNativeContractFiles } from '../../../domains/comet-native/native-contract-files.js';
+-import {
+-  nativeChangeRuntimeDir,
+-  nativeProjectPaths,
+-} from '../../../domains/comet-native/native-paths.js';
+-import { nativeTransitionJournalFile } from '../../../domains/comet-native/native-transition-journal.js';
+-import { writeNativeWorkspaceIdentity } from '../../../domains/comet-native/native-workspace.js';
+-import type {
+-  NativeChangeState,
+-  NativeProjectPaths,
+-} from '../../../domains/comet-native/native-types.js';
+-import { prepareNativeVerificationEvidence } from '../../../domains/comet-native/native-verification-runtime.js';
+-import {
+-  issueNativeAutomatedCheckReceipt,
+-  findNativeReusableRequiredCheckReceipt,
+-  issueNativeManualEvidenceReceipt,
+-  validateNativeStaticReceiptDependency,
+-} from '../../../domains/comet-native/native-verification-receipt-runtime.js';
+-import {
+-  nativeVerificationFixtureReceipt,
+-  nativeVerificationFixtureReport,
+-} from '../../helpers/native-verification.js';
+-
+-const brief = `# Outcome
+-Ship one focused behavior.
+-# Scope
+-Update the focused file.
+-# Non-goals
+-No unrelated changes.
+-# Acceptance examples
+-- The focused behavior works.
+-# Constraints and invariants
+-Keep callers stable.
+-# Decisions
+-Use the current module.
+-# Open questions
+-None.
+-# Verification expectations
+-Run the focused check.
+-`;
+-
+-it('issues automated Git-bound verification receipts through a project parent alias', async () => {
+-  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'comet-receipt-alias-')));
+-  try {
+-    const physical = path.join(root, 'physical');
+-    const alias = path.join(root, 'alias');
+-    await fs.mkdir(physical);
+-    await fs.symlink(physical, alias, process.platform === 'win32' ? 'junction' : 'dir');
+-    const projectRoot = path.join(alias, 'project');
+-    await fs.mkdir(projectRoot);
+-    const git = (...args: string[]) =>
+-      execFileSync('git', args, { cwd: projectRoot, encoding: 'utf8' }).trim();
+-    git('init', '-q');
+-    await fs.writeFile(path.join(projectRoot, 'feature.txt'), 'before\n');
+-    git('add', '.');
+-    git(
+-      '-c',
+-      'user.name=Fixture',
+-      '-c',
+-      'user.email=fixture@example.invalid',
+-      'commit',
+-      '-qm',
+-      'fixture',
+-    );
+-    const commit = git('rev-parse', 'HEAD');
+-    const paths = await nativeProjectPaths(projectRoot, '.');
+-    const created = await createNativeChange({
+-      paths,
+-      verificationProtocol: 'legacy-v1',
+-      name: 'receipt-alias',
+-      language: 'en',
+-    });
+-    await fs.writeFile(path.join(nativeChangeDir(paths, created.name), 'brief.md'), brief);
+-    await fs.writeFile(path.join(projectRoot, 'feature.txt'), 'after\n');
+-    const buildState: NativeChangeState = { ...created, phase: 'build', approval: 'implicit' };
+-    const build = await prepareNativeBuildEvidence({
+-      paths,
+-      state: buildState,
+-      artifactRefs: ['feature.txt'],
+-    });
+-    const state: NativeChangeState = {
+-      ...buildState,
+-      phase: 'verify',
+-      implementation_scope: build.scopeRef,
+-    };
+-    await writeNativeChange(paths, state);
+-    const contract = await collectNativeContractFiles({
+-      changeDir: nativeChangeDir(paths, state.name),
+-      briefRef: state.brief,
+-      specChanges: state.spec_changes,
+-    });
+-    const result = await issueNativeAutomatedCheckReceipt({
+-      paths,
+-      name: state.name,
+-      acceptanceIds: contract.contract.acceptance.map(({ id }) => id),
+-      command: process.execPath,
+-      args: ['-e', 'process.exit(0)'],
+-    });
+-    expect(result.receipt.status).toBe('passed');
+-    expect(result.receipt.evidence).toMatchObject({
+-      worktree: { provider: 'git', root: '.', beforeCommit: commit, afterCommit: commit },
+-    });
+-    const changed = await issueNativeAutomatedCheckReceipt({
+-      paths,
+-      name: state.name,
+-      acceptanceIds: contract.contract.acceptance.map(({ id }) => id),
+-      command: process.execPath,
+-      args: [
+-        '-e',
+-        `require('node:child_process').execFileSync('git', ${JSON.stringify(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-qm', 'changed identity'])})`,
+-      ],
+-    });
+-    expect(git('rev-parse', 'HEAD')).not.toBe(commit);
+-    expect(changed.receipt.status).toBe('blocked');
+-    expect(changed.receipt.evidence).toMatchObject({
+-      worktree: {
+-        provider: 'git',
+-        root: '.',
+-        beforeCommit: commit,
+-        afterCommit: git('rev-parse', 'HEAD'),
+-      },
+-    });
+-  } finally {
+-    await fs.rm(root, { recursive: true, force: true });
+-  }
+-});
+-
+-describe('Native Archive inspection', () => {
+-  let projectRoot: string;
+-  let paths: NativeProjectPaths;
+-  let state: NativeChangeState;
+-
+-  beforeEach(async () => {
+-    projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-archive-inspection-'));
+-    await fs.mkdir(path.join(projectRoot, 'src'), { recursive: true });
+-    await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 1;\n');
+-    paths = await nativeProjectPaths(projectRoot, '.');
+-    const created = await createNativeChange({
+-      paths,
+-      verificationProtocol: 'legacy-v1',
+-      name: 'archive-preview',
+-      language: 'en',
+-      now: new Date('2026-07-17T00:00:00.000Z'),
+-    });
+-    const changeDir = nativeChangeDir(paths, created.name);
+-    await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
+-    const buildState: NativeChangeState = {
+-      ...created,
+-      phase: 'build',
+-      approval: 'implicit',
+-    };
+-    await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 2;\n');
+-    const build = await prepareNativeBuildEvidence({
+-      paths,
+-      state: buildState,
+-      artifactRefs: ['src/feature.ts'],
+-      now: new Date('2026-07-17T01:00:00.000Z'),
+-    });
+-    const verifyCandidate: NativeChangeState = {
+-      ...buildState,
+-      phase: 'verify',
+-      implementation_scope: build.scopeRef as NativeChangeState['implementation_scope'],
+-    };
+-    const stateFile = path.join(changeDir, 'comet-state.yaml');
+-    const verifyState = await compareAndSwapNativeChangeFile(stateFile, verifyCandidate, 1);
+-    const contract = await collectNativeContractFiles({
+-      changeDir,
+-      briefRef: verifyState.brief,
+-      specChanges: verifyState.spec_changes,
+-    });
+-    const receiptRef = (
+-      await issueNativeManualEvidenceReceipt({
+-        paths,
+-        name: verifyState.name,
+-        acceptanceIds: contract.contract.acceptance.map((criterion) => criterion.id),
+-        steps: ['Run the focused archive inspection fixture.'],
+-        observations: ['The focused behavior matched the acceptance contract.'],
+-        confirmed: true,
+-        now: new Date('2026-07-17T01:30:00.000Z'),
+-      })
+-    ).ref;
+-    await fs.writeFile(
+-      path.join(changeDir, 'verification.md'),
+-      await nativeVerificationFixtureReport({
+-        paths,
+-        name: verifyState.name,
+-        evidenceRefs: [receiptRef],
+-      }),
+-    );
+-    const requiredReceiptRef = await nativeVerificationFixtureReceipt({
+-      paths,
+-      name: verifyState.name,
+-      now: new Date('2026-07-17T01:45:00.000Z'),
+-    });
+-    const verification = await prepareNativeVerificationEvidence({
+-      paths,
+-      state: verifyState,
+-      result: 'pass',
+-      reportRef: 'verification.md',
+-      receiptRef: requiredReceiptRef,
+-      now: new Date('2026-07-17T02:00:00.000Z'),
+-    });
+-    const archiveCandidate: NativeChangeState = {
+-      ...verifyState,
+-      phase: 'archive',
+-      verification_result: 'pass',
+-      verification_report: 'verification.md',
+-      verification_evidence: verification.evidenceRef as NativeChangeState['verification_evidence'],
+-    };
+-    state = await compareAndSwapNativeChangeFile(stateFile, archiveCandidate, 2);
+-  });
+-
+-  afterEach(async () => {
+-    await fs.rm(projectRoot, { recursive: true, force: true });
+-  });
+-
+-  it('returns a stable ready preview without writing project state', async () => {
+-    const changeFile = path.join(nativeChangeDir(paths, state.name), 'comet-state.yaml');
+-    const before = await fs.readFile(changeFile, 'utf8');
+-
+-    const first = await inspectNativeArchivePreflight({
+-      paths,
+-      name: state.name,
+-      now: new Date('2026-07-17T03:00:00.000Z'),
+-    });
+-    const second = await inspectNativeArchivePreflight({
+-      paths,
+-      name: state.name,
+-      now: new Date('2026-07-17T03:00:00.000Z'),
+-    });
+-
+-    expect(first).toEqual(second);
+-    expect(first).toMatchObject({
+-      ready: true,
+-      revision: 3,
+-      targetRef: 'archive/2026-07-17-archive-preview',
+-      evidenceFreshness: 'complete',
+-      findingCodes: [],
+-    });
+-    expect(await fs.readFile(changeFile, 'utf8')).toBe(before);
+-  });
+-
+-  it('validates manual acceptance IDs and automated command timeouts before execution', async () => {
+-    const verifyState = {
+-      ...state,
+-      phase: 'verify' as const,
+-      verification_result: 'pending' as const,
+-      verification_report: null,
+-      verification_evidence: null,
+-      revision: state.revision,
+-    };
+-    await writeNativeChange(paths, verifyState);
+-    await expect(
+-      findNativeReusableRequiredCheckReceipt({ paths, state: verifyState }),
+-    ).resolves.toBeNull();
+-    await expect(
+-      validateNativeStaticReceiptDependency({
+-        paths,
+-        state: verifyState,
+-        receipt: { kind: 'manual-evidence' } as never,
+-      }),
+-    ).resolves.toBeNull();
+-    await expect(
+-      issueNativeManualEvidenceReceipt({
+-        paths,
+-        name: verifyState.name,
+-        acceptanceIds: [],
+-        steps: ['step'],
+-        observations: ['observation'],
+-        now: new Date('2026-07-17T03:00:00.000Z'),
+-      }),
+-    ).rejects.toThrow('acceptance IDs do not match');
+-    await expect(
+-      issueNativeAutomatedCheckReceipt({
+-        paths,
+-        name: verifyState.name,
+-        acceptanceIds: [],
+-        command: process.execPath,
+-        args: ['-e', 'process.exit(0)'],
+-        timeoutMs: 0,
+-      }),
+-    ).rejects.toThrow('timeout must be an integer');
+-    await expect(
+-      issueNativeAutomatedCheckReceipt({
+-        paths,
+-        name: verifyState.name,
+-        acceptanceIds: [],
+-        command: process.execPath,
+-        args: ['-e', 'process.exit(0)'],
+-        timeoutMs: 60 * 60 * 1_000 + 1,
+-      }),
+-    ).rejects.toThrow('timeout must be an integer');
+-    const contract = await collectNativeContractFiles({
+-      changeDir: nativeChangeDir(paths, verifyState.name),
+-      briefRef: verifyState.brief,
+-      specChanges: verifyState.spec_changes,
+-    });
+-    const acceptanceIds = contract.contract.acceptance.map((criterion) => criterion.id);
+-    const passed = await issueNativeAutomatedCheckReceipt({
+-      paths,
+-      name: verifyState.name,
+-      acceptanceIds,
+-      command: process.execPath,
+-      args: ['-e', "process.stdout.write('automated output')"],
+-      timeoutMs: 10_000,
+-      now: () => new Date('2026-07-17T03:01:00.000Z'),
+-    });
+-    expect(passed.receipt.status).toBe('passed');
+-    expect(passed.receipt.evidence).toMatchObject({
+-      exitCode: 0,
+-      signal: null,
+-      timedOut: false,
+-      outputSummary: 'automated output',
+-      outputTruncated: false,
+-    });
+-    const failed = await issueNativeAutomatedCheckReceipt({
+-      paths,
+-      name: verifyState.name,
+-      acceptanceIds,
+-      command: process.execPath,
+-      args: ['-e', 'process.exit(3)'],
+-      timeoutMs: 10_000,
+-      now: () => new Date('2026-07-17T03:02:00.000Z'),
+-    });
+-    expect(failed.receipt.status).toBe('failed');
+-    expect(failed.receipt.evidence).toMatchObject({
+-      exitCode: 3,
+-      signal: null,
+-      outputSummary: '(exit 3)',
+-    });
+-  });
+-
+-  it('binds an existing archive target and pending journal into readiness', async () => {
+-    await fs.mkdir(path.join(paths.archiveDir, '2026-07-17-archive-preview'), {
+-      recursive: true,
+-    });
+-    await fs.writeFile(nativeTransitionJournalFile(paths, state.name), '{}\n');
+-
+-    const preview = await inspectNativeArchivePreflight({
+-      paths,
+-      name: state.name,
+-      now: new Date('2026-07-17T03:00:00.000Z'),
+-    });
+-
+-    expect(preview.ready).toBe(false);
+-    expect(preview.findingCodes).toEqual(
+-      expect.arrayContaining(['archive-target-exists', 'pending-journal']),
+-    );
+-  });
+-
+-  it('blocks when another visible change claims the same implementation artifact', async () => {
+-    const competing = await createNativeChange({
+-      paths,
+-      verificationProtocol: 'legacy-v1',
+-      name: 'competing-change',
+-      language: 'en',
+-    });
+-    const sourceEvidence = path.join(nativeChangeRuntimeDir(paths, state.name), 'evidence');
+-    const targetEvidence = path.join(nativeChangeRuntimeDir(paths, competing.name), 'evidence');
+-    await fs.cp(sourceEvidence, targetEvidence, { recursive: true });
+-    await writeNativeChange(paths, {
+-      ...competing,
+-      phase: 'build',
+-      approval: 'implicit',
+-      implementation_scope: state.implementation_scope,
+-    });
+-
+-    const preview = await inspectNativeArchivePreflight({
+-      paths,
+-      name: state.name,
+-      now: new Date('2026-07-17T03:00:00.000Z'),
+-    });
+-
+-    expect(preview.ready).toBe(false);
+-    expect(preview.findingCodes).toContain('native-change-conflict');
+-  });
+-
+-  it('includes the current workspace finishing contract when present', async () => {
+-    await writeNativeWorkspaceIdentity({
+-      paths,
+-      name: state.name,
+-      revision: state.revision,
+-      binding: { isolation: 'current', changeBranch: null, targetBranch: null },
+-    });
+-
+-    const preview = await inspectNativeArchivePreflight({
+-      paths,
+-      name: state.name,
+-      now: new Date('2026-07-17T03:00:00.000Z'),
+-    });
+-
+-    expect(preview.workspace).toMatchObject({
+-      schema: 'comet.native.workspace.v3',
+-      isolation: 'current',
+-      finish: null,
+-    });
+-  });
+-});
+diff --git a/test/domains/comet-native/native-archive-preflight.test.ts b/test/domains/comet-native/native-archive-preflight.test.ts
+deleted file mode 100644
+--- a/test/domains/comet-native/native-archive-preflight.test.ts
++++ /dev/null
+@@ -1,163 +0,0 @@
+-import { describe, expect, it } from 'vitest';
+-
+-import {
+-  buildNativeArchivePreflight,
+-  type NativeArchivePreflightInput,
+-} from '../../../domains/comet-native/native-archive-preflight.js';
+-
+-const A = 'a'.repeat(64);
+-const B = 'b'.repeat(64);
+-const C = 'c'.repeat(64);
+-const D = 'd'.repeat(64);
+-const E = 'e'.repeat(64);
+-
+-function input(): NativeArchivePreflightInput {
+-  return {
+-    change: 'secure-login',
+-    archiveConfirmation: 'automatic',
+-    stateSchema: 'comet.native.v3',
+-    revision: 5,
+-    phase: 'archive',
+-    archived: false,
+-    pendingJournal: false,
+-    targetRef: 'archive/2026-07-17-secure-login',
+-    targetExists: false,
+-    specs: [
+-      {
+-        capability: 'authentication',
+-        operation: 'replace',
+-        expectedBaseHash: A,
+-        actualBaseHash: A,
+-        proposedHash: B,
+-      },
+-    ],
+-    evidence: {
+-      result: 'pass',
+-      freshness: 'complete',
+-      contractHash: A,
+-      acceptanceHash: B,
+-      implementationScopeHash: C,
+-      reportHash: D,
+-      envelopeHash: E,
+-      partialAllowanceHash: null,
+-      skippedAcceptanceCount: 0,
+-    },
+-  };
+-}
+-
+-describe('Native Archive preflight', () => {
+-  it('is deterministic across spec order and previews the exact content-bound operations', () => {
+-    const original = input();
+-    original.specs = [
+-      ...original.specs,
+-      {
+-        capability: 'sessions',
+-        operation: 'create',
+-        expectedBaseHash: null,
+-        actualBaseHash: null,
+-        proposedHash: C,
+-      },
+-    ];
+-    const first = buildNativeArchivePreflight(original);
+-    const reordered = buildNativeArchivePreflight({
+-      ...original,
+-      specs: [...original.specs].reverse(),
+-    });
+-
+-    expect(reordered).toEqual(first);
+-    expect(first).toMatchObject({ ready: true, operationCount: 2, findingCodes: [] });
+-    expect(first.operations.map(({ capability }) => capability)).toEqual([
+-      'authentication',
+-      'sessions',
+-    ]);
+-    expect(first.preflightHash).toMatch(/^[a-f0-9]{64}$/u);
+-  });
+-
+-  it.each([
+-    ['revision', (value: NativeArchivePreflightInput) => (value.revision += 1)],
+-    [
+-      'archive confirmation',
+-      (value: NativeArchivePreflightInput) => (value.archiveConfirmation = 'required'),
+-    ],
+-    ['target', (value: NativeArchivePreflightInput) => (value.targetRef += '-next')],
+-    ['target existence', (value: NativeArchivePreflightInput) => (value.targetExists = true)],
+-    ['base', (value: NativeArchivePreflightInput) => (value.specs[0].actualBaseHash = C)],
+-    ['proposal', (value: NativeArchivePreflightInput) => (value.specs[0].proposedHash = C)],
+-    ['contract', (value: NativeArchivePreflightInput) => (value.evidence.contractHash = C)],
+-    ['scope', (value: NativeArchivePreflightInput) => (value.evidence.implementationScopeHash = D)],
+-    ['report', (value: NativeArchivePreflightInput) => (value.evidence.reportHash = E)],
+-    ['envelope', (value: NativeArchivePreflightInput) => (value.evidence.envelopeHash = A)],
+-    [
+-      'workspace finish',
+-      (value: NativeArchivePreflightInput) => {
+-        value.workspace = {
+-          schema: 'comet.native.workspace.v3',
+-          isolation: 'branch',
+-          changeBranch: 'comet/secure-login',
+-          targetBranch: 'main',
+-          finish: 'merge',
+-        };
+-      },
+-    ],
+-  ])('changes the preflight hash when %s changes', (_label, mutate) => {
+-    const baseline = buildNativeArchivePreflight(input());
+-    const changed = input();
+-    mutate(changed);
+-    expect(buildNativeArchivePreflight(changed).preflightHash).not.toBe(baseline.preflightHash);
+-  });
+-
+-  it('blocks stale evidence, canonical drift, a pending journal, or an existing target', () => {
+-    const changed = input();
+-    changed.pendingJournal = true;
+-    changed.targetExists = true;
+-    changed.specs[0].actualBaseHash = C;
+-    changed.evidence.freshness = 'stale';
+-    const result = buildNativeArchivePreflight(changed);
+-
+-    expect(result.ready).toBe(false);
+-    expect(result.findingCodes).toEqual([
+-      'archive-target-exists',
+-      'pending-journal',
+-      'spec-base-conflict',
+-      'verification-evidence-stale',
+-    ]);
+-  });
+-
+-  it('accepts partial evidence only when it binds an exact allowance hash', () => {
+-    const partial = input();
+-    partial.evidence.freshness = 'partial';
+-    partial.evidence.partialAllowanceHash = A;
+-    expect(buildNativeArchivePreflight(partial)).toMatchObject({
+-      ready: true,
+-      evidenceFreshness: 'partial',
+-    });
+-
+-    partial.evidence.partialAllowanceHash = null;
+-    expect(() => buildNativeArchivePreflight(partial)).toThrow('allowance state');
+-  });
+-
+-  it('blocks Archive when the accepted evidence still contains a skipped criterion', () => {
+-    const skipped = input();
+-    skipped.evidence.skippedAcceptanceCount = 1;
+-
+-    expect(buildNativeArchivePreflight(skipped)).toMatchObject({
+-      ready: false,
+-      findingCodes: ['verification-acceptance-skipped'],
+-    });
+-  });
+-
+-  it('rejects unsafe target refs and malformed operation/base combinations', () => {
+-    expect(() =>
+-      buildNativeArchivePreflight({ ...input(), targetRef: 'C:/archive/escape' }),
+-    ).toThrow('Native-relative');
+-    const invalid = input();
+-    invalid.specs[0] = {
+-      capability: 'authentication',
+-      operation: 'create',
+-      expectedBaseHash: A,
+-      actualBaseHash: null,
+-      proposedHash: B,
+-    };
+-    expect(() => buildNativeArchivePreflight(invalid)).toThrow('expect no canonical base');
+-  });
+-});
+diff --git a/test/domains/comet-native/native-conflict-inspection.test.ts b/test/domains/comet-native/native-conflict-inspection.test.ts
+deleted file mode 100644
+--- a/test/domains/comet-native/native-conflict-inspection.test.ts
++++ /dev/null
+@@ -1,151 +0,0 @@
+-import { promises as fs } from 'node:fs';
+-import os from 'node:os';
+-import path from 'node:path';
+-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+-
+-import { prepareNativeBuildEvidence } from '../../../domains/comet-native/native-build-evidence.js';
+-import {
+-  createNativeChange,
+-  nativeChangeDir,
+-  writeNativeChange,
+-} from '../../../domains/comet-native/native-change.js';
+-import {
+-  inspectNativeChangeConflicts,
+-  inspectNativeConflictRadar,
+-} from '../../../domains/comet-native/native-conflict-inspection.js';
+-import { inspectNativeStatus } from '../../../domains/comet-native/native-diagnostics.js';
+-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+-import type {
+-  NativeChangeState,
+-  NativeProjectPaths,
+-} from '../../../domains/comet-native/native-types.js';
+-
+-const brief = `# Outcome
+-Ship the shared behavior.
+-# Scope
+-Update the shared implementation.
+-# Non-goals
+-No unrelated refactor.
+-# Acceptance examples
+-- The shared behavior works.
+-# Constraints and invariants
+-Keep callers stable.
+-# Decisions
+-Use the existing module.
+-# Open questions
+-None.
+-# Verification expectations
+-Run the focused check.
+-`;
+-
+-describe('Native conflict radar collection', () => {
+-  let projectRoot: string;
+-  let paths: NativeProjectPaths;
+-
+-  beforeEach(async () => {
+-    projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-conflict-inspection-'));
+-    await fs.mkdir(path.join(projectRoot, 'src'), { recursive: true });
+-    await fs.writeFile(path.join(projectRoot, 'src', 'shared.ts'), 'export const value = 1;\n');
+-    paths = await nativeProjectPaths(projectRoot, '.');
+-  });
+-
+-  afterEach(async () => {
+-    await fs.rm(projectRoot, { recursive: true, force: true });
+-  });
+-
+-  async function change(name: string): Promise<NativeChangeState> {
+-    const created = await createNativeChange({
+-      paths,
+-      name,
+-      language: 'en',
+-      verificationProtocol: 'legacy-v1',
+-    });
+-    await fs.writeFile(path.join(nativeChangeDir(paths, name), 'brief.md'), brief);
+-    await fs.mkdir(path.join(nativeChangeDir(paths, name), 'specs'), { recursive: true });
+-    await fs.writeFile(
+-      path.join(nativeChangeDir(paths, name), 'specs', 'shared-capability.md'),
+-      '# Shared capability\n',
+-    );
+-    const state: NativeChangeState = {
+-      ...created,
+-      phase: 'build',
+-      approval: 'implicit',
+-      spec_changes: [
+-        {
+-          capability: 'shared-capability',
+-          operation: 'replace',
+-          base_hash: 'a'.repeat(64),
+-          source: 'specs/shared-capability.md',
+-        },
+-      ],
+-    };
+-    await writeNativeChange(paths, state);
+-    return state;
+-  }
+-
+-  it('collects current spec and content-addressed artifact overlap from one Native root', async () => {
+-    const alpha = await change('alpha-change');
+-    const beta = await change('beta-change');
+-    await fs.writeFile(path.join(projectRoot, 'src', 'shared.ts'), 'export const value = 2;\n');
+-    for (const state of [alpha, beta]) {
+-      const prepared = await prepareNativeBuildEvidence({
+-        paths,
+-        state,
+-        artifactRefs: ['src/shared.ts'],
+-      });
+-      await writeNativeChange(paths, {
+-        ...state,
+-        implementation_scope: prepared.scopeRef as NativeChangeState['implementation_scope'],
+-      });
+-    }
+-
+-    const radar = await inspectNativeConflictRadar(paths);
+-
+-    expect(radar).toMatchObject({
+-      changeCount: 2,
+-      relationshipCount: 1,
+-      counts: { definiteConflict: 1 },
+-      relationships: [
+-        {
+-          left: 'alpha-change',
+-          right: 'beta-change',
+-          classification: 'definite-conflict',
+-          signalCount: 2,
+-        },
+-      ],
+-    });
+-    await expect(inspectNativeChangeConflicts(paths, 'alpha-change')).resolves.toEqual({
+-      definiteConflictCount: 1,
+-      possibleOverlapCount: 0,
+-      findingCodes: ['native-change-conflict'],
+-    });
+-    const status = await inspectNativeStatus(paths, 'alpha-change', { details: true });
+-    expect(status).toMatchObject({
+-      migrationRequired: true,
+-      inspection: { codes: ['legacy-content-proof-removed'] },
+-    });
+-  });
+-
+-  it('fails closed when a visible change points at invalid scope evidence', async () => {
+-    const state = await change('invalid-scope');
+-    await writeNativeChange(paths, {
+-      ...state,
+-      implementation_scope:
+-        `runtime/evidence/scopes/${'f'.repeat(64)}.json` as NativeChangeState['implementation_scope'],
+-    });
+-
+-    await expect(inspectNativeConflictRadar(paths)).rejects.toThrow();
+-  });
+-
+-  it('does not traverse a symlinked change directory', async () => {
+-    await change('real-change');
+-    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-conflict-outside-'));
+-    try {
+-      await fs.symlink(outside, path.join(paths.changesDir, 'linked-change'), 'junction');
+-      const radar = await inspectNativeConflictRadar(paths);
+-      expect(radar.changeCount).toBe(1);
+-    } finally {
+-      await fs.rm(outside, { recursive: true, force: true });
+-    }
+-  });
+-});
+diff --git a/test/domains/comet-native/native-spec-rebase.test.ts b/test/domains/comet-native/native-spec-rebase.test.ts
+deleted file mode 100644
+--- a/test/domains/comet-native/native-spec-rebase.test.ts
++++ /dev/null
+@@ -1,232 +0,0 @@
+-import { promises as fs } from 'fs';
+-import os from 'os';
+-import path from 'path';
+-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+-
+-import { archiveNativeChange } from '../../../domains/comet-native/native-archive.js';
+-import { inspectNativeArchivePreflight } from '../../../domains/comet-native/native-archive-inspection.js';
+-import {
+-  createNativeChange,
+-  nativeChangeDir,
+-} from '../../../domains/comet-native/native-change.js';
+-import { sha256File } from '../../../domains/comet-native/native-hash.js';
+-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+-import {
+-  markNativeSpecRemoval,
+-  rebaseNativeSpecChanges,
+-} from '../../../domains/comet-native/native-specs.js';
+-import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+-import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
+-import { readyNativeArchivePreflight } from '../../helpers/native-archive.js';
+-import { advanceNativeChange } from '../../helpers/native-confirmed-transition.js';
+-
+-const brief = `# Outcome
+-Ship the feature.
+-# Scope
+-One capability.
+-# Non-goals
+-No migration.
+-# Acceptance examples
+-- The feature works.
+-# Constraints and invariants
+-Keep compatibility.
+-# Decisions
+-Use existing APIs.
+-# Open questions
+-
+-# Verification expectations
+-Run focused tests.
+-`;
+-
+-describe('Native spec conflict rebase', () => {
+-  let projectRoot: string;
+-  let paths: NativeProjectPaths;
+-
+-  beforeEach(async () => {
+-    projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-spec-rebase-'));
+-    paths = await nativeProjectPaths(projectRoot, '.');
+-    await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const feature = true;\n');
+-  });
+-
+-  afterEach(async () => {
+-    await fs.rm(projectRoot, { recursive: true, force: true });
+-  });
+-
+-  async function canonical(capability: string, source: string): Promise<string> {
+-    const file = path.join(paths.specsDir, capability, 'spec.md');
+-    await fs.mkdir(path.dirname(file), { recursive: true });
+-    await fs.writeFile(file, source);
+-    return file;
+-  }
+-
+-  async function advanceToArchive(name: string): Promise<string> {
+-    const changeDir = nativeChangeDir(paths, name);
+-    await advanceNativeChange({ paths, name, evidence: { summary: 'shape is ready' } });
+-    await fs.appendFile(path.join(projectRoot, 'feature.ts'), '// implementation\n');
+-    await advanceNativeChange({
+-      paths,
+-      name,
+-      evidence: { summary: 'build is ready', artifacts: ['feature.ts'] },
+-    });
+-    await fs.writeFile(
+-      path.join(changeDir, 'verification.md'),
+-      await nativeVerificationFixtureReport({ paths, name, evidenceRefs: ['feature.ts'] }),
+-    );
+-    await advanceNativeChange({
+-      paths,
+-      name,
+-      evidence: {
+-        summary: 'verification passed',
+-        verificationResult: 'pass',
+-        verificationReport: 'verification.md',
+-      },
+-    });
+-    return changeDir;
+-  }
+-
+-  async function verifyAgain(name: string): Promise<void> {
+-    await fs.appendFile(path.join(projectRoot, 'feature.ts'), '// rebased implementation\n');
+-    const evidence = {
+-      summary: 'rebased implementation confirmed',
+-      artifacts: ['feature.ts'],
+-      confirmed: true,
+-    } as const;
+-    const prepared = await advanceNativeChange({
+-      paths,
+-      name,
+-      evidence,
+-    });
+-    const build =
+-      prepared.next === 'manual'
+-        ? await advanceNativeChange({
+-            paths,
+-            name,
+-            evidence: {
+-              ...evidence,
+-              allowPartialScopeHash: prepared.preparedScope!.scopeHash,
+-              partialReason: 'The concurrent canonical edit is intentionally outside this change.',
+-            },
+-          })
+-        : prepared;
+-    expect(build.change).toMatchObject({ phase: 'verify', approval: 'confirmed' });
+-    await fs.writeFile(
+-      path.join(nativeChangeDir(paths, name), 'verification.md'),
+-      await nativeVerificationFixtureReport({ paths, name }),
+-    );
+-    await advanceNativeChange({
+-      paths,
+-      name,
+-      evidence: {
+-        summary: 'rebased verification passed',
+-        verificationResult: 'pass',
+-        verificationReport: 'verification.md',
+-      },
+-    });
+-  }
+-
+-  async function archiveReadyChange(name: string): Promise<void> {
+-    const now = new Date();
+-    const expectedPreflightHash = await readyNativeArchivePreflight({ paths, name, now });
+-    await archiveNativeChange({ paths, name, expectedPreflightHash, now });
+-  }
+-
+-  it('refreshes a replace base and reopens Archive to Build for re-verification', async () => {
+-    const canonicalFile = await canonical('authentication', 'old canonical\n');
+-    const state = await createNativeChange({
+-      paths,
+-      name: 'replace-conflict',
+-      language: 'en',
+-      verificationProtocol: 'legacy-v1',
+-    });
+-    const changeDir = nativeChangeDir(paths, state.name);
+-    await fs.writeFile(path.join(changeDir, state.brief), brief);
+-    const proposed = path.join(changeDir, 'specs', 'authentication', 'spec.md');
+-    await fs.mkdir(path.dirname(proposed), { recursive: true });
+-    await fs.writeFile(proposed, 'target canonical\n');
+-    await advanceNativeChange({ paths, name: state.name, evidence: { summary: 'shape ready' } });
+-    await fs.appendFile(path.join(projectRoot, 'feature.ts'), '// replacement implementation\n');
+-    await advanceNativeChange({
+-      paths,
+-      name: state.name,
+-      evidence: { summary: 'build ready', artifacts: ['feature.ts'] },
+-    });
+-    await fs.writeFile(
+-      path.join(changeDir, 'verification.md'),
+-      await nativeVerificationFixtureReport({
+-        paths,
+-        name: state.name,
+-        evidenceRefs: ['feature.ts'],
+-      }),
+-    );
+-    await advanceNativeChange({
+-      paths,
+-      name: state.name,
+-      evidence: {
+-        summary: 'verify ready',
+-        verificationResult: 'pass',
+-        verificationReport: 'verification.md',
+-      },
+-    });
+-    await fs.writeFile(canonicalFile, 'concurrent canonical\n');
+-    const concurrentHash = await sha256File(canonicalFile);
+-    await expect(inspectNativeArchivePreflight({ paths, name: state.name })).resolves.toMatchObject(
+-      {
+-        ready: false,
+-        findingCodes: expect.arrayContaining(['spec-base-conflict']),
+-      },
+-    );
+-
+-    const rebased = await rebaseNativeSpecChanges({
+-      paths,
+-      name: state.name,
+-      summary: 'Re-read the concurrent authentication spec',
+-    });
+-    expect(rebased).toMatchObject({
+-      phase: 'build',
+-      verification_result: 'pending',
+-      verification_report: null,
+-      implementation_scope: null,
+-      verification_evidence: null,
+-      partial_allowance: null,
+-      spec_changes: [{ operation: 'replace', base_hash: concurrentHash }],
+-    });
+-    await verifyAgain(state.name);
+-    await archiveReadyChange(state.name);
+-    expect(await fs.readFile(canonicalFile, 'utf8')).toBe('target canonical\n');
+-  });
+-
+-  it('refreshes a remove base and preserves the explicit removal intent', async () => {
+-    const canonicalFile = await canonical('legacy-auth', 'legacy v1\n');
+-    await createNativeChange({
+-      paths,
+-      name: 'remove-conflict',
+-      language: 'en',
+-      verificationProtocol: 'legacy-v1',
+-    });
+-    await fs.writeFile(path.join(nativeChangeDir(paths, 'remove-conflict'), 'brief.md'), brief);
+-    await markNativeSpecRemoval(paths, 'remove-conflict', 'legacy-auth');
+-    const changeDir = await advanceToArchive('remove-conflict');
+-    await fs.writeFile(canonicalFile, 'legacy v2 from another change\n');
+-    const concurrentHash = await sha256File(canonicalFile);
+-    await expect(
+-      inspectNativeArchivePreflight({ paths, name: 'remove-conflict' }),
+-    ).resolves.toMatchObject({
+-      ready: false,
+-      findingCodes: expect.arrayContaining(['spec-base-conflict']),
+-    });
+-
+-    const rebased = await rebaseNativeSpecChanges({
+-      paths,
+-      name: 'remove-conflict',
+-      summary: 'Re-read the concurrent legacy spec',
+-    });
+-    expect(rebased).toMatchObject({
+-      phase: 'build',
+-      spec_changes: [{ operation: 'remove', base_hash: concurrentHash }],
+-    });
+-    expect(changeDir).toContain('remove-conflict');
+-    await verifyAgain('remove-conflict');
+-    await archiveReadyChange('remove-conflict');
+-    await expect(fs.access(canonicalFile)).rejects.toMatchObject({ code: 'ENOENT' });
+-  });
+-});

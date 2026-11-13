@@ -1,5 +1,7 @@
 # Classic SDK execution methods
 
+Follow [ordinary commands and checks](../../comet/reference/platform-execution.md): use platform tools, inspect original tasks and side effects, judge result applicability, and submit actual reports. Comet does not repeat checks or maintain ordinary-command content snapshots, process supervision, or recovery. Preserve chosen methods, approvals, plans, and complete acceptance.
+
 Read only the current phase when `runtimeFormat: sdk`. The main Skill and latest continuation supply commands, Actions, Waits, and templates; this reference defines the work and completion conditions.
 
 Use current configuration.language for artifacts and external Skill inputs. At phase entry, when receiving work as a new Agent, or after context recovery, first follow the [task context protocol](scripts.md#task-context-and-artifact-language) using the current continuation or claimed Action's `contextRequest`. Pass the phase, task scope, actual workspace and valid configuration when dispatching child tasks. Preserve saved facts and valid evidence.
@@ -44,6 +46,8 @@ Keep brainstorm-summary.md current, marking candidates separately from confirmed
 After approval, update the single Design Doc: reuse its recorded reference, otherwise prefer the change's design.md. If project convention requires a separate document, the OpenSpec design contains only a summary and link. Frontmatter contains only `comet_change: <change-name>`, `role: technical-design`, and `canonical_spec: openspec`. Cover the solution, tradeoffs, risks, and testing, matching the approved proposal before submission. Resume from saved summaries, sources, and the current Wait; complete only missing work.
 
 ## Build
+
+Use platform tools for TDD, debugging, and final checks, retaining verifiable results.
 
 Before implementing with the chosen strategy, check its planning, implementation, TDD, and review capabilities under [host capability check](../../comet/reference/host-check.md). Reuse known available capabilities; do not defer discovering a missing required method until implementation.
 
@@ -107,7 +111,7 @@ Write actual results, evidence, independent review, unexecuted checks, and accep
 
 ## Check reuse
 
-For deterministic local checks, add `--local` before `--` in the main Skill's Guard command. Runtime returns reused only when argv, cwd, inputs, environment, timeout, original execution receipt, and log match. Build and Verify can reuse the identical full command. Omit the flag for external or nonrepeatable checks. Recover the original execution and receipt; investigate unknown results before repeating side effects. Runtime reruns changed inputs; remembered conversation claims cannot replace evidence.
+Follow [ordinary commands and checks](../../comet/reference/platform-execution.md): use platform tools, inspect original tasks and side effects, judge result applicability, and submit actual reports. Comet does not repeat checks or maintain ordinary-command content snapshots, process supervision, or recovery. Keep TDD RED and local debugging. Reuse does not change review choices or replace full acceptance.
 
 ## Preset scope
 

@@ -6,45 +6,44 @@ import { classicCommandHelp } from '../../../domains/comet-classic/classic-cli-h
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 
 describe('Classic operational help', () => {
-  it('explains execution, reuse, defaults and machine output for check run', () => {
+  it('explains platform execution and the non-executing legacy check entry', () => {
     const help = classicCommandHelp('check', ['run', '--help'])!;
     for (const text of [
-      '300000',
-      '3600000',
-      'project root',
-      'invocation directory',
-      'not a location switch',
-      'Examples:',
-      'data.exitCode',
-      '124',
-      '70',
+      'do not execute or replay',
+      'Agent platform tools',
+      'timeout, cancellation and process cleanup',
+      'data.executed=false',
       'comet check rerun',
-      'latest Runtime-recorded argv',
+      'The Agent judges which checks apply',
+      '--checks',
+      'not that a check passed',
     ]) {
       expect(help).toContain(text);
     }
   });
 
-  it('separates manual attestations from executed evidence', () => {
+  it('records actual platform reports without executing their command text', () => {
     const help = classicCommandHelp('state', ['record-check', '--help'])!;
     expect(help).toContain('does not execute');
-    expect(help).toContain('cannot satisfy');
+    expect(help).toContain('failed report cannot advance');
+    expect(help).toContain('SDK Build/Verify');
     expect(help).not.toContain('task-checkoff');
   });
 
-  it('explains selective recovery revalidation', () => {
+  it('explains business recovery without process recovery or command replay', () => {
     const help = classicCommandHelp('state', ['check', '--help'])!;
-    expect(help).toContain('invalidates');
-    expect(help).toContain('revalidates reusable local evidence');
+    expect(help).toContain('original business state, reports and approvals');
+    expect(help).toContain('does not replay commands or recover processes');
     expect(help).toContain('cold recovery');
     expect(help).not.toContain('record-check');
   });
 
-  it('does not describe guard preview as read-only', () => {
+  it('keeps guard preview read-only and requires actual reports for advancement', () => {
     const help = classicCommandHelp('guard', ['--help'])!;
-    expect(help).toContain('may execute');
-    expect(help).toContain('does not consume single-use');
-    expect(help).toContain('consumes it atomically');
+    expect(help).toContain('preview is read-only');
+    expect(help).toContain('never executes a detected build');
+    expect(help).toContain('Apply requires the current tasks, user approvals and accepted reports');
+    expect(help).not.toContain('--local');
   });
 
   it('leaves child help untouched', () => {

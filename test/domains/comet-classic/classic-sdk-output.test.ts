@@ -71,32 +71,36 @@ describe('Classic next-step source projection', () => {
         proposalHash: 'approved-open-hash',
         choices: ['approved', 'rejected'],
         results: {},
-        decision: { id: 'actual-reply', choice: 'approved', proposalHash: 'approved-open-hash' },
+        decision: {
+          id: 'actual-reply',
+          choice: 'approved',
+          proposalHash: 'approved-open-hash',
+        },
       },
     ];
     run.actionContexts['action-1'] = {
       sequence: 2,
-      results: { 'full.open.confirm': { sequence: 1, value: { approved: true } } },
+      results: {
+        'full.open.confirm': { sequence: 1, value: { approved: true } },
+      },
     };
     const before = structuredClone(run);
     const continuation = classicSdkContinuation(run, root, 'demo');
     expect(continuation).toMatchObject({
       mode: 'execute',
-      request: {
-        operation: 'execute',
-        runId: 'demo',
-        expectedRevision: 7,
-        actionId: 'action-1',
-        executorId: 'comet-classic-check',
+      commandArgs: ['comet', 'state', 'next', 'demo', '--continue', '--json'],
+      current: {
+        actions: [{ id: 'action-1', inputHash: run.actions[0].inputHash }],
       },
     });
     const serialized = JSON.stringify(continuation);
-    expect(serialized.indexOf('"request":')).toBeLessThan(
+    expect(serialized.indexOf(JSON.stringify(continuation.commandArgs))).toBeLessThan(
       serialized.indexOf('LARGE_APPROVAL_CONTEXT_'),
     );
     expect(serialized).toContain('LARGE_APPROVAL_CONTEXT_');
-    expect(classicSdkNextAction(run)?.instruction).toContain('data.continuation.request');
-    expect(continuation.instruction).toContain('data.continuation.request');
+    expect(classicSdkNextAction(run)?.instruction).toContain('data.continuation.commandArgs');
+    expect(continuation.instruction).toContain('Agent 平台检查报告');
+    expect(continuation.instruction).not.toContain('data.continuation.request');
     expect(run).toEqual(before);
   });
 
@@ -149,17 +153,24 @@ describe('Classic next-step source projection', () => {
     expect(build.completion?.instruction).toContain('不得重复 task-complete');
   });
 
-  it('keeps fresh-check requirements visible before opting into local reuse', () => {
-    const run = fixture('full.build.check');
+  it('keeps actual platform report requirements visible without local reuse switches', () => {
+    const run = fixture('full.build.execute', 'comet-build');
     const before = structuredClone(run);
     const continuation = classicSdkContinuation(run, root, 'demo');
-    const next = classicSdkNextAction(run);
-    expect(next).toMatchObject({ instruction: continuation.instruction });
-    expect(continuation.instruction).toContain('--local');
-    expect(continuation.instruction).toContain('不是执行位置');
-    expect(continuation.instruction).toContain('每阶段真实执行');
-    expect(continuation.instruction).toContain('禁止');
-    expect(continuation.commandArgs).not.toContain('--local');
+    expect(continuation.completion?.commandArgs).toEqual([
+      'comet',
+      'state',
+      'complete-build',
+      'demo',
+      '--checks',
+      '<checks-json-file>',
+      '--json',
+    ]);
+    expect(continuation.completion?.instruction).toContain('平台执行检查');
+    expect(continuation.completion?.instruction).toContain('实际 checks');
+    expect(continuation.completion?.instruction).toContain('checksReason');
+    expect(continuation.completion?.commandArgs).not.toContain('--local');
+    expect(continuation.commandArgs).toBeNull();
     expect(run).toEqual(before);
   });
 
@@ -261,29 +272,48 @@ describe('Classic next-step source projection', () => {
   );
 
   it.each(['full', 'hotfix', 'tweak'])(
-    'maps %s check tools to executable argv, never a Skill',
+    'maps %s platform reports to Skill completion without dispatching retired check tools',
     (profile) => {
-      const run = fixture(`${profile}.build.check`);
+      // SIMULATED historical projection: retired tools cannot acquire a new executable mapping.
+      const old = fixture(profile + '.build.check');
+      const frozen = structuredClone(old);
+      const retired = classicSdkContinuation(old, root, 'demo');
+      expect(retired).toMatchObject({
+        mode: 'reconcile',
+        commandArgs: null,
+        stepId: profile + '.build.check',
+        run: { id: 'demo', revision: 7 },
+      });
+      expect(retired.skill).toBeUndefined();
+      expect(old).toEqual(frozen);
+      const run = fixture(profile + '.build.execute', 'comet-build');
+      run.workflow.id = 'comet-classic-' + profile;
+      run.state = { ...(run.state as object), workflow: profile };
+      run.actions[0] = createRuntimeAction({
+        ...run.actions[0],
+        input: { input: { change: 'demo' }, outputs: {} },
+      });
       const continuation = classicSdkContinuation(run, root, 'demo');
       expect(continuation).toMatchObject({
         mode: 'execute',
         cwd: root,
-        stepId: `${profile}.build.check`,
-        commandArgs: [
-          'comet',
-          'check',
-          'run',
-          'demo',
-          'build',
-          '--json',
-          '--',
-          '<program>',
-          '<args...>',
-        ],
-        requiredInputs: [expect.any(String)],
+        stepId: profile + '.build.execute',
+        commandArgs: null,
+        completion: {
+          commandArgs: [
+            'comet',
+            'state',
+            'complete-build',
+            'demo',
+            '--checks',
+            '<checks-json-file>',
+            '--json',
+          ],
+          requiredInputs: [expect.any(String)],
+        },
         run: { id: 'demo', revision: 7 },
       });
-      expect(continuation.skill).toBeUndefined();
+      expect(continuation.skill).toBe(profile === 'full' ? 'comet-build' : 'comet-' + profile);
       expect(continuation.current.actions[0]).not.toHaveProperty('input');
       expect(continuation.current.actions[0].inputHash).toBe(run.actions[0].inputHash);
       expect(classicSdkRunSummary(run, true).actions[0].input).toEqual(run.actions[0].input);
@@ -429,9 +459,21 @@ describe('Classic next-step source projection', () => {
   it('separates real Skill work from its completion command', () => {
     const run = fixture('full.build.execute', 'comet-build');
     const result = classicSdkContinuation(run, root, 'demo');
-    expect(result).toMatchObject({ mode: 'execute', skill: 'comet-build', commandArgs: null });
+    expect(result).toMatchObject({
+      mode: 'execute',
+      skill: 'comet-build',
+      commandArgs: null,
+    });
     expect(result.completion).toMatchObject({
-      commandArgs: ['comet', 'state', 'complete-build', 'demo', '--json'],
+      commandArgs: [
+        'comet',
+        'state',
+        'complete-build',
+        'demo',
+        '--checks',
+        '<checks-json-file>',
+        '--json',
+      ],
       requiredInputs: [expect.any(String)],
     });
     expect(result.completion?.instruction).toContain('真实工作完成');

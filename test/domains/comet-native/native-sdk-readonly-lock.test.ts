@@ -19,27 +19,22 @@ import {
 import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
 import { readNativeSdkRunRecord } from '../../../domains/comet-native/native-sdk-state-store.js';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
-import { createHash } from 'node:crypto';
-import { createLegacyNativeSdkChange } from '../../helpers/native-legacy-sdk-change.js';
+import { createFileRuntimeStore, type WorkflowRun } from '../../../domains/engine/runtime.js';
 
 const roots: string[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
-async function fixture(legacyProjection = false) {
+async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-sdk-readonly-'));
   roots.push(root);
   await fs.mkdir(path.join(root, '.git'));
   await writeProjectConfig(root, defaultProjectConfig('docs', 'en'));
   await ensureNativeDirectories(await nativeProjectPaths(root, 'docs'));
   const name = 'lock-test';
-  if (legacyProjection) {
-    await createLegacyNativeSdkChange(root, name);
-  } else {
-    const created = await nativeNewCommand([name], root);
-    expect(created.exitCode).toBe(0);
-  }
+  const created = await nativeNewCommand([name], root);
+  expect(created.exitCode).toBe(0);
   const lock = path.join(
     resolveWorkspaceRuntimeRootSync(root),
     'state-projections/native',
@@ -66,81 +61,12 @@ async function files(root: string): Promise<Record<string, string>> {
     }
   }
   await walk(root);
+  // The authoritative Runtime is isolated outside projectRoot; read-only checks must preserve it too.
+  await walk(resolveWorkspaceRuntimeRootSync(root));
   return result;
 }
 
-describe('Native SDK read-only projection lock diagnostics', () => {
-  it('diagnoses and repairs the original SDK store writer lock without changing Run history', async () => {
-    const { root, name, request } = await fixture();
-    const directory = path.join(
-      resolveWorkspaceRuntimeRootSync(root),
-      'sdk-runs/native/.runtime-store-v2',
-      createHash('sha256').update(JSON.stringify(name)).digest('hex'),
-    );
-    const file = path.join(directory, '.write.lock');
-    await fs.mkdir(directory, { recursive: true });
-    await fs.writeFile(file, '{interrupted-writer');
-    const original = await readNativeSdkRunRecord(root, name);
-    const action = original!.actions.find(({ status }) => status === 'pending')!;
-    await fs.writeFile(
-      request,
-      JSON.stringify({
-        operation: 'claim',
-        runId: name,
-        actionId: action.id,
-        attempt: action.attempt,
-        inputHash: action.inputHash,
-        executorId: 'native-host',
-        sessionId: 'writer-session',
-        claimToken: 'writer-session',
-      }),
-    );
-    const refused = await runtimeDispatchCommand({
-      application: 'native',
-      projectRoot: root,
-      request,
-    });
-    expect(refused.response).toMatchObject({
-      status: 'failed',
-      recovery: { code: 'lock-owner-unknown', affectedPaths: [file] },
-    });
-    const diagnosed = await runNativeCli(['doctor', name, '--project-root', root, '--json']);
-    const data = JSON.parse(diagnosed.stdout!).data;
-    expect(data).toMatchObject({
-      healthy: false,
-      recovery: { code: 'lock-owner-unknown', affectedPaths: [file] },
-    });
-    const repaired = await runNativeCli(data.recovery.recoveryArgs.slice(2));
-    expect(repaired.exitCode, repaired.stdout ?? repaired.stderr).toBe(0);
-    expect(await readNativeSdkRunRecord(root, name)).toEqual(original);
-    await expect(fs.access(file)).rejects.toMatchObject({ code: 'ENOENT' });
-  });
-
-  it('executes the public recovery command for the exact uncertain lock and preserves the original Run', async () => {
-    const { root, name, lock } = await fixture();
-    await fs.writeFile(lock, '{partial');
-    const original = await readNativeSdkRunRecord(root, name);
-    const diagnosed = await runNativeCli(['doctor', name, '--project-root', root, '--json']);
-    expect(diagnosed.exitCode).toBe(65);
-    const data = JSON.parse(diagnosed.stdout!).data as {
-      recovery: {
-        code: string;
-        diagnosticArgs: string[];
-        recoveryArgs: string[];
-        preconditions: string[];
-      };
-    };
-    expect(data.recovery).toMatchObject({ code: 'lock-owner-unknown' });
-    expect(data.recovery.preconditions.length).toBeGreaterThan(0);
-    expect(data.recovery.recoveryArgs).toContain('--lock-token');
-    const repaired = await runNativeCli(data.recovery.recoveryArgs.slice(2));
-    expect(repaired.exitCode, repaired.stdout ?? repaired.stderr).toBe(0);
-    expect(await readNativeSdkRunRecord(root, name)).toEqual(original);
-    await expect(fs.access(lock)).rejects.toMatchObject({ code: 'ENOENT' });
-    const repeated = await runNativeCli(['doctor', name, '--project-root', root, '--json']);
-    expect(JSON.parse(repeated.stdout!).data).toMatchObject({ healthy: true });
-  });
-
+describe('Native SDK read-only history and checkpoint recovery', () => {
   it.each([
     ['empty', '', 'malformed'],
     ['partial', '{partial-owner:', 'malformed'],
@@ -157,12 +83,13 @@ describe('Native SDK read-only projection lock diagnostics', () => {
         hostname: os.hostname(),
         createdAt: Date.now(),
       }),
-      'stale',
+      'unknown',
     ],
   ])(
-    'status and public runtime inspect never acquire or mutate a %s lock',
-    async (_kind, content, expected) => {
+    'status and public runtime inspect ignore a retired %s lock without writing',
+    async (_kind, content) => {
       const { root, name, lock, request } = await fixture();
+      await fs.mkdir(path.dirname(lock), { recursive: true });
       await fs.writeFile(lock, content);
       const before = await files(root);
       // 直接拒绝获取写锁，避免并发调度和磁盘负载影响固定耗时断言。
@@ -180,61 +107,12 @@ describe('Native SDK read-only projection lock diagnostics', () => {
       expect(inspect.exitCode, JSON.stringify(inspect.response)).toBe(0);
       const doctor = await nativeDoctorCommand([name], root);
       expect(doctor.data).toMatchObject({
-        healthy: false,
-        findings: [{ code: `sdk-projection-lock-${expected}` }],
+        healthy: true,
       });
       expect(acquireLock).not.toHaveBeenCalled();
       expect(await files(root)).toEqual(before);
     },
   );
-
-  it('does not steal an uncertain lock during ordinary repair and requires its exact confirmed token', async () => {
-    const { root, name, lock } = await fixture();
-    await fs.writeFile(lock, '{partial');
-    const before = await files(root);
-    const doctor = await nativeDoctorCommand([name, '--repair'], root);
-    const finding = (
-      doctor.data as { findings: Array<{ code: string; token: string; repairCommand: string }> }
-    ).findings[0];
-    expect(finding.code).toBe('sdk-projection-lock-malformed');
-    expect(finding.repairCommand).toContain('--repair --confirmed --lock-token');
-    expect(await files(root)).toEqual(before);
-    const run = await readNativeSdkRunRecord(root, name);
-    const repaired = await nativeDoctorCommand(
-      [name, '--repair', '--confirmed', '--lock-token', finding.token],
-      root,
-    );
-    expect(repaired.data).toMatchObject({ healthy: true, repaired: true });
-    expect(await readNativeSdkRunRecord(root, name)).toEqual(run);
-    expect((await nativeStatusCommand([name], root)).exitCode).toBe(0);
-  });
-
-  it('reports abandoned coordinator tickets even if the projection lock is missing', async () => {
-    const { root, name, lock } = await fixture();
-    const ticket = path.join(`${lock}.contenders`, 'abandoned.ticket');
-    await fs.writeFile(
-      ticket,
-      JSON.stringify({
-        pid: 1,
-        hostname: 'another-host',
-        nonce: 'abandoned',
-        createdAt: 1,
-        ticket: 1,
-      }),
-    );
-    const before = await files(root);
-    const doctor = await nativeDoctorCommand([name], root);
-    const findings = (
-      doctor.data as { healthy: boolean; findings: Array<{ code: string; token: string }> }
-    ).findings;
-    expect(findings[0].code).toBe('sdk-projection-coordinator-unknown');
-    expect(await files(root)).toEqual(before);
-    const repaired = await nativeDoctorCommand(
-      [name, '--repair', '--confirmed', '--lock-token', findings[0].token],
-      root,
-    );
-    expect(repaired.data).toMatchObject({ healthy: true, repaired: true });
-  });
 
   it('diagnoses a missing Run without restoring it, then explicit repair preserves its revision', async () => {
     const { root, name } = await fixture();
@@ -246,9 +124,9 @@ describe('Native SDK read-only projection lock diagnostics', () => {
     await expect(nativeStatusCommand([name], root)).rejects.toThrow(/checkpoint recovery/);
     const doctor = await nativeDoctorCommand([name], root);
     expect(doctor.data).toMatchObject({ healthy: false });
-    expect(JSON.stringify(doctor.data)).toContain(
-      `comet native doctor ${name} --repair --confirmed`,
-    );
+    expect(doctor.data).toMatchObject({
+      recovery: { commandArgs: ['comet', 'native', 'doctor', name, '--repair', '--confirmed'] },
+    });
     expect(await files(root)).toEqual(before);
     const repaired = await nativeDoctorCommand([name, '--repair', '--confirmed'], root);
     expect(repaired.data).toMatchObject({ healthy: true, repaired: true });
@@ -260,34 +138,38 @@ describe('Native SDK read-only projection lock diagnostics', () => {
     });
   });
 
-  it('reports missing projection recovery without creating a marker during status or doctor', async () => {
-    const { root, name } = await fixture(true);
+  it('reads the authoritative Run without requiring or recreating a retired projection marker', async () => {
+    const { root, name } = await fixture();
     const marker = path.join(
       resolveWorkspaceRuntimeRootSync(root),
       'state-projections/native',
-      `${name}.json`,
+      name + '.json',
     );
-    await fs.rm(marker);
+    await fs.rm(marker, { force: true });
+    const original = await readNativeSdkRunRecord(root, name);
     const before = await files(root);
-    await expect(nativeStatusCommand([name], root)).rejects.toThrow(/marker needs recovery/);
-    expect((await nativeDoctorCommand([name], root)).data).toMatchObject({ healthy: false });
-    expect(await files(root)).toEqual(before);
-    expect((await nativeDoctorCommand([name, '--repair'], root)).data).toMatchObject({
-      healthy: true,
-    });
     expect((await nativeStatusCommand([name], root)).exitCode).toBe(0);
+    expect((await nativeDoctorCommand([name], root)).data).toMatchObject({
+      healthy: true,
+      repaired: false,
+    });
+    expect(await readNativeSdkRunRecord(root, name)).toEqual(original);
+    expect(await files(root)).toEqual(before);
+    await expect(fs.access(marker)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it.skipIf(process.platform === 'win32')(
-    'rejects unsafe projection-lock paths without writing outside the project',
+    'ignores an unsafe retired projection-lock path without writing its target',
     async () => {
       const { root, name, lock } = await fixture();
       const target = path.join(root, 'untouched');
       await fs.writeFile(target, 'keep');
+      await fs.mkdir(path.dirname(lock), { recursive: true });
       await fs.symlink(target, lock);
       const before = await files(root);
       const doctor = await nativeDoctorCommand([name, '--repair'], root);
-      expect(doctor.data).toMatchObject({ healthy: false });
+      expect(doctor.data).toMatchObject({ healthy: true });
+      expect(await fs.readFile(target, 'utf8')).toBe('keep');
       expect(await files(root)).toEqual(before);
     },
   );
@@ -302,7 +184,7 @@ describe('Native SDK read-only projection lock diagnostics', () => {
       JSON.stringify({
         operation: 'start',
         runId: name,
-        workflow: { id: 'comet-native', version: '1' },
+        workflow: { id: 'comet-native', version: '4' },
         input: { name, artifactRootRef: 'docs' },
         initialState: createNativePortableState({
           name,
@@ -347,5 +229,43 @@ describe('Native SDK read-only projection lock diagnostics', () => {
     );
     expect(await readNativeSdkRunRecord(root, name)).toEqual(original);
     expect((await nativeStatusCommand([name], root)).exitCode).toBe(0);
+  });
+  it('does not register a root owner for a stored Child Run during explicit Doctor repair', async () => {
+    const { root, name } = await fixture();
+    const raw = createFileRuntimeStore<WorkflowRun>({
+      rootDir: path.join(resolveWorkspaceRuntimeRootSync(root), 'sdk-runs/native'),
+    });
+    const original = (await raw.read(name))!;
+    // SIMULATED stored Child lineage at the owner-recovery boundary; no execution receipt or approval is fabricated.
+    expect(
+      await raw.compareAndSwap(name, original.revision, {
+        ...original,
+        revision: original.revision + 1,
+        lineage: ['parent-run'],
+      }),
+    ).toBe(true);
+    await fs.rm(path.join(resolveWorkspaceRuntimeRootSync(root), 'change-owners'), {
+      recursive: true,
+    });
+    const child = await raw.read(name),
+      before = await files(root);
+    const result = await runNativeCli([
+      'doctor',
+      name,
+      '--repair',
+      '--confirmed',
+      '--project-root',
+      root,
+      '--json',
+    ]);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stdout).toContain('original parent');
+    expect(await raw.read(name)).toEqual(child);
+    expect(await files(root)).toEqual(before);
+    await expect(
+      fs.access(
+        path.join(resolveWorkspaceRuntimeRootSync(root), 'change-owners/native', name + '.json'),
+      ),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 });

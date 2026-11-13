@@ -1,0 +1,299 @@
+{
+  "schema": "comet.eval.sample-selection.v1",
+  "seed": 20261112,
+  "selectedBeforeModelExecution": true,
+  "createdAt": "2026-11-11T17:53:04.028516+00:00",
+  "repetitions": 3,
+  "treatments": ["native", "goal"],
+  "totalModelSamples": 96,
+  "datasets": {
+    "workbuddy-code": {
+      "dataset": {
+        "id": "workbuddy-code",
+        "version": "1.0",
+        "revision": "625b2233093ae4f23e76be28c1f341d41cc70373",
+        "tasks": 80,
+        "source": "https://huggingface.co/datasets/tencent/workbuddy-bench",
+        "license": "Tencent WorkBuddy Bench License",
+        "format": "harbor",
+        "subset": "code"
+      },
+      "root": "D:\\Project\\Comet\\.comet\\eval\\cache\\datasets\\workbuddy-code",
+      "supportedTasks": 72,
+      "totalCatalogTasks": 80,
+      "excludedDebugTasks": ["bug_fix-easy-a_crash_in_local"],
+      "provenance": {
+        "dataset": "workbuddy-code",
+        "revision": "3e8ad839685c589d83a1dd60fe2d15eabb75f27a",
+        "url": "https://huggingface.co/datasets/tencent/workbuddy-bench/resolve/3e8ad839685c589d83a1dd60fe2d15eabb75f27a/wb-bench-code-v1.0.tar.gz",
+        "archiveSha256": "f60394e44341f45f66af17ba69efc51ceadc61f17c08aa89e4af35b51f6f34e1",
+        "kind": "download-receipt",
+        "verifiedRelease": false
+      },
+      "tasks": [
+        {
+          "id": "bug_fix-easy-invalid_filterwarnings_regex_error",
+          "category": "bug-fix",
+          "difficulty": "easy",
+          "workdir": "/workspace",
+          "contentHash": "sha256:b3885b22e38b369f17c46f392ba90625dcebf5c44ebc5bf8d3eb8e0e9ff66224",
+          "instructionHash": "sha256:2ad58d36ffb7b2e74ff6ff3b8130065b6d21cae9ab0f8dcd7789b7d0a591ae5c",
+          "selectionMethod": "Pre-model Windows workspace compatibility amendment; the only other candidate in the same initial category/difficulty pool",
+          "originalSelection": "bug_fix-easy-filtered_relation_queryset_arg",
+          "selectionPool": [
+            "bug_fix-easy-filtered_relation_queryset_arg",
+            "bug_fix-easy-invalid_filterwarnings_regex_error"
+          ]
+        },
+        {
+          "id": "feature-easy-lru_caching_to_tzoffset",
+          "category": "feature",
+          "difficulty": "easy",
+          "workdir": "/workspace",
+          "contentHash": "sha256:2e1cf7d880561e0e0802c65f37911c326ed7567ab0d7c706258538623e2fcf1f",
+          "instructionHash": "sha256:5c8f8c85846df4f28a53c522eebe341e027d446d180df89c34feab2dc26780a1",
+          "selectionPool": [
+            "feature-easy-add_python_dotenv_disabled",
+            "feature-easy-dictofitems_type_for_configura",
+            "feature-easy-lru_caching_to_tzoffset"
+          ]
+        },
+        {
+          "id": "refactor-medium-config_validation_errors",
+          "category": "refactor",
+          "difficulty": "medium",
+          "workdir": "/workspace",
+          "contentHash": "sha256:6c1af3b50026ec2c92864efcba30b31bf811a3d6ed6fae925f7c6e967c079f67",
+          "instructionHash": "sha256:c84f20765083208b20554c42a679c71c46f4ecd61a9a5aa9f8ce07e56ef54193",
+          "selectionPool": [
+            "refactor-medium-config_validation_errors",
+            "refactor-medium-request_merge_path"
+          ]
+        },
+        {
+          "id": "reliability-medium-pool_release",
+          "category": "reliability",
+          "difficulty": "medium",
+          "workdir": "/workspace",
+          "contentHash": "sha256:e6704bfeb260397308748986a069410671ea1029b6cef9fdc68ec0fa953f50b6",
+          "instructionHash": "sha256:b8a9734747163e1a48daddef8e7545345a3d39142cc1dd2143728e87877a2361",
+          "selectionPool": ["reliability-medium-pool_release"]
+        },
+        {
+          "id": "data_reporting-medium-audit_event_export",
+          "category": "data-reporting",
+          "difficulty": "medium",
+          "workdir": "/workspace",
+          "contentHash": "sha256:99efae0a0be082ae4ae9f64234ef32642292e1b70ee101f6238066bbcc3eef8c",
+          "instructionHash": "sha256:8e0376447358219e89bb93e00fe3f646e47e7913f6386a4d5aacc885260e34c1",
+          "selectionPool": [
+            "data_reporting-medium-audit_event_export",
+            "data_reporting-medium-customer_health_export"
+          ]
+        },
+        {
+          "id": "api_contract-hard-markup_errors",
+          "category": "api-contract",
+          "difficulty": "hard",
+          "workdir": "/workspace",
+          "contentHash": "sha256:c0841f42c1bdf90fef8a3f5252cb8e35c5251807c3db8fcf72b365ac2ccc85bc",
+          "instructionHash": "sha256:80a24e4f2893cfefa58f35bf7995dd6058dedbd7835f9d2ab523bdca4ddfadc7",
+          "selectionPool": [
+            "api_contract-hard-markup_errors",
+            "api_contract-hard-openapi_params",
+            "api_contract-hard-token_errors",
+            "api_contract-hard-validation_errors"
+          ]
+        },
+        {
+          "id": "security_hardening-hard-archive_path_traversal",
+          "category": "security-hardening",
+          "difficulty": "hard",
+          "workdir": "/workspace",
+          "contentHash": "sha256:62768597404b587f7c3aa8d3cfb24d0c0bea3c3704ee1e7cb584f00e5d6e29fb",
+          "instructionHash": "sha256:d2d339643113907a177923b7e782ded97e0a6b39cd5fbee4526bd3e842e67268",
+          "selectionPool": [
+            "security_hardening-hard-archive_path_traversal",
+            "security_hardening-hard-proxy_auth_header_leak",
+            "security_hardening-hard-redirect_validation"
+          ]
+        },
+        {
+          "id": "product_analytics-hard-day7_retention",
+          "category": "product-analytics",
+          "difficulty": "hard",
+          "workdir": "/workspace",
+          "contentHash": "sha256:df428e8245209f4bd085d33a9d0ffe169b10083defa33d766c3602031462704e",
+          "instructionHash": "sha256:c7310a8cdc7cc0b3cda7d72f1447f300b9fa973a19de1690d7112a4a5f858ab0",
+          "selectionPool": [
+            "product_analytics-hard-ab_test_analysis",
+            "product_analytics-hard-day7_retention",
+            "product_analytics-hard-signup_funnel"
+          ]
+        }
+      ]
+    },
+    "skillsbench": {
+      "dataset": {
+        "id": "skillsbench",
+        "version": "1.1",
+        "revision": "b63b7b2850226b6aa4fb5929a8c1ac7bc4d9a6af",
+        "tasks": 87,
+        "source": "https://github.com/benchflow-ai/skillsbench",
+        "license": "Apache-2.0",
+        "format": "benchflow",
+        "subset": "tasks"
+      },
+      "root": "D:\\Project\\Comet\\.comet\\eval\\cache\\datasets\\skillsbench",
+      "supportedTasks": 79,
+      "totalCatalogTasks": 87,
+      "excludedDebugTasks": ["dialogue-parser"],
+      "provenance": {
+        "dataset": "skillsbench",
+        "revision": "b63b7b2850226b6aa4fb5929a8c1ac7bc4d9a6af",
+        "url": "https://codeload.github.com/benchflow-ai/skillsbench/tar.gz/b63b7b2850226b6aa4fb5929a8c1ac7bc4d9a6af",
+        "archiveSha256": "525bf1559a1eb3511ca2daaf2a307e2dd882efd646c130a730de0f9f37da34d7",
+        "kind": "download-receipt",
+        "verifiedRelease": false
+      },
+      "tasks": [
+        {
+          "id": "syzkaller-ppdev-syzlang",
+          "category": "cybersecurity",
+          "difficulty": "medium",
+          "workdir": "/root",
+          "contentHash": "sha256:e88abc173a78e80584a716f017a7178ab268d940fdf29626d63819bf4e8ab072",
+          "instructionHash": "sha256:baac3916b2b5d4daec973a6a1ad0a2e1f6fbfd5af3d44da1218dfd70053aa361",
+          "selectionMethod": "Pre-model host-compatibility amendment; same category and difficulty; explicit Ubuntu base image",
+          "originalSelection": "software-dependency-audit"
+        },
+        {
+          "id": "invoice-fraud-detection",
+          "category": "finance-economics",
+          "difficulty": "hard",
+          "workdir": "/root",
+          "contentHash": "sha256:27f846fedb8e24692b35e4933fe70932297d94545f90fedce0254849255510f0",
+          "instructionHash": "sha256:2b5e1af595ef49026a643ce9ae01f9b63b511a1f420814e1865f75a826c982ad",
+          "selectionPool": [
+            "financial-modeling-qa",
+            "invoice-fraud-detection",
+            "sec-financial-report",
+            "shock-analysis-supply"
+          ]
+        },
+        {
+          "id": "manufacturing-codebook-normalization",
+          "category": "industrial-physical-systems",
+          "difficulty": "medium",
+          "workdir": "/app",
+          "contentHash": "sha256:ea89f6249236c4deab162b3557197bd067b2be38e6bd6781bf4c236b68347ba1",
+          "instructionHash": "sha256:f990edce1effbff4d301e46d32a6474a43ef3f63bda3bbe10f979124c1942bb0",
+          "selectionPool": [
+            "adaptive-cruise-control",
+            "drone-planning-control",
+            "dynamic-object-aware-egomotion",
+            "energy-ac-optimal-power-flow",
+            "grid-dispatch-operator",
+            "hvac-control",
+            "manufacturing-codebook-normalization",
+            "manufacturing-equipment-maintenance",
+            "manufacturing-fjsp-optimization",
+            "r2r-mpc-control"
+          ]
+        },
+        {
+          "id": "paratransit-routing",
+          "category": "mathematics-or-formal-reasoning",
+          "difficulty": "hard",
+          "workdir": "/root",
+          "contentHash": "sha256:9305c8b4b7a6f4e2603e2f7ce49e140904f0e187a08965e4b22a396d16416757",
+          "instructionHash": "sha256:8b74018039b9ec8e9a0d43b6486137852b205ee96a5985e9ceb54e051ba5f30b",
+          "selectionPool": [
+            "civ6-adjacency-optimizer",
+            "exam-block-sequencing",
+            "paratransit-routing"
+          ]
+        },
+        {
+          "id": "threejs-structure-parser",
+          "category": "media-content-production",
+          "difficulty": "medium",
+          "workdir": "/root",
+          "contentHash": "sha256:04793a31c41052a25749f5b479db73f4081cd3f57cbe8b74a49cc9dfb7b30220",
+          "instructionHash": "sha256:c2bedc04b157bafbe9283baa72eb81c11137c118e0bb17d2276dc755c38de55d",
+          "selectionMethod": "Pre-model scope correction following user feedback; retain category and difficulty; no pretrained neural model dependency",
+          "originalSelection": "multilingual-video-dubbing"
+        },
+        {
+          "id": "mars-clouds-clustering",
+          "category": "natural-science",
+          "difficulty": "hard",
+          "workdir": "/root",
+          "contentHash": "sha256:69ae537c14b68711448682be4e4d9726ab2216292377c88d7eb62c7bcd0d92cb",
+          "instructionHash": "sha256:2fb19d9e124c958f02a740a98109cc24e0bce10cb13959c44d221558b7ca1a47",
+          "selectionMethod": "Pre-model scope correction following user feedback; retain category and difficulty; no pretrained neural model dependency",
+          "originalSelection": "earthquake-phase-association"
+        },
+        {
+          "id": "court-form-filling",
+          "category": "office-white-collar",
+          "difficulty": "easy",
+          "workdir": "/root",
+          "contentHash": "sha256:69ac5f9aa2fa0adba96e0ee636eeef1999ebc29eff63ea5c7cd6e751d199a9f6",
+          "instructionHash": "sha256:32458adf65865443dab72f0100ec5122d05aa837838405998e0b3021f406fc72",
+          "selectionPool": [
+            "court-form-filling",
+            "offer-letter-generator",
+            "powerlifting-coef-calc"
+          ]
+        },
+        {
+          "id": "llm-prefix-cache-replay",
+          "category": "software-engineering",
+          "difficulty": "medium",
+          "workdir": "/root",
+          "contentHash": "sha256:200cef4a39bb4cbba8a95e024f9760ab68b8906d138a8cddbe85949d3fd5a474",
+          "instructionHash": "sha256:b3181bb96fe6609123d98beeac6a7d1ca696c5d99cd147c129821bd8d00d473b",
+          "selectionPool": [
+            "azure-bgp-oscillation-route-leak",
+            "data-to-d3",
+            "jax-computing-basics",
+            "llm-prefix-cache-replay",
+            "parallel-tfidf-search",
+            "python-scala-translation"
+          ]
+        }
+      ]
+    }
+  },
+  "selectionVersion": 4,
+  "amendments": [
+    {
+      "at": "2026-11-12T01:16:16.071677+00:00",
+      "modelSamplesStarted": 0,
+      "replaced": "software-dependency-audit",
+      "replacement": "syzkaller-ppdev-syzlang",
+      "reason": "Original image has /root/trivy-cache -> /root/.cache/trivy; docker cp fails on Windows with A required privilege is not held by the client. Preserve original plan and failure. Replacement retains cybersecurity/medium and uses an explicit Ubuntu environment.",
+      "otherCandidatesReviewed": {
+        "suricata-custom-exfil": "dnf-based base image does not match current Debian/Ubuntu runtime layer",
+        "setup-fuzzing-py": "OSS-Fuzz base image not validated for this Windows preparation path; not selected for this run"
+      }
+    },
+    {
+      "at": "2026-11-12T02:44:07.265205+00:00",
+      "modelSamplesStarted": 0,
+      "replacements": {
+        "multilingual-video-dubbing": "threejs-structure-parser",
+        "earthquake-phase-association": "mars-clouds-clustering"
+      },
+      "reason": "User clarified that the focus is Comet Skill evaluation. Replace tasks requiring pretrained voice or seismic neural model downloads with Three.js structure extraction and CSV clustering optimization. Preserve category/difficulty quotas and all prior preparation records; no model scores have been observed."
+    },
+    {
+      "at": "2026-11-12T04:00:21.421010+00:00",
+      "modelSamplesStarted": 0,
+      "replaced": "bug_fix-easy-filtered_relation_queryset_arg",
+      "replacement": "bug_fix-easy-invalid_filterwarnings_regex_error",
+      "reason": "Elevated Windows preparation still fails while copying Django documentation symlinks with shutil.Error / WinError 123. Use the only other candidate in the original bug-fix/easy pool. Preserve prior plans and preparation failures; no scoring or model runs have started."
+    }
+  ]
+}

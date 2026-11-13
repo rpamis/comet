@@ -7,9 +7,7 @@ description: '完成 Classic 技术设计并请用户确认。在用户调用 /c
 
 首次进入阶段、交接给新 Agent 或上下文恢复后，读取并执行 [任务上下文与产物语言](../comet-classic/reference/scripts.md#任务上下文与产物语言)，优先采用当前 continuation 或已领取 Action 的 `contextRequest`；同一阶段连续执行不重复获取。
 
-收到入口返回的 layout 后，按 `comet-classic/reference/classic-layout.md` 确定各逻辑根对应的目录。当前上下文已有这份协议时，无需重复加载。本文件中的 OpenSpec CLI 调用均通过适配器执行，文件路径均基于已绑定的 `<classic-*>` 根目录，无需先额外运行 root show。
-
-编辑后需要判断实际影响，或 continuation 指向内容判断时，必须读取并执行[编辑后续行](../comet/reference/edit-review.md)。由当前 Agent 合并处理变化，保留原 Run、有效批准和检查，只补受影响证据。
+收到入口返回的 layout 后，首次接收阶段或绑定变化时执行[阶段共用入口](../comet-classic/reference/scripts.md#阶段共用入口)，复用仍有效的 [layout](../comet-classic/reference/classic-layout.md)，无需先额外运行 root show；遇编辑判断时按共用入口加载编辑后续行协议。
 
 ## SDK Run 路径
 

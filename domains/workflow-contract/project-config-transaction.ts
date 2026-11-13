@@ -10,14 +10,13 @@ import { inspectProtectedProjectPath, readProtectedProjectFile } from './protect
 
 const CONFIG_TRANSACTION_SCHEMA = 'comet.project-config-write.v1';
 const CONFIG_TRANSACTION_PATH = '.comet/config-write-transaction.json';
-const CONFIG_TRANSACTION_MAX_BYTES = 16 * 1024;
+const CONFIG_TRANSACTION_MAX_BYTES = Number.MAX_SAFE_INTEGER;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
 interface ProjectConfigWriteTransactionJournal {
   schema: typeof CONFIG_TRANSACTION_SCHEMA;
   id: string;
-  owner_pid: number;
   expected_sha256: string;
   output_sha256: string;
   candidate: string;
@@ -84,14 +83,15 @@ async function readTransaction(
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('Invalid project config write transaction: expected an object');
   }
-  const record = value as Record<string, unknown>;
+  const record = { ...(value as Record<string, unknown>) };
+  // 旧 PID 仅为已退休的写入者元数据，不参与业务事务恢复。
+  delete record.owner_pid;
   const keys = Object.keys(record).sort();
   const expectedKeys = [
     'candidate',
     'expected_sha256',
     'id',
     'output_sha256',
-    'owner_pid',
     'quarantine',
     'schema',
   ].sort();
@@ -103,13 +103,6 @@ async function readTransaction(
   }
   if (typeof record.id !== 'string' || !UUID_PATTERN.test(record.id)) {
     throw new Error('Invalid project config write transaction: invalid id');
-  }
-  if (
-    typeof record.owner_pid !== 'number' ||
-    !Number.isSafeInteger(record.owner_pid) ||
-    record.owner_pid <= 0
-  ) {
-    throw new Error('Invalid project config write transaction: invalid owner pid');
   }
   if (
     typeof record.expected_sha256 !== 'string' ||
@@ -188,16 +181,6 @@ async function removeOwnedFile(
   return true;
 }
 
-function processIsAlive(pid: number): boolean {
-  if (pid === process.pid) return true;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code !== 'ESRCH';
-  }
-}
-
 async function removeTransactionJournal(
   projectRoot: string,
   transaction: { journal: ProjectConfigWriteTransactionJournal; source: string },
@@ -257,7 +240,6 @@ export async function beginWorkflowProjectConfigTransaction(
   const journal: ProjectConfigWriteTransactionJournal = {
     schema: CONFIG_TRANSACTION_SCHEMA,
     id,
-    owner_pid: process.pid,
     expected_sha256: expectedSha256,
     output_sha256: outputSha256,
     candidate: transactionCandidate(id),
@@ -331,7 +313,6 @@ export async function inspectWorkflowProjectConfigTransaction(
 export async function repairWorkflowProjectConfigTransaction(
   projectRoot: string,
   options: {
-    ownerId?: string;
     testHooks?: {
       afterOwnedFileQuarantine?: (
         relativePath: string,
@@ -343,11 +324,6 @@ export async function repairWorkflowProjectConfigTransaction(
   const transaction = await readTransaction(projectRoot);
   if (!transaction) return false;
   const { journal } = transaction;
-  if (options.ownerId !== journal.id && processIsAlive(journal.owner_pid)) {
-    throw new Error(
-      `Project config write transaction ${journal.id} is still active in process ${journal.owner_pid}`,
-    );
-  }
   const inspection = await inspectWorkflowProjectConfigTransaction(projectRoot);
   if (!inspection) return false;
 

@@ -26,41 +26,72 @@ function text(value: unknown, label: string): string {
     !value.trim() ||
     value.length > 4000 ||
     /^<[^>]+>$/u.test(value.trim())
-  ) {
+  )
     throw new Error(`${label} must contain a concrete statement of at most 4000 characters`);
-  }
   return value.trim();
 }
 
 export function parseNativeBuilderAcceptanceReview(
   value: unknown,
+  acceptance?: readonly { id: string }[],
+  field = 'acceptance_review',
 ): NativeBuilderAcceptanceReview[] {
-  if (!Array.isArray(value)) throw new Error('Native Builder acceptance_review must be an array');
-  return value.map((entry: unknown, index) => {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry))
-      throw new Error('Native Builder acceptance review entry must be an object');
+  if (!Array.isArray(value)) throw new Error(`Native Builder ${field} must be an array`);
+  const errors: string[] = [];
+  const read = <T>(parse: () => T): T | undefined => {
+    try {
+      return parse();
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
+  };
+  const known = acceptance && new Set(acceptance.map(({ id }) => id));
+  const ids: string[] = [];
+  const unknownIds: { index: number; id: string }[] = [];
+  const reviews = value.flatMap((entry: unknown, index) => {
+    const label = `Native Builder ${field}[${index}]`;
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      errors.push(`${label} must be an object`);
+      return [];
+    }
     const row = entry as Record<string, unknown>;
-    const label = `Native Builder acceptance_review[${index}]${typeof row.id === 'string' ? ` (${row.id})` : ''}`;
-    assertNativeInputKeys(
-      row,
-      ['id', 'status', 'evidence', 'note'],
-      label,
-      `/acceptance_review/${index}`,
+    read(() =>
+      assertNativeInputKeys(row, ['id', 'status', 'evidence', 'note'], label, `/${field}/${index}`),
     );
-    const status = nativeEnumText(row.status, NATIVE_ACCEPTANCE_REVIEW_STATUSES, `${label}.status`);
+    const id = read(() => text(row.id, `${label}.id`));
+    if (id) {
+      if (ids.includes(id)) errors.push(`${label}.id contains duplicate ID: ${id}`);
+      ids.push(id);
+      if (known && !known.has(id)) unknownIds.push({ index, id });
+    }
+    const detail = id && known?.has(id) ? label + ' (' + id + ')' : label;
+    const status = read(() =>
+      nativeEnumText(row.status, NATIVE_ACCEPTANCE_REVIEW_STATUSES, `${label}.status`),
+    );
+    let evidence: string[] | undefined;
     if (!Array.isArray(row.evidence))
-      throw new Error(
-        `${label}.evidence must be an array of concrete strings of at most 4000 characters; received ${typeof row.evidence}`,
+      errors.push(
+        `${detail}.evidence must be an array of concrete strings of at most 4000 characters; received ${typeof row.evidence}`,
       );
-    return {
-      id: text(row.id, `${label}.id`),
-      status,
-      evidence: row.evidence.map((value, evidenceIndex) =>
-        text(value, `${label}.evidence[${evidenceIndex}]`),
-      ),
-      note: text(row.note, `${label}.note`),
-    };
+    else
+      evidence = row.evidence
+        .map((item, i) => read(() => text(item, `${label}.evidence[${i}]`)))
+        .filter((item): item is string => item !== undefined);
+    const note = read(() => text(row.note, `${detail}.note`));
+    return id && status && evidence && note ? [{ id, status, evidence, note }] : [];
   });
+  if (acceptance && !errors.length) {
+    assertNativeBuilderAcceptanceComplete(acceptance, reviews);
+    return reviews;
+  }
+  if (acceptance) {
+    for (const { index, id } of unknownIds)
+      errors.push(`Native Builder ${field}[${index}].id contains unknown ID: ${id}`);
+    const missing = acceptance.filter(({ id }) => !ids.includes(id)).map(({ id }) => id);
+    if (missing.length) errors.push(`Native Builder ${field} missing: ${missing.join(', ')}`);
+  }
+  if (errors.length) throw new Error(errors.join('\n'));
+  return reviews;
 }
 
 export function assertNativeBuilderAcceptanceComplete(
@@ -73,8 +104,8 @@ export function assertNativeBuilderAcceptanceComplete(
       [],
     );
   const known = new Set(acceptance.map(({ id }) => id));
-  const ids = review.map(({ id }) => id);
-  const reviewed = new Set(ids);
+  const ids = review.map(({ id }) => id),
+    reviewed = new Set(ids);
   if (reviewed.size !== ids.length)
     throw new Error('Native Builder acceptance_review contains duplicate IDs');
   const unknown = ids.filter((id) => !known.has(id));

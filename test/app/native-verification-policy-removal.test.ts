@@ -49,8 +49,7 @@ it('removes the unreleased verifier definition and compact pass protocol', () =>
   old.steps['verify.verifier'].validator!.version = '2';
   const legacy = defineWorkflow(old);
   const workflow = { id: legacy.id, version: legacy.version, hash: hashRuntimeValue(legacy) };
-  const selected = nativeSdkApplicationForRun({ workflow }, app);
-  expect(hashRuntimeValue(defineWorkflow(selected.workflow))).not.toBe(workflow.hash);
+  expect(() => nativeSdkApplicationForRun({ workflow }, app)).toThrow('业务数据适配');
   expect(
     app.validators.some(
       (validator) => validator.id === 'comet-native-verifier-outcome' && validator.version === '2',

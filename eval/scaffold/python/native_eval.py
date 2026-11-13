@@ -4,15 +4,108 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from contextlib import contextmanager
+import shutil
+import tempfile
+import json
+import os
 
 from scaffold.python.validation.native_workflow import validate_native_workflow
+
+
+@contextmanager
+def current_native_environment(environment_dir: Path, treatment_name: str):
+    """Install the selected CLI tooling around unchanged canonical business fixtures."""
+    marker = ".include-current-comet-cli"
+    if (
+        treatment_name not in {"COMET_NATIVE_SDK_CURRENT", "COMET_NATIVE_040_RC1"}
+        or (environment_dir / marker).is_file()
+    ):
+        yield environment_dir
+        return
+    reference = (
+        Path(__file__).resolve().parents[2] / "local/tasks/comet-native-workflow/environment"
+    )
+    with tempfile.TemporaryDirectory(prefix="comet-native-sdk-environment-") as temporary:
+        prepared = Path(temporary)
+        shutil.copytree(environment_dir, prepared, dirs_exist_ok=True)
+        for name in (marker, "current-comet.sh", "current-comet-package.json"):
+            shutil.copyfile(reference / name, prepared / name)
+        selected_source = os.environ.get("BENCH_COMET_SOURCE_ROOT")
+        if selected_source:
+            package = json.loads(
+                (Path(selected_source) / "package.json").read_text(encoding="utf-8")
+            )
+            (prepared / "current-comet-package.json").write_text(
+                json.dumps(
+                    {
+                        "type": "module",
+                        "private": True,
+                        "dependencies": package.get("dependencies", {}),
+                        "overrides": package.get("overrides", {}),
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+        dockerfile = prepared / "Dockerfile"
+        content = dockerfile.read_text(encoding="utf-8")
+        # The old empty Classic scaffold is workflow setup, not a business input.
+        content = content.replace(
+            "RUN mkdir -p openspec/changes", "# Native has no Classic scaffold"
+        )
+        if "ARG CLAUDE_CODE_VERSION=" not in content:
+            content = content.replace(
+                "WORKDIR /workspace", "ARG CLAUDE_CODE_VERSION=latest\nWORKDIR /workspace", 1
+            )
+        content = content.replace(
+            "@anthropic-ai/claude-code@latest",
+            "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}",
+        )
+        # Install once in a shared stage, before task-specific COPY instructions.
+        tooling = """FROM node:22-bookworm-slim AS comet_eval_tools
+ARG CLAUDE_CODE_VERSION=latest
+COPY current-comet-package.json /opt/comet-cli/package.json
+RUN npm install --prefix /opt/comet-cli --omit=dev --ignore-scripts
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
+
+"""
+        lines = []
+        skip = False
+        for line in content.splitlines():
+            if skip or (
+                line.startswith("RUN npm install -g @")
+                and any(
+                    package in line
+                    for package in ("@fission-ai/openspec", "@anthropic-ai/claude-code")
+                )
+            ):
+                skip = line.rstrip().endswith("\\")
+                continue
+            lines.append(line.replace("nodejs npm", ""))
+            if line.startswith("FROM "):
+                lines.extend(
+                    """COPY --from=comet_eval_tools /usr/local/ /usr/local/
+COPY --from=comet_eval_tools /opt/comet-cli /opt/comet-cli
+RUN mkdir -p /opt/comet-current && ln -s /opt/comet-cli/node_modules /opt/comet-current/node_modules
+COPY current-comet.sh /usr/local/bin/comet
+RUN chmod 0755 /usr/local/bin/comet
+""".splitlines()
+                )
+        dockerfile.write_text(tooling + "\n".join(lines) + "\n", encoding="utf-8")
+        yield prepared
 
 
 NATIVE_CLARIFICATION_MODES = {
     "COMET_NATIVE_SEQUENTIAL": "sequential",
     "COMET_NATIVE_BATCH": "batch",
 }
-NATIVE_TREATMENTS = {"COMET_NATIVE_SDK_CURRENT", "COMET_NATIVE_PHASE1", *NATIVE_CLARIFICATION_MODES}
+NATIVE_TREATMENTS = {
+    "COMET_NATIVE_SDK_CURRENT",
+    "COMET_NATIVE_040_RC1",
+    "COMET_NATIVE_PHASE1",
+    *NATIVE_CLARIFICATION_MODES,
+}
 CONTROL_BUSINESS_ONLY_TREATMENTS = {"CONTROL"}
 CLASSIC_WORKFLOW_CHECK_PREFIXES = (
     "openspec_artifacts",
@@ -59,6 +152,18 @@ SDK owner, portable Run checkpoint, and terminal Run. Inspect it with
 `comet runtime dispatch --application native` before claiming completion.
 Initialize artifact_root `docs`. {terminal_instruction}
 Do not create OpenSpec, Classic, Superpowers, or change-local machine artifacts.
+
+[ORIGINAL BUSINESS TASK]
+"""
+
+RC1_NATIVE_PROMPT_PREFIX = """[COMET NATIVE 0.4.0-rc.1 TREATMENT]
+Invoke /comet-native as the only workflow Skill. Use the pinned 0.4.0-rc.1
+Comet CLI on PATH and that release's Native Runtime. Preserve every business
+requirement below, mapping legacy Open, Design, Build, Verify, Archive wording
+to Native Shape, Build, Verify, Archive. Follow this release's own approval,
+independent review, verification, and archive protocol without replacing it
+with a newer protocol. Initialize artifact_root `docs`. {terminal_instruction}
+Do not invoke Classic, OpenSpec, Superpowers, or other workflow Skills.
 
 [ORIGINAL BUSINESS TASK]
 """
@@ -139,6 +244,8 @@ def adapt_prompt_for_native(
     prefix = (
         SDK_NATIVE_PROMPT_PREFIX
         if treatment_name == "COMET_NATIVE_SDK_CURRENT"
+        else RC1_NATIVE_PROMPT_PREFIX
+        if treatment_name == "COMET_NATIVE_040_RC1"
         else NATIVE_PROMPT_PREFIX
     )
     return (

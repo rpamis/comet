@@ -17,87 +17,75 @@ const CURRENT_CORE_REGRESSIONS = [
   {
     id: 'native-check-evidence',
     issues: [500, 501],
-    invariant: '跨会话不误拒绝，实际输入变化与不完整证据不能放行。',
-    files: [
-      'test/domains/comet-native/native-sdk-verification-inputs.test.ts',
-      'test/domains/comet-native/native-check-input-fingerprint.test.ts',
-    ],
+    invariant: '普通编辑由 Agent 判断，检查保留真实结果及原执行；失败不得按成功归档。',
+    files: ['test/domains/comet-native/native-agent-content-judgment.test.ts'],
     requiredNames: [
-      'completes Archive',
-      'rejects source-changing checks',
-      '0.5.0',
-      'keeps nested linked worktrees outside the complete project input boundary',
+      'continues Native Verify and Archive through the generated Runtime without content proof',
+      'keeps an actual Agent-platform failure report failed after file edits without replay',
+      'blocks Native Archive when a new real check fails after an accepted pass',
+      'continues the original Native Run through a generated Runtime and parent directory alias',
+      'preserves an Agent-selected prior report for a repaired candidate and requires full new verification',
     ],
+    testNamePattern:
+      'continues Native Verify and Archive through the generated Runtime without content proof|keeps an actual Agent-platform failure report failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|continues the original Native Run through a generated Runtime and parent directory alias|preserves an Agent-selected prior report for a repaired candidate and requires full new verification',
   },
   {
     id: 'classic-continuity',
     issues: [],
-    invariant: '三种 Classic 流程可重开验证并完成交付，命令身份与批准文档仍受保护。',
-    files: ['test/domains/comet-classic/classic-sdk-verify-rounds.test.ts'],
+    invariant: 'Classic full/hotfix/tweak 编辑后沿原 Run 验收及归档，真实失败继续阻止交付。',
+    files: ['test/domains/comet-classic/classic-agent-content-judgment.test.ts'],
     testNamePattern:
-      'Runtime lifecycle|newly selected PATH command|recovers only accepted Build document',
+      'continues the same Classic full Verify and Archive through the generated Runtime without content proof|continues the same Classic hotfix Verify and Archive through the generated Runtime without content proof|continues the same Classic tweak Verify and Archive through the generated Runtime without content proof|blocks Classic Archive when a new real check fails after an accepted pass',
     requiredNames: [
-      'source Runtime lifecycle',
-      'generated Runtime lifecycle',
-      'newly selected PATH command',
-      'recovers only accepted Build document',
+      'continues the same Classic full Verify and Archive through the generated Runtime without content proof',
+      'continues the same Classic hotfix Verify and Archive through the generated Runtime without content proof',
+      'continues the same Classic tweak Verify and Archive through the generated Runtime without content proof',
+      'blocks Classic Archive when a new real check fails after an accepted pass',
     ],
-    minimumPassed: 9,
   },
   {
     id: 'classic-check-policy',
     issues: [502],
-    invariant: '项目超时与 CLI 覆盖一致；只排除明确输出，显式声明的 ignored 输入仍绑定。',
+    invariant: '普通检查交给 Agent 平台，旧命令不执行或补造成功；CLI 自有任务保留独立时限清理。',
     files: [
-      'test/domains/comet-classic/classic-check-defaults.test.ts',
-      'test/domains/workflow-contract/classic-check-timeout.test.ts',
+      'test/domains/comet-classic/classic-platform-command.test.ts',
+      'test/platform/process/owned-command-termination.test.ts',
     ],
     requiredNames: [
-      'applies project timeout',
-      'override the project default',
-      'includes ignored files',
+      'routes a legacy check invocation to platform work without executing it or claiming a pass',
+      'keeps its deadline when the owner event loop cannot run its timeout timer',
     ],
+    testNamePattern:
+      'routes a legacy check invocation to platform work without executing it or claiming a pass|keeps its deadline when the owner event loop cannot run its timeout timer',
   },
   {
     id: 'classic-composed-timeout',
     issues: [502],
-    invariant: '通过公开工厂组合的 Classic SDK 应用采用相同项目超时契约。',
+    invariant: '组合 Classic 应用沿原任务接受平台检查报告，失败或陈旧结果不得推进 Build。',
     files: ['test/domains/comet-classic/classic-application.test.ts'],
-    testNamePattern: 'project default timeout',
-    requiredNames: ['project default timeout'],
+    testNamePattern:
+      'keeps composed Build work on platform reports without a managed check Action|keeps an actual failed platform command from satisfying composed Build acceptance|binds composed work to its original Action input and rejects a stale claim or outcome',
+    requiredNames: [
+      'keeps composed Build work on platform reports without a managed check Action',
+      'keeps an actual failed platform command from satisfying composed Build acceptance',
+      'binds composed work to its original Action input and rejects a stale claim or outcome',
+    ],
     minimumPassed: 3,
   },
   {
     id: 'classic-delivery-scope',
     issues: [503],
-    invariant: '交付只包含批准范围，允许线性多提交，不携带其他 change 的草稿。',
-    files: [
-      'test/domains/comet-classic/classic-sdk-delivery-scope.test.ts',
-      'test/domains/comet-classic/classic-sdk-delivery-inputs.test.ts',
-      'test/domains/comet-classic/classic-sdk-archive-legacy-manifest.test.ts',
-      'test/domains/comet-classic/classic-sdk-delivery-checkpoint.test.ts',
-    ],
+    invariant: '交付保留原批准的路径范围、线性多提交与原归档进度，不携带其他 change 的草稿。',
+    files: ['test/domains/comet-classic/classic-sdk-delivery-scope.test.ts'],
     requiredNames: [
       'keeps parked Native',
-      'documented delivery --verify',
       'linear approved commit range',
-      'includes staged deletions',
-      'declared directory no longer exists',
-      'changes after Archive execution without claiming or replaying delivery',
-      'actual OpenSpec delta synchronization output',
-      'archived proposal through a freshly bundled public runtime',
-      'restores the original archive manifest',
       'portable archive evidence',
-      'manifest symlink',
-      'unapproved archived requirements even when a later commit',
-      'keeps the committed archive checkpoint',
-      'rejects changed archived checkpoint',
-      'restores only the portable archived baseline',
-      'interrupted delivery is reconciled',
-      'active-source history',
-      'deleted-source commit history',
-      'revalidates a portable historical archive outcome',
+      'Agent-accepted edits through a parent alias',
+      'recovers Archive interrupted after moving',
     ],
+    testNamePattern:
+      'keeps parked Native|linear approved commit range|portable archive evidence|Agent-accepted edits through a parent alias|recovers Archive interrupted after moving',
   },
   {
     id: 'entry-resume-intent',
@@ -132,56 +120,78 @@ const CURRENT_CORE_REGRESSIONS = [
   {
     id: 'native-shape-incremental',
     issues: [504],
-    invariant: '辅助计划更新保留批准，正式差异需复核，Hook 不得分叉 SDK 状态。',
-    files: ['test/domains/comet-native/native-shape-incremental.test.ts'],
+    invariant: '正式材料编辑不自动撤回批准；Agent 判断实际需求变化，原用户决定和独立验收继续保留。',
+    files: ['test/domains/comet-native/native-agent-content-judgment.test.ts'],
     requiredNames: [
-      'keeps SDK Run and projection identical when Hook detects formal drift',
-      'preserves SDK and Compat Shape for approved test-plan line updates',
-      'rejects requirement changes and undeclared auxiliary edits',
-      'reviews formal comments without replacing the SDK candidate or Verifier claim',
-      'upgrades a restored 0.5.0 Run through spec snapshot',
-      'rejects tampered original snapshot bytes',
-      'preserves a legacy Verify candidate gate',
-      'requires review when the same formal comment moves across',
+      'continues Native Verify and Archive through the generated Runtime without content proof',
+      'keeps an actual Agent-platform failure report failed after file edits without replay',
+      'blocks Native Archive when a new real check fails after an accepted pass',
+      'continues the original Native Run through a generated Runtime and parent directory alias',
+      'preserves an Agent-selected prior report for a repaired candidate and requires full new verification',
     ],
+    testNamePattern:
+      'continues Native Verify and Archive through the generated Runtime without content proof|keeps an actual Agent-platform failure report failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|continues the original Native Run through a generated Runtime and parent directory alias|preserves an Agent-selected prior report for a repaired candidate and requires full new verification',
   },
   {
     id: 'native-acceptance-boundaries',
     issues: [504],
-    invariant: 'Markdown 章节与列表项有独立边界；真正的批准内容变更仍需重新确认。',
+    invariant: 'Markdown 章节和列表项保持独立验收边界。',
     files: ['test/domains/comet-native/native-acceptance-boundaries.test.ts'],
-    requiredNames: [
-      'does not append a later block',
-      'retains nested criterion',
-      'original full approval fingerprint',
-    ],
+    requiredNames: ['does not append a later block', 'retains nested criterion'],
+    testNamePattern: 'does not append a later block|retains nested criterion',
   },
   {
     id: 'native-blocked-recovery',
     issues: [505],
-    invariant: '公布的恢复命令可在公布状态执行，复验保留有效证据但拒绝过期批准。',
-    files: [
-      'test/domains/comet-native/native-sdk-blocked-recovery.test.ts',
-      'test/domains/engine/runtime-wait-reason.test.ts',
-      'test/app/runtime-wait-reason.test.ts',
-    ],
+    invariant: '公布的恢复命令沿原 Run 执行，保留原检查和验收归属并拒绝陈旧 SDK 提案。',
+    files: ['test/domains/comet-native/native-sdk-blocked-recovery.test.ts'],
     requiredNames: [
       'exact advertised',
       'retains candidate and one-shot',
       'rejects stale proposal',
-      'existing 0.5.0 blocked Run',
       'current Supervisor Child blocked repair',
-      'advertises executable repair',
       'offers only executable decisions after recovered one-shot checks pass',
       'uses only the current ordinary candidate retry capability after leaving Supervisor',
     ],
+    testNamePattern:
+      'exact advertised|retains candidate and one-shot|rejects stale proposal|current Supervisor Child blocked repair|offers only executable decisions after recovered one-shot checks pass|uses only the current ordinary candidate retry capability after leaving Supervisor',
+  },
+  {
+    id: 'classic-check-timeout-config',
+    caseIds: ['classic-check-policy'],
+    issues: [502],
+    invariant: '配置解析和生成校验采用相同超时范围。',
+    files: ['test/domains/workflow-contract/classic-check-timeout.test.ts'],
+    requiredNames: ['validates and preserves check_timeout_ms', 'rejects invalid check_timeout_ms'],
+  },
+  {
+    id: 'runtime-decision-reason',
+    caseIds: ['native-blocked-recovery'],
+    issues: [505],
+    invariant: '原SDK决定的原因持久化并拒绝陈旧提案。',
+    files: ['test/domains/engine/runtime-wait-reason.test.ts'],
+    requiredNames: ['persists a bounded reason', 'does not save a reason on a stale proposal'],
+  },
+  {
+    id: 'runtime-resolve-wait-reason',
+    caseIds: ['native-blocked-recovery'],
+    issues: [505],
+    invariant: '公开Runtime决定请求保留有界文本原因和恢复身份。',
+    files: ['test/app/runtime-wait-reason.test.ts'],
+    requiredNames: ['accepts a reason only as bounded text'],
   },
 ];
 
-export const CORE_REGRESSIONS = mergeHistoricalRegressions(CURRENT_CORE_REGRESSIONS, [
-  ...loadHistoricalRegressions(repositoryRoot),
-  ...loadWorkflowRegressions(repositoryRoot),
-]);
+export const CORE_REGRESSIONS = mergeHistoricalRegressions(
+  mergeHistoricalRegressions(
+    [],
+    CURRENT_CORE_REGRESSIONS.map((entry) => ({
+      ...entry,
+      caseIds: [...(entry.caseIds ?? []), entry.id],
+    })),
+  ),
+  [...loadHistoricalRegressions(repositoryRoot), ...loadWorkflowRegressions(repositoryRoot)],
+);
 
 export function selectCoreRegressions(selectors = [], shard) {
   const selected = new Set(selectors.length ? [] : CORE_REGRESSIONS);
@@ -190,6 +200,7 @@ export function selectCoreRegressions(selectors = [], shard) {
       (entry) =>
         entry.id === selector ||
         entry.caseIds?.includes(selector) ||
+        entry.caseIds?.some((id) => `registered-${id}` === selector) ||
         entry.issues.some((issue) => String(issue) === selector),
     );
     if (!matches.length) throw new Error(`Unknown core regression: ${selector}`);
@@ -286,6 +297,33 @@ export function assertCoreRegressionResult(entry, report, context = {}) {
   return passed.length;
 }
 
+/** Validate every registered requirement against one completed Vitest run, without rerunning tests. */
+export function assertCoreRegressionReport(entries, report, context = {}) {
+  const reportPath = (context.platform ?? process.platform) === 'win32' ? path.win32 : path.posix;
+  const normalize = (file) => {
+    const value = reportPath.normalize(file).replaceAll('\\', '/');
+    return (context.platform ?? process.platform) === 'win32' ? value.toLowerCase() : value;
+  };
+  for (const entry of entries) {
+    const files = new Set(
+      entry.files.map((file) =>
+        normalize(reportPath.join(context.projectRoot ?? repositoryRoot, file)),
+      ),
+    );
+    const pattern = entry.testNamePattern ? new RegExp(entry.testNamePattern) : null;
+    const testResults = (report.testResults ?? [])
+      .filter((file) => files.has(normalize(file.name)))
+      .map((file) => ({
+        ...file,
+        assertionResults: (file.assertionResults ?? []).filter(
+          (test) => !pattern || pattern.test(String(test.fullName ?? test.title)),
+        ),
+      }));
+    assertCoreRegressionResult(entry, { ...report, testResults }, context);
+  }
+  return { groups: entries.length };
+}
+
 async function main(argv) {
   const selectors = [];
   let list = false;
@@ -293,6 +331,7 @@ async function main(argv) {
   let recordPlatform;
   let recordAll;
   let verifyEvidence;
+  let verifyReport;
   let crossPlatform = false;
   let combinePlatforms = false;
   const platformFiles = [];
@@ -311,6 +350,7 @@ async function main(argv) {
     else if (argv[index] === '--record-platform' && argv[index + 1]) recordPlatform = argv[++index];
     else if (argv[index] === '--record-all' && argv[index + 1]) recordAll = argv[++index];
     else if (argv[index] === '--verify-evidence' && argv[index + 1]) verifyEvidence = argv[++index];
+    else if (argv[index] === '--verify-report' && argv[index + 1]) verifyReport = argv[++index];
     else if (argv[index] === '--cross-platform') crossPlatform = true;
     else if (argv[index] === '--combine-platform-evidence') combinePlatforms = true;
     else if (argv[index] === '--platform-record' && argv[index + 1])
@@ -320,6 +360,30 @@ async function main(argv) {
     else throw new Error(`Unknown or incomplete argument: ${argv[index]}`);
   }
   const entries = selectCoreRegressions(selectors, shard);
+  if (verifyReport) {
+    if (
+      [
+        list,
+        shard,
+        recordPlatform,
+        recordAll,
+        verifyEvidence,
+        crossPlatform,
+        combinePlatforms,
+        platformFiles.length,
+        Object.keys(crossOptions).length,
+      ].some(Boolean)
+    )
+      throw new Error('Report verification cannot be combined with execution or evidence modes');
+    const summary = assertCoreRegressionReport(
+      entries,
+      JSON.parse(readFileSync(verifyReport, 'utf8')),
+    );
+    console.log(
+      `Core regressions verified from existing test report: ${summary.groups} groups; no tests rerun.`,
+    );
+    return;
+  }
   if (
     [recordPlatform, recordAll, verifyEvidence, crossPlatform, combinePlatforms].filter(Boolean)
       .length > 1 ||

@@ -150,7 +150,7 @@ Agent JSON 模式下，从 `data.upstream.data` 读取上游字段。下一步�
 **根据 OpenSpec 状态逐项生成产物**：
 
 1. 首轮复用 Step 2 兼容性预检刚返回的 status；后续复用上一轮写入后刷新的 status。只有恢复或外部产物变化时重新运行 `comet classic openspec --agent-json -- status --change "<name>" --json`，从 `data.upstream.data` 读取完整上游 JSON。
-2. 展开 `applyRequires` 加 proposal/tasks 的完整依赖闭包。闭包中每项都为 `done` 或合法 `skipped` 时运行 `comet state artifacts <name> --json`，仅校验通过才退出循环；顶层 tasks 已完成不能掩盖未完成依赖。`isComplete` 只作诊断。
+2. 展开 `applyRequires` 加 proposal/tasks 的完整依赖闭包。闭包中每项都为 `done` 或合法 `skipped` 时，适配器在同一次 status 调用中校验完整闭包和实际文件；仅当调用成功且 `data.artifactRequirements.problems` 为空时退出循环。顶层 tasks 已完成不能掩盖未完成依赖。`isComplete` 只作诊断。
 3. 在尚未完成、状态为 `status: "ready"` 的产物中，优先处理 `applyRequires` 所需的依赖，并遵循 CLI 返回的顺序。不得写死生成顺序，也不能假设 schema 只有 proposal/design/tasks。
 4. 对每个 ready 的 `<artifact-id>` 获取实时指令：
 
@@ -165,7 +165,7 @@ Agent JSON 模式下，从 `data.upstream.data` 读取上游字段。下一步�
    - 遵守 `context` 和 `rules` 中的约束，**不得将这些内容复制到产物中**
    - 写入 `resolvedOutputPath`；通配输出必须按 instruction 创建每个实际文件
    - 验证 CLI 返回的实际输出文件存在且非空
-6. 每创建一个产物后，用 `comet state artifacts <name> --json` 做本地闭包校验（不启动 OpenSpec 子进程），仅当它报告依赖缺失或顺序错误、需要新的实时指令时，才刷新一次 status 并再次校验路径与完整依赖闭包。已经变为 `done` 的项不得重复生成；只处理闭包中新增的 ready 项，不额外生成无关的可选产物。
+6. 每创建一个产物并确认实际输出文件存在且非空后，执行 instructions 响应中 `data.nextAction` 指定的 status 命令，读取更新后的依赖和 ready 项。循环中不插入 `state artifacts`；该命令仍可单独诊断，但会重新查询 OpenSpec。已经变为 `done` 的项不得重复生成；只处理闭包中新增的 ready 项，不额外生成无关的可选产物。
 
 **阻塞与失败处理**：`applyRequires` 尚未全部完成、但其所需依赖中已没有 ready 产物时，必须报告相关 `blocked` 产物的 `missingDeps`，然后停止。不得猜测生成顺序或跳过依赖。适配器的 `status` / `instructions` 调用失败、返回无效 JSON、产物路径超出仓库，或未提供可用的 `resolvedOutputPath` 时，也必须立即停止并报告 OpenSpec 错误，不能改用写死的文档结构。
 
@@ -198,15 +198,15 @@ comet state check <name> open
 1. 先运行 `comet state next <name> --json` 确认归属。`runtimeFormat: sdk` 时复用原 Run；`runtimeFormat: compat` 时保留原流程。只有证实没有 Run、归属记录及新旧两种状态文件，才准备工作区并运行 `comet state init <name> full --isolation <selected-isolation>`；格式异常或归属冲突时停止，不覆盖。随后选择 change 并运行 `comet state check <name> open`。
 2. 运行 `comet classic openspec --agent-json -- status --change "<name>" --json`，重新验证 `changeRoot`、核心 ID、`applyRequires`、`artifacts` 和 `missingDeps`。
 3. `done`：该产物已完成，保持原文件不变，不重复生成。
-4. `ready`：依赖已经满足，可以生成。先运行 `comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json`，按返回内容写入；写完后用 `comet state artifacts <name> --json` 做本地闭包校验，不重新运行 status。
-5. `blocked`：读取 `missingDeps`，先完成属于 `applyRequires` 依赖闭包的依赖产物；每完成一个依赖用 `comet state artifacts <name> --json` 校验，仅在报告新问题时重新运行 status，不能直接生成 blocked 产物。
-6. 重复上述处理，直到完整必需闭包为 done 或合法 skipped，且 `comet state artifacts <name> --json` 校验通过。
+4. `ready`：依赖已经满足，可以生成。先运行 `comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json`，按返回内容写入；检查实际输出后按 `data.nextAction` 刷新 status。
+5. `blocked`：读取 `missingDeps`，先完成属于 `applyRequires` 依赖闭包的依赖产物，再刷新 status，不能直接生成 blocked 产物。
+6. 重复上述处理，直到完整必需闭包为 done 或合法 skipped，且本次 status 成功返回 `data.artifactRequirements.problems: []`。
 
 如果必需依赖仍无法完成，必须列出相关 blocked 产物及其 `missingDeps`，然后停止并报告。不能仅凭目录或三个固定文件存在，就替代 CLI 的检查结论；也不能因为 `isComplete: false`，就让不属于 `applyRequires` 的可选产物阻止流程进入实施阶段。
 
 ### 4. 内容完整性检查
 
-使用最近一次 `comet state artifacts <name> --json` 的成功结果核对必需产物；文件或 schema 变化后必须重新运行。任一问题未解决时，不得进入 Step 5 或执行阶段守卫。
+使用最近一次 status 成功返回的 `data.artifactRequirements` 核对必需产物；文件或 schema 变化后必须重新运行 status。冷恢复时也重新查询，不使用上次会话保存的闭包替代当前检查。任一问题未解决时，不得进入 Step 5 或执行阶段守卫。
 
 随后检查关键产物的内容：proposal 应说明问题、目标、范围和非目标；design 应说明高层决策与数据流；tasks 应列出明确任务。schema 返回 specs 等其他产物时，也必须按对应的 instructions 检查内容，不能因为 proposal、design、tasks 三个文件已经存在就跳过。
 

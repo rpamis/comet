@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process';
+import { rebaseNativePortableDeltas } from '../../../domains/comet-native/native-portable-delta-rebase.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
@@ -16,7 +18,6 @@ import {
   confirmNativePortableSkillCoordinatedPass,
   createNativePortableChange,
   dispatchNativePortableVerifier,
-  executeNativePortableCheckPlan,
   nativePortableChangeDir,
   readNativePortableChange,
   submitNativePortableBuilderCandidate,
@@ -97,22 +98,26 @@ describe('Native portable delta integration', () => {
       });
     }
     const current = await readNativePortableChange(paths, name);
-    const executed = await executeNativePortableCheckPlan({
-      paths,
-      name,
-      plans: [
+    const checkOutput = execFileSync(
+      process.execPath,
+      ['-e', 'console.log("Actual platform Delta check passed")'],
+      { cwd: paths.projectRoot, encoding: 'utf8' },
+    );
+    expect(checkOutput).toContain('Actual platform Delta check passed');
+    const executed = {
+      checks: [
         {
-          id: 'delta-test',
           name: 'Delta test',
-          executable: process.execPath,
-          argv: ['-e', 'process.exit(0)'],
-          cwdRef: '.',
-          timeoutMs: 10_000,
-          repeatable: true,
+          result: 'passed' as const,
+          note: checkOutput.trim(),
         },
       ],
+    };
+    const ready = await dispatchNativePortableVerifier({
+      paths,
+      name,
+      checks: executed.checks,
     });
-    const ready = await dispatchNativePortableVerifier({ paths, name, checks: executed.checks });
     await submitNativePortableVerifierResult({
       paths,
       name,
@@ -149,7 +154,9 @@ describe('Native portable delta integration', () => {
     deltaText: string,
     independentRequirements: Readonly<Record<string, string | null>> = {},
   ): Promise<Awaited<ReturnType<typeof confirmNativePortableShape>>> {
-    await fs.mkdir(path.join(paths.specsDir, 'authentication'), { recursive: true });
+    await fs.mkdir(path.join(paths.specsDir, 'authentication'), {
+      recursive: true,
+    });
     await fs.writeFile(path.join(paths.specsDir, 'authentication', 'spec.md'), baseline);
     await createNativePortableChange({ paths, name, language: 'en' });
     const changeDir = nativePortableChangeDir(paths, name);
@@ -157,7 +164,9 @@ describe('Native portable delta integration', () => {
       path.join(changeDir, 'brief.md'),
       '# Acceptance examples\n- The delta is applied.\n',
     );
-    await fs.mkdir(path.join(changeDir, 'specs', 'authentication'), { recursive: true });
+    await fs.mkdir(path.join(changeDir, 'specs', 'authentication'), {
+      recursive: true,
+    });
     const parsedDelta = parseNativeDelta(deltaText);
     const preparedDelta = {
       ...parsedDelta,
@@ -187,7 +196,9 @@ describe('Native portable delta integration', () => {
     name: string,
     target: string,
   ): Promise<Awaited<ReturnType<typeof confirmNativePortableShape>>> {
-    await fs.mkdir(path.join(paths.specsDir, 'authentication'), { recursive: true });
+    await fs.mkdir(path.join(paths.specsDir, 'authentication'), {
+      recursive: true,
+    });
     await fs.writeFile(path.join(paths.specsDir, 'authentication', 'spec.md'), baseline);
     await createNativePortableChange({ paths, name, language: 'en' });
     const changeDir = nativePortableChangeDir(paths, name);
@@ -195,7 +206,9 @@ describe('Native portable delta integration', () => {
       path.join(changeDir, 'brief.md'),
       '# Acceptance examples\n- The complete target Spec is applied.\n',
     );
-    await fs.mkdir(path.join(changeDir, 'specs', 'authentication'), { recursive: true });
+    await fs.mkdir(path.join(changeDir, 'specs', 'authentication'), {
+      recursive: true,
+    });
     await fs.writeFile(path.join(changeDir, 'specs', 'authentication', 'spec.md'), target);
     return confirmNativePortableShape({ paths, name });
   }
@@ -208,7 +221,6 @@ describe('Native portable delta integration', () => {
       {
         capability: 'authentication',
         delta_source: 'specs/authentication/delta.yaml',
-        base_hash: sha256(baseline),
       },
     ]);
     const ready = await verify(name, shaped);
@@ -218,7 +230,6 @@ describe('Native portable delta integration', () => {
         {
           capability: 'authentication',
           delta_source: 'specs/authentication/delta.yaml',
-          target_hash: expect.any(String),
           delta_operations: [{ id: 'authentication.sms', operation: 'add', status: 'changed' }],
         },
       ],
@@ -234,7 +245,7 @@ describe('Native portable delta integration', () => {
     expect(ready.phase).toBe('archive');
   });
 
-  it('rebases an independent canonical edit and blocks an overlapping edit', async () => {
+  it('applies an Agent-selected Delta to current canonical text and rejects a missing target', async () => {
     const name = 'modify-password';
     const passwordSection = `## Requirement: authentication.password Password login\n\nPassword behavior.\n\n`;
     const deltaText = `schema: comet.native.delta.v1\ncapability: authentication\nbase_hash: ${sha256(baseline)}\nbase_version: 1\nlegacy_hash: ${nativeLegacySectionHash(baseline)}\noperations:\n  - id: authentication.password\n    operation: modify\n    expected_hash: ${nativeRequirementSectionHash(passwordSection)}\n    body: Password behavior with a session check.\n`;
@@ -246,47 +257,48 @@ describe('Native portable delta integration', () => {
     );
 
     const preview = await inspectNativePortableArchive({ paths, name });
-    expect(preview.ready).toBe(false);
-    expect(preview.blockers.join('\n')).toMatch(/authentication\.password|conflict/iu);
+    expect(preview.ready).toBe(true);
+    await fs.writeFile(
+      path.join(paths.specsDir, 'authentication', 'spec.md'),
+      baseline.replace('authentication.password', 'authentication.renamed'),
+    );
+    const missing = await inspectNativePortableArchive({ paths, name });
+    expect(missing.ready).toBe(false);
+    expect(missing.blockers.join('\n')).toMatch(/authentication\.password|conflict/iu);
     await expect(archiveNativePortableChange({ paths, name })).rejects.toThrow(
       /authentication\.password|conflict/iu,
     );
   });
 
-  it('returns a passed change to Verify when an independent rebase changes the result', async () => {
+  it('explicitly rebases a passed Delta and returns only that requested change to Verify', async () => {
     const name = 'add-profile';
     const deltaText = `schema: comet.native.delta.v1\ncapability: authentication\nbase_hash: ${sha256(baseline)}\nbase_version: 1\nlegacy_hash: ${nativeLegacySectionHash(baseline)}\noperations:\n  - id: authentication.sms\n    operation: add\n    title: SMS login\n    body: SMS login MUST be available.\n`;
-    const shaped = await prepareChange(name, deltaText, { 'authentication.profile': null });
+    const shaped = await prepareChange(name, deltaText, {
+      'authentication.profile': null,
+    });
     await verify(name, shaped);
     await fs.writeFile(
       path.join(paths.specsDir, 'authentication', 'spec.md'),
       `${baseline}## Requirement: authentication.profile Profile\n\nProfile behavior.\n\n`,
     );
 
-    await fs.writeFile(path.join(root, 'unreviewed.js'), 'export const changed = true;\n');
-    await expect(archiveNativePortableChange({ paths, name })).rejects.toThrow(
-      'outside its confirmed Spec merge',
-    );
-    expect((await readNativePortableChange(paths, name)).phase).toBe('archive');
-    await fs.rm(path.join(root, 'unreviewed.js'));
-
-    await expect(archiveNativePortableChange({ paths, name })).rejects.toThrow(
-      /fresh verification/iu,
-    );
+    await rebaseNativePortableDeltas({ paths, name });
     await expect(readNativePortableChange(paths, name)).resolves.toMatchObject({
       phase: 'verify',
       verification_result: 'pending',
       verification: null,
-      loop: { stage: 'verify-ready', next_action: 'run-final-full-verification' },
+      loop: {
+        stage: 'verify-ready',
+        next_action: 'run-final-full-verification',
+      },
     });
 
     const rebasedDelta = await fs.readFile(
       path.join(paths.changesDir, name, 'specs', 'authentication', 'delta.yaml'),
       'utf8',
     );
-    expect(rebasedDelta).toContain(
-      `base_hash: ${sha256(`${baseline}## Requirement: authentication.profile Profile\n\nProfile behavior.\n\n`)}`,
-    );
+    expect(rebasedDelta).not.toContain('base_hash:');
+    expect(rebasedDelta).toContain('base_version: 2');
     const reshaped = await verify(name, shaped, true);
     expect(reshaped.phase).toBe('archive');
     await archiveNativePortableChange({ paths, name });
@@ -295,10 +307,12 @@ describe('Native portable delta integration', () => {
     ).resolves.toContain('authentication.profile');
   });
 
-  it('keeps Archive dry-run preview-only when a delta needs re-verification', async () => {
+  it('keeps Archive dry-run preview-only after an independent canonical Delta edit', async () => {
     const name = 'dry-run-rebase-preview';
     const deltaText = `schema: comet.native.delta.v1\ncapability: authentication\nbase_hash: ${sha256(baseline)}\nbase_version: 1\nlegacy_hash: ${nativeLegacySectionHash(baseline)}\noperations:\n  - id: authentication.sms\n    operation: add\n    title: SMS login\n    body: SMS login MUST be available.\n`;
-    const shaped = await prepareChange(name, deltaText, { 'authentication.profile': null });
+    const shaped = await prepareChange(name, deltaText, {
+      'authentication.profile': null,
+    });
     await verify(name, shaped);
     await fs.writeFile(
       path.join(paths.specsDir, 'authentication', 'spec.md'),
@@ -313,9 +327,8 @@ describe('Native portable delta integration', () => {
     await expect(nativeArchiveCommand([name, '--dry-run'], root)).resolves.toMatchObject({
       exitCode: 0,
       data: {
-        archived: false,
-        ready: false,
-        recovery: { action: 'reverify' },
+        ready: true,
+        requiresReverification: false,
       },
     });
     await expect(readNativePortableChange(paths, name)).resolves.toMatchObject({
@@ -331,12 +344,14 @@ describe('Native portable delta integration', () => {
     ).resolves.toBe(beforeDelta);
   });
 
-  it('discards a prepared Archive transaction when its canonical delta base changes', async () => {
+  it('resumes a prepared Delta transaction without overwriting an independent canonical addition', async () => {
     const name = 'prepared-transaction-rebase';
     const passwordSection =
       '## Requirement: authentication.password Password login\n\nPassword behavior.\n\n';
     const deltaText = `schema: comet.native.delta.v1\ncapability: authentication\nbase_hash: ${sha256(baseline)}\nbase_version: 1\nlegacy_hash: ${nativeLegacySectionHash(baseline)}\noperations:\n  - id: authentication.password\n    operation: modify\n    expected_hash: ${nativeRequirementSectionHash(passwordSection)}\n    body: Password behavior with a session check.\n`;
-    const shaped = await prepareChange(name, deltaText, { 'authentication.profile': null });
+    const shaped = await prepareChange(name, deltaText, {
+      'authentication.profile': null,
+    });
     await verify(name, shaped);
     const preparedDeltaText = await fs.readFile(
       path.join(paths.changesDir, name, 'specs', 'authentication', 'delta.yaml'),
@@ -381,22 +396,36 @@ describe('Native portable delta integration', () => {
       `${baseline}## Requirement: authentication.profile Profile\n\nProfile behavior.\n\n`,
     );
 
-    await expect(archiveNativePortableChange({ paths, name })).rejects.toThrow(
-      /fresh verification/iu,
-    );
-    await expect(readNativePortableChange(paths, name)).resolves.toMatchObject({
-      phase: 'verify',
-      verification_result: 'pending',
+    const resumed = await archiveNativePortableChange({ paths, name });
+    expect(resumed).toMatchObject({
+      transactionId: transaction.id,
+      state: { phase: 'archive', status: 'done', archived: true },
     });
+    const canonical = await fs.readFile(
+      path.join(paths.specsDir, 'authentication', 'spec.md'),
+      'utf8',
+    );
+    expect(canonical).toContain('Password behavior with a session check.');
+    expect(canonical).toContain('authentication.profile');
+    expect(canonical).toContain('Profile behavior.');
+    await expect(nativeArchiveCommand([name, '--confirmed'], root)).resolves.toMatchObject({
+      exitCode: 0,
+      data: { archived: true },
+    });
+    expect(await fs.readFile(path.join(paths.specsDir, 'authentication', 'spec.md'), 'utf8')).toBe(
+      canonical,
+    );
     await expect(
       fs.stat(nativePortableTransactionFile(paths, { kind: 'archive', change: name })),
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it('requires fresh verification when the delta is already applied but another edit is present', async () => {
+  it('explicitly rebases an already applied Delta with an independent canonical addition', async () => {
     const name = 'add-profile-after-replay';
     const deltaText = `schema: comet.native.delta.v1\ncapability: authentication\nbase_hash: ${sha256(baseline)}\nbase_version: 1\nlegacy_hash: ${nativeLegacySectionHash(baseline)}\noperations:\n  - id: authentication.sms\n    operation: add\n    title: SMS login\n    body: SMS login MUST be available.\n`;
-    const shaped = await prepareChange(name, deltaText, { 'authentication.profile': null });
+    const shaped = await prepareChange(name, deltaText, {
+      'authentication.profile': null,
+    });
     await verify(name, shaped);
     const merged = applyNativeDelta({
       baselineMarkdown: baseline,
@@ -407,9 +436,7 @@ describe('Native portable delta integration', () => {
       `${merged}## Requirement: authentication.profile Profile\n\nProfile behavior.\n\n`,
     );
 
-    await expect(archiveNativePortableChange({ paths, name })).rejects.toThrow(
-      /fresh verification/iu,
-    );
+    await rebaseNativePortableDeltas({ paths, name });
     await expect(readNativePortableChange(paths, name)).resolves.toMatchObject({
       phase: 'verify',
       verification_result: 'pending',
@@ -465,58 +492,6 @@ describe('Native portable delta integration', () => {
         'utf8',
       ),
     ).resolves.toBe(target);
-  });
-
-  it('returns a specs-applied full Spec transaction to Verify after an external edit', async () => {
-    const config = defaultProjectConfig('docs', 'en');
-    await writeProjectConfig(root, {
-      ...config,
-      native: { ...config.native, document_writes: 'revert' },
-    });
-    const name = 'applied-full-drift';
-    const target = `${baseline}## Requirement: authentication.sms SMS login\n\nSMS login MUST be available.\n\n`;
-    const shaped = await prepareFullChange(name, target);
-    await verify(name, shaped);
-    const state = await readNativePortableChange(paths, name);
-    const transaction: NativePortableArchiveTransaction = {
-      schema: NATIVE_PORTABLE_ARCHIVE_TRANSACTION_SCHEMA,
-      id: '0f7ca345-90e7-43ed-9e88-864ea784e1e2',
-      change: name,
-      start_state_version: state.state_version,
-      archive_ref: `${(state.verification?.completed_at ?? state.created_at).slice(0, 10)}-${name}`,
-      status: 'specs-applied',
-      next_spec_index: 1,
-      spec_changes: [
-        {
-          capability: 'authentication',
-          operation: 'modify',
-          source: 'specs/authentication/spec.md',
-          content: target,
-          expected_target_hash: nativeTotalSpecHash(baseline),
-          result_hash: nativeTotalSpecHash(target),
-        },
-      ],
-      created_at: new Date().toISOString(),
-    };
-    await atomicWriteJson(
-      nativePortableTransactionFile(paths, { kind: 'archive', change: name }),
-      transaction,
-      { containedRoot: paths.runtimeDir },
-    );
-    const external = `${baseline}## Requirement: authentication.profile Profile\n\nProfile behavior.\n\n`;
-    await fs.writeFile(path.join(paths.specsDir, 'authentication', 'spec.md'), external);
-
-    await expect(archiveNativePortableChange({ paths, name })).rejects.toThrow(
-      /fresh verification/iu,
-    );
-    await expect(readNativePortableChange(paths, name)).resolves.toMatchObject({
-      phase: 'verify',
-      verification_result: 'pending',
-      loop: { stage: 'verify-ready' },
-    });
-    await expect(
-      fs.stat(nativePortableTransactionFile(paths, { kind: 'archive', change: name })),
-    ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('archives remove and rename deltas without replaying the complete history', async () => {

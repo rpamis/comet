@@ -246,3 +246,33 @@ test('immutable map encoding does not expose cached delta arrays to later encodi
   const second = encodeJsonValueMaps(record, paths, isImmutableRuntimeSnapshot);
   expect(decodeJsonValueMaps(second.record, second.pool)).toEqual(record);
 });
+
+test('reuses immutable value bytes across encodings while mutable and changed values remain fresh', () => {
+  const item = freezeRuntimeSnapshot({ text: 'stable value '.repeat(300) });
+  const bindings = [{ path: ['outputs'], group: 'outputs' }];
+  const first = freezeRuntimeSnapshot({ outputs: { one: item } });
+  const second = freezeRuntimeSnapshot({ outputs: { one: item, two: { text: 'new value' } } });
+  const stringify = vi.spyOn(JSON, 'stringify');
+  try {
+    const encodedFirst = encodeJsonValueMaps(first, bindings, isImmutableRuntimeSnapshot);
+    const count = () => stringify.mock.calls.filter(([value]) => value === item).length;
+    expect(count()).toBe(1);
+    const encodedSecond = encodeJsonValueMaps(second, bindings, isImmutableRuntimeSnapshot);
+    expect(count()).toBe(1);
+    expect(decodeJsonValueMaps(encodedFirst.record, encodedFirst.pool)).toEqual(first);
+    expect(decodeJsonValueMaps(encodedSecond.record, encodedSecond.pool)).toEqual(second);
+    const mutable = { text: 'before' };
+    encodeJsonValueMaps({ outputs: { one: mutable } }, bindings, isImmutableRuntimeSnapshot);
+    mutable.text = 'after';
+    const changed = encodeJsonValueMaps(
+      { outputs: { one: mutable } },
+      bindings,
+      isImmutableRuntimeSnapshot,
+    );
+    expect(decodeJsonValueMaps(changed.record, changed.pool)).toEqual({
+      outputs: { one: { text: 'after' } },
+    });
+  } finally {
+    stringify.mockRestore();
+  }
+});

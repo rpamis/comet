@@ -111,7 +111,7 @@ describe('Classic executable artifact and recovery contract', () => {
     },
   );
 
-  it('retains broken or wrong-owner registered designs with structured repair details', async () => {
+  it('keeps the registered design and state while the Agent judges legacy metadata text', async () => {
     const { change, cli } = await fixture('docs');
     const entry = JSON.parse((await cli(['state', 'check', 'demo', 'design'])).stdout!);
     expect(
@@ -119,6 +119,8 @@ describe('Classic executable artifact and recovery contract', () => {
         .exitCode,
     ).toBe(0);
     const file = path.join(change, 'design.md');
+    const stateFile = path.join(change, '.comet.yaml');
+    const state = await fs.readFile(stateFile, 'utf8');
     const source = (await fs.readFile(file, 'utf8')).replace(
       'comet_change: demo',
       'comet_change: another',
@@ -128,16 +130,10 @@ describe('Classic executable artifact and recovery contract', () => {
       const result = JSON.parse(
         (await cli(['state', 'check', 'demo', 'design', ...recovery])).stdout!,
       );
-      expect(result.exitCode).toBe(1);
-      expect(result.data.checks.blocked).toBe(true);
-      expect(result.data.issues).toContainEqual(
-        expect.objectContaining({
-          code: 'CLASSIC_DESIGN_METADATA_INVALID',
-          field: 'comet_change',
-          actual: 'another',
-          expected: 'demo',
-        }),
-      );
+      expect(result.exitCode).toBe(0);
+      expect(result.data.designReadiness.design).toBe('ready');
+      expect(result.data.artifactRefs.designDoc).toBe(entry.data.artifactRefs.designDoc);
+      expect(await fs.readFile(stateFile, 'utf8')).toBe(state);
     }
     expect(await fs.readFile(file, 'utf8')).toBe(source);
   });

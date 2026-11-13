@@ -56,7 +56,7 @@ SDK 与 Compat 共用本节的任务读取、稳定 ID、勾选和协调记录�
 逐项按配置验收后，使用本次读取的 revision 记录完成：
 
 ```bash
-comet state task-complete <name> <task-id> --expect <revision> --json
+comet state task-complete <name> <task-id> --json
 ```
 
 此命令只记录完成状态，不能替代验收。因需求变更而被拒绝时，重新读取任务和受影响的设计，核对实现是否仍符合要求，不能只换成新 revision 就盲目重试。仅更新完成状态不会改变 revision；命令支持幂等重试。按已有提交策略保存进度，不要求每个小任务都单独创建一次进度提交。

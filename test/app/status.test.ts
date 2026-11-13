@@ -6,7 +6,6 @@ import path from 'path';
 import { statusCommand } from '../../app/commands/status.js';
 import { ensureClassicRuntimeRun } from '../../domains/comet-classic/classic-runtime-run.js';
 import { resolveClassicRunDirectory } from '../../domains/comet-classic/classic-runtime-paths.js';
-import { createNativeChange } from '../../domains/comet-native/native-change.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -606,7 +605,7 @@ describe('status command', () => {
     expect(initialized.status, initialized.stderr).toBe(0);
     await writeProjectConfig(tmpDir, defaultProjectConfig('docs'));
     const paths = await nativeProjectPaths(tmpDir, 'docs');
-    await createNativeChange({ paths, name: 'native-text', language: 'en' });
+    await createNativePortableChange({ paths, name: 'native-text', language: 'en' });
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     let output: string;

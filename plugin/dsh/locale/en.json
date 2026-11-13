@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Comet",
+    "description": "Comet is a resumable long-running workflow and Skill platform for agents. Move from requirements through implementation, verification and archiving while retaining personal memory and project knowledge. In DeepSeek Harness, open the current project Dashboard from the sidebar and use the matching Comet CLI installed with the plugin.",
+    "detail": "README.en.md"
+  }
+}

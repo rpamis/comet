@@ -1,45 +1,39 @@
-import {
-  prepareClassicArchiveInputs,
-  assertClassicArchiveUnchanged,
-  recordClassicArchiveManifest,
-  recoverClassicArchiveManifest,
-  readClassicArchiveManifest,
-} from './classic-sdk-archive-manifest.js';
-import { resolveClassicStateFile } from './classic-state-file.js';
-import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { samePath } from '../../platform/paths/git-worktree.js';
 import { parseDocument } from 'yaml';
+import { samePath } from '../../platform/paths/git-worktree.js';
 import {
-  portableClaimToken,
-  readPortableRunCheckpoint,
   createPortableRunCheckpoint,
-  type WorkflowRun,
-  type WorkflowRuntime,
+  readPortableRunCheckpoint,
   type RuntimeAction,
   type RuntimeExecutor,
   type RuntimeOutcome,
+  type WorkflowRun,
+  type WorkflowRuntime,
 } from '../engine/runtime.js';
-import {
-  hashProtectedProjectFile,
-  inspectProtectedProjectPath,
-} from '../workflow-contract/protected-project-path.js';
+import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
+import { annotatedMarkdown, archivedClassicDocumentRef } from './classic-archive-annotation.js';
 import {
   classicArchivedRequirementsProblems,
   recordClassicArchiveRequirements,
 } from './classic-artifact-requirements.js';
-import { annotatedMarkdown, archivedClassicDocumentRef } from './classic-archive-annotation.js';
-import { classicArchiveDocumentOutputs } from './classic-sdk-archive-documents.js';
-import { assertClassicSdkArchiveReady } from './classic-sdk-archive-preflight.js';
-import { classicSdkRemoteIdentity } from './classic-sdk-remote.js';
 import { resolveClassicLayout } from './classic-layout.js';
 import {
   assertClassicOpenSpecAvailable,
   executeClassicOpenSpec,
 } from './classic-openspec-command.js';
 import { readClassicProjectFile, writeClassicProjectText } from './classic-protected-path.js';
+import {
+  prepareClassicArchiveInputs,
+  readClassicArchiveManifest,
+  recordClassicArchiveManifest,
+  recoverClassicArchiveManifest,
+} from './classic-sdk-archive-manifest.js';
+import { assertClassicSdkArchiveReady } from './classic-sdk-archive-preflight.js';
+import { classicSdkRemoteIdentity } from './classic-sdk-remote.js';
+import { resolveClassicStateFile } from './classic-state-file.js';
 import { hasClassicManagedRunMarker, type ClassicState } from './classic-state.js';
 
 interface ClassicSdkArchiveInput {
@@ -83,101 +77,6 @@ async function annotateIfPresent(
     file.target,
     annotatedMarkdown(original, archiveName, extraFields),
     { label: 'Classic Archive document' },
-  );
-}
-
-const archiveDocumentsReceipt = '.comet/archive-documents.json';
-
-/** 保存归档前的原文，归档后只接受可从已验收摘要确定性推导的注记。 */
-async function recordArchiveDocuments(
-  projectRoot: string,
-  run: Readonly<WorkflowRun>,
-  action: Readonly<RuntimeAction>,
-  activeRef: string,
-): Promise<void> {
-  const state = run.state as unknown as ClassicState;
-  const documents: Record<string, { original: string; extraFields: string }> = {};
-  for (const [ref, extraFields] of [
-    [state.designDoc, 'status: final'],
-    [state.plan, ''],
-  ] as const) {
-    if (!ref) continue;
-    const file = await inspectProtectedProjectPath(projectRoot, ref, {
-      label: 'Classic Archive document',
-      expected: 'file',
-    });
-    if (file.exists)
-      documents[ref] = {
-        original: await readClassicProjectFile(projectRoot, file.target, {
-          label: 'Classic Archive document',
-        }),
-        extraFields,
-      };
-  }
-  await writeClassicProjectText(
-    projectRoot,
-    `${activeRef}/${archiveDocumentsReceipt}`,
-    JSON.stringify({
-      runId: run.runId,
-      actionId: action.id,
-      attempt: action.attempt,
-      inputHash: action.inputHash,
-      claimToken: portableClaimToken(action.claim?.token ?? ''),
-      documents,
-    }),
-    { label: 'Classic Archive document receipt' },
-  );
-}
-
-/** 原摘要保持不变；只允许 Archive 的目录搬迁和确定性文档注记。 */
-export async function classicArchivedArtifactMatches(
-  projectRoot: string,
-  run: Readonly<WorkflowRun>,
-  archiveAction: Readonly<RuntimeAction>,
-  archiveRef: string,
-  ref: string,
-  acceptedHash: string | undefined,
-): Promise<boolean> {
-  const activeRef = (run.input as { changeDir: string }).changeDir;
-  const mapped = archivedClassicDocumentRef(ref, activeRef, archiveRef)!;
-  const current = await hashProtectedProjectFile(projectRoot, mapped, {
-    label: 'Classic 新增检查工件',
-  });
-  if (current.digest === acceptedHash) return true;
-  const receipt = JSON.parse(
-    await readClassicProjectFile(projectRoot, `${archiveRef}/${archiveDocumentsReceipt}`, {
-      label: 'Classic Archive document receipt',
-    }),
-  );
-  if (
-    receipt.runId !== run.runId ||
-    receipt.actionId !== archiveAction.id ||
-    receipt.attempt !== archiveAction.attempt ||
-    receipt.inputHash !== archiveAction.inputHash ||
-    receipt.claimToken !== portableClaimToken(archiveAction.claim?.token ?? '')
-  )
-    return false;
-  const document = receipt.documents?.[ref];
-  if (
-    typeof document?.original !== 'string' ||
-    !['', 'status: final'].includes(document.extraFields)
-  )
-    return false;
-  const digest = (text: string) => createHash('sha256').update(text).digest('hex');
-  // 回执不能自选任意变换：原指针和注记种类必须来自 Archive 固定输入的文档结果。
-  const { outputs } = classicArchiveDocumentOutputs(run, archiveAction);
-  const plan = outputs?.['full.build.plan'] as
-    { plan?: string; designEvidence?: { ref?: string } } | undefined;
-  const designDoc =
-    (outputs?.['full.design.document'] as { designDoc?: string } | undefined)?.designDoc ??
-    plan?.designEvidence?.ref;
-  const extraFields = ref === plan?.plan ? '' : ref === designDoc ? 'status: final' : null;
-  return (
-    extraFields !== null &&
-    document.extraFields === extraFields &&
-    digest(document.original) === acceptedHash &&
-    digest(annotatedMarkdown(document.original, path.posix.basename(archiveRef), extraFields)) ===
-      current.digest
   );
 }
 
@@ -271,7 +170,6 @@ export async function runClassicSdkArchive(
   const { active, runInput, layout, before } = context;
   let archiveInputs: Awaited<ReturnType<typeof prepareClassicArchiveInputs>>;
   try {
-    await recordArchiveDocuments(projectRoot, run, action, runInput.changeDir);
     await recordClassicArchiveRequirements(projectRoot, active.target);
     archiveInputs = await prepareClassicArchiveInputs(
       projectRoot,
@@ -304,16 +202,18 @@ export async function runClassicSdkArchive(
     // 已收到进程退出结果后才核对副作用；超时或连接中断仍由原领取方恢复。
     if (!result.executionCompleted)
       throw new Error(diagnostic || 'OpenSpec Archive execution has an unresolved result');
-    try {
-      await assertClassicArchiveUnchanged(projectRoot, run, action);
-    } catch (error) {
+    const remaining = await inspectProtectedProjectPath(projectRoot, runInput.changeDir, {
+      label: 'Classic active change',
+      expected: 'directory',
+    });
+    const moved = [...(await archiveEntries(layout.archiveDir, runInput.change))].some(
+      (name) => !before.has(name),
+    );
+    if (!remaining.exists && moved)
       throw new Error(
-        [diagnostic, error instanceof Error ? error.message : String(error)]
-          .filter(Boolean)
-          .join('\n'),
-        { cause: error },
+        diagnostic ||
+          'OpenSpec Archive moved the change before returning a failure; recover the original Archive progress',
       );
-    }
     return {
       status: 'failed',
       output: {
@@ -370,7 +270,9 @@ export async function runClassicSdkArchive(
       archiveRef,
       archiveInputs,
     ),
-    output: { archiveDirectory: path.relative(projectRoot, archived.target).replaceAll('\\', '/') },
+    output: {
+      archiveDirectory: archiveRef,
+    },
   };
 }
 export function createClassicSdkArchiveExecutor(projectRoot: string): RuntimeExecutor {
@@ -483,12 +385,8 @@ export async function recoverClassicSdkArchive(
     if (completed) {
       const archiveRef = (completed.outcome?.output as { archiveDirectory: string })
         .archiveDirectory;
-      try {
-        await readClassicArchiveManifest(projectRoot, run, completed, archiveRef);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-        await recoverClassicArchiveManifest(projectRoot, run, completed, archiveRef);
-      }
+      await recoverClassicArchiveManifest(projectRoot, run, completed, archiveRef);
+      await readClassicArchiveManifest(projectRoot, run, completed, archiveRef);
       return run;
     }
   }
@@ -576,7 +474,7 @@ export async function recoverClassicSdkArchive(
       status: 'succeeded',
       artifacts,
       output: {
-        archiveDirectory: path.relative(projectRoot, archived.target).replaceAll('\\', '/'),
+        archiveDirectory: archiveRef,
       },
     },
   });

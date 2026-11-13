@@ -7,6 +7,10 @@ import { runNativeCli } from '../../domains/comet-native/native-cli.js';
 import { snapshotCometRuntimeMetrics } from '../../platform/process/runtime-metrics.js';
 
 const createCometDaemonServer = vi.hoisted(() => vi.fn());
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return { ...actual, execFileSync: vi.fn(actual.execFileSync) };
+});
 vi.mock('../../platform/process/comet-daemon.js', () => ({ createCometDaemonServer }));
 import { runCometDaemonServer } from '../../app/commands/daemon-server.js';
 let root: string;
@@ -75,9 +79,15 @@ it('reuses only Git observations while Native documents remain fresh between dae
     '# Manually updated brief\n',
   );
   const before = snapshotCometRuntimeMetrics();
+  const commandsBefore = vi.mocked(execFileSync).mock.calls.length;
   const next = await query(['show', 'cache-test']);
   expect(next.brief).toBe('# Manually updated brief\n');
   expect(next.brief).not.toBe(original.brief);
-  expect(snapshotCometRuntimeMetrics().gitCommands).toBe(before.gitCommands);
+  const queries = vi
+    .mocked(execFileSync)
+    .mock.calls.slice(commandsBefore)
+    .filter(([command]) => command === 'git');
+  expect(queries).toHaveLength(0);
+  expect(snapshotCometRuntimeMetrics().gitCommands - before.gitCommands).toBe(queries.length);
   expect((await query(['status'])).items[0].phase).toBe('shape');
 });

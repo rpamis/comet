@@ -1,0 +1,24 @@
+{
+  "authorization": "report:2026-11-11-single-writer-workspaces",
+  "cases": [],
+  "behaviorMappings": [
+    {
+      "name": "validates a matching state in memory without recreating the absent marker directory",
+      "body": "it('validates a matching state in memory without recreating the absent marker directory', async () => {\n    const { root, store, markerFile, backing } = await fixture();\n    const expected = await backing.read('demo');\n    await fs.rm(path.dirname(markerFile), { recursive: true });\n    const before = await snapshot(root);\n    expect(await store.read('demo')).toEqual(expected);\n    expect(await snapshot(root)).toEqual(before);\n  })",
+      "file": "test/domains/comet-classic/classic-sdk-readonly.test.ts",
+      "classification": "fixture-only setup repair with stronger readonly assertions",
+      "rootCause": "The fixture unconditionally fs.rm-ed the retired state-projections/classic directory, which is now absent by design. ENOENT happened before the read under test.",
+      "retained": "Same original test name and matching-state read/no-rebuild behavior. Assert marker directory absent before/after; preserve project snapshot plus add complete Runtime bytes/mtime snapshot and no-write spies. Other ten assertions unchanged.",
+      "target": {
+        "file": "test/domains/comet-classic/classic-sdk-readonly.test.ts",
+        "fullName": "Classic SDK read-only diagnostics validates a matching state in memory without recreating the absent marker directory",
+        "body": "it('validates a matching state in memory without recreating the absent marker directory', async () => {\n    const { root, store, markerFile, backing } = await fixture();\n    const expected = await backing.read('demo');\n    const markerDirectory = path.dirname(markerFile);\n    await expect(fs.access(markerDirectory)).rejects.toMatchObject({ code: 'ENOENT' });\n    const runtimeRoot = resolveWorkspaceRuntimeRootSync(root);\n    const before = await snapshot(root);\n    const beforeRuntime = await snapshot(runtimeRoot);\n    const writes = watchWrites();\n    expect(await store.read('demo')).toEqual(expected);\n    for (const write of writes) expect(write).not.toHaveBeenCalled();\n    expect(await snapshot(root)).toEqual(before);\n    expect(await snapshot(runtimeRoot)).toEqual(beforeRuntime);\n    await expect(fs.access(markerDirectory)).rejects.toMatchObject({ code: 'ENOENT' });\n  })"
+      },
+      "evidence": [
+        "coverage/classic-sdk-readonly-current-audit.json",
+        "coverage/classic-sdk-readonly-absent-marker-fixture-green.json"
+      ],
+      "status": "passed"
+    }
+  ]
+}

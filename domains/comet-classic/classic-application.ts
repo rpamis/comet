@@ -1,11 +1,9 @@
-import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
-import { isClassicStateFileName } from './classic-state-file.js';
 import path from 'node:path';
 import {
   hashRuntimeValue,
   type RuntimeAction,
-  type RuntimeValidator,
   type RuntimeCommandValidator,
+  type RuntimeValidator,
   type RuntimeValue,
   type WorkflowRun,
   type WorkflowTransitionEvent,
@@ -15,37 +13,30 @@ import type {
   WorkflowApplicationImplementation,
 } from '../workflow-application/index.js';
 import {
-  hashProtectedProjectFile,
-  inspectProtectedProjectPath,
-} from '../workflow-contract/protected-project-path.js';
-import {
   COMET_CHANGE_OWNER_SCHEMA,
   readChangeRuntimeOwner,
   registerSdkChangeOwner,
 } from '../workflow-contract/change-runtime-owner.js';
-import { defineClassicWorkflowApplication } from './classic-sdk-application.js';
+import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import { validateClassicSdkDesignContext } from './classic-handoff.js';
-import { applyClassicTransition } from './classic-transitions.js';
-import { classicSdkRunMatchesProfile } from './classic-sdk-profile.js';
-import { createClassicSdkStateStore } from './classic-sdk-state-store.js';
 import {
-  createClassicSdkCheckExecutor,
-  assertClassicSdkCheckCommandBinding,
-} from './classic-sdk-check.js';
+  assertClassicAgentCheckReports,
+  defineClassicWorkflowApplication,
+} from './classic-sdk-application.js';
+import { upgradeClassicRun } from './classic-sdk-run-upgrade.js';
 import { createClassicSdkArchivePreflightExecutor } from './classic-sdk-archive-preflight.js';
-import {
-  classicArchivedArtifactMatches,
-  createClassicSdkArchiveExecutor,
-} from './classic-sdk-archive.js';
+import { createClassicSdkArchiveExecutor } from './classic-sdk-archive.js';
+import { classicSdkRunMatchesProfile } from './classic-sdk-profile.js';
+import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
+import { createClassicSdkStateStore } from './classic-sdk-state-store.js';
+import { isClassicStateFileName } from './classic-state-file.js';
 import { type ClassicProfile, type ClassicState } from './classic-state.js';
-
+import { applyClassicTransition } from './classic-transitions.js';
 export { parseClassicStateDocument } from './classic-state.js';
-
 export interface ClassicApplicationReplacement {
   stepId: string;
   skillId: string;
 }
-
 /** 只在原领域证据通过之后追加工作，不移动工件、批准或验收步骤。 */
 export interface ClassicApplicationExtension {
   id: string;
@@ -54,7 +45,6 @@ export interface ClassicApplicationExtension {
   artifactRefs: readonly string[];
   validator: RuntimeValidator;
 }
-
 export interface ClassicApplicationOptions {
   profile: ClassicProfile;
   replacements?: readonly ClassicApplicationReplacement[];
@@ -63,21 +53,25 @@ export interface ClassicApplicationOptions {
   order?: readonly string[];
   executors?: WorkflowApplicationImplementation['executors'];
 }
-
 interface ExtensionSource {
   event: WorkflowTransitionEvent;
   sequence: number;
   checkEpoch: number;
 }
-
 export function classicExtensionStepId(id: string): string {
   return `classic.extension.${id}`;
 }
-
-function activation(action: Readonly<RuntimeAction>): { source: ExtensionSource } {
-  return (action.input as unknown as { activation: { source: ExtensionSource } }).activation;
+function activation(action: Readonly<RuntimeAction>): {
+  source: ExtensionSource;
+} {
+  return (
+    action.input as unknown as {
+      activation: {
+        source: ExtensionSource;
+      };
+    }
+  ).activation;
 }
-
 function sourceCurrent(run: Readonly<WorkflowRun>, source: ExtensionSource): boolean {
   const event = source.event;
   if (event.kind === 'action-outcome')
@@ -105,7 +99,6 @@ function sourceCurrent(run: Readonly<WorkflowRun>, source: ExtensionSource): boo
     );
   return false;
 }
-
 /** 组合 Classic 的执行绑定和新增检查，所有推进仍委托原 Classic 领域。 */
 export function createClassicApplication(
   context: WorkflowApplicationFactoryContext,
@@ -113,6 +106,16 @@ export function createClassicApplication(
 ): WorkflowApplicationImplementation {
   if (context.manifest.base !== `classic-${options.profile}`)
     throw new Error('Classic 组合应用与所选 profile 不一致');
+  const currentCheckpoint = (stepId: string) =>
+    context.manifest.runtimeVersion === '0.5.2'
+      ? stepId
+          .replace(/\.build\.check\.evidence$/u, '.build.execute')
+          .replace(/\.verify\.check\.evidence$/u, '.verify.report.evidence')
+      : stepId;
+  const configuredExtensions = (options.extensions ?? []).map((extension) => ({
+    ...extension,
+    afterStep: currentCheckpoint(extension.afterStep),
+  }));
   const base = defineClassicWorkflowApplication(options.profile);
   const workflow = structuredClone(base.workflow);
   const commandValidator: RuntimeCommandValidator = {
@@ -120,7 +123,11 @@ export function createClassicApplication(
     version: '1',
     validate({ run, input }) {
       const state = run.state as unknown as ClassicState;
-      const reason = (input as { reason?: unknown } | null)?.reason;
+      const reason = (
+        input as {
+          reason?: unknown;
+        } | null
+      )?.reason;
       return {
         accepted:
           !state.archived &&
@@ -187,11 +194,9 @@ export function createClassicApplication(
     'full.open.revalidate',
     'full.design.evidence',
     'full.build.plan.evidence',
-    `${options.profile}.build.check.evidence`,
-    `${options.profile}.verify.check.evidence`,
-    ...(options.profile === 'full'
-      ? []
-      : ['full.build.check.evidence', 'full.verify.check.evidence']),
+    `${options.profile}.build.execute`,
+    `${options.profile}.verify.report.evidence`,
+    ...(options.profile === 'full' ? [] : ['full.build.execute', 'full.verify.report.evidence']),
   ]);
   const seen = new Set<string>();
   for (const replacement of options.replacements ?? []) {
@@ -203,7 +208,7 @@ export function createClassicApplication(
     seen.add(replacement.stepId);
     step.ref = replacement.skillId;
   }
-  for (const extension of options.extensions ?? []) {
+  for (const extension of configuredExtensions) {
     if (
       !/^[a-z][a-z\d]*(?:-[a-z\d]+)*$/u.test(extension.id) ||
       extensions.has(classicExtensionStepId(extension.id)) ||
@@ -223,10 +228,9 @@ export function createClassicApplication(
     const targets = [extension.afterStep];
     if (
       options.profile !== 'full' &&
-      [
-        `${options.profile}.build.check.evidence`,
-        `${options.profile}.verify.check.evidence`,
-      ].includes(extension.afterStep)
+      [`${options.profile}.build.execute`, `${options.profile}.verify.report.evidence`].includes(
+        extension.afterStep,
+      )
     )
       targets.push(extension.afterStep.replace(`${options.profile}.`, 'full.'));
     for (const checkpoint of targets) {
@@ -236,16 +240,16 @@ export function createClassicApplication(
     }
   }
   if (options.order) {
-    const ids = (options.extensions ?? []).map((extension) => extension.id);
+    const ids = configuredExtensions.map((extension) => extension.id);
     if (
       options.order.length !== ids.length ||
       new Set(options.order).size !== ids.length ||
       options.order.some((id) => !ids.includes(id))
     )
       throw new Error('Classic 顺序必须完整列出新增步骤；不能重排领域步骤');
-    const original = (options.extensions ?? []).map((extension) => extension.afterStep);
+    const original = configuredExtensions.map((extension) => extension.afterStep);
     const ordered = options.order.map(
-      (id) => (options.extensions ?? []).find((entry) => entry.id === id)!.afterStep,
+      (id) => configuredExtensions.find((entry) => entry.id === id)!.afterStep,
     );
     if (hashRuntimeValue(original) !== hashRuntimeValue(ordered))
       throw new Error('Classic 新增步骤只能在同一领域检查点内调整顺序');
@@ -261,7 +265,10 @@ export function createClassicApplication(
   }
   const validators = [...base.validators];
   type ValidationInput = Parameters<RuntimeValidator['validate']>[0];
-  type ArchivedArtifacts = { action: RuntimeAction; directory: string };
+  type ArchivedArtifacts = {
+    action: RuntimeAction;
+    directory: string;
+  };
   const extensionValidators = new Map<
     string,
     (
@@ -280,7 +287,7 @@ export function createClassicApplication(
       }),
     });
   for (const [stepId, extension] of extensions) {
-    const validate = async (input: ValidationInput, archive?: ArchivedArtifacts) => {
+    const validate = async (input: ValidationInput, _archive?: ArchivedArtifacts) => {
       if (input.outcome.status === 'failed') return { accepted: true };
       const source = activation(input.action)?.source;
       const output = input.outcome.output as {
@@ -307,7 +314,7 @@ export function createClassicApplication(
       ) {
         const step = base.workflow.steps[source.event.stepId];
         const original = base.evidenceValidators.find(
-          (validator) => validator.id === step.validator?.id,
+          (validator) => validator.id === step?.validator?.id,
         );
         if (original) {
           const checked = await original.validate({
@@ -325,12 +332,19 @@ export function createClassicApplication(
         source.checkEpoch === ((input.run.state as unknown as ClassicState).checkEpoch ?? 0)
       ) {
         const step = base.workflow.steps[source.event.stepId];
-        const validator = base.validators.find((entry) => entry.id === step.validator?.id);
+        const validator = base.validators.find((entry) => entry.id === step?.validator?.id);
         const original = input.run.actions.find(
           (entry) =>
-            entry.id === (source.event as { outcome: { actionId: string } }).outcome.actionId,
+            entry.id ===
+            (
+              source.event as {
+                outcome: {
+                  actionId: string;
+                };
+              }
+            ).outcome.actionId,
         );
-        if (validator && original?.outcome) {
+        if (validator && original?.outcome && original.executionOrigin?.workflow.version !== '1') {
           const checked = await validator.validate({
             run: input.run,
             action: original,
@@ -338,32 +352,6 @@ export function createClassicApplication(
             context: { requestId: 'classic-extension-source', projectRoot: context.projectRoot },
           });
           if (!checked.accepted) return checked;
-        }
-      }
-      for (const ref of extension.artifactRefs) {
-        try {
-          const matches = archive
-            ? await classicArchivedArtifactMatches(
-                context.projectRoot,
-                input.run,
-                archive.action,
-                archive.directory,
-                ref,
-                output.artifactHashes?.[ref],
-              )
-            : output.artifactHashes?.[ref] ===
-              (
-                await hashProtectedProjectFile(context.projectRoot, ref, {
-                  label: 'Classic 新增检查工件',
-                })
-              ).digest;
-          if (!matches)
-            return { accepted: false, reason: `Classic 检查工件已变化：${ref}；请重新检查` };
-        } catch (error) {
-          return {
-            accepted: false,
-            reason: error instanceof Error ? error.message : String(error),
-          };
         }
       }
       return extension.validator.validate(input);
@@ -403,8 +391,24 @@ export function createClassicApplication(
     if (
       step.outputSchema !== undefined &&
       hashRuntimeValue(step.outputSchema) !== hashRuntimeValue(skill.adapter.outputSchema)
-    )
-      throw new Error(`Classic Skill 输出不符合原工作契约：${stepId}`);
+    ) {
+      const previous = structuredClone(step.outputSchema) as {
+        properties?: Record<string, RuntimeValue>;
+      };
+      if (previous.properties) {
+        delete previous.properties.checks;
+        delete previous.properties.checksReason;
+        delete previous.properties.deliveryPaths;
+      }
+      if (
+        context.manifest.runtimeVersion !== '0.5.2' ||
+        !stepId.match(/\.(?:build\.execute|verify\.run|archive\.prepare)$/u) ||
+        hashRuntimeValue(previous as RuntimeValue) !== hashRuntimeValue(skill.adapter.outputSchema)
+      )
+        throw new Error(`Classic Skill 输出不符合原工作契约：${stepId}`);
+      // 原结果仍有效；后续提交可增加实际平台检查报告，不能生成通过结果。
+      skill.adapter.outputSchema = step.outputSchema;
+    }
     step.outputSchema ??= skill.adapter.outputSchema;
     step.requiredCapabilities = [
       ...new Set([...(step.requiredCapabilities ?? []), ...skill.adapter.requiredCapabilities]),
@@ -412,7 +416,9 @@ export function createClassicApplication(
     if (skill.adapter.sideEffect === 'external') step.retry = 'reconcile';
   }
   const repairTarget = (checkpoint: string) =>
-    checkpoint.includes('.verify.') || checkpoint.includes('.build.check.')
+    checkpoint.includes('.verify.') ||
+    checkpoint.includes('.build.check.') ||
+    checkpoint.endsWith('.build.execute')
       ? `${checkpoint.split('.')[0]}.build.${checkpoint.startsWith('full.') ? 'plan' : 'execute'}`
       : checkpoint.includes('.build.plan.')
         ? 'full.build.plan'
@@ -454,6 +460,42 @@ export function createClassicApplication(
   );
   const resumeDomain = (run: Readonly<WorkflowRun>, event: WorkflowTransitionEvent) => {
     const state = run.state as unknown as ClassicState;
+    const checkpoint = currentCheckpoint(event.stepId);
+    if (checkpoint !== event.stepId && event.kind === 'evidence-recorded') {
+      const source = run.evidenceWaits?.find(
+        (wait) => wait.stepId === event.stepId && wait.receipt?.submissionId === event.submissionId,
+      );
+      const accepted = source?.results[checkpoint];
+      if (checkpoint.endsWith('.build.execute')) {
+        const builder = run.actions.find(
+          (action) =>
+            action.stepId === checkpoint &&
+            action.status === 'succeeded' &&
+            run.actionContexts[action.id]?.sequence === accepted?.sequence,
+        );
+        if (!builder?.outcome) throw new Error('旧 Classic 扩展缺少原已接受的 Build 来源');
+        return base.transitionHandler.apply({
+          run,
+          event: { kind: 'action-outcome', stepId: builder.stepId, outcome: builder.outcome },
+        });
+      }
+      const report = run.evidenceWaits?.find(
+        (wait) =>
+          wait.stepId === checkpoint &&
+          wait.status === 'resolved' &&
+          wait.sequence === accepted?.sequence,
+      );
+      if (!report?.receipt) throw new Error('旧 Classic 扩展缺少原已接受的 Verify 报告');
+      return base.transitionHandler.apply({
+        run,
+        event: {
+          kind: 'evidence-recorded',
+          stepId: report.stepId,
+          evidenceKind: report.kind,
+          ...report.receipt,
+        },
+      });
+    }
     if (
       options.profile !== 'full' &&
       state.workflow === 'full' &&
@@ -516,7 +558,11 @@ export function createClassicApplication(
       if (event.kind === 'action-outcome' && extensions.has(event.stepId)) {
         const action = run.actions.find((entry) => entry.id === event.outcome.actionId)!;
         const source = activation(action).source;
-        const verdict = (event.outcome.output as { verdict?: string } | null)?.verdict;
+        const verdict = (
+          event.outcome.output as {
+            verdict?: string;
+          } | null
+        )?.verdict;
         if (event.outcome.status !== 'succeeded' || verdict !== 'pass') {
           const state = run.state as unknown as ClassicState;
           const revise = verdict === 'revise-requirements';
@@ -546,16 +592,32 @@ export function createClassicApplication(
             next: [target],
           };
         }
-        const chain = chains.get(source.event.stepId)!;
+        const chain = chains.get(currentCheckpoint(source.event.stepId))!;
         const next = chain[chain.indexOf(event.stepId) + 1];
         if (next)
           return {
             state: run.state!,
             next: [{ stepId: next, input: { source: source as unknown as RuntimeValue } }],
           };
-        return resumeDomain(run, source.event);
+        const sourceEvent = source.event;
+        return resumeDomain(
+          run,
+          sourceEvent.kind === 'action-outcome'
+            ? {
+                ...sourceEvent,
+                outcome: run.actions.find((entry) => entry.id === sourceEvent.outcome.actionId)!
+                  .outcome!,
+              }
+            : sourceEvent,
+        );
       }
-      const first = chains.get(event.stepId)?.[0];
+      if (
+        event.kind === 'action-outcome' &&
+        event.stepId.endsWith('.build.execute') &&
+        (event.outcome.output as { event?: string } | null)?.event === 'escalation-requested'
+      )
+        return resumeDomain(run, event);
+      const first = chains.get(currentCheckpoint(event.stepId))?.[0];
       if (
         first &&
         (event.kind === 'evidence-recorded' ||
@@ -590,7 +652,6 @@ export function createClassicApplication(
     commandValidators: [commandValidator],
     executors: [
       ...base.executors,
-      createClassicSdkCheckExecutor(context.projectRoot),
       createClassicSdkArchivePreflightExecutor(context.projectRoot),
       createClassicSdkArchiveExecutor(context.projectRoot),
       {
@@ -619,21 +680,15 @@ export function createClassicApplication(
     ],
     async validateOutcome(input) {
       if (input.outcome.status === 'failed') return { accepted: true };
-      if (input.action.ref === 'classic-check' && input.outcome.output !== null) {
-        try {
-          await assertClassicSdkCheckCommandBinding(
-            input.run,
-            input.action,
-            context.projectRoot,
-            input.outcome.output as Record<string, unknown>,
-          );
-        } catch (error) {
-          return {
-            accepted: false,
-            reason: error instanceof Error ? error.message : String(error),
-          };
-        }
-      }
+      const output = input.outcome.output as
+        (Parameters<typeof assertClassicAgentCheckReports>[0] & { event?: string }) | null;
+      if (
+        (input.action.stepId.endsWith('.build.execute') ||
+          input.action.stepId.endsWith('.verify.run')) &&
+        output &&
+        ['build-complete', 'verification-ready'].includes(output.event ?? '')
+      )
+        assertClassicAgentCheckReports(output);
       if (
         ['classic.composition.repair', 'classic.composition.revise'].includes(input.action.stepId)
       )
@@ -641,7 +696,13 @@ export function createClassicApplication(
       if (
         extensions.has(input.action.stepId) &&
         ['repair', 'revise-requirements'].includes(
-          String((input.outcome.output as { verdict?: unknown } | null)?.verdict),
+          String(
+            (
+              input.outcome.output as {
+                verdict?: unknown;
+              } | null
+            )?.verdict,
+          ),
         )
       )
         return { accepted: true };
@@ -653,10 +714,12 @@ export function createClassicApplication(
         !(input.action.stepId.endsWith('.archive.execute') && input.outcome.output !== null)
       ) {
         try {
-          const change = input.run.input as { change: string; changeDir: string };
+          const change = input.run.input as {
+            change: string;
+            changeDir: string;
+          };
           if (
             !state.handoffContext ||
-            !state.handoffHash ||
             !(await validateClassicSdkDesignContext({
               run: input.run,
               projectRoot: context.projectRoot,
@@ -691,15 +754,24 @@ export function createClassicApplication(
             );
             return (
               work?.status === 'failed' ||
-              (entry.value as { verdict?: string } | null)?.verdict === 'repair' ||
-              (entry.value as { verdict?: string } | null)?.verdict === 'revise-requirements'
+              (
+                entry.value as {
+                  verdict?: string;
+                } | null
+              )?.verdict === 'repair' ||
+              (
+                entry.value as {
+                  verdict?: string;
+                } | null
+              )?.verdict === 'revise-requirements'
             );
           }
           if (entry.sequence === result.sequence) return false;
           const checkpoint = extensions.get(stepId)!.afterStep;
           return (
             id.endsWith('.open') ||
-            ((checkpoint.includes('.build.check.') || checkpoint.includes('.verify.check.')) &&
+            ((checkpoint.endsWith('.build.execute') ||
+              checkpoint.endsWith('.verify.report.evidence')) &&
               (id.endsWith('.build.plan') || id.endsWith('.build.execute')))
           );
         });
@@ -711,7 +783,11 @@ export function createClassicApplication(
         );
         if (
           !checked?.outcome ||
-          (checked.outcome.output as { verdict?: string })?.verdict !== 'pass'
+          (
+            checked.outcome.output as {
+              verdict?: string;
+            }
+          )?.verdict !== 'pass'
         )
           return { accepted: false, reason: 'Classic 必需新增检查尚未通过' };
         const archiveAction =
@@ -727,7 +803,11 @@ export function createClassicApplication(
           archiveAction?.id === input.action.id
             ? input.outcome.output
             : archiveAction?.outcome?.output
-        ) as { archiveDirectory?: string } | undefined;
+        ) as
+          | {
+              archiveDirectory?: string;
+            }
+          | undefined;
         let archive: ArchivedArtifacts | undefined;
         if (archiveAction && typeof archiveOutput?.archiveDirectory === 'string') {
           const archiveValidator = base.validators.find(
@@ -760,13 +840,20 @@ export function createClassicApplication(
         identity,
         readOnly: storeOptions?.readOnly,
       });
-      if (storeOptions?.readOnly) return projected;
+      const adapted = {
+        ...projected,
+        async read(id: string) {
+          const run = await projected.read(id);
+          return run ? upgradeClassicRun(run, workflow, transitionHandler) : null;
+        },
+      };
+      if (storeOptions?.readOnly) return adapted;
       return {
-        read: (id) => projected.read(id),
+        read: (id) => adapted.read(id),
         async compareAndSwap(id, revision, run) {
           if (!classicSdkRunMatchesProfile(run, (run.state as unknown as ClassicState).workflow))
             throw new Error('Classic Run 的 profile 缺少原升级批准');
-          const previous = await projected.read(id);
+          const previous = await adapted.read(id);
           for (const action of run.actions.filter(
             (action) =>
               action.status === 'running' &&
@@ -851,8 +938,8 @@ export function createClassicApplication(
         return {
           allowed: isClassicSdkCancellationComplete(run),
           reason: isClassicSdkCancellationComplete(run)
-            ? 'Classic Run 已取消，原执行已确认停止'
-            : 'Classic Run 取消尚未完成；原宿主必须确认原执行及子任务停止并提交 stoppedActions 证据',
+            ? 'Classic Run 已取消；普通任务的清理由 Agent 平台负责'
+            : 'Classic Run 的原归档或关联子 Run 仍有未核对的业务结果，不能释放工作区',
         };
       const allowed =
         request.intent === 'write' &&

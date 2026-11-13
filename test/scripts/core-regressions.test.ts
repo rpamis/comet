@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CORE_REGRESSIONS,
   assertCoreRegressionResult,
+  assertCoreRegressionReport,
   coreRegressionArgs,
   selectCoreRegressions,
 } from '../../scripts/lint/core-regressions.mjs';
@@ -33,6 +34,34 @@ function report(status = 'passed') {
 }
 
 describe('core regression entrypoint', () => {
+  it('reuses a complete test report but rejects a missing or failed required regression', () => {
+    const selected = {
+      ...entry,
+      files: ['test/scripts/fixture.test.ts'],
+      testNamePattern: 'fixture positive|fixture negative',
+    };
+    const completed = report();
+    completed.testResults[0].name = path.resolve(selected.files[0]);
+    expect(assertCoreRegressionReport([selected], completed).groups).toBe(1);
+    expect(() =>
+      assertCoreRegressionReport([{ ...selected, minimumPassed: 3 }], completed),
+    ).toThrow();
+    expect(() =>
+      assertCoreRegressionReport(
+        [{ ...selected, files: ['test/scripts/other.test.ts'] }],
+        completed,
+      ),
+    ).toThrow();
+    expect(() =>
+      assertCoreRegressionReport([{ ...selected, testNamePattern: 'fixture positive' }], completed),
+    ).toThrow();
+    const failed = structuredClone(completed);
+    failed.testResults[0].assertionResults[1].status = 'failed';
+    expect(() => assertCoreRegressionReport([selected], failed)).toThrow();
+    expect(() =>
+      assertCoreRegressionReport([{ ...selected, requiredNames: ['absent'] }], completed),
+    ).toThrow('absent');
+  });
   it('collects every failed group and executes later groups through the real CLI', async () => {
     const root = await fs.realpath(
       await fs.mkdtemp(path.join(os.tmpdir(), 'comet-core-all-errors-')),

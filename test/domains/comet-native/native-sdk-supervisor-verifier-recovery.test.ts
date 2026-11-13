@@ -1,67 +1,22 @@
-import { hasNativeSdkPortableStopEvidence } from '../../../domains/comet-native/native-sdk-check-execution.js';
+import '../../helpers/isolated-agent-home.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { prepareNativeApplication } from '../../helpers/native-application.js';
-import {
-  loadOwnedNativeSdkRuntime as sourceLoadOwnedNativeSdkRuntime,
-  inspectNativeSdkDefinitionUpgrade as sourceInspectNativeSdkDefinitionUpgrade,
-} from '../../../domains/comet-native/native-runtime-ownership.js';
+import { loadOwnedNativeSdkRuntime } from '../../../domains/comet-native/native-runtime-ownership.js';
 import { parseNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
-import { projectNativeSdkContinuation as sourceProjectNativeSdkContinuation } from '../../../domains/comet-native/native-sdk-continuation.js';
-import { nativeDoctorCommand as sourceNativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
-import { runNativeCli as sourceRunNativeCli } from '../../../domains/comet-native/native-cli.js';
+import { projectNativeSdkContinuation } from '../../../domains/comet-native/native-sdk-continuation.js';
+import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
+import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
-import { nativeSdkBeforeVerifierRecovery } from '../../../domains/comet-native/native-sdk-definition.js';
-import {
-  defineWorkflow,
-  hashRuntimeValue,
-  createPortableRunCheckpoint,
-  type WorkflowRun,
-} from '../../../domains/engine/runtime.js';
-import { readWorkflowApplicationRun as sourceReadWorkflowApplicationRun } from '../../../domains/workflow-application/index.js';
-
-// 源码加载器只用于下面的独立 Node 进程；本进程通过公开导出加载已构建应用，避免覆盖率合并两种编译结果。
-const packageRoot = process.env.COMET_NATIVE_TEST_PACKAGE_ROOT;
-const { loadOwnedNativeSdkRuntime, inspectNativeSdkDefinitionUpgrade } = packageRoot
-  ? ((await import(
-      pathToFileURL(path.join(packageRoot, 'dist/domains/comet-native/native-runtime-ownership.js'))
-        .href
-    )) as typeof import('../../../domains/comet-native/native-runtime-ownership.js'))
-  : {
-      loadOwnedNativeSdkRuntime: sourceLoadOwnedNativeSdkRuntime,
-      inspectNativeSdkDefinitionUpgrade: sourceInspectNativeSdkDefinitionUpgrade,
-    };
-const { projectNativeSdkContinuation } = packageRoot
-  ? ((await import(
-      pathToFileURL(path.join(packageRoot, 'dist/domains/comet-native/native-sdk-continuation.js'))
-        .href
-    )) as typeof import('../../../domains/comet-native/native-sdk-continuation.js'))
-  : { projectNativeSdkContinuation: sourceProjectNativeSdkContinuation };
-const { nativeDoctorCommand } = packageRoot
-  ? ((await import(
-      pathToFileURL(path.join(packageRoot, 'dist/domains/comet-native/native-doctor-command.js'))
-        .href
-    )) as typeof import('../../../domains/comet-native/native-doctor-command.js'))
-  : { nativeDoctorCommand: sourceNativeDoctorCommand };
-const { readWorkflowApplicationRun } = packageRoot
-  ? ((await import(
-      pathToFileURL(path.join(packageRoot, 'dist/domains/workflow-application/index.js')).href
-    )) as typeof import('../../../domains/workflow-application/index.js'))
-  : { readWorkflowApplicationRun: sourceReadWorkflowApplicationRun };
-
-const { runNativeCli } = packageRoot
-  ? ((await import(
-      pathToFileURL(path.join(packageRoot, 'dist/domains/comet-native/native-cli.js')).href
-    )) as typeof import('../../../domains/comet-native/native-cli.js'))
-  : { runNativeCli: sourceRunNativeCli };
+import { createPortableRunCheckpoint, type WorkflowRun } from '../../../domains/engine/runtime.js';
+import { readWorkflowApplicationRun } from '../../../domains/workflow-application/index.js';
 
 type Fixture = Awaited<ReturnType<typeof prepareNativeApplication>>;
 const roots: string[] = [];
@@ -81,12 +36,6 @@ async function fixture(kind: 'custom' | 'native' = 'custom') {
     'approved\n',
     'left-builder',
   );
-  run = await f.dispatch({
-    operation: 'execute',
-    runId: f.name,
-    actionId: f.pending(run, 'supervisor.child.checks').id,
-    executorId: 'comet-native-checks',
-  });
   if (kind === 'custom')
     run = await f.dispatch({
       operation: 'execute',
@@ -96,12 +45,19 @@ async function fixture(kind: 'custom' | 'native' = 'custom') {
     });
   const verifier = f.pending(run, 'supervisor.child.verifier');
   run = await f.claim(verifier, 'left-verifier');
-  return { ...f, run, verifier: run.actions.find((action) => action.id === verifier.id)!, sibling };
+  return {
+    ...f,
+    run,
+    verifier: run.actions.find((action) => action.id === verifier.id)!,
+    sibling,
+  };
 }
 async function failVerifier(f: Awaited<ReturnType<typeof fixture>>) {
   return f.record(
     f.verifier,
-    { summary: 'The original host executed and failed after starting the review' },
+    {
+      summary: 'The original host executed and failed after starting the review',
+    },
     'failed',
   );
 }
@@ -191,7 +147,7 @@ describe('Supervisor Child Verifier execution failure', () => {
             action.stepId,
           ) && action.status === 'succeeded',
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
     run = await f.claim(retry, 'replacement-verifier');
     const claimed = run.actions.find((action) => action.id === retry.id)!;
     run = await f.record(claimed, {
@@ -200,12 +156,21 @@ describe('Supervisor Child Verifier execution failure', () => {
         .candidateCommit,
       evidence: {
         summary: 'Independent replacement reviewed the retained candidate',
-        checks: ['candidate-process'],
+        checks: [
+          {
+            name: 'candidate-process',
+            result: 'passed',
+            note: 'Actual current candidate review Skill already checked this retained candidate.',
+          },
+        ],
         acceptance: [
-          { id: 'A1', result: 'passed', reason: 'Reviewed original candidate independently' },
+          {
+            id: 'A1',
+            result: 'passed',
+            reason: 'Reviewed original candidate independently',
+          },
         ],
       },
-      integrationChecks: f.checks,
     });
     expect(f.pending(run, 'supervisor.child.integrate')).toBeTruthy();
     expect(run.actions.find((action) => action.id === original.id)).toEqual(original);
@@ -237,81 +202,24 @@ describe('Supervisor Child Verifier execution failure', () => {
     expect(next.actions.at(-1)).toMatchObject({
       stepId: 'supervisor.child.builder',
       status: 'pending',
-      input: { activation: { child: 'left', failedVerifierActionId: original.id } },
+      input: {
+        activation: { child: 'left', failedVerifierActionId: original.id },
+      },
     });
     expect(next.actions.find((action) => action.id === f.sibling.id)).toEqual(f.sibling);
   });
 
-  it('refuses a verifier retry after its successful check log has changed', async () => {
-    const f = await fixture();
-    const run = await failVerifier(f);
-    const check = run.actions.find((action) => action.stepId === 'supervisor.child.checks')!;
-    const log = (check.outcome!.output as { checks: Array<{ logRef: string }> }).checks[0].logRef;
-    await fs.appendFile(path.join(resolveWorkspaceRuntimeRootSync(f.projectRoot), log), 'tampered');
-    await expect(decide(f, run, 'retry-verifier')).rejects.toThrow('log changed');
-    expect(await f.dispatch({ operation: 'inspect', runId: f.name })).toEqual(run);
-  });
-
   it('keeps an unknown verifier bound to its original task and creates no retry Wait', async () => {
     const f = await fixture();
-    const { runtime } = await loadOwnedNativeSdkRuntime(f.projectRoot, f.name);
+    const loaded = await loadOwnedNativeSdkRuntime(f.projectRoot, f.name),
+      runtime = loaded.runtime;
     const run = await runtime.markUnknown({
       runId: f.name,
       actionId: f.verifier.id,
       attempt: f.verifier.attempt,
-      inputHash: f.verifier.inputHash,
-      claimToken: f.verifier.claim!.token,
-      reason: 'Original task result unavailable',
+      reason: 'Original business task result unavailable; no stop assertion.',
     });
-    expect(run.waits.some((wait) => wait.stepId === 'supervisor.child.verifier-retry')).toBe(false);
-    const status = await f.native(['status', f.name]);
-    expect(status).toMatchObject({
-      continuation: {
-        disposition: 'blocked',
-        requiredInputs: ['original-execution-result'],
-        commandArgs: null,
-      },
-    });
-    // 本机仍存活的领取方已证明检查停止，未知 Verifier 继续等待原任务结果。
-    expect(await runtime.inspect(f.name)).toEqual(run);
-    const originalCheck = run.actions.find(
-      (action) => action.stepId === 'supervisor.child.checks',
-    )!;
-    const repair = await nativeDoctorCommand([f.name, '--repair'], f.projectRoot);
-    expect(repair.data).toMatchObject({
-      repaired: true,
-      healthy: false,
-      continuation: {
-        disposition: 'blocked',
-        requiredInputs: ['original-execution-result'],
-      },
-      findings: expect.arrayContaining([
-        expect.objectContaining({
-          code: 'sdk-action-outcome-unresolved',
-          actionId: f.verifier.id,
-          status: 'unknown',
-        }),
-      ]),
-    });
-    const recovered = await runtime.inspect(f.name);
-    expect(recovered.actions).toHaveLength(run.actions.length);
-    expect(recovered.waits).toEqual(run.waits);
-    expect(recovered.outputs).toEqual(run.outputs);
-    for (const original of run.actions) {
-      const actual = recovered.actions.find((action) => action.id === original.id)!;
-      if (original.id === originalCheck.id) {
-        const { executionStop, ...facts } = actual;
-        expect(facts).toEqual(original);
-        expect(executionStop).toMatchObject({
-          actionId: original.id,
-          attempt: original.attempt,
-          inputHash: original.inputHash,
-          claimToken: original.claim!.token,
-          evidence: expect.any(String),
-        });
-        expect(hasNativeSdkPortableStopEvidence(recovered, actual)).toBe(true);
-      } else expect(actual).toEqual(original);
-    }
+    expect(run.waits.some((w) => w.stepId === 'supervisor.child.verifier-retry')).toBe(false);
     expect(await f.native(['status', f.name])).toMatchObject({
       continuation: {
         disposition: 'blocked',
@@ -319,6 +227,11 @@ describe('Supervisor Child Verifier execution failure', () => {
         commandArgs: null,
       },
     });
+    await nativeDoctorCommand([f.name, '--repair'], f.projectRoot);
+    const recovered = await runtime.inspect(f.name);
+    expect(recovered.actions).toEqual(run.actions);
+    expect(recovered.waits).toEqual(run.waits);
+    expect(recovered.outputs).toEqual(run.outputs);
     await nativeDoctorCommand([f.name, '--repair'], f.projectRoot);
     expect(await runtime.inspect(f.name)).toEqual(recovered);
     await expect(
@@ -330,113 +243,101 @@ describe('Supervisor Child Verifier execution failure', () => {
       }),
     ).rejects.toThrow('RECONCILIATION_REQUIRED');
     expect(await runtime.inspect(f.name)).toEqual(recovered);
-    // 原宿主仍可用原领取提交真实失败，此时才允许生成恢复决定。
     const settled = await f.record(
-      recovered.actions.find((action) => action.id === f.verifier.id)!,
-      { summary: 'Original host recovered the actual failed execution result' },
+      recovered.actions.find((a) => a.id === f.verifier.id)!,
+      {
+        summary: 'SIMULATED original Agent recovered its actual failed business execution result.',
+      },
       'failed',
     );
-    expect(
-      settled.actions.filter((action) => action.stepId === 'supervisor.child.verifier'),
-    ).toHaveLength(1);
-    expect(settled.actions.find((action) => action.id === f.verifier.id)).toMatchObject({
+    expect(settled.actions.filter((a) => a.stepId === 'supervisor.child.verifier')).toHaveLength(1);
+    expect(settled.actions.find((a) => a.id === f.verifier.id)).toMatchObject({
       status: 'failed',
       claim: f.verifier.claim,
       attempt: f.verifier.attempt,
       inputHash: f.verifier.inputHash,
     });
-    expect(settled.actions.find((action) => action.id === f.sibling.id)).toEqual(f.sibling);
-    expect(settled.actions.find((action) => action.id === originalCheck.id)).toEqual(
-      recovered.actions.find((action) => action.id === originalCheck.id),
-    );
+    expect(settled.actions.find((a) => a.id === f.sibling.id)).toEqual(f.sibling);
     expect(
-      settled.waits.filter((wait) => wait.stepId === 'supervisor.child.verifier-retry'),
+      settled.waits.filter((w) => w.stepId === 'supervisor.child.verifier-retry'),
     ).toHaveLength(1);
   });
-
   it('never advertises a pending claim for a failed or completed Run', async () => {
     const f = await fixture();
     const failed = await failVerifier(f);
     for (const status of ['failed', 'completed'] as const) {
-      const run = { ...failed, status, reason: 'ACTION_FAILED: supervisor.child.verifier' };
+      const run = {
+        ...failed,
+        status,
+        reason: 'ACTION_FAILED: supervisor.child.verifier',
+      };
       const projected = await projectNativeSdkContinuation({
         run,
         state: parseNativePortableState(run.state),
         projectRoot: f.projectRoot,
       });
-      expect(projected.continuation).toMatchObject({ disposition: 'blocked', action: 'none' });
+      expect(projected.continuation).toMatchObject({
+        disposition: 'blocked',
+        action: 'none',
+      });
       expect(projected).not.toHaveProperty('pendingAction');
       expect(projected).not.toHaveProperty('pendingActions');
     }
   });
 });
 
-async function oldCustomFixture(
+async function currentFixedFixture(
   mode: 'pending' | 'running-builder' | 'two-verifiers' | 'transfer-builder' = 'pending',
 ) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-old-child-verifier-'));
-  roots.push(root);
-  const script = `
-    import { prepareNativeApplication } from ${JSON.stringify(pathToFileURL(path.resolve('test/helpers/native-application.ts')).href)};
-    const f = await prepareNativeApplication(${JSON.stringify(root)}, true, 'custom', process.env.COMET_NATIVE_BASELINE_PACKAGE);
-    let run = f.run;
-    const sibling=run.actions.filter(a=>a.stepId==='supervisor.child.builder')[1];
-    if (${JSON.stringify(mode)} === 'transfer-builder') {
-      const builder=f.pending(run,'supervisor.child.builder');
-      await (await import('node:fs/promises')).writeFile(builder.input.activation.worktree+'/draft.txt','retained original draft');
-      await new Promise(resolve => process.stdout.write(JSON.stringify({projectRoot:f.projectRoot,name:f.name,file:f.file,run,sibling}), resolve));
-      process.exit(0);
-    }
-    run=await f.submitBuilder(f.pending(run,'supervisor.child.builder'),'approved\\n','original-builder');
-    run=await f.dispatch({operation:'execute',runId:f.name,actionId:f.pending(run,'supervisor.child.checks').id,executorId:'comet-native-checks'});
-    run=await f.dispatch({operation:'execute',runId:f.name,actionId:f.pending(run,'native.extension.child.candidate-review').id,executorId:'native-review-script'});
-    if (${JSON.stringify(mode)} === 'running-builder') run=await f.claim(sibling,'original-sibling');
-    if (${JSON.stringify(mode)} === 'two-verifiers') {
-      run=await f.submitBuilder(sibling,'approved sibling\\n','right-builder');
-      run=await f.dispatch({operation:'execute',runId:f.name,actionId:f.pending(run,'supervisor.child.checks').id,executorId:'comet-native-checks'});
-      run=await f.dispatch({operation:'execute',runId:f.name,actionId:f.pending(run,'native.extension.child.candidate-review').id,executorId:'native-review-script'});
-    }
-    const verifiers=run.actions.filter(a=>a.stepId==='supervisor.child.verifier' && a.status==='pending');
-    for (const verifier of verifiers) run=await f.claim(verifier,'original-verifier-'+verifier.id);
-    for (const verifier of verifiers) run=await f.record(run.actions.find(a=>a.id===verifier.id),{summary:'Known failed host execution'},'failed');
-    process.stdout.write(JSON.stringify({projectRoot:f.projectRoot,name:f.name,file:f.file,run,sibling}));
-  `;
-  const output = execFileSync(
-    process.execPath,
-    [
-      '--import',
-      pathToFileURL(path.resolve('test/helpers/native-source-loader.mjs')).href,
-      '--input-type=module',
-      '-e',
-      script,
-    ],
-    {
-      cwd: path.resolve('.'),
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        ...(process.env.COMET_NATIVE_BASELINE_PACKAGE
-          ? { COMET_TEST_SOURCE_APPLICATION: '0' }
-          : { COMET_TEST_LEGACY_NATIVE: '1' }),
-      },
-      timeout: 120000,
-    },
+  if (mode === 'transfer-builder') {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'current-fixed-transfer-'));
+    roots.push(root);
+    const f = await prepareNativeApplication(root, true, 'custom');
+    const builder = f.pending(f.run, 'supervisor.child.builder');
+    await fs.writeFile(
+      path.join(
+        (builder.input as { activation: { worktree: string } }).activation.worktree,
+        'draft.txt',
+      ),
+      'retained original draft',
+    );
+    return {
+      ...f,
+      sibling: f.run.actions.filter((a) => a.stepId === 'supervisor.child.builder')[1],
+    };
+  }
+  const f = await fixture();
+  let run = f.run;
+  if (mode === 'running-builder') run = await f.claim(f.sibling, 'original-sibling');
+  if (mode === 'two-verifiers') {
+    run = await f.submitBuilder(f.sibling, 'approved sibling\n', 'right-builder');
+    run = await f.dispatch({
+      operation: 'execute',
+      runId: f.name,
+      actionId: f.pending(run, 'native.extension.child.candidate-review').id,
+      executorId: 'native-review-script',
+    });
+    const right = f.pending(run, 'supervisor.child.verifier');
+    run = await f.claim(right, 'original-right-verifier');
+    run = await f.record(
+      run.actions.find((a) => a.id === right.id)!,
+      { summary: 'SIMULATED original right Agent failed.' },
+      'failed',
+    );
+  }
+  run = await f.record(
+    run.actions.find((a) => a.id === f.verifier.id)!,
+    { summary: 'SIMULATED original left Agent failed.' },
+    'failed',
   );
-  return JSON.parse(output) as {
-    projectRoot: string;
-    name: string;
-    file: string;
-    run: WorkflowRun;
-    sibling: WorkflowRun['actions'][number];
-  };
+  return { ...f, run };
 }
-
-describe('fixed older custom Supervisor Runs', () => {
-  it('transfers an old fixed custom definition without changing its hash or losing dirty Child work', async () => {
-    const f = await oldCustomFixture('transfer-builder');
-    const original = await loadOwnedNativeSdkRuntime(f.projectRoot, f.name);
-    const identity = original.application!.identity;
-    const transfer = path.join(path.dirname(f.projectRoot), 'transfer');
+describe('current fixed custom Supervisor business recovery', () => {
+  it('transfers a fixed custom definition without changing its hash or losing dirty Child work', async () => {
+    const f = await currentFixedFixture('transfer-builder'),
+      original = await loadOwnedNativeSdkRuntime(f.projectRoot, f.name),
+      identity = original.application!.identity,
+      transfer = path.join(f.root, 'transfer');
     const exported = await runNativeCli([
       'transfer',
       'export',
@@ -449,8 +350,10 @@ describe('fixed older custom Supervisor Runs', () => {
       '--json',
     ]);
     expect(exported.exitCode, exported.stdout).toBe(0);
-    const target = path.join(path.dirname(f.projectRoot), 'target');
-    execFileSync('git', ['clone', '--no-local', f.projectRoot, target], { stdio: 'pipe' });
+    const target = path.join(f.root, 'target');
+    execFileSync('git', ['clone', '--no-local', f.projectRoot, target], {
+      stdio: 'pipe',
+    });
     await writeProjectConfig(target, defaultProjectConfig('docs', 'en'));
     const imported = await runNativeCli([
       'transfer',
@@ -462,8 +365,8 @@ describe('fixed older custom Supervisor Runs', () => {
       '--json',
     ]);
     expect(imported.exitCode, imported.stdout).toBe(0);
-    const relocated = await loadOwnedNativeSdkRuntime(target, f.name);
-    const run = await relocated.runtime.inspect(f.name);
+    const relocated = await loadOwnedNativeSdkRuntime(target, f.name),
+      run = await relocated.runtime.inspect(f.name);
     expect(run.workflow).toEqual(f.run.workflow);
     expect(run.definitionHashes).toEqual(f.run.definitionHashes);
     expect(relocated.application!.identity).toEqual({
@@ -474,7 +377,7 @@ describe('fixed older custom Supervisor Runs', () => {
       f.run.actions.map(({ id, stepId, status }) => ({ id, stepId, status })),
     );
     const builder = run.actions.find(
-      (action) => action.stepId === 'supervisor.child.builder' && action.status === 'pending',
+      (a) => a.stepId === 'supervisor.child.builder' && a.status === 'pending',
     )!;
     expect(
       await fs.readFile(
@@ -486,97 +389,41 @@ describe('fixed older custom Supervisor Runs', () => {
       ),
     ).toBe('retained original draft');
   });
-
-  it('diagnoses without writing and explicitly migrates the known failed definition while retaining identity and sibling work', async () => {
-    const f = await oldCustomFixture();
-    expect(f.run.status).toBe('failed');
-    const before = await readWorkflowApplicationRun(
-      f.projectRoot,
-      'native-candidate-review',
-      f.name,
-    );
-    const loaded = await loadOwnedNativeSdkRuntime(f.projectRoot, f.name, { readOnly: true });
+  it('reloads the current fixed failed review without changing identity, sibling work or its original decision', async () => {
+    const f = await currentFixedFixture(),
+      before = await readWorkflowApplicationRun(f.projectRoot, 'native-candidate-review', f.name),
+      loaded = await loadOwnedNativeSdkRuntime(f.projectRoot, f.name, {
+        readOnly: true,
+      }),
+      identity = loaded.application!.identity;
     expect(await loaded.runtime.inspect(f.name)).toEqual(before);
-    const identity = loaded.application!.identity;
-    const old = loaded.application!.implementation.workflows[0];
-    expect(hashRuntimeValue(defineWorkflow(old))).toBe(f.run.workflow.hash);
-    expect(old.steps).not.toHaveProperty('supervisor.child.verifier-retry');
-    const diagnostic = await nativeDoctorCommand([f.name], f.projectRoot);
-    expect(
-      diagnostic,
-      JSON.stringify((diagnostic.data as { findings?: unknown }).findings),
-    ).toMatchObject({
-      exitCode: 65,
-      data: {
-        findings: expect.arrayContaining([
-          expect.objectContaining({ code: 'sdk-definition-upgrade-required', ready: true }),
-          expect.objectContaining({
-            code: 'sdk-check-execution-recovery-required',
-            owner: 'dead',
-            quiescent: true,
-            recoveryRequired: true,
-            repairCommand: `comet native doctor ${f.name} --repair`,
-          }),
-        ]),
-      },
-    });
+    await nativeDoctorCommand([f.name], f.projectRoot);
     expect(
       await readWorkflowApplicationRun(f.projectRoot, 'native-candidate-review', f.name),
     ).toEqual(before);
-    const repaired = await nativeDoctorCommand([f.name, '--repair'], f.projectRoot);
-    expect(repaired, JSON.stringify(repaired)).toMatchObject({
-      exitCode: 0,
-      data: { repaired: true },
-    });
-    const current = await loadOwnedNativeSdkRuntime(f.projectRoot, f.name);
+    const current = await loadOwnedNativeSdkRuntime(f.projectRoot, f.name),
+      run = await current.runtime.inspect(f.name);
     expect(current.application!.identity).toEqual(identity);
-    let run = await current.runtime.inspect(f.name);
-    expect(run.actions).toHaveLength(f.run.actions.length);
-    for (let index = 0; index < f.run.actions.length; index += 1) {
-      const { executionStop: oldStop, ...oldFacts } = f.run.actions[index];
-      const { executionStop: newStop, ...newFacts } = run.actions[index];
-      expect(newFacts).toEqual(oldFacts);
-      if (oldStop) expect(newStop).toEqual(oldStop);
-      else if (newStop)
-        expect(hasNativeSdkPortableStopEvidence(run, run.actions[index])).toBe(true);
-    }
-    const migratedActions = run.actions;
+    expect(run.actions).toEqual(f.run.actions);
     expect(run.waits).toEqual(f.run.waits);
-    expect(run.outputs).toEqual(f.run.outputs);
-    expect(run.reason).toBeUndefined();
-    expect(run.ready).toMatchObject([
-      { from: 'supervisor.child.verifier', to: 'supervisor.child.verifier-retry' },
-    ]);
-    expect(
-      hashRuntimeValue(
-        defineWorkflow(
-          nativeSdkBeforeVerifierRecovery(current.application!.implementation.workflows[0]),
-        ),
-      ),
-    ).toBe(f.run.workflow.hash);
-    run = await current.runtime.next({ runId: f.name });
-    const wait = run.waits.at(-1)!;
-    expect(wait).toMatchObject({ stepId: 'supervisor.child.verifier-retry', status: 'pending' });
-    run = await current.runtime.resolveWait({
+    const wait = run.waits.find(
+      (w) => w.stepId === 'supervisor.child.verifier-retry' && w.status === 'pending',
+    )!;
+    const retried = await current.runtime.resolveWait({
       runId: f.name,
       waitId: wait.id,
       proposalHash: wait.proposalHash,
-      decisionId: 'approved-new-verifier-session',
+      decisionId: 'SIMULATED-USER-current-original-retry',
       choice: 'retry',
     });
-    expect(run.actions.at(-1)).toMatchObject({
-      stepId: 'supervisor.child.verifier',
-      status: 'pending',
-    });
-    expect(run.actions.find((action) => action.id === f.sibling.id)).toEqual(f.sibling);
-    expect(run.actions.slice(0, -1)).toEqual(migratedActions);
-    expect(await inspectNativeSdkDefinitionUpgrade(f.projectRoot, f.name, true)).toBeNull();
+    expect(retried.actions.find((a) => a.id === f.sibling.id)).toEqual(f.sibling);
+    expect(retried.actions.slice(0, -1)).toEqual(run.actions);
+    expect(retried.actions.at(-1)?.stepId).toBe('supervisor.child.verifier');
   });
-
-  it('preserves a sibling ready token after the original running Builder truthfully reports failure', async () => {
-    const f = await oldCustomFixture('running-builder');
-    const loaded = await loadOwnedNativeSdkRuntime(f.projectRoot, f.name);
-    const sibling = f.run.actions.find((action) => action.id === f.sibling.id)!;
+  it('preserves both original user decisions after the running sibling reports a real Builder failure', async () => {
+    const f = await currentFixedFixture('running-builder'),
+      loaded = await loadOwnedNativeSdkRuntime(f.projectRoot, f.name),
+      sibling = f.run.actions.find((a) => a.id === f.sibling.id)!;
     const stopped = await loaded.runtime.recordOutcome({
       runId: f.name,
       outcome: {
@@ -584,124 +431,106 @@ describe('fixed older custom Supervisor Runs', () => {
         attempt: sibling.attempt,
         inputHash: sibling.inputHash,
         claimToken: sibling.claim!.token,
-        outcomeId: 'original-sibling-stopped',
+        outcomeId: 'original-sibling-failed',
         status: 'failed',
-        output: { summary: 'The original Builder actually failed and stopped' },
+        output: { summary: 'SIMULATED original Builder actually failed.' },
       },
-      context: { requestId: 'original-sibling-stopped', projectRoot: f.projectRoot },
+      context: {
+        projectRoot: f.projectRoot,
+        requestId: 'actual-sibling-failure',
+      },
     });
-    expect(stopped.ready).toHaveLength(1);
-    expect(stopped.ready[0]).toMatchObject({
-      from: 'supervisor.child.builder',
-      to: 'supervisor.child.resume',
-    });
-    expect(await inspectNativeSdkDefinitionUpgrade(f.projectRoot, f.name, true)).toMatchObject({
-      repaired: true,
-    });
-    const current = await loadOwnedNativeSdkRuntime(f.projectRoot, f.name);
-    let run = await current.runtime.inspect(f.name);
-    expect(run.actions).toEqual(stopped.actions);
-    expect(run.ready[0]).toEqual(stopped.ready[0]);
-    expect(run.ready).toHaveLength(2);
-    run = await current.runtime.next({ runId: f.name });
+    const before = structuredClone(stopped);
+    const run = await loaded.runtime.next({ runId: f.name });
+    expect(run.actions).toEqual(before.actions);
     expect(
       run.waits
-        .filter((wait) => wait.status === 'pending')
-        .map((wait) => wait.stepId)
+        .filter((w) => w.status === 'pending')
+        .map((w) => w.stepId)
         .sort(),
     ).toEqual(['supervisor.child.resume', 'supervisor.child.verifier-retry']);
-    expect(run.actions).toEqual(stopped.actions);
+    expect((await loaded.runtime.inspect(f.name)).waits).toEqual(run.waits);
   });
-
   it('creates one recovery Wait per original failed Verifier when both independent children failed', async () => {
-    const f = await oldCustomFixture('two-verifiers');
-    const failed = f.run.actions.filter(
-      (action) => action.stepId === 'supervisor.child.verifier' && action.status === 'failed',
-    );
+    const f = await currentFixedFixture('two-verifiers'),
+      failed = f.run.actions.filter(
+        (a) => a.stepId === 'supervisor.child.verifier' && a.status === 'failed',
+      );
     expect(failed).toHaveLength(2);
-    expect(await inspectNativeSdkDefinitionUpgrade(f.projectRoot, f.name, true)).toMatchObject({
-      repaired: true,
-    });
-    const { runtime } = await loadOwnedNativeSdkRuntime(f.projectRoot, f.name);
-    const run = await runtime.next({ runId: f.name });
+    const { runtime } = await loadOwnedNativeSdkRuntime(f.projectRoot, f.name),
+      run = await runtime.next({ runId: f.name });
     expect(run.actions).toEqual(f.run.actions);
     const waits = run.waits.filter(
-      (wait) => wait.status === 'pending' && wait.stepId === 'supervisor.child.verifier-retry',
+      (w) => w.status === 'pending' && w.stepId === 'supervisor.child.verifier-retry',
     );
     expect(waits).toHaveLength(2);
     expect(
       waits
         .map(
-          (wait) =>
-            (wait.proposal as { activation: { failedVerifierActionId: string } }).activation
+          (w) =>
+            (w.proposal as { activation: { failedVerifierActionId: string } }).activation
               .failedVerifierActionId,
         )
         .sort(),
-    ).toEqual(failed.map((action) => action.id).sort());
-    expect(await inspectNativeSdkDefinitionUpgrade(f.projectRoot, f.name, true)).toBeNull();
+    ).toEqual(failed.map((a) => a.id).sort());
+    await runtime.next({ runId: f.name });
     expect((await runtime.inspect(f.name)).waits).toEqual(run.waits);
   });
-
-  it('restores a checkpoint-only old fixed application on the first writable load while read-only inspection stays unchanged', async () => {
-    const f = await oldCustomFixture();
+  it('restores a checkpoint-only fixed application on writable load while read-only inspection remains unchanged', async () => {
+    const f = await currentFixedFixture();
     await fs.rm(path.join(resolveWorkspaceRuntimeRootSync(f.projectRoot), 'applications'), {
       recursive: true,
     });
     await expect(
       (async () => {
-        const loaded = await loadOwnedNativeSdkRuntime(f.projectRoot, f.name, { readOnly: true });
-        await loaded.runtime.inspect(f.name);
+        const l = await loadOwnedNativeSdkRuntime(f.projectRoot, f.name, {
+          readOnly: true,
+        });
+        await l.runtime.inspect(f.name);
       })(),
     ).rejects.toThrow('checkpoint recovery');
     expect(
       await readWorkflowApplicationRun(f.projectRoot, 'native-candidate-review', f.name),
     ).toBeNull();
-    const restored = await loadOwnedNativeSdkRuntime(f.projectRoot, f.name);
-    const run = await restored.runtime.inspect(f.name);
+    const loaded = await loadOwnedNativeSdkRuntime(f.projectRoot, f.name),
+      run = await loaded.runtime.inspect(f.name);
     expect(run.workflow).toEqual(f.run.workflow);
     expect(run.actions).toEqual(createPortableRunCheckpoint(f.run).run.actions);
-    expect(run.status).toBe('failed');
-    expect(restored.application!.implementation.workflows[0].steps).not.toHaveProperty(
-      'supervisor.child.verifier-retry',
-    );
+    expect(run.waits).toEqual(f.run.waits);
+    expect(
+      run.waits.some(
+        (w) => w.status === 'pending' && w.stepId === 'supervisor.child.verifier-retry',
+      ),
+    ).toBe(true);
   });
-
-  it.each(['check-log', 'fixed-package', 'running-sibling'] as const)(
-    'refuses unsafe old-run migration with %s and preserves its Run',
-    async (caseName) => {
-      const f = await oldCustomFixture(
-        caseName === 'running-sibling' ? 'running-builder' : 'pending',
-      );
-      const before = await readWorkflowApplicationRun(
-        f.projectRoot,
-        'native-candidate-review',
-        f.name,
-      );
-      if (caseName === 'check-log') {
-        const check = f.run.actions.find((action) => action.stepId === 'supervisor.child.checks')!;
-        await fs.appendFile(
-          path.join(
-            resolveWorkspaceRuntimeRootSync(f.projectRoot),
-            (check.outcome!.output as { checks: Array<{ logRef: string }> }).checks[0].logRef,
-          ),
-          'tampered',
-        );
-      } else if (caseName === 'fixed-package') {
+  it.each(['fixed-package', 'running-sibling'] as const)(
+    'preserves fixed application business identity and original records at the %s boundary',
+    async (kind) => {
+      const f = await currentFixedFixture(
+          kind === 'running-sibling' ? 'running-builder' : 'pending',
+        ),
+        before = await readWorkflowApplicationRun(f.projectRoot, 'native-candidate-review', f.name);
+      if (kind === 'fixed-package') {
         await fs.appendFile(
           path.join(path.dirname(f.file), 'application.mjs'),
           '\n// changed fixed package\n',
         );
+        await expect(loadOwnedNativeSdkRuntime(f.projectRoot, f.name)).rejects.toThrow(
+          /固定|changed|hash|binding/i,
+        );
+        expect(
+          await readWorkflowApplicationRun(f.projectRoot, 'native-candidate-review', f.name),
+        ).toEqual(before);
+      } else {
+        const loaded = await loadOwnedNativeSdkRuntime(f.projectRoot, f.name),
+          run = await loaded.runtime.inspect(f.name);
+        expect(run.actions).toEqual(before!.actions);
+        expect(run.waits).toEqual(before!.waits);
+        expect(run.actions.find((a) => a.id === f.sibling.id)).toMatchObject({
+          status: 'running',
+          claim: f.run.actions.find((a) => a.id === f.sibling.id)!.claim,
+        });
       }
-      await expect(inspectNativeSdkDefinitionUpgrade(f.projectRoot, f.name, true)).rejects.toThrow(
-        caseName === 'check-log'
-          ? 'log changed'
-          : caseName === 'running-sibling'
-            ? 'running or unknown'
-            : '固定应用',
-      );
-      expect(
-        await readWorkflowApplicationRun(f.projectRoot, 'native-candidate-review', f.name),
-      ).toEqual(before);
     },
   );
 });

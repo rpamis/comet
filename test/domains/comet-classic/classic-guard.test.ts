@@ -10,12 +10,39 @@ import { withClassicCommandContext } from '../../../domains/comet-classic/classi
 import { readRunState } from '../../../domains/engine/state.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
+// SIMULATED Agent executes the actual platform command and submits the observed result.
+
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
 const scriptByCommand: Record<string, string> = {
   guard: path.join(scriptsDir, 'comet-guard.mjs'),
   handoff: path.join(scriptsDir, 'comet-handoff.mjs'),
   state: path.join(scriptsDir, 'comet-state.mjs'),
 };
+async function platformCheck(
+  cli: (...args: string[]) => ReturnType<typeof runClassicCli>,
+  cwd: string,
+  name: string,
+  scope: string,
+  argv: string[],
+) {
+  await cli('guard', name, scope);
+  const actual = spawnSync(argv[0], argv.slice(1), { cwd, encoding: 'utf8' });
+  if (actual.error || actual.status === null)
+    throw actual.error ?? new Error('No actual platform exit code');
+  const record = await cli(
+    'state',
+    'record-check',
+    name,
+    scope,
+    '--command',
+    JSON.stringify(argv),
+    '--exit-code',
+    String(actual.status),
+  );
+  expect(record.exitCode, record.stderr).toBe(0);
+  return { ...record, exitCode: actual.status };
+}
+
 const temporary: string[] = [];
 
 afterEach(async () => {
@@ -38,6 +65,7 @@ function run(cwd: string, ...args: string[]) {
   });
 }
 
+// SIMULATED historical Compat document fixture; no accepted execution receipt is fabricated.
 async function makeProject(): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-guard-'));
   await prepareClassicLegacyProject(dir);
@@ -52,8 +80,16 @@ describe('Classic guard command', () => {
       plan: '- [ ] stale projection <!-- comet-task:a -->\n',
       accepted: true,
     },
-    { name: 'unmapped unchecked task', plan: '- [ ] extra work\n', accepted: false },
-    { name: 'unmapped checked task', plan: '- [x] extra work\n', accepted: false },
+    {
+      name: 'unmapped unchecked task',
+      plan: '- [ ] extra work\n',
+      accepted: false,
+    },
+    {
+      name: 'unmapped checked task',
+      plan: '- [x] extra work\n',
+      accepted: false,
+    },
     {
       name: 'unknown checked ID',
       plan: '- [x] extra work <!-- comet-task:extra -->\n',
@@ -111,7 +147,11 @@ describe('Classic guard command', () => {
       const state = parse(await fs.readFile(stateFile, 'utf8'));
       await fs.writeFile(
         stateFile,
-        stringify({ ...state, phase: 'build', plan: 'docs/superpowers/plans/demo.md' }),
+        stringify({
+          ...state,
+          phase: 'build',
+          plan: 'docs/superpowers/plans/demo.md',
+        }),
       );
       const planFile = path.join(dir, 'docs/superpowers/plans/demo.md');
       await fs.mkdir(path.dirname(planFile), { recursive: true });
@@ -121,16 +161,11 @@ describe('Classic guard command', () => {
       await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
       expect(
         (
-          await cli(
-            'check',
-            'run',
-            'demo',
-            'build',
-            '--',
+          await platformCheck(cli, dir, 'demo', 'build', [
             process.execPath,
             '-e',
             'process.exit(0)',
-          )
+          ])
         ).exitCode,
       ).toBe(0);
       const result = await cli('guard', 'demo', 'build');
@@ -167,8 +202,12 @@ describe('Classic guard command', () => {
       design_doc: 'docs/superpowers/specs/auto.md',
     };
     await fs.writeFile(statePath, stringify(state));
-    await fs.mkdir(path.join(dir, 'docs/superpowers/plans'), { recursive: true });
-    await fs.mkdir(path.join(dir, 'docs/superpowers/specs'), { recursive: true });
+    await fs.mkdir(path.join(dir, 'docs/superpowers/plans'), {
+      recursive: true,
+    });
+    await fs.mkdir(path.join(dir, 'docs/superpowers/specs'), {
+      recursive: true,
+    });
     await fs.writeFile(path.join(dir, state.plan), '# Implementation plan\n');
     await fs.writeFile(
       path.join(dir, state.design_doc),
@@ -182,7 +221,7 @@ describe('Classic guard command', () => {
     expect(missingEvidence.stderr).toContain('[PASS] autonomous full build prerequisites');
     expect(missingEvidence.stderr).toContain('[FAIL] Build passes');
     expect(
-      (await cli('check', 'run', 'auto', 'build', '--', process.execPath, '-e', 'process.exit(0)'))
+      (await platformCheck(cli, dir, 'auto', 'build', [process.execPath, '-e', 'process.exit(0)']))
         .exitCode,
     ).toBe(0);
     const ready = await cli('guard', 'auto', 'build');
@@ -200,7 +239,7 @@ describe('Classic guard command', () => {
     expect(noReview.stderr).toContain('review_mode must be standard or thorough');
   });
 
-  it('explains when a manual record-check shadows runtime evidence', async () => {
+  it('uses the latest real platform failure after a successful report', async () => {
     const dir = await makeProject();
     const cli = (...args: string[]) =>
       withClassicCommandContext({ projectRoot: dir, invocationCwd: dir }, () =>
@@ -227,70 +266,17 @@ describe('Classic guard command', () => {
     await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] work <!-- comet-task:a -->\n');
     await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
     expect(
-      (await cli('check', 'run', 'demo', 'build', '--', process.execPath, '-e', 'process.exit(0)'))
+      (await platformCheck(cli, dir, 'demo', 'build', [process.execPath, '-e', 'process.exit(0)']))
         .exitCode,
     ).toBe(0);
     expect(
-      (
-        await cli(
-          'state',
-          'record-check',
-          'demo',
-          'build',
-          '--command',
-          'echo manual',
-          '--exit-code',
-          '0',
-        )
-      ).exitCode,
-    ).toBe(0);
+      (await platformCheck(cli, dir, 'demo', 'build', [process.execPath, '-e', 'process.exit(7)']))
+        .exitCode,
+    ).toBe(7);
     const result = await cli('guard', 'demo', 'build');
     expect(result.exitCode, result.stderr).toBe(1);
-    expect(result.stderr).toContain('manual record-check declaration');
-    expect(result.stderr).toContain('shadow');
-    expect(result.stderr).toContain('comet check run demo build');
-  });
-
-  it('auto-runs the single workspace package build when the root has none', async () => {
-    const dir = await makeProject();
-    const cli = (...args: string[]) =>
-      withClassicCommandContext({ projectRoot: dir, invocationCwd: dir }, () =>
-        runClassicCli(args),
-      );
-    expect(
-      (
-        await cli(
-          'state',
-          'init',
-          'demo',
-          'hotfix',
-          '--isolation',
-          'current',
-          '--runtime',
-          'compat',
-        )
-      ).exitCode,
-    ).toBe(0);
-    const changeDir = path.join(dir, 'openspec/changes/demo');
-    const stateFile = path.join(changeDir, '.comet.yaml');
-    const state = parse(await fs.readFile(stateFile, 'utf8'));
-    await fs.writeFile(stateFile, stringify({ ...state, phase: 'build' }));
-    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] work <!-- comet-task:a -->\n');
-    await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
-    await fs.writeFile(
-      path.join(dir, 'package.json'),
-      JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*'] }),
-    );
-    await fs.mkdir(path.join(dir, 'packages', 'app'), { recursive: true });
-    await fs.writeFile(
-      path.join(dir, 'packages', 'app', 'package.json'),
-      JSON.stringify({ name: 'app', scripts: { build: 'node -e "process.exit(0)"' } }),
-    );
-    const result = await cli('guard', 'demo', 'build');
-    expect(result.exitCode, result.stderr).toBe(0);
-    expect(result.stderr).toContain(
-      "guard auto-ran the detected command 'npm --prefix packages/app run build'",
-    );
+    expect(result.stderr).toContain('检查未通过，退出码 7');
+    expect(result.stderr).not.toContain('[PASS] Build passes');
   });
 
   it('preserves an explicit failed build instead of replacing it with an inferred command', async () => {
@@ -321,7 +307,10 @@ describe('Classic guard command', () => {
     await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
     await fs.writeFile(
       path.join(dir, 'package.json'),
-      JSON.stringify({ name: 'root', scripts: { build: 'node -e "process.exit(0)"' } }),
+      JSON.stringify({
+        name: 'root',
+        scripts: { build: 'node -e "process.exit(0)"' },
+      }),
     );
     const marker = path.join(dir, 'recovery marker.txt');
     const exactArgs = ['value with spaces', 'semi;colon', 'quote"value', '$literal'];
@@ -331,31 +320,23 @@ describe('Classic guard command', () => {
       process.exit(fs.existsSync(${JSON.stringify(marker)}) ? 0 : 7);
     `;
     expect(
-      (
-        await cli(
-          'check',
-          'run',
-          'demo',
-          'build',
-          '--timeout-ms',
-          '12345',
-          '--',
-          process.execPath,
-          '-e',
-          code,
-          ...exactArgs,
-        )
-      ).exitCode,
+      (await platformCheck(cli, dir, 'demo', 'build', [process.execPath, '-e', code, ...exactArgs]))
+        .exitCode,
     ).toBe(7);
 
     const result = await cli('guard', 'demo', 'build');
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('Latest recorded build check failed with exit code 7');
-    expect(result.stderr).toContain('comet check rerun demo build');
+    expect(result.stderr).toContain('检查未通过，退出码 7');
+    expect(result.stderr).toContain('检查未通过，退出码 7');
     expect(result.stderr).not.toContain('guard auto-ran');
 
     await fs.writeFile(marker, 'ready\n');
-    const rerun = await cli('check', 'rerun', 'demo', 'build');
+    const rerun = await platformCheck(cli, dir, 'demo', 'build', [
+      process.execPath,
+      '-e',
+      code,
+      ...exactArgs,
+    ]);
     expect(rerun.exitCode, rerun.stderr).toBe(0);
   });
 
@@ -387,19 +368,15 @@ describe('Classic guard command', () => {
     await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
     expect(
       (
-        await cli(
-          'check',
-          'run',
-          'legacy-argv',
-          'build',
-          '--',
+        await platformCheck(cli, dir, 'legacy-argv', 'build', [
           process.execPath,
           '-e',
           'process.exit(0)',
-        )
+        ])
       ).exitCode,
     ).toBe(0);
     const legacyArgv = JSON.stringify([process.execPath, '-e', 'process.exit(7)']);
+    expect(spawnSync(process.execPath, ['-e', 'process.exit(7)'], { cwd: dir }).status).toBe(7);
     expect(
       (
         await cli(
@@ -417,54 +394,10 @@ describe('Classic guard command', () => {
 
     const result = await cli('guard', 'legacy-argv', 'build');
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('comet check rerun legacy-argv build');
+    expect(result.stderr).toContain('检查未通过，退出码 7');
     expect(result.stderr).not.toContain(
       `Next: comet check run legacy-argv build --local -- ${legacyArgv}`,
     );
-  });
-
-  it('lists workspace candidates instead of choosing when several packages build', async () => {
-    const dir = await makeProject();
-    const cli = (...args: string[]) =>
-      withClassicCommandContext({ projectRoot: dir, invocationCwd: dir }, () =>
-        runClassicCli(args),
-      );
-    expect(
-      (
-        await cli(
-          'state',
-          'init',
-          'demo',
-          'hotfix',
-          '--isolation',
-          'current',
-          '--runtime',
-          'compat',
-        )
-      ).exitCode,
-    ).toBe(0);
-    const changeDir = path.join(dir, 'openspec/changes/demo');
-    const stateFile = path.join(changeDir, '.comet.yaml');
-    const state = parse(await fs.readFile(stateFile, 'utf8'));
-    await fs.writeFile(stateFile, stringify({ ...state, phase: 'build' }));
-    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] work <!-- comet-task:a -->\n');
-    await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
-    await fs.writeFile(
-      path.join(dir, 'package.json'),
-      JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*'] }),
-    );
-    for (const name of ['app', 'lib']) {
-      await fs.mkdir(path.join(dir, 'packages', name), { recursive: true });
-      await fs.writeFile(
-        path.join(dir, 'packages', name, 'package.json'),
-        JSON.stringify({ name, scripts: { build: 'node -e "process.exit(0)"' } }),
-      );
-    }
-    const result = await cli('guard', 'demo', 'build');
-    expect(result.exitCode, result.stderr).toBe(1);
-    expect(result.stderr).toContain('several workspace packages declare one');
-    expect(result.stderr).toContain('packages/app, packages/lib');
-    expect(result.stderr).toContain('npm --prefix packages/app run build');
   });
 
   it('blocks the open guard when artifacts are missing and leaves state unchanged', async () => {

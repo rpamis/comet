@@ -1,3 +1,4 @@
+import '../../helpers/isolated-agent-home.js';
 import { promises as fs } from 'fs';
 import { execFileSync } from 'node:child_process';
 import os from 'os';
@@ -5,12 +6,12 @@ import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
-  DEFAULT_NATIVE_SNAPSHOT_CONFIG,
   readProjectConfig,
   resolveNativeProject,
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
-import { createNativeChange } from '../../../domains/comet-native/native-change.js';
+import { createNativePortableChange } from '../../../domains/comet-native/native-portable-runtime.js';
+import { writeNativeWorkspaceIdentity } from '../../../domains/comet-native/native-workspace.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import {
   moveNativeRoot,
@@ -21,7 +22,32 @@ import {
   inspectNativeWorkspaceAdvisory,
   readNativeWorkspaceIdentity,
 } from '../../../domains/comet-native/native-workspace.js';
-import { seedNativeRoot } from '../../helpers/native-root.js';
+import { seedNativeRoot as seedNativeRootData } from '../../helpers/native-root.js';
+
+// Use current Portable creation; the retained sidecar API records actual Git identity for root-move compatibility.
+async function createPortableWithWorkspace(
+  options: Parameters<typeof createNativePortableChange>[0],
+) {
+  const state = await createNativePortableChange(options);
+  await writeNativeWorkspaceIdentity({
+    paths: options.paths,
+    name: options.name,
+    revision: state.state_version,
+    ...(options.workspaceBinding ? { binding: options.workspaceBinding } : {}),
+  });
+  return state;
+}
+
+// The binary root-move sentinel is ordinary payload, not a malformed active change.
+async function seedNativeRoot(project: string, artifactRoot: string) {
+  const root = await seedNativeRootData(project, artifactRoot);
+  await fs.mkdir(path.join(root, 'payloads'), { recursive: true });
+  await fs.rename(
+    path.join(root, 'changes', 'active-change'),
+    path.join(root, 'payloads', 'active-change'),
+  );
+  return root;
+}
 
 describe('Native artifact root recovery', () => {
   let projectRoot: string;
@@ -45,9 +71,8 @@ describe('Native artifact root recovery', () => {
   it('continues an interruption in the copying stage and blocks normal discovery meanwhile', async () => {
     const source = await seedNativeRoot(projectRoot, '.');
     await enableBatchClarification();
-    await createNativeChange({
+    await createPortableWithWorkspace({
       paths: await nativeProjectPaths(projectRoot, '.'),
-      verificationProtocol: 'legacy-v1',
       name: 'identity-change',
       language: 'en',
     });
@@ -67,9 +92,8 @@ describe('Native artifact root recovery', () => {
       /root move .* incomplete/u,
     );
     await expect(
-      createNativeChange({
+      createPortableWithWorkspace({
         paths: await nativeProjectPaths(projectRoot, '.'),
-        verificationProtocol: 'legacy-v1',
         name: 'must-not-start',
         language: 'en',
       }),
@@ -83,7 +107,7 @@ describe('Native artifact root recovery', () => {
       clarification_mode: 'batch',
       archive_confirmation: 'automatic',
       max_verify_failures: 5,
-      snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+      max_parallel_children: 2,
     });
     await expect(fs.access(source)).rejects.toMatchObject({ code: 'ENOENT' });
     const destinationPaths = await nativeProjectPaths(projectRoot, 'docs');
@@ -97,11 +121,10 @@ describe('Native artifact root recovery', () => {
     const source = await seedNativeRoot(projectRoot, '.');
     await enableBatchClarification();
     const sourcePaths = await nativeProjectPaths(projectRoot, '.');
-    await createNativeChange({
+    await createPortableWithWorkspace({
       paths: sourcePaths,
       name: 'identity-change',
       language: 'en',
-      verificationProtocol: 'legacy-v1',
     });
     let transactionId = '';
     await expect(
@@ -125,7 +148,7 @@ describe('Native artifact root recovery', () => {
       clarification_mode: 'batch',
       archive_confirmation: 'automatic',
       max_verify_failures: 5,
-      snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+      max_parallel_children: 2,
     });
     expect(
       (await readNativeTransaction(await nativeProjectPaths(projectRoot, '.'), transactionId))
@@ -142,9 +165,8 @@ describe('Native artifact root recovery', () => {
 
   it('continues an interruption after the config switched', async () => {
     await seedNativeRoot(projectRoot, '.');
-    await createNativeChange({
+    await createPortableWithWorkspace({
       paths: await nativeProjectPaths(projectRoot, '.'),
-      verificationProtocol: 'legacy-v1',
       name: 'identity-change',
       language: 'en',
     });
@@ -209,7 +231,7 @@ describe('Native artifact root recovery', () => {
       clarification_mode: 'batch',
       archive_confirmation: 'automatic',
       max_verify_failures: 5,
-      snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+      max_parallel_children: 2,
     });
   });
 
@@ -242,7 +264,7 @@ describe('Native artifact root recovery', () => {
       clarification_mode: 'batch',
       archive_confirmation: 'automatic',
       max_verify_failures: 5,
-      snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+      max_parallel_children: 2,
     });
     await expect(fs.access(quarantine)).rejects.toMatchObject({ code: 'ENOENT' });
   });
@@ -332,7 +354,7 @@ describe('Native artifact root recovery', () => {
       clarification_mode: 'batch',
       archive_confirmation: 'automatic',
       max_verify_failures: 5,
-      snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+      max_parallel_children: 2,
     });
     await expect(fs.access(quarantine)).rejects.toMatchObject({ code: 'ENOENT' });
   });

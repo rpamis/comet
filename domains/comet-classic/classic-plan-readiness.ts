@@ -1,13 +1,12 @@
+import path from 'node:path';
+import { classicConfigurationReadiness } from './classic-build-configuration.js';
+import { assertClassicLayoutReadable } from './classic-layout.js';
 import {
-  classicProjectTargetExists,
   classicProjectFileNonempty,
+  classicProjectTargetExists,
   readClassicProjectFile,
 } from './classic-protected-path.js';
 import type { ClassicState } from './classic-state.js';
-import { classicConfigurationReadiness } from './classic-build-configuration.js';
-import { parseDocument } from 'yaml';
-import { assertClassicLayoutReadable } from './classic-layout.js';
-import path from 'node:path';
 
 export type ClassicPlanReadiness =
   | { status: 'missing'; recordedPath: null }
@@ -16,7 +15,7 @@ export type ClassicPlanReadiness =
 
 export async function inspectClassicAutonomousBuildProblems(
   projectRoot: string,
-  change: string,
+  _change: string,
   state: ClassicState,
   options: { requirePlan?: boolean } = {},
 ): Promise<string[]> {
@@ -39,25 +38,6 @@ export async function inspectClassicAutonomousBuildProblems(
     problems.push(
       'design_doc must reference a nonempty technical design for autonomous full build',
     );
-  } else {
-    const source = await readClassicProjectFile(projectRoot, state.designDoc, {
-      label: 'Classic autonomous design',
-    });
-    const frontmatter = source
-      .replace(/^\uFEFF/u, '')
-      .match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u);
-    const document = frontmatter ? parseDocument(frontmatter[1]) : null;
-    if (
-      !document ||
-      document.errors.length ||
-      document.get('comet_change') !== change ||
-      document.get('role') !== 'technical-design' ||
-      document.get('canonical_spec') !== 'openspec'
-    ) {
-      problems.push(
-        'design_doc must link the current change and declare role: technical-design and canonical_spec: openspec',
-      );
-    }
   }
   if (options.requirePlan !== false) {
     const readiness = await inspectClassicPlanReadiness(projectRoot, state.plan, {

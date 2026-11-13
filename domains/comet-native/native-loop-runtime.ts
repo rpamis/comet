@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   assertNativeBuilderAcceptanceComplete,
+  NativeBuilderAcceptanceIncompleteError,
   parseNativeBuilderAcceptanceReview,
   type NativeBuilderAcceptanceReview,
 } from './native-builder-acceptance-review.js';
@@ -10,7 +11,6 @@ import { toNativePortableText } from './native-portable-text.js';
 import type {
   NativeBuilderCheckSummary,
   NativePortableAcceptanceState,
-  NativePortableCheckSummary,
   NativePortableHistoryEntry,
   NativePortableState,
   NativePortableVerificationState,
@@ -26,8 +26,13 @@ import {
   type NativeVerifierResponse,
 } from './native-verifier-protocol.js';
 
+import { redactNativeCredentialText } from './native-redaction.js';
+
 export const NATIVE_MAX_VERIFIER_EXECUTION_FAILURES = 3;
-export const NATIVE_MAX_REQUEST_CHECK_ROUNDS = 2;
+
+function reportedText(value: string) {
+  return toNativePortableText(redactNativeCredentialText(value));
+}
 
 export interface NativeBuilderCandidateInput {
   identity: NativeTrustedExecutionIdentity;
@@ -74,9 +79,9 @@ function pendingAcceptanceIds(state: NativePortableState): string[] {
 
 function builderChecks(checks: NativeBuilderCandidateInput['checks']): NativeBuilderCheckSummary[] {
   return (checks ?? []).map((check) => ({
-    name: toNativePortableText(check.name),
+    name: reportedText(check.name),
     result: check.result,
-    note: check.note ? toNativePortableText(check.note) : null,
+    note: check.note ? reportedText(check.note) : null,
   }));
 }
 
@@ -93,7 +98,7 @@ function historyEntry(options: {
     attempt: options.state.loop.attempt,
     outcome: options.outcome,
     unresolved_ids: options.unresolvedIds ?? [],
-    summary: toNativePortableText(options.summary),
+    summary: reportedText(options.summary),
     completed_at: options.completedAt,
   };
 }
@@ -186,12 +191,48 @@ export function submitNativeBuilderCandidate(options: {
     state.acceptance,
     'Native Builder addressed acceptance',
   );
-  const acceptanceReview =
-    input.acceptanceReview === undefined
-      ? undefined
-      : parseNativeBuilderAcceptanceReview(input.acceptanceReview);
-  if (options.requireAcceptanceReview !== false || acceptanceReview !== undefined)
-    assertNativeBuilderAcceptanceComplete(state.acceptance, acceptanceReview);
+  const errors: string[] = [];
+  let acceptanceError: unknown;
+  let acceptanceReview: NativeBuilderAcceptanceReview[] | undefined;
+  if (input.acceptanceReview !== undefined) {
+    try {
+      acceptanceReview = parseNativeBuilderAcceptanceReview(
+        input.acceptanceReview,
+        state.acceptance,
+        'acceptanceReview',
+      );
+    } catch (error) {
+      acceptanceError = error;
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
+  } else if (options.requireAcceptanceReview !== false) {
+    try {
+      assertNativeBuilderAcceptanceComplete(state.acceptance, undefined);
+    } catch (error) {
+      acceptanceError = error;
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+  for (const [index, check] of (input.checks ?? []).entries()) {
+    if (!check || typeof check.name !== 'string')
+      errors.push('Native Builder checks[' + index + '].name must be a string');
+    if (!check || !['passed', 'failed', 'not-run'].includes(String(check.result)))
+      errors.push(
+        'Native Builder checks[' +
+          index +
+          '].result must be passed, failed, or not-run; received ' +
+          JSON.stringify(check?.result),
+      );
+    if (check?.note != null && typeof check.note !== 'string')
+      errors.push('Native Builder checks[' + index + '].note must be a string or null');
+  }
+  if (errors.length === 1 && acceptanceError instanceof NativeBuilderAcceptanceIncompleteError)
+    throw acceptanceError;
+  if (errors.length)
+    throw new Error(
+      errors.join('\n') +
+        '\nCorrect the reported business fields and submit a new outcomeId using the original claim.',
+    );
   // A repaired candidate gets one independent Verifier pass over the complete
   // acceptance set. The previous unresolved IDs remain a hint in the durable
   // loop state, but must not narrow the formal scope or cause a second pass.
@@ -211,17 +252,17 @@ export function submitNativeBuilderCandidate(options: {
       identity_provider: input.identity.identityProvider,
       builder_execution_ref: input.identity.executionRef,
       iteration: state.loop.iteration,
-      summary: toNativePortableText(input.summary),
+      summary: reportedText(input.summary),
       addressed_acceptance_ids: addressed,
       acceptance_review: acceptanceReview,
       checks: builderChecks(input.checks),
       checks_truncated: false,
-      known_limits: (input.knownLimits ?? []).map((entry) => toNativePortableText(entry)),
+      known_limits: (input.knownLimits ?? []).map((entry) => reportedText(entry)),
       known_limits_truncated: false,
       review: input.review
         ? {
             status: 'passed',
-            summary: toNativePortableText(input.review.summary),
+            summary: reportedText(input.review.summary),
             reviewer_execution_ref: input.review.reviewerExecutionRef,
           }
         : null,
@@ -259,21 +300,10 @@ export function reserveNativeVerifierAttempt(stateInput: NativePortableState): N
   });
 }
 
-function progressCounters(state: NativePortableState, unresolvedIds: string[]): number {
-  const previous = state.loop.previous_unresolved_ids;
-  if (previous.length === 0) return 0;
-  const previousSet = new Set(previous);
-  const currentSet = new Set(unresolvedIds);
-  const strictSubset =
-    currentSet.size < previousSet.size && [...currentSet].every((id) => previousSet.has(id));
-  return strictSubset ? 0 : state.loop.no_progress_count + 1;
-}
-
 function verificationState(options: {
   state: NativePortableState;
   envelope: NativeTrustedVerifierEnvelope<unknown>;
   response: Extract<NativeVerifierResponse, { kind: 'final-result' }>;
-  checks: NativePortableCheckSummary[];
   completedAt: string;
 }): NativePortableVerificationState {
   return {
@@ -289,9 +319,9 @@ function verificationState(options: {
           ? 'skill-coordinated'
           : 'host-attested',
     verdict: options.response.result.verdict,
-    checks: options.checks,
-    summary: toNativePortableText(options.response.result.summary),
-    risks: options.response.result.risks.map((risk) => toNativePortableText(risk)),
+    checks: [],
+    summary: reportedText(options.response.result.summary),
+    risks: options.response.result.risks.map((risk) => reportedText(risk)),
     risks_truncated: false,
     completed_at: options.completedAt,
   };
@@ -301,7 +331,7 @@ export function applyNativeVerifierEnvelope(options: {
   state: NativePortableState;
   requireIndependentSession?: boolean;
   envelope: NativeTrustedVerifierEnvelope<unknown> | unknown;
-  checks: NativePortableCheckSummary[];
+  reportedChecks?: NativeBuilderCheckSummary[];
   maxVerifyFailures: number;
   now?: Date;
 }): { state: NativePortableState; response: NativeVerifierResponse } {
@@ -327,10 +357,11 @@ export function applyNativeVerifierEnvelope(options: {
       previouslyPassedAcceptanceIds: state.acceptance
         .filter(({ result }) => result === 'passed')
         .map(({ id }) => id),
-      requiredChecksPassed: options.checks.every(({ status }) => status === 'passed'),
+      requiredChecksPassed: (options.reportedChecks ?? []).every(
+        ({ result }) => result === 'passed',
+      ),
     },
   });
-  if (response.kind === 'request-checks') return { state, response };
 
   if (!Number.isSafeInteger(options.maxVerifyFailures) || options.maxVerifyFailures < 1) {
     throw new Error('Native max Verify failures must be a positive integer');
@@ -343,7 +374,7 @@ export function applyNativeVerifierEnvelope(options: {
     return {
       ...entry,
       result: result.result,
-      reason: toNativePortableText(result.reason),
+      reason: reportedText(result.reason),
     };
   });
   const unresolvedIds = acceptance
@@ -353,9 +384,9 @@ export function applyNativeVerifierEnvelope(options: {
     state,
     envelope: options.envelope as NativeTrustedVerifierEnvelope<unknown>,
     response,
-    checks: options.checks,
     completedAt,
   });
+  if (options.reportedChecks) verification.reported_checks = options.reportedChecks;
 
   if (response.result.verdict === 'pass') {
     const withHistory = appendNativePortableHistory(
@@ -381,7 +412,7 @@ export function applyNativeVerifierEnvelope(options: {
           ? [
               {
                 owner: 'user',
-                reason: toNativePortableText(
+                reason: reportedText(
                   options.requireIndependentSession === false
                     ? 'Verification passed; user acceptance is required before Archive.'
                     : 'The generic Skill bridge cannot prove an independent Verifier execution; user confirmation is required before Archive.',
@@ -425,7 +456,7 @@ export function applyNativeVerifierEnvelope(options: {
         blockers: [
           {
             owner: 'user',
-            reason: toNativePortableText(response.result.summary),
+            reason: reportedText(response.result.summary),
             acceptance_ids: unresolvedIds,
             resolution_action: 'resolve-verifier-blocker',
           },
@@ -442,14 +473,8 @@ export function applyNativeVerifierEnvelope(options: {
   }
 
   const failedIterationCount = state.loop.failed_iteration_count + 1;
-  const noProgressCount = progressCounters(state, unresolvedIds);
-  const limitReached = failedIterationCount >= options.maxVerifyFailures;
-  const stalled = noProgressCount >= 3;
-  const stop = limitReached || stalled;
-  // A stagnation stop is more specific than a generic failure budget stop.
-  // Persist the decision so continuation text and the durable blocker cannot
-  // disagree when both thresholds are crossed by the same result.
-  const stopReason = stalled ? 'stalled' : limitReached ? 'budget' : undefined;
+  // 进展由 Agent 根据实际修复判断；编号集合不用于推断停滞。
+  const stop = failedIterationCount >= options.maxVerifyFailures;
   const withHistory = appendNativePortableHistory(
     { ...state, acceptance, verification } as NativePortableState,
     historyEntry({
@@ -477,35 +502,22 @@ export function applyNativeVerifierEnvelope(options: {
         ? [
             {
               owner: 'user',
-              reason: toNativePortableText(
-                stopReason === 'budget'
-                  ? 'Native verification reached the configured failed iteration limit.'
-                  : 'Native verification did not strictly reduce the unresolved acceptance set three times.',
+              reason: reportedText(
+                'Native verification reached the configured failed iteration limit.',
               ),
               acceptance_ids: unresolvedIds,
               resolution_action: 'await-user',
             },
           ]
-        : noProgressCount >= 2
-          ? [
-              {
-                owner: 'builder',
-                reason: toNativePortableText(
-                  'Native verification has not made reliable progress twice; use a different repair hypothesis before resubmitting.',
-                ),
-                acceptance_ids: unresolvedIds,
-                resolution_action: 'return-build',
-              },
-            ]
-          : [],
+        : [],
       loop: {
         ...state.loop,
         stage: stop ? 'await-user' : 'repairing',
         iteration: stop ? state.loop.iteration : state.loop.iteration + 1,
         attempt: stop ? state.loop.attempt : 0,
         failed_iteration_count: failedIterationCount,
-        no_progress_count: noProgressCount,
-        ...(stopReason === undefined ? {} : { stop_reason: stopReason }),
+        no_progress_count: 0,
+        stop_reason: stop ? 'budget' : undefined,
         execution_failure_count: 0,
         previous_unresolved_ids: unresolvedIds,
         next_action: stop ? 'await-user' : 'repair-failed-acceptance',
@@ -545,7 +557,6 @@ export function confirmNativeSkillCoordinatedPass(
 
 export function recordNativeVerifierUnavailable(options: {
   state: NativePortableState;
-  checks: NativePortableCheckSummary[];
   verifierExecutionRef: string;
   summary: string;
   now?: Date;
@@ -559,11 +570,6 @@ export function recordNativeVerifierUnavailable(options: {
     state.loop.next_action !== 'await-verifier-result'
   ) {
     throw new Error('Native semantic verification unavailability requires an active Skill attempt');
-  }
-  if (options.checks.some(({ status }) => status !== 'passed')) {
-    throw new Error(
-      'Native semantic verification unavailability requires every resolved Runtime check to pass',
-    );
   }
   const completedAt = (options.now ?? new Date()).toISOString();
   const acceptanceIds = pendingAcceptanceIds(state);
@@ -591,11 +597,11 @@ export function recordNativeVerifierUnavailable(options: {
       attempt: state.loop.attempt,
       assurance: 'semantic-verification-unavailable',
       verdict: 'blocked',
-      checks: options.checks,
-      summary: toNativePortableText(options.summary),
+      checks: [],
+      summary: reportedText(options.summary),
       risks: [
-        toNativePortableText(
-          'No independent semantic Verifier execution was available; Runtime checks alone do not cover acceptance semantics.',
+        reportedText(
+          'No independent semantic Verifier execution was available; platform check reports do not replace full semantic verification.',
         ),
       ],
       risks_truncated: false,
@@ -604,7 +610,7 @@ export function recordNativeVerifierUnavailable(options: {
     blockers: [
       {
         owner: 'user',
-        reason: toNativePortableText(
+        reason: reportedText(
           'Independent semantic verification is unavailable on this platform; only completed Runtime checks are available, so explicit user confirmation is required before Archive.',
         ),
         acceptance_ids: acceptanceIds,
@@ -638,7 +644,7 @@ export function confirmNativeVerifierUnavailable(options: {
     throw new Error('Native change is not awaiting degraded verification confirmation');
   }
   const completedAt = (options.now ?? new Date()).toISOString();
-  const confirmation = toNativePortableText(options.summary);
+  const confirmation = reportedText(options.summary);
   const withHistory = appendNativePortableHistory(
     state,
     historyEntry({
@@ -664,7 +670,7 @@ export function confirmNativeVerifierUnavailable(options: {
     acceptance: state.acceptance.map((entry) => ({
       ...entry,
       result: 'passed',
-      reason: toNativePortableText(
+      reason: reportedText(
         `User confirmed degraded completion without independent semantic verification: ${options.summary}`,
       ),
     })),
@@ -767,7 +773,7 @@ export function recordNativeVerifierExecutionError(options: {
       ? [
           {
             owner: 'runtime',
-            reason: toNativePortableText(options.summary),
+            reason: reportedText(options.summary),
             acceptance_ids: [],
             resolution_action: 'retry-verifier',
           },
@@ -890,7 +896,7 @@ export function returnNativeCandidateToBuild(options: {
       blockers: [
         {
           owner: 'user',
-          reason: toNativePortableText(
+          reason: reportedText(
             `Native Runtime checks failed at Builder handoff and reached the configured failed iteration limit: ${options.reason}`,
           ),
           acceptance_ids: [...unresolvedIds],

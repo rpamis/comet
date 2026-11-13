@@ -1,4 +1,4 @@
-import path from 'node:path';
+import { nativeSupervisorContractRef } from './native-children-contract.js';
 
 import {
   inspectGitWorktree,
@@ -6,7 +6,6 @@ import {
   resolveGitRef,
   samePath,
 } from '../../platform/paths/git-worktree.js';
-import { runGitCommand } from '../../platform/process/git.js';
 import type {
   RuntimeAction,
   RuntimeExecutor,
@@ -17,24 +16,15 @@ import type {
 import { parseNativePortableState } from './native-portable-state.js';
 import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
 import {
+  executeNativeSupervisorCleanup as executeCleanup,
+  nativeSupervisorCleanupComplete as cleanupComplete,
+  preflightNativeSupervisorCleanup as preflightCleanup,
+  type NativeSupervisorCleanupBinding as CleanupBinding,
+  type NativeSupervisorCleanupCandidate as CleanupCandidate,
   nativeSupervisorChildWorktree,
   nativeSupervisorIntegrationBranch,
   nativeSupervisorIntegrationWorktree,
 } from './native-supervisor-workspace.js';
-import { nativeWorkspaceIsClean, removeNativeWorkspaceConfig } from './native-workspace-config.js';
-
-interface CleanupCandidate {
-  root: string;
-  branch: string;
-}
-
-interface CleanupBinding {
-  projectRoot: string;
-  targetRoot: string;
-  targetBranch: string;
-  targetCommit: string;
-  candidates: CleanupCandidate[];
-}
 
 function outputOf(run: Readonly<WorkflowRun>, stepId: string): Record<string, unknown> | null {
   const action = [...run.actions]
@@ -46,61 +36,17 @@ function outputOf(run: Readonly<WorkflowRun>, stepId: string): Record<string, un
     : null;
 }
 
-function localBranchExists(projectRoot: string, branch: string): boolean {
-  try {
-    runGitCommand(projectRoot, ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`]);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function containsPath(parent: string, child: string): boolean {
-  const relative = path.relative(path.resolve(parent), path.resolve(child));
-  return relative === '' || (!path.isAbsolute(relative) && !relative.startsWith(`..${path.sep}`));
-}
-
-function assertDeliveredTarget(binding: CleanupBinding): void {
-  if (
-    inspectGitWorktree(binding.targetRoot).currentBranch !== binding.targetBranch ||
-    resolveGitRef(binding.targetRoot, binding.targetBranch) !== binding.targetCommit
-  ) {
-    throw new Error('Native SDK Supervisor target branch changed during cleanup');
-  }
-}
-
-function cleanupBinding(
+function cleanupCandidates(
   run: Readonly<WorkflowRun>,
-  action: Readonly<RuntimeAction>,
   projectRoot: string,
-): CleanupBinding {
-  const state = parseNativePortableState(run.state);
-  const delivery = outputOf(run, 'supervisor.parent.deliver');
-  if (
-    action.stepId !== 'supervisor.cleanup' ||
-    state.status !== 'done' ||
-    !state.archived ||
-    !state.children_contract_hash ||
-    !outputOf(run, 'archive.finalize') ||
-    !delivery ||
-    typeof delivery.targetRoot !== 'string' ||
-    typeof delivery.targetBranch !== 'string' ||
-    typeof delivery.targetCommit !== 'string' ||
-    delivery.targetCommit !== delivery.integrationCommit ||
-    !listGitWorktreeRoots(projectRoot).some((root) =>
-      samePath(root, delivery.targetRoot as string),
-    ) ||
-    inspectGitWorktree(delivery.targetRoot).currentBranch !== delivery.targetBranch ||
-    resolveGitRef(delivery.targetRoot, delivery.targetBranch) !== delivery.targetCommit
-  ) {
-    throw new Error('Native SDK Supervisor cleanup lacks the verified delivery');
-  }
+  state: ReturnType<typeof parseNativePortableState>,
+): CleanupCandidate[] {
   const prepared = outputOf(run, 'supervisor.prepare');
   const integrationRoot = nativeSupervisorIntegrationWorktree(projectRoot, state.name);
   const integrationBranch = nativeSupervisorIntegrationBranch(state.name);
   if (
     !prepared ||
-    prepared.contractHash !== state.children_contract_hash ||
+    nativeSupervisorContractRef(prepared, run) !== state.children_contract_ref ||
     typeof prepared.integrationWorktree !== 'string' ||
     !samePath(prepared.integrationWorktree, integrationRoot) ||
     prepared.integrationBranch !== integrationBranch
@@ -118,7 +64,7 @@ function cleanupBinding(
     if (
       typeof receipt.child !== 'string' ||
       typeof receipt.worktree !== 'string' ||
-      receipt.contractHash !== state.children_contract_hash ||
+      nativeSupervisorContractRef(receipt, run) !== state.children_contract_ref ||
       !samePath(
         receipt.worktree,
         nativeSupervisorChildWorktree(projectRoot, state.name, receipt.child),
@@ -127,88 +73,73 @@ function cleanupBinding(
     ) {
       throw new Error('Native SDK Supervisor cleanup has a mismatched Child receipt');
     }
-    children.set(receipt.child, { root: receipt.worktree, branch: receipt.branch });
+    children.set(receipt.child, {
+      root: receipt.worktree,
+      branch: receipt.branch,
+    });
   }
   if (children.size === 0) {
     throw new Error('Native SDK Supervisor cleanup has no prepared Children');
+  }
+  return [...children.values(), { root: integrationRoot, branch: integrationBranch }];
+}
+
+function cleanupBinding(
+  run: Readonly<WorkflowRun>,
+  action: Readonly<RuntimeAction>,
+  projectRoot: string,
+): CleanupBinding {
+  const state = parseNativePortableState(run.state);
+  const delivery = outputOf(run, 'supervisor.parent.deliver');
+  if (
+    action.stepId !== 'supervisor.cleanup' ||
+    state.status !== 'done' ||
+    !state.archived ||
+    !state.children_contract_ref ||
+    !outputOf(run, 'archive.finalize') ||
+    !delivery ||
+    typeof delivery.targetRoot !== 'string' ||
+    typeof delivery.targetBranch !== 'string' ||
+    typeof delivery.targetCommit !== 'string' ||
+    delivery.targetCommit !== delivery.integrationCommit ||
+    !listGitWorktreeRoots(projectRoot).some((root) =>
+      samePath(root, delivery.targetRoot as string),
+    ) ||
+    inspectGitWorktree(delivery.targetRoot).currentBranch !== delivery.targetBranch ||
+    resolveGitRef(delivery.targetRoot, delivery.targetBranch) !== delivery.targetCommit
+  ) {
+    throw new Error('Native SDK Supervisor cleanup lacks the verified delivery');
   }
   return {
     projectRoot,
     targetRoot: delivery.targetRoot,
     targetBranch: delivery.targetBranch,
     targetCommit: delivery.targetCommit,
-    candidates: [...children.values(), { root: integrationRoot, branch: integrationBranch }],
+    candidates: cleanupCandidates(run, projectRoot, state),
   };
 }
 
-function preflightCleanup(binding: CleanupBinding): void {
-  assertDeliveredTarget(binding);
-  const registered = listGitWorktreeRoots(binding.projectRoot);
-  for (const candidate of binding.candidates) {
-    if (registered.some((root) => samePath(root, candidate.root))) {
-      if (containsPath(candidate.root, process.cwd())) {
-        throw new Error(
-          `Native SDK Supervisor cannot clean the current worktree: ${candidate.root}`,
-        );
-      }
-      if (
-        inspectGitWorktree(candidate.root).currentBranch !== candidate.branch ||
-        !nativeWorkspaceIsClean(candidate.root)
-      ) {
-        throw new Error(
-          `Native SDK Supervisor cleanup found a changed worktree: ${candidate.root}`,
-        );
-      }
-    }
-    if (localBranchExists(binding.projectRoot, candidate.branch)) {
-      try {
-        runGitCommand(binding.projectRoot, [
-          'merge-base',
-          '--is-ancestor',
-          candidate.branch,
-          binding.targetCommit,
-        ]);
-      } catch {
-        throw new Error(
-          `Native SDK Supervisor cleanup found an unintegrated branch: ${candidate.branch}`,
-        );
-      }
-    }
-  }
-}
-
-function cleanupComplete(binding: CleanupBinding): boolean {
-  const registered = listGitWorktreeRoots(binding.projectRoot);
-  return binding.candidates.every(
-    (candidate) =>
-      !registered.some((root) => samePath(root, candidate.root)) &&
-      !localBranchExists(binding.projectRoot, candidate.branch),
-  );
-}
-
-async function executeCleanup(binding: CleanupBinding): Promise<void> {
-  preflightCleanup(binding);
-  for (const candidate of binding.candidates) {
-    assertDeliveredTarget(binding);
-    if (!listGitWorktreeRoots(binding.projectRoot).some((root) => samePath(root, candidate.root))) {
-      continue;
-    }
-    await removeNativeWorkspaceConfig(candidate.root);
-    runGitCommand(binding.projectRoot, ['worktree', 'remove', candidate.root]);
-  }
-  for (const candidate of binding.candidates) {
-    assertDeliveredTarget(binding);
-    if (localBranchExists(binding.projectRoot, candidate.branch)) {
-      runGitCommand(binding.targetRoot, ['branch', '-d', candidate.branch]);
-    }
-  }
-  if (!cleanupComplete(binding)) {
-    throw new Error('Native SDK Supervisor cleanup did not remove every temporary worktree');
-  }
+/** Preflight the exact temporary worktrees before delivery changes the user target. */
+export function preflightNativeSdkSupervisorDeliveryCleanup(
+  run: Readonly<WorkflowRun>,
+  projectRoot: string,
+  integrationCommit: string,
+  state: ReturnType<typeof parseNativePortableState>,
+): void {
+  preflightCleanup({
+    projectRoot,
+    targetRoot: nativeSupervisorIntegrationWorktree(projectRoot, state.name),
+    targetBranch: nativeSupervisorIntegrationBranch(state.name),
+    targetCommit: integrationCommit,
+    candidates: cleanupCandidates(run, projectRoot, state),
+  });
 }
 
 function cleanupOutput(binding: CleanupBinding) {
-  return { targetBranch: binding.targetBranch, targetCommit: binding.targetCommit };
+  return {
+    targetBranch: binding.targetBranch,
+    targetCommit: binding.targetCommit,
+  };
 }
 
 export const nativeSdkSupervisorCleanupExecutor: RuntimeExecutor = {
@@ -254,7 +185,10 @@ export const nativeSdkSupervisorCleanupValidator: RuntimeValidator = {
       }
       return { accepted: true };
     } catch (error) {
-      return { accepted: false, reason: error instanceof Error ? error.message : String(error) };
+      return {
+        accepted: false,
+        reason: error instanceof Error ? error.message : String(error),
+      };
     }
   },
 };

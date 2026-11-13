@@ -1,3 +1,5 @@
+import { createNativePortableChange } from '../../../domains/comet-native/native-portable-runtime.js';
+import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
 import { resolveWorkspaceRuntimeRoot } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
@@ -7,10 +9,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { classicStateCommand } from '../../../domains/comet-classic/classic-state-command.js';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
-import {
-  createNativeChange,
-  writeNativeChange,
-} from '../../../domains/comet-native/native-change.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -63,14 +61,15 @@ describe('packaged Hook Router worktree isolation', () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     const paths = await nativeProjectPaths(projectRoot, '.');
     await ensureNativeDirectories(paths);
-    const change = await createNativeChange({
-      paths,
-      name,
-      language: 'en',
-      verificationProtocol: 'legacy-v1',
-    });
-    change.phase = phase;
-    await writeNativeChange(paths, change);
+    // SIMULATED isolated user fixture: current Shape creation; Build crosses the real persisted approval boundary.
+    await createNativePortableChange({ paths, name, language: 'en' });
+    if (phase === 'build') {
+      await fs.writeFile(
+        path.join(paths.changesDir, name, 'brief.md'),
+        '# SIMULATED Router fixture\n# Acceptance examples\n- The selected Router preserves Native phase permissions.\n',
+      );
+      await confirmNativePortableShape({ paths, name });
+    }
     await selectNativeChange(paths, name);
   }
 

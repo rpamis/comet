@@ -5,7 +5,7 @@ import {
   type RuntimeAction,
 } from '../engine/runtime-action.js';
 import { hashRuntimeValue } from '../engine/runtime-json.js';
-import type { NativeLocalExecutionState, NativePortableState } from './native-portable-types.js';
+import type { NativePortableState } from './native-portable-types.js';
 
 interface NativeVerifierActionInput {
   candidateId: string;
@@ -109,42 +109,6 @@ export function activeNativeVerifierAction(state: NativePortableState): RuntimeA
 
 export function nativeVerifierActionExecutionRef(action: RuntimeAction): string | null {
   return action.claim?.token ?? nativeVerifierActionInput(action).verifierExecutionRef;
-}
-
-/** Read legacy execution metadata only at a verified, current attempt boundary. */
-export function currentNativeVerifierAction(
-  state: NativePortableState,
-  local: NativeLocalExecutionState | null,
-): RuntimeAction {
-  if (state.verifier_action) {
-    if (!nativeVerifierActionMatchesState(state, state.verifier_action)) {
-      throw new Error('Native Verifier action is stale for the current candidate or attempt');
-    }
-    return state.verifier_action;
-  }
-  const execution = local?.execution;
-  if (
-    !local ||
-    local.change !== state.name ||
-    local.basedOnStateVersion !== state.state_version ||
-    (local.candidateId !== undefined &&
-      local.candidateId !== state.builder_handoff?.candidate_id) ||
-    !execution ||
-    execution.stage !== 'verifying' ||
-    execution.actor !== 'verifier' ||
-    execution.status !== 'running'
-  ) {
-    throw new Error('Native Verifier action has no current legacy execution binding');
-  }
-  const action = createNativeVerifierAction({
-    state,
-    operationId: execution.operationId,
-    executionRef: execution.executionId,
-    registeredAt: execution.startedAt,
-  });
-  return execution.verifierStartedAt && execution.executionId
-    ? startNativeVerifierAction(action, execution.executionId)
-    : action;
 }
 
 export function startNativeVerifierAction(

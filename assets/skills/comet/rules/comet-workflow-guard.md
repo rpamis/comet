@@ -4,7 +4,11 @@
 
 ## 先确定当前需求
 
+`ambient_resume` 关闭时，普通新请求不因已有 change 进入 Comet；明确调用和已经进行的流程照常处理。以下所有权读取用于确定原流程及写入约束，不替代本次请求的恢复确认。
+
 当前 selection 的 `workflow` 为 `application` 时，使用它的 `applicationId` 与原 Run ID，恢复对应 SDK Skill 应用。读取平台 Skill 入口指向的固定包和应用 Rule；进度、批准、写入范围与恢复以同一 SDK Run 为准，不套用下方 Native/Classic 阶段表。先确认当前提案并领取 Action，再执行声明范围内的工作；SDK 状态、固定包和宿主配置由正式 Runtime/安装入口维护。平台 Rule、Hook 配置、实际 Hook 事件与业务验收分别核对；平台需要启用或信任 Hook 时按其要求处理。
+
+本会话尚未进入 Native 或 Classic 时，环境感知发现的 change 先作为候选。即使只有一个语义相关的 change，或项目已有有效 selection，也先展示名称和阶段，询问本次是否继续该流程，等待用户确认后再加载入口或推进。用户明确调用 Comet Skill，或明确要求继续、验证、归档或提交指定 change（包括明确指向当前 change）时直接进入；只提到名称或一般性的“验证”不算恢复确认。已在流程中的同一会话沿用已有确认，普通继续、答复和上下文恢复不重复询问。用户拒绝时按普通任务处理，保留原 change、selection、批准及阶段写入约束。
 
 开始任务、恢复上下文或切换仓库、分支、change 时执行以下轻量所有权读取；同一任务正常推进沿用当前响应：
 
@@ -23,15 +27,15 @@ Classic 旧项目没有新版配置时只按 Classic legacy fallback 处理，�
 | Native   | Shape、Verify、Archive        | Build            |
 | Classic  | Open、Design、Verify、Archive | Build            |
 
-- Native 的 Verify 保持只读：Runtime 执行缺失或已失效的检查，验收者覆盖全部条目。新 Run 由 Agent 按任务需要选择当前会话或独立只读会话；用户明确要求独立时保留 requireIndependentReview，使用真实的不同会话。旧 Run 按当前 sessionRequirements 执行；发现实现问题时，先记录失败并通过 Native Runtime 回到 Build，再修改实现。点号开头的普通项目文件不因名称而自动成为跨阶段白名单。
+- Native 的 Verify 保持只读：新旧 Run 均由 Agent 使用平台工具执行必要检查并提交实际结果，平台负责超时、取消和进程清理；旧业务数据自动适配并保留原批准与任务；验收者覆盖全部条目。新 Run 由 Agent 按任务需要选择当前会话或独立只读会话；用户明确要求独立时保留 requireIndependentReview，使用真实的不同会话。旧 Run 按当前 sessionRequirements 执行；发现实现问题时，先记录失败并通过 Native Runtime 回到 Build，再修改实现。点号开头的普通项目文件不因名称而自动成为跨阶段白名单。
   Native 表中的写入限制用于验收执行者主动实现或修复。用户普通编辑按当前 native.document_writes 策略处理；允许保留编辑时，当前 Agent 在推进前判断真实影响，需求变化重新确认、实现变化修订候选、检查变化只补失效证据。采用 revert 策略时按 Hook 拒绝与恢复指引处理。
 
 - Classic 的 Verify 只写验证报告和状态等阶段产物，不修改 tasks 或普通项目实现；需要更新任务状态或修复实现时，先执行 `verify-fail` 回到 Build。
 - Native Build 的普通写入权限不覆盖 brief 中未解决的 `[blocking]` 用户决定；出现新决定时按 Native Skill 暂停实现并重新确认。
 - Native 状态包含 `children` 时，Build 的普通写入权限只属于 Runtime `readyChildren` 中列出的子任务工作区；不得运行 Supervisor Change Builder，也不得在父级工作区实现子任务。
 - Classic full workflow 只有在状态已记录 Design Doc 且实施计划存在并可用后，才允许在 Build 进行普通实现写入；hotfix 和 tweak 继续服从各自的 preset 阶段协议。
-- 当前 workflow 是 Native：恢复 `/comet-native`。新普通 SDK 任务沿用返回的 `native next --session` 业务入口，提交结果后由 Runtime 连续处理已授权步骤。SDK 以本地 Run 为权威，Portable 在恢复边界保存检查点；旧 Run 和 Supervisor 使用各自返回的协议。
-- 当前 workflow 是 Classic：恢复 `/comet-classic`，由 Classic 状态、确认点和阶段协议继续。
+- 本会话已确认进入且当前 workflow 是 Native：恢复 `/comet-native`。新普通 SDK 任务沿用返回的 `native next --session` 业务入口，提交结果后由 Runtime 连续处理已授权步骤。SDK 以本地 Run 为权威，Portable 在恢复边界保存检查点；旧 Run 和 Supervisor 使用各自返回的协议。
+- 本会话已确认进入且当前 workflow 是 Classic：恢复 `/comet-classic`，由 Classic 状态、确认点和阶段协议继续。
 - 不要把 Native change 转换成 Classic change，或反向转换；切换 workflow 必须选择另一个独立 change。
 
 ## Hook 约束

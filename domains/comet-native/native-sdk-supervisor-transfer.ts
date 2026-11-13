@@ -1,9 +1,9 @@
-import { isWorkspaceRuntimeMigrationFence } from '../workflow-contract/workspace-runtime.js';
-import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { parseDocument } from 'yaml';
+import { isWorkspaceRuntimeMigrationFence } from '../workflow-contract/workspace-runtime.js';
 
 import {
   inspectGitWorktree,
@@ -14,13 +14,15 @@ import {
 import {
   createFileRuntimeStore,
   createMemoryRuntimeStore,
-  createRuntime,
   createPortableRunCheckpoint,
+  createRuntime,
   hashRuntimeValue,
   PORTABLE_RUN_CHECKPOINT_KEY,
   readPortableRunCheckpoint,
   type WorkflowRun,
 } from '../engine/runtime.js';
+import { loadWorkflowApplication } from '../workflow-application/application.js';
+import type { ApplicationIdentity } from '../workflow-application/index.js';
 import {
   COMET_CHANGE_OWNER_SCHEMA,
   readChangeRuntimeOwner,
@@ -30,38 +32,27 @@ import {
   atomicWriteContainedBytes,
   atomicWriteContainedText,
 } from '../workflow-contract/contained-atomic-write.js';
-import {
-  ensureProtectedProjectDirectory,
-  inspectProtectedProjectPath,
-  hashProtectedProjectFile,
-} from '../workflow-contract/protected-project-path.js';
+import { ensureProtectedProjectDirectory } from '../workflow-contract/protected-project-path.js';
 import { readProjectConfig } from './native-config.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import { nativePortableStateFile } from './native-portable-storage.js';
 import { inspectNativeSdkRun } from './native-runtime-ownership.js';
+import { defineNativeWorkflowApplication } from './native-sdk-application.js';
+import { upgradeNativeRun } from './native-sdk-run-upgrade.js';
+
 import {
   createNativeSdkStateStore,
   readNativeSdkRunRecord,
   writeNativeManagedRunState,
 } from './native-sdk-state-store.js';
 import {
-  loadWorkflowApplication,
-  type ApplicationIdentity,
-} from '../workflow-application/index.js';
-import { nativeSdkApplicationForRun } from './native-sdk-application.js';
-import {
-  nativeSdkBeforeVerifierRecovery,
-  nativeSdkMatchesRun,
-  nativeSdkLegacyTransitionHandler,
-} from './native-sdk-definition.js';
-import {
   nativeSupervisorChildWorktree,
   nativeSupervisorIntegrationWorktree,
 } from './native-supervisor-workspace.js';
 
 const SCHEMA = 'comet.native.supervisor-transfer.v1';
-const MAX_BUFFER = 100 * 1024 * 1024;
+const MAX_BUFFER = Number.MAX_SAFE_INTEGER;
 
 interface TransferFile {
   path: string;
@@ -145,7 +136,7 @@ function workspacesFromRun(
   workspaces: TransferWorkspace[];
 } {
   const state = parseNativePortableState(run.state);
-  if (state.phase !== 'build' || state.archived || !state.children_contract_hash) {
+  if (state.phase !== 'build' || state.archived || !state.children_contract_ref) {
     throw new Error('Native Supervisor transfer requires an active SDK Build');
   }
   if (
@@ -428,14 +419,6 @@ export async function exportNativeSupervisorTransfer(options: {
       '',
       true,
     );
-    const runtimeFiles: TransferFile[] = [];
-    const runtimeSource = await inspectProtectedProjectPath(
-      paths.workspaceRuntimeRoot,
-      `native/sdk-checks/${hashRuntimeValue(run.runId)}`,
-      { label: 'Native transfer check artifacts', expected: 'directory' },
-    );
-    if (runtimeSource.exists)
-      runtimeFiles.push(...(await copyTree(runtimeSource.target, path.join(temporary, 'runtime'))));
     for (const [index, workspace] of workspaces.entries()) {
       const workspaceDir = path.join(temporary, 'workspaces', String(index));
       await fs.mkdir(path.join(workspaceDir, 'tracked'), { recursive: true });
@@ -534,7 +517,6 @@ export async function exportNativeSupervisorTransfer(options: {
       bundleSha256: sha256(await fs.readFile(bundlePath)),
       changeFiles,
       workspaces,
-      runtimeFiles,
       ...(applicationIdentity ? { application: applicationIdentity } : {}),
     };
     await fs.writeFile(
@@ -601,7 +583,7 @@ export async function importNativeSupervisorTransfer(options: {
   if (checkpoint?.hash !== manifest.checkpointHash) {
     throw new Error('Native Supervisor transfer checkpoint differs from its manifest');
   }
-  const saved = readPortableRunCheckpoint(checkpoint, manifest.name);
+  let saved = readPortableRunCheckpoint(checkpoint, manifest.name);
   if (!saved) throw new Error('Native Supervisor transfer checkpoint is missing');
   const identity = (document.toJS() as { application_checkpoint?: ApplicationIdentity })
     .application_checkpoint;
@@ -621,61 +603,26 @@ export async function importNativeSupervisorTransfer(options: {
     : null;
   if (application && application.identity.id !== identity!.id)
     throw new Error('Native 转移需要原固定应用包');
-  const modelStore = createMemoryRuntimeStore<WorkflowRun>();
-  await modelStore.compareAndSwap(saved.runId, null, saved);
-  const base = nativeSdkApplicationForRun(saved);
-  let implementation = application?.implementation ?? {
+  const base = defineNativeWorkflowApplication();
+  const implementation = application?.implementation ?? {
     ...base,
     workflows: [base.workflow],
     transitionHandlers: [base.transitionHandler],
   };
-  if (application) {
-    // 目标尚无 Run；用已验证固定包重建的精确旧定义校验转移，不隐式升级保存的 hash。
-    const workflow = implementation.workflows.find(
-      (candidate) =>
-        candidate.id === saved.workflow.id && candidate.version === saved.workflow.version,
-    );
-    if (workflow) {
-      const previous = nativeSdkBeforeVerifierRecovery(workflow);
-      if (nativeSdkMatchesRun(previous, saved)) {
-        implementation = {
-          ...implementation,
-          workflows: implementation.workflows.map((candidate) =>
-            candidate === workflow ? previous : candidate,
-          ),
-          transitionHandlers: implementation.transitionHandlers?.map((handler) =>
-            handler.id === previous.transitionHandler?.id &&
-            handler.version === previous.transitionHandler?.version
-              ? nativeSdkLegacyTransitionHandler(previous, handler)
-              : handler,
-          ),
-        };
-      }
-    }
-  }
+  const workflow = implementation.workflows.find((w) => w.id === saved!.workflow.id);
+  const handler = implementation.transitionHandlers?.find(
+    (h) =>
+      h.id === workflow?.transitionHandler?.id && h.version === workflow.transitionHandler.version,
+  );
+  if (!workflow || !handler) throw new Error('转移需要原业务应用的当前定义');
+  const originalStore = createMemoryRuntimeStore<WorkflowRun>();
+  await originalStore.restoreCheckpoint!(saved.runId, null, saved);
+  await createRuntime({ store: originalStore, workflows: [] }).inspect(saved.runId);
+  saved = upgradeNativeRun(saved, workflow, handler);
+  const modelStore = createMemoryRuntimeStore<WorkflowRun>();
+  await modelStore.restoreCheckpoint!(saved.runId, null, saved);
   await createRuntime({ ...implementation, store: modelStore }).inspect(saved.runId);
   const paths = await nativeProjectPaths(projectRoot, manifest.artifactRootRef);
-  if (manifest.runtimeFiles !== undefined) {
-    if (!Array.isArray(manifest.runtimeFiles)) throw new Error('Native 转移检查工件无效');
-    if (manifest.runtimeFiles.length)
-      await verifyTree(path.join(inputDir, 'runtime'), manifest.runtimeFiles);
-    for (const file of manifest.runtimeFiles) {
-      const ref = `native/sdk-checks/${hashRuntimeValue(saved.runId)}/${safeRelative(file.path)}`;
-      const existing = await inspectProtectedProjectPath(paths.workspaceRuntimeRoot, ref, {
-        label: 'Native transfer destination check artifact',
-        expected: 'file',
-      });
-      if (
-        existing.exists &&
-        (
-          await hashProtectedProjectFile(paths.workspaceRuntimeRoot, ref, {
-            label: 'Native transfer destination check artifact',
-          })
-        ).digest !== file.sha256
-      )
-        throw new Error('Native 转移不能覆盖不同的检查工件');
-    }
-  }
   const state = parseNativePortableState(saved.state);
   if (state.name !== manifest.name)
     throw new Error('Native Supervisor transfer change name differs');
@@ -910,32 +857,20 @@ export async function importNativeSupervisorTransfer(options: {
       { containedRoot: projectRoot },
     );
   }
-  for (const file of manifest.runtimeFiles ?? []) {
-    const destination = path.join(
-      paths.workspaceRuntimeRoot,
-      'native/sdk-checks',
-      hashRuntimeValue(saved.runId),
-      safeRelative(file.path),
-    );
-    await atomicWriteContainedBytes(
-      destination,
-      await fs.readFile(path.join(inputDir, 'runtime', file.path)),
-      { containedRoot: paths.workspaceRuntimeRoot },
-    );
-  }
+  await writeNativeManagedRunState(
+    nativePortableStateFile(paths, manifest.name),
+    parseNativePortableState(rebound.state),
+    projectRoot,
+    rebound,
+    undefined,
+    application?.identity,
+  );
   if (application) {
-    await writeNativeManagedRunState(
-      nativePortableStateFile(paths, manifest.name),
-      parseNativePortableState(rebound.state),
-      projectRoot,
-      rebound,
-      undefined,
-      application.identity,
-    );
     if (!(await application.store.read(manifest.name)))
       throw new Error('Native 定制应用转移未恢复原 Run');
   } else {
     const store = createFileRuntimeStore<WorkflowRun>({
+      singleWriter: true,
       rootDir: path.join(paths.workspaceRuntimeRoot, 'sdk-runs/native'),
     });
     if (!(await store.compareAndSwap(manifest.name, null, rebound)))

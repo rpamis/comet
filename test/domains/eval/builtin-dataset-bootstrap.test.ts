@@ -68,9 +68,8 @@ it('preserves dataset-bound Dockerfiles when preparing image inputs', () => {
   );
 });
 
-it('keeps Eval CLI tooling outside Native inputs while binding application generated files', async () => {
+it('keeps Eval CLI tooling snapshots separate from dataset home caches', async () => {
   await ensureCliBuilt(path.resolve('.'));
-  scaffold('test_conftest_helpers.py', 'cli_snapshot_stays_out_of_native_inputs', 1);
   scaffold('test_builtin_datasets.py', 'current_cli_dependency_snapshot', 2);
   scaffold('test_builtin_datasets.py', 'dataset_root_home_cache', 2);
 }, 35_000);
@@ -243,3 +242,15 @@ it('excludes unverified or mismatched experiment modes including legacy flags', 
   scaffold('test_dataset_integrity.py', 'legacy_invalid or changed_dataset_inputs', 7);
   scaffold('test_dataset_integrity.py', 'sdk_inspection_preserves_original_owner', 1);
 }, 35_000);
+
+it('honors dataset workspace build budgets without extending ordinary image builds', () => {
+  scaffold(
+    'test_utils.py',
+    'dataset_workspace_build_uses_declared_budget_and_preserves_regular_limit',
+    3,
+  );
+});
+
+it('supports explicit unlimited image builds without changing task budgets or lock cleanup', () => {
+  scaffold('test_utils.py', 'unlimited_image_build', 3);
+});

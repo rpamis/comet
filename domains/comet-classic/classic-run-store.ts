@@ -15,7 +15,7 @@ export async function resolveClassicRunReadPath(changeDir: string, ref: string) 
   )
     throw new Error('Run path must stay inside the change directory');
   const projectRoot = await discoverClassicProject(changeDir);
-  const local = await resolveClassicLocalTarget(projectRoot, absolute, { migrate: false });
+  const local = await resolveClassicLocalTarget(projectRoot, absolute, { readOnly: true });
   const inspectionRoot = local?.root ?? changeDir;
   const target = local?.target ?? absolute;
   const root =

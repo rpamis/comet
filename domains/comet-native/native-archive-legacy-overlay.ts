@@ -173,7 +173,6 @@ export async function withNativeLegacyArchiveMaterials(options: {
   if (!archivedInspection.exists) throw new Error('旧 Archive 原材料和归档材料均缺失');
   const overlay = new Map(options.overlay);
   let count = 0;
-  let total = 0;
   async function visit(directory: string) {
     const checked = await inspectProtectedProjectPath(paths.projectRoot, ref(directory), {
       label: '旧 Archive 材料目录',
@@ -192,12 +191,10 @@ export async function withNativeLegacyArchiveMaterials(options: {
       const { bytes, stat } = await readProtectedProjectFile(
         paths.projectRoot,
         ref(file),
-        8 * 1024 * 1024,
+        Number.MAX_SAFE_INTEGER,
         { label: '旧 Archive 材料' },
       );
-      total += bytes.length;
-      if (++count > 4096 || total > 64 * 1024 * 1024)
-        throw new Error('旧 Archive 材料超出只读恢复大小限制');
+      if (++count > 4096) throw new Error('旧 Archive 材料超出只读恢复文件数量限制');
       const relative = path.relative(archived, file);
       overlay.set(ref(file), { text: null, mode: Number(stat.mode) });
       overlay.set(ref(path.join(active, relative)), {

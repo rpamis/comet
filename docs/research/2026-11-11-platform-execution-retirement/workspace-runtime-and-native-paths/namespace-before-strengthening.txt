@@ -1,0 +1,347 @@
+import '../../helpers/isolated-agent-home.js';
+import { promises as fs } from 'node:fs';
+import { spawnSync, execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { createFileRuntimeStore } from '../../../domains/engine/runtime.js';
+import { hashRuntimeValue } from '../../../domains/engine/runtime-json.js';
+import {
+  ensureWorkspaceRuntimeRoot,
+  resolveWorkspaceRuntimeRoot,
+  resolveWorkspaceRuntimeRootSync,
+  isWorkspaceRuntimeMigrationFence,
+} from '../../../domains/workflow-contract/workspace-runtime.js';
+let temporary: string, project: string, data: string, legacy: string;
+beforeEach(async () => {
+  temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'current-workspace-runtime-'));
+  project = path.join(temporary, 'project');
+  data = path.join(temporary, 'data');
+  legacy = path.join(project, '.comet/runtime');
+  await fs.mkdir(project);
+  vi.stubEnv('COMET_DATA_DIR', data);
+});
+afterEach(async () => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+  await fs.rm(temporary, { recursive: true, force: true });
+});
+async function write(file: string, bytes: string) {
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, bytes);
+}
+async function tree(root: string) {
+  const result: Array<[string, string]> = [];
+  async function walk(dir: string) {
+    for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) await walk(file);
+      else if (entry.isFile())
+        result.push([
+          path.relative(root, file).replaceAll('\\', '/'),
+          (await fs.readFile(file)).toString('base64'),
+        ]);
+      else result.push([path.relative(root, file), 'LINK']);
+    }
+  }
+  await walk(root);
+  return result.sort(([a], [b]) => a.localeCompare(b));
+}
+function importCli() {
+  return spawnSync(
+    process.execPath,
+    [path.resolve('dist/app/cli/index.js'), 'doctor', project, '--import-legacy-runtime', '--json'],
+    {
+      cwd: project,
+      encoding: 'utf8',
+      timeout: 30000,
+      windowsHide: true,
+      env: { ...process.env, COMET_DAEMON: 'off', COMET_SKIP_UPDATE_CHECK: '1' },
+    },
+  );
+}
+it.runIf(process.platform === 'win32')(
+  'reads the same saved run and lock through a Windows case alias',
+  async (context) => {
+    const alias = path.join(temporary, 'Project');
+    try {
+      await fs.stat(alias);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+        context.skip('当前目录区分大小写，不存在同目录大小写别名');
+      throw error;
+    }
+    const runtime = await ensureWorkspaceRuntimeRoot(project);
+    const record = { runId: 'retained', revision: 1, state: { progress: 'saved' } };
+    const store = (root: string) => createFileRuntimeStore({ rootDir: path.join(root, 'runs') });
+    expect(await store(runtime).compareAndSwap(record.runId, null, record)).toBe(true);
+    await write(path.join(runtime, 'saved-run.lock'), 'same execution owner');
+    const reopened = await ensureWorkspaceRuntimeRoot(alias);
+    expect(reopened).toBe(runtime);
+    expect(resolveWorkspaceRuntimeRootSync(alias)).toBe(runtime);
+    expect(await store(reopened).read(record.runId)).toEqual(record);
+    expect(await fs.readFile(path.join(reopened, 'saved-run.lock'), 'utf8')).toBe(
+      'same execution owner',
+    );
+  },
+);
+
+it('validates the volume root without attempting mkdir when the root would reject it', async () => {
+  const volumeRoot = path.parse(data).root;
+  const mkdir = fs.mkdir.bind(fs);
+  const create = vi.spyOn(fs, 'mkdir').mockImplementation(async (directory, options) => {
+    if (path.resolve(String(directory)) === volumeRoot) {
+      throw Object.assign(new Error('EPERM: operation not permitted, mkdir volume root'), {
+        code: 'EPERM',
+      });
+    }
+    return mkdir(directory, options);
+  });
+  const stat = vi.spyOn(fs, 'lstat');
+  const runtime = await ensureWorkspaceRuntimeRoot(project);
+  expect(runtime).toBe(resolveWorkspaceRuntimeRootSync(project));
+  expect((await fs.stat(runtime)).isDirectory()).toBe(true);
+  expect(stat).toHaveBeenCalledWith(volumeRoot);
+  expect(
+    create.mock.calls.some(([directory]) => path.resolve(String(directory)) === volumeRoot),
+  ).toBe(false);
+});
+
+it.each(['file', 'symlink'] as const)(
+  'rejects a nonphysical volume root reported as a %s before creating directories',
+  async (kind) => {
+    const volumeRoot = path.parse(data).root;
+    const rootStat = await fs.lstat(volumeRoot);
+    vi.spyOn(rootStat, 'isDirectory').mockReturnValue(kind !== 'file');
+    vi.spyOn(rootStat, 'isSymbolicLink').mockReturnValue(kind === 'symlink');
+    const lstat = fs.lstat.bind(fs);
+    const stat = vi.spyOn(fs, 'lstat').mockImplementation(async (file, options) => {
+      if (path.resolve(String(file)) === volumeRoot) return rootStat;
+      return lstat(file, options);
+    });
+    const mkdir = vi.spyOn(fs, 'mkdir');
+    await expect(ensureWorkspaceRuntimeRoot(project)).rejects.toThrow('必须是真实目录');
+    expect(stat).toHaveBeenCalledWith(volumeRoot);
+    expect(mkdir).not.toHaveBeenCalled();
+  },
+);
+
+it.each(['ENOENT', 'EACCES', 'EPERM'] as const)(
+  'preserves a volume root lstat %s error without attempting mkdir',
+  async (code) => {
+    const volumeRoot = path.parse(data).root;
+    const error = Object.assign(new Error(`${code}: lstat volume root`), {
+      code,
+      path: volumeRoot,
+      syscall: 'lstat',
+    });
+    const lstat = fs.lstat.bind(fs);
+    vi.spyOn(fs, 'lstat').mockImplementation(async (file, options) => {
+      if (path.resolve(String(file)) === volumeRoot) throw error;
+      return lstat(file, options);
+    });
+    const mkdir = vi.spyOn(fs, 'mkdir');
+    await expect(ensureWorkspaceRuntimeRoot(project)).rejects.toBe(error);
+    expect(mkdir).not.toHaveBeenCalled();
+  },
+);
+it('creates one explicit current Runtime without fencing or importing old storage', async () => {
+  await write(path.join(legacy, 'native/old.lock'), 'old process record');
+  const before = await tree(project);
+  const roots = await Promise.all(
+    Array.from({ length: 8 }, () => ensureWorkspaceRuntimeRoot(project)),
+  );
+  expect(new Set(roots).size).toBe(1);
+  expect(await fs.readdir(roots[0])).toEqual([]);
+  expect(await tree(project)).toEqual(before);
+});
+
+it('rejects a linked data subtree before publishing current Runtime data', async () => {
+  const external = path.join(temporary, 'external');
+  await fs.mkdir(external);
+  await fs.mkdir(data);
+  await fs.symlink(external, path.join(data, 'workspaces'), 'junction');
+  await expect(ensureWorkspaceRuntimeRoot(project)).rejects.toThrow(/真实目录/);
+  expect(await fs.readdir(external)).toEqual([]);
+});
+
+it('recognizes an old fence without reading its foreign target or changing it', async () => {
+  const source = path.join(temporary, 'copied-fence'),
+    target = path.join(temporary, 'foreign-target');
+  const marker = JSON.stringify({
+    schema: 'comet.workspace-runtime-migration.v1',
+    workspaceId: 'foreign-workspace',
+    source: '/old/source',
+    target,
+    kind: 'directory',
+  });
+  await fs.writeFile(source, marker);
+  const lstat = fs.lstat.bind(fs);
+  vi.spyOn(fs, 'lstat').mockImplementation(async (file, options) => {
+    if (path.resolve(String(file)) === target) throw new Error('must not follow foreign target');
+    return lstat(file, options);
+  });
+  expect(await isWorkspaceRuntimeMigrationFence(source)).toBe(true);
+  expect(await fs.readFile(source, 'utf8')).toBe(marker);
+  await expect(fs.access(target)).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(await resolveWorkspaceRuntimeRoot(project)).toBe(resolveWorkspaceRuntimeRootSync(project));
+  await expect(fs.access(data)).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+it('keeps an original saved Run isolated from copied fences and later Git initialization', async () => {
+  const original = await ensureWorkspaceRuntimeRoot(project),
+    record = { runId: 'retained', revision: 1, state: { approval: 'original' } };
+  const store = (root: string) =>
+    createFileRuntimeStore<typeof record>({ rootDir: path.join(root, 'runs') });
+  expect(await store(original).compareAndSwap(record.runId, null, record)).toBe(true);
+  const marker = JSON.stringify({
+    schema: 'comet.workspace-runtime-migration.v1',
+    workspaceId: 'foreign-workspace',
+    source: '/old/source',
+    target: original,
+    kind: 'directory',
+  });
+  await write(legacy, marker);
+  const clone = path.join(temporary, 'clone');
+  await write(path.join(clone, '.comet/runtime'), marker);
+  const cloneRoot = await ensureWorkspaceRuntimeRoot(clone);
+  expect(cloneRoot).not.toBe(original);
+  expect(await store(cloneRoot).read(record.runId)).toBeNull();
+  execFileSync('git', ['-C', project, 'init'], { stdio: 'pipe' });
+  const gitRoot = await ensureWorkspaceRuntimeRoot(project);
+  expect(gitRoot).not.toBe(original);
+  expect(await store(gitRoot).read(record.runId)).toBeNull();
+  expect(await store(original).read(record.runId)).toEqual(record);
+  expect(await fs.readFile(legacy, 'utf8')).toBe(marker);
+  expect(await fs.readFile(path.join(clone, '.comet/runtime'), 'utf8')).toBe(marker);
+});
+
+it('keeps missing business records absent until an explicit SDK checkpoint restore', async () => {
+  const runtime = await ensureWorkspaceRuntimeRoot(project),
+    record = { runId: 'retained', revision: 17, state: { decision: 'approved' } };
+  const store = () =>
+    createFileRuntimeStore<typeof record>({ rootDir: path.join(runtime, 'sdk-runs/native') });
+  expect(await store().restoreCheckpoint!(record.runId, null, record)).toBe(true);
+  await fs.rm(runtime, { recursive: true });
+  expect(await resolveWorkspaceRuntimeRoot(project)).toBe(runtime);
+  await expect(fs.access(runtime)).rejects.toMatchObject({ code: 'ENOENT' });
+  await ensureWorkspaceRuntimeRoot(project);
+  for (const ref of [
+    'native/changes/retained/run-state.json',
+    'classic-changes/retained/.comet/run-state.json',
+    'classic-changes/retained/.comet/checkpoint.json',
+  ])
+    await expect(fs.access(path.join(runtime, ref))).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(await store().read(record.runId)).toBeNull();
+  expect(await store().restoreCheckpoint!(record.runId, null, record)).toBe(true);
+  expect(await store().read(record.runId)).toEqual(record);
+  expect(await store().compareAndSwap(record.runId, 1, { ...record, revision: 2 })).toBe(false);
+});
+
+it.each([1, 2] as const)(
+  'explicitly imports a legacy physical checkpoint at slot %s without changing source history',
+  async (slot) => {
+    const checkpoint = {
+      runId: 'one',
+      revision: 10,
+      run: { revision: 10 },
+      action: { status: 'running' },
+    };
+    const latest = {
+      ...checkpoint,
+      revision: 11,
+      run: { revision: 11 },
+      action: { status: 'completed' },
+    };
+    const directory = path.join(
+      legacy,
+      'applications/legacy-storage',
+      createHash('sha256').update(JSON.stringify('one')).digest('hex'),
+    );
+    if (slot === 2)
+      await write(
+        path.join(directory, '0000000000000001.json'),
+        JSON.stringify({ ...checkpoint, revision: 1, run: { revision: 1 } }),
+      );
+    await write(
+      path.join(directory, String(slot).padStart(16, '0') + '.json'),
+      JSON.stringify({
+        schema: 'comet.runtime-store-checkpoint.v1',
+        record: checkpoint,
+        hash: hashRuntimeValue(checkpoint),
+      }),
+    );
+    await write(path.join(directory, '0000000000000011.json'), JSON.stringify(latest));
+    const before = await tree(legacy),
+      result = importCli();
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    expect(JSON.parse(result.stdout).imported).toContain('applications/legacy-storage/one');
+    const target = createFileRuntimeStore<typeof latest>({
+      rootDir: path.join(resolveWorkspaceRuntimeRootSync(project), 'applications/legacy-storage'),
+      mirroredRevisionPaths: ['run.revision'],
+    });
+    expect(await target.read('one')).toEqual(latest);
+    expect(await tree(legacy)).toEqual(before);
+    const repeated = importCli();
+    expect(repeated.status, repeated.stderr || repeated.stdout).toBe(0);
+    expect(JSON.parse(repeated.stdout).imported).toEqual([]);
+    expect(await target.read('one')).toEqual(latest);
+    expect(await tree(legacy)).toEqual(before);
+  },
+);
+
+it('rejects an incomplete old physical history at public import without changing it', async () => {
+  const directory = path.join(
+    legacy,
+    'sdk-runs/native',
+    createHash('sha256').update(JSON.stringify('one')).digest('hex'),
+  );
+  await write(
+    path.join(directory, '0000000000000002.json'),
+    JSON.stringify({ runId: 'one', revision: 2, action: { status: 'completed' } }),
+  );
+  const before = await tree(legacy),
+    result = importCli();
+  expect(result.error).toBeUndefined();
+  expect(result.status).not.toBe(0);
+  expect(result.stdout + result.stderr).toMatch(/旧 Run 无法导入|revision|版本/);
+  expect(await tree(legacy)).toEqual(before);
+  const target = createFileRuntimeStore({
+    rootDir: path.join(resolveWorkspaceRuntimeRootSync(project), 'sdk-runs/native'),
+  });
+  expect(await target.read('one')).toBeNull();
+});
+
+it('rejects a linked legacy source at public import without copying foreign business data', async () => {
+  const external = path.join(temporary, 'foreign');
+  await write(path.join(external, 'classic-changes/one/.comet/context.md'), 'foreign context');
+  await fs.mkdir(path.dirname(legacy), { recursive: true });
+  await fs.symlink(external, legacy, 'junction');
+  const before = await tree(external),
+    result = importCli();
+  expect(result.error).toBeUndefined();
+  expect(result.status).not.toBe(0);
+  expect(result.stdout + result.stderr).toMatch(/symbolic|junction|link|链接/);
+  expect(await tree(external)).toEqual(before);
+  await expect(
+    fs.access(
+      path.join(resolveWorkspaceRuntimeRootSync(project), 'classic-changes/one/.comet/context.md'),
+    ),
+  ).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+it('explicitly imports a large Classic business context as opaque bytes', async () => {
+  const ref = 'classic-changes/one/.comet/context.md',
+    content = 'journal'.repeat(400000) + '.json.log\n';
+  await write(path.join(legacy, ref), content);
+  const before = await tree(legacy),
+    result = importCli();
+  expect(result.error).toBeUndefined();
+  expect(result.status, result.stderr || result.stdout).toBe(0);
+  expect(await fs.readFile(path.join(resolveWorkspaceRuntimeRootSync(project), ref), 'utf8')).toBe(
+    content,
+  );
+  expect(await tree(legacy)).toEqual(before);
+});

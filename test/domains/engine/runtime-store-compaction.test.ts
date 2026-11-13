@@ -88,11 +88,8 @@ describe('file RuntimeStore compaction and migration', () => {
       runId,
       state: 'ready',
     });
-    expect((await fs.readdir(compact)).sort()).toEqual([
-      '.write.lock.contenders',
-      'checkpoint.json',
-    ]);
-    expect(await fs.readdir(path.join(compact, '.write.lock.contenders'))).toEqual([]);
+    expect((await fs.readdir(compact)).sort()).toEqual(['.write.lock.sqlite', 'checkpoint.json']);
+    expect((await fs.stat(path.join(compact, '.write.lock.sqlite'))).isFile()).toBe(true);
     const compactBytes = (await fs.stat(checkpoint)).size + (await fs.stat(original)).size;
     expect(compactBytes).toBeLessThan(legacyBytes / 100);
     expect(await current.compareAndSwap(runId, 1, record(2, 'stale'))).toBe(false);

@@ -89,7 +89,13 @@ it('preserves a paused SDK Design approval while another change advances and sel
     path.join(urgentDirectory, 'tasks.md'),
     '- [x] Implement urgent <!-- comet-task:impl -->\n',
   );
-  await cli('guard', 'urgent', 'build', '--apply', '--', process.execPath, '-e', 'process.exit(0)');
+  execFileSync(process.execPath, ['-e', 'process.exit(0)'], { cwd: projectRoot });
+  const checks = path.join(projectRoot, 'urgent-checks.json');
+  await fs.writeFile(
+    checks,
+    JSON.stringify({ checks: [{ name: 'Actual platform command exited 0', result: 'passed' }] }),
+  );
+  await cli('guard', 'urgent', 'build', '--apply', '--checks', checks);
   const urgent = (await inspectClassicSdkRun(projectRoot, 'urgent')).run;
   expect(urgent.state).toMatchObject({ phase: 'verify' });
   expect((await inspectClassicSdkRun(projectRoot, 'original')).run).toEqual(paused);

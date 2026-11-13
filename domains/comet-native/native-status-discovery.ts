@@ -6,16 +6,8 @@ import { isNativeSdkChangeCancellationComplete } from './native-sdk-cancellation
 import { mapWithConcurrency } from './native-concurrency.js';
 import path from 'node:path';
 import { realpathSync } from 'node:fs';
-
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
-import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
-import {
-  gitWorktreeContextFromEntries,
-  inspectGitWorktree,
-  listGitWorktrees,
-  type GitWorktreeContext,
-} from '../../platform/paths/git-worktree.js';
-
+import { inspectGitWorktree, type GitWorktreeContext } from '../../platform/paths/git-worktree.js';
 import { canonicalHash } from './native-canonical-hash.js';
 import { inspectNativeChangeStateDocument } from './native-change.js';
 import { defaultProjectConfig, readProjectConfig } from './native-config.js';
@@ -34,7 +26,7 @@ import {
   hasNativePortableRunCheckpoint,
   findNativeSdkArchivedStateFile,
 } from './native-sdk-state-store.js';
-import { nativeLocalExecutionFile, nativePortableStateFile } from './native-portable-storage.js';
+import { nativePortableStateFile } from './native-portable-storage.js';
 import {
   listNativeArchivedStatusRecords,
   nativeArchiveSupersedes,
@@ -61,10 +53,8 @@ import type {
   NativeStatusProjection,
   NativeWorkspaceProjection,
 } from './native-types.js';
-
 const DISCOVERY_CURSOR_PATTERN =
   /^native-workspaces-v1\.([a-f0-9]{64})\.([0-9a-z]+)\.([a-f0-9]{64})$/u;
-
 interface NativeWorkspaceSource {
   projectRoot: string;
   config: CometProjectConfig;
@@ -72,13 +62,21 @@ interface NativeWorkspaceSource {
   gitContext: GitWorktreeContext;
   sdkNames?: string[];
   sdkActiveNames?: string[];
-  changes: Array<{ name: string; kind: 'portable' | 'legacy' }>;
+  changes: Array<{
+    name: string;
+    kind: 'portable' | 'legacy';
+  }>;
   archives?: NativeStatusRecord[];
-  archiveErrors?: Array<{ name: string; message: string }>;
+  archiveErrors?: Array<{
+    name: string;
+    message: string;
+  }>;
   finishJournals?: NativeWorkspaceFinishJournal[];
-  finishJournalErrors?: Array<{ name: string; message: string }>;
+  finishJournalErrors?: Array<{
+    name: string;
+    message: string;
+  }>;
 }
-
 interface NativeStatusCandidate {
   source: NativeWorkspaceSource;
   name: string;
@@ -91,18 +89,16 @@ interface NativeStatusCandidate {
   record?: NativeStatusRecord;
   finishJournal?: NativeWorkspaceFinishJournal | null;
 }
-
 export type NativeDiscoveredStatusProjection =
   | NativeStatusProjection
   | NativePortableStatusProjection
   | NativeSdkStatusProjection
   | NativeLegacyMigrationStatusProjection
   | NativeInspectionErrorStatusProjection;
-
 /**
  * A portable change copy whose state could not be projected (for example a stale
  * worktree copy of a supervisor parent). Discovery keeps the entry visible so a
- * single unreadable copy never blanks the cross-worktree status page.
+ * single unreadable copy never blanks the current workspace status page.
  */
 export interface NativeInspectionErrorStatusProjection {
   schema: 'comet.native.status.v2';
@@ -130,7 +126,6 @@ export interface NativeInspectionErrorStatusProjection {
     };
   };
 }
-
 export interface NativeLegacyMigrationStatusProjection {
   schema: 'comet.native.status.v2';
   name: string;
@@ -165,7 +160,6 @@ export interface NativeLegacyMigrationStatusProjection {
     };
   };
 }
-
 export interface NativeDiscoveredStatusPageProjection {
   schema:
     'comet.native.status-page.v1' | 'comet.native.status-page.v2' | 'comet.native.status-page.v3';
@@ -177,7 +171,6 @@ export interface NativeDiscoveredStatusPageProjection {
   nextPageArgs: string[] | null;
   limits: typeof NATIVE_STATUS_PAGE_LIMITS;
 }
-
 /** A read-only status lookup leaves an untouched copied change for a mutating command to recover. */
 export class NativePristineSdkRunRecoverableError extends Error {
   constructor(
@@ -187,7 +180,6 @@ export class NativePristineSdkRunRecoverableError extends Error {
     super(`Native change ${change} can continue with comet native next ${change}`);
   }
 }
-
 function samePath(left: string, right: string): boolean {
   const normalizedLeft = path.normalize(pathIdentity(left));
   const normalizedRight = path.normalize(pathIdentity(right));
@@ -195,7 +187,6 @@ function samePath(left: string, right: string): boolean {
     ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
     : normalizedLeft === normalizedRight;
 }
-
 function pathIdentity(value: string): string {
   const resolved = path.resolve(value);
   try {
@@ -204,13 +195,11 @@ function pathIdentity(value: string): string {
     return resolved;
   }
 }
-
 function displayCommandArgs(args: readonly string[]): string {
   return args
     .map((value) => (/^[A-Za-z0-9_./:=+@-]+$/u.test(value) ? value : JSON.stringify(value)))
     .join(' ');
 }
-
 async function discoverChanges(
   paths: NativeProjectPaths,
   targetName?: string,
@@ -238,12 +227,7 @@ async function discoverChanges(
             throw error;
           });
           const marked = prefix.text.startsWith(NATIVE_MANAGED_RUN_MARKER);
-          const local = await inspectProtectedProjectPath(
-            paths.workspaceRuntimeRoot,
-            path.relative(paths.workspaceRuntimeRoot, nativeLocalExecutionFile(paths, name)),
-            { label: 'Native local execution state', expected: 'file' },
-          );
-          if (marked && !local.exists) {
+          if (marked) {
             // 非规范/旧 header 仍回退全文件分类；只省略已经证明是 v4 的投影。
             const portable =
               /^schema:\s*comet\.native\.v4[^\S\r\n]*\r?\n/mu.test(prefix.text) ||
@@ -270,72 +254,43 @@ async function discoverChanges(
   }
   return changes;
 }
-
 async function discoverSources(
   projectRoot: string,
   targetName?: string,
   omitSdkProjections = false,
 ): Promise<NativeWorkspaceSource[]> {
   const requestedRoot = path.resolve(projectRoot);
-  const worktrees = listGitWorktrees(projectRoot);
-  const roots = worktrees.map(({ root }) => root);
-  const candidates = roots.length > 0 ? roots : [requestedRoot];
-  if (!candidates.some((candidate) => samePath(candidate, requestedRoot))) {
-    candidates.push(requestedRoot);
-  }
-  const sources: NativeWorkspaceSource[] = [];
-  const seen = new Set<string>();
-  for (const candidatePath of candidates.map((value) => path.resolve(value)).sort()) {
-    const candidate = samePath(candidatePath, requestedRoot) ? requestedRoot : candidatePath;
-    const identity = pathIdentity(candidate);
-    const key = process.platform === 'win32' ? identity.toLowerCase() : identity;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const configured = await readProjectConfig(candidate);
-    const partitions = omitSdkProjections
-      ? await listNativeSdkHistoryPartitions(candidate)
+  const configured = await readProjectConfig(requestedRoot);
+  const partitions = omitSdkProjections
+    ? await listNativeSdkHistoryPartitions(requestedRoot)
+    : undefined;
+  const sdkNames = partitions
+    ? [...partitions.active, ...partitions.history]
+    : !configured
+      ? await listNativeSdkChangeNames(requestedRoot, { readOnly: true })
       : undefined;
-    const sdkNames = partitions
-      ? [...partitions.active, ...partitions.history]
-      : !configured
-        ? await listNativeSdkChangeNames(candidate, { readOnly: true })
-        : undefined;
-    if (!configured && sdkNames?.length === 0) continue;
-    const config = configured ?? defaultProjectConfig();
-    const paths = await nativeProjectPaths(candidate, config.native.artifact_root, {
-      readOnly: true,
-    });
-    sources.push({
-      projectRoot: candidate,
+  if (!configured && sdkNames?.length === 0)
+    throw new Error('.comet/config.yaml was not found in the current workspace');
+  const config = configured ?? defaultProjectConfig();
+  const paths = await nativeProjectPaths(requestedRoot, config.native.artifact_root, {
+    readOnly: true,
+  });
+  const sources: NativeWorkspaceSource[] = [
+    {
+      projectRoot: requestedRoot,
       config,
       paths,
       sdkNames,
       sdkActiveNames: partitions?.active,
-      gitContext:
-        gitWorktreeContextFromEntries(candidate, worktrees) ?? inspectGitWorktree(candidate),
+      gitContext: inspectGitWorktree(requestedRoot),
       changes: await discoverChanges(
         paths,
         targetName,
         omitSdkProjections ? new Set(sdkNames) : undefined,
         partitions ? new Set(partitions.history) : undefined,
       ),
-    });
-  }
-  if (sources.length === 0) {
-    const config = await readProjectConfig(projectRoot);
-    if (!config) throw new Error('.comet/config.yaml was not found in any registered worktree');
-    const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root, {
-      readOnly: true,
-    });
-    sources.push({
-      projectRoot: path.resolve(projectRoot),
-      config,
-      paths,
-      gitContext:
-        gitWorktreeContextFromEntries(projectRoot, worktrees) ?? inspectGitWorktree(projectRoot),
-      changes: await discoverChanges(paths, targetName),
-    });
-  }
+    },
+  ];
   for (const source of sources) {
     source.archiveErrors = [];
     source.finishJournalErrors = [];
@@ -360,7 +315,6 @@ async function discoverSources(
   }
   return sources;
 }
-
 function candidateRank(candidate: NativeStatusCandidate, requestedRoot: string): number {
   if (candidate.workspace.bindingState === 'aligned') return 0;
   if (samePath(candidate.source.projectRoot, requestedRoot)) return 1;
@@ -369,14 +323,16 @@ function candidateRank(candidate: NativeStatusCandidate, requestedRoot: string):
   if (candidate.workspace.bindingState === 'drifted') return 4;
   return 5;
 }
-
 async function discoverCandidates(
   projectRoot: string,
   sources: readonly NativeWorkspaceSource[],
 ): Promise<NativeStatusCandidate[]> {
   const grouped = new Map<
     string,
-    Array<{ source: NativeWorkspaceSource; kind: 'portable' | 'legacy' }>
+    Array<{
+      source: NativeWorkspaceSource;
+      kind: 'portable' | 'legacy';
+    }>
   >();
   for (const source of sources) {
     for (const change of source.changes) {
@@ -628,7 +584,6 @@ async function discoverCandidates(
     ),
   );
 }
-
 function discoveryCursor(candidatesHash: string, offset: number): string {
   const encodedOffset = offset.toString(36);
   const integrity = canonicalHash('comet.native.workspace-status-cursor.v1', {
@@ -637,7 +592,6 @@ function discoveryCursor(candidatesHash: string, offset: number): string {
   });
   return `native-workspaces-v1.${candidatesHash}.${encodedOffset}.${integrity}`;
 }
-
 function discoveryOffset(options: {
   candidatesHash: string;
   total: number;
@@ -664,7 +618,6 @@ function discoveryOffset(options: {
   if (match[3] !== integrity) throw new Error('Native workspace status cursor integrity failed');
   return offset;
 }
-
 function pageAction(
   projectRoot: string,
   cursor: string | null,
@@ -680,7 +633,6 @@ function pageAction(
     nextPageArgs: args,
   };
 }
-
 async function inspectLegacyCandidate(
   candidate: NativeStatusCandidate,
   details: boolean,
@@ -710,16 +662,11 @@ async function inspectLegacyCandidate(
         status: 'blocked',
         disposition: 'blocked',
         action: 'none',
-        // Schema migration happens deterministically on the first mutating
-        // command; doctor skips migration-required changes, so pointing there
-        // sent agents in a status→doctor→status loop.
-        commandArgs: ['comet', 'native', 'next', candidate.name, '--summary', '<summary>'],
-        requiredInputs: ['summary'],
-        inputOptions: [
-          { name: 'summary', flag: '--summary', valueKind: 'text', required: true, template: null },
-        ],
+        commandArgs: ['comet', 'native', 'doctor', candidate.name, '--repair'],
+        requiredInputs: [],
+        inputOptions: [],
         message:
-          'This change uses a legacy schema; the first mutating command performs the deterministic migration. Run the listed next command with a migration summary.',
+          'This change uses a legacy schema. Run the listed Doctor command to import its business data explicitly; ordinary commands preserve the original files.',
         runnerAction: {
           kind: 'none',
           candidateId: null,
@@ -736,7 +683,6 @@ async function inspectLegacyCandidate(
     maxVerifyFailures: candidate.source.config.native.max_verify_failures,
   });
 }
-
 async function inspectCandidate(
   candidate: NativeStatusCandidate,
   details: boolean,
@@ -812,7 +758,6 @@ async function inspectCandidate(
   }
   return inspectLegacyCandidate(candidate, details, acceptanceCursor);
 }
-
 async function conflictsWithSdkOwner(
   candidate: NativeStatusCandidate,
   ownerRoot: string,
@@ -823,20 +768,11 @@ async function conflictsWithSdkOwner(
   }
   const stateFile = nativePortableStateFile(candidate.source.paths, candidate.name);
   if (!(await hasNativeManagedRunMarker(stateFile))) return true;
-  const localFile = nativeLocalExecutionFile(candidate.source.paths, candidate.name);
-  const local = await inspectProtectedProjectPath(
-    candidate.source.paths.workspaceRuntimeRoot,
-    path.relative(candidate.source.paths.workspaceRuntimeRoot, localFile),
-    { label: 'Native local execution state', expected: 'file' },
-  );
-  return local.exists;
+  return false;
 }
-
 export async function inspectDiscoveredNativeStatus(options: {
   projectRoot: string;
   name: string;
-  /** Execution context stays separate from the compact, relative display projection. */
-  onSelectedRoot?: (projectRoot: string) => void;
   details?: boolean;
   acceptanceCursor?: string;
   detailsCursor?: string;
@@ -872,7 +808,6 @@ export async function inspectDiscoveredNativeStatus(options: {
     if (options.detailsCursor) {
       throw new Error('SDK Native status details do not use --cursor');
     }
-    options.onSelectedRoot?.(sdkSources[0].projectRoot);
     return inspectNativeSdkStatus({
       projectRoot: sdkSources[0].projectRoot,
       name: options.name,
@@ -922,7 +857,6 @@ export async function inspectDiscoveredNativeStatus(options: {
   if (candidates.length === 0) {
     const current =
       sources.find((source) => samePath(source.projectRoot, options.projectRoot)) ?? sources[0];
-    options.onSelectedRoot?.(current.projectRoot);
     return inspectNativeStatus(current.paths, options.name, {
       details: options.details,
       ...(options.acceptanceCursor ? { acceptanceCursor: options.acceptanceCursor } : {}),
@@ -930,7 +864,6 @@ export async function inspectDiscoveredNativeStatus(options: {
       maxVerifyFailures: current.config.native.max_verify_failures,
     });
   }
-  options.onSelectedRoot?.(candidates[0].source.projectRoot);
   return inspectCandidate(
     candidates[0],
     options.details ?? false,
@@ -938,11 +871,13 @@ export async function inspectDiscoveredNativeStatus(options: {
     options.detailsCursor,
   );
 }
-
 async function discoverNamedNativeCandidates(
   projectRoot: string,
   name: string,
-): Promise<{ sources: NativeWorkspaceSource[]; candidates: NativeStatusCandidate[] }> {
+): Promise<{
+  sources: NativeWorkspaceSource[];
+  candidates: NativeStatusCandidate[];
+}> {
   const sources = await discoverSources(projectRoot, name);
   const candidates = (await discoverCandidates(projectRoot, sources)).filter(
     (candidate) => candidate.name === name,
@@ -956,33 +891,17 @@ async function discoverNamedNativeCandidates(
   }
   return { sources, candidates };
 }
-
-export async function discoverNativeChangeProjectRoot(options: {
-  projectRoot: string;
-  name: string;
-}): Promise<string> {
-  const { sources, candidates } = await discoverNamedNativeCandidates(
-    options.projectRoot,
-    options.name,
-  );
-  if (candidates.length > 0) return candidates[0].source.projectRoot;
-  return (sources.find((source) => samePath(source.projectRoot, options.projectRoot)) ?? sources[0])
-    .projectRoot;
-}
-
 export function listDiscoveredNativeStatusPage(options: {
   projectRoot: string;
   cursor?: string | null;
 }): Promise<NativeDiscoveredStatusPageProjection> {
   return runWithHookReadCache(() => listDiscoveredNativeStatusPageWithinScope(options));
 }
-
 async function listDiscoveredNativeStatusPageWithinScope(options: {
   projectRoot: string;
   cursor?: string | null;
 }): Promise<NativeDiscoveredStatusPageProjection> {
   const sources = await discoverSources(options.projectRoot, undefined, true);
-
   // Check authoritative cancellation before portable discovery. Unknown or
   // incomplete cancellation remains visible; the complete owner name set is
   // retained for cross-workspace and legacy ownership conflict checks.

@@ -6,6 +6,7 @@ import {
   runWithHookReadCache,
 } from '../../platform/process/hook-read-cache.js';
 import { withProjectIdentityScope } from '../../platform/paths/project-identity.js';
+import { withProtectedProjectReadScope } from '../workflow-contract/protected-project-path.js';
 
 import {
   createGitWorktreeReadCache,
@@ -26,7 +27,9 @@ export async function withDashboardReadScope<T>(
   let started = false;
   const read = () => {
     started = true;
-    return withProjectIdentityScope(() => runWithHookReadCache(work));
+    return withProjectIdentityScope(() =>
+      runWithHookReadCache(() => withProtectedProjectReadScope(work)),
+    );
   };
   try {
     return await dashboardWorktreeCache.run(projectRoot, read);

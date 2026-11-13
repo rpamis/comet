@@ -1,11 +1,11 @@
-import { assertNativeInputKeys as exactKeys } from './native-input-error.js';
 import {
+  NATIVE_REQUEST_REVIEW_RESULTS,
   NATIVE_VERIFIER_ACCEPTANCE_RESULTS,
   NATIVE_VERIFIER_RESPONSE_KINDS,
   NATIVE_VERIFIER_VERDICTS,
-  NATIVE_REQUEST_REVIEW_RESULTS,
   nativeEnumText,
 } from './native-input-enum.js';
+import { assertNativeInputKeys as exactKeys } from './native-input-error.js';
 import {
   isNativeTrustedVerifierEnvelope,
   type NativeTrustedVerifierEnvelope,
@@ -29,27 +29,10 @@ export interface NativeVerifierFinalResult {
   requestReview?: { result: (typeof NATIVE_REQUEST_REVIEW_RESULTS)[number]; reason: string };
 }
 
-export interface NativeVerifierCheckRequest {
-  id: string;
-  name: string;
-  executable: string;
-  argv: string[];
-  cwdRef: string;
-  timeoutMs: number;
-  repeatable: boolean;
+export interface NativeVerifierResponse {
+  kind: 'final-result';
+  result: NativeVerifierFinalResult;
 }
-
-export type NativeVerifierResponse =
-  | {
-      kind: 'request-checks';
-      iteration: number;
-      attempt: number;
-      checks: NativeVerifierCheckRequest[];
-    }
-  | {
-      kind: 'final-result';
-      result: NativeVerifierFinalResult;
-    };
 
 export interface NativeVerifierBinding {
   candidateId: string;
@@ -163,37 +146,6 @@ function parseFinalResult(value: unknown, inputPath: string): NativeVerifierFina
   };
 }
 
-function parseCheckRequest(
-  value: unknown,
-  index: number,
-  inputPath: string,
-): NativeVerifierCheckRequest {
-  const input = plainRecord(value, `Native Verifier check request ${index}`);
-  exactKeys(
-    input,
-    ['id', 'name', 'executable', 'argv', 'cwdRef', 'timeoutMs', 'repeatable'],
-    `Native Verifier check request ${index}`,
-    `${inputPath}/${index}`,
-  );
-  if (!Array.isArray(input.argv) || !input.argv.every((entry) => typeof entry === 'string')) {
-    throw new Error(`Native Verifier check request ${index} argv is invalid`);
-  }
-  if (typeof input.repeatable !== 'boolean') {
-    throw new Error(`Native Verifier check request ${index} repeatable is invalid`);
-  }
-  const timeoutMs = integer(input.timeoutMs, `Native Verifier check request ${index} timeout`);
-  if (timeoutMs < 1) throw new Error('Native Verifier check timeout must be positive');
-  return {
-    id: text(input.id, `Native Verifier check request ${index} ID`),
-    name: text(input.name, `Native Verifier check request ${index} name`),
-    executable: text(input.executable, `Native Verifier check request ${index} executable`),
-    argv: input.argv as string[],
-    cwdRef: text(input.cwdRef, `Native Verifier check request ${index} cwd`),
-    timeoutMs,
-    repeatable: input.repeatable,
-  };
-}
-
 export function parseNativeVerifierResponse(
   value: unknown,
   inputPath = '',
@@ -203,37 +155,9 @@ export function parseNativeVerifierResponse(
     exactKeys(input, ['kind', 'result'], 'Native Verifier response', inputPath);
     return { kind: 'final-result', result: parseFinalResult(input.result, `${inputPath}/result`) };
   }
-  if (input.kind === 'request-checks') {
-    exactKeys(
-      input,
-      ['kind', 'iteration', 'attempt', 'checks'],
-      'Native Verifier response',
-      inputPath,
-    );
-    if (!Array.isArray(input.checks) || input.checks.length === 0) {
-      throw new Error('Native Verifier check request batch must be non-empty');
-    }
-    return {
-      kind: 'request-checks',
-      iteration: integer(input.iteration, 'Native Verifier iteration'),
-      attempt: integer(input.attempt, 'Native Verifier attempt'),
-      checks: input.checks.map((entry, index) =>
-        parseCheckRequest(entry, index, `${inputPath}/checks`),
-      ),
-    };
-  }
   throw new Error(
     `Native Verifier response kind must be one of: ${NATIVE_VERIFIER_RESPONSE_KINDS.join(', ')}`,
   );
-}
-
-export function normalizeNativeCheckRequestId(request: NativeVerifierCheckRequest): string {
-  return JSON.stringify([
-    request.id,
-    request.executable,
-    request.argv,
-    request.cwdRef.replaceAll('\\', '/'),
-  ]);
 }
 
 export function validateNativeTrustedVerifierEnvelope(options: {
@@ -257,15 +181,13 @@ export function validateNativeTrustedVerifierEnvelope(options: {
     throw new Error('Native Builder and Verifier must be different executions');
   }
   const response = parseNativeVerifierResponse(envelope.payload);
-  const iteration =
-    response.kind === 'final-result' ? response.result.iteration : response.iteration;
-  const attempt = response.kind === 'final-result' ? response.result.attempt : response.attempt;
+  const iteration = response.result.iteration;
+  const attempt = response.result.attempt;
   if (iteration !== binding.iteration || attempt !== binding.attempt) {
     throw new Error(
       `Native Verifier result is stale for the current iteration or attempt: expected iteration=${binding.iteration}, attempt=${binding.attempt}; received iteration=${iteration}, attempt=${attempt}. Inspect the current action and use its outputTemplate before submitting a new outcomeId`,
     );
   }
-  if (response.kind === 'request-checks') return response;
 
   const acceptance = validateAndScopeNativeVerifierFinalResult(response.result, binding);
   return {

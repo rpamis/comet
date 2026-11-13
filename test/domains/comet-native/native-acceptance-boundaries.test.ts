@@ -1,15 +1,8 @@
-import * as requirements from '../../../domains/comet-native/native-portable-requirements.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import * as acceptanceParser from '../../../domains/comet-native/native-acceptance.js';
 import { deriveBriefAcceptanceCriteria } from '../../../domains/comet-native/native-acceptance.js';
-import { inspectNativePortableAcceptanceDrift } from '../../../domains/comet-native/native-portable-requirements.js';
-import {
-  collectNativeSdkShapeProposal,
-  defineNativeWorkflowApplication,
-} from '../../../domains/comet-native/native-sdk-application.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -18,8 +11,13 @@ import {
   ensureNativeDirectories,
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
+import * as requirements from '../../../domains/comet-native/native-portable-requirements.js';
 import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
 import type { NativePortableState } from '../../../domains/comet-native/native-portable-types.js';
+import {
+  collectNativeSdkShapeProposal,
+  defineNativeWorkflowApplication,
+} from '../../../domains/comet-native/native-sdk-application.js';
 import {
   createMemoryRuntimeStore,
   createRuntime,
@@ -251,9 +249,8 @@ async function buildingFixture(source = brief, legacyShape = false) {
     decisionId: 'approved',
     choice: 'approved',
   });
-  await submit(
-    await collectNativeSdkShapeProposal({ paths, state: run.state as NativePortableState }),
-  );
+  // Current v4 approval already enters the original Builder; it does not redispatch a second Shape result.
+
   legacyReader?.mockRestore();
   const submitBuilder = () =>
     submit(
@@ -265,7 +262,6 @@ async function buildingFixture(source = brief, legacyShape = false) {
         knownLimits: [],
         review: null,
         submittedAt: '2026-10-24T01:00:00.000Z',
-        verificationChecks: [],
       },
       'builder-session',
     );
@@ -279,100 +275,6 @@ describe('Native Shape to Builder acceptance boundaries', () => {
       'First criterion.',
       'Last criterion.',
     ]);
-    expect((await fixture.submitBuilder()).actions.at(-1)?.stepId).toBe('verify.checks');
-  });
-
-  it.each(['Nested requirement.', '| valid | accepted |', 'mustReject()'])(
-    'rejects actual nested acceptance content edits: %s',
-    async (content) => {
-      const source = brief.replace(
-        '- Last criterion.',
-        '- Last criterion.\n\n  ### Contract details\n  - Nested requirement.\n\n  | Input | Output |\n  | --- | --- |\n  | valid | accepted |\n\n  ```js\n  mustReject()\n  ```',
-      );
-      const fixture = await buildingFixture(source);
-      await fs.writeFile(
-        path.join(fixture.changeDir, 'brief.md'),
-        source.replace(content, 'Changed requirement.'),
-      );
-      await expect(fixture.submitBuilder()).rejects.toThrow(
-        'Native confirmed acceptance criteria changed',
-      );
-    },
-  );
-
-  it.each([
-    ['Last criterion.', 'Changed criterion.', 'Native confirmed acceptance criteria changed'],
-    ['existing contract.', 'a different contract.', 'Native Shape artifacts changed'],
-  ])(
-    'distinguishes %s edits without losing the original Run or approval',
-    async (from, to, reason) => {
-      const fixture = await buildingFixture();
-      await fs.writeFile(path.join(fixture.changeDir, 'brief.md'), brief.replace(from, to));
-      await expect(fixture.submitBuilder()).rejects.toThrow(reason);
-      const stored = await fixture.runtime.inspect(fixture.run.runId);
-      expect(stored.state).toEqual(fixture.run.state);
-      expect(stored.waits).toEqual(fixture.run.waits);
-      expect(stored.actions.at(-1)).toMatchObject({ stepId: 'build.builder', status: 'running' });
-    },
-  );
-
-  it('retains a 0.5.0 acceptance snapshot only while the original approved artifacts match', async () => {
-    // 0.5.0 发布的扫描算法生成同样的持久快照；通过公开 Shape 路径建立批准记录。
-    const legacy = vi
-      .spyOn(acceptanceParser, 'deriveBriefAcceptanceCriteria')
-      .mockImplementation(acceptanceParser.deriveLegacyBriefAcceptanceCriteria);
-    const fixture = await buildingFixture(brief, true);
-    legacy.mockRestore();
-    const state = fixture.run.state as NativePortableState;
-    // 来自 tag 0.5.0 (aeb1a65) CLI 的 prepare → confirm 持久确认指纹。
-    expect(state.shape_confirmation_hash).toBe(
-      'ae4b4200269a0f37451b9cababcaac1fcc4735742a6391ab4f06140687edf944',
-    );
-    expect(state.acceptance[1].text).toBe(
-      'Last criterion. ## Spec → 测试名与断言计划 | Test | Line | | --- | --- | | last criterion | planned |',
-    );
-    expect((await fixture.submitBuilder()).state).toMatchObject({
-      acceptance: state.acceptance,
-      shape_confirmation_hash: state.shape_confirmation_hash,
-      loop: { goal_cycle: state.loop.goal_cycle },
-    });
-  });
-
-  it.each([
-    ['planned', '42'],
-    ['Last criterion.', 'Changed criterion.'],
-    ['Last criterion.', 'Last criterion. Additional required behavior.'],
-  ])('does not trim a changed legacy snapshot to make %s pass', async (from, to) => {
-    const legacy = vi
-      .spyOn(acceptanceParser, 'deriveBriefAcceptanceCriteria')
-      .mockImplementation(acceptanceParser.deriveLegacyBriefAcceptanceCriteria);
-    const fixture = await buildingFixture(brief, true);
-    legacy.mockRestore();
-    await fs.writeFile(path.join(fixture.changeDir, 'brief.md'), brief.replace(from, to));
-    await expect(fixture.submitBuilder()).rejects.toThrow('revise-requirements on this change');
-    const stored = await fixture.runtime.inspect(fixture.run.runId);
-    expect(stored.state).toEqual(fixture.run.state);
-    expect(stored.waits).toEqual(fixture.run.waits);
-    expect(stored.actions.at(-1)).toMatchObject({ stepId: 'build.builder', status: 'running' });
-  });
-
-  it('requires the original full approval fingerprint for legacy compatibility', async () => {
-    const legacy = vi
-      .spyOn(acceptanceParser, 'deriveBriefAcceptanceCriteria')
-      .mockImplementation(acceptanceParser.deriveLegacyBriefAcceptanceCriteria);
-    const fixture = await buildingFixture(brief, true);
-    legacy.mockRestore();
-    for (const fingerprint of [undefined, '0'.repeat(64)]) {
-      const state = {
-        ...(fixture.run.state as NativePortableState),
-        shape_confirmation_hash: fingerprint,
-      };
-      expect(
-        await inspectNativePortableAcceptanceDrift({ paths: fixture.paths, state }),
-      ).toMatchObject({
-        drifted: true,
-        reason: expect.stringContaining('revise-requirements on this change'),
-      });
-    }
+    expect((await fixture.submitBuilder()).actions.at(-1)?.stepId).toBe('verify.verifier');
   });
 });

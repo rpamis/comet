@@ -1,6 +1,5 @@
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { describe, expect, it } from 'vitest';
-
 import {
   applyNativeVerifierEnvelope,
   confirmNativeSkillCoordinatedPass,
@@ -17,7 +16,7 @@ import {
 import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
 import { toNativePortableText } from '../../../domains/comet-native/native-portable-text.js';
 import type {
-  NativePortableCheckSummary,
+  NativeBuilderCheckSummary,
   NativePortableState,
 } from '../../../domains/comet-native/native-portable-types.js';
 import {
@@ -25,30 +24,26 @@ import {
   NATIVE_SKILL_COORDINATION,
 } from '../../../domains/comet-native/native-runner-protocol.js';
 import { nativePortableContinuation } from '../../../domains/comet-native/native-portable-continuation.js';
-
-const checks: NativePortableCheckSummary[] = [
+const checks: NativeBuilderCheckSummary[] = [
   {
-    id: 'unit',
     name: toNativePortableText('Unit tests'),
-    argv_display: [toNativePortableText('test')],
-    argv_truncated: false,
-    cwd_ref: '.',
-    status: 'passed',
-    exit_code: 0,
-    duration_ms: 25,
+    result: 'passed',
+    note: toNativePortableText('SIMULATED Agent-reported unit check passed.'),
   },
 ];
-
 function confirmAcceptance(
   state: NativePortableState,
-  acceptance: Array<{ id: string; source: string; text: string }>,
+  acceptance: Array<{
+    id: string;
+    source: string;
+    text: string;
+  }>,
 ): NativePortableState {
   return confirmNativePortableAcceptance({
     state: prepareNativePortableShapeConfirmation({ state, acceptance }),
     acceptance,
   });
 }
-
 function buildState(identityProvider = 'test-host'): {
   state: NativePortableState;
   runner: ReturnType<typeof createNativeRunnerChannel>;
@@ -82,7 +77,6 @@ function buildState(identityProvider = 'test-host'): {
   state = reserveNativeVerifierAttempt(state);
   return { state, runner };
 }
-
 function envelope(
   runner: ReturnType<typeof createNativeRunnerChannel>,
   state: NativePortableState,
@@ -117,7 +111,6 @@ function envelope(
     },
   });
 }
-
 function resubmitRepair(
   runner: ReturnType<typeof createNativeRunnerChannel>,
   state: NativePortableState,
@@ -142,7 +135,6 @@ function resubmitRepair(
   });
   return reserveNativeVerifierAttempt(submitted);
 }
-
 describe('Native portable Build/Verify loop', () => {
   it('allows ordinary Builder candidates without a mandatory review', () => {
     const runner = createNativeRunnerChannel();
@@ -154,7 +146,6 @@ describe('Native portable Build/Verify loop', () => {
       identityProvider: 'test-host',
       executionRef: 'builder-review-gate',
     });
-
     expect(() =>
       submitNativeBuilderCandidate({
         state,
@@ -171,7 +162,6 @@ describe('Native portable Build/Verify loop', () => {
         },
       }),
     ).toThrow('reviewer execution ref must differ');
-
     const unreviewed = submitNativeBuilderCandidate({
       state,
       input: {
@@ -187,7 +177,6 @@ describe('Native portable Build/Verify loop', () => {
       status: 'active',
       loop: { next_action: 'await-verifier-result' },
     });
-
     const reviewed = submitNativeBuilderCandidate({
       state,
       input: {
@@ -213,16 +202,14 @@ describe('Native portable Build/Verify loop', () => {
       loop: { next_action: 'await-verifier-result' },
     });
   });
-
   it('allows a repaired candidate to reuse or omit an optional review', () => {
     const prepared = buildState();
     const failed = applyNativeVerifierEnvelope({
       state: prepared.state,
       envelope: envelope(prepared.runner, prepared.state, 'fail', ['A2']),
-      checks,
+      reportedChecks: checks,
       maxVerifyFailures: 5,
     }).state;
-
     const repaired = submitNativeBuilderCandidate({
       state: failed,
       input: {
@@ -241,21 +228,18 @@ describe('Native portable Build/Verify loop', () => {
       builder_handoff: { review: null },
     });
   });
-
   it('keeps passed scenarios when a blocked candidate returns to Build', () => {
     const prepared = buildState();
     const blocked = applyNativeVerifierEnvelope({
       state: prepared.state,
       envelope: envelope(prepared.runner, prepared.state, 'blocked', ['A2']),
-      checks,
+      reportedChecks: checks,
       maxVerifyFailures: 5,
     }).state;
-
     const repairing = returnNativeCandidateToBuild({
       state: blocked,
       reason: 'Resolve the blocked A2 implementation.',
     });
-
     expect(repairing.acceptance).toMatchObject([
       { id: 'A1', result: 'passed' },
       { id: 'A2', result: 'pending' },
@@ -263,22 +247,19 @@ describe('Native portable Build/Verify loop', () => {
     expect(repairing.builder_handoff?.review?.reviewer_execution_ref).toBe('reviewer-1');
     expect(repairing.loop.previous_unresolved_ids).toEqual(['A2']);
   });
-
   it('serializes unresolved acceptance IDs when Builder failures exhaust the budget', () => {
     const prepared = buildState();
     const blocked = applyNativeVerifierEnvelope({
       state: prepared.state,
       envelope: envelope(prepared.runner, prepared.state, 'blocked', ['A2']),
-      checks,
+      reportedChecks: checks,
       maxVerifyFailures: 5,
     }).state;
-
     const stopped = returnNativeCandidateToBuild({
       state: blocked,
       reason: 'The required Runtime check failed.',
       failureBudget: { maxVerifyFailures: 1 },
     });
-
     expect(stopped).toMatchObject({
       phase: 'verify',
       status: 'await-user',
@@ -286,7 +267,6 @@ describe('Native portable Build/Verify loop', () => {
       loop: { stop_reason: 'budget', next_action: 'resolve-loop-stop' },
     });
   });
-
   it('allows a parent handoff when every child is done without a mandatory review', () => {
     const state = confirmAcceptance(
       createNativePortableState({ name: 'parent-change', language: 'en' }),
@@ -300,7 +280,6 @@ describe('Native portable Build/Verify loop', () => {
       readyChildren: [],
       allDone: true,
     });
-
     expect(continuation).toMatchObject({
       disposition: 'continue',
       action: 'builder-handoff',
@@ -315,18 +294,9 @@ describe('Native portable Build/Verify loop', () => {
       ],
     });
     expect(continuation.inputOptions[0].template).not.toHaveProperty('review');
-    expect(continuation.inputOptions[0].template).toMatchObject({
-      verification_checks: [
-        expect.objectContaining({
-          id: '<check-id>',
-          executable: '<executable>',
-          cwdRef: '.',
-          repeatable: true,
-        }),
-      ],
-    });
+    expect(continuation.inputOptions[0].template).not.toHaveProperty('verification_checks');
+    expect(continuation.inputOptions[0].template).toHaveProperty('checks');
   });
-
   it('prepares the full Supervisor Shape before asking for its coordination choice', () => {
     const state = createNativePortableState({ name: 'supervisor-shape', language: 'en' });
     const children = {
@@ -360,7 +330,6 @@ describe('Native portable Build/Verify loop', () => {
       allDone: false,
     } as const;
     const continuation = nativePortableContinuation(state, children);
-
     expect(continuation).toMatchObject({
       disposition: 'continue',
       requiresUserDecision: false,
@@ -373,7 +342,6 @@ describe('Native portable Build/Verify loop', () => {
       },
     });
     expect(continuation.commandArgs).not.toContain('--coordination-mode');
-
     const resumed = nativePortableContinuation(
       { ...state, coordination_mode: 'multi-session' },
       children,
@@ -390,7 +358,6 @@ describe('Native portable Build/Verify loop', () => {
       expect.arrayContaining([expect.objectContaining({ name: 'coordination-mode' })]),
     );
     expect(resumed.commandArgs).not.toContain('--confirmed');
-
     const awaitingConfirmation = prepareNativePortableShapeConfirmation({
       state,
       acceptance: [{ id: 'A1', source: 'brief.md', text: 'The Shape is ready.' }],
@@ -413,16 +380,14 @@ describe('Native portable Build/Verify loop', () => {
       ],
     });
   });
-
   it('requires user confirmation before a package-local pass becomes archive-ready', () => {
     const { state, runner } = buildState();
     const result = applyNativeVerifierEnvelope({
       state,
       envelope: envelope(runner, state, 'pass'),
-      checks,
+      reportedChecks: checks,
       maxVerifyFailures: 5,
     }).state;
-
     expect(result).toMatchObject({
       phase: 'verify',
       status: 'await-user',
@@ -437,9 +402,8 @@ describe('Native portable Build/Verify loop', () => {
       loop: { stage: 'archive-ready' },
     });
   });
-
   it.each(['en', 'zh-CN'] as const)(
-    'provides a non-empty Supervisor integration check template in %s',
+    'lets the Agent select Supervisor integration checks without an invented command in %s',
     (language) => {
       const { state } = buildState();
       state.language = language;
@@ -447,42 +411,29 @@ describe('Native portable Build/Verify loop', () => {
       state.loop.next_action = 'run-required-checks-and-dispatch-verifier';
       expect(nativePortableContinuation(state).inputOptions[0].template).toEqual({
         kind: 'dispatch-verifier',
-        checks: [],
       });
-
-      state.children_contract_hash = 'parent-contract';
+      state.children_contract_ref = 'children.yaml';
       const continuation = nativePortableContinuation(state);
       expect(continuation.inputOptions[0].template).toEqual({
         kind: 'dispatch-verifier',
-        checks: [
-          {
-            id: '<check-id>',
-            name: '<check-name>',
-            executable: '<executable>',
-            argv: [],
-            cwdRef: '.',
-            timeoutMs: 120000,
-            repeatable: true,
-          },
-        ],
       });
       expect(continuation.userCommunication.agentInstruction).toContain(
-        language === 'en' ? 'at least one integration check' : '至少一项集成检查',
+        language === 'en'
+          ? 'candidate and completed checks are preserved'
+          : '当前候选和已经完成的检查都已保留',
       );
     },
   );
-
   it('offers requirement revision only before Archive finalizes the change', () => {
     const { state, runner } = buildState();
     const archiveReady = confirmNativeSkillCoordinatedPass(
       applyNativeVerifierEnvelope({
         state,
         envelope: envelope(runner, state, 'pass'),
-        checks,
+        reportedChecks: checks,
         maxVerifyFailures: 5,
       }).state,
     );
-
     expect(nativePortableContinuation(archiveReady).commandAlternatives).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -491,7 +442,6 @@ describe('Native portable Build/Verify loop', () => {
         }),
       ]),
     );
-
     const archived = {
       ...archiveReady,
       archived: true,
@@ -500,14 +450,13 @@ describe('Native portable Build/Verify loop', () => {
     };
     expect(nativePortableContinuation(archived).commandAlternatives).toBeUndefined();
   });
-
   it('requires an explicit workspace finish choice before an isolated Archive preview', () => {
     const { state, runner } = buildState();
     const archiveReady = confirmNativeSkillCoordinatedPass(
       applyNativeVerifierEnvelope({
         state,
         envelope: envelope(runner, state, 'pass'),
-        checks,
+        reportedChecks: checks,
         maxVerifyFailures: 5,
       }).state,
     );
@@ -520,9 +469,7 @@ describe('Native portable Build/Verify loop', () => {
         finish: null,
       },
     };
-
     const continuation = nativePortableContinuation(isolated);
-
     expect(continuation).toMatchObject({
       disposition: 'await-user',
       action: 'archive',
@@ -576,14 +523,13 @@ describe('Native portable Build/Verify loop', () => {
       ]),
     );
   });
-
   it('returns confirmed Archive only from a successful preview continuation', () => {
     const { state, runner } = buildState();
     const archiveReady = confirmNativeSkillCoordinatedPass(
       applyNativeVerifierEnvelope({
         state,
         envelope: envelope(runner, state, 'pass'),
-        checks,
+        reportedChecks: checks,
         maxVerifyFailures: 5,
       }).state,
     );
@@ -596,7 +542,6 @@ describe('Native portable Build/Verify loop', () => {
         finish: 'keep' as const,
       },
     };
-
     expect(
       nativePortableContinuation(isolated, null, {
         archiveMode: 'preview',
@@ -629,16 +574,14 @@ describe('Native portable Build/Verify loop', () => {
       requiredInputs: [],
     });
   });
-
   it('allows an explicitly empty Runtime check plan when Verifier covers every acceptance ID', () => {
     const { state, runner } = buildState();
     const result = applyNativeVerifierEnvelope({
       state,
       envelope: envelope(runner, state, 'pass'),
-      checks: [],
+      reportedChecks: [],
       maxVerifyFailures: 5,
     }).state;
-
     expect(result).toMatchObject({
       phase: 'verify',
       status: 'await-user',
@@ -651,7 +594,6 @@ describe('Native portable Build/Verify loop', () => {
       'passed',
     ]);
   });
-
   it('accepts a full known-passed matrix when only one acceptance ID is pending', () => {
     const prepared = buildState();
     const preservedReason = toNativePortableText('A1 passed in an earlier scoped attempt.');
@@ -661,14 +603,12 @@ describe('Native portable Build/Verify loop', () => {
         entry.id === 'A1' ? { ...entry, result: 'passed', reason: preservedReason } : entry,
       ),
     };
-
     const applied = applyNativeVerifierEnvelope({
       state,
       envelope: envelope(prepared.runner, state, 'pass', [], ['A1', 'A2']),
-      checks,
+      reportedChecks: checks,
       maxVerifyFailures: 5,
     });
-
     expect(applied.response).toMatchObject({
       kind: 'final-result',
       result: { acceptance: [{ id: 'A2', result: 'passed' }] },
@@ -679,16 +619,14 @@ describe('Native portable Build/Verify loop', () => {
     ]);
     expect(applied.state.loop.execution_failure_count).toBe(0);
   });
-
   it('returns an implementation failure to a new Build iteration', () => {
     const { state, runner } = buildState();
     const result = applyNativeVerifierEnvelope({
       state,
       envelope: envelope(runner, state, 'fail', ['A2']),
-      checks,
+      reportedChecks: checks,
       maxVerifyFailures: 5,
     }).state;
-
     expect(result).toMatchObject({
       phase: 'build',
       status: 'active',
@@ -703,17 +641,15 @@ describe('Native portable Build/Verify loop', () => {
       },
     });
   });
-
   it('requires one full verification scope after a repair', () => {
     const prepared = buildState();
     const { runner } = prepared;
     let state = applyNativeVerifierEnvelope({
       state: prepared.state,
       envelope: envelope(runner, prepared.state, 'fail', ['A2']),
-      checks,
+      reportedChecks: checks,
       maxVerifyFailures: 5,
     }).state;
-
     state = submitNativeBuilderCandidate({
       state,
       input: {
@@ -736,21 +672,19 @@ describe('Native portable Build/Verify loop', () => {
       { id: 'A1', result: 'pending' },
       { id: 'A2', result: 'pending' },
     ]);
-
     state = reserveNativeVerifierAttempt(state);
     expect(() =>
       applyNativeVerifierEnvelope({
         state,
         envelope: envelope(runner, state, 'pass', [], ['A2']),
-        checks,
+        reportedChecks: checks,
         maxVerifyFailures: 5,
       }),
     ).toThrow();
-
     state = applyNativeVerifierEnvelope({
       state,
       envelope: envelope(runner, state, 'pass', [], ['A1', 'A2']),
-      checks,
+      reportedChecks: checks,
       maxVerifyFailures: 5,
     }).state;
     expect(state).toMatchObject({
@@ -764,24 +698,21 @@ describe('Native portable Build/Verify loop', () => {
       disposition: 'await-user',
     });
   });
-
   it('does not schedule a duplicate final full verification after a full repair pass', () => {
     const prepared = buildState();
     let state = applyNativeVerifierEnvelope({
       state: prepared.state,
       envelope: envelope(prepared.runner, prepared.state, 'fail', ['A1', 'A2']),
-      checks,
+      reportedChecks: checks,
       maxVerifyFailures: 5,
     }).state;
-
     state = resubmitRepair(prepared.runner, state);
     state = applyNativeVerifierEnvelope({
       state,
       envelope: envelope(prepared.runner, state, 'pass', [], ['A1', 'A2']),
-      checks,
+      reportedChecks: checks,
       maxVerifyFailures: 5,
     }).state;
-
     expect(state).toMatchObject({
       phase: 'verify',
       status: 'await-user',
@@ -789,113 +720,80 @@ describe('Native portable Build/Verify loop', () => {
       loop: { stage: 'await-user', next_action: 'confirm-skill-coordinated-pass' },
     });
   });
-
-  it('counts alternating and increased unresolved sets as no progress, but resets on a strict subset', () => {
-    const prepared = buildState();
-    let { state } = prepared;
-    const { runner } = prepared;
-    state = applyNativeVerifierEnvelope({
-      state,
-      envelope: envelope(runner, state, 'fail', ['A1']),
-      checks,
-      maxVerifyFailures: 10,
-    }).state;
-    expect(state.loop.no_progress_count).toBe(0);
-
-    state = resubmitRepair(runner, state);
-    state = applyNativeVerifierEnvelope({
-      state,
-      envelope: envelope(runner, state, 'fail', ['A2']),
-      checks,
-      maxVerifyFailures: 10,
-    }).state;
-    expect(state.loop.no_progress_count).toBe(1);
-
-    state = resubmitRepair(runner, state);
-    state = applyNativeVerifierEnvelope({
-      state,
-      envelope: envelope(runner, state, 'fail', ['A1', 'A2']),
-      checks,
-      maxVerifyFailures: 10,
-    }).state;
-    expect(state.loop.no_progress_count).toBe(2);
-    expect(state.blockers[0]?.reason.text).toContain('different repair hypothesis');
-
-    state = resubmitRepair(runner, state);
-    state = applyNativeVerifierEnvelope({
-      state,
-      envelope: envelope(runner, state, 'fail', ['A1']),
-      checks,
-      maxVerifyFailures: 10,
-    }).state;
-    expect(state).toMatchObject({
-      status: 'active',
-      loop: { no_progress_count: 0, stage: 'repairing' },
-    });
-  });
-
-  it('stops alternating unresolved sets after three non-progressive results', () => {
-    const prepared = buildState();
-    let { state } = prepared;
-    const { runner } = prepared;
-    for (const unresolved of [['A1'], ['A2'], ['A1'], ['A2']]) {
+  it('continues real repairs when unresolved acceptance IDs repeat, alternate or increase', () => {
+    const { runner, state: initial } = buildState();
+    let state = initial;
+    for (const unresolved of [['A1'], ['A1'], ['A2'], ['A1', 'A2'], ['A2']]) {
       state = applyNativeVerifierEnvelope({
         state,
         envelope: envelope(runner, state, 'fail', unresolved),
-        checks,
+        reportedChecks: checks,
         maxVerifyFailures: 10,
       }).state;
-      if (state.status === 'active') state = resubmitRepair(runner, state);
+      expect(state).toMatchObject({
+        phase: 'build',
+        status: 'active',
+        verification_result: 'fail',
+        blockers: [],
+        loop: { stage: 'repairing' },
+      });
+      expect(state.loop.previous_unresolved_ids).toEqual(unresolved);
+      expect(state.loop.stop_reason).toBeUndefined();
+      state = resubmitRepair(runner, state);
     }
-
+    state = applyNativeVerifierEnvelope({
+      state,
+      envelope: envelope(runner, state, 'pass'),
+      reportedChecks: checks,
+      maxVerifyFailures: 10,
+    }).state;
     expect(state).toMatchObject({
+      phase: 'verify',
       status: 'await-user',
-      verification_report: 'verification.md',
-      loop: { no_progress_count: 3, stage: 'await-user' },
+      verification_result: 'pass',
     });
-    expect(nativePortableContinuation(state)).toMatchObject({
-      disposition: 'await-user',
-      action: 'resolve-loop-stop',
-      commandArgs: null,
-      requiredInputs: ['summary', 'user-decision'],
-      userCommunication: {
-        required: true,
-        message: expect.stringContaining('paused to avoid looping on the same problem'),
-        suggestedReply: 'Continue repairing',
-        agentInstruction: expect.stringContaining('revise-implementation'),
-      },
-      commandAlternatives: expect.arrayContaining([
-        expect.objectContaining({
-          name: 'revise-implementation',
-          commandArgs: expect.arrayContaining(['--revise-implementation']),
-          requiredInputs: ['summary', 'user-decision'],
-        }),
-        expect.objectContaining({
-          name: 'revise-requirements',
-          commandArgs: expect.arrayContaining(['--revise-requirements']),
-          requiredInputs: ['summary', 'user-decision'],
-        }),
-      ]),
-    });
-    expect(
-      nativePortableContinuation({ ...state, language: 'zh-CN' }).userCommunication,
-    ).toMatchObject({
-      required: true,
-      message: expect.stringContaining('本次修改已暂停'),
-      suggestedReply: '继续修复',
-      agentInstruction: expect.stringContaining('revise-implementation'),
+    state = confirmNativeSkillCoordinatedPass(state);
+    expect(state).toMatchObject({
+      phase: 'archive',
+      status: 'active',
+      verification_result: 'pass',
     });
   });
-
+  it('keeps the configured failure budget when old no-progress counters are present', () => {
+    const { runner, state: initial } = buildState();
+    const state = {
+      ...initial,
+      loop: {
+        ...initial.loop,
+        failed_iteration_count: 2,
+        no_progress_count: 8,
+        previous_unresolved_ids: ['A1'],
+      },
+    };
+    const stopped = applyNativeVerifierEnvelope({
+      state,
+      envelope: envelope(runner, state, 'fail', ['A1']),
+      reportedChecks: checks,
+      maxVerifyFailures: 3,
+    }).state;
+    expect(stopped).toMatchObject({
+      status: 'await-user',
+      verification_result: 'fail',
+      loop: { failed_iteration_count: 3, stop_reason: 'budget' },
+    });
+    expect(stopped.blockers[0]?.reason.text).toContain('configured failed iteration limit');
+    expect(nativePortableContinuation(stopped).userCommunication.message).toContain(
+      'used its configured failure budget',
+    );
+  });
   it('explains a budget-exhausted stop without calling it a no-progress loop', () => {
     const { state, runner } = buildState();
     const stopped = applyNativeVerifierEnvelope({
       state,
       envelope: envelope(runner, state, 'fail', ['A1']),
-      checks,
+      reportedChecks: checks,
       maxVerifyFailures: 1,
     }).state;
-
     expect(stopped).toMatchObject({
       status: 'await-user',
       loop: { failed_iteration_count: 1, no_progress_count: 0, stage: 'await-user' },
@@ -912,41 +810,14 @@ describe('Native portable Build/Verify loop', () => {
       message: expect.stringContaining('已用完配置的预算'),
     });
   });
-
-  it('persists one stop reason when budget and no-progress thresholds overlap', () => {
-    const prepared = buildState();
-    const primed = {
-      ...prepared.state,
-      loop: {
-        ...prepared.state.loop,
-        failed_iteration_count: 2,
-        no_progress_count: 2,
-        previous_unresolved_ids: ['A1'],
-      },
-    };
-    const stopped = applyNativeVerifierEnvelope({
-      state: primed,
-      envelope: envelope(prepared.runner, primed, 'fail', ['A1']),
-      checks,
-      maxVerifyFailures: 3,
-    }).state;
-
-    expect((stopped.loop as { stop_reason?: string }).stop_reason).toBe('stalled');
-    expect(stopped.blockers[0]?.reason.text).toContain('did not strictly reduce');
-    expect(nativePortableContinuation(stopped).userCommunication.message).toContain(
-      'failed three times in a row',
-    );
-  });
-
   it('keeps a report reference for a semantic blocker', () => {
     const { state, runner } = buildState();
     const result = applyNativeVerifierEnvelope({
       state,
       envelope: envelope(runner, state, 'blocked', ['A2']),
-      checks,
+      reportedChecks: checks,
       maxVerifyFailures: 5,
     }).state;
-
     expect(result).toMatchObject({
       status: 'await-user',
       verification_result: 'blocked',
@@ -965,7 +836,6 @@ describe('Native portable Build/Verify loop', () => {
       required: true,
       message: expect.stringContaining('缺少只有你能提供的信息'),
     });
-
     const resumed = resolveNativeVerifierBlocker(result, {
       reason: 'The external service returns 429 under load; that behavior is expected.',
     });
@@ -974,7 +844,6 @@ describe('Native portable Build/Verify loop', () => {
       summary: { text: 'The external service returns 429 under load; that behavior is expected.' },
     });
   });
-
   it('blocks after three execution errors without consuming semantic failure budgets', () => {
     let { state } = buildState();
     expect(nativePortableContinuation(state).userCommunication).toMatchObject({
@@ -1002,7 +871,6 @@ describe('Native portable Build/Verify loop', () => {
         state = reserveNativeVerifierAttempt(state);
       }
     }
-
     expect(state).toMatchObject({
       phase: 'verify',
       status: 'blocked',
@@ -1030,7 +898,6 @@ describe('Native portable Build/Verify loop', () => {
       attempt: 3,
     });
   });
-
   it.each([
     {
       language: 'en' as const,
@@ -1060,16 +927,13 @@ describe('Native portable Build/Verify loop', () => {
       );
     },
   );
-
   it('retries unavailable semantic verification without degrading or reopening the full scope', () => {
     const { state } = buildState();
     const unavailable = recordNativeVerifierUnavailable({
       state,
-      checks,
       verifierExecutionRef: 'verifier-1-1',
       summary: 'The platform could not start an independent Verifier.',
     });
-
     expect(nativePortableContinuation(unavailable)).toMatchObject({
       disposition: 'await-user',
       action: 'confirm-verifier-unavailable',
@@ -1093,7 +957,6 @@ describe('Native portable Build/Verify loop', () => {
         agentInstruction: expect.stringContaining('commandAlternatives'),
       },
     });
-
     const retried = retryNativeVerifier(unavailable);
     expect(retried).toMatchObject({
       phase: 'verify',
@@ -1112,13 +975,12 @@ describe('Native portable Build/Verify loop', () => {
     });
     expect(retried.acceptance.every(({ result }) => result === 'pending')).toBe(true);
   });
-
   it('restarts the full verification scope when unavailable semantic verification is retried', () => {
     const prepared = buildState();
     let state = applyNativeVerifierEnvelope({
       state: prepared.state,
       envelope: envelope(prepared.runner, prepared.state, 'fail', ['A2']),
-      checks,
+      reportedChecks: checks,
       maxVerifyFailures: 5,
     }).state;
     state = submitNativeBuilderCandidate({
@@ -1142,11 +1004,9 @@ describe('Native portable Build/Verify loop', () => {
     state = reserveNativeVerifierAttempt(state);
     state = recordNativeVerifierUnavailable({
       state,
-      checks,
       verifierExecutionRef: 'verifier-repair-unavailable',
       summary: 'The platform temporarily lost independent verification.',
     });
-
     let retried = retryNativeVerifier(state);
     expect(retried.acceptance).toMatchObject([
       { id: 'A1', result: 'pending' },
@@ -1157,12 +1017,11 @@ describe('Native portable Build/Verify loop', () => {
       previous_unresolved_ids: [],
       next_action: 'dispatch-new-verifier',
     });
-
     retried = reserveNativeVerifierAttempt(retried);
     const repairPassed = applyNativeVerifierEnvelope({
       state: retried,
       envelope: envelope(prepared.runner, retried, 'pass', [], ['A1', 'A2']),
-      checks,
+      reportedChecks: checks,
       maxVerifyFailures: 5,
     }).state;
     expect(repairPassed).toMatchObject({
@@ -1176,16 +1035,14 @@ describe('Native portable Build/Verify loop', () => {
       },
     });
   });
-
   it('rejects a stale execution error after a Skill-coordinated pass', () => {
     const { state, runner } = buildState(NATIVE_SKILL_COORDINATION);
     const passed = applyNativeVerifierEnvelope({
       state,
       envelope: envelope(runner, state, 'pass'),
-      checks,
+      reportedChecks: checks,
       maxVerifyFailures: 5,
     }).state;
-
     expect(passed).toMatchObject({
       phase: 'verify',
       status: 'await-user',
@@ -1196,19 +1053,17 @@ describe('Native portable Build/Verify loop', () => {
       recordNativeVerifierExecutionError({ state: passed, summary: 'Late failure.' }),
     ).toThrow('active Verify attempt');
   });
-
-  it('does not accept a pass when the final Runtime check failed', () => {
+  it('does not accept a pass when an Agent-reported check failed', () => {
     const { state, runner } = buildState();
     expect(() =>
       applyNativeVerifierEnvelope({
         state,
         envelope: envelope(runner, state, 'pass'),
-        checks: [{ ...checks[0], status: 'failed', exit_code: 1 }],
+        reportedChecks: [{ ...checks[0], result: 'failed' }],
         maxVerifyFailures: 5,
       }),
     ).toThrow('required check');
   });
-
   it('stores long diagnostic reasons as truncated previews without invalidating the decision', () => {
     const { state, runner } = buildState();
     const trusted = runner.envelopeVerifierResponse({
@@ -1226,20 +1081,19 @@ describe('Native portable Build/Verify loop', () => {
           acceptance: state.acceptance.map(({ id }, index) => ({
             id,
             result: index === 0 ? 'failed' : 'passed',
-            reason: '鱼'.repeat(100_000),
+            reason: '鱼'.repeat(100000),
           })),
-          risks: ['risk'.repeat(100_000)],
-          summary: 'summary'.repeat(100_000),
+          risks: ['risk'.repeat(100000)],
+          summary: 'summary'.repeat(100000),
         },
       },
     });
     const result = applyNativeVerifierEnvelope({
       state,
       envelope: trusted,
-      checks,
+      reportedChecks: checks,
       maxVerifyFailures: 5,
     }).state;
-
     expect(result.acceptance[0].reason).toMatchObject({ truncated: true });
     expect(result.verification?.summary).toMatchObject({ truncated: true });
     expect(result.verification?.risks[0]).toMatchObject({ truncated: true });

@@ -1,0 +1,354 @@
+{
+  "cases": [
+    {
+      "id": "native-cancelled-history-import-guards",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-native-history-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-history.test.ts",
+          "namePattern": "^(?:Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: active|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: missing-stop|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: corrupt-hash|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: unknown-definition|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: archive-obligation|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: child-lineage|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: fixed-application|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: pending-cleanup|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: existing-run|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: existing-projection)$",
+          "requiredNames": [
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: active",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: missing-stop",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: corrupt-hash",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: unknown-definition",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: archive-obligation",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: child-lineage",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: fixed-application",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: pending-cleanup",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: existing-run",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: existing-projection"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-cancelled-history-import-resume",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-native-history-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-history.test.ts",
+          "namePattern": "^(?:Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: owner-before|Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: owner-after|Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: run-after|Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: closure-after|Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: duplicate-owner|Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: changed-source|Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: newer-local)$",
+          "requiredNames": [
+            "Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: owner-before",
+            "Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: owner-after",
+            "Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: run-after",
+            "Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: closure-after",
+            "Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: duplicate-owner",
+            "Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: changed-source",
+            "Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: newer-local"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-history.test.ts",
+          "namePattern": "^(?:Native terminal history lifecycle keeps an interrupted closing transaction visible and recovers it through explicit migration|Native terminal history lifecycle keeps an interrupted reopening transaction visible and recovers it through explicit migration)$",
+          "requiredNames": [
+            "Native terminal history lifecycle keeps an interrupted closing transaction visible and recovers it through explicit migration",
+            "Native terminal history lifecycle keeps an interrupted reopening transaction visible and recovers it through explicit migration"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-cancelled-history-preserve-worktree-authority",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-native-history-test-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-history.test.ts",
+          "namePattern": "^(?:Native terminal history lifecycle preserves the original source authority when explicitly restoring a local cancellation|Native terminal history lifecycle preserves the newer source authority when explicitly restoring a local cancellation)$",
+          "requiredNames": [
+            "Native terminal history lifecycle preserves the original source authority when explicitly restoring a local cancellation",
+            "Native terminal history lifecycle preserves the newer source authority when explicitly restoring a local cancellation"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-history.test.ts",
+          "namePattern": "^(?:Native terminal history lifecycle preserves the original workspace when an explicit local recovery is refused)$",
+          "requiredNames": [
+            "Native terminal history lifecycle preserves the original workspace when an explicit local recovery is refused"
+          ]
+        }
+      ]
+    }
+  ],
+  "declarations": [
+    {
+      "originalTitle": "shares one Store root per project history inspection and rechecks each scan after metadata changes",
+      "originalLine": 83,
+      "originalBody": "it('shares one Store root per project history inspection and rechecks each scan after metadata changes', async () => {\n    const f = await fixture();\n    await f.runtime.cancel({ runId: f.name, reason: 'Stop this task' });\n    const other = 'second-history';\n    expect((await f.cli(['new', other])).exitCode).toBe(0);\n    await f.runtime.cancel({ runId: other, reason: 'Stop the second task' });\n    const rootSpy = vi.spyOn(workspaceRuntime, 'resolveWorkspaceRuntimeRootSync');\n    const inspected = await inspectNativeSdkClosedHistory(f.root, [f.name, other]);\n    expect([...inspected.values()]).toEqual([\n      { status: 'fulfilled', value: true },\n      { status: 'fulfilled', value: true },\n    ]);\n    // 一次发现 Runtime 根，另一次为整批构造 Store；不能按 history 数量增长。\n    expect(rootSpy.mock.calls.length).toBeLessThanOrEqual(2);\n    rootSpy.mockRestore();\n    const key = createHash('sha256').update(JSON.stringify(f.name)).digest('hex');\n    const markerFile = path.join(resolveWorkspaceRuntimeRootSync(f.root), 'sdk-runs/native', key);\n    const marker = await fs.readFile(markerFile, 'utf8');\n    await runWithHookReadCache(async () => {\n      expect((await listNativeSdkHistoryPartitions(f.root)).history).toEqual([f.name, other]);\n      await fs.writeFile(markerFile, '{broken marker');\n      await expect(listNativeSdkHistoryPartitions(f.root)).rejects.toThrow();\n      await fs.writeFile(markerFile, marker);\n      expect((await listNativeSdkHistoryPartitions(f.root)).history).toHaveLength(2);\n      await recoverSdkChangeOwnerToActive(f.root, 'native', f.name);\n      await fs.writeFile(markerFile, JSON.stringify({ ...JSON.parse(marker), state: 'reopening' }));\n      await expect(listNativeSdkHistoryPartitions(f.root)).rejects.toThrow(/unfinished reopening/);\n    });\n  })",
+      "disposition": "retained-or-moved",
+      "behavior": "原Store root批量解析次数、元数据损坏及同一Hook epoch内重新观察全部保留。",
+      "currentFullNames": [
+        "Native terminal history lifecycle shares one Store root per project history inspection and rechecks each scan after metadata changes"
+      ]
+    },
+    {
+      "originalTitle": "closes a fully cancelled Run while retaining readable history and portable documents",
+      "originalLine": 113,
+      "originalBody": "it('closes a fully cancelled Run while retaining readable history and portable documents', async () => {\n    const f = await fixture();\n    await f.runtime.cancel({ runId: f.name, reason: 'User stopped this task' });\n    expect(await f.store.readDisposition(f.name)).toBe('closed');\n    const saved = (await f.store.read(f.name))!;\n    await expect(\n      f.store.compareAndSwap(f.name, saved.revision, { ...saved, revision: saved.revision + 1 }),\n    ).rejects.toThrow();\n    expect(\n      await listSdkChangeNames(f.root, 'native', { readOnly: true, partition: 'history' }),\n    ).toEqual([f.name]);\n    expect(\n      await listSdkChangeNames(f.root, 'native', { readOnly: true, partition: 'active' }),\n    ).toEqual([]);\n    expect((await f.cli(['status', f.name])).exitCode).toBe(0);\n    expect((await f.cli(['doctor', f.name])).exitCode).toBe(0);\n    expect(\n      await fs.readFile(path.join(f.root, 'docs/comet/changes', f.name, 'brief.md'), 'utf8'),\n    ).toBeTruthy();\n  })",
+      "disposition": "retained-or-moved",
+      "behavior": "原cancelled封存、closed CAS拒绝、active/history分区及用户材料可读全部保留。",
+      "currentFullNames": [
+        "Native terminal history lifecycle closes a fully cancelled Run while retaining readable history and portable documents"
+      ]
+    },
+    {
+      "originalTitle": "keeps an unfinished Run active during explicit migration",
+      "originalLine": 134,
+      "originalBody": "it('keeps an unfinished Run active during explicit migration', async () => {\n    const f = await fixture();\n    const result = await f.cli(['doctor', '--migrate-history']);\n    expect(result.exitCode).toBe(0);\n    expect(result.data.active).toEqual([f.name]);\n    expect(await f.store.readDisposition(f.name)).toBe('active');\n  })",
+      "disposition": "retained-or-moved",
+      "behavior": "原unfinished保活动、不越权推进保留。",
+      "currentFullNames": [
+        "Native terminal history lifecycle keeps an unfinished Run active during explicit migration"
+      ]
+    },
+    {
+      "originalTitle": "never migrates on ordinary inspection and resumes explicit interrupted closure",
+      "originalLine": 142,
+      "originalBody": "it('never migrates on ordinary inspection and resumes explicit interrupted closure', async () => {\n    const f = await fixture();\n    const stopBeforeClose = vi.spyOn(history, 'closeNativeSdkHistory').mockResolvedValue(false);\n    await f.runtime.cancel({ runId: f.name, reason: 'Retained legacy terminal Run' });\n    stopBeforeClose.mockRestore();\n    expect(await f.store.readDisposition(f.name)).toBe('active');\n    expect((await f.cli(['doctor', f.name])).exitCode).toBe(0);\n    expect(await f.store.readDisposition(f.name)).toBe('active');\n    const result = await f.cli(['doctor', '--migrate-history']);\n    expect(result.exitCode, JSON.stringify(result)).toBe(0);\n    expect(result.data.migrated).toEqual([f.name]);\n    expect(await f.store.readDisposition(f.name)).toBe('closed');\n    expect((await f.cli(['doctor', '--migrate-history'])).exitCode).toBe(0);\n  })",
+      "disposition": "retained-or-moved",
+      "behavior": "普通只读不封存；原显式中断闭合与幂等保留。",
+      "currentFullNames": [
+        "Native terminal history lifecycle never migrates on ordinary inspection and resumes explicit interrupted closure"
+      ]
+    },
+    {
+      "originalTitle": "defers closed history body corruption to explicit inspection while Hook reads only partition metadata",
+      "originalLine": 157,
+      "originalBody": "it('defers closed history body corruption to explicit inspection while Hook reads only partition metadata', async () => {\n    const f = await fixture();\n    await f.runtime.cancel({ runId: f.name, reason: 'Stop this task' });\n    const key = createHash('sha256').update(JSON.stringify(f.name)).digest('hex');\n    const file = path.join(\n      resolveWorkspaceRuntimeRootSync(f.root),\n      'sdk-runs/native/.runtime-store-history',\n      key,\n      'checkpoint.json',\n    );\n    await fs.writeFile(file, '{broken history');\n    expect(await listActiveNativeHookChanges(f.root)).toEqual([]);\n    expect((await f.cli(['status', f.name])).exitCode).not.toBe(0);\n    expect((await f.cli(['doctor'])).exitCode).not.toBe(0);\n  })",
+      "disposition": "retained-or-moved",
+      "behavior": "Hook只读分区不解析closed正文；named status和global Doctor必须拒绝损坏正文，已原RED→GREEN。",
+      "currentFullNames": [
+        "Native terminal history lifecycle defers closed history body corruption to explicit inspection while Hook reads only partition metadata"
+      ]
+    },
+    {
+      "originalTitle": "does not let a history owner hide an active checkpoint conflict",
+      "originalLine": 173,
+      "originalBody": "it('does not let a history owner hide an active checkpoint conflict', async () => {\n    const f = await fixture();\n    await f.runtime.cancel({ runId: f.name, reason: 'Stop this task' });\n    const key = createHash('sha256').update(JSON.stringify(f.name)).digest('hex');\n    const storeRoot = path.join(resolveWorkspaceRuntimeRootSync(f.root), 'sdk-runs/native');\n    const active = path.join(storeRoot, '.runtime-store-v2', key, 'checkpoint.json');\n    await fs.mkdir(path.dirname(active), { recursive: true });\n    await fs.copyFile(\n      path.join(storeRoot, '.runtime-store-history', key, 'checkpoint.json'),\n      active,\n    );\n    await expect(listActiveNativeHookChanges(f.root)).rejects.toThrow();\n  })",
+      "disposition": "retained-or-moved",
+      "behavior": "历史owner不得隐藏活动checkpoint冲突，原记录不覆盖。",
+      "currentFullNames": [
+        "Native terminal history lifecycle does not let a history owner hide an active checkpoint conflict"
+      ]
+    },
+    {
+      "originalTitle": "recovers an interrupted owner publication through a new explicit doctor invocation",
+      "originalLine": 187,
+      "originalBody": "it('recovers an interrupted owner publication through a new explicit doctor invocation', async () => {\n    const f = await fixture();\n    await f.runtime.cancel({ runId: f.name, reason: 'Stop this task' });\n    const root = resolveWorkspaceRuntimeRootSync(f.root);\n    const active = path.join(root, 'change-owners/native', `${f.name}.json`);\n    await fs.copyFile(path.join(root, 'change-owner-history/native', `${f.name}.json`), active);\n    expect((await f.cli(['doctor', f.name])).exitCode).not.toBe(0);\n    const result = await f.cli(['doctor', '--migrate-history']);\n    expect(result.exitCode, JSON.stringify(result)).toBe(0);\n    expect(result.data.migrated).toEqual([f.name]);\n    expect((await f.cli(['doctor', f.name])).exitCode).toBe(0);\n    expect(await f.store.readDisposition(f.name)).toBe('closed');\n  })",
+      "disposition": "retained-or-moved",
+      "behavior": "同字节active/history owner双份普通读取拒绝，沿既有recover入口显式恢复并闭合，原RED→GREEN。",
+      "currentFullNames": [
+        "Native terminal history lifecycle recovers an interrupted owner publication through a new explicit doctor invocation"
+      ]
+    },
+    {
+      "originalTitle": "keeps an interrupted %s transaction visible and recovers it through explicit migration",
+      "originalLine": 201,
+      "originalBody": "it.each(['closing', 'reopening'] as const)(\n    'keeps an interrupted %s transaction visible and recovers it through explicit migration',\n    async (pending) => {\n      const f = await fixture();\n      await f.runtime.cancel({ runId: f.name, reason: 'Stop this task' });\n      const key = createHash('sha256').update(JSON.stringify(f.name)).digest('hex');\n      const markerFile = path.join(resolveWorkspaceRuntimeRootSync(f.root), 'sdk-runs/native', key);\n      const marker = JSON.parse(await fs.readFile(markerFile, 'utf8'));\n      await recoverSdkChangeOwnerToActive(f.root, 'native', f.name);\n      await fs.writeFile(markerFile, JSON.stringify({ ...marker, state: pending }));\n      await expect(listActiveNativeHookChanges(f.root)).rejects.toThrow(/unfinished|transaction/);\n      const result = await f.cli(['doctor', '--migrate-history']);\n      expect(result.exitCode, JSON.stringify(result)).toBe(0);\n      expect(result.data.migrated).toEqual([f.name]);\n      expect(await f.store.readDisposition(f.name)).toBe('closed');\n    },\n  )",
+      "disposition": "retained-or-moved",
+      "behavior": "实际Store closing与reopening各保留中断可见、再恢复与重复调用。",
+      "currentFullNames": [
+        "Native terminal history lifecycle keeps an interrupted closing transaction visible and recovers it through explicit migration",
+        "Native terminal history lifecycle keeps an interrupted reopening transaction visible and recovers it through explicit migration"
+      ]
+    },
+    {
+      "originalTitle": "rejects same-revision content drift and unknown workflow definitions before closing",
+      "originalLine": 219,
+      "originalBody": "it('rejects same-revision content drift and unknown workflow definitions before closing', async () => {\n    const f = await fixture();\n    const stopBeforeClose = vi.spyOn(history, 'closeNativeSdkHistory').mockResolvedValue(false);\n    await f.runtime.cancel({ runId: f.name, reason: 'Retained terminal Run' });\n    stopBeforeClose.mockRestore();\n    const record = (await f.store.read(f.name))!;\n    await expect(\n      history.closeNativeSdkHistory({\n        projectRoot: f.root,\n        run: { ...record, reason: 'Different same-revision content' },\n      }),\n    ).rejects.toThrow(/same revision/);\n    const unknown = structuredClone(record);\n    unknown.workflow.hash = 'f'.repeat(64);\n    unknown.definitionHashes[JSON.stringify([unknown.workflow.id, unknown.workflow.version])] =\n      unknown.workflow.hash;\n    unknown.revision++;\n    expect(await f.store.compareAndSwap(f.name, record.revision, unknown)).toBe(true);\n    await expect(\n      history.closeNativeSdkHistory({ projectRoot: f.root, run: unknown }),\n    ).rejects.toThrow(/known built-in/);\n    expect(await f.store.readDisposition(f.name)).toBe('active');\n  })",
+      "disposition": "retained-or-moved",
+      "behavior": "原同revision内容漂移拒绝、未知当前definition拒绝且不闭合；未知定义文案调整为当前definition hash。",
+      "currentFullNames": [
+        "Native terminal history lifecycle rejects same-revision content drift and unknown workflow definitions before closing"
+      ]
+    },
+    {
+      "originalTitle": "restores a portable %s Run on another device without the original runtime or history partition",
+      "originalLine": 243,
+      "originalBody": "it.each(['active', 'cancelled'] as const)(\n    'restores a portable %s Run on another device without the original runtime or history partition',\n    async (status) => {\n      const f = await fixture();\n      if (status === 'cancelled')\n        await f.runtime.cancel({ runId: f.name, reason: 'User stopped this task' });\n      const original = (await f.store.read(f.name))!;\n      expect(await f.store.readDisposition(f.name)).toBe(\n        status === 'cancelled' ? 'closed' : 'active',\n      );\n      const target = await fs.mkdtemp(path.join(os.tmpdir(), 'native-history-other-device-'));\n      const data = await fs.mkdtemp(path.join(os.tmpdir(), 'native-history-other-home-'));\n      roots.push(target, data);\n      execFileSync('git', ['init', '-b', 'main'], { cwd: target, stdio: 'ignore' });\n      await fs.cp(path.join(f.root, 'docs'), path.join(target, 'docs'), { recursive: true });\n      await fs.mkdir(path.join(target, '.comet'));\n      await fs.copyFile(\n        path.join(f.root, '.comet/config.yaml'),\n        path.join(target, '.comet/config.yaml'),\n      );\n      vi.stubEnv('COMET_DATA_DIR', data);\n      const cli = async (args: string[]) =>\n        JSON.parse((await runNativeCli([...args, '--project-root', target, '--json'])).stdout!);\n      const targetStore = createFileRuntimeStore<WorkflowRun>({\n        rootDir: path.join(resolveWorkspaceRuntimeRootSync(target), 'sdk-runs/native'),\n      });\n      expect(await targetStore.read(f.name)).toBeNull();\n      expect((await cli(['status', f.name])).exitCode).not.toBe(0);\n      expect(await targetStore.read(f.name)).toBeNull();\n      const recovered = await cli(['doctor', f.name, '--repair', '--confirmed']);\n      expect(recovered.exitCode, JSON.stringify(recovered)).toBe(0);\n      const restored = (await targetStore.read(f.name))!;\n      expect(restored.status).toBe(original.status);\n      expect(restored.revision).toBe(original.revision);\n      expect(restored.actions).toEqual(original.actions);\n      expect(await targetStore.readDisposition(f.name)).toBe('active');\n      if (status === 'cancelled') {\n        expect((await cli(['next', f.name])).exitCode).toBe(0);\n        expect(await targetStore.readDisposition(f.name)).toBe('closed');\n        expect((await targetStore.read(f.name))!.actions).toEqual(original.actions);\n      }\n      expect((await f.store.read(f.name))!.revision).toBe(original.revision);\n    },\n  )",
+      "disposition": "retained-or-moved",
+      "behavior": "另一设备无Runtime恢复保原Run ID/revision/状态/Actions/批准；比较实际portable checkpoint解码记录，不能要求live claimToken等于portable-*；cancelled共同repair直接正确闭合。",
+      "currentFullNames": [
+        "Native terminal history lifecycle restores a portable active Run on another device without the original runtime or history partition",
+        "Native terminal history lifecycle restores a portable cancelled Run on another device without the original runtime or history partition"
+      ]
+    },
+    {
+      "originalTitle": "migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through %s",
+      "originalLine": 288,
+      "originalBody": "it.each(['runtime', 'bundle'] as const)(\n    'migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through %s',\n    async (boundary) => {\n      const f = await fixture(true);\n      const changeDir = path.join(f.root, 'docs/comet/changes', f.name);\n      await fs.writeFile(\n        path.join(changeDir, 'brief.md'),\n        '# Outcome\\nKeep partial work.\\n# Scope\\nCancel safely.\\n## Directory structure\\n### Modified\\n- src/ — preserve partial implementation.\\n# Non-goals\\nPublishing.\\n# Acceptance examples\\n- Existing work remains.\\n# Constraints and invariants\\nPreserve receipts.\\n# Decisions\\nNone.\\n# Open questions\\nNone.\\n# Verification expectations\\nRun focused checks.\\n',\n      );\n      await fs.mkdir(path.join(changeDir, 'specs/workflow'), { recursive: true });\n      await fs.writeFile(\n        path.join(changeDir, 'specs/workflow/spec.md'),\n        '# Workflow\\nExisting work remains.\\n',\n      );\n      expect((await f.cli(['next', f.name])).exitCode).toBe(0);\n      const shaped = (await f.runtime.inspect(f.name)).state as { state_version: number };\n      expect(\n        (\n          await f.cli([\n            'next',\n            f.name,\n            '--confirmed',\n            '--summary',\n            'Confirmed Shape',\n            '--expected-state-version',\n            String(shaped.state_version),\n            '--expected-action',\n            'confirm-shape',\n          ])\n        ).exitCode,\n      ).toBe(0);\n      const initial = await f.runtime.inspect(f.name);\n      expect(initial.state).toMatchObject({ phase: 'build' });\n      const action = initial.actions.at(-1)!;\n      const claimed = await f.runtime.claim({\n        runId: f.name,\n        actionId: action.id,\n        attempt: action.attempt,\n        inputHash: action.inputHash,\n        executorId: 'original-host',\n        claimToken: 'original-claim',\n      });\n      await f.runtime.cancel({\n        runId: f.name,\n        reason: 'Stop original work',\n        stoppedActions: [\n          {\n            actionId: action.id,\n            attempt: action.attempt,\n            inputHash: action.inputHash,\n            claimToken: claimed.actions.at(-1)!.claim!.token,\n            evidence: 'Original execution and child tasks stopped.',\n          },\n        ],\n      });\n      const original = (await f.store.read(f.name))!;\n      execFileSync('git', ['add', '-A'], { cwd: f.root, stdio: 'ignore' });\n      execFileSync(\n        'git',\n        [\n          '-c',\n          'user.name=Test',\n          '-c',\n          'user.email=test@example.com',\n          'commit',\n          '-m',\n          'preserve cancelled checkpoint',\n        ],\n        { cwd: f.root, stdio: 'ignore' },\n      );\n      const target = f.integrationRoot;\n      execFileSync('git', ['merge', '--ff-only', 'feature/history-change'], {\n        cwd: target,\n        stdio: 'ignore',\n      });\n      expect(\n        await ownerStorage.readSdkChangeOwner(target, 'native', f.name, { readOnly: true }),\n      ).toBeNull();\n      execFileSync('git', ['worktree', 'remove', f.root], { cwd: target, stdio: 'ignore' });\n      const cli = async (args: string[]) =>\n        JSON.parse((await runNativeCli([...args, '--project-root', target, '--json'])).stdout!);\n      const targetStore = createFileRuntimeStore<WorkflowRun>({\n        rootDir: path.join(resolveWorkspaceRuntimeRootSync(target), 'sdk-runs/native'),\n      });\n      const portableFile = path.join(target, 'docs/comet/changes', f.name, 'comet-state.yaml');\n      const portable = (await fs.readFile(portableFile, 'utf8')).replace(/\\r?\\n/gu, '\\r\\n');\n      await fs.writeFile(portableFile, portable);\n      expect((await cli(['doctor', f.name, '--repair', '--confirmed'])).exitCode).not.toBe(0);\n      expect(await targetStore.read(f.name)).toBeNull();\n      const migrated =\n        boundary === 'runtime'\n          ? await cli(['doctor', f.name, '--migrate-history'])\n          : JSON.parse(\n              spawnSync(\n                process.execPath,\n                [\n                  path.resolve(\n                    process.env.COMET_TEST_PACKAGE_ROOT ?? '.',\n                    'assets/skills/comet-native/scripts/comet-native-doctor.mjs',\n                  ),\n                  f.name,\n                  '--migrate-history',\n                  '--project-root',\n                  target,\n                  '--json',\n                ],\n                { encoding: 'utf8' },\n              ).stdout,\n            );\n      expect(migrated.exitCode, JSON.stringify(migrated)).toBe(0);\n      expect(migrated.data.migrated).toEqual([f.name]);\n      expect(await targetStore.readDisposition(f.name)).toBe('closed');\n      const restored = (await targetStore.read(f.name))!;\n      expect(restored.revision).toBe(original.revision);\n      expect(restored.state).toEqual(original.state);\n      expect(restored.state).toMatchObject({ phase: 'build', archived: false });\n      expect(await f.store.read(f.name)).toEqual(original);\n      expect(restored.actions).toEqual(\n        readPortableRunCheckpoint(createPortableRunCheckpoint(original), f.name, {\n          preserveSourceRevision: true,\n        })!.actions,\n      );\n      expect(await fs.readFile(portableFile, 'utf8')).toBe(portable);\n      const repeated = await cli(['doctor', f.name, '--migrate-history']);\n      expect(repeated.exitCode, JSON.stringify(repeated)).toBe(0);\n      const globalDoctor = await cli(['doctor']);\n      expect(globalDoctor.exitCode, JSON.stringify(globalDoctor)).toBe(0);\n      expect(await listActiveNativeHookChanges(target)).toEqual([]);\n      expect(await fs.readFile(portableFile, 'utf8')).toBe(portable);\n    },\n  )",
+      "disposition": "retained-or-moved",
+      "behavior": "真实linked worktree Shape批准→Builder领取→cancel，Git commit/merge并删除原worktree、CRLF便携文件；公共Doctor repair通过runtime/bundle两边界恢复原记录、重复、Hook无活动且源字节不变。停止回执要求退休；同一原title保持7targets中3IDs精确选择器。",
+      "currentFullNames": [
+        "Native terminal history lifecycle migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through runtime",
+        "Native terminal history lifecycle migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through bundle"
+      ]
+    },
+    {
+      "originalTitle": "does not shadow the %s authority in a registered source worktree",
+      "originalLine": 420,
+      "originalBody": "it.each(['original', 'newer'] as const)(\n    'does not shadow the %s authority in a registered source worktree',\n    async (version) => {\n      const f = await fixture(true);\n      await f.runtime.cancel({ runId: f.name, reason: 'Stop work' });\n      const target = f.integrationRoot;\n      await fs.cp(path.join(f.root, 'docs'), path.join(target, 'docs'), { recursive: true });\n      await fs.mkdir(path.join(target, '.comet'), { recursive: true });\n      await fs.copyFile(\n        path.join(f.root, '.comet/config.yaml'),\n        path.join(target, '.comet/config.yaml'),\n      );\n      const original = (await f.store.read(f.name))!;\n      if (version === 'newer') {\n        expect(await f.store.reopenRun(f.name, original.revision)).toBe(true);\n        expect(\n          await f.store.compareAndSwap(f.name, original.revision, {\n            ...original,\n            revision: original.revision + 1,\n          }),\n        ).toBe(true);\n      }\n      const retained = await f.store.read(f.name);\n      const result = JSON.parse(\n        (\n          await runNativeCli([\n            'doctor',\n            f.name,\n            '--migrate-history',\n            '--project-root',\n            target,\n            '--json',\n          ])\n        ).stdout!,\n      );\n      expect(result.exitCode).not.toBe(0);\n      expect(result.data.findings[0].message).toContain('authoritative record');\n      expect(\n        await ownerStorage.readSdkChangeOwner(target, 'native', f.name, { readOnly: true }),\n      ).toBeNull();\n      expect(\n        await createFileRuntimeStore<WorkflowRun>({\n          rootDir: path.join(resolveWorkspaceRuntimeRootSync(target), 'sdk-runs/native'),\n        }).read(f.name),\n      ).toBeNull();\n      expect(await f.store.read(f.name)).toEqual(retained);\n    },\n  )",
+      "disposition": "retained-or-moved",
+      "behavior": "旧自动跨worktree搜索退休；真实原始/较新source Run在显式本地取消恢复前后深等，不能冒称全局扫描仍存在。",
+      "currentFullNames": [
+        "Native terminal history lifecycle preserves the original source authority when explicitly restoring a local cancellation",
+        "Native terminal history lifecycle preserves the newer source authority when explicitly restoring a local cancellation"
+      ]
+    },
+    {
+      "originalTitle": "rejects portable history import with %s without overwriting local evidence",
+      "originalLine": 469,
+      "originalBody": "it.each([\n    'active',\n    'missing-stop',\n    'corrupt-hash',\n    'unknown-definition',\n    'archive-obligation',\n    'child-lineage',\n    'fixed-application',\n    'pending-cleanup',\n    'existing-run',\n    'existing-projection',\n  ] as const)(\n    'rejects portable history import with %s without overwriting local evidence',\n    async (failure) => {\n      const f = await fixture();\n      const initial = await f.runtime.inspect(f.name);\n      const action = initial.actions.at(-1)!;\n      await f.runtime.claim({\n        runId: f.name,\n        actionId: action.id,\n        attempt: action.attempt,\n        inputHash: action.inputHash,\n        executorId: 'original-host',\n        claimToken: 'original-claim',\n      });\n      if (failure !== 'active')\n        await f.runtime.cancel({\n          runId: f.name,\n          reason: 'Cancel work',\n          ...(failure === 'missing-stop'\n            ? {}\n            : {\n                stoppedActions: [\n                  {\n                    actionId: action.id,\n                    attempt: action.attempt,\n                    inputHash: action.inputHash,\n                    claimToken: 'original-claim',\n                    evidence: 'Original execution and child tasks stopped.',\n                  },\n                ],\n              }),\n        });\n      const target = await fs.mkdtemp(path.join(os.tmpdir(), 'native-history-rejection-'));\n      roots.push(target);\n      execFileSync('git', ['init', '-b', 'dev'], { cwd: target, stdio: 'ignore' });\n      await fs.cp(path.join(f.root, 'docs'), path.join(target, 'docs'), { recursive: true });\n      await fs.mkdir(path.join(target, '.comet'));\n      await fs.copyFile(\n        path.join(f.root, '.comet/config.yaml'),\n        path.join(target, '.comet/config.yaml'),\n      );\n      const runtimeRoot = resolveWorkspaceRuntimeRootSync(target);\n      const store = createFileRuntimeStore<WorkflowRun>({\n        rootDir: path.join(runtimeRoot, 'sdk-runs/native'),\n      });\n      const portableFile = path.join(target, 'docs/comet/changes', f.name, 'comet-state.yaml');\n      const document = parseNativeStateDocument(\n        await fs.readFile(portableFile, 'utf8'),\n        'test checkpoint',\n      ) as Record<string, unknown>;\n      if (failure === 'corrupt-hash')\n        (document.run_checkpoint as { hash: string }).hash = 'f'.repeat(64);\n      if (failure === 'unknown-definition') {\n        const run = readPortableRunCheckpoint(document.run_checkpoint, f.name, {\n          preserveSourceRevision: true,\n        })!;\n        run.workflow.hash = 'f'.repeat(64);\n        run.definitionHashes[JSON.stringify([run.workflow.id, run.workflow.version])] =\n          run.workflow.hash;\n        document.run_checkpoint = createPortableRunCheckpoint(run);\n      }\n      if (failure === 'child-lineage') {\n        const run = readPortableRunCheckpoint(document.run_checkpoint, f.name, {\n          preserveSourceRevision: true,\n        })!;\n        run.lineage = ['parent-run'];\n        document.run_checkpoint = createPortableRunCheckpoint(run);\n      }\n      if (failure === 'archive-obligation') {\n        const run = readPortableRunCheckpoint(document.run_checkpoint, f.name, {\n          preserveSourceRevision: true,\n        })!;\n        run.actions[0].stepId = 'archive.finalize';\n        document.run_checkpoint = createPortableRunCheckpoint(run);\n      }\n      if (failure === 'fixed-application')\n        document.application_checkpoint = { id: 'custom-native' };\n      await fs.writeFile(portableFile, NATIVE_MANAGED_RUN_MARKER + stringify(document));\n      const source = await fs.readFile(portableFile, 'utf8');\n      if (failure === 'pending-cleanup')\n        await fs.writeFile(\n          path.join(target, '.comet/current-change.json'),\n          JSON.stringify({\n            schema: 'comet.selection.v2',\n            workflow: 'native',\n            change: f.name,\n            branch: null,\n          }),\n        );\n      if (failure === 'existing-run')\n        await store.restoreCheckpoint(f.name, null, (await f.store.read(f.name))!);\n      const existing = await store.read(f.name);\n      const markerFile = path.join(runtimeRoot, `state-projections/native/${f.name}.json`);\n      if (failure === 'existing-projection') {\n        await fs.mkdir(path.dirname(markerFile), { recursive: true });\n        await fs.writeFile(markerFile, 'existing evidence');\n      }\n      const cli = async (args: string[]) =>\n        JSON.parse((await runNativeCli([...args, '--project-root', target, '--json'])).stdout!);\n      expect((await cli(['doctor'])).exitCode).not.toBe(0);\n      await cli(['doctor', '--migrate-history']);\n      expect(\n        await ownerStorage.readSdkChangeOwner(target, 'native', f.name, { readOnly: true }),\n      ).toBeNull();\n      const result = await cli(['doctor', f.name, '--migrate-history']);\n      expect(result.exitCode, JSON.stringify(result)).not.toBe(0);\n      expect(result.data.findings).toHaveLength(1);\n      if (failure === 'archive-obligation')\n        expect(result.data.findings[0].message).toContain('Archive execution obligations');\n      expect(await store.read(f.name)).toEqual(existing);\n      expect(\n        await ownerStorage.readSdkChangeOwner(target, 'native', f.name, { readOnly: true }),\n      ).toBeNull();\n      expect(await fs.readFile(portableFile, 'utf8')).toBe(source);\n      if (failure === 'existing-projection')\n        expect(await fs.readFile(markerFile, 'utf8')).toBe('existing evidence');\n    },\n  )",
+      "disposition": "retained-or-moved",
+      "behavior": "10分支逐一保留/转换，详guards映射；普通平台活动claim、无stop取消可恢复，真实坏数据无落地，root Child不冒充顶层，原本地权威无owner仍拒绝。Archive参数只保原SIMULATED名称损坏，无claim/事务/成功，非真实Archive义务。",
+      "currentFullNames": [
+        "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: active",
+        "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: missing-stop",
+        "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: corrupt-hash",
+        "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: unknown-definition",
+        "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: archive-obligation",
+        "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: child-lineage",
+        "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: fixed-application",
+        "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: pending-cleanup",
+        "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: existing-run",
+        "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: existing-projection"
+      ]
+    },
+    {
+      "originalTitle": "keeps portable history import safe after interruption at %s",
+      "originalLine": 599,
+      "originalBody": "it.each([\n    'journal',\n    'run',\n    'owner',\n    'projection',\n    'closure',\n    'duplicate-owner',\n    'changed-source',\n    'newer-local',\n  ] as const)('keeps portable history import safe after interruption at %s', async (stage) => {\n    const f = await fixture();\n    await f.runtime.cancel({ runId: f.name, reason: 'Stop this task' });\n    const target = await fs.mkdtemp(path.join(os.tmpdir(), 'native-history-interruption-'));\n    roots.push(target);\n    execFileSync('git', ['init', '-b', 'dev'], { cwd: target, stdio: 'ignore' });\n    await fs.cp(path.join(f.root, 'docs'), path.join(target, 'docs'), { recursive: true });\n    await fs.mkdir(path.join(target, '.comet'));\n    await fs.copyFile(\n      path.join(f.root, '.comet/config.yaml'),\n      path.join(target, '.comet/config.yaml'),\n    );\n    const cli = async () =>\n      JSON.parse(\n        (\n          await runNativeCli([\n            'doctor',\n            f.name,\n            '--migrate-history',\n            '--project-root',\n            target,\n            '--json',\n          ])\n        ).stdout!,\n      );\n    const sourceFile = path.join(target, 'docs/comet/changes', f.name, 'comet-state.yaml');\n    const source = await fs.readFile(sourceFile, 'utf8');\n    const runtimeRoot = resolveWorkspaceRuntimeRootSync(target);\n    const store = createFileRuntimeStore<WorkflowRun>({\n      rootDir: path.join(runtimeRoot, 'sdk-runs/native'),\n    });\n    if (\n      ['journal', 'projection', 'duplicate-owner', 'changed-source', 'newer-local'].includes(stage)\n    ) {\n      const write = atomicFiles.atomicWriteContainedText;\n      vi.spyOn(atomicFiles, 'atomicWriteContainedText').mockImplementation(async (...args) => {\n        await write(...args);\n        if (\n          args[0]\n            .replaceAll('\\\\', '/')\n            .includes(stage === 'journal' ? '/history-imports/' : '/state-projections/')\n        )\n          throw new Error('Injected publication interruption');\n      });\n    } else if (stage === 'run' || stage === 'owner') {\n      const register = ownerStorage.registerSdkChangeOwner;\n      vi.spyOn(ownerStorage, 'registerSdkChangeOwner').mockImplementation(async (...args) => {\n        if (stage === 'owner') await register(...args);\n        throw new Error('Injected owner interruption');\n      });\n    } else {\n      const close = ownerStorage.closeSdkChangeOwner;\n      vi.spyOn(ownerStorage, 'closeSdkChangeOwner').mockImplementation(async (...args) => {\n        await close(...args);\n        throw new Error('Injected closure interruption');\n      });\n    }\n    expect((await cli()).exitCode).not.toBe(0);\n    vi.restoreAllMocks();\n    const imported = await store.read(f.name);\n    if (stage === 'duplicate-owner' || stage === 'changed-source') {\n      const active = path.join(runtimeRoot, 'change-owners/native', `${f.name}.json`);\n      const historyFile = path.join(runtimeRoot, 'change-owner-history/native', `${f.name}.json`);\n      await fs.mkdir(path.dirname(historyFile), { recursive: true });\n      await fs.copyFile(active, historyFile);\n      if (stage === 'changed-source') {\n        const ownerSource = await fs.readFile(active, 'utf8');\n        await fs.appendFile(sourceFile, '\\n');\n        expect((await cli()).exitCode).not.toBe(0);\n        expect(await fs.readFile(active, 'utf8')).toBe(ownerSource);\n        expect(await fs.readFile(historyFile, 'utf8')).toBe(ownerSource);\n        expect(await store.read(f.name)).toEqual(imported);\n        return;\n      }\n    }\n    if (stage === 'newer-local') {\n      const newer = { ...imported!, revision: imported!.revision + 1 };\n      expect(await store.compareAndSwap(f.name, imported!.revision, newer)).toBe(true);\n      expect((await cli()).exitCode).not.toBe(0);\n      expect(await store.read(f.name)).toEqual(newer);\n      return;\n    }\n    const resumed = await cli();\n    expect(resumed.exitCode, JSON.stringify(resumed)).toBe(0);\n    expect(await store.readDisposition(f.name)).toBe('closed');\n    if (imported) expect(await store.read(f.name)).toEqual(imported);\n    expect((await cli()).exitCode).toBe(0);\n    expect(await fs.readFile(sourceFile, 'utf8')).toBe(source);\n    expect(await history.hasNativeSdkPortableHistoryImport(target, f.name)).toBe(false);\n  })",
+      "disposition": "retained-or-moved",
+      "behavior": "8旧阶段中journal/projection纯旧机制退休；7当前中断分支加closing/reopening原2业务，均公共Doctor+重复恢复，源变化及较新本地记录不能覆盖。",
+      "currentFullNames": [
+        "Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: owner-before",
+        "Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: owner-after",
+        "Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: run-after",
+        "Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: closure-after",
+        "Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: duplicate-owner",
+        "Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: changed-source",
+        "Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: newer-local",
+        "Native terminal history lifecycle keeps an interrupted closing transaction visible and recovers it through explicit migration",
+        "Native terminal history lifecycle keeps an interrupted reopening transaction visible and recovers it through explicit migration"
+      ]
+    },
+    {
+      "originalTitle": "reports explicit migration progress on stderr without polluting JSON or ordinary doctor",
+      "originalLine": 699,
+      "originalBody": "it('reports explicit migration progress on stderr without polluting JSON or ordinary doctor', async () => {\n    const f = await fixture();\n    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);\n    const readOnly = await runNativeCli(['doctor', f.name, '--project-root', f.root, '--json']);\n    expect(JSON.parse(readOnly.stdout!).exitCode).toBe(0);\n    expect(stderr.mock.calls.flat().join('')).not.toContain('Native 历史迁移');\n    stderr.mockClear();\n    const migrated = await runNativeCli([\n      'doctor',\n      '--migrate-history',\n      '--project-root',\n      f.root,\n      '--json',\n    ]);\n    const result = JSON.parse(migrated.stdout!);\n    expect(result.exitCode).toBe(0);\n    expect(result.data.active).toEqual([f.name]);\n    const progress = stderr.mock.calls\n      .map(([text]) => String(text))\n      .filter((text) => text.includes('Native 历史迁移'));\n    expect(progress).toHaveLength(2);\n    expect(progress[0]).toContain('进度：0/1');\n    expect(progress[1]).toContain('结束：1/1 项，已封存 0，保留活动 1，失败 0');\n    expect(migrated.stdout).not.toContain('[Comet]');\n  })",
+      "disposition": "retained-or-moved",
+      "behavior": "保普通Doctor只读、JSON可解析、批量结构化active/migrated/healthy；专用stderr进度文案退出。",
+      "currentFullNames": [
+        "Native terminal history lifecycle reports explicit migration results without polluting JSON or ordinary doctor"
+      ]
+    },
+    {
+      "originalTitle": "throttles intermediate progress to five seconds while always reporting completion",
+      "originalLine": 725,
+      "originalBody": "it('throttles intermediate progress to five seconds while always reporting completion', async () => {\n    const f = await fixture();\n    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);\n    vi.spyOn(ownerStorage, 'listSdkChangeOwnerRecoveryNames').mockResolvedValue(\n      Array.from({ length: 7 }, () => f.name),\n    );\n    vi.useFakeTimers({ toFake: ['Date'] });\n    vi.spyOn(history, 'closeNativeSdkHistory').mockImplementation(async () => {\n      vi.setSystemTime(Date.now() + 1_000);\n      return false;\n    });\n    expect((await f.cli(['doctor', '--migrate-history'])).exitCode).toBe(0);\n    const progress = stderr.mock.calls\n      .map(([text]) => String(text))\n      .filter((text) => text.includes('Native 历史迁移'));\n    expect(progress).toHaveLength(3);\n    expect(progress[0]).toContain('进度：0/7');\n    expect(progress[1]).toContain('进度：5/7');\n    expect(progress[2]).toContain('结束：7/7');\n  })",
+      "disposition": "feature-removed",
+      "behavior": "只有旧专用progress timer五秒节流机制，随已删除progress组件明确退休；无业务状态/批准/claim断言丢失。",
+      "currentFullNames": []
+    },
+    {
+      "originalTitle": "keeps migration failures visible in the result and final progress count",
+      "originalLine": 746,
+      "originalBody": "it('keeps migration failures visible in the result and final progress count', async () => {\n    const f = await fixture();\n    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);\n    const result = await f.cli(['doctor', 'missing-history', '--migrate-history']);\n    expect(result.exitCode).not.toBe(0);\n    expect(result.data.findings).toHaveLength(1);\n    expect(stderr.mock.calls.flat().join('')).toContain(\n      '结束：1/1 项，已封存 0，保留活动 0，失败 1',\n    );\n  })",
+      "disposition": "retained-or-moved",
+      "behavior": "失败必须非0且healthy=false并具逐项findings；补真实未闭合terminal不得报migrated/释放selection；旧最终进度字符串退休。",
+      "currentFullNames": [
+        "Native terminal history lifecycle keeps migration failures visible in the structured result",
+        "Native terminal history lifecycle does not report an unclosed terminal Run as migrated or release its selected business"
+      ]
+    },
+    {
+      "originalTitle": "rejects combining migration with unrelated mutation flags",
+      "originalLine": 757,
+      "originalBody": "it('rejects combining migration with unrelated mutation flags', async () => {\n    const f = await fixture();\n    expect((await f.cli(['doctor', '--migrate-history', '--repair'])).exitCode).not.toBe(0);\n    expect(await f.store.readDisposition(f.name)).toBe('active');\n  })",
+      "disposition": "retained-or-moved",
+      "behavior": "原migrate-history不能与无关mutation参数组合，原Run仍活动，保原title。",
+      "currentFullNames": [
+        "Native terminal history lifecycle rejects combining migration with unrelated mutation flags"
+      ]
+    },
+    {
+      "originalTitle": "rejects source authority appearing after the history import journal is published",
+      "originalLine": 762,
+      "originalBody": "it('rejects source authority appearing after the history import journal is published', async () => {\n    const f = await fixture(true);\n    await f.runtime.cancel({ runId: f.name, reason: 'Stop work' });\n    const target = f.integrationRoot;\n    await fs.cp(path.join(f.root, 'docs'), path.join(target, 'docs'), { recursive: true });\n    await fs.mkdir(path.join(target, '.comet'), { recursive: true });\n    await fs.copyFile(\n      path.join(f.root, '.comet/config.yaml'),\n      path.join(target, '.comet/config.yaml'),\n    );\n    const original = await f.store.read(f.name);\n    const sourceFile = path.join(target, 'docs/comet/changes', f.name, 'comet-state.yaml');\n    const sourceBytes = await fs.readFile(sourceFile);\n    const targetStore = createFileRuntimeStore<WorkflowRun>({\n      rootDir: path.join(resolveWorkspaceRuntimeRootSync(target), 'sdk-runs/native'),\n    });\n    let journalPublished = false;\n    let absentObservations = 0;\n    let presentObservations = 0;\n    const listRoots = gitWorktrees.listGitWorktreeRoots;\n    vi.spyOn(gitWorktrees, 'listGitWorktreeRoots').mockImplementation((projectRoot) => {\n      const entries = listRoots(projectRoot);\n      if (path.resolve(projectRoot) !== path.resolve(target)) return entries;\n      if (journalPublished) {\n        presentObservations++;\n        return entries;\n      }\n      absentObservations++;\n      return entries.filter((root) => path.resolve(root) !== path.resolve(f.root));\n    });\n    const write = atomicFiles.atomicWriteContainedText;\n    vi.spyOn(atomicFiles, 'atomicWriteContainedText').mockImplementation(async (...args) => {\n      await write(...args);\n      if (args[0].replaceAll('\\\\', '/').includes('/history-imports/')) journalPublished = true;\n    });\n    const result = JSON.parse(\n      (\n        await runNativeCli([\n          'doctor',\n          f.name,\n          '--migrate-history',\n          '--project-root',\n          target,\n          '--json',\n        ])\n      ).stdout!,\n    );\n    expect(journalPublished).toBe(true);\n    expect(absentObservations).toBeGreaterThan(0);\n    expect(presentObservations).toBeGreaterThan(0);\n    expect(result.exitCode).not.toBe(0);\n    expect(result.data.findings[0].message).toContain('authoritative record');\n    expect(\n      await ownerStorage.readSdkChangeOwner(target, 'native', f.name, { readOnly: true }),\n    ).toBeNull();\n    expect(await targetStore.read(f.name)).toBeNull();\n    expect(await history.hasNativeSdkPortableHistoryImport(target, f.name)).toBe(true);\n    expect(await f.store.read(f.name)).toEqual(original);\n    expect(await fs.readFile(sourceFile)).toEqual(sourceBytes);\n  })",
+      "disposition": "retained-or-moved",
+      "behavior": "旧journal发布后重新扫描全worktrees机制退休；同case原始/较新source权威业务在第11映射，另活动分支显式恢复拒绝保所有字节/owner/Run不落地；不伪造旧journal阶段。",
+      "currentFullNames": [
+        "Native terminal history lifecycle preserves the original source authority when explicitly restoring a local cancellation",
+        "Native terminal history lifecycle preserves the newer source authority when explicitly restoring a local cancellation",
+        "Native terminal history lifecycle preserves the original workspace when an explicit local recovery is refused"
+      ]
+    }
+  ],
+  "unchangedRegistryTargets": [
+    "native-orphan-cancelled-checkpoint-history",
+    "native-closed-cancellation-historical-binding",
+    "native-513-crlf-history-migration"
+  ],
+  "all38Names": [
+    "Native terminal history lifecycle shares one Store root per project history inspection and rechecks each scan after metadata changes",
+    "Native terminal history lifecycle closes a fully cancelled Run while retaining readable history and portable documents",
+    "Native terminal history lifecycle keeps an unfinished Run active during explicit migration",
+    "Native terminal history lifecycle never migrates on ordinary inspection and resumes explicit interrupted closure",
+    "Native terminal history lifecycle defers closed history body corruption to explicit inspection while Hook reads only partition metadata",
+    "Native terminal history lifecycle does not let a history owner hide an active checkpoint conflict",
+    "Native terminal history lifecycle recovers an interrupted owner publication through a new explicit doctor invocation",
+    "Native terminal history lifecycle keeps an interrupted closing transaction visible and recovers it through explicit migration",
+    "Native terminal history lifecycle keeps an interrupted reopening transaction visible and recovers it through explicit migration",
+    "Native terminal history lifecycle rejects same-revision content drift and unknown workflow definitions before closing",
+    "Native terminal history lifecycle restores a portable active Run on another device without the original runtime or history partition",
+    "Native terminal history lifecycle restores a portable cancelled Run on another device without the original runtime or history partition",
+    "Native terminal history lifecycle migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through runtime",
+    "Native terminal history lifecycle migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through bundle",
+    "Native terminal history lifecycle preserves the original source authority when explicitly restoring a local cancellation",
+    "Native terminal history lifecycle preserves the newer source authority when explicitly restoring a local cancellation",
+    "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: active",
+    "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: missing-stop",
+    "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: corrupt-hash",
+    "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: unknown-definition",
+    "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: archive-obligation",
+    "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: child-lineage",
+    "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: fixed-application",
+    "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: pending-cleanup",
+    "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: existing-run",
+    "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: existing-projection",
+    "Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: owner-before",
+    "Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: owner-after",
+    "Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: run-after",
+    "Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: closure-after",
+    "Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: duplicate-owner",
+    "Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: changed-source",
+    "Native terminal history lifecycle preserves checkpoint authority after common recovery interruption: newer-local",
+    "Native terminal history lifecycle reports explicit migration results without polluting JSON or ordinary doctor",
+    "Native terminal history lifecycle keeps migration failures visible in the structured result",
+    "Native terminal history lifecycle rejects combining migration with unrelated mutation flags",
+    "Native terminal history lifecycle preserves the original workspace when an explicit local recovery is refused",
+    "Native terminal history lifecycle does not report an unclosed terminal Run as migrated or release its selected business"
+  ],
+  "tempResults": {
+    "passed": 37,
+    "failed": 0,
+    "pending": 1,
+    "sourceAllPassed": true,
+    "bundle": "Original whole candidate reproduced bundle RED; final source run excludes only that pending real bundle until reviewed source patch is built; never marked passed",
+    "file": "C:/Users/BENYM/AppData/Local/Temp/comet-native-history-current-20261111/history-final-source-results.json",
+    "originalBundleRed": "C:/Users/BENYM/AppData/Local/Temp/comet-native-history-current-20261111/history-current-proposed-first-results.json"
+  },
+  "portableContract": "Compare raw restored record against readPortableRunCheckpoint(actual file,{preserveSourceRevision:true}); live claim tokens intentionally become portable-*.",
+  "actualArchiveCancellationAttempt": {
+    "provenance": "Real npm 0.5.2 Native public runtime cancel against real applied Archive WAL",
+    "result": "Rejected; original Run deep equal; no cancelled+WAL legal origin reproduced",
+    "file": "C:/Users/BENYM/AppData/Local/Temp/comet-native-history-current-20261111/published-native-archive-cancel-attempt.json"
+  }
+}

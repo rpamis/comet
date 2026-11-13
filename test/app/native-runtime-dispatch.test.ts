@@ -1,10 +1,10 @@
+import '../helpers/isolated-agent-home.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runtimeDispatchCommand } from '../../app/commands/runtime.js';
 import { runRuntimeCli } from '../../app/cli/runtime-command.js';
-import { runNativeCli } from '../../domains/comet-native/native-cli.js';
 import { advanceNativeSdkChange } from '../../domains/comet-native/native-sdk-next.js';
 import {
   createNativeSdkRuntime,
@@ -21,13 +21,26 @@ import {
 } from '../../domains/workflow-contract/change-runtime-owner.js';
 import { nativeProjectPaths } from '../../domains/comet-native/native-paths.js';
 import { fixtureAcceptanceReview } from '../helpers/native-builder-acceptance-review.js';
-import { nativeSdkReportExecutor } from '../../domains/comet-native/native-sdk-report.js';
+
 import type { RuntimeAction } from '../../domains/engine/runtime.js';
 import * as taskContext from '../../app/commands/comet-task-context.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
 
+function identifiedResultRequest(
+  request: { receipt: string; result: { status: string; output: unknown } },
+  outcomeId: string,
+) {
+  const { runId, ...identity } = JSON.parse(
+    Buffer.from(request.receipt, 'base64url').toString('utf8'),
+  );
+  return {
+    operation: 'record-outcome',
+    runId,
+    outcome: { ...identity, outcomeId, ...request.result },
+  };
+}
 const roots: string[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -45,26 +58,24 @@ describe('Claim context delivery', () => {
       path.join(home, '.comet/memory/profile.md'),
       '# 个人画像\n\n## 沟通偏好\n\n- 使用中文回复\n',
     );
-    const invoke = async (args: string[]) =>
-      JSON.parse(
-        (
-          await promisify(execFile)(
-            process.execPath,
-            [path.resolve('dist/app/cli/index.js'), ...args],
-            {
-              env: {
-                ...process.env,
-                HOME: home,
-                USERPROFILE: home,
-                XDG_CACHE_HOME: path.join(home, '.cache'),
-                LOCALAPPDATA: path.join(home, 'local'),
-              },
-              windowsHide: true,
-              timeout: 30_000,
-            },
-          )
-        ).stdout,
+    const invoke = async (args: string[]) => {
+      const { stdout, stderr } = await promisify(execFile)(
+        process.execPath,
+        [path.resolve('dist/app/cli/index.js'), ...args],
+        {
+          env: {
+            ...process.env,
+            HOME: home,
+            USERPROFILE: home,
+            XDG_CACHE_HOME: path.join(home, '.cache'),
+            LOCALAPPDATA: path.join(home, 'local'),
+          },
+          windowsHide: true,
+          timeout: 30_000,
+        },
       );
+      return { ...JSON.parse(stdout), cliStderr: stderr };
+    };
     const args = [
       'runtime',
       'dispatch',
@@ -76,7 +87,7 @@ describe('Claim context delivery', () => {
       requestFile,
     ];
     const first = await invoke(args);
-    expect(first.data.contextDelivery.status).toBe('delivered');
+    expect(first.data.contextDelivery.status, first.cliStderr).toBe('delivered');
     expect(first.data.context[0].text).toContain('使用中文回复');
     expect((await invoke(args)).data.context).toEqual([]);
     const restored = await invoke(first.data.contextActions.restore.commandArgs.slice(1));
@@ -168,49 +179,35 @@ describe('Claim context delivery', () => {
   });
 });
 
-async function builderFixture(version: '1' | '3' = '1') {
+async function builderFixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-dispatch-'));
   roots.push(root);
   await fs.mkdir(path.join(root, '.git'));
   const name = 'compact-handoff';
-  if (version === '3') {
-    const created = await runNativeCli([
-      'new',
+  const config = defaultProjectConfig('docs', 'en');
+  await writeProjectConfig(root, {
+    ...config,
+    native: { ...config.native, document_writes: 'revert' },
+  });
+  await fs.mkdir(path.join(root, 'docs/comet/changes', name), { recursive: true });
+  await registerSdkChangeOwner(root, {
+    schema: COMET_CHANGE_OWNER_SCHEMA,
+    workflow: 'native',
+    change: name,
+    format: 'sdk',
+    application: 'native',
+    runId: name,
+  });
+  await createNativeSdkRuntime(root).start({
+    runId: name,
+    workflow: { id: 'comet-native', version: '4' },
+    input: { name, artifactRootRef: 'docs' },
+    initialState: createNativePortableState({
       name,
-      '--runtime',
-      'sdk',
-      '--project-root',
-      root,
-      '--json',
-    ]);
-    expect(created.exitCode, created.stderr).toBe(0);
-  } else {
-    // 用真实旧版定义创建兼容样例，保留旧协议断言。
-    const config = defaultProjectConfig('docs', 'en');
-    await writeProjectConfig(root, {
-      ...config,
-      native: { ...config.native, document_writes: 'revert' },
-    });
-    await fs.mkdir(path.join(root, 'docs/comet/changes', name), { recursive: true });
-    await registerSdkChangeOwner(root, {
-      schema: COMET_CHANGE_OWNER_SCHEMA,
-      workflow: 'native',
-      change: name,
-      format: 'sdk',
-      application: 'native',
-      runId: name,
-    });
-    await createNativeSdkRuntime(root).start({
-      runId: name,
-      workflow: { id: 'comet-native', version: '1' },
-      input: { name, artifactRootRef: 'docs' },
-      initialState: createNativePortableState({
-        name,
-        language: 'en',
-        nextAction: 'prepare-shape-confirmation',
-      }),
-    });
-  }
+      language: 'en',
+      nextAction: 'prepare-shape-confirmation',
+    }),
+  });
   const inspection = await inspectNativeSdkRun(root, name);
   const paths = await nativeProjectPaths(root, inspection.artifactRootRef);
   const changeDir = path.join(paths.changesDir, name);
@@ -279,9 +276,8 @@ async function verifierOutcomeFixture(
     requestFile: string;
     action: RuntimeAction;
   }) => Promise<void>,
-  version: '1' | '3' = '1',
 ) {
-  const fixture = await builderFixture(version);
+  const fixture = await builderFixture();
   const { root, name } = fixture;
   await cli(root, fixture.requestFile);
   const requestRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-verifier-request-'));
@@ -314,8 +310,8 @@ async function verifierOutcomeFixture(
         checks: [],
         knownLimits: [],
         review: null,
+        requireIndependentReview: beforeClaim !== undefined,
         submittedAt: new Date().toISOString(),
-        verificationChecks: [],
       },
     },
   });
@@ -368,46 +364,36 @@ async function verifierOutcomeFixture(
 }
 
 describe('Native dispatch CLI presentation', () => {
-  it('executes managed Build checks through public receipt dispatch and resumes the Builder', async () => {
-    const { root, name, requestFile } = await builderFixture('3');
+  it('reports actual platform Build checks through public receipt dispatch without scheduling a managed check', async () => {
+    const { root, name, requestFile } = await builderFixture();
     const claimed = await cli(root, requestFile);
+    const checked = await promisify(execFile)(process.execPath, ['-e', 'console.log("checked")'], {
+      cwd: root,
+      windowsHide: true,
+    });
+    expect(checked.stdout.trim()).toBe('checked');
     const request = claimed.data.resultRequest;
     request.result.output = {
-      response: {
-        kind: 'request-checks',
-        checks: [
-          {
-            id: 'unit',
-            name: 'Unit',
-            executable: process.execPath,
-            argv: ['-e', 'console.log("checked")'],
-            cwdRef: '.',
-            timeoutMs: 10000,
-            repeatable: true,
-          },
-        ],
-      },
+      summary: 'Implemented and checked the fixture.',
+      addressedAcceptanceIds: ['A1'],
+      checks: [{ name: 'Unit', result: 'passed', note: checked.stdout.trim() }],
+      knownLimits: [],
     };
     await fs.writeFile(requestFile, JSON.stringify(request));
     expect((await cli(root, requestFile)).status).toBe('succeeded');
-    const result = await runNativeCli(['next', name, '--project-root', root, '--json']);
-    expect(result.exitCode, result.stdout || result.stderr).toBe(0);
     const run = (await inspectNativeSdkRun(root, name)).run;
-    expect(run.actions.find((action) => action.stepId === 'build.checks')?.status).toBe(
-      'succeeded',
-    );
-    const builder = run.actions.at(-1)!;
-    expect(builder).toMatchObject({ stepId: 'build.builder', status: 'pending' });
     expect(
-      (builder.input as { outputs: Record<string, { checks: { status: string }[] }> }).outputs[
-        'build.checks'
-      ].checks[0].status,
-    ).toBe('passed');
-    expect(run.state).toMatchObject({ phase: 'build', verification_result: 'pending' });
+      run.actions.some((a) => a.stepId === 'build.checks' || a.stepId === 'verify.checks'),
+    ).toBe(false);
+    expect(run.actions.find((a) => a.id === claimed.data.action.id)?.outcome?.output).toMatchObject(
+      { checks: [{ name: 'Unit', result: 'passed', note: 'checked' }] },
+    );
+    expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
+    expect(run.state).toMatchObject({ phase: 'verify', verification_result: 'pending' });
   });
 
-  it('uses one result protocol and omits duplicate Builder review for a new public v3 Run', async () => {
-    const { root, requestFile } = await builderFixture('3');
+  it('uses one result protocol and omits duplicate Builder review for a new public v4 Run', async () => {
+    const { root, requestFile } = await builderFixture();
     const result = await cli(root, requestFile);
     expect(result.data.resultRequest.receipt).toEqual(expect.any(String));
     expect(result.data.resultRequest.result.output.acceptanceReview).toBeUndefined();
@@ -416,8 +402,8 @@ describe('Native dispatch CLI presentation', () => {
     expect(result.data.markUnknownRequest).toBeUndefined();
   });
 
-  it('waits for acceptance directly after a v3 Verifier result without a report Action', async () => {
-    const { root, name, requestFile } = await verifierOutcomeFixture(undefined, '3');
+  it('waits for acceptance directly after a v4 Verifier result without a report Action', async () => {
+    const { root, name, requestFile } = await verifierOutcomeFixture(undefined);
     const result = await cli(root, requestFile);
     expect(result.status).toBe('succeeded');
     const first = (await inspectNativeSdkRun(root, name)).run;
@@ -431,8 +417,8 @@ describe('Native dispatch CLI presentation', () => {
     expect((await inspectNativeSdkRun(root, name)).run.revision).toBe(first.revision);
   });
 
-  it('preserves v3 acceptance when the report view fails and retries it on next', async () => {
-    const { root, name, requestFile, action } = await verifierOutcomeFixture(undefined, '3');
+  it('preserves v4 acceptance when the report view fails and retries it on next', async () => {
+    const { root, name, requestFile, action } = await verifierOutcomeFixture(undefined);
     const reportFile = path.join(root, 'docs/comet/changes', name, 'verification.md');
     await fs.mkdir(reportFile);
     const result = await cli(root, requestFile);
@@ -450,8 +436,7 @@ describe('Native dispatch CLI presentation', () => {
   it('reports all malformed Builder fields together and accepts corrected content only with a new outcomeId', async () => {
     const f = await builderFixture();
     const claimed = await cli(f.root, f.requestFile);
-    const request = structuredClone(claimed.data.outcomeRequest);
-    request.outcome.outcomeId = 'invalid-fields';
+    const request = identifiedResultRequest(claimed.data.resultRequest, 'invalid-fields');
     request.outcome.output = {
       summary: 'Implemented the fixture',
       acceptanceReview: [
@@ -459,7 +444,6 @@ describe('Native dispatch CLI presentation', () => {
       ],
       checks: [{ name: 'Tests', result: 'blocked' }],
       knownLimits: [],
-      verificationChecks: [{ id: 'partial' }],
     };
     const submit = async () => {
       await fs.writeFile(f.requestFile, JSON.stringify(request));
@@ -471,27 +455,42 @@ describe('Native dispatch CLI presentation', () => {
     };
     const before = (await inspectNativeSdkRun(f.root, f.name)).run;
     const rejected = await submit();
+    expect(rejected.response.status).toBe('failed');
     const message = rejected.response.error?.message ?? '';
     for (const field of [
       'acceptanceReview[0].evidence',
       'acceptanceReview[0].note',
       'acceptanceReview[0].id',
+      'B1',
       'A1',
       'checks[0].result',
-      'verificationChecks[0].argv',
-      'verificationChecks[0].timeoutMs',
-      'verificationChecks[0].repeatable',
       'outcomeId',
     ])
       expect(message).toContain(field);
+    const stopped = (await inspectNativeSdkRun(f.root, f.name)).run;
+    expect(stopped.state).toEqual(before.state);
+    const action = stopped.actions.find((a) => a.id === f.request.actionId)!;
+    expect(action.status).toBe('running');
+    expect(action.claim).toEqual(before.actions.at(-1)?.claim);
+    expect(action.rejectedOutcomes).toHaveLength(1);
+    request.outcome.outcomeId = 'incomplete-and-invalid-check';
+    request.outcome.output = {
+      summary: 'Implemented the fixture',
+      acceptanceReview: [],
+      checks: [{ name: 'Tests', result: 'blocked' }],
+      knownLimits: [],
+    };
+    const combined = await submit();
+    expect(combined.response.status).toBe('failed');
+    for (const field of ['A1', 'checks[0].result', 'outcomeId'])
+      expect(combined.response.error?.message).toContain(field);
     expect((await inspectNativeSdkRun(f.root, f.name)).run.state).toEqual(before.state);
     request.outcome.output = {
       summary: 'Implemented the fixture',
+      addressedAcceptanceIds: ['A1'],
       acceptanceReview: fixtureAcceptanceReview(['A1']),
       checks: [],
       knownLimits: [],
-      verificationChecks: [],
-      submittedAt: '2026-11-03T00:00:00+00:00',
     };
     const conflict = await submit();
     expect(conflict.response.error?.code).toBe('OUTCOME_CONFLICT');
@@ -500,10 +499,12 @@ describe('Native dispatch CLI presentation', () => {
     const accepted = await submit();
     expect(accepted.response.status, JSON.stringify(accepted.response)).toBe('succeeded');
     const after = (await inspectNativeSdkRun(f.root, f.name)).run;
-    expect(after.actions.find(({ id }) => id === request.outcome.actionId)?.claim).toEqual(
-      before.actions.at(-1)?.claim,
-    );
+    const original = after.actions.find((a) => a.id === f.request.actionId)!;
+    expect(original.claim).toEqual(before.actions.at(-1)?.claim);
+    expect(original.rejectedOutcomes).toHaveLength(2);
+    expect(original.outcome?.outcomeId).toBe('corrected-fields');
   });
+
   it('submits a Native candidate through its returned receipt without manual identity fields', async () => {
     const f = await builderFixture();
     const claimed = await cli(f.root, f.requestFile);
@@ -512,16 +513,11 @@ describe('Native dispatch CLI presentation', () => {
     expect(request).not.toHaveProperty('outcome');
     expect(request.result.output).toMatchObject({
       summary: expect.any(String),
-      acceptanceReview: expect.any(Array),
+      addressedAcceptanceIds: ['A1'],
+      checks: expect.any(Array),
     });
-    expect(claimed.data.checkRequestTemplate).toMatchObject({
-      id: expect.any(String),
-      executable: expect.any(String),
-      argv: expect.any(Array),
-      cwdRef: '.',
-      timeoutMs: expect.any(String),
-      repeatable: expect.any(String),
-    });
+    expect(claimed.data.checkRequestTemplate).toBeUndefined();
+
     request.result = {
       status: 'succeeded',
       output: {
@@ -537,7 +533,7 @@ describe('Native dispatch CLI presentation', () => {
     await fs.writeFile(file, JSON.stringify(request));
     await cli(f.root, file);
     const before = (await inspectNativeSdkRun(f.root, f.name)).run;
-    expect(before.actions.at(-1)).toMatchObject({ stepId: 'verify.checks', status: 'pending' });
+    expect(before.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
     await cli(f.root, file);
     expect((await inspectNativeSdkRun(f.root, f.name)).run).toEqual(before);
   });
@@ -582,7 +578,11 @@ describe('Native dispatch CLI presentation', () => {
     const f = await builderFixture();
     const claimed = await cli(f.root, f.requestFile);
     const before = (await inspectNativeSdkRun(f.root, f.name)).run;
-    const template = structuredClone(claimed.data.failureOutcomeRequest);
+    const template = identifiedResultRequest(
+      claimed.data.resultRequest,
+      'builder-original-failure',
+    );
+    template.outcome.status = 'failed';
     template.outcome.outcomeId = 'builder-original-failure';
     template.outcome.output = { summary: 'The fixture Builder execution failed.' };
     const { output, ...identity } = template.outcome;
@@ -601,7 +601,8 @@ describe('Native dispatch CLI presentation', () => {
     expect(rejected.exitCode).toBe(64);
     expect(rejected.response.error?.code).toBe('INVALID_REQUEST');
     expect(rejected.response.error?.message).toContain('outcome.output');
-    expect(rejected.response.error?.message).toContain('outcomeRequest');
+    expect(rejected.response.error?.message).toContain('resultRequest');
+    expect(rejected.response.error?.message).toContain('result.output');
     expect(rejected.response.error?.message).not.toContain(f.request.claimToken);
     expect((await inspectNativeSdkRun(f.root, f.name)).run).toEqual(before);
     await fs.writeFile(f.requestFile, JSON.stringify(template));
@@ -617,114 +618,6 @@ describe('Native dispatch CLI presentation', () => {
       claim: { token: f.request.claimToken },
       outcome: { outcomeId: 'builder-original-failure', output },
     });
-  });
-  it('recovers a rejected Builder after formal Spec drift through the original failure receipt and reconfirms the same change', async () => {
-    const f = await builderFixture();
-    await cli(f.root, f.requestFile);
-    const before = await inspectNativeSdkRun(f.root, f.name);
-    const spec = path.join(f.root, 'docs/comet/changes', f.name, 'specs/workflow/spec.md');
-    await fs.writeFile(spec, '# Workflow\nThe workflow resumes and records an audit event.\n');
-    await fs.writeFile(
-      f.requestFile,
-      JSON.stringify({
-        operation: 'record-outcome',
-        runId: f.name,
-        outcome: {
-          actionId: f.request.actionId,
-          attempt: f.request.attempt,
-          inputHash: f.request.inputHash,
-          claimToken: f.request.claimToken,
-          outcomeId: 'rejected-candidate',
-          status: 'succeeded',
-          output: {
-            summary: 'Implemented the fixture.',
-            addressedAcceptanceIds: ['A1'],
-            acceptanceReview: fixtureAcceptanceReview(['A1']),
-            checks: [],
-            knownLimits: [],
-            review: null,
-            submittedAt: new Date().toISOString(),
-            verificationChecks: [],
-          },
-        },
-      }),
-    );
-    const rejected = await runtimeDispatchCommand(
-      { application: 'native', projectRoot: f.root, request: f.requestFile },
-      { output: 'compact' },
-    );
-    expect(rejected.response.status).toBe('failed');
-    const recovery = rejected.response.recovery as {
-      code: string;
-      affectedPaths: string[];
-      request: { outcome: { actionId: string; claimToken: string; status: string } };
-      recoveryArgs: string[];
-    };
-    expect(recovery).toMatchObject({
-      code: 'shape-drift',
-      affectedPaths: [spec],
-      request: {
-        operation: 'record-outcome',
-        runId: f.name,
-        outcome: {
-          actionId: f.request.actionId,
-          claimToken: f.request.claimToken,
-          status: 'failed',
-        },
-      },
-    });
-    const rejectedRun = (await inspectNativeSdkRun(f.root, f.name)).run;
-    expect(rejectedRun.state).toEqual(before.run.state);
-    expect(rejectedRun.actions.map(({ id }) => id)).toEqual(before.run.actions.map(({ id }) => id));
-    expect(rejectedRun.actions.find(({ id }) => id === f.request.actionId)).toMatchObject({
-      status: 'running',
-      claim: { token: f.request.claimToken },
-      rejectedOutcomes: [{ code: 'OUTCOME_REJECTED' }],
-    });
-    await fs.writeFile(f.requestFile, JSON.stringify(recovery.request));
-    const previousExitCode = process.exitCode;
-    const logged = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    try {
-      await runRuntimeCli(
-        recovery.recoveryArgs
-          .slice(1)
-          .map((arg) => (arg === '<failure-outcome-request-json-file>' ? f.requestFile : arg)),
-      );
-      expect(process.exitCode, JSON.stringify(logged.mock.calls)).toBe(0);
-    } finally {
-      logged.mockRestore();
-      process.exitCode = previousExitCode;
-    }
-    const once = (await inspectNativeSdkRun(f.root, f.name)).run;
-    expect(
-      (
-        await runtimeDispatchCommand({
-          application: 'native',
-          projectRoot: f.root,
-          request: f.requestFile,
-        })
-      ).response.status,
-    ).toBe('succeeded');
-    expect((await inspectNativeSdkRun(f.root, f.name)).run).toEqual(once);
-    const status = JSON.parse(
-      (await runNativeCli(['status', f.name, '--project-root', f.root, '--json'])).stdout!,
-    );
-    const revise = status.data.continuation.commandAlternatives.find(
-      (entry: { name: string }) => entry.name === 'revise-requirements',
-    );
-    expect(revise).toBeDefined();
-    const args = revise.commandArgs
-      .slice(2)
-      .map((arg: string) =>
-        arg === '<summary>' ? 'The user explicitly requests reconfirming the edited Spec.' : arg,
-      );
-    const revised = await runNativeCli(args);
-    expect(revised.exitCode, revised.stdout || revised.stderr).toBe(0);
-    const after = await inspectNativeSdkRun(f.root, f.name);
-    expect(after.run.runId).toBe(before.run.runId);
-    expect(after.state.phase).toBe('shape');
-    expect(after.state.archived).toBe(false);
-    expect(after.run.actions.find(({ id }) => id === f.request.actionId)?.status).toBe('failed');
   });
   it('does not disclose a Builder failure receipt to a rejected outcome with another claim', async () => {
     const f = await builderFixture();
@@ -769,16 +662,17 @@ describe('Native dispatch CLI presentation', () => {
     const result = await cli(root, requestFile);
     expect(result.status).toBe('succeeded');
     const first = (await inspectNativeSdkRun(root, name)).run;
-    expect(first.actions.find((action) => action.stepId === 'verify.report')?.status).toBe(
-      'succeeded',
-    );
-    expect(first.waits.find((wait) => wait.stepId === 'verify.confirm')?.status).toBe('pending');
-    expect(first.actions.some((action) => action.stepId.startsWith('archive.'))).toBe(false);
+    expect(first.actions.some((a) => a.stepId === 'verify.report')).toBe(false);
+    expect(
+      await fs.readFile(path.join(root, 'docs/comet/changes', name, 'verification.md'), 'utf8'),
+    ).toContain('Fixture acceptance passed.');
+    expect(first.waits.find((w) => w.stepId === 'verify.confirm')?.status).toBe('pending');
+    expect(first.actions.some((a) => a.stepId.startsWith('archive.'))).toBe(false);
     await cli(root, requestFile);
     expect((await inspectNativeSdkRun(root, name)).run.revision).toBe(first.revision);
   });
 
-  it('preserves the SDK single-operation default and also completes reports in CLI details mode', async () => {
+  it('preserves the SDK single-operation default and also completes report views in CLI details mode', async () => {
     const { root, name, requestFile } = await verifierOutcomeFixture();
     const result = await runtimeDispatchCommand({
       application: 'native',
@@ -786,31 +680,39 @@ describe('Native dispatch CLI presentation', () => {
       request: requestFile,
     });
     expect(result.response.status).toBe('succeeded');
-    expect(
-      (await inspectNativeSdkRun(root, name)).run.actions.find(
-        (action) => action.stepId === 'verify.report',
-      )?.status,
-    ).toBe('pending');
+    const run = (await inspectNativeSdkRun(root, name)).run;
+    expect(run.actions.some((a) => a.stepId === 'verify.report')).toBe(false);
+    await expect(
+      fs.access(path.join(root, 'docs/comet/changes', name, 'verification.md')),
+    ).rejects.toThrow();
+    expect(run.waits.find((w) => w.stepId === 'verify.confirm')?.status).toBe('pending');
     const details = await cli(root, requestFile, true);
     expect(
-      details.data.waits.find((wait: { stepId: string }) => wait.stepId === 'verify.confirm')
-        .status,
+      details.data.waits.find((w: { stepId: string }) => w.stepId === 'verify.confirm').status,
     ).toBe('pending');
+    expect(
+      await fs.readFile(path.join(root, 'docs/comet/changes', name, 'verification.md'), 'utf8'),
+    ).toContain('Fixture acceptance passed.');
+    expect((await inspectNativeSdkRun(root, name)).run.revision).toBe(run.revision);
   });
 
-  it('keeps an accepted Verifier result successful when automatic report execution fails', async () => {
+  it('keeps an accepted Verifier result successful when report view writing fails', async () => {
     const { root, name, requestFile, action } = await verifierOutcomeFixture();
-    vi.spyOn(nativeSdkReportExecutor, 'execute').mockRejectedValueOnce(
-      new Error('Fixture report write interrupted'),
-    );
+    const report = path.join(root, 'docs/comet/changes', name, 'verification.md');
+    await fs.mkdir(report);
     const result = await cli(root, requestFile);
     expect(result.status).toBe('succeeded');
     expect(result.warning.code).toBe('NATIVE_REPORT_PENDING');
     const run = (await inspectNativeSdkRun(root, name)).run;
-    expect(run.actions.find((entry) => entry.id === action.id)?.status).toBe('succeeded');
-    expect(run.actions.find((entry) => entry.stepId === 'verify.report')?.status).toBe('unknown');
-    expect(run.waits.some((wait) => wait.stepId === 'verify.confirm')).toBe(false);
+    expect(run.actions.find((a) => a.id === action.id)?.status).toBe('succeeded');
+    expect(run.actions.some((a) => a.stepId === 'verify.report')).toBe(false);
+    expect(run.waits.find((w) => w.stepId === 'verify.confirm')?.status).toBe('pending');
+    await fs.rmdir(report);
+    await advanceNativeSdkChange(root, name);
+    expect(await fs.readFile(report, 'utf8')).toContain('Fixture acceptance passed.');
+    expect((await inspectNativeSdkRun(root, name)).run.revision).toBe(run.revision);
   });
+
   it('preserves complete claimed inputs, state, identity and result template without repeating the Run history', async () => {
     const { root, requestFile, name } = await builderFixture();
     const compact = await cli(root, requestFile);
@@ -825,38 +727,40 @@ describe('Native dispatch CLI presentation', () => {
     });
     expect(compact.data.action).toEqual(action);
     expect(compact.data.state).toEqual(committed.state);
-    expect(compact.data.outcomeRequest).toEqual({
+    expect(compact.data.resultRequest).toMatchObject({
       operation: 'record-outcome',
-      runId: name,
-      outcome: {
-        actionId: action.id,
-        attempt: action.attempt,
-        inputHash: action.inputHash,
-        claimToken: action.claim!.token,
-        outcomeId: '<outcome-id>',
+      receipt: expect.any(String),
+      result: {
         status: 'succeeded',
-        output: expect.objectContaining({
+        output: {
           summary: expect.any(String),
           addressedAcceptanceIds: ['A1'],
-          acceptanceReview: [expect.objectContaining({ id: 'A1' })],
-          verificationChecks: [expect.objectContaining({ executable: '<executable>' })],
-        }),
+          checks: [
+            expect.objectContaining({
+              name: expect.any(String),
+              result: expect.any(String),
+              note: expect.any(String),
+            }),
+          ],
+          knownLimits: expect.any(Array),
+        },
       },
     });
-    expect(compact.data.failureOutcomeRequest).toMatchObject({
-      operation: 'record-outcome',
+    expect(
+      JSON.parse(Buffer.from(compact.data.resultRequest.receipt, 'base64url').toString()),
+    ).toEqual({
       runId: name,
-      outcome: {
-        actionId: action.id,
-        claimToken: action.claim!.token,
-        status: 'failed',
-        output: { summary: '<actual-execution-failure>' },
-      },
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      claimToken: action.claim!.token,
     });
+    expect(compact.data.outcomeRequest).toBeUndefined();
+    expect(compact.data.failureOutcomeRequest).toBeUndefined();
     expect(compact.data.continuation.userCommunication.agentInstruction).toContain(
       'original claimed task',
     );
-    expect(compact.data.activeActions[0].outcomeRequestRef).toBe('outcomeRequest');
+    expect(compact.data.activeActions[0].outcomeRequestRef).toBe('resultRequest');
     expect(compact.data.activeActions[0]).not.toHaveProperty('outcomeRequest');
     expect(compact.data.activeActions[0].contextRequest).toMatchObject({
       phase: 'build',
@@ -865,16 +769,22 @@ describe('Native dispatch CLI presentation', () => {
     });
     expect(compact.data.continuation).not.toHaveProperty('contextRequest');
     expect(compact.data.activeActions[0].contextRequest).not.toHaveProperty('instruction');
-    for (const key of ['actions', 'outputs', 'actionContexts', 'waits'])
+    for (const key of [
+      'run',
+      'history',
+      'commands',
+      'actions',
+      'outputs',
+      'actionContexts',
+      'waits',
+    ])
       expect(compact.data).not.toHaveProperty(key);
     const serialized = (value: unknown) =>
       JSON.stringify(value, (_key, item) =>
         typeof item === 'string' ? item.replaceAll(root, '<project-root>') : item,
       );
-    expect(Buffer.byteLength(serialized(compact.data))).toBeLessThan(
-      // 当前 Action 的具体结果契约可增加固定正文，历史仍不得重复返回。
-      Buffer.byteLength(serialized(committed)) / 2 + 1024,
-    );
+    for (const historical of committed.actions.filter(({ id }) => id !== action.id))
+      expect(serialized(compact.data)).not.toContain(serialized(historical));
     const sdk = await runtimeDispatchCommand({
       application: 'native',
       projectRoot: root,
@@ -891,7 +801,7 @@ describe('Native dispatch CLI presentation', () => {
   it('returns the submitted outcome receipt and explicit user decision from the same committed Run', async () => {
     const { root, requestFile, name } = await builderFixture();
     const claimed = await cli(root, requestFile);
-    const request = claimed.data.outcomeRequest;
+    const request = identifiedResultRequest(claimed.data.resultRequest, 'builder-stopped');
     request.outcome = {
       ...request.outcome,
       outcomeId: 'builder-stopped',

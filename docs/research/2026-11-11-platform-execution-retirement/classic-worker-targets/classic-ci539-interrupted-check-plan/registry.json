@@ -1,0 +1,94 @@
+{
+  "cases": [
+    {
+      "id": "classic-ci539-interrupted-check-plan",
+      "sources": [
+        "report:2026-11-05-pr539-ci-failures"
+      ],
+      "behavior": "Recover the original interrupted command plan without inferring a replacement build.",
+      "coverageLevel": "runtime",
+      "reproduction": "The corresponding PR #539 CI test failed on commit 56744e50. Reproduce the independent behavior in its isolated project with the exact test selector below; local results and platform limitations are recorded in docs/research/2026-11-05-pr539-ci-repair.zh.md.",
+      "expected": "Run the original validated plan and reject a corrupt SDK Action binding.",
+      "forbidden": "Inferring another build or executing a mismatched Action.",
+      "rootCause": "The not-executed checkpoint hid the original command plan from the interrupted-check lookup.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+          "namePattern": "^(?:preserves and reruns an interrupted check instead of inferring another build|does not rerun an interrupted check with a corrupted SDK Action binding)$",
+          "requiredNames": [
+            "preserves and reruns an interrupted check instead of inferring another build",
+            "does not rerun an interrupted check with a corrupted SDK Action binding"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "Vitest reports the enclosing suite in each complete test name; preserve the original registration and assertions while selecting their existing complete identities.",
+        "authorization": "https://github.com/rpamis/comet/pull/539",
+        "record": "docs/research/2026-11-05-pr539-regression-selectors.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+            "namePattern": "^(?:Classic executed check evidence preserves and reruns an interrupted check instead of inferring another build|Classic executed check evidence does not rerun an interrupted check with a corrupted SDK Action binding)$",
+            "requiredNames": [
+              "Classic executed check evidence preserves and reruns an interrupted check instead of inferring another build",
+              "Classic executed check evidence does not rerun an interrupted check with a corrupted SDK Action binding"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/pr539-regression-selector-migration/registry-before.json",
+            "sha256": "8d567fb4216a827739ef65ba2e681a92db176b7519a85084e60f9c97137812ce"
+          },
+          "tests": {
+            "file": "docs/research/pr539-regression-selector-migration/test-snapshots.json",
+            "sha256": "14bad7461fb2dfb7dd6137c4f3994686cce8dd3224112f66dddea87558b87f92"
+          },
+          "mapping": {
+            "file": "docs/research/pr539-regression-selector-migration/case-migrations.json",
+            "sha256": "994cdf369ed1fbc6772519ecd9800f601eb1fb3cfb0ac9e04aa165f4e14dc505"
+          },
+          "patch": {
+            "file": "docs/research/pr539-regression-selector-migration/selector-correction.patch",
+            "sha256": "3089040ad21529c87c64ef3961beb3955c1a017d689d84ec6a32d5d0ba04c760"
+          }
+        },
+        "supersededBy": {
+          "kind": "feature-removed",
+          "reason": "用户明确撤下 Native/Classic 文件内容证明和由此强制的编辑复核、自动失效及重验。原测试全文和来源保留；替代测试保留真实失败、原 SDK 身份/批准、显式修订、单次执行及归档恢复。逐行为边界见 safety-map.json，未把模型或耗时验证记为通过。",
+          "authorization": "report:2026-11-08-agent-managed-workflow-content",
+          "record": "docs/research/2026-11-08-agent-managed-workflow-content.zh.md",
+          "tests": [
+            {
+              "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+              "namePattern": "^(?:Classic executed check evidence preserves and reruns an interrupted check instead of inferring another build|Classic executed check evidence does not rerun an interrupted check with a corrupted SDK Action binding)$",
+              "requiredNames": [
+                "Classic executed check evidence preserves and reruns an interrupted check instead of inferring another build",
+                "Classic executed check evidence does not rerun an interrupted check with a corrupted SDK Action binding"
+              ]
+            }
+          ],
+          "evidence": {
+            "mapping": {
+              "file": "docs/research/2026-11-08-content-proof-removal-mapping.json",
+              "sha256": "4d4fceaf8d69164e27ee1fa1163e2cd488187592e765fbb172479385599cd287"
+            },
+            "registry": {
+              "file": "docs/research/2026-11-08-content-proof-removal-registry.json",
+              "sha256": "28cb98097f37ca727590fb95bc653d0234652a58d97195d2c98b055ef5a397a3"
+            },
+            "tests": {
+              "file": "docs/research/2026-11-08-content-proof-removal-tests.json",
+              "sha256": "192387c785246ee07e2b5feb504c7bfcc993855ec74214530c4f5d20fd8fbefe"
+            },
+            "patch": {
+              "file": "docs/research/2026-11-08-content-proof-removal-patch.patch",
+              "sha256": "637ee45889440f7d80dcad71c6b349047572bfa332e7782be1993797e680c885"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -7,6 +7,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { requireFileSymlink } from '../../helpers/file-symlink.js';
 import { inspectCometProjectStatus } from '../../../domains/comet-entry/project-status.js';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
@@ -21,7 +22,7 @@ import { createDiskApplication } from '../../helpers/workflow-application.js';
 
 import * as protectedOwnerFiles from '../../../domains/workflow-contract/protected-project-path.js';
 import { registerSdkChangeOwner } from '../../../domains/workflow-contract/change-runtime-owner.js';
-import { createLegacyNativeSdkChange } from '../../helpers/native-legacy-sdk-change.js';
+import { createNativeSdkTestChange } from '../../helpers/native-sdk-change.js';
 
 async function snapshot(root: string): Promise<Record<string, string>> {
   const files: Record<string, string> = {};
@@ -104,7 +105,7 @@ describe('SDK ownership in shared project status', () => {
     ).toMatchObject({ name: 'closed-change', error: expect.any(String) });
   });
 
-  it.each([
+  it.for([
     'dual-owner',
     'bad-owner',
     'active-checkpoint',
@@ -112,8 +113,8 @@ describe('SDK ownership in shared project status', () => {
     'pending-marker',
     'missing-checkpoint',
     'symlink-checkpoint',
-    'bad-fence',
-  ])('retains a per-change error for %s without hiding other changes', async (failure) => {
+  ])('retains a per-change error for %s without hiding other changes', async (failure, context) => {
+    if (failure === 'symlink-checkpoint') await requireFileSymlink(context);
     await cancelled('closed-change');
     expect(
       (await runNativeCli(['new', 'active-change', '--project-root', root, '--json'])).exitCode,
@@ -143,14 +144,40 @@ describe('SDK ownership in shared project status', () => {
       await fs.rename(checkpoint, moved);
       await fs.symlink(moved, checkpoint);
     }
-    if (failure === 'bad-fence') await fs.writeFile(path.join(root, '.comet/runtime'), '{bad');
     const result = await inspectCometProjectStatus(root, { includeHistory: false });
     expect(result.workflows.native.changes.map((c) => c.name)).toEqual([
       'active-change',
       'closed-change',
     ]);
     expect(result.workflows.native.changes[1]).toMatchObject({ error: expect.any(String) });
-    expect('error' in result.workflows.native.changes[0]).toBe(failure === 'bad-fence');
+    expect('error' in result.workflows.native.changes[0]).toBe(false);
+  });
+
+  it('ignores retired partition tokens while preserving Native active and closed history selection', async () => {
+    await cancelled('closed-change');
+    const created = await runNativeCli(['new', 'active-change', '--project-root', root, '--json']);
+    expect(created.exitCode, created.stderr).toBe(0);
+    const runtime = resolveWorkspaceRuntimeRootSync(root);
+    const token = path.join(runtime, '.change-owner-partitions.json');
+    await fs.writeFile(token, '{bad');
+    const before = { project: await snapshot(root), runtime: await snapshot(runtime) };
+    const files = vi.spyOn(protectedOwnerFiles, 'readProtectedProjectFile');
+    for (const options of [undefined, { includeHistory: true }, { includeHistory: false }]) {
+      const status = await inspectCometProjectStatus(root, options);
+      expect(status.workflows.native.changes.map((change) => change.name)).toEqual(
+        options?.includeHistory === false ? ['active-change'] : ['active-change', 'closed-change'],
+      );
+      expect(status.workflows.native.changes.every((change) => !('error' in change))).toBe(true);
+    }
+    expect(
+      files.mock.calls.some(
+        (args) =>
+          args[1] === '.change-owner-partitions.json' ||
+          args[1].startsWith('change-owner-records/classic/'),
+      ),
+    ).toBe(false);
+    expect(await fs.readFile(token, 'utf8')).toBe('{bad');
+    expect({ project: await snapshot(root), runtime: await snapshot(runtime) }).toEqual(before);
   });
 
   it.each(['active-owner', 'custom-owner', 'pending-active-owner'])(
@@ -197,30 +224,52 @@ describe('SDK ownership in shared project status', () => {
     ).toContain('legacy-history');
   });
 
-  it('retries closed-history metadata when a writer changes the owner generation', async () => {
+  it('reads closed-history metadata afresh after serial owner changes without importing unrelated owners', async () => {
     await cancelled('closed-race');
+    const runtime = resolveWorkspaceRuntimeRootSync(root);
     const original = protectedOwnerFiles.readProtectedProjectFile;
-    let reads = 0;
+    const refs: string[] = [];
     vi.spyOn(protectedOwnerFiles, 'readProtectedProjectFile').mockImplementation(
       async (...args) => {
-        const result = await original(...args);
-        if (args[1] === 'change-owner-history/native/closed-race.json' && ++reads === 1) {
-          await registerSdkChangeOwner(root, {
-            schema: 'comet.change-owner.v1',
-            workflow: 'native',
-            change: 'unrequested',
-            runId: 'unrequested',
-            application: 'native',
-            format: 'sdk',
-          });
-        }
-        return result;
+        refs.push(args[1]);
+        return original(...args);
       },
     );
     expect(
       (await inspectCometProjectStatus(root, { includeHistory: false })).workflows.native.changes,
     ).toEqual([]);
-    expect(reads).toBe(2);
+    expect(
+      refs.filter((ref) => ref === 'change-owner-history/native/closed-race.json'),
+    ).toHaveLength(1);
+    await registerSdkChangeOwner(root, {
+      schema: 'comet.change-owner.v1',
+      workflow: 'native',
+      change: 'unrequested',
+      runId: 'unrequested',
+      application: 'native',
+      format: 'sdk',
+    });
+    await fs.writeFile(path.join(runtime, 'change-owner-history/native/closed-race.json'), '{}');
+    refs.length = 0;
+    const before = { project: await snapshot(root), runtime: await snapshot(runtime) };
+    const status = await inspectCometProjectStatus(root, { includeHistory: false });
+    expect(status.workflows.native.changes).toHaveLength(1);
+    expect(status.workflows.native.changes[0]).toMatchObject({
+      name: 'closed-race',
+      error: expect.stringContaining('Invalid change runtime owner'),
+    });
+    expect(
+      refs.filter((ref) => ref === 'change-owner-history/native/closed-race.json'),
+    ).toHaveLength(1);
+    expect(
+      refs.some(
+        (ref) =>
+          ref.includes('unrequested') ||
+          ref === '.change-owner-partitions.json' ||
+          ref.startsWith('change-owner-records/classic/'),
+      ),
+    ).toBe(false);
+    expect({ project: await snapshot(root), runtime: await snapshot(runtime) }).toEqual(before);
   });
 
   it('batches only actual global Native change names and isolates a corrupt owner', async () => {
@@ -240,7 +289,7 @@ describe('SDK ownership in shared project status', () => {
       async (...args) => {
         const result = await original(...args);
         if (args[1] === '.change-owner-partitions.json') tokens += 1;
-        if (/^change-(?:owners|owner-history)\/native\//u.test(args[1])) bodies.push(args[1]);
+        if (args[1].startsWith('change-owner-records/')) bodies.push(args[1]);
         return result;
       },
     );
@@ -250,8 +299,11 @@ describe('SDK ownership in shared project status', () => {
       'batch-second',
     ]);
     expect(status.workflows.native.changes.every((change) => !('error' in change))).toBe(true);
-    expect(tokens).toBe(2);
-    expect(bodies).toHaveLength(2);
+    expect(tokens).toBe(0);
+    expect(bodies.sort()).toEqual([
+      'change-owner-records/native/batch-first.json',
+      'change-owner-records/native/batch-second.json',
+    ]);
     expect(bodies.some((ref) => ref.includes('unrequested-history'))).toBe(false);
     await fs.writeFile(path.join(history, 'batch-first.json'), '{}');
     tokens = 0;
@@ -265,51 +317,97 @@ describe('SDK ownership in shared project status', () => {
       name: 'batch-second',
       schema: 'comet.native.sdk-status.v1',
     });
-    expect(tokens).toBe(2);
-    expect(bodies).toHaveLength(2);
+    expect(tokens).toBe(0);
+    expect(bodies.sort()).toEqual([
+      'change-owner-records/native/batch-first.json',
+      'change-owner-records/native/batch-second.json',
+    ]);
     await fs.writeFile(path.join(runtimeRoot, '.change-owner-partitions.json'), '{bad');
+    bodies.length = 0;
+    tokens = 0;
+    const before = { project: await snapshot(root), runtime: await snapshot(runtimeRoot) };
     const fenced = await inspectCometProjectStatus(root);
     expect(fenced.workflows.native.changes.map((change) => change.name)).toEqual([
       'batch-first',
       'batch-second',
     ]);
-    for (const change of fenced.workflows.native.changes) {
-      expect(change).toMatchObject({
-        error: expect.stringContaining('Invalid change owner partition token'),
-      });
-    }
+    expect(fenced.workflows.native.changes[0]).toMatchObject({
+      name: 'batch-first',
+      error: expect.stringContaining('Invalid change runtime owner'),
+    });
+    expect(fenced.workflows.native.changes[1]).toMatchObject({
+      name: 'batch-second',
+      schema: 'comet.native.sdk-status.v1',
+    });
+    expect(tokens).toBe(0);
+    expect(bodies.sort()).toEqual([
+      'change-owner-records/native/batch-first.json',
+      'change-owner-records/native/batch-second.json',
+    ]);
+    expect({ project: await snapshot(root), runtime: await snapshot(runtimeRoot) }).toEqual(before);
   });
 
-  it('retries the real global owner batch when a writer completes during prefetch', async () => {
+  it('refreshes the real global owner batch after serial changes without importing unrelated owners', async () => {
     const created = await runNativeCli(['new', 'batch-race', '--project-root', root, '--json']);
     expect(created.exitCode, created.stderr).toBe(0);
     const original = protectedOwnerFiles.readProtectedProjectFile;
-    let reads = 0;
+    const refs: string[] = [];
     vi.spyOn(protectedOwnerFiles, 'readProtectedProjectFile').mockImplementation(
       async (...args) => {
-        const result = await original(...args);
-        if (args[1] === 'change-owners/native/batch-race.json') {
-          reads += 1;
-          if (reads === 1)
-            await registerSdkChangeOwner(root, {
-              schema: 'comet.change-owner.v1',
-              workflow: 'native',
-              change: 'outside-added',
-              runId: 'outside-added',
-              application: 'native',
-              format: 'sdk',
-            });
-        }
-        return result;
+        refs.push(args[1]);
+        return original(...args);
       },
     );
-    const status = await inspectCometProjectStatus(root);
-    expect(status.workflows.native.changes).toHaveLength(1);
-    expect(status.workflows.native.changes[0]).toMatchObject({
+    const first = await inspectCometProjectStatus(root);
+    expect(first.workflows.native.changes).toHaveLength(1);
+    expect(first.workflows.native.changes[0]).toMatchObject({
       name: 'batch-race',
       schema: 'comet.native.sdk-status.v1',
     });
-    expect(reads).toBe(2);
+    expect(refs.filter((ref) => ref.startsWith('change-owner-records/'))).toEqual([
+      'change-owner-records/native/batch-race.json',
+    ]);
+
+    const closed = await runNativeCli(['cancel', 'batch-race', '--project-root', root, '--json']);
+    expect(closed.exitCode, closed.stderr).toBe(0);
+    const added = await runNativeCli(['new', 'batch-added', '--project-root', root, '--json']);
+    expect(added.exitCode, added.stderr || added.stdout).toBe(0);
+    await registerSdkChangeOwner(root, {
+      schema: 'comet.change-owner.v1',
+      workflow: 'native',
+      change: 'outside-added',
+      runId: 'outside-added',
+      application: 'native',
+      format: 'sdk',
+    });
+    refs.length = 0;
+    const runtime = resolveWorkspaceRuntimeRootSync(root);
+    const before = { project: await snapshot(root), runtime: await snapshot(runtime) };
+    const second = await inspectCometProjectStatus(root);
+    expect(second.workflows.native.changes.map((change) => change.name)).toEqual([
+      'batch-added',
+      'batch-race',
+    ]);
+    expect(
+      second.workflows.native.changes.every(
+        (change) =>
+          'schema' in change &&
+          change.schema === 'comet.native.sdk-status.v1' &&
+          !('error' in change),
+      ),
+    ).toBe(true);
+    expect(second.workflows.native.changes[1]).toMatchObject({
+      name: 'batch-race',
+      status: 'cancelled',
+    });
+    expect(refs.filter((ref) => ref.startsWith('change-owner-records/')).sort()).toEqual([
+      'change-owner-records/native/batch-added.json',
+      'change-owner-records/native/batch-race.json',
+    ]);
+    expect(
+      refs.some((ref) => ref.includes('outside-added') || ref === '.change-owner-partitions.json'),
+    ).toBe(false);
+    expect({ project: await snapshot(root), runtime: await snapshot(runtime) }).toEqual(before);
   });
 
   it.each([true, false])(
@@ -333,7 +431,7 @@ describe('SDK ownership in shared project status', () => {
         async (...args) => {
           const result = await original(...args);
           if (args[1] === '.change-owner-partitions.json') tokens += 1;
-          if (args[1].startsWith('change-owners/classic/')) bodies.push(args[1]);
+          if (args[1].startsWith('change-owner-records/')) bodies.push(args[1]);
           return result;
         },
       );
@@ -345,12 +443,16 @@ describe('SDK ownership in shared project status', () => {
       expect(status.workflows.classic.changes.every((change) => change.runtimeMode === 'sdk')).toBe(
         true,
       );
-      expect(tokens).toBe(2);
-      expect(bodies).toHaveLength(2);
+      expect(tokens).toBe(0);
+      expect(bodies.sort()).toEqual([
+        'change-owner-records/classic/classic-first.json',
+        'change-owner-records/classic/classic-second.json',
+      ]);
       expect(bodies.some((ref) => ref.includes('unrequested-history'))).toBe(false);
       await fs.writeFile(path.join(owners, 'classic-first.json'), '{}');
       tokens = 0;
       bodies.length = 0;
+      const before = { project: await snapshot(root), runtime: await snapshot(runtimeRoot) };
       const corrupt = await inspectCometProjectStatus(root, { includeHistory });
       expect(corrupt.workflows.classic.changes[0]).toMatchObject({
         name: 'classic-first',
@@ -360,8 +462,14 @@ describe('SDK ownership in shared project status', () => {
         name: 'classic-second',
         runtimeMode: 'sdk',
       });
-      expect(tokens).toBe(2);
-      expect(bodies).toHaveLength(2);
+      expect(tokens).toBe(0);
+      expect(bodies.sort()).toEqual([
+        'change-owner-records/classic/classic-first.json',
+        'change-owner-records/classic/classic-second.json',
+      ]);
+      expect({ project: await snapshot(root), runtime: await snapshot(runtimeRoot) }).toEqual(
+        before,
+      );
     },
   );
 
@@ -381,19 +489,23 @@ describe('SDK ownership in shared project status', () => {
   });
 
   it('uses the same SDK validation as named Native status and preserves other changes', async () => {
-    await createLegacyNativeSdkChange(root, 'native-demo');
+    await createNativeSdkTestChange(root, 'native-demo');
     const before = await inspectCometProjectStatus(root);
     expect(before.workflows.native.changes[0]).toMatchObject({
       schema: 'comet.native.sdk-status.v1',
       run: { id: 'native-demo', revision: 1 },
     });
-    const markerFile = path.join(
+    // SIMULATED authority corruption replaces the retired duplicate marker check.
+    const activeStore = path.join(
       resolveWorkspaceRuntimeRootSync(root),
-      'state-projections/native/native-demo.json',
+      'sdk-runs/native/.runtime-store-v2',
     );
-    const marker = JSON.parse(await fs.readFile(markerFile, 'utf8'));
-    marker.revision = 9999;
-    await fs.writeFile(markerFile, JSON.stringify(marker));
+    const keys = await fs.readdir(activeStore);
+    expect(keys).toHaveLength(1);
+    await fs.writeFile(
+      path.join(activeStore, keys[0]!, 'checkpoint.json'),
+      '{ SIMULATED malformed authoritative Run',
+    );
     const classic = await runClassicCli(
       ['state', 'init', 'classic-demo', 'full', '--isolation', 'current'],
       undefined,
@@ -405,7 +517,7 @@ describe('SDK ownership in shared project status', () => {
     const status = await inspectCometProjectStatus(root);
     expect(status.workflows.native.changes[0]).toMatchObject({
       name: 'native-demo',
-      error: expect.stringMatching(/marker|checkpoint/),
+      error: expect.stringMatching(/checkpoint|JSON|record|invalid/i),
     });
     expect(status.workflows.native.changes[0]).not.toHaveProperty('continuation');
     expect(
@@ -513,6 +625,44 @@ describe('SDK ownership in shared project status', () => {
           ],
         },
       });
+    },
+  );
+  it.each(['current-index', 'legacy-no-index'] as const)(
+    'discovers real closed SDK history %s read-only when its derived active document directory is absent',
+    async (kind) => {
+      await cancelled('owner-only-history');
+      // SIMULATED loss of a derived document directory; the real public CLI-created closed Run and owner remain untouched.
+      await fs.rm(path.join(root, 'comet/changes/owner-only-history'), {
+        recursive: true,
+        force: true,
+      });
+      const runtimeRoot = resolveWorkspaceRuntimeRootSync(root);
+      const owner = path.join(runtimeRoot, 'change-owner-history/native/owner-only-history.json');
+      await expect(fs.access(owner)).resolves.toBeUndefined();
+      if (kind === 'legacy-no-index')
+        await fs.rm(path.join(runtimeRoot, 'change-owner-records/native/owner-only-history.json'));
+      const named = await runNativeCli([
+        'status',
+        'owner-only-history',
+        '--project-root',
+        root,
+        '--json',
+      ]);
+      expect(named.exitCode, named.stderr).toBe(0);
+      const before = await snapshot(runtimeRoot);
+      for (const options of [undefined, { includeHistory: true }]) {
+        const global = await inspectCometProjectStatus(root, options);
+        expect(global.workflows.native.changes).toEqual([
+          expect.objectContaining({ name: 'owner-only-history', status: 'cancelled' }),
+        ]);
+      }
+      expect(
+        (await inspectCometProjectStatus(root, { includeHistory: false })).workflows.native.changes,
+      ).toEqual([]);
+      expect(await snapshot(runtimeRoot)).toEqual(before);
+      await expect(
+        fs.access(path.join(root, 'comet/changes/owner-only-history')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
     },
   );
 });

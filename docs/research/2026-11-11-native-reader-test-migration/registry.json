@@ -1,0 +1,89 @@
+{
+  "cases": [
+    {
+      "sources": ["report:2026-11-05-pr539-ci-native-supported-version-cancellation-ownership"],
+      "coverageLevel": "runtime",
+      "id": "native-supported-version-cancellation-ownership",
+      "behavior": "Native v2 and v3 ownership can complete cancellation and release the workspace only after execution closure.",
+      "rootCause": "Cancellation and active-change inspection recognized only internal definition version1, rejecting current v3 Runs.",
+      "expected": "Cancel unstarted current work and release its workspace, while claimed or unknown work waits for the original host stop proof.",
+      "forbidden": "Reject a supported version as foreign ownership, release a live claimed execution, or weaken fixed application identity.",
+      "reproduction": "Two current Native cancellation representatives failed locally on version ownership. All ten cancellation cases subsequently passed across focused runs after version-aware loading and ownership repair.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-cancellation.test.ts",
+          "namePattern": "^(?:Native cancellation lifecycle ends unstarted work and releases the workspace without Archive|Native cancellation lifecycle keeps a cancelled claimed execution active until the original host proves it stopped|Native cancellation lifecycle retains a claimed Builder until its original host proves it stopped \\(unknown=false\\)|Native cancellation lifecycle retains a claimed Builder until its original host proves it stopped \\(unknown=true\\))$",
+          "requiredNames": [
+            "Native cancellation lifecycle ends unstarted work and releases the workspace without Archive",
+            "Native cancellation lifecycle keeps a cancelled claimed execution active until the original host proves it stopped",
+            "Native cancellation lifecycle retains a claimed Builder until its original host proves it stopped (unknown=false)",
+            "Native cancellation lifecycle retains a claimed Builder until its original host proves it stopped (unknown=true)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-236-linked-isolation",
+      "behavior": "多个真实 linked worktree 的 Native 会话互不污染 scope/运行状态，手工业务编辑后仍可推进",
+      "status": "covered",
+      "reason": "症状仍适用，旧 scope-hash 实现已换成当前候选和 workspace 绑定。",
+      "coverageLayer": "SDK and Compat",
+      "evidence": ["https://github.com/rpamis/comet/issues/236"],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-parallel-worktree.test.ts",
+          "namePattern": "keeps concurrent linked worktrees usable after a manual business-source edit",
+          "requiredNames": [
+            "keeps concurrent linked worktrees usable after a manual business-source edit"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+          "namePattern": "requires workspace isolation before creating a second current-workspace SDK change",
+          "requiredNames": [
+            "requires workspace isolation before creating a second current-workspace SDK change"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-status-v4-discovery.test.ts",
+          "namePattern": "finds an SDK-owned Native change in its linked worktree from the primary checkout",
+          "requiredNames": [
+            "finds an SDK-owned Native change in its linked worktree from the primary checkout"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-302-prepare-route",
+      "behavior": "Native 创建前准备/复用 linked worktree，恢复自动定位权威workspace，selection互不覆盖",
+      "status": "covered",
+      "reason": "Native已有路径继续作为现有行为验收，Classic部分由另一映射负责。",
+      "coverageLayer": "SDK and Compat",
+      "evidence": ["https://github.com/rpamis/comet/issues/302"],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-workspace-preparation.test.ts",
+          "namePattern": "reuses and validates an already prepared linked worktree|creates, resumes, prunes, and excludes an isolated worktree",
+          "requiredNames": [
+            "reuses and validates an already prepared linked worktree",
+            "creates, resumes, prunes, and excludes an isolated worktree"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-status-v4-discovery.test.ts",
+          "namePattern": "finds an SDK-owned Native change in its linked worktree from the primary checkout",
+          "requiredNames": [
+            "finds an SDK-owned Native change in its linked worktree from the primary checkout"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-parallel-worktree.test.ts",
+          "namePattern": "keeps concurrent linked worktrees usable after a manual business-source edit",
+          "requiredNames": [
+            "keeps concurrent linked worktrees usable after a manual business-source edit"
+          ]
+        }
+      ]
+    }
+  ]
+}

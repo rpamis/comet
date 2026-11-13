@@ -1,0 +1,27 @@
+{
+  "results": [
+    {
+      "root": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-legacy-receipt-red-OQ7AVW\\project-local",
+      "location": "project-local",
+      "imported": [
+        "classic-delivery-receipts/c4e7ddc7485732d10dfccfc4b6b1b4fba7fe626371959dc6447b07a19db377a9.json"
+      ],
+      "before": "needsVerification",
+      "after": "complete",
+      "originalAuthorizationPreserved": true,
+      "sourceAndTargetBytesEqual": true,
+      "repeatedImportNoOp": true,
+      "unmodifiedCurrentCliAfterPrototype": {
+        "status": 0,
+        "stdout": "{\"status\":\"imported\",\"imported\":[],\"preservedSource\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-legacy-receipt-red-OQ7AVW\\\\project-local\\\\.comet\\\\runtime\",\"classic\":[]}\n"
+      },
+      "boundary": "Temp patched explicit importer compiled from current TS; product source and public CLI are unmodified. Green import call is the Temp prototype, not claimed product CLI fix."
+    }
+  ],
+  "notExecuted": [
+    "patched product public CLI",
+    "Git-common producer",
+    "Eval",
+    "full suite"
+  ]
+}

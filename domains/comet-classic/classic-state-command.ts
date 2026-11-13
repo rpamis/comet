@@ -1,22 +1,16 @@
-import { assertClassicEditReviewsComplete } from './classic-edit-review.js';
-import { resolveClassicStateFile, LEGACY_CLASSIC_STATE_FILE } from './classic-state-file.js';
-import { randomUUID } from 'node:crypto';
-import {
-  protectClassicLegacyStateWriter,
-  resolveClassicRunDirectory,
-  resolveClassicLocalTarget,
-} from './classic-runtime-paths.js';
-import { inspectClassicSdkRevisionReadiness } from './classic-sdk-revision-readiness.js';
-import { inspectClassicSdkActionRecovery } from './classic-sdk-check-recovery.js';
-import { reviseClassicSdkWork, rebindClassicSdkWork } from './classic-sdk-revision.js';
-import { measureCometGitCommand } from '../../platform/process/runtime-metrics.js';
 import { spawnSync } from 'child_process';
+import { randomUUID } from 'node:crypto';
 import path from 'path';
 import { Document, parseDocument } from 'yaml';
-import { samePath, inspectGitWorktree } from '../../platform/paths/git-worktree.js';
-import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js';
-import { formatCliCommandArgs } from '../workflow-contract/output-envelope.js';
-import { classicSdkEntryData as sdkEntryData } from './classic-sdk-output.js';
+import { readRunState } from '../../domains/engine/state.js';
+import { inspectGitWorktree, samePath } from '../../platform/paths/git-worktree.js';
+import { measureCometGitCommand } from '../../platform/process/runtime-metrics.js';
+import {
+  createPortableRunCheckpoint,
+  encodePortableRunCheckpoint,
+  PORTABLE_RUN_CHECKPOINT_KEY,
+  type WorkflowRun,
+} from '../engine/runtime.js';
 import {
   assertChangeNotSdkOwned,
   COMET_CHANGE_OWNER_SCHEMA,
@@ -24,49 +18,9 @@ import {
   readSdkChangeOwner,
   registerCompatChangeOwner,
 } from '../workflow-contract/change-runtime-owner.js';
-import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
-import {
-  assertClassicSdkStartAvailable,
-  resolveClassicChangeRuntimeOwner,
-  restoreClassicSdkChange,
-  withClassicChangeOwnershipLock,
-} from './classic-runtime-ownership.js';
-import { createClassicSdkRun } from './classic-sdk-create.js';
-import { CLASSIC_MANAGED_RUN_MARKER } from './classic-sdk-state-store.js';
-import {
-  decideClassicSdkArchive,
-  proposeClassicSdkArchive,
-} from './classic-sdk-archive-decision.js';
-import {
-  completeClassicSdkDelivery,
-  completeClassicSdkDeliveryFromRecord,
-  verifyClassicSdkDelivery,
-} from './classic-sdk-delivery.js';
-import {
-  completeClassicSdkBuild,
-  continueClassicSdkBuildPlan,
-  decideClassicSdkBuild,
-  proposeClassicSdkBuild,
-  submitClassicSdkBuildPlan,
-} from './classic-sdk-build.js';
-import {
-  completeClassicSdkDesign,
-  decideClassicSdkDesign,
-  proposeClassicSdkDesign,
-} from './classic-sdk-design.js';
-import { findClassicSdkWorkspace, inspectClassicSdkRun } from './classic-sdk-status.js';
-import type { WorkflowRun } from '../engine/runtime.js';
-import { failClassicSdkVerify } from './classic-sdk-verify-failure.js';
-import {
-  decideClassicSdkEscalation,
-  proposeClassicSdkEscalation,
-} from './classic-sdk-escalation.js';
-import {
-  clearCurrentChange,
-  clearCurrentChangeIf,
-  resolveCurrentChange,
-  selectCurrentChange,
-} from './classic-current-change.js';
+import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js';
+import { formatCliCommandArgs } from '../workflow-contract/output-envelope.js';
+import { readClassicArtifactRequirements } from './classic-artifact-requirements.js';
 import {
   driftBlockedMessage,
   evaluateBranchBinding,
@@ -77,46 +31,27 @@ import {
   resolveBranchBinding,
   unboundDetachedMessage,
 } from './classic-branch-binding.js';
-import { collectClassicEvidence } from './classic-evidence.js';
-import {
-  collectClassicSpecFiles,
-  ensureClassicActiveChangeDirectory,
-  inspectClassicStateFileCandidates,
-  openSpecChangeNameError,
-  resolveClassicChangeDirectory,
-} from './classic-paths.js';
-import { assertClassicLayoutWritable, assertClassicLayoutReadable } from './classic-layout.js';
+import { classicConfigurationReadiness } from './classic-build-configuration.js';
+import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
+import { recordCommandCheck, type CommandCheckScope } from './classic-command-checks.js';
 import {
   classicCommandInvocationCwd,
   classicCommandProjectRoot,
   withClassicCommandContext,
   withProjectContext,
 } from './classic-command-context.js';
-import { resolveClassicStepId } from './classic-resolver.js';
-import { reconcileClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-runtime-run.js';
-import { appendClassicStateEvent } from './classic-state-events.js';
 import {
-  parseClassicStateDocument,
-  classicStateToDocument,
-  type ClassicProfile,
-  type ClassicState,
-} from './classic-state.js';
-import { FIELD_ENUMS, MACHINE_OWNED_FIELDS, SETTABLE_FIELDS } from './classic-state-options.js';
-import { readClassicState, writeClassicState, withClassicStateLock } from './classic-store.js';
-import {
-  CLASSIC_TRANSITION_EVENTS,
-  applyClassicTransition,
-  type ClassicTransitionEvent,
-} from './classic-transitions.js';
-import { readRunState } from '../../domains/engine/state.js';
-import { appendTrajectory, readTrajectory } from './classic-run-store.js';
-import {
-  recordCommandCheck,
-  recoverCommandChecks,
-  type CommandCheckScope,
-} from './classic-command-checks.js';
+  clearCurrentChange,
+  clearCurrentChangeIf,
+  resolveCurrentChange,
+  selectCurrentChange,
+} from './classic-current-change.js';
+import { collectClassicEvidence } from './classic-evidence.js';
 import { classicGuardCommand } from './classic-guard.js';
-import { readClassicConfigValue } from './classic-project-config.js';
+import { classicHandoffCommand } from './classic-handoff-command.js';
+import { advanceClassicSdkChange } from './classic-sdk-next.js';
+import { classicIssue, type ClassicIssue } from './classic-issues.js';
+import { assertClassicLayoutReadable, assertClassicLayoutWritable } from './classic-layout.js';
 import {
   classicEntryCheckEnvelope,
   classicLocale,
@@ -126,35 +61,95 @@ import {
   classicTransitionEnvelope,
 } from './classic-output-language.js';
 import {
+  collectClassicSpecFiles,
+  ensureClassicActiveChangeDirectory,
+  inspectClassicStateFileCandidates,
+  openSpecChangeNameError,
+  resolveClassicChangeDirectory,
+} from './classic-paths.js';
+import {
+  invalidateClassicDelivery,
+  readClassicCheckpoint,
+  readClassicDelivery,
+  reauthorizeClassicDelivery,
+  writeClassicCheckpoint,
+  writeClassicDelivery,
+} from './classic-progress.js';
+import { readClassicConfigValue } from './classic-project-config.js';
+import {
   classicProjectFileNonempty,
   classicProjectTargetExists,
   inspectClassicProjectTarget,
   readClassicProjectFile,
   writeClassicProjectText,
 } from './classic-protected-path.js';
-import { resolveClassicWorkspace } from './classic-workspace.js';
 import { classicRecoveryContext } from './classic-recovery.js';
-import { classicConfigurationReadiness } from './classic-build-configuration.js';
-import { classicHandoffCommand } from './classic-handoff-command.js';
-import { classicIssue, type ClassicIssue } from './classic-issues.js';
+import { resolveClassicStepId } from './classic-resolver.js';
+import { appendTrajectory, readTrajectory } from './classic-run-store.js';
 import {
-  readClassicCheckpoint,
-  writeClassicCheckpoint,
-  readClassicDelivery,
-  reauthorizeClassicDelivery,
-  writeClassicDelivery,
-  invalidateClassicDelivery,
-} from './classic-progress.js';
-import { readClassicArtifactRequirements } from './classic-artifact-requirements.js';
+  assertClassicSdkStartAvailable,
+  resolveClassicChangeRuntimeOwner,
+  restoreClassicSdkChange,
+  withClassicChangeOwnership,
+} from './classic-runtime-ownership.js';
+import { resolveClassicLocalTarget, resolveClassicRunDirectory } from './classic-runtime-paths.js';
+import { reconcileClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-runtime-run.js';
+import {
+  decideClassicSdkArchive,
+  proposeClassicSdkArchive,
+} from './classic-sdk-archive-decision.js';
+import {
+  completeClassicSdkBuild,
+  continueClassicSdkBuildPlan,
+  decideClassicSdkBuild,
+  proposeClassicSdkBuild,
+  submitClassicSdkBuildPlan,
+} from './classic-sdk-build.js';
+import { inspectClassicSdkActionRecovery } from './classic-sdk-check-recovery.js';
+import { createClassicSdkRun } from './classic-sdk-create.js';
+import {
+  completeClassicSdkDelivery,
+  completeClassicSdkDeliveryFromRecord,
+  verifyClassicSdkDelivery,
+} from './classic-sdk-delivery.js';
+import {
+  completeClassicSdkDesign,
+  decideClassicSdkDesign,
+  proposeClassicSdkDesign,
+} from './classic-sdk-design.js';
+import {
+  decideClassicSdkEscalation,
+  proposeClassicSdkEscalation,
+} from './classic-sdk-escalation.js';
+import { classicSdkEntryData as sdkEntryData } from './classic-sdk-output.js';
+import { inspectClassicSdkRevisionReadiness } from './classic-sdk-revision-readiness.js';
+import { rebindClassicSdkWork, reviseClassicSdkWork } from './classic-sdk-revision.js';
+import { CLASSIC_MANAGED_RUN_MARKER } from './classic-sdk-state-store.js';
+import { findClassicSdkWorkspace, inspectClassicSdkRun } from './classic-sdk-status.js';
+import { failClassicSdkVerify } from './classic-sdk-verify-failure.js';
+import { appendClassicStateEvent } from './classic-state-events.js';
+import { LEGACY_CLASSIC_STATE_FILE, resolveClassicStateFile } from './classic-state-file.js';
+import { FIELD_ENUMS, MACHINE_OWNED_FIELDS, SETTABLE_FIELDS } from './classic-state-options.js';
+import {
+  classicStateToDocument,
+  parseClassicStateDocument,
+  type ClassicProfile,
+  type ClassicState,
+} from './classic-state.js';
+import { readClassicState, withClassicStateMutation, writeClassicState } from './classic-store.js';
 import {
   assignClassicTaskIds,
-  classicTaskRevision,
   completeClassicTask,
-  parseClassicTasks,
   inspectClassicPlanTasks,
+  parseClassicTasks,
   synchronizeClassicPlanTasks,
 } from './classic-tasks.js';
-
+import {
+  applyClassicTransition,
+  CLASSIC_TRANSITION_EVENTS,
+  type ClassicTransitionEvent,
+} from './classic-transitions.js';
+import { resolveClassicWorkspace } from './classic-workspace.js';
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
 const YELLOW = '\u001b[33m';
@@ -179,7 +174,6 @@ const CLASSIC_FIELD_WIRE_NAMES: Partial<Record<keyof ClassicState, string>> = {
   checkEpoch: 'check_epoch',
   workflow: 'workflow',
 };
-
 class CommandFailure extends Error {
   constructor(
     message: string,
@@ -189,13 +183,11 @@ class CommandFailure extends Error {
     super(message);
   }
 }
-
 class CommandOutput {
   stdout: string[] = [];
   stderr: string[] = [];
   envelope?: CliOutputEnvelope;
   data?: unknown;
-
   result(exitCode = 0): ClassicCommandResult {
     return {
       exitCode,
@@ -206,41 +198,33 @@ class CommandOutput {
     };
   }
 }
-
 function green(message: string): string {
   return `${GREEN}${message}${RESET}`;
 }
-
 function red(message: string): string {
   return `${RED}${message}${RESET}`;
 }
-
 function yellow(message: string): string {
   return `${YELLOW}${message}${RESET}`;
 }
-
 function fail(message: string): never {
   throw new CommandFailure(message);
 }
-
 function validateChangeName(name: string | undefined): asserts name is string {
   const error = openSpecChangeNameError(name);
   if (error) fail(`ERROR: ${error}`);
 }
-
 function validateEnum(value: string, values: readonly string[]): void {
   if (!values.includes(value)) {
     fail(`ERROR: Invalid value: '${value}'\nValid values: ${values.join(' ')}`);
   }
 }
-
 function validateLanguage(value: string, source: string): string {
   if (ARTIFACT_LANGUAGES.includes(value as (typeof ARTIFACT_LANGUAGES)[number])) {
     return value;
   }
   fail(`ERROR: Invalid language from ${source}: '${value}'\nValid values: en, zh-CN`);
 }
-
 function validateRelativePath(value: string, field: string): void {
   if (!value || value === 'null') return;
   if (/^(?:[A-Za-z]:|[\\/]|~)/u.test(value)) {
@@ -272,14 +256,12 @@ function validateRelativePath(value: string, field: string): void {
     );
   }
 }
-
 async function exists(file: string): Promise<boolean> {
   const projectRoot = classicCommandProjectRoot();
   return classicProjectTargetExists(projectRoot, file, {
     label: `Classic project path ${path.relative(projectRoot, path.resolve(projectRoot, file)).replaceAll('\\', '/')}`,
   });
 }
-
 async function nonempty(file: string): Promise<boolean> {
   const projectRoot = classicCommandProjectRoot();
   return classicProjectFileNonempty(
@@ -288,11 +270,12 @@ async function nonempty(file: string): Promise<boolean> {
     `Classic project file ${path.relative(projectRoot, path.resolve(projectRoot, file)).replaceAll('\\', '/')}`,
   );
 }
-
-async function changeDirectory(name: string): Promise<{ label: string; directory: string }> {
+async function changeDirectory(name: string): Promise<{
+  label: string;
+  directory: string;
+}> {
   return resolveClassicChangeDirectory(name, classicCommandProjectRoot());
 }
-
 async function readDocument(file: string): Promise<Document> {
   let source: string;
   const projectRoot = classicCommandProjectRoot();
@@ -313,28 +296,23 @@ async function readDocument(file: string): Promise<Document> {
     fail(`ERROR: Invalid ${path.basename(file)}: ${document.errors[0].message}`);
   return document;
 }
-
 async function atomicWrite(file: string, content: string): Promise<void> {
   await writeClassicProjectText(classicCommandProjectRoot(), file, content, {
     label: 'Classic state write target',
   });
 }
-
 function scalar(value: unknown): string {
   if (value === null) return 'null';
   if (value === undefined) return '';
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
 }
-
 function wireField(field: keyof ClassicState): string {
   return CLASSIC_FIELD_WIRE_NAMES[field] ?? String(field);
 }
-
 function wireValue(value: unknown): string {
   return value === null ? 'null' : scalar(value);
 }
-
 function enumRecordValue<const T extends readonly string[]>(
   record: Record<string, unknown>,
   field: string,
@@ -346,13 +324,11 @@ function enumRecordValue<const T extends readonly string[]>(
     ? (value as T[number])
     : fallback;
 }
-
 function nullableRecordString(record: Record<string, unknown>, field: string): string | null {
   const value = record[field];
   if (value === null || value === undefined || value === '') return null;
   return typeof value === 'string' ? value : String(value);
 }
-
 function nullableRecordBoolean(record: Record<string, unknown>, field: string): boolean | null {
   const value = record[field];
   if (value === null || value === undefined || value === '') return null;
@@ -361,7 +337,6 @@ function nullableRecordBoolean(record: Record<string, unknown>, field: string): 
   if (value === 'false') return false;
   return null;
 }
-
 function nonNegativeRecordInteger(
   record: Record<string, unknown>,
   field: string,
@@ -370,7 +345,6 @@ function nonNegativeRecordInteger(
   const value = record[field];
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : fallback;
 }
-
 function sparseClassicState(record: Record<string, unknown>): ClassicState {
   const workflow = enumRecordValue(record, 'workflow', PROFILES, 'full')!;
   return {
@@ -437,13 +411,11 @@ function sparseClassicState(record: Record<string, unknown>): ClassicState {
       typeof record.classic_migration === 'number' ? record.classic_migration : null,
   };
 }
-
 async function projectConfigValue(
   field: 'context_compression' | 'auto_transition' | 'review_mode' | 'language',
 ): Promise<string | null> {
   return (await readClassicConfigValue(field, { cwd: classicCommandProjectRoot() }))?.value ?? null;
 }
-
 async function projectLanguageDefault(): Promise<string> {
   if (process.env.COMET_LANGUAGE)
     return validateLanguage(process.env.COMET_LANGUAGE, 'COMET_LANGUAGE');
@@ -453,7 +425,6 @@ async function projectLanguageDefault(): Promise<string> {
   if (configured) return validateLanguage(configured.value, configured.source);
   return 'en';
 }
-
 async function contextCompression(): Promise<string> {
   const value =
     process.env.COMET_CONTEXT_COMPRESSION ??
@@ -464,7 +435,6 @@ async function contextCompression(): Promise<string> {
   }
   return value;
 }
-
 async function autoTransition(): Promise<string> {
   const value =
     process.env.COMET_AUTO_TRANSITION ?? (await projectConfigValue('auto_transition')) ?? 'true';
@@ -473,7 +443,6 @@ async function autoTransition(): Promise<string> {
   }
   return value;
 }
-
 async function reviewModeDefault(): Promise<string | null> {
   const value =
     process.env.COMET_REVIEW_MODE ?? (await projectConfigValue('review_mode')) ?? 'standard';
@@ -482,22 +451,22 @@ async function reviewModeDefault(): Promise<string | null> {
   }
   return value === 'null' ? null : value;
 }
-
 function gitOutput(args: string[]): string | null {
   const result = measureCometGitCommand(() =>
     spawnSync('git', args, {
       cwd: classicCommandProjectRoot(),
       encoding: 'utf8',
-      timeout: 30_000,
+      timeout: 30000,
       windowsHide: true,
     }),
   );
   return result.status === 0 ? result.stdout.trim() : null;
 }
-
-async function stateFile(
-  name: string,
-): Promise<{ file: string; label: string; directory: string }> {
+async function stateFile(name: string): Promise<{
+  file: string;
+  label: string;
+  directory: string;
+}> {
   const change = await changeDirectory(name);
   await inspectClassicProjectTarget(
     classicCommandProjectRoot(),
@@ -512,7 +481,6 @@ async function stateFile(
     file: await resolveClassicStateFile(change.directory),
   };
 }
-
 async function readFields(name: string, fields: readonly string[]): Promise<string[]> {
   const { file } = await stateFile(name);
   const document = await readDocument(file);
@@ -523,11 +491,9 @@ async function readFields(name: string, fields: readonly string[]): Promise<stri
   const record = document.toJS() as Record<string, unknown>;
   return Promise.all(fields.map((field) => readRecordField(record, field)));
 }
-
 async function readField(name: string, field: string): Promise<string> {
   return (await readFields(name, [field]))[0];
 }
-
 async function getFields(name: string, fields: readonly string[]): Promise<string[]> {
   const owner = await resolveClassicChangeRuntimeOwner(classicCommandProjectRoot(), name);
   if (owner?.format !== 'compat') {
@@ -539,7 +505,6 @@ async function getFields(name: string, fields: readonly string[]): Promise<strin
   }
   return readFields(name, fields);
 }
-
 async function readRecordField(record: Record<string, unknown>, field: string): Promise<string> {
   const value = record[field];
   if (field === 'language') {
@@ -551,13 +516,11 @@ async function readRecordField(record: Record<string, unknown>, field: string): 
   }
   return scalar(value);
 }
-
 function parsedValue(field: string, value: string): unknown {
   const document = parseDocument(`${field}: ${value}\n`);
   if (document.errors.length > 0) fail(`ERROR: Invalid value: '${value}'`);
   return document.get(field);
 }
-
 async function validateSetValue(field: string, value: string): Promise<void> {
   if (field === 'language') {
     validateLanguage(value, 'language');
@@ -592,10 +555,12 @@ async function validateSetValue(field: string, value: string): Promise<void> {
     fail('ERROR: iteration must be a non-negative integer');
   }
 }
-
 async function validateSetFields(
   updates: Array<[string, string]>,
-  options: { internal?: boolean; machineOwned?: boolean },
+  options: {
+    internal?: boolean;
+    machineOwned?: boolean;
+  },
 ): Promise<Set<string>> {
   const seen = new Set<string>();
   for (const [field, value] of updates) {
@@ -625,12 +590,14 @@ async function validateSetFields(
   }
   return seen;
 }
-
 async function setFields(
   output: CommandOutput,
   name: string,
   updates: Array<[string, string]>,
-  options: { internal?: boolean; machineOwned?: boolean } = {},
+  options: {
+    internal?: boolean;
+    machineOwned?: boolean;
+  } = {},
 ): Promise<void> {
   await validateSetFields(updates, options);
   const projectRoot = classicCommandProjectRoot();
@@ -649,15 +616,17 @@ async function setFields(
     }
   }
   const { directory } = await stateFile(name);
-  await withClassicStateLock(directory, () => setFieldsLocked(output, name, updates, options));
+  await withClassicStateMutation(directory, () => setFieldsLocked(output, name, updates, options));
   if (owner?.format === 'sdk') await inspectClassicSdkRun(projectRoot, name);
 }
-
 async function setFieldsLocked(
   output: CommandOutput,
   name: string,
   updates: Array<[string, string]>,
-  options: { internal?: boolean; machineOwned?: boolean },
+  options: {
+    internal?: boolean;
+    machineOwned?: boolean;
+  },
 ): Promise<void> {
   const seen = await validateSetFields(updates, options);
   const { file, directory } = await stateFile(name);
@@ -753,7 +722,6 @@ async function setFieldsLocked(
   };
   for (const [field, value] of updates) output.stderr.push(green(`[SET] ${field}=${value}`));
 }
-
 async function init(
   output: CommandOutput,
   name: string,
@@ -771,7 +739,7 @@ async function init(
     );
   }
   const projectRoot = classicCommandProjectRoot();
-  await withClassicChangeOwnershipLock(projectRoot, name, async () => {
+  await withClassicChangeOwnership(projectRoot, name, async () => {
     if (runtimeFormat === 'compat') {
       await assertChangeNotSdkOwned(projectRoot, 'classic', name);
     } else if (await readChangeRuntimeOwner(projectRoot, 'classic', name)) {
@@ -784,8 +752,6 @@ async function init(
     });
     if (await exists(file))
       fail(`ERROR: Classic state already exists at ${label}/${path.basename(file)}`);
-
-    await protectClassicLegacyStateWriter(directory, projectRoot);
     const preset = workflow !== 'full';
     const reviewMode = preset ? 'off' : await reviewModeDefault();
     const document = new Document({
@@ -829,6 +795,10 @@ async function init(
         changeDir: directory,
         initialState: projection.classic,
       });
+      document.set(
+        PORTABLE_RUN_CHECKPOINT_KEY,
+        encodePortableRunCheckpoint(createPortableRunCheckpoint(run)),
+      );
       await atomicWrite(file, CLASSIC_MANAGED_RUN_MARKER + document.toString());
       output.data = {
         ...(await sdkEntryData(name, { run, projectRoot })),
@@ -846,14 +816,12 @@ async function init(
     }
   });
 }
-
 async function requirePhase(name: string, expected: string): Promise<void> {
   const actual = await readField(name, 'phase');
   if (actual !== expected) {
     fail(`ERROR: Cannot transition '${name}': expected phase ${expected}, got ${actual}`);
   }
 }
-
 async function requireBuildDecisions(name: string): Promise<void> {
   const { file } = await stateFile(name);
   const record = (await readDocument(file)).toJS() as Record<string, unknown>;
@@ -898,7 +866,6 @@ async function requireBuildDecisions(name: string): Promise<void> {
     );
   }
 }
-
 async function requireOpenArtifacts(name: string): Promise<void> {
   const { directory } = await stateFile(name);
   const workflow = await readField(name, 'workflow');
@@ -924,7 +891,6 @@ async function requireOpenArtifacts(name: string): Promise<void> {
     );
   }
 }
-
 async function requireDesignEvidence(name: string): Promise<void> {
   const designDoc = await readField(name, 'design_doc');
   if (!designDoc || designDoc === 'null' || !(await nonempty(designDoc))) {
@@ -933,10 +899,12 @@ async function requireDesignEvidence(name: string): Promise<void> {
     );
   }
 }
-
 async function writeSparseTransitionEffects(
   directory: string,
-  effects: Array<{ field: keyof ClassicState; to: unknown }>,
+  effects: Array<{
+    field: keyof ClassicState;
+    to: unknown;
+  }>,
 ): Promise<void> {
   const file = await resolveClassicStateFile(directory);
   const document = await readDocument(file);
@@ -946,12 +914,14 @@ async function writeSparseTransitionEffects(
   }
   await atomicWrite(file, document.toString());
 }
-
 async function applyTransitionEvent(
   output: CommandOutput,
   name: string,
   event: ClassicTransitionEvent,
-): Promise<{ fromPhase: string; toPhase: string }> {
+): Promise<{
+  fromPhase: string;
+  toPhase: string;
+}> {
   const { directory } = await stateFile(name);
   const projection = await readClassicState(directory);
   let classic = projection.classic;
@@ -962,7 +932,6 @@ async function applyTransitionEvent(
     classic = sparseClassicState(document.toJS() as Record<string, unknown>);
     sparse = true;
   }
-
   const result = applyClassicTransition(classic, event);
   if (event === 'archive-reopen')
     await invalidateClassicDelivery(classicCommandProjectRoot(), directory);
@@ -995,26 +964,21 @@ async function applyTransitionEvent(
     // would make callers retry an already-applied transition.
     output.stderr.push(
       red(
-        `[WARN] transition ${event} applied but the state event log append failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `[WARN] transition ${event} applied but the state event log append failed: ${error instanceof Error ? error.message : String(error)}`,
       ),
     );
   }
-
   for (const effect of result.effects) {
     output.stderr.push(green(`[SET] ${wireField(effect.field)}=${wireValue(effect.to)}`));
   }
   output.stderr.push(green(`[TRANSITION] ${event}`));
   return { fromPhase: classic.phase, toPhase: result.classic.phase };
 }
-
 async function transition(output: CommandOutput, name: string, event: string): Promise<void> {
   validateChangeName(name);
   const { directory } = await stateFile(name);
-  return withClassicStateLock(directory, () => transitionLocked(output, name, event));
+  return withClassicStateMutation(directory, () => transitionLocked(output, name, event));
 }
-
 async function transitionLocked(output: CommandOutput, name: string, event: string): Promise<void> {
   validateChangeName(name);
   validateEnum(event, EVENTS);
@@ -1058,9 +1022,7 @@ async function transitionLocked(output: CommandOutput, name: string, event: stri
   } else if (event === 'archive-confirm') {
     await requirePhase(name, 'archive');
     const { directory } = await changeDirectory(name);
-    const current = await readClassicState(directory, { migrate: false });
-    if (current.classic)
-      await assertClassicEditReviewsComplete(classicCommandProjectRoot(), name, current.classic);
+    await readClassicState(directory, { migrate: false });
     if ((await readField(name, 'verify_result')) !== 'pass') {
       fail(`ERROR: Cannot transition '${name}': verify_result must be pass before archiving`);
     }
@@ -1089,9 +1051,7 @@ async function transitionLocked(output: CommandOutput, name: string, event: stri
   } else {
     await requirePhase(name, 'archive');
     const { directory } = await changeDirectory(name);
-    const current = await readClassicState(directory, { migrate: false });
-    if (current.classic)
-      await assertClassicEditReviewsComplete(classicCommandProjectRoot(), name, current.classic);
+    await readClassicState(directory, { migrate: false });
     if ((await readField(name, 'verify_result')) !== 'pass') {
       fail(`ERROR: Cannot transition '${name}': verify_result must be pass before archiving`);
     }
@@ -1110,11 +1070,10 @@ async function transitionLocked(output: CommandOutput, name: string, event: stri
   output.envelope = classicTransitionEnvelope({ name, fromPhase, toPhase, locale });
   output.stdout.push(output.envelope.summary);
 }
-
 async function nextSdkEntry(
   output: CommandOutput,
   name: string,
-  inspected: { run: WorkflowRun; projectRoot: string },
+  inspected: Parameters<typeof sdkEntryData>[1],
   details = false,
 ): Promise<void> {
   const data = await sdkEntryData(name, inspected, details);
@@ -1140,7 +1099,6 @@ async function nextSdkEntry(
   if (continuation.commandArgs)
     output.stdout.push(`COMMAND: ${formatCliCommandArgs(continuation.commandArgs)}`);
 }
-
 async function nextSdk(
   output: CommandOutput,
   name: string,
@@ -1149,18 +1107,39 @@ async function nextSdk(
 ): Promise<void> {
   await nextSdkEntry(output, name, { run, projectRoot });
 }
-
-async function next(output: CommandOutput, name: string, details = false): Promise<void> {
+async function next(
+  output: CommandOutput,
+  name: string,
+  details = false,
+  continueRun = false,
+): Promise<void> {
   validateChangeName(name);
   const owner = await resolveClassicChangeRuntimeOwner(classicCommandProjectRoot(), name);
   const sdkWorkspace =
     owner?.format === 'compat'
       ? null
-      : await findClassicSdkWorkspace(classicCommandProjectRoot(), name);
+      : await findClassicSdkWorkspace(classicCommandProjectRoot(), name, {
+          owner: owner?.format === 'sdk' ? owner : undefined,
+        });
   if (sdkWorkspace) {
+    if (continueRun) {
+      const advanced = await advanceClassicSdkChange(sdkWorkspace.projectRoot, name, sdkWorkspace);
+      await nextSdkEntry(
+        output,
+        name,
+        { run: advanced.run, projectRoot: sdkWorkspace.projectRoot },
+        details,
+      );
+      if (advanced.failure) throw new CommandFailure(advanced.failure, 1);
+      return;
+    }
     await nextSdkEntry(output, name, sdkWorkspace, details);
     return;
   }
+  if (continueRun)
+    fail(
+      '--continue requires the current built-in Classic SDK Run; use the Compat continuation command.',
+    );
   const { file, label, directory } = await stateFile(name);
   if (!(await exists(file)))
     fail(`ERROR: ${path.basename(file)} not found at ${label}/${path.basename(file)}`);
@@ -1240,7 +1219,6 @@ async function next(output: CommandOutput, name: string, details = false): Promi
     output.stdout.push(`HINT: phase is '${phase}'; run /${skill} manually to continue`);
   }
 }
-
 async function taskCheckoff(
   output: CommandOutput,
   taskFile: string,
@@ -1267,7 +1245,6 @@ async function taskCheckoff(
   if (checked.length !== 1) fail(`ERROR: task is not checked in ${taskFile}: ${taskText}`);
   output.stdout.push('TASK_CHECKOFF: PASS', `FILE: ${taskFile}`, `TASK: ${taskText}`);
 }
-
 async function taskProgressState(
   name: string,
   directory: string,
@@ -1286,12 +1263,18 @@ async function taskProgressState(
     fail(`ERROR: Unknown Classic state fields: ${projection.unknownKeys.join(', ')}`);
   return projection.classic;
 }
-
 async function taskState(
   output: CommandOutput,
   name: string,
   action:
-    { kind: 'list' | 'assign' | 'sync-plan' } | { kind: 'complete'; id: string; revision: string },
+    | {
+        kind: 'list' | 'assign' | 'sync-plan';
+      }
+    | {
+        kind: 'complete';
+        id: string;
+        revision?: string;
+      },
 ): Promise<void> {
   validateChangeName(name);
   const { directory } = await stateFile(name);
@@ -1328,7 +1311,11 @@ async function taskState(
     if (!tasks.length) fail('ERROR: tasks.md has no implementation tasks');
     const planPath = state.plan;
     let planSync: 'none' | 'synced' | 'mapping-required' = 'none';
-    let planUpdate: { file: string; source: string; updated: string } | null = null;
+    let planUpdate: {
+      file: string;
+      source: string;
+      updated: string;
+    } | null = null;
     if (
       planPath &&
       planPath !== 'null' &&
@@ -1369,20 +1356,18 @@ async function taskState(
     output.data = {
       change: name,
       authority: path.relative(classicCommandProjectRoot(), tasksFile).replaceAll('\\', '/'),
-      revision: classicTaskRevision(updated),
       needsIds: tasks.some((task) => !task.id),
       planSync,
       tasks,
       progress: { total: tasks.length, completed: tasks.filter((task) => task.completed).length },
     };
     output.stdout.push(
-      `Tasks: ${tasks.filter((task) => task.completed).length}/${tasks.length} complete. Use --json for task IDs and revision.`,
+      `Tasks: ${tasks.filter((task) => task.completed).length}/${tasks.length} complete. Use --json for stable task IDs.`,
     );
   };
   if (action.kind === 'list') await operation();
-  else await withClassicStateLock(directory, operation);
+  else await withClassicStateMutation(directory, operation);
 }
-
 async function progressCommand(
   output: CommandOutput,
   kind: 'checkpoint' | 'delivery',
@@ -1501,19 +1486,25 @@ async function progressCommand(
           'ERROR: progress update requires the bound branch; inspect the workspace before retrying',
         );
     }
-    await withClassicStateLock(directory, operation);
+    await withClassicStateMutation(directory, operation);
   } else await operation();
   if (
     kind === 'delivery' &&
     ['complete', 'local-verified'].includes(
-      (output.data as { verification?: { status?: string } } | undefined)?.verification?.status ??
-        '',
+      (
+        output.data as
+          | {
+              verification?: {
+                status?: string;
+              };
+            }
+          | undefined
+      )?.verification?.status ?? '',
     )
   ) {
     await clearCurrentChangeIf(root, args[0]);
   }
 }
-
 async function checkSdkEntry(
   output: CommandOutput,
   name: string,
@@ -1622,7 +1613,6 @@ async function checkSdkEntry(
   }
   output.stderr.push(green('ALL CHECKS PASSED — ready to proceed'));
 }
-
 async function check(
   output: CommandOutput,
   name: string,
@@ -1771,7 +1761,6 @@ async function check(
   }
   output.stderr.push(green('ALL CHECKS PASSED — ready to proceed'));
 }
-
 /** Coordinate only the already-authorized Design writes; each existing operation retains its lock and validation. */
 async function completeDesign(
   output: CommandOutput,
@@ -1839,7 +1828,6 @@ async function completeDesign(
   output.envelope = guard.envelope;
   if (guard.exitCode !== 0) throw new CommandFailure('', guard.exitCode);
 }
-
 async function fieldStatus(field: string, value: string, file?: string): Promise<string> {
   if (!value || value === 'null') return `  - ${field}: PENDING`;
   if (file && !(await exists(path.resolve(classicCommandProjectRoot(), file)))) {
@@ -1847,7 +1835,6 @@ async function fieldStatus(field: string, value: string, file?: string): Promise
   }
   return `  - ${field}: DONE (${value})`;
 }
-
 async function recoveryArtifacts(output: CommandOutput, directory: string) {
   const requirements = await readClassicArtifactRequirements(
     classicCommandProjectRoot(),
@@ -1867,7 +1854,6 @@ async function recoveryArtifacts(output: CommandOutput, directory: string) {
     ready: complete === requirements.files.length && !requirements.problems.length,
   };
 }
-
 async function recoverOpen(output: CommandOutput, directory: string): Promise<void> {
   const { complete, ready } = await recoveryArtifacts(output, directory);
   output.stdout.push(
@@ -1879,7 +1865,6 @@ async function recoverOpen(output: CommandOutput, directory: string): Promise<vo
         : 'Recovery action: Some artifacts incomplete. Resume /comet-open from the first missing artifact.',
   );
 }
-
 async function recoverDesign(
   output: CommandOutput,
   name: string,
@@ -1927,7 +1912,6 @@ async function recoverDesign(
     );
   }
 }
-
 async function recoverBuild(
   output: CommandOutput,
   state: ClassicState,
@@ -1954,7 +1938,6 @@ async function recoverBuild(
     `Recovery action: ${context.nextAction.reason}`,
   );
 }
-
 async function recoverVerify(output: CommandOutput, name: string): Promise<void> {
   const [result, failures, mode, report, branch] = await readFields(name, [
     'verify_result',
@@ -1980,7 +1963,6 @@ async function recoverVerify(output: CommandOutput, name: string): Promise<void>
         : 'Recovery action: Verification not yet started or in progress. Run scale assessment then verify.',
   );
 }
-
 async function recoverArchive(output: CommandOutput, name: string): Promise<void> {
   const [archiveConfirmation, result, archived] = await readFields(name, [
     'archive_confirmation',
@@ -1998,7 +1980,6 @@ async function recoverArchive(output: CommandOutput, name: string): Promise<void
       : 'Recovery action: Ask for final archive confirmation in /comet-archive before running the archive command.',
   );
 }
-
 async function recover(
   output: CommandOutput,
   name: string,
@@ -2017,18 +1998,11 @@ async function recover(
   if (phase === 'design') await check(output, name, phase, details);
   const workflow = classic.workflow;
   const locale = classicLocale(classic.language);
-  const evidenceScopes = projection.run
-    ? await recoverCommandChecks(classicCommandProjectRoot(), directory, projection.run, {
-        // Archive trajectories are sealed evidence. Recovery may inspect their
-        // exact plans but must never append a new invalidation event to them.
-        persistInvalidation: !classic.archived,
-      })
-    : { build: 'rerun-required', verify: 'rerun-required' };
   const checkpointRef = path.join(directory, '.comet', 'subagent-progress.md');
   const checkpoint =
     (
       await resolveClassicLocalTarget(classicCommandProjectRoot(), checkpointRef, {
-        migrate: false,
+        readOnly: true,
       })
     )?.target ?? checkpointRef;
   const context = await classicRecoveryContext(
@@ -2059,11 +2033,6 @@ async function recover(
             : {}),
         }
       : null,
-    evidence: {
-      status: evidenceScopes[phase === 'build' ? 'build' : 'verify'],
-      reason: 'cold-recovery',
-      scopes: evidenceScopes,
-    },
     requiredFiles: [file, ...context.requiredFiles],
   };
   output.envelope = classicRecoveryEnvelope({ name, phase, locale });
@@ -2092,7 +2061,6 @@ async function recover(
   output.stdout.push('', '=== End Recovery Context ===');
   output.stdout.push(`Next action: ${context.nextAction.kind}. ${context.nextAction.reason}`);
 }
-
 async function scale(output: CommandOutput, name: string): Promise<void> {
   validateChangeName(name);
   const projectRoot = classicCommandProjectRoot();
@@ -2155,7 +2123,6 @@ async function scale(output: CommandOutput, name: string): Promise<void> {
     green(`[SCALE] recommendation=${result}; selected=${selected || 'null'} (unchanged)`),
   );
 }
-
 function parseRecordCheckOptions(args: string[]): {
   command: string;
   exitCode: number;
@@ -2180,7 +2147,6 @@ function parseRecordCheckOptions(args: string[]): {
   if (!/^-?\d+$/u.test(exitCodeText)) fail('ERROR: --exit-code must be an integer');
   return { command, exitCode: Number(exitCodeText), ...(cwd === undefined ? {} : { cwd }) };
 }
-
 async function recordCheck(
   output: CommandOutput,
   name: string,
@@ -2227,15 +2193,12 @@ async function recordCheck(
     fail(`ERROR: ${(error as Error).message}`);
   }
 }
-
 function required(args: string[], count: number, usage: string): void {
   if (args.length < count) fail(usage);
 }
-
 function requiredExact(args: string[], count: number, usage: string): void {
   if (args.length !== count) fail(usage);
 }
-
 const MUTATING_STATE_COMMANDS = new Set([
   'continue-build',
   'continue-work',
@@ -2265,7 +2228,6 @@ const MUTATING_STATE_COMMANDS = new Set([
   'propose-escalation',
   'decide-escalation',
 ]);
-
 const CHANGE_SCOPED_STATE_COMMANDS = new Set([
   ...MUTATING_STATE_COMMANDS,
   'get',
@@ -2275,7 +2237,6 @@ const CHANGE_SCOPED_STATE_COMMANDS = new Set([
   'checkpoint',
   'delivery',
 ]);
-
 async function assertStateChangeNotSdkOwned(
   subcommand: string | undefined,
   args: readonly string[],
@@ -2333,7 +2294,6 @@ async function assertStateChangeNotSdkOwned(
     fail(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
-
 async function assertStateCommandWritable(subcommand: string | undefined): Promise<void> {
   if (!subcommand || !MUTATING_STATE_COMMANDS.has(subcommand)) return;
   try {
@@ -2342,7 +2302,6 @@ async function assertStateCommandWritable(subcommand: string | undefined): Promi
     fail(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
-
 async function selectChange(
   output: CommandOutput,
   name: string,
@@ -2396,7 +2355,6 @@ async function selectChange(
     fail(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
-
 async function rebind(output: CommandOutput, name: string): Promise<void> {
   validateChangeName(name);
   const projectRoot = classicCommandProjectRoot();
@@ -2436,7 +2394,6 @@ async function rebind(output: CommandOutput, name: string): Promise<void> {
   });
   output.stderr.push(green(`[REBIND] bound_branch: ${boundBranch} → ${branch}`));
 }
-
 async function currentChange(output: CommandOutput): Promise<void> {
   const resolution = await resolveCurrentChange(classicCommandProjectRoot());
   if (resolution.status === 'selected') {
@@ -2450,12 +2407,10 @@ async function currentChange(output: CommandOutput): Promise<void> {
     `ERROR: current change selection is stale: ${resolution.reason}\nUse: comet state select <change-name>`,
   );
 }
-
 async function clearSelection(output: CommandOutput): Promise<void> {
   await clearCurrentChange(classicCommandProjectRoot());
   output.stderr.push(green('[CLEARED] current change selection'));
 }
-
 export const classicStateCommand: ClassicCommandHandler = withProjectContext(
   async (args, options) => {
     const output = new CommandOutput();
@@ -2480,9 +2435,20 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
       }
       if (
         (subcommand === 'next' || subcommand === 'select') &&
-        !(rest.length === 1 || (rest.length === 2 && rest[1] === '--details'))
+        !(
+          rest.length >= 1 &&
+          rest
+            .slice(1)
+            .every(
+              (option) =>
+                option === '--details' || (subcommand === 'next' && option === '--continue'),
+            ) &&
+          new Set(rest.slice(1)).size === rest.length - 1
+        )
       ) {
-        fail(`Usage: comet state ${subcommand} <change-name> [--details]`);
+        fail(
+          `Usage: comet state ${subcommand} <change-name> [--details]${subcommand === 'next' ? ' [--continue]' : ''}`,
+        );
       }
       if (
         subcommand === 'check' &&
@@ -2603,7 +2569,9 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         );
         if (!wait) fail('ERROR: Classic SDK Design proposal did not create a pending decision');
         output.data = {
-          ...(await sdkEntryData(rest[0], { run, projectRoot: workspace.projectRoot })),
+          ...(await sdkEntryData(rest[0], { run, projectRoot: workspace.projectRoot }, false, {
+            submittedDesign: run,
+          })),
           wait: { id: wait.id, proposalHash: wait.proposalHash, choices: wait.choices },
         };
         output.stdout.push(`Design proposal recorded for ${rest[0]}; user approval is pending.`);
@@ -2774,17 +2742,18 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         const proposing = subcommand === 'propose-archive';
         if (!rest[0]) {
           fail(
-            `Usage: comet state ${subcommand} <change-name> ${proposing ? '--summary <text> [--remote <name>] [--pr-base <branch>]' : '--proposal-hash <sha256> --choice <local|push|pr|reverify|later>'}`,
+            `Usage: comet state ${subcommand} <change-name> ${proposing ? '--summary <text> [--remote <name>] [--pr-base <branch>] [--delivery-path <file>]...' : '--proposal-hash <sha256> --choice <local|push|pr|reverify|later>'}`,
           );
         }
         validateChangeName(rest[0]);
         let summary: string | undefined;
         let remote: string | undefined;
         let prBaseBranch: string | undefined;
+        const deliveryPaths: string[] = [];
         if (proposing) {
           if (rest.length < 3 || rest.length % 2 !== 1) {
             fail(
-              'Usage: comet state propose-archive <change-name> --summary <text> [--remote <name>] [--pr-base <branch>]',
+              'Usage: comet state propose-archive <change-name> --summary <text> [--remote <name>] [--pr-base <branch>] [--delivery-path <file>]...',
             );
           }
           for (let index = 1; index < rest.length; index += 2) {
@@ -2794,6 +2763,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
             if (flag === '--summary' && summary === undefined) summary = value;
             else if (flag === '--remote' && remote === undefined) remote = value;
             else if (flag === '--pr-base' && prBaseBranch === undefined) prBaseBranch = value;
+            else if (flag === '--delivery-path') deliveryPaths.push(value);
             else fail(`Unknown or repeated Classic Archive proposal option: ${flag}`);
           }
           if (!summary) fail('Classic Archive proposal requires --summary');
@@ -2821,6 +2791,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
               summary: summary!,
               ...(remote ? { remote } : {}),
               ...(prBaseBranch ? { prBaseBranch } : {}),
+              ...(deliveryPaths.length ? { deliveryPaths } : {}),
             })
           : await decideClassicSdkArchive({
               projectRoot: workspace.projectRoot,
@@ -2884,12 +2855,20 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         subcommand === 'repair-archive'
       ) {
         if (
-          rest.length !== 3 ||
+          (rest.length !== 3 &&
+            !(
+              subcommand === 'repair-delivery' &&
+              rest.length === 5 &&
+              rest[3] === '--checks' &&
+              rest[4]?.trim()
+            )) ||
           rest[1] !== '--expected-revision' ||
           !/^[1-9]\d*$/u.test(rest[2]) ||
           !Number.isSafeInteger(Number(rest[2]))
         ) {
-          fail(`Usage: comet state ${subcommand} <change-name> --expected-revision <revision>`);
+          fail(
+            `Usage: comet state ${subcommand} <change-name> --expected-revision <revision>${subcommand === 'repair-delivery' ? ' [--checks <checks-json-file>]' : ''}`,
+          );
         }
         validateChangeName(rest[0]);
         const workspace = await findClassicSdkWorkspace(classicCommandProjectRoot(), rest[0]);
@@ -2899,6 +2878,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
           change: rest[0],
           name: subcommand,
           expectedRevision: Number(rest[2]),
+          checksRef: rest[4],
         });
         await nextSdk(output, rest[0], run, workspace.projectRoot);
       } else if (subcommand === 'submit-plan' || subcommand === 'continue-plan') {
@@ -2939,8 +2919,19 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
             });
         await nextSdk(output, rest[0], run, workspace.projectRoot);
       } else if (subcommand === 'complete-build') {
-        if (rest.length !== 1 && !(rest.length === 3 && rest[1] === '--session' && rest[2]?.trim()))
-          fail('Usage: comet state complete-build <change-name> [--session <execution-reference>]');
+        const completionOptions: Record<string, string> = {};
+        for (let i = 1; i < rest.length; i += 2) {
+          if (
+            !['--session', '--checks'].includes(rest[i]) ||
+            !rest[i + 1]?.trim() ||
+            rest[i + 1].startsWith('--') ||
+            completionOptions[rest[i]]
+          )
+            fail(
+              'Usage: comet state complete-build <change-name> [--session <execution-reference>] [--checks <checks-json-file>]',
+            );
+          completionOptions[rest[i]] = rest[i + 1];
+        }
         validateChangeName(rest[0]);
         const projectRoot = classicCommandProjectRoot();
         const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
@@ -2952,7 +2943,8 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         const run = await completeClassicSdkBuild({
           projectRoot: workspace.projectRoot,
           change: rest[0],
-          sessionId: rest[2],
+          sessionId: completionOptions['--session'],
+          checksRef: completionOptions['--checks'],
         });
         await nextSdk(output, rest[0], run, workspace.projectRoot);
       } else if (subcommand === 'transition') {
@@ -3101,9 +3093,9 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
       } else if (subcommand === 'checkpoint' || subcommand === 'delivery') {
         await progressCommand(output, subcommand, rest);
       } else if (subcommand === 'task-complete') {
-        if (rest.length !== 4 || rest[2] !== '--expect')
-          fail('Usage: comet state task-complete <change-name> <task-id> --expect <revision>');
-        await taskState(output, rest[0], { kind: 'complete', id: rest[1], revision: rest[3] });
+        if (rest.length !== 2 && !(rest.length === 4 && rest[2] === '--expect'))
+          fail('Usage: comet state task-complete <change-name> <task-id>');
+        await taskState(output, rest[0], { kind: 'complete', id: rest[1] });
       } else if (subcommand === 'rebind') {
         requiredExact(rest, 1, 'Usage: comet state rebind <change-name>');
         await rebind(output, rest[0]);
@@ -3116,7 +3108,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         requiredExact(rest, 0, 'Usage: comet state clear-selection');
         await clearSelection(output);
       } else if (subcommand === 'next') {
-        await next(output, rest[0], rest.includes('--details'));
+        await next(output, rest[0], rest.includes('--details'), rest.includes('--continue'));
       } else {
         fail(`Unknown subcommand: ${subcommand ?? ''}`);
       }

@@ -1,0 +1,24 @@
+{
+  "schemaAndEvidence": true,
+  "reversePatchCheck": true,
+  "currentCases": 36,
+  "historicalCases": 5,
+  "sharedExcluded": [
+    "classic-sdk-stale-workspace-read-identity"
+  ],
+  "changedFiles": [
+    "test/domains/comet-classic/classic-application.test.ts",
+    "test/domains/comet-classic/classic-sdk-preset-scope.test.ts",
+    "test/domains/comet-classic/classic-sdk-state-recovery.test.ts",
+    "test/domains/comet-classic/classic-sdk-state-store-history.test.ts",
+    "test/domains/comet-classic/classic-sdk-readonly.test.ts"
+  ],
+  "originalStateFileBodyUnchanged": true,
+  "originalFieldsChainsAndUnrelatedSelectorsPreserved": true,
+  "rootSourceAndPublicCliFinalValidationPending": true,
+  "notExecuted": [
+    "Eval",
+    "full suite",
+    "new package/install"
+  ]
+}

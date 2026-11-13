@@ -1,0 +1,143 @@
+[
+  {
+    "location": "current",
+    "id": "workflow-simplification-t07-named-migration",
+    "sources": [
+      "report:2026-11-08-native-classic-overdesign-audit"
+    ],
+    "behavior": "A named current-format access must preserve transparent legacy migration without scanning unrelated changes.",
+    "migrationDepth": 0,
+    "test": {
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "namePattern": "retries a transient fence publication observation with a bounded fresh read",
+      "requiredNames": [
+        "workspace runtime resolution and migration retries a transient fence publication observation with a bounded fresh read"
+      ]
+    },
+    "entry": {
+      "id": "workflow-simplification-t07-named-migration",
+      "sources": [
+        "report:2026-11-08-native-classic-overdesign-audit"
+      ],
+      "behavior": "A named current-format access must preserve transparent legacy migration without scanning unrelated changes.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "A named current-format access must preserve transparent legacy migration without scanning unrelated changes.",
+      "forbidden": "Scanning unrelated named changes on the steady path, hiding an unsettled journal, trusting a wrong fence or reusing an unstable observation.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-paths.test.ts",
+          "namePattern": "migrates only the named legacy runtime without enumerating unrelated changes",
+          "requiredNames": [
+            "Native artifact root safety migrates only the named legacy runtime without enumerating unrelated changes"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+          "namePattern": "retries a transient fence publication observation with a bounded fresh read",
+          "requiredNames": [
+            "workspace runtime resolution and migration retries a transient fence publication observation with a bounded fresh read"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+          "namePattern": "does not reuse an unstable fence after its bounded publication retries",
+          "requiredNames": [
+            "workspace runtime resolution and migration does not reuse an unstable fence after its bounded publication retries"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "location": "current",
+    "id": "workflow-simplification-t07-named-migration",
+    "sources": [
+      "report:2026-11-08-native-classic-overdesign-audit"
+    ],
+    "behavior": "A named current-format access must preserve transparent legacy migration without scanning unrelated changes.",
+    "migrationDepth": 0,
+    "test": {
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "namePattern": "does not reuse an unstable fence after its bounded publication retries",
+      "requiredNames": [
+        "workspace runtime resolution and migration does not reuse an unstable fence after its bounded publication retries"
+      ]
+    },
+    "entry": {
+      "id": "workflow-simplification-t07-named-migration",
+      "sources": [
+        "report:2026-11-08-native-classic-overdesign-audit"
+      ],
+      "behavior": "A named current-format access must preserve transparent legacy migration without scanning unrelated changes.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "A named current-format access must preserve transparent legacy migration without scanning unrelated changes.",
+      "forbidden": "Scanning unrelated named changes on the steady path, hiding an unsettled journal, trusting a wrong fence or reusing an unstable observation.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-paths.test.ts",
+          "namePattern": "migrates only the named legacy runtime without enumerating unrelated changes",
+          "requiredNames": [
+            "Native artifact root safety migrates only the named legacy runtime without enumerating unrelated changes"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+          "namePattern": "retries a transient fence publication observation with a bounded fresh read",
+          "requiredNames": [
+            "workspace runtime resolution and migration retries a transient fence publication observation with a bounded fresh read"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+          "namePattern": "does not reuse an unstable fence after its bounded publication retries",
+          "requiredNames": [
+            "workspace runtime resolution and migration does not reuse an unstable fence after its bounded publication retries"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "location": "current",
+    "id": "runtime-legacy-migration-meta-lock-confirmation",
+    "sources": [
+      "report:2026-11-09-runtime-core-commit-review"
+    ],
+    "behavior": "A confirmed stopped legacy migration can retire its recovery meta-lock without probing a PID.",
+    "migrationDepth": 0,
+    "test": {
+      "file": "test/domains/workflow-contract/workspace-runtime-legacy-lock.test.ts",
+      "namePattern": "^(?:recovers a legacy migration recovery lock only after the original operation is confirmed stopped|preserves an active migration recovery transaction even when recovery is confirmed)$",
+      "requiredNames": [
+        "recovers a legacy migration recovery lock only after the original operation is confirmed stopped",
+        "preserves an active migration recovery transaction even when recovery is confirmed"
+      ]
+    },
+    "entry": {
+      "id": "runtime-legacy-migration-meta-lock-confirmation",
+      "sources": [
+        "report:2026-11-09-runtime-core-commit-review"
+      ],
+      "behavior": "A confirmed stopped legacy migration can retire its recovery meta-lock without probing a PID.",
+      "coverageLevel": "runtime",
+      "reproduction": "Place an old nonce/createdAt record at .runtime-migration-recovery.lock and resolve the Runtime root with and without confirmedOwnerStopped.",
+      "expected": "Unconfirmed recovery preserves the record; confirmed recovery completes; an active transaction still blocks.",
+      "forbidden": "Permanent legacy-lock failure after confirmation, or takeover of an active transaction.",
+      "rootCause": "The outer migration recovery lock did not receive the existing stop confirmation.",
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/workspace-runtime-legacy-lock.test.ts",
+          "namePattern": "^(?:recovers a legacy migration recovery lock only after the original operation is confirmed stopped|preserves an active migration recovery transaction even when recovery is confirmed)$",
+          "requiredNames": [
+            "recovers a legacy migration recovery lock only after the original operation is confirmed stopped",
+            "preserves an active migration recovery transaction even when recovery is confirmed"
+          ]
+        }
+      ]
+    }
+  }
+]

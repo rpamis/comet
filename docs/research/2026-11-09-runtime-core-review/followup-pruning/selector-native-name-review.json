@@ -1,0 +1,86 @@
+{
+  "review": "Read-only selector audit; source/catalog unchanged",
+  "cases": [
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "oldName": "materializes a Delta target before Shape and refuses independent target edits",
+      "fullName": "Native SDK Workflow Application materializes a Delta target before Shape and refuses independent target edits",
+      "migrationKind": "tests-moved",
+      "semantic": "Same Delta materialization and independent user target preservation assertions remain. Missing suite prefix only.",
+      "sourceLine": 1791,
+      "collected": true,
+      "executedByThisReview": false
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "oldName": "confirms a Supervisor child plan and coordination mode in the same SDK Run",
+      "fullName": "Native SDK Workflow Application confirms a Supervisor child plan and coordination mode in the same SDK Run''",
+      "migrationKind": "tests-moved",
+      "semantic": "Same summary-format children/coordination/one SDK Run case; Vitest $suffix interpolation renders the empty value as two apostrophes, and suite prefix is missing.",
+      "sourceLine": 1852,
+      "collected": true,
+      "executedByThisReview": false
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "oldName": "confirms a Supervisor child plan and coordination mode in the same SDK Run with referenced acceptance",
+      "fullName": "Native SDK Workflow Application confirms a Supervisor child plan and coordination mode in the same SDK Run' with referenced acceptance'",
+      "migrationKind": "tests-moved",
+      "semantic": "Same referenced-acceptance parameter variant; only Vitest interpolated-name quoting and missing suite prefix differ.",
+      "sourceLine": 1852,
+      "collected": true,
+      "executedByThisReview": false
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "oldName": "recovers an applied unknown Archive through the public CLI with generated-output changes",
+      "fullName": "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+      "migrationKind": "tests-moved",
+      "semantic": "Current generated-output variant retains original unknown Action/claim/attempt, public Archive --recover, unchanged canonical Spec bytes and mtime, one archive.execute, repeated recovery with unchanged revision. The transaction variant additionally rejects foreign capability edits.",
+      "sourceLine": 9334,
+      "collected": true,
+      "executedByThisReview": false
+    },
+    {
+      "file": "test/domains/comet-native/native-children.test.ts",
+      "oldName": "downgrades a drifted children copy to a confirmation prompt instead of blocking status",
+      "fullName": "Native parent and child changes retains approval after a children edit and leaves its meaning to the Agent",
+      "migrationKind": "feature-removed",
+      "semantic": "The old automatic children-byte drift withdrawal was explicitly retired in 5426c4cb..2e7055cc. Current case intentionally asserts confirmed=true and no extra Shape prompt, and still verifies status succeeds. This is a reviewed feature retirement, not an equivalent rename of the old negative expectation.",
+      "sourceLine": 749,
+      "collected": true,
+      "executedByThisReview": false
+    },
+    {
+      "file": "test/domains/comet-native/native-children.test.ts",
+      "oldName": "derives referenced v2 acceptance from the current catalog without copying its text",
+      "fullName": "Native parent and child changes derives referenced v2 acceptance from the current catalog without copying its text",
+      "migrationKind": "tests-moved",
+      "semantic": "Same current catalog reference derivation, required ID coverage and missing catalog rejection; suite prefix missing only.",
+      "sourceLine": 457,
+      "collected": true,
+      "executedByThisReview": false
+    },
+    {
+      "file": "test/domains/comet-native/native-children.test.ts",
+      "oldName": "accepts a readable v2 acceptance index while retaining the v1 contract",
+      "fullName": "Native parent and child changes accepts a readable v2 acceptance index while retaining the v1 contract",
+      "migrationKind": "tests-moved",
+      "semantic": "Same readable v2 index compatibility and v1 contract assertions; suite prefix missing only.",
+      "sourceLine": 427,
+      "collected": true,
+      "executedByThisReview": false
+    },
+    {
+      "file": "test/domains/comet-entry/hook-adapter.test.ts",
+      "oldName": "reads native Codex apply_patch commands without interpreting shell commands as patches",
+      "fullName": "Comet Hook platform adapter reads native Codex apply_patch commands without interpreting shell commands as patches",
+      "migrationKind": "tests-moved",
+      "semantic": "Same object/string tool_input command parsing, correct write target/patch and Bash command refusal; suite prefix missing only.",
+      "sourceLine": 88,
+      "collected": true,
+      "executedByThisReview": false
+    }
+  ],
+  "summary": "8 current counterparts collected. 7 are same retained behavior names or stronger recovery coverage; 1 children-byte invalidation case is intentionally feature-removed. Collection is not a passing execution report."
+}

@@ -1,6 +1,7 @@
 import { resolveClassicRunDirectory } from '../../../domains/comet-classic/classic-runtime-paths.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as engineState from '../../../domains/engine/state.js';
+import * as sqlite from '../../../platform/fs/sqlite.js';
 import { healBoundBranch } from '../../../domains/comet-classic/classic-branch-binding.js';
 import { promises as fs } from 'fs';
 import os from 'os';
@@ -199,12 +200,16 @@ describe('Classic state projection', () => {
     const before = { classic: classicState(), run: runState() };
     await writeClassicState(changeDir, before);
     const open = vi.spyOn(fs, 'open');
+    const database = vi.spyOn(sqlite, 'openSqliteDatabase');
 
     expect(await readClassicState(changeDir)).toMatchObject(before);
     expect(
       open.mock.calls.filter(
         ([file, flags]) => String(file).endsWith('.comet-state.lock') && flags === 'wx',
       ),
+    ).toHaveLength(0);
+    expect(
+      database.mock.calls.filter(([file]) => String(file).endsWith('.comet-state.lock.sqlite')),
     ).toHaveLength(0);
 
     await writeClassicState(changeDir, {
@@ -217,36 +222,39 @@ describe('Classic state projection', () => {
     });
   });
 
-  it('falls back to a coherent state when a complete writer crosses the read window', async () => {
+  it('reads coherent YAML and Run state after a complete serial writer commits', async () => {
     const before = { classic: classicState(), run: runState() };
     const after = {
       classic: { ...before.classic, phase: 'verify' as const },
       run: { ...before.run, currentStep: 'full.verify.run', iteration: 4 },
     };
     await writeClassicState(changeDir, before);
-    const originalRead = engineState.readRunState;
-    vi.spyOn(engineState, 'readRunState').mockImplementationOnce(async (...args) => {
-      await writeClassicState(changeDir, after);
-      return originalRead(...args);
-    });
-
+    expect(await readClassicState(changeDir)).toMatchObject(before);
+    await writeClassicState(changeDir, after);
+    const committed = await fs.readFile(stateFile, 'utf8');
     expect(await readClassicState(changeDir)).toMatchObject(after);
+    expect(await readClassicState(changeDir, { migrate: false })).toMatchObject(after);
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(committed);
   });
 
   it('observes a same-size manual edit even when the original mtime is restored', async () => {
-    await writeClassicState(changeDir, { classic: classicState(), run: runState() });
+    const projection = { classic: classicState(), run: runState() };
+    await writeClassicState(changeDir, projection);
+    expect(await readClassicState(changeDir)).toMatchObject(projection);
     const original = await fs.stat(stateFile);
     const source = await fs.readFile(stateFile, 'utf8');
-    const read = engineState.readRunState;
-    vi.spyOn(engineState, 'readRunState').mockImplementationOnce(async (...args) => {
-      await fs.writeFile(stateFile, source.replace('phase: build', 'phase: open '));
-      await fs.utimes(stateFile, original.atime, original.mtime);
-      return read(...args);
-    });
+    const edited = source.replace('phase: build', 'phase: open ');
+    expect(edited).not.toBe(source);
+    expect(Buffer.byteLength(edited)).toBe(Buffer.byteLength(source));
+    await fs.writeFile(stateFile, edited);
+    await fs.utimes(stateFile, original.atimeMs / 1000, original.mtimeMs / 1000);
+    expect(Math.abs((await fs.stat(stateFile)).mtimeMs - original.mtimeMs)).toBeLessThan(1);
     expect((await readClassicState(changeDir)).classic?.phase).toBe('open');
+    expect((await readClassicState(changeDir)).run).toEqual(projection.run);
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(edited);
   });
 
-  it('uses the serialized reader when file identities are unavailable', async () => {
+  it('reads the current state without a serialized writer database when legacy identity probes are unavailable', async () => {
     const projection = { classic: classicState(), run: runState() };
     await writeClassicState(changeDir, projection);
     const lstat = fs.lstat;
@@ -257,59 +265,56 @@ describe('Classic state projection', () => {
       }
       return stat;
     });
-    const open = vi.spyOn(fs, 'open');
+    const source = await fs.readFile(stateFile, 'utf8');
+    const database = vi.spyOn(sqlite, 'openSqliteDatabase');
     expect(await readClassicState(changeDir)).toMatchObject(projection);
     expect(
-      open.mock.calls.filter(
-        ([file, flags]) => String(file).endsWith('.comet-state.lock') && flags === 'wx',
-      ),
-    ).toHaveLength(1);
+      database.mock.calls.filter(([file]) => String(file).endsWith('.comet-state.lock.sqlite')),
+    ).toHaveLength(0);
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(source);
   });
 
-  it('waits for a writer that has updated Run but not committed YAML', async () => {
+  it('rolls back an interrupted Run and YAML transaction before the next serial writer commits', async () => {
     const before = { classic: classicState(), run: runState() };
     const after = {
       classic: { ...before.classic, phase: 'verify' as const },
       run: { ...before.run, currentStep: 'full.verify.run', iteration: 4 },
     };
     await writeClassicState(changeDir, before);
-    let release!: () => void;
-    const blocked = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    let entered!: () => void;
-    const committing = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    const writer = writeClassicState(changeDir, after, {
-      beforeCommit: async () => {
-        entered();
-        await blocked;
-      },
-    });
-    await committing;
-    let attempted!: () => void;
-    const waiting = new Promise<void>((resolve) => {
-      attempted = resolve;
-    });
-    const originalOpen = fs.open;
-    vi.spyOn(fs, 'open').mockImplementation((...args) => {
-      if (String(args[0]).endsWith('.comet-state.lock') && args[1] === 'wx') attempted();
-      return originalOpen(...args);
-    });
-    let settled = false;
-    const reader = readClassicState(changeDir).then((value) => {
-      settled = true;
-      return value;
-    });
-    try {
-      await waiting;
-      expect(settled).toBe(false);
-    } finally {
-      release();
-      await writer;
-    }
-    expect(await reader).toMatchObject(after);
+    const runtime = await resolveClassicRunDirectory(changeDir);
+    const journal = path.join(runtime, '.comet-state-transaction.json');
+    const beforeYaml = await fs.readFile(stateFile, 'utf8');
+    let inspected = false;
+    await expect(
+      writeClassicState(changeDir, after, {
+        beforeCommit: async () => {
+          inspected = true;
+          expect(await engineState.readRunState(runtime)).toEqual(after.run);
+          expect(await fs.readFile(stateFile, 'utf8')).toBe(beforeYaml);
+          const bytes = await fs.readFile(journal, 'utf8');
+          expect(JSON.parse(bytes)).toMatchObject({
+            schema: 'comet.classic.state-transaction.v1',
+            beforeRun: before.run,
+            afterRun: after.run,
+            beforeYaml,
+          });
+          await expect(readClassicState(changeDir, { migrate: false })).rejects.toThrow(
+            'transaction is incomplete',
+          );
+          expect(await fs.readFile(journal, 'utf8')).toBe(bytes);
+          expect(await engineState.readRunState(runtime)).toEqual(after.run);
+          throw new Error('SIMULATED interruption before YAML commit');
+        },
+      }),
+    ).rejects.toThrow('SIMULATED interruption before YAML commit');
+    expect(inspected).toBe(true);
+    expect(await engineState.readRunState(runtime)).toEqual(before.run);
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(beforeYaml);
+    expect(await readClassicState(changeDir, { migrate: false })).toMatchObject(before);
+    await expect(fs.access(journal)).rejects.toMatchObject({ code: 'ENOENT' });
+    await writeClassicState(changeDir, after);
+    expect(await readClassicState(changeDir)).toMatchObject(after);
+    await expect(fs.access(journal)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('commits the check epoch with the phase and rejects stale writers', async () => {

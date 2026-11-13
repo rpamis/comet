@@ -1,0 +1,215 @@
+{
+  "passed": true,
+  "reviewAxis": "Spec",
+  "readOnly": true,
+  "noRepoWrites": true,
+  "noTestsRun": true,
+  "cases": [
+    {
+      "id": "native-531-legacy-eperm-stop-recovery",
+      "originalFieldsUnchanged": true,
+      "originalMigrationChainUnchanged": true,
+      "appendedNodeEqualsFrozenPayload": true,
+      "originalChainLength": 1,
+      "actualChainLength": 2
+    },
+    {
+      "id": "native-next-drain-internal-actions",
+      "originalFieldsUnchanged": true,
+      "originalMigrationChainUnchanged": true,
+      "appendedNodeEqualsFrozenPayload": true,
+      "originalChainLength": 0,
+      "actualChainLength": 1
+    },
+    {
+      "id": "native-invalid-completed-check-recovery",
+      "originalFieldsUnchanged": true,
+      "originalMigrationChainUnchanged": true,
+      "appendedNodeEqualsFrozenPayload": true,
+      "originalChainLength": 0,
+      "actualChainLength": 1
+    },
+    {
+      "id": "native-invalid-completed-check-guidance",
+      "originalFieldsUnchanged": true,
+      "originalMigrationChainUnchanged": true,
+      "appendedNodeEqualsFrozenPayload": true,
+      "originalChainLength": 0,
+      "actualChainLength": 1
+    },
+    {
+      "id": "native-rejected-check-request-no-baseline",
+      "originalFieldsUnchanged": true,
+      "originalMigrationChainUnchanged": true,
+      "appendedNodeEqualsFrozenPayload": true,
+      "originalChainLength": 0,
+      "actualChainLength": 1
+    },
+    {
+      "id": "native-verifier-position-diagnostic",
+      "originalFieldsUnchanged": true,
+      "originalMigrationChainUnchanged": true,
+      "appendedNodeEqualsFrozenPayload": true,
+      "originalChainLength": 0,
+      "actualChainLength": 1
+    },
+    {
+      "id": "native-rejected-check-proof-original-claim-correction",
+      "originalFieldsUnchanged": true,
+      "originalMigrationChainUnchanged": true,
+      "appendedNodeEqualsFrozenPayload": true,
+      "originalChainLength": 0,
+      "actualChainLength": 1
+    },
+    {
+      "id": "native-repeatable-verify-plans",
+      "originalFieldsUnchanged": true,
+      "originalMigrationChainUnchanged": true,
+      "appendedNodeEqualsFrozenPayload": true,
+      "originalChainLength": 0,
+      "actualChainLength": 1
+    },
+    {
+      "id": "native-single-result-template",
+      "originalFieldsUnchanged": true,
+      "originalMigrationChainUnchanged": true,
+      "appendedNodeEqualsFrozenPayload": true,
+      "originalChainLength": 0,
+      "actualChainLength": 1
+    },
+    {
+      "id": "native-classic-check-plan-continuation",
+      "originalFieldsUnchanged": true,
+      "originalMigrationChainUnchanged": true,
+      "appendedNodeEqualsFrozenPayload": true,
+      "originalChainLength": 1,
+      "actualChainLength": 2
+    },
+    {
+      "id": "native-build-managed-check-reuse",
+      "originalFieldsUnchanged": true,
+      "originalMigrationChainUnchanged": true,
+      "appendedNodeEqualsFrozenPayload": true,
+      "originalChainLength": 1,
+      "actualChainLength": 2
+    },
+    {
+      "id": "native-task-recovery-boundaries",
+      "originalFieldsUnchanged": true,
+      "originalMigrationChainUnchanged": true,
+      "appendedNodeEqualsFrozenPayload": true,
+      "originalChainLength": 0,
+      "actualChainLength": 1
+    },
+    {
+      "id": "native-299-real-integration-parent-verify",
+      "originalFieldsUnchanged": true,
+      "originalMigrationChainUnchanged": true,
+      "appendedNodeEqualsFrozenPayload": true,
+      "originalChainLength": 1,
+      "actualChainLength": 2
+    },
+    {
+      "id": "native-v4-compact-steps-original-run-recovery",
+      "originalFieldsUnchanged": true,
+      "originalMigrationChainUnchanged": true,
+      "appendedNodeEqualsFrozenPayload": true,
+      "originalChainLength": 0,
+      "actualChainLength": 1
+    },
+    {
+      "id": "manual-recovery-native-unreadable-report",
+      "originalFieldsUnchanged": true,
+      "originalMigrationChainUnchanged": true,
+      "appendedNodeEqualsFrozenPayload": true,
+      "originalChainLength": 1,
+      "actualChainLength": 2
+    },
+    {
+      "id": "native-optional-archived-view-path-warning",
+      "originalFieldsUnchanged": true,
+      "originalMigrationChainUnchanged": true,
+      "appendedNodeEqualsFrozenPayload": true,
+      "originalChainLength": 0,
+      "actualChainLength": 1
+    }
+  ],
+  "frozenEvidence": [
+    {
+      "ref": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/registry.json",
+      "byteEqual": true,
+      "recordedSha256Matches": true,
+      "bytes": 29135
+    },
+    {
+      "ref": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/tests.json",
+      "byteEqual": true,
+      "recordedSha256Matches": true,
+      "bytes": 526442
+    },
+    {
+      "ref": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/mapping.json",
+      "byteEqual": true,
+      "recordedSha256Matches": true,
+      "bytes": 23005
+    },
+    {
+      "ref": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/tests.patch",
+      "byteEqual": true,
+      "recordedSha256Matches": true,
+      "bytes": 375762
+    },
+    {
+      "ref": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/README.md",
+      "byteEqual": true,
+      "recordedSha256Matches": false,
+      "bytes": 1335
+    },
+    {
+      "ref": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/main/registry.json",
+      "byteEqual": true,
+      "recordedSha256Matches": true,
+      "bytes": 11293
+    },
+    {
+      "ref": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/main/tests.json",
+      "byteEqual": true,
+      "recordedSha256Matches": true,
+      "bytes": 421100
+    },
+    {
+      "ref": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/main/mapping.json",
+      "byteEqual": true,
+      "recordedSha256Matches": true,
+      "bytes": 11120
+    },
+    {
+      "ref": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/main/tests.patch",
+      "byteEqual": true,
+      "recordedSha256Matches": true,
+      "bytes": 98768
+    },
+    {
+      "ref": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/main/README.md",
+      "byteEqual": true,
+      "recordedSha256Matches": false,
+      "bytes": 1335
+    }
+  ],
+  "shared21StructurallyUnchanged": true,
+  "actualRepoAffectedSubsetSchemaAndEvidence": true,
+  "archiveFollowupActualGreen": {
+    "passed": 3,
+    "failed": 0,
+    "names": [
+      "preserves the completed Run and warns when its archived report view is not a file (route=archive-ready)",
+      "preserves the completed Run and warns when its archived report view is not a file (route=verification-wait)",
+      "recovers original archive history after a subsequent legitimate archive changes canonical Specs"
+    ]
+  },
+  "notClaimed": [
+    "No full catalog / full-suite runtime validation",
+    "Frozen patch was checked against captured main snapshot; later independent main changes do not rewrite evidence",
+    "Original completed-invalid process experiment not rerun"
+  ]
+}

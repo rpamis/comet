@@ -1,114 +1,99 @@
+import '../../helpers/isolated-agent-home.js';
 import { build } from 'esbuild';
-import * as portableCheckpoints from '../../../domains/engine/portable-run-checkpoint.js';
-import * as checkpointLocks from '../../../platform/fs/recoverable-file-lock.js';
-import { parse as parseYaml } from 'yaml';
-import { inspectNativeHookGuard } from '../../../domains/comet-native/native-hook-guard.js';
-import { refreshNativeSdkVerificationReport } from '../../../domains/comet-native/native-sdk-report.js';
-import * as nativeReportView from '../../../domains/comet-native/native-verification-report-v2.js';
-import { withCometRuntimeMetrics } from '../../../platform/process/runtime-metrics.js';
-import { readRuntimePerformanceRecords } from '../../../platform/process/runtime-performance.js';
-import { inspectNativeSdkCancellation } from '../../../domains/comet-native/native-sdk-cancellation.js';
-import * as nativeSdkChecks from '../../../domains/comet-native/native-sdk-checks.js';
-import * as nativeSdkReportRecovery from '../../../domains/comet-native/native-sdk-report.js';
-import * as nativeSdkRevisionRecovery from '../../../domains/comet-native/native-sdk-revise.js';
-import * as processIdentity from '../../../platform/process/process-identity.js';
-import * as windowsIdentity from '../../../platform/process/windows-process-identity.js';
-import { nativeCandidateInputGate } from '../../../domains/comet-native/native-portable-checks.js';
-import * as nativePortableChecks from '../../../domains/comet-native/native-portable-checks.js';
-import { nativeEditReviewScope } from '../../../domains/comet-native/native-edit-review.js';
-import {
-  nativeSdkAutomaticReportAction,
-  recoverNativeSdkReportRevalidation,
-} from '../../../domains/comet-native/native-sdk-report.js';
-import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
-import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
-import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
-import { createLegacyNativeSdkChange } from '../../helpers/native-legacy-sdk-change.js';
-import { requireFileSymlink } from '../../helpers/file-symlink.js';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
 import { pathToFileURL } from 'node:url';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { parse as parseYaml } from 'yaml';
+import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+import { inspectNativeHookGuard } from '../../../domains/comet-native/native-hook-guard.js';
+import { inspectNativeSdkCancellation } from '../../../domains/comet-native/native-sdk-cancellation.js';
+
+import * as nativeSdkReportRecovery from '../../../domains/comet-native/native-sdk-report.js';
+import {
+  nativeSdkAutomaticReportAction,
+  recoverNativeSdkReportRevalidation,
+  refreshNativeSdkVerificationReport,
+} from '../../../domains/comet-native/native-sdk-report.js';
+import * as nativeSdkRevisionRecovery from '../../../domains/comet-native/native-sdk-revise.js';
+import * as nativeReportView from '../../../domains/comet-native/native-verification-report-v2.js';
+import * as portableCheckpoints from '../../../domains/engine/portable-run-checkpoint.js';
+import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
+import * as checkpointLocks from '../../../platform/fs/recoverable-file-lock.js';
+import { withCometRuntimeMetrics } from '../../../platform/process/runtime-metrics.js';
+import { readRuntimePerformanceRecords } from '../../../platform/process/runtime-performance.js';
+import { requireFileSymlink } from '../../helpers/file-symlink.js';
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
+import { createLegacyNativeSdkChange } from '../../helpers/native-legacy-sdk-change.js';
 import { waitForCondition, waitForProcessExit } from '../../helpers/native-portable-process.js';
-import {
-  assertNativeSdkCandidateUnchanged,
-  nativeSdkCheckExecutor,
-  nativeSdkCurrentCheckSummaries,
-  recoverNativeSdkChecks,
-} from '../../../domains/comet-native/native-sdk-checks.js';
-import {
-  inspectNativeSdkCheckExecutions,
-  hasNativeSdkPortableStopEvidence,
-  reconcileNativeSdkExecutionStops,
-  createNativeSdkCheckExecution,
-  acknowledgeNativeSdkCheckStopped,
-} from '../../../domains/comet-native/native-sdk-check-execution.js';
 
 import * as nativeDomain from '../../../domains/comet-native/index.js';
+import { nativeSdkApplicationForRun } from '../../../domains/comet-native/native-sdk-application.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import {
+  nativeLegacySectionHash,
+  nativeTotalSpecHash,
+} from '../../../domains/comet-native/native-delta-spec.js';
+import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
+import { prepareNativePortableShapeConfirmation } from '../../../domains/comet-native/native-loop-runtime.js';
+import {
   ensureNativeDirectories,
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
-import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
-import { prepareNativePortableShapeConfirmation } from '../../../domains/comet-native/native-loop-runtime.js';
 import { inspectNativeSdkArchiveFinalization } from '../../../domains/comet-native/native-portable-archive.js';
-import { removeNativeWorkspaceConfig } from '../../../domains/comet-native/native-workspace-config.js';
-import { createNativeSdkStateStore } from '../../../domains/comet-native/native-sdk-state-store.js';
-import { advanceNativeSdkChange } from '../../../domains/comet-native/native-sdk-next.js';
-import { nativeSdkImplementationRevisionExecutor } from '../../../domains/comet-native/native-sdk-revise.js';
-import { runNativeEditReviewCommand } from '../../../domains/comet-native/native-edit-review-command.js';
-import { captureApprovedShapeOriginals } from '../../../domains/comet-native/native-shape-review-evidence.js';
-import {
-  projectNativeSdkContinuation,
-  projectNativeSdkDispatchResult,
-} from '../../../domains/comet-native/native-sdk-continuation.js';
+import * as nativeRequirements from '../../../domains/comet-native/native-portable-requirements.js';
+import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
+import type { NativePortableState } from '../../../domains/comet-native/native-portable-types.js';
 import {
   inspectNativeSdkDefinitionUpgrade,
   loadOwnedNativeSdkRuntime,
 } from '../../../domains/comet-native/native-runtime-ownership.js';
-import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
+import { archiveNativeSdkChange } from '../../../domains/comet-native/native-sdk-archive-command.js';
 import {
-  nativeSdkBeforeReportRecovery,
-  nativeSdkBeforeImplementationRevision,
-  nativeSdkBeforeArchiveCandidateRecovery,
-  nativeSdkLegacyTransitionHandler,
-  nativeSdkBeforeVerifierRecovery,
-} from '../../../domains/comet-native/native-sdk-definition.js';
-import {
+  nativeSdkArchiveApplyExecutor,
+  nativeSdkArchiveApplyValidator,
+  recoverNativeSdkArchiveOutcome,
+  recoverCancelledNativeSdkArchive,
+  nativeSdkArchiveFinalizeExecutor,
   nativeSdkArchivePreflightExecutor,
   nativeSdkArchivePreflightValidator,
-  nativeSdkArchiveFinalizeExecutor,
-  nativeSdkArchiveApplyExecutor,
 } from '../../../domains/comet-native/native-sdk-archive.js';
-import { archiveNativeSdkChange } from '../../../domains/comet-native/native-sdk-archive-command.js';
-import * as nativeRequirements from '../../../domains/comet-native/native-portable-requirements.js';
-import { nativeSupervisorStateFile } from '../../../domains/comet-native/native-supervisor-state.js';
-import type { NativePortableState } from '../../../domains/comet-native/native-portable-types.js';
 import {
+  nativeSdkTaskResultTemplate,
+  projectNativeSdkContinuation,
+  projectNativeSdkDispatchResult,
+} from '../../../domains/comet-native/native-sdk-continuation.js';
+import { advanceNativeSdkChange } from '../../../domains/comet-native/native-sdk-next.js';
+import { nativeSdkImplementationRevisionExecutor } from '../../../domains/comet-native/native-sdk-revise.js';
+import { createNativeSdkStateStore } from '../../../domains/comet-native/native-sdk-state-store.js';
+import { nativeSupervisorStateFile } from '../../../domains/comet-native/native-supervisor-state.js';
+import { removeNativeWorkspaceConfig } from '../../../domains/comet-native/native-workspace-config.js';
+import {
+  createFileRuntimeStore,
   createMemoryRuntimeStore,
   createPortableRunCheckpoint,
-  readPortableRunCheckpoint,
-  createFileRuntimeStore,
   createRuntime,
+  defineWorkflow,
+  hashRuntimeValue,
+  readPortableRunCheckpoint,
   type DefineWorkflowOptions,
-  type RuntimeValidator,
-  type RuntimeStateValidator,
   type RuntimeExecutor,
+  type RuntimeStateValidator,
+  type RuntimeValidator,
+  type RuntimeValue,
   type WorkflowRun,
   type WorkflowTransitionHandler,
-  hashRuntimeValue,
 } from '../../../domains/engine/runtime.js';
 import {
   COMET_CHANGE_OWNER_SCHEMA,
-  registerSdkChangeOwner,
   recoverSdkChangeOwnerToActive,
+  registerSdkChangeOwner,
 } from '../../../domains/workflow-contract/change-runtime-owner.js';
 
 /** 归档阻塞保留原错误；未完成的 Action 通过退出码 73 返回恢复信息。 */
@@ -131,15 +116,8 @@ async function expectArchiveFailure(
 }
 
 function expectOriginalActionFacts(run: WorkflowRun, expected: WorkflowRun['actions']) {
-  const actual = run.actions.filter((action) => expected.some(({ id }) => id === action.id));
-  expect(actual).toHaveLength(expected.length);
-  for (let index = 0; index < expected.length; index += 1) {
-    const { executionStop: oldStop, ...oldFacts } = expected[index];
-    const { executionStop: newStop, ...newFacts } = actual[index];
-    expect(newFacts).toEqual(oldFacts);
-    if (oldStop) expect(newStop).toEqual(oldStop);
-    else if (newStop) expect(hasNativeSdkPortableStopEvidence(run, actual[index])).toBe(true);
-  }
+  for (const action of expected)
+    expect(run.actions.find((current) => current.id === action.id)).toEqual(action);
 }
 
 type NativeApplication = {
@@ -156,6 +134,137 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
+
+for (const { title, invalid } of [
+  {
+    title: 'rejects a foreign Verifier candidate and accepts correction on the original claim',
+    invalid: 'candidate',
+  },
+  {
+    title:
+      'diagnoses a stale Verifier iteration and attempt and preserves correction on the original claim',
+    invalid: 'position',
+  },
+])
+  it(title, async () => {
+    const f = await dispatchedVerifier([], 'sdk');
+    const original = f.run.actions.at(-1)!;
+    const state = f.run.state as NativePortableState;
+    const claimed = await f.runtime.claim({
+      runId: f.run.runId,
+      actionId: original.id,
+      attempt: original.attempt,
+      inputHash: original.inputHash,
+      executorId: 'native-host',
+      sessionId: 'verifier-correction',
+      claimToken: 'original-verifier-claim',
+      context: { requestId: 'claim-verifier-correction', projectRoot: f.root },
+    });
+    const output = {
+      candidateId:
+        invalid === 'candidate' ? 'foreign-candidate' : state.builder_handoff!.candidate_id,
+      verifierExecutionRef: 'verifier-correction',
+      response: {
+        kind: 'final-result',
+        result: {
+          iteration: invalid === 'position' ? state.loop.iteration + 1 : state.loop.iteration,
+          attempt: invalid === 'position' ? state.loop.attempt + 1 : state.loop.attempt,
+          verdict: 'pass',
+          acceptance: [
+            { id: 'A1', result: 'passed', reason: 'Observed the complete approved behavior.' },
+          ],
+          risks: [],
+          summary: 'Verified the candidate.',
+        },
+      },
+    };
+    const outcome = {
+      actionId: original.id,
+      attempt: original.attempt,
+      inputHash: original.inputHash,
+      claimToken: 'original-verifier-claim',
+      outcomeId: 'foreign-candidate-result',
+      status: 'succeeded' as const,
+      output,
+    };
+    await expect(
+      f.runtime.recordOutcome({
+        runId: f.run.runId,
+        outcome,
+        context: { requestId: 'wrong-candidate', projectRoot: f.root },
+      }),
+    ).rejects.toMatchObject({ code: 'OUTCOME_PROCESSING_ERROR' });
+    const rejected = await f.runtime.inspect(f.run.runId);
+    expect(rejected.actions.at(-1)).toMatchObject({
+      id: original.id,
+      status: 'running',
+      input: original.input,
+      inputHash: original.inputHash,
+      claim: claimed.actions.at(-1)!.claim,
+    });
+    expect(rejected.waits).toEqual(f.run.waits);
+    const rejection = rejected.actions.at(-1)!.rejectedOutcomes!.at(-1)!;
+    expect(rejection).toMatchObject({
+      outcome: { outcomeId: outcome.outcomeId },
+      code: 'OUTCOME_PROCESSING_ERROR',
+    });
+    if (invalid === 'position') {
+      expect(rejection.reason).toContain(
+        `expected iteration=${state.loop.iteration}, attempt=${state.loop.attempt}`,
+      );
+      expect(rejection.reason).toContain(
+        `received iteration=${state.loop.iteration + 1}, attempt=${state.loop.attempt + 1}`,
+      );
+    }
+    const correctedOutput = {
+      ...output,
+      candidateId: state.builder_handoff!.candidate_id,
+      response: {
+        ...output.response,
+        result: {
+          ...output.response.result,
+          iteration: state.loop.iteration,
+          attempt: state.loop.attempt,
+        },
+      },
+    };
+    await expect(
+      f.runtime.recordOutcome({
+        runId: f.run.runId,
+        outcome: { ...outcome, output: correctedOutput },
+        context: { requestId: 'cannot-rewrite-rejected-result', projectRoot: f.root },
+      }),
+    ).rejects.toThrow();
+    expect(await f.runtime.inspect(f.run.runId)).toEqual(rejected);
+    const corrected = await f.runtime.recordOutcome({
+      runId: f.run.runId,
+      outcome: {
+        ...outcome,
+        outcomeId: 'corrected-candidate-result',
+        output: correctedOutput,
+      },
+      context: { requestId: 'correct-candidate', projectRoot: f.root },
+    });
+    expect(corrected.actions.find((action) => action.id === original.id)).toMatchObject({
+      status: 'succeeded',
+      claim: claimed.actions.at(-1)!.claim,
+      input: original.input,
+      inputHash: original.inputHash,
+    });
+    expect(corrected.waits.at(-1)).toMatchObject({ stepId: 'verify.confirm', status: 'pending' });
+    expect(corrected.actions.find((action) => action.id === original.id)!.rejectedOutcomes).toEqual(
+      rejected.actions.at(-1)!.rejectedOutcomes,
+    );
+    expect(corrected.actions.filter((action) => action.stepId === 'verify.verifier')).toHaveLength(
+      1,
+    );
+    expect(corrected.actions.some((action) => action.stepId === 'archive.finalize')).toBe(false);
+    expect(
+      corrected.waits.filter(
+        (wait) => wait.stepId === 'verify.confirm' && wait.status === 'pending',
+      ),
+    ).toHaveLength(1);
+  });
 
 async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-sdk-'));
@@ -219,76 +328,39 @@ async function allowAgentDocumentReview(root: string) {
   });
 }
 
-function nativeApplication(version: '1' | '2' | '3' = '1'): NativeApplication {
-  const define = (nativeDomain as Record<string, unknown>).defineNativeWorkflowApplication;
-  expect(define).toBeTypeOf('function');
-  return (define as (version: '1' | '2' | '3') => NativeApplication)(version);
-}
-
-function preCheckRecoveryApplication(): NativeApplication {
-  const application = nativeApplication();
-  const workflow = nativeSdkBeforeVerifierRecovery(application.workflow);
-  delete workflow.steps['verify.checks-stop'];
-  workflow.transitions = workflow.transitions.filter(
-    ({ from, to, on }) =>
-      from !== 'verify.checks-stop' &&
-      to !== 'verify.checks-stop' &&
-      !(from === 'verify.checks' && on === 'failed'),
-  );
-  return {
-    ...application,
-    workflow,
-    transitionHandler: nativeSdkLegacyTransitionHandler(workflow, application.transitionHandler),
-  };
-}
-
-function preChildArchiveApplication(): NativeApplication {
-  const application = preCheckRecoveryApplication();
-  const workflow = structuredClone(application.workflow);
-  delete workflow.steps['supervisor.child.archive'];
-  workflow.transitions = workflow.transitions.filter(
-    ({ from, to }) => from !== 'supervisor.child.archive' && to !== 'supervisor.child.archive',
-  );
-  return {
-    ...application,
-    workflow,
-    transitionHandler: {
-      ...application.transitionHandler,
-      apply({ run, event }) {
-        // 重现旧定义：集成检查成功后直接推进下一 Child，不产生归档 Action。
-        if (
-          event.kind === 'action-outcome' &&
-          event.stepId === 'supervisor.child.integration-checks' &&
-          event.outcome.status === 'succeeded'
-        )
-          return application.transitionHandler.apply({
-            run,
-            event: {
-              ...event,
-              stepId: 'supervisor.child.archive',
-              outcome: {
-                ...event.outcome,
-                output: {
-                  integrationCommit: (event.outcome.output as { candidateId: string }).candidateId,
-                },
-              },
-            },
-          });
-        return application.transitionHandler.apply({ run, event });
-      },
-    },
-  };
+function nativeApplication(version: '4' = '4'): NativeApplication {
+  return nativeDomain.defineNativeWorkflowApplication(version);
 }
 
 function collectProposal(
   paths: Awaited<ReturnType<typeof nativeProjectPaths>>,
   state: NativePortableState,
+  materializeTargets = false,
 ) {
   const collect = (nativeDomain as Record<string, unknown>).collectNativeSdkShapeProposal;
   expect(collect).toBeTypeOf('function');
   return (
-    collect as (options: { paths: typeof paths; state: NativePortableState }) => Promise<unknown>
-  )({ paths, state });
+    collect as (options: {
+      paths: typeof paths;
+      state: NativePortableState;
+      materializeTargets?: boolean;
+    }) => Promise<unknown>
+  )({ paths, state, materializeTargets });
+}
+
+async function platformFixtureChecks(root: string) {
+  const actual = spawnSync(process.execPath, ['-e', 'process.exit(0)'], {
+    cwd: root,
+    windowsHide: true,
+  });
+  expect(actual.status).toBe(0);
+  return [
+    {
+      name: 'Actual harmless Node fixture command',
+      result: 'passed',
+      note: 'Actual exit 0; SIMULATED Agent protocol acceptance, no model or product evaluation.',
+    },
+  ];
 }
 
 async function succeedLatestAction(
@@ -299,6 +371,14 @@ async function succeedLatestAction(
   receipt: string,
   sessionId?: string,
 ) {
+  if (output && typeof output === 'object' && !Array.isArray(output)) {
+    const value = output as Record<string, unknown>;
+    if (
+      (value.response as { kind?: string } | undefined)?.kind === 'final-result' &&
+      !Object.hasOwn(value, 'checks')
+    )
+      output = { ...value, checks: await platformFixtureChecks(root) };
+  }
   const action = run.actions.at(-1)!;
   const context = { requestId: receipt, projectRoot: root };
   const claimed = await runtime.claim({
@@ -383,6 +463,7 @@ async function dispatchedVerifier(
   executeChecks = true,
   beforeChecks?: (root: string) => Promise<void>,
   beforeShape?: (root: string) => Promise<void>,
+  requireIndependentReview = true,
 ) {
   const prepared = await preparedShape(storeKind, application, beforeShape);
   const { root, paths, runtime } = prepared;
@@ -397,60 +478,29 @@ async function dispatchedVerifier(
   run = await succeedLatestAction(
     runtime,
     run,
-    await collectProposal(paths, run.state as NativePortableState),
-    root,
-    'shape-revalidated',
-  );
-  run = await succeedLatestAction(
-    runtime,
-    run,
     {
       summary: 'Implemented the selected workflow.',
       addressedAcceptanceIds: ['A1'],
       acceptanceReview: fixtureAcceptanceReview(['A1']),
-      checks: [],
+      checks: await platformFixtureChecks(root),
+      requireIndependentReview,
       knownLimits: [],
       review: null,
       submittedAt: '2026-09-24T01:00:00.000Z',
-      verificationChecks,
     },
     root,
     'builder-candidate',
     'builder-session-1',
   );
   await beforeChecks?.(root);
-  if (executeChecks)
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: run.actions.at(-1)!.id,
-      executorId: 'comet-native-checks',
-      context: { requestId: 'native-check-execution', projectRoot: root },
-    });
   return { ...prepared, run };
-}
-
-async function recordNonBehavioralEdit(root: string, name: string, summary: string) {
-  const observed = (await runNativeEditReviewCommand({
-    projectRoot: root,
-    name,
-    operation: 'observe',
-    sessionId: 'builder-session-1',
-  })) as { recordTemplate: Record<string, unknown> };
-  const reviewRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'native-reviewed-edit-'));
-  roots.push(reviewRoot);
-  const file = path.join(reviewRoot, 'review.json');
-  await fs.writeFile(
-    file,
-    JSON.stringify({ ...observed.recordTemplate, decision: 'non-behavioral', summary }),
-  );
-  await runNativeEditReviewCommand({ projectRoot: root, name, operation: 'record', file });
 }
 
 async function stalledVerifier(storeKind: 'memory' | 'sdk' = 'memory') {
   const prepared = await dispatchedVerifier([], storeKind);
   const { root, runtime } = prepared;
   let run = prepared.run;
-  for (let index = 1; index <= 4; index += 1) {
+  for (let index = 1; index <= 5; index += 1) {
     const state = run.state as NativePortableState;
     run = await succeedLatestAction(
       runtime,
@@ -474,7 +524,7 @@ async function stalledVerifier(storeKind: 'memory' | 'sdk' = 'memory') {
       `stalled-result-${index}`,
       `stalled-verifier-${index}`,
     );
-    if (index === 4) break;
+    if (index === 5) break;
     expect(run.actions.at(-1)).toMatchObject({ stepId: 'build.builder' });
     run = await succeedLatestAction(
       runtime,
@@ -487,18 +537,11 @@ async function stalledVerifier(storeKind: 'memory' | 'sdk' = 'memory') {
         knownLimits: [],
         review: null,
         submittedAt: `2026-09-24T0${index + 1}:00:00.000Z`,
-        verificationChecks: [],
       },
       root,
       `stalled-builder-${index}`,
       `stalled-builder-session-${index}`,
     );
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: run.actions.at(-1)!.id,
-      executorId: 'comet-native-checks',
-      context: { requestId: `stalled-checks-${index}`, projectRoot: root },
-    });
   }
   return { ...prepared, run };
 }
@@ -547,163 +590,50 @@ async function awaitingArchiveApplication(
     'verifier-result',
     'verifier-session-1',
   );
-  for (const [executorId, requestId] of [
-    ['comet-native-report', 'native-report'],
-    ['comet-native-report-revalidate', 'native-report-revalidate'],
-    ['comet-native-archive-preflight', 'native-archive-preflight'],
-  ]) {
-    if (run.waits.at(-1)?.stepId === 'verify.confirm' && run.waits.at(-1)?.status === 'pending') {
-      const wait = run.waits.at(-1)!;
-      run = await runtime.resolveWait({
-        runId: run.runId,
-        waitId: wait.id,
-        proposalHash: wait.proposalHash,
-        decisionId: 'verification-approved',
-        choice: 'approved',
-      });
-    }
-    if (executorId === 'comet-native-archive-preflight') {
-      if (stopBeforePreflight) break;
-      await beforePreflight?.({ root, run });
-    }
+  await refreshNativeSdkVerificationReport(root, run);
+  const wait = run.waits.at(-1)!;
+  run = await runtime.resolveWait({
+    runId: run.runId,
+    waitId: wait.id,
+    proposalHash: wait.proposalHash,
+    decisionId: 'verification-approved',
+    choice: 'approved',
+  });
+  if (!stopBeforePreflight) {
+    await beforePreflight?.({ root, run });
     run = await runtime.execute({
       runId: run.runId,
       actionId: run.actions.at(-1)!.id,
-      executorId,
-      context: { requestId, projectRoot: root },
+      executorId: 'comet-native-archive-preflight',
+      context: { requestId: 'native-archive-preflight', projectRoot: root },
     });
   }
   return { ...prepared, run };
 }
 
+function implementationRevisionArgs(root: string, run: WorkflowRun, summary: string) {
+  const approval = run.waits.findLast(
+    (wait) => wait.stepId === 'verify.confirm' && wait.status === 'resolved',
+  )!;
+  return [
+    'next',
+    run.runId,
+    '--project-root',
+    root,
+    '--json',
+    '--revise-implementation',
+    '--summary',
+    summary,
+    '--proposal-hash',
+    approval.proposalHash,
+    '--expected-state-version',
+    String((run.state as NativePortableState).state_version),
+    '--expected-action',
+    'revise-implementation',
+  ];
+}
+
 describe('Native protocol simplification', () => {
-  it('archives declared test outputs while continuing to bind generated application inputs', async () => {
-    const prepared = await awaitingArchiveApplication(
-      'sdk',
-      undefined,
-      true,
-      async (root) => {
-        await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n');
-        await fs.mkdir(path.join(root, 'dist/eval'), { recursive: true });
-        await fs.writeFile(path.join(root, 'dist/application.js'), 'original application');
-      },
-      nativeApplication(),
-      undefined,
-      [
-        {
-          id: 'test-output',
-          name: 'Test with trace output',
-          executable: process.execPath,
-          argv: ['-e', 'require("node:fs").writeFileSync("dist/eval/trace.json", "trace")'],
-          cwdRef: '.',
-          timeoutMs: 5000,
-          repeatable: true,
-          outputs: ['dist/eval'],
-        },
-      ],
-    );
-    const { root, runtime, run } = prepared;
-    await fs.writeFile(path.join(root, 'dist/eval/verifier.json'), 'independent trace');
-    const result = spawnSync(
-      process.execPath,
-      [
-        path.resolve('assets/skills/comet-native/scripts/comet-native-archive.mjs'),
-        run.runId,
-        '--project-root',
-        root,
-        '--json',
-      ],
-      { encoding: 'utf8', timeout: 30000 },
-    );
-    expect(result.status, result.stderr || result.stdout).toBe(0);
-    expect((await runtime.inspect(run.runId)).status).toBe('completed');
-    expect(await fs.readFile(path.join(root, 'dist/eval/verifier.json'), 'utf8')).toBe(
-      'independent trace',
-    );
-  });
-  it.each(['absent', 'present', 'unknown'] as const)(
-    'reconciles legacy EPERM only with explicit stop evidence and Windows enumeration %s',
-    async (presence) => {
-      const {
-        root,
-        runtime,
-        run: ready,
-      } = await dispatchedVerifier([], 'sdk', nativeApplication(), false);
-      const pending = ready.actions.at(-1)!;
-      const run = await runtime.claim({
-        runId: ready.runId,
-        actionId: pending.id,
-        attempt: pending.attempt,
-        inputHash: pending.inputHash,
-        executorId: 'comet-native-checks',
-        claimToken: 'legacy-eperm',
-        context: { requestId: 'legacy-eperm', projectRoot: root },
-      });
-      const action = run.actions.at(-1)!;
-      const registration = await createNativeSdkCheckExecution({
-        projectRoot: root,
-        run,
-        action,
-        candidateId: (run.state as NativePortableState).builder_handoff!.candidate_id,
-        plansHash: hashRuntimeValue([]),
-      });
-      registration.execution.owner = { pid: 2147483001 };
-      registration.execution.child = { pid: 2147483002 };
-      registration.execution.phase = 'interrupted';
-      registration.execution.terminationUnconfirmed = true;
-      await registration.save();
-      const descriptor = Object.getOwnPropertyDescriptor(process, 'platform')!;
-      const original = processIdentity.inspectProcessLiveness;
-      vi.spyOn(processIdentity, 'inspectProcessLiveness').mockImplementation((pid, identity) =>
-        pid === 2147483001 ? Promise.resolve('dead') : original(pid, identity),
-      );
-      vi.spyOn(processIdentity, 'inspectProcessTreeLiveness').mockResolvedValue('unknown');
-      vi.spyOn(windowsIdentity, 'inspectWindowsProcessPresence').mockResolvedValue(presence);
-      const stoppedAction = {
-        actionId: action.id,
-        attempt: action.attempt,
-        inputHash: action.inputHash,
-        claimToken: action.claim!.token,
-        evidence:
-          'Original check and all descendants were observed stopped; legacy PID is absent in system enumeration.',
-      };
-      Object.defineProperty(process, 'platform', { ...descriptor, value: 'win32' });
-      try {
-        await expect(
-          acknowledgeNativeSdkCheckStopped({
-            projectRoot: root,
-            run,
-            action,
-            stoppedAction: { ...stoppedAction, claimToken: 'wrong' },
-          }),
-        ).rejects.toThrow(/领取/u);
-        if (presence === 'absent') {
-          const stoppedFile = path.join(
-            resolveWorkspaceRuntimeRootSync(root),
-            'stopped-actions.json',
-          );
-          await fs.writeFile(stoppedFile, JSON.stringify([stoppedAction]));
-          const result = await nativeDoctorCommand(
-            [run.runId, '--repair', '--confirmed', '--stopped-actions', stoppedFile],
-            root,
-          );
-          expect(result.exitCode, JSON.stringify(result)).toBe(0);
-          const repaired = await runtime.inspect(run.runId);
-          expect(repaired.actions.find((entry) => entry.id === action.id)?.status).toBe('failed');
-          expect((repaired.state as NativePortableState).builder_handoff).toEqual(
-            (run.state as NativePortableState).builder_handoff,
-          );
-        } else
-          await expect(
-            acknowledgeNativeSdkCheckStopped({ projectRoot: root, run, action, stoppedAction }),
-          ).rejects.toThrow(/尚未确认退出/u);
-      } finally {
-        Object.defineProperty(process, 'platform', descriptor);
-      }
-      const inspection = (await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0];
-      expect(inspection.quiescent).toBe(presence === 'absent');
-    },
-  );
   it('records a failed read-only preflight without resampling its transient diagnostic', async () => {
     const { root, runtime, run } = await awaitingArchiveApplication('sdk', undefined, true);
     const action = run.actions.at(-1)!;
@@ -765,32 +695,6 @@ describe('Native protocol simplification', () => {
     expect(await runtime.inspect(run.runId)).toEqual(run);
   });
 
-  it('keeps acceptance when a preflight input snapshot is incomplete and archives after a stable retry', async () => {
-    const { root, runtime, run } = await awaitingArchiveApplication('sdk', undefined, true);
-    const inspect = vi
-      .spyOn(nativeSdkChecks, 'assertNativeSdkArchiveCheckInputs')
-      .mockRejectedValueOnce(
-        new nativeSdkChecks.NativeSdkCheckInputSnapshotError('Directory changed during sampling'),
-      );
-    const action = run.actions.at(-1)!;
-    const failed = await runtime.execute({
-      runId: run.runId,
-      actionId: action.id,
-      executorId: nativeSdkArchivePreflightExecutor.id,
-      context: { requestId: 'incomplete-snapshot', projectRoot: root },
-    });
-    expect(failed.actions.at(-1)?.outcome).toMatchObject({
-      status: 'failed',
-      output: { ready: false, reason: 'candidate-unavailable' },
-    });
-    expect(failed.state).toEqual(run.state);
-    expect(failed.waits).toEqual(run.waits);
-    inspect.mockRestore();
-    const result = await runNativeCli(['archive', run.runId, '--project-root', root, '--json']);
-    expect(result.exitCode, result.stderr).toBe(0);
-    expect((await runtime.inspect(run.runId)).status).toBe('completed');
-  });
-
   it('recovers a rejected running preflight through public archive without rebuilding accepted work', async () => {
     const { root, runtime, run } = await awaitingArchiveApplication('sdk', undefined, true);
     const action = run.actions.at(-1)!;
@@ -819,11 +723,12 @@ describe('Native protocol simplification', () => {
       }),
     ).rejects.toThrow();
     expect((await runtime.inspect(run.runId)).actions.at(-1)?.status).toBe('running');
-    await reconcileNativeSdkExecutionStops(root, await runtime.inspect(run.runId), runtime);
+    const rejected = await runtime.inspect(run.runId);
     const status = JSON.parse(
       (await runNativeCli(['status', run.runId, '--project-root', root, '--json'])).stdout!,
     );
-    expect(status.data.continuation.commandArgs).toContain('--recover');
+    expect(status.exitCode).toBe(0);
+    expect(await runtime.inspect(run.runId)).toEqual(rejected);
     const recovered = spawnSync(
       process.execPath,
       [
@@ -910,62 +815,6 @@ describe('Native protocol simplification', () => {
     expect(await runtime.inspect(run.runId)).toEqual(waiting);
   });
 
-  it('stops public next after failed checks without dispatching a Verifier', async () => {
-    const { root, runtime, run } = await dispatchedVerifier(
-      [
-        {
-          id: 'fail',
-          name: 'Failing check',
-          executable: process.execPath,
-          argv: ['-e', 'process.exit(1)'],
-          cwdRef: '.',
-          timeoutMs: 10000,
-          repeatable: true,
-        },
-      ],
-      'sdk',
-      nativeApplication(),
-      false,
-    );
-    await runNativeCli(['next', run.runId, '--project-root', root, '--json']);
-    const stopped = await runtime.inspect(run.runId);
-    expect(stopped.actions.find((action) => action.stepId === 'verify.checks')).toMatchObject({
-      status: 'failed',
-      attempt: 1,
-    });
-    expect(stopped.actions.some((action) => action.stepId === 'verify.verifier')).toBe(false);
-  });
-
-  it('collects formal approved originals in the Native observe response', async () => {
-    const { root, paths, changeDir, run } = await awaitingArchiveApplication(
-      'sdk',
-      undefined,
-      false,
-      undefined,
-      nativeApplication(),
-      allowAgentDocumentReview,
-    );
-    await captureApprovedShapeOriginals(paths, run.state as NativePortableState);
-    const brief = path.join(changeDir, 'brief.md');
-    await fs.appendFile(brief, '\nAdditional explanation only.\n');
-    await fs.writeFile(path.join(root, 'implementation.js'), 'export const result = true;');
-    const response = await runNativeEditReviewCommand({
-      operation: 'observe',
-      projectRoot: root,
-      name: 'sdk-shape',
-      sessionId: 'current-agent',
-    });
-    expect(response).toHaveProperty('formalReview');
-    expect(response).toHaveProperty('recordTemplate');
-    expect((response as { formalReview: { recordTemplate: unknown } }).formalReview).toHaveProperty(
-      'recordTemplate',
-    );
-    expect(
-      (response as { formalReview: { originalPaths: unknown[] } }).formalReview.originalPaths
-        .length,
-    ).toBeGreaterThan(0);
-  });
-
   it.each([
     undefined,
     'local-time-without-a-format',
@@ -983,13 +832,7 @@ describe('Native protocol simplification', () => {
         decisionId: 'approve',
         choice: 'approved',
       });
-      run = await succeedLatestAction(
-        runtime,
-        run,
-        await collectProposal(paths, run.state as NativePortableState),
-        root,
-        'revalidate',
-      );
+
       const before = Date.now();
       run = await succeedLatestAction(
         runtime,
@@ -1015,7 +858,7 @@ describe('Native protocol simplification', () => {
         expect(Date.parse(handoff.submitted_at)).toBeGreaterThanOrEqual(before);
         expect(Date.parse(handoff.submitted_at)).toBeLessThanOrEqual(Date.now());
       }
-      expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.checks', status: 'pending' });
+      expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
     },
   );
 
@@ -1091,40 +934,13 @@ async function awaitingArchiveFinalization(storeKind: 'memory' | 'file' = 'memor
 }
 
 describe('Native SDK v2 Archive simplification', () => {
-  it('rejects candidate edits between preflight execution and its committed outcome', async () => {
-    await expect(
-      awaitingArchiveApplication(
-        'memory',
-        () => {
-          const execute = nativeSdkArchivePreflightExecutor.execute;
-          vi.spyOn(nativeSdkArchivePreflightExecutor, 'execute').mockImplementationOnce(
-            async (action, context, run) => {
-              const result = await execute(action, context, run);
-              await fs.writeFile(
-                path.join(context!.projectRoot!, 'implementation.js'),
-                'export const result = false;',
-              );
-              return result;
-            },
-          );
-        },
-        false,
-        undefined,
-        nativeApplication('2'),
-        async (root) => {
-          await fs.writeFile(path.join(root, 'implementation.js'), 'export const result = true;');
-        },
-      ),
-    ).rejects.toThrow(/候选|preflight changed|EXECUTION_UNKNOWN|结果/u);
-  });
-
   it('accepts structured evidence after the reading report is edited before confirmation', async () => {
     const {
       root,
       changeDir,
       runtime,
       run: pending,
-    } = await dispatchedVerifier([], 'memory', nativeApplication('2'));
+    } = await dispatchedVerifier([], 'memory', nativeApplication('4'));
     const state = pending.state as NativePortableState;
     let run = await succeedLatestAction(
       runtime,
@@ -1154,12 +970,7 @@ describe('Native SDK v2 Archive simplification', () => {
       'view-verifier-result',
       'view-verifier',
     );
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: run.actions.at(-1)!.id,
-      executorId: 'comet-native-report',
-      context: { requestId: 'view-report', projectRoot: root },
-    });
+    await refreshNativeSdkVerificationReport(root, run);
     const report = path.join(changeDir, 'verification.md');
     await fs.appendFile(report, '\nHuman note added after reading the result.\n');
     const wait = run.waits.at(-1)!;
@@ -1170,35 +981,11 @@ describe('Native SDK v2 Archive simplification', () => {
       decisionId: 'view-approved',
       choice: 'approved',
     });
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: run.actions.at(-1)!.id,
-      executorId: 'comet-native-report-revalidate',
-      context: { requestId: 'view-revalidation', projectRoot: root },
-    });
+
     expect((run.state as NativePortableState).phase).toBe('archive');
     expect((run.state as NativePortableState).verification_result).toBe('pass');
     expect(await fs.readFile(report, 'utf8')).toContain('Human note added');
     expect(run.actions.filter((action) => action.stepId === 'verify.verifier')).toHaveLength(1);
-  });
-
-  it('collects one current input snapshot per preflight execution and commit boundary', async () => {
-    const { root, runtime, run } = await awaitingArchiveApplication(
-      'memory',
-      undefined,
-      true,
-      undefined,
-      nativeApplication('2'),
-    );
-    const snapshots = vi.spyOn(nativePortableChecks, 'nativeRawInputSnapshot');
-    const prepared = await runtime.execute({
-      runId: run.runId,
-      actionId: run.actions.at(-1)!.id,
-      executorId: 'comet-native-archive-preflight',
-      context: { requestId: 'single-preflight-observation', projectRoot: root },
-    });
-    expect(prepared.outputs['archive.prepare'].value).toMatchObject({ ready: true });
-    expect(snapshots).toHaveBeenCalledTimes(2);
   });
 
   it('archives a current Spec while another active SDK change declares the same capability', async () => {
@@ -1220,10 +1007,10 @@ describe('Native SDK v2 Archive simplification', () => {
           path.join(peerDir, 'specs/workflow/spec.md'),
         );
       },
-      nativeApplication('2'),
+      nativeApplication('4'),
     );
     const { root, paths } = prepared;
-    const peerApplication = nativeApplication('2');
+    const peerApplication = nativeApplication('4');
     const peerRuntime = createRuntime({
       ...peerApplication,
       workflows: [peerApplication.workflow],
@@ -1271,7 +1058,7 @@ describe('Native SDK v2 Archive simplification', () => {
       undefined,
       false,
       undefined,
-      nativeApplication('2'),
+      nativeApplication('4'),
     );
     const canonical = path.join(paths.specsDir, 'workflow/spec.md');
     await fs.mkdir(path.dirname(canonical), { recursive: true });
@@ -1291,7 +1078,7 @@ describe('Native SDK v2 Archive simplification', () => {
         undefined,
         true,
         undefined,
-        nativeApplication('2'),
+        nativeApplication('4'),
       );
       const report = path.join(changeDir, 'verification.md');
       const edited = `${await fs.readFile(report, 'utf8')}\nUser note preserved exactly.\n`;
@@ -1308,20 +1095,11 @@ describe('Native SDK v2 Archive simplification', () => {
       expect(completed.status).toBe('completed');
       const receipt = completed.outputs['archive.finalize'].value as {
         archiveRef: string;
-        verificationResultHash: string;
-        preservedReportsRef: string;
       };
-      expect(receipt.verificationResultHash).toMatch(/^[a-f0-9]{64}$/u);
       const archivedReport = path.join(paths.archiveDir, receipt.archiveRef, 'verification.md');
-      expect(await fs.readFile(archivedReport, 'utf8')).toContain('Archived');
       if (kind === 'edited') {
-        const preserved = path.join(
-          paths.workspaceRuntimeRoot,
-          receipt.preservedReportsRef,
-          `${createHash('sha256').update(edited).digest('hex')}.md`,
-        );
-        expect(await fs.readFile(preserved, 'utf8')).toBe(edited);
-      }
+        expect(await fs.readFile(archivedReport, 'utf8')).toBe(edited);
+      } else expect(await fs.readFile(archivedReport, 'utf8')).toContain('Archived');
       await fs.writeFile(archivedReport, 'User updated the reading view after archiving.\n');
       const recovered = await runNativeCli([
         'archive',
@@ -1385,16 +1163,24 @@ describe('Native SDK Workflow Application', () => {
       actionId: action.id,
       projectRoot: root,
     });
-    const template = projection.outcomeRequest!;
+    const template = projection.resultRequest!;
+    const originalClaim = JSON.parse(Buffer.from(template.receipt, 'base64url').toString('utf8'));
+    expect(originalClaim).toEqual({
+      runId: claimed.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      claimToken: 'template-verifier-token',
+    });
     const fields = Object.keys(projection);
-    expect(fields.indexOf('outcomeRequest')).toBeLessThan(fields.indexOf('state'));
+    expect(fields.indexOf('resultRequest')).toBeGreaterThanOrEqual(0);
+    expect(fields.indexOf('resultRequest')).toBeLessThan(fields.indexOf('state'));
     expect(fields.indexOf('contextRequest')).toBeGreaterThanOrEqual(0);
     expect(fields.indexOf('contextRequest')).toBeLessThan(fields.indexOf('state'));
-    expect(projection.outcomeTemplateInstruction).toContain('stdout');
-    expect(projection.outcomeTemplateInstruction).toContain('stderr');
-    expect(projection.outcomeTemplateInstruction).toContain('data.outcomeRequest');
-    expect(projection.outcomeTemplateInstruction).toContain('data.contextRequest');
-    const output = template.outcome.output as {
+    expect(projection).not.toHaveProperty('outcomeRequest');
+    expect(projection).not.toHaveProperty('failureOutcomeRequest');
+    expect(projection).not.toHaveProperty('requestChecksOutcomeRequest');
+    const output = template.result.output as {
       candidateId: string;
       verifierExecutionRef: string;
       response: {
@@ -1406,26 +1192,13 @@ describe('Native SDK Workflow Application', () => {
     expect(output.candidateId).toBe(
       (claimed.state as unknown as NativePortableState).builder_handoff!.candidate_id,
     );
-    expect(projection.failureOutcomeRequest).toMatchObject({
-      outcome: { claimToken: 'template-verifier-token', status: 'failed' },
-    });
-    expect(projection.requestChecksOutcomeRequest).toMatchObject({
-      outcome: {
-        output: {
-          candidateId: output.candidateId,
-          response: {
-            kind: 'request-checks',
-            iteration: output.response.result.iteration,
-            attempt: output.response.result.attempt,
-            checks: [{ cwdRef: '.' }],
-          },
-        },
-      },
-    });
     const finished = await runtime.recordOutcome({
       runId: claimed.runId,
       outcome: {
-        ...template.outcome,
+        actionId: originalClaim.actionId,
+        attempt: originalClaim.attempt,
+        inputHash: originalClaim.inputHash,
+        claimToken: originalClaim.claimToken,
         status: 'succeeded',
         outcomeId: 'template-verifier-result',
         output: {
@@ -1546,16 +1319,6 @@ describe('Native SDK Workflow Application', () => {
       expect(preview.data, JSON.stringify(preview.data.blockers)).toMatchObject({ ready: true });
       expect(await runtime.inspect(run.runId)).toEqual(run);
       expect(await files(root)).toEqual(before);
-      if (checkpoint === 2) {
-        const driftFile = path.join(root, 'unexpected-implementation.js');
-        await fs.writeFile(driftFile, 'export const changed = true;');
-        const changed = await files(root);
-        const blocked = await archiveNativeSdkChange({ ...options, dryRun: true });
-        expect(blocked.data).toMatchObject({ ready: false });
-        expect(await runtime.inspect(run.runId)).toEqual(run);
-        expect(await files(root)).toEqual(changed);
-        await fs.rm(driftFile);
-      }
       const result = await archiveNativeSdkChange(options);
       expect(result.exitCode).toBe(0);
       expect(result.data).toMatchObject({
@@ -1581,144 +1344,6 @@ describe('Native SDK Workflow Application', () => {
         run: { revision: completed.revision, status: 'completed' },
       });
       expect(await runtime.inspect(run.runId)).toEqual(completed);
-    },
-  );
-
-  it('reads the finalized Archive report once and rejects later report changes', async () => {
-    const { root, paths, runtime, run: pending } = await awaitingArchiveFinalization();
-    const run = await runtime.execute({
-      runId: pending.runId,
-      actionId: pending.actions.at(-1)!.id,
-      executorId: 'comet-native-archive-finalize',
-      context: { requestId: 'archive-report-read-budget', projectRoot: root },
-    });
-    const state = run.state as NativePortableState;
-    const receipt = run.outputs['archive.finalize'].value as {
-      archiveRef: string;
-      reportSha256: string;
-    };
-    const reportFile = path.join(paths.archiveDir, receipt.archiveRef, 'verification.md');
-    const original = await fs.readFile(reportFile, 'utf8');
-    expect(receipt.reportSha256).toBe(createHash('sha256').update(original).digest('hex'));
-    const inspect = () => inspectNativeSdkArchiveFinalization({ paths, state, runId: run.runId });
-    const opens = vi.spyOn(fs, 'open');
-    const reads = vi.spyOn(fs, 'readFile');
-    try {
-      await expect(inspect()).resolves.toMatchObject(receipt);
-      expect(opens.mock.calls.filter(([file]) => String(file) === reportFile)).toHaveLength(1);
-      expect(reads.mock.calls.filter(([file]) => String(file) === reportFile)).toHaveLength(0);
-    } finally {
-      opens.mockRestore();
-      reads.mockRestore();
-    }
-
-    for (const changed of [`${original}\nUnexpected edit.\n`, `\uFEFF${original}`]) {
-      await fs.writeFile(reportFile, changed);
-      await expect(inspect()).rejects.toThrow(
-        'Native SDK Archive report changed after finalization',
-      );
-    }
-    const receiptsDir = path.join(paths.runtimeDir, 'sdk-archive-receipts');
-    const receipts = await fs.readdir(receiptsDir);
-    expect(receipts).toHaveLength(1);
-    const receiptFile = path.join(receiptsDir, receipts[0]);
-    const persistedReceipt = JSON.parse(await fs.readFile(receiptFile, 'utf8'));
-    for (const changed of [
-      original.replace('generated_from_state_version:', 'invalid_state_version:'),
-      original.replace(
-        `generated_from_state_version: ${state.state_version}`,
-        `generated_from_state_version: ${state.state_version + 1}`,
-      ),
-    ]) {
-      await fs.writeFile(reportFile, changed);
-      await fs.writeFile(
-        receiptFile,
-        JSON.stringify({
-          ...persistedReceipt,
-          reportSha256: createHash('sha256').update(changed).digest('hex'),
-        }),
-      );
-      await expect(inspect()).rejects.toThrow(
-        'Native SDK Archive report changed after finalization',
-      );
-    }
-    await fs.writeFile(reportFile, Buffer.from([0xff]));
-    await expect(inspect()).rejects.toThrow('Native artifact is not valid UTF-8');
-    await fs.rm(reportFile);
-    await expect(inspect()).rejects.toMatchObject({ code: 'ENOENT' });
-  });
-
-  it.each(['pending', 'claimed', 'definition-drift'] as const)(
-    'repairs only the known pre-Child-archive definition and preserves Run facts (%s)',
-    async (scenario) => {
-      const { root, initialState } = await fixture();
-      const application = preChildArchiveApplication();
-      if (scenario === 'definition-drift') application.workflow.maxTransitions = 999;
-      const store = createNativeSdkStateStore(root);
-      const runtime = createRuntime({
-        ...application,
-        workflows: [application.workflow],
-        transitionHandlers: [application.transitionHandler],
-        store,
-      });
-      let run = await runtime.start({
-        runId: 'sdk-shape',
-        workflow: { id: application.workflow.id, version: application.workflow.version },
-        input: { name: 'sdk-shape', artifactRootRef: 'docs' },
-        initialState,
-      });
-      await registerSdkChangeOwner(root, {
-        schema: COMET_CHANGE_OWNER_SCHEMA,
-        workflow: 'native',
-        change: run.runId,
-        format: 'sdk',
-        application: 'native',
-        runId: run.runId,
-      });
-      if (scenario === 'claimed') {
-        const action = run.actions[0];
-        run = await runtime.claim({
-          runId: run.runId,
-          actionId: action.id,
-          attempt: action.attempt,
-          inputHash: action.inputHash,
-          executorId: 'native-host',
-          claimToken: 'original-execution',
-        });
-      }
-      const before = await store.read(run.runId);
-      if (scenario === 'definition-drift') {
-        expect(await inspectNativeSdkDefinitionUpgrade(root, run.runId, false)).toBeNull();
-        expect(await inspectNativeSdkDefinitionUpgrade(root, run.runId, true)).toBeNull();
-        expect(await store.read(run.runId)).toEqual(before);
-        return;
-      }
-      expect(await inspectNativeSdkDefinitionUpgrade(root, run.runId, false)).toMatchObject({
-        repaired: false,
-        ready: scenario === 'pending',
-      });
-      expect(await store.read(run.runId)).toEqual(before);
-      if (scenario === 'claimed') {
-        await expect(inspectNativeSdkDefinitionUpgrade(root, run.runId, true)).rejects.toThrow(
-          'running',
-        );
-        expect(await store.read(run.runId)).toEqual(before);
-        return;
-      }
-      expect(await inspectNativeSdkDefinitionUpgrade(root, run.runId, true)).toMatchObject({
-        repaired: true,
-        ready: true,
-      });
-      const restored = await createRuntime({
-        ...nativeApplication(),
-        store,
-        workflows: [nativeApplication().workflow],
-        transitionHandlers: [nativeApplication().transitionHandler],
-      }).inspect(run.runId);
-      expect(restored.actions).toEqual(run.actions);
-      expect(restored.state).toEqual(run.state);
-      expect(restored.revision).toBe(run.revision + 1);
-      expect(await inspectNativeSdkDefinitionUpgrade(root, run.runId, true)).toBeNull();
     },
   );
   it('keeps blocked Archive preflight read-only and retries without not-executed evidence', async () => {
@@ -1774,6 +1399,10 @@ describe('Native SDK Workflow Application', () => {
     );
     const reportFile = path.join(prepared.changeDir, 'verification.md');
     const reportBefore = await fs.readFile(reportFile, 'utf8');
+    vi.spyOn(nativeSdkArchivePreflightExecutor, 'execute').mockResolvedValueOnce({
+      status: 'failed',
+      output: { ready: false, reason: 'resource-unavailable' },
+    });
     let run = await runtime.execute({
       runId: prepared.run.runId,
       actionId: prepared.run.actions.at(-1)!.id,
@@ -1782,7 +1411,7 @@ describe('Native SDK Workflow Application', () => {
     });
     const failed = run.actions.at(-1)!;
     expect(failed.status).toBe('failed');
-    expect(failed.outcome?.output).toMatchObject({ ready: false, capabilityPeers: [peerName] });
+    expect(failed.outcome?.output).toMatchObject({ ready: false });
     expect(await fs.readFile(reportFile, 'utf8')).toBe(reportBefore);
     const peerBefore = await peerRuntime.inspect(peerName);
     const cancelled = await peerRuntime.cancel({
@@ -1816,22 +1445,7 @@ describe('Native SDK Workflow Application', () => {
     expect(run.outputs['archive.execute']).toBeDefined();
   });
 
-  it('checks Archive acceptance once at each preparation, execution, and commit boundary', async () => {
-    let calls = 0;
-    const inspect = nativeRequirements.inspectNativePortableAcceptanceDrift;
-    const { run } = await awaitingArchiveApplication('memory', () => {
-      vi.spyOn(nativeRequirements, 'inspectNativePortableAcceptanceDrift').mockImplementation(
-        async (options) => {
-          calls += 1;
-          return inspect(options);
-        },
-      );
-    });
-    expect(run.outputs['archive.prepare'].value).toMatchObject({ ready: true });
-    expect(calls).toBe(2);
-  });
-
-  it('rejects Archive document drift before overwriting the confirmed report', async () => {
+  it('retains the approved Archive report after the Agent accepts a brief edit', async () => {
     let reportFile = '';
     let before = '';
     const { run } = await awaitingArchiveApplication('memory', async ({ root }) => {
@@ -1849,34 +1463,11 @@ describe('Native SDK Workflow Application', () => {
       );
     });
     expect(run.actions.at(-1)).toMatchObject({
-      status: 'failed',
-      outcome: { output: { reason: 'candidate-drift' } },
+      stepId: 'archive.execute',
+      status: 'pending',
     });
-    expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
+    expect(run.outputs['archive.prepare'].value).toMatchObject({ ready: true });
     expect(await fs.readFile(reportFile, 'utf8')).toBe(before);
-  });
-
-  it('rechecks Archive documents after executor output and before committing the outcome', async () => {
-    await expect(
-      awaitingArchiveApplication('memory', () => {
-        const execute = nativeSdkArchivePreflightExecutor.execute;
-        vi.spyOn(nativeSdkArchivePreflightExecutor, 'execute').mockImplementation(
-          async (action, context, run) => {
-            const output = await execute(action, context, run);
-            const paths = await nativeProjectPaths(context!.projectRoot!, 'docs');
-            const brief = path.join(paths.changesDir, 'sdk-shape', 'brief.md');
-            await fs.writeFile(
-              brief,
-              (await fs.readFile(brief, 'utf8')).replace(
-                'The selected workflow resumes.',
-                'The selected workflow changed after preflight.',
-              ),
-            );
-            return output;
-          },
-        );
-      }),
-    ).rejects.toThrow(/OUTCOME_REJECTED/u);
   });
 
   it('waits for an explicit decision before continuing a partially executed Builder in a new Action', async () => {
@@ -1891,13 +1482,7 @@ describe('Native SDK Workflow Application', () => {
       decisionId: 'shape-approved-before-builder-failure',
       choice: 'approved',
     });
-    run = await succeedLatestAction(
-      runtime,
-      run,
-      await collectProposal(paths, run.state as NativePortableState),
-      root,
-      'shape-revalidated-before-builder-failure',
-    );
+
     const builder = run.actions.at(-1)!;
     expect(builder).toMatchObject({ stepId: 'build.builder', status: 'pending' });
     const partialFile = path.join(root, 'partial-builder.txt');
@@ -1995,7 +1580,11 @@ describe('Native SDK Workflow Application', () => {
         builder_handoff: { candidate_id: candidateId },
         loop: { execution_failure_count: index },
       });
-      expect(run.outputs['verify.checks']).toMatchObject({ value: { candidateId } });
+      expect(run.state).toMatchObject({
+        builder_handoff: {
+          checks: (dispatched.state as NativePortableState).builder_handoff!.checks,
+        },
+      });
       if (index < 3) {
         expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
       }
@@ -2041,7 +1630,7 @@ describe('Native SDK Workflow Application', () => {
       'verifier-retry-result',
       'verifier-session-4',
     );
-    expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.report', status: 'pending' });
+    expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.confirm', status: 'pending' });
   });
 
   it('records document-backed Shape acceptance in the SDK Run before asking the user', async () => {
@@ -2060,134 +1649,91 @@ describe('Native SDK Workflow Application', () => {
     });
   });
 
-  it('confirms a Supervisor child plan and coordination mode in the same SDK Run', async () => {
-    const { root, paths, changeDir, initialState } = await fixture();
-    await fs.writeFile(
-      path.join(changeDir, 'children.yaml'),
-      `schema: comet.native.children.v2
-children:
-  - name: api
-    summary: Build the API
-    depends_on: []
-  - name: ui
-    summary: Build the UI
-    depends_on: []
-`,
+  it('materializes a Delta target before Shape and refuses independent target edits', async () => {
+    const f = await fixture();
+    const baseline =
+      '# Workflow\n\n## Requirement: workflow.existing Existing behavior\n\nExisting behavior stays available.\n';
+    await fs.mkdir(path.join(f.paths.specsDir, 'workflow'), { recursive: true });
+    await fs.writeFile(path.join(f.paths.specsDir, 'workflow/spec.md'), baseline);
+    await fs.writeFile(path.join(f.changeDir, 'specs/workflow/spec.md'), baseline);
+    const delta = {
+      schema: 'comet.native.delta.v1',
+      capability: 'workflow',
+      base_hash: nativeTotalSpecHash(baseline),
+      base_version: 1,
+      legacy_hash: nativeLegacySectionHash(baseline),
+      base_requirements: {
+        'workflow.existing': nativeTotalSpecHash(
+          '## Requirement: workflow.existing Existing behavior\n\nExisting behavior stays available.\n',
+        ),
+      },
+      operations: [
+        {
+          id: 'workflow.added',
+          operation: 'add',
+          title: 'Added behavior',
+          body: 'The additional behavior is available.',
+        },
+      ],
+    };
+    const deltaFile = path.join(f.changeDir, 'specs/workflow/delta.yaml');
+    await fs.writeFile(deltaFile, JSON.stringify(delta));
+    const first = (await collectProposal(f.paths, f.initialState, true)) as {
+      specChanges: unknown[];
+    };
+    expect(first.specChanges[0]).toMatchObject({ delta_source: 'specs/workflow/delta.yaml' });
+    const target = path.join(f.changeDir, 'specs/workflow/spec.md');
+    const materialized = await fs.readFile(target, 'utf8');
+    expect(materialized).toContain('The additional behavior is available.');
+    delta.operations[0].body = 'The revised additional behavior is available.';
+    await fs.writeFile(deltaFile, JSON.stringify(delta));
+    await expect(collectProposal(f.paths, f.initialState)).resolves.toMatchObject({
+      specChanges: [expect.objectContaining({ delta_source: 'specs/workflow/delta.yaml' })],
+    });
+    expect(await fs.readFile(target, 'utf8')).toBe(materialized);
+    // Agent 合并新的 Delta 正文，显式生成入口不再根据旧来源证明覆盖目标。
+    const revisedTarget = (await fs.readFile(target, 'utf8')).replace(
+      'The additional behavior is available.',
+      delta.operations[0].body,
     );
-    const application = nativeApplication();
-    const runtime = createRuntime({
-      store: createMemoryRuntimeStore<WorkflowRun>(),
-      workflows: [application.workflow],
-      transitionHandlers: [application.transitionHandler],
-      validators: application.validators,
-      stateValidators: application.stateValidators,
-      commandValidators: application.commandValidators,
-      executors: application.executors,
-    });
-    let run = await runtime.start({
-      runId: 'supervisor-sdk-shape',
-      workflow: { id: application.workflow.id, version: application.workflow.version },
-      input: { name: 'sdk-shape', artifactRootRef: 'docs' },
-      initialState,
-    });
-    run = await succeedLatestAction(
-      runtime,
-      run,
-      await collectProposal(paths, initialState),
-      root,
-      'supervisor-shape-proposal',
+    await fs.writeFile(target, revisedTarget);
+    await collectProposal(f.paths, f.initialState, true);
+    expect(await fs.readFile(target, 'utf8')).toBe(revisedTarget);
+    expect(await fs.readFile(target, 'utf8')).toContain(
+      'The revised additional behavior is available.',
     );
-    const wait = run.waits.at(-1)!;
-    expect(wait).toMatchObject({
-      stepId: 'supervisor.shape.confirm',
-      choices: ['multi-session', 'single-session', 'rejected'],
-    });
-    run = await runtime.resolveWait({
-      runId: run.runId,
-      waitId: wait.id,
-      proposalHash: wait.proposalHash,
-      decisionId: 'supervisor-choice',
-      choice: 'multi-session',
-    });
-    run = await succeedLatestAction(
-      runtime,
-      run,
-      await collectProposal(paths, run.state as NativePortableState),
-      root,
-      'supervisor-shape-revalidated',
+    const independent = (await fs.readFile(target, 'utf8')) + '\nUser independent requirement.\n';
+    await fs.writeFile(target, independent);
+    delta.operations[0].body = 'Another proposed behavior.';
+    await fs.writeFile(deltaFile, JSON.stringify(delta));
+    await expect(collectProposal(f.paths, f.initialState, true)).rejects.toThrow(
+      /independent|独立/iu,
     );
-    expect(run.state).toMatchObject({
-      phase: 'build',
-      coordination_mode: 'multi-session',
-      children_contract_hash: expect.any(String),
-    });
-    expect(run.actions.at(-1)).toMatchObject({
-      stepId: 'supervisor.prepare',
-      type: 'call_tool',
-    });
+    expect(await fs.readFile(target, 'utf8')).toBe(independent);
   });
 
-  // 完整 Supervisor 场景包含多个真实 worktree；Windows 独立执行已测得超过两分钟。
-  it('repairs failed Supervisor Children and serializes integration after a definition upgrade', async () => {
-    const upgradeDefinition = true;
-    const { root, paths, changeDir } = await fixture();
-    await fs.writeFile(
-      path.join(changeDir, 'children.yaml'),
-      `schema: comet.native.children.v2
+  it.each([
+    { suffix: '', format: 'summary' },
+    { suffix: ' with referenced acceptance', format: 'references' },
+  ])(
+    'confirms a Supervisor child plan and coordination mode in the same SDK Run$suffix',
+    async ({ format }) => {
+      const { root, paths, changeDir, initialState } = await fixture();
+      await fs.writeFile(
+        path.join(changeDir, 'children.yaml'),
+        `schema: comet.native.children.v2
 children:
   - name: api
-    summary: Build the API
+    ${format === 'summary' ? 'summary: Build the API' : 'covers: [A1]'}
     depends_on: []
   - name: ui
-    summary: Build the UI
+    ${format === 'summary' ? 'summary: Build the UI' : 'covers: []'}
     depends_on: []
 `,
-    );
-    execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });
-    execFileSync('git', ['config', 'user.name', 'Comet Test'], { cwd: root, stdio: 'ignore' });
-    execFileSync('git', ['config', 'user.email', 'comet-test@example.com'], {
-      cwd: root,
-      stdio: 'ignore',
-    });
-    execFileSync(
-      'git',
-      ['-c', 'user.name=Comet Test', '-c', 'user.email=comet-test@example.com', 'add', '-A'],
-      {
-        cwd: root,
-        stdio: 'ignore',
-      },
-    );
-    execFileSync(
-      'git',
-      [
-        '-c',
-        'user.name=Comet Test',
-        '-c',
-        'user.email=comet-test@example.com',
-        'commit',
-        '-m',
-        'baseline',
-      ],
-      { cwd: root, stdio: 'ignore' },
-    );
-    const branch = execFileSync('git', ['branch', '--show-current'], {
-      cwd: root,
-      encoding: 'utf8',
-    }).trim();
-    const initialState = createNativePortableState({
-      name: 'sdk-shape',
-      language: 'en',
-      workspace: {
-        isolation: 'current',
-        change_branch: branch,
-        target_branch: branch,
-        finish: null,
-      },
-    });
-    let application = upgradeDefinition ? preChildArchiveApplication() : nativeApplication();
-    const createSupervisorRuntime = () =>
-      createRuntime({
-        store: createNativeSdkStateStore(root),
+      );
+      const application = nativeApplication();
+      const runtime = createRuntime({
+        store: createMemoryRuntimeStore<WorkflowRun>(),
         workflows: [application.workflow],
         transitionHandlers: [application.transitionHandler],
         validators: application.validators,
@@ -2195,820 +1741,57 @@ children:
         commandValidators: application.commandValidators,
         executors: application.executors,
       });
-    let runtime = createSupervisorRuntime();
-    let run = await runtime.start({
-      runId: 'sdk-shape',
-      workflow: { id: application.workflow.id, version: application.workflow.version },
-      input: { name: 'sdk-shape', artifactRootRef: 'docs' },
-      initialState,
-    });
-    run = await succeedLatestAction(
-      runtime,
-      run,
-      await collectProposal(paths, initialState),
-      root,
-      'shape-plan',
-    );
-    const wait = run.waits.at(-1)!;
-    run = await runtime.resolveWait({
-      runId: run.runId,
-      waitId: wait.id,
-      proposalHash: wait.proposalHash,
-      decisionId: 'use-multi-session',
-      choice: 'multi-session',
-    });
-    run = await succeedLatestAction(
-      runtime,
-      run,
-      await collectProposal(paths, run.state as NativePortableState),
-      root,
-      'shape-current',
-    );
-    const prepare = run.actions.at(-1)!;
-    expect(prepare.stepId).toBe('supervisor.prepare');
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: prepare.id,
-      executorId: 'native-supervisor-prepare',
-      context: { requestId: 'prepare-integration', projectRoot: root },
-    });
-    const preparations = run.actions.filter(
-      (action) => action.stepId === 'supervisor.child.prepare',
-    );
-    expect(
-      preparations.map(
-        (action) => (action.input as { activation: { child: string } }).activation.child,
-      ),
-    ).toEqual(['api', 'ui']);
-    for (const action of preparations) {
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: action.id,
-        executorId: 'native-supervisor-child-prepare',
-        context: { requestId: `prepare-${action.id}`, projectRoot: root },
+      let run = await runtime.start({
+        runId: 'supervisor-sdk-shape',
+        workflow: { id: application.workflow.id, version: application.workflow.version },
+        input: { name: 'sdk-shape', artifactRootRef: 'docs' },
+        initialState,
       });
-    }
-    const builders = run.actions.filter((action) => action.stepId === 'supervisor.child.builder');
-    expect(builders).toHaveLength(2);
-    expect(
-      builders.map(
-        (action) => (action.input as { activation: { child: string } }).activation.child,
-      ),
-    ).toEqual(['api', 'ui']);
-    expect(
-      builders.map(
-        (action) => (action.input as { activation: { worktree: string } }).activation.worktree,
-      ),
-    ).toEqual([
-      path.join(root, '.worktrees', 'sdk-shape-api'),
-      path.join(root, '.worktrees', 'sdk-shape-ui'),
-    ]);
-    await expect(fs.access(nativeSupervisorStateFile(paths, 'sdk-shape'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
-    let lateUiCandidateCommit: string | null = null;
-    async function reportChildAction(
-      action: (typeof run.actions)[number],
-      output: unknown,
-      receipt: string,
-      sessionId: string,
-    ) {
-      const projection = await projectNativeSdkContinuation({
+      run = await succeedLatestAction(
+        runtime,
         run,
-        state: run.state as unknown as NativePortableState,
-        projectRoot: root,
-      });
-      const handoff = projection.pendingActions?.find(({ id }) => id === action.id);
-      expect(handoff?.contextRequest?.phase).toBe(
-        action.ref?.includes('verifier') ? 'verify' : 'build',
+        await collectProposal(paths, initialState),
+        root,
+        'supervisor-shape-proposal',
       );
-      expect(handoff?.contextRequest?.commandArgs).toContain(
-        (action.input as { activation: { worktree: string } }).activation.worktree,
-      );
-      expect(handoff?.contextRequest?.task).toContain(
-        (action.input as { activation: { child: string } }).activation.child,
-      );
-      const context = { requestId: receipt, projectRoot: root };
-      const claimed = await runtime.claim({
-        runId: run.runId,
-        actionId: action.id,
-        attempt: action.attempt,
-        inputHash: action.inputHash,
-        executorId: 'native-host',
-        sessionId,
-        claimToken: receipt,
-        context,
-      });
-      run = await runtime.recordOutcome({
-        runId: run.runId,
-        outcome: {
-          actionId: action.id,
-          attempt: action.attempt,
-          inputHash: action.inputHash,
-          claimToken: claimed.actions.find((candidate) => candidate.id === action.id)!.claim!.token,
-          outcomeId: receipt,
-          status: 'succeeded',
-          output,
-        },
-        context,
-      });
-    }
-    for (const child of ['api', 'ui']) {
-      const childWorktree = path.join(root, '.worktrees', `sdk-shape-${child}`);
-      await fs.writeFile(path.join(childWorktree, `${child}.txt`), `${child} implemented\n`);
-      await fs.writeFile(path.join(childWorktree, 'shared.txt'), `${child} implementation\n`);
-      execFileSync('git', ['add', `${child}.txt`, 'shared.txt'], {
-        cwd: childWorktree,
-        stdio: 'ignore',
-      });
-      execFileSync(
-        'git',
-        [
-          '-c',
-          'user.name=Comet Test',
-          '-c',
-          'user.email=comet-test@example.com',
-          'commit',
-          '-m',
-          `${child} candidate`,
-        ],
-        { cwd: childWorktree, stdio: 'ignore' },
-      );
-      let candidateCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
-        cwd: childWorktree,
-        encoding: 'utf8',
-      }).trim();
-      const childAction = (stepId: string) =>
-        run.actions.find(
-          (action) =>
-            action.stepId === stepId &&
-            action.status === 'pending' &&
-            (action.input as { activation?: { child?: string } }).activation?.child === child,
-        )!;
-      await reportChildAction(
-        childAction('supervisor.child.builder'),
-        {
-          candidateCommit,
-          verificationChecks: [
-            {
-              id: `${child}-check`,
-              name: `${child} check`,
-              executable: process.execPath,
-              argv: ['-e', child === 'api' ? 'process.exit(1)' : 'process.exit(0)'],
-              cwdRef: '.',
-              timeoutMs: 10000,
-              repeatable: true,
-            },
-          ],
-        },
-        `${child}-builder-result`,
-        `${child}-builder-session`,
-      );
-      const check = childAction('supervisor.child.checks');
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: check.id,
-        executorId: 'comet-native-checks',
-        context: { requestId: `${child}-checks`, projectRoot: root },
-      });
-      if (child === 'api') {
-        expect(run.actions.find((action) => action.id === check.id)?.status).toBe('failed');
-        expect(childAction('supervisor.child.builder')).toMatchObject({
-          input: {
-            activation: {
-              child: 'api',
-              worktree: childWorktree,
-              failedCheckActionId: check.id,
-            },
-          },
+      const wait = run.waits.at(-1)!;
+      if (format === 'references') {
+        expect(
+          (
+            run.outputs['shape.prepare'].value as {
+              children: { contract: { acceptance_index: unknown } };
+            }
+          ).children.contract.acceptance_index,
+        ).toEqual({
+          A1: { source: 'brief.md', text: 'The selected workflow resumes.' },
         });
-        await fs.appendFile(path.join(childWorktree, 'api.txt'), 'API check repaired\n');
-        execFileSync('git', ['add', 'api.txt'], { cwd: childWorktree, stdio: 'ignore' });
-        execFileSync(
-          'git',
-          [
-            '-c',
-            'user.name=Comet Test',
-            '-c',
-            'user.email=comet-test@example.com',
-            'commit',
-            '-m',
-            'repair api',
-          ],
-          { cwd: childWorktree, stdio: 'ignore' },
+        expect(await fs.readFile(path.join(changeDir, 'children.yaml'), 'utf8')).not.toContain(
+          'acceptance_index',
         );
-        candidateCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
-          cwd: childWorktree,
-          encoding: 'utf8',
-        }).trim();
-        await reportChildAction(
-          childAction('supervisor.child.builder'),
-          {
-            candidateCommit,
-            verificationChecks: [
-              {
-                id: 'api-repair-check',
-                name: 'API repair check',
-                executable: process.execPath,
-                argv: ['-e', 'process.exit(0)'],
-                cwdRef: '.',
-                timeoutMs: 10000,
-                repeatable: true,
-              },
-            ],
-          },
-          'api-repair-builder-result',
-          'api-repair-builder-session',
-        );
-        run = await runtime.execute({
-          runId: run.runId,
-          actionId: childAction('supervisor.child.checks').id,
-          executorId: 'comet-native-checks',
-          context: { requestId: 'api-repair-checks', projectRoot: root },
-        });
       }
-      if (child === 'ui') {
-        const failedVerifier = childAction('supervisor.child.verifier');
-        await reportChildAction(
-          failedVerifier,
-          {
-            candidateCommit,
-            verdict: 'fail',
-            evidence: {
-              summary: 'The UI still misses the acceptance example.',
-              checks: ['ui-check'],
-              acceptance: [
-                { id: 'child:ui', result: 'failed', reason: 'The UI behavior is incomplete.' },
-              ],
-            },
-          },
-          'ui-verifier-failed',
-          'ui-verifier-failed-session',
-        );
-        expect(childAction('supervisor.child.builder')).toMatchObject({
-          input: {
-            activation: {
-              child: 'ui',
-              worktree: childWorktree,
-              failedVerifierActionId: failedVerifier.id,
-            },
-          },
-        });
-        await fs.appendFile(path.join(childWorktree, 'ui.txt'), 'UI acceptance repaired\n');
-        execFileSync('git', ['add', 'ui.txt'], { cwd: childWorktree, stdio: 'ignore' });
-        execFileSync(
-          'git',
-          [
-            '-c',
-            'user.name=Comet Test',
-            '-c',
-            'user.email=comet-test@example.com',
-            'commit',
-            '-m',
-            'repair ui',
-          ],
-          { cwd: childWorktree, stdio: 'ignore' },
-        );
-        candidateCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
-          cwd: childWorktree,
-          encoding: 'utf8',
-        }).trim();
-        await reportChildAction(
-          childAction('supervisor.child.builder'),
-          {
-            candidateCommit,
-            verificationChecks: [
-              {
-                id: 'ui-repair-check',
-                name: 'UI repair check',
-                executable: process.execPath,
-                argv: ['-e', 'process.exit(0)'],
-                cwdRef: '.',
-                timeoutMs: 10000,
-                repeatable: true,
-              },
-            ],
-          },
-          'ui-repair-builder-result',
-          'ui-repair-builder-session',
-        );
-        run = await runtime.execute({
-          runId: run.runId,
-          actionId: childAction('supervisor.child.checks').id,
-          executorId: 'comet-native-checks',
-          context: { requestId: 'ui-repair-checks', projectRoot: root },
-        });
-      }
-      if (child === 'ui') {
-        lateUiCandidateCommit = candidateCommit;
-        continue;
-      }
-      await reportChildAction(
-        childAction('supervisor.child.verifier'),
-        {
-          candidateCommit,
-          verdict: 'pass',
-          integrationChecks: [
-            {
-              id: `${child}-integration`,
-              name: `${child} integration check`,
-              executable: process.execPath,
-              argv: ['-e', child === 'api' ? 'process.exit(1)' : 'process.exit(0)'],
-              cwdRef: '.',
-              timeoutMs: 10000,
-              repeatable: true,
-            },
-          ],
-          evidence: {
-            summary: `Independent ${child} review passed.`,
-            checks: [child === 'ui' ? 'ui-repair-check' : 'api-repair-check'],
-            acceptance: [{ id: `child:${child}`, result: 'passed', reason: `Reviewed ${child}.` }],
-          },
-        },
-        `${child}-verifier-result`,
-        `${child}-verifier-session`,
-      );
-    }
-    expect(
-      run.actions.filter(
-        (action) => action.stepId === 'supervisor.child.integrate' && action.status === 'pending',
-      ),
-    ).toHaveLength(1);
-    const firstIntegration = run.actions.find(
-      (action) => action.stepId === 'supervisor.child.integrate' && action.status === 'pending',
-    )!;
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: firstIntegration.id,
-      executorId: 'native-supervisor-integrate',
-      context: { requestId: 'first-integration', projectRoot: root },
-    });
-    expect(
-      run.actions.filter(
-        (action) => action.stepId === 'supervisor.child.integrate' && action.status === 'pending',
-      ),
-    ).toHaveLength(0);
-    const firstChecks = run.actions.find(
-      (action) =>
-        action.stepId === 'supervisor.child.integration-checks' && action.status === 'pending',
-    )!;
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: firstChecks.id,
-      executorId: 'comet-native-checks',
-      context: { requestId: 'first-integration-checks', projectRoot: root },
-    });
-    expect(run.actions.find((action) => action.id === firstChecks.id)?.status).toBe('failed');
-    let pendingRepair = run.actions.at(-1)!;
-    expect(pendingRepair).toMatchObject({
-      stepId: 'supervisor.child.integration-repair',
-      status: 'pending',
-    });
-    expect(lateUiCandidateCommit).toMatch(/^[a-f0-9]{40}$/u);
-    const lateUiVerifier = run.actions.find(
-      (action) =>
-        action.stepId === 'supervisor.child.verifier' &&
-        action.status === 'pending' &&
-        (action.input as { activation?: { child?: string } }).activation?.child === 'ui',
-    )!;
-    await reportChildAction(
-      lateUiVerifier,
-      {
-        candidateCommit: lateUiCandidateCommit,
-        verdict: 'pass',
-        integrationChecks: [
-          {
-            id: 'ui-integration',
-            name: 'UI integration check',
-            executable: process.execPath,
-            argv: ['-e', 'process.exit(0)'],
-            cwdRef: '.',
-            timeoutMs: 10000,
-            repeatable: true,
-          },
-        ],
-        evidence: {
-          summary: 'Independent UI review passed.',
-          checks: ['ui-repair-check'],
-          acceptance: [{ id: 'child:ui', result: 'passed', reason: 'Reviewed UI.' }],
-        },
-      },
-      'late-ui-verifier-result',
-      'late-ui-verifier-session',
-    );
-    expect(
-      run.actions.filter(
-        (action) => action.stepId === 'supervisor.child.integrate' && action.status === 'pending',
-      ),
-    ).toHaveLength(0);
-    const originalRepair = pendingRepair;
-    const failureContext = { requestId: 'integration-repair-failed', projectRoot: root };
-    run = await runtime.claim({
-      runId: run.runId,
-      actionId: originalRepair.id,
-      attempt: originalRepair.attempt,
-      inputHash: originalRepair.inputHash,
-      executorId: 'native-host',
-      sessionId: 'failed-repair-session',
-      claimToken: 'failed-repair-token',
-      context: failureContext,
-    });
-    run = await runtime.recordOutcome({
-      runId: run.runId,
-      outcome: {
-        actionId: originalRepair.id,
-        attempt: originalRepair.attempt,
-        inputHash: originalRepair.inputHash,
-        claimToken: 'failed-repair-token',
-        outcomeId: 'integration-repair-failed',
-        status: 'failed',
-        output: { summary: 'Stopped after partial integration repair.' },
-      },
-      context: failureContext,
-    });
-    const failedActions = structuredClone(run.actions);
-    await registerSdkChangeOwner(root, {
-      schema: COMET_CHANGE_OWNER_SCHEMA,
-      workflow: 'native',
-      change: run.runId,
-      format: 'sdk',
-      application: 'native',
-      runId: run.runId,
-    });
-    expect(await nativeDoctorCommand([run.runId, '--repair'], root)).toMatchObject({
-      exitCode: 0,
-      data: { healthy: true, repaired: true },
-    });
-    application = nativeApplication();
-    runtime = createSupervisorRuntime();
-    run = await runtime.next({ runId: run.runId });
-    expectOriginalActionFacts(run, failedActions);
-    const resume = run.waits.find(
-      (entry) =>
-        entry.stepId === 'supervisor.child.integration-resume' && entry.status === 'pending',
-    )!;
-    expect(resume).toBeDefined();
-    expect(run.status).toBe('waiting');
-    const beforeDecision = await projectNativeSdkContinuation({
-      run,
-      state: run.state as NativePortableState,
-      projectRoot: root,
-    });
-    expect(beforeDecision.continuation).toMatchObject({ mode: 'ask', requiresUserDecision: true });
-    const continued = await advanceNativeSdkChange(root, run.runId, {
-      expectedAction: 'continue-builder',
-      expectedStateVersion: (run.state as NativePortableState).state_version,
-      proposalHash: resume.proposalHash,
-      summary: 'The user chose to continue the integration repair.',
-    });
-    expect(continued.exitCode).toBe(0);
-    run = await runtime.inspect(run.runId);
-    pendingRepair = run.actions.find(
-      (entry) =>
-        entry.stepId === 'supervisor.child.integration-repair' && entry.status === 'pending',
-    )!;
-    expect(pendingRepair.id).not.toBe(originalRepair.id);
-    expect(pendingRepair.input).toMatchObject({
-      activation: { failedRepairActionId: originalRepair.id },
-    });
-    expect(run.actions.find((entry) => entry.id === originalRepair.id)?.outcome).toEqual(
-      failedActions.find((entry) => entry.id === originalRepair.id)?.outcome,
-    );
-    const integrationWorktree = path.join(root, '.worktrees', 'sdk-shape-integration');
-    await fs.writeFile(
-      path.join(integrationWorktree, 'integration-repair.txt'),
-      'partial repair\n',
-    );
-    const successor = pendingRepair;
-    await runtime.claim({
-      runId: run.runId,
-      actionId: successor.id,
-      attempt: successor.attempt,
-      inputHash: successor.inputHash,
-      executorId: 'native-host',
-      sessionId: 'second-repair-session',
-      claimToken: 'second-repair-token',
-      context: failureContext,
-    });
-    run = await runtime.recordOutcome({
-      runId: run.runId,
-      outcome: {
-        actionId: successor.id,
-        attempt: successor.attempt,
-        inputHash: successor.inputHash,
-        claimToken: 'second-repair-token',
-        outcomeId: 'second-repair-failed',
-        status: 'failed',
-        output: { summary: 'Stopped again with uncommitted repair work.' },
-      },
-      context: failureContext,
-    });
-    expect(run.status).toBe('waiting');
-    const secondResume = run.waits.find(
-      (entry) =>
-        entry.stepId === 'supervisor.child.integration-resume' && entry.status === 'pending',
-    )!;
-    expect(secondResume.proposalHash).not.toBe(resume.proposalHash);
-    expect(
-      (
-        await advanceNativeSdkChange(root, run.runId, {
-          expectedAction: 'continue-builder',
-          expectedStateVersion: (run.state as NativePortableState).state_version,
-          proposalHash: resume.proposalHash,
-          summary: 'Stale approval must not continue a different repair.',
-        })
-      ).exitCode,
-    ).not.toBe(0);
-    expect(
-      (
-        await advanceNativeSdkChange(root, run.runId, {
-          expectedAction: 'continue-builder',
-          expectedStateVersion: (run.state as NativePortableState).state_version,
-          proposalHash: secondResume.proposalHash,
-          summary: 'The user chose to continue the preserved partial repair.',
-        })
-      ).exitCode,
-    ).toBe(0);
-    expect(
-      await fs.readFile(path.join(integrationWorktree, 'integration-repair.txt'), 'utf8'),
-    ).toBe('partial repair\n');
-    run = await runtime.inspect(run.runId);
-    pendingRepair = run.actions.find(
-      (entry) =>
-        entry.stepId === 'supervisor.child.integration-repair' && entry.status === 'pending',
-    )!;
-    expect(pendingRepair.input).toMatchObject({
-      activation: { failedRepairActionId: successor.id },
-    });
-    await fs.writeFile(path.join(integrationWorktree, 'integration-repair.txt'), 'repaired\n');
-    execFileSync('git', ['add', 'integration-repair.txt'], {
-      cwd: integrationWorktree,
-      stdio: 'ignore',
-    });
-    execFileSync(
-      'git',
-      [
-        '-c',
-        'user.name=Comet Test',
-        '-c',
-        'user.email=comet-test@example.com',
-        'commit',
-        '-m',
-        'repair integration',
-      ],
-      { cwd: integrationWorktree, stdio: 'ignore' },
-    );
-    const repairCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
-      cwd: integrationWorktree,
-      encoding: 'utf8',
-    }).trim();
-    const repair = run.actions.find((action) => action.id === pendingRepair.id)!;
-    await reportChildAction(
-      repair,
-      {
-        summary: 'Repaired the integration check.',
-        integrationCommit: repairCommit,
-        integrationChecks: [
-          {
-            id: 'api-integration-repair',
-            name: 'API integration repair check',
-            executable: process.execPath,
-            argv: ['-e', 'process.exit(0)'],
-            cwdRef: '.',
-            timeoutMs: 10000,
-            repeatable: true,
-          },
-        ],
-      },
-      'integration-repair-result',
-      'integration-repair-session',
-    );
-    const repairedCheck = run.actions.at(-1)!;
-    expect(repairedCheck).toMatchObject({ stepId: 'supervisor.child.integration-checks' });
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: repairedCheck.id,
-      executorId: 'comet-native-checks',
-      context: { requestId: 'integration-repair-checks', projectRoot: root },
-    });
-    expect(run.actions.find((action) => action.id === repairedCheck.id)?.status).toBe('succeeded');
-    const apiArchive = run.actions.find(
-      (action) => action.stepId === 'supervisor.child.archive' && action.status === 'pending',
-    )!;
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: apiArchive.id,
-      executorId: 'native-supervisor-child-archive',
-      context: { requestId: 'api-child-archive', projectRoot: root },
-    });
-    expect(run.actions.find((action) => action.id === apiArchive.id)?.status).toBe('succeeded');
-    expect(
-      run.actions.filter(
-        (action) => action.stepId === 'supervisor.child.integrate' && action.status === 'pending',
-      ),
-    ).toHaveLength(1);
-    const uiIntegration = run.actions.find(
-      (action) => action.stepId === 'supervisor.child.integrate' && action.status === 'pending',
-    )!;
-    await fs.writeFile(path.join(root, 'target-update.txt'), 'preserve target work\n');
-    execFileSync('git', ['add', 'target-update.txt'], { cwd: root, stdio: 'ignore' });
-    execFileSync('git', ['commit', '-m', 'advance target during Supervisor Build'], {
-      cwd: root,
-      stdio: 'ignore',
-    });
-    const updatedTarget = execFileSync('git', ['rev-parse', 'HEAD'], {
-      cwd: root,
-      encoding: 'utf8',
-    }).trim();
-    const beforeIntegrationDrift = structuredClone(run);
-    const baseCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
-      cwd: integrationWorktree,
-      encoding: 'utf8',
-    }).trim();
-    const integrationBranch = execFileSync('git', ['branch', '--show-current'], {
-      cwd: integrationWorktree,
-      encoding: 'utf8',
-    }).trim();
-    const driftCommit = execFileSync(
-      'git',
-      ['commit-tree', `${baseCommit}^{tree}`, '-p', baseCommit, '-m', 'unexpected branch drift'],
-      { cwd: integrationWorktree, encoding: 'utf8' },
-    ).trim();
-    execFileSync(
-      'git',
-      ['update-ref', `refs/heads/${integrationBranch}`, driftCommit, baseCommit],
-      {
-        cwd: integrationWorktree,
-        stdio: 'ignore',
-      },
-    );
-    await expect(
-      runtime.execute({
+      expect(wait).toMatchObject({
+        stepId: 'supervisor.shape.confirm',
+        choices: ['multi-session', 'single-session', 'rejected'],
+      });
+      run = await runtime.resolveWait({
         runId: run.runId,
-        actionId: uiIntegration.id,
-        executorId: 'native-supervisor-integrate',
-        context: { requestId: 'ui-integration-drift', projectRoot: root },
-      }),
-    ).rejects.toThrow('Native SDK Supervisor integration branch changed after the prior check');
-    run = await runtime.inspect(run.runId);
-    expect(run.actions.find((action) => action.id === uiIntegration.id)).toMatchObject({
-      status: 'pending',
-      attempt: uiIntegration.attempt,
-    });
-    expect(await runtime.inspect(run.runId)).toEqual(beforeIntegrationDrift);
-    expect(() =>
-      execFileSync('git', ['rev-parse', '-q', '--verify', 'MERGE_HEAD'], {
-        cwd: integrationWorktree,
-        stdio: 'ignore',
-      }),
-    ).toThrow();
-    execFileSync(
-      'git',
-      ['update-ref', `refs/heads/${integrationBranch}`, baseCommit, driftCommit],
-      {
-        cwd: integrationWorktree,
-        stdio: 'ignore',
-      },
-    );
-    await expect(
-      runtime.execute({
-        runId: run.runId,
-        actionId: uiIntegration.id,
-        executorId: 'native-supervisor-integrate',
-        context: { requestId: 'ui-integration-conflict', projectRoot: root },
-      }),
-    ).rejects.toMatchObject({ code: 'EXECUTION_UNKNOWN' });
-    runtime = createSupervisorRuntime();
-    run = await runtime.inspect(run.runId);
-    const conflicted = run.actions.find((action) => action.id === uiIntegration.id)!;
-    expect(conflicted.status).toBe('unknown');
-    const targetMergeCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
-      cwd: integrationWorktree,
-      encoding: 'utf8',
-    }).trim();
-    expect(
-      (await fs.readFile(path.join(integrationWorktree, 'target-update.txt'), 'utf8')).trim(),
-    ).toBe('preserve target work');
-    expect(
-      execFileSync('git', ['rev-parse', 'MERGE_HEAD'], {
-        cwd: integrationWorktree,
-        encoding: 'utf8',
-      }).trim(),
-    ).toBe(lateUiCandidateCommit);
-    await fs.writeFile(path.join(integrationWorktree, 'shared.txt'), 'API and UI integrated\n');
-    execFileSync('git', ['add', 'shared.txt'], { cwd: integrationWorktree, stdio: 'ignore' });
-    execFileSync(
-      'git',
-      [
-        '-c',
-        'user.name=Comet Test',
-        '-c',
-        'user.email=comet-test@example.com',
-        'commit',
-        '-m',
-        'resolve UI integration',
-      ],
-      { cwd: integrationWorktree, stdio: 'ignore' },
-    );
-    const mergedCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
-      cwd: integrationWorktree,
-      encoding: 'utf8',
-    }).trim();
-    const forgedMerge = execFileSync(
-      'git',
-      [
-        'commit-tree',
-        `${mergedCommit}^{tree}`,
-        '-p',
-        driftCommit,
-        '-p',
-        lateUiCandidateCommit!,
-        '-m',
-        'merge on unverified base',
-      ],
-      { cwd: integrationWorktree, encoding: 'utf8' },
-    ).trim();
-    execFileSync(
-      'git',
-      ['update-ref', `refs/heads/${integrationBranch}`, forgedMerge, mergedCommit],
-      {
-        cwd: integrationWorktree,
-        stdio: 'ignore',
-      },
-    );
-    await expect(
-      runtime.recordOutcome({
-        runId: run.runId,
-        outcome: {
-          actionId: conflicted.id,
-          attempt: conflicted.attempt,
-          inputHash: conflicted.inputHash,
-          claimToken: conflicted.claim!.token,
-          outcomeId: 'ui-integration-wrong-base',
-          status: 'succeeded',
-          output: {
-            child: 'ui',
-            candidateCommit: lateUiCandidateCommit,
-            baseCommit: driftCommit,
-            integrationCommit: forgedMerge,
-            integrationBranch,
-            integrationWorktree,
-          },
-        },
-        context: { requestId: 'ui-integration-wrong-base', projectRoot: root },
-      }),
-    ).rejects.toMatchObject({ code: 'OUTCOME_REJECTED' });
-    execFileSync(
-      'git',
-      ['update-ref', `refs/heads/${integrationBranch}`, mergedCommit, forgedMerge],
-      {
-        cwd: integrationWorktree,
-        stdio: 'ignore',
-      },
-    );
-    run = await runtime.recordOutcome({
-      runId: run.runId,
-      outcome: {
-        actionId: conflicted.id,
-        attempt: conflicted.attempt,
-        inputHash: conflicted.inputHash,
-        claimToken: conflicted.claim!.token,
-        outcomeId: 'ui-integration-resolved',
-        status: 'succeeded',
-        output: {
-          child: 'ui',
-          candidateCommit: lateUiCandidateCommit,
-          baseCommit,
-          targetCommit: updatedTarget,
-          targetMergeCommit,
-          integrationCommit: mergedCommit,
-          integrationBranch,
-          integrationWorktree,
-        },
-      },
-      context: { requestId: 'ui-integration-resolved', projectRoot: root },
-    });
-    expect(run.actions.find((action) => action.id === uiIntegration.id)?.status).toBe('succeeded');
-    const finalChecks = run.actions.at(-1)!;
-    expect(finalChecks.stepId).toBe('supervisor.child.integration-checks');
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: finalChecks.id,
-      executorId: 'comet-native-checks',
-      context: { requestId: 'ui-integration-checks', projectRoot: root },
-    });
-    const uiArchive = run.actions.find(
-      (action) => action.stepId === 'supervisor.child.archive' && action.status === 'pending',
-    )!;
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: uiArchive.id,
-      executorId: 'native-supervisor-child-archive',
-      context: { requestId: 'ui-child-archive', projectRoot: root },
-    });
-    expect(run.actions.find((action) => action.id === uiArchive.id)?.status).toBe('succeeded');
-    expect(run.actions.at(-1)?.stepId).toBe('supervisor.parent.builder');
-  }, 240_000);
+        waitId: wait.id,
+        proposalHash: wait.proposalHash,
+        decisionId: 'supervisor-choice',
+        choice: 'multi-session',
+      });
+
+      expect(run.state).toMatchObject({
+        phase: 'build',
+        coordination_mode: 'multi-session',
+        children_contract_ref: expect.any(String),
+      });
+      expect(run.actions.at(-1)).toMatchObject({
+        stepId: 'supervisor.prepare',
+        type: 'call_tool',
+      });
+    },
+  );
 
   it.each([
     'normal',
@@ -3036,7 +1819,10 @@ children:
 `,
       );
       execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });
-      execFileSync('git', ['config', 'user.name', 'Comet Test'], { cwd: root, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.name', 'Comet Test'], {
+        cwd: root,
+        stdio: 'ignore',
+      });
       execFileSync('git', ['config', 'user.email', 'comet-test@example.com'], {
         cwd: root,
         stdio: 'ignore',
@@ -3085,7 +1871,10 @@ children:
       let runtime = createSupervisorRuntime();
       let run = await runtime.start({
         runId: 'sdk-shape',
-        workflow: { id: application.workflow.id, version: application.workflow.version },
+        workflow: {
+          id: application.workflow.id,
+          version: application.workflow.version,
+        },
         input: { name: 'sdk-shape', artifactRootRef: 'docs' },
         initialState,
       });
@@ -3104,13 +1893,7 @@ children:
         decisionId: 'candidate-multi-session',
         choice: 'multi-session',
       });
-      run = await succeedLatestAction(
-        runtime,
-        run,
-        await collectProposal(paths, run.state as NativePortableState),
-        root,
-        'candidate-shape-current',
-      );
+
       run = await runtime.execute({
         runId: run.runId,
         actionId: run.actions.at(-1)!.id,
@@ -3130,7 +1913,10 @@ children:
       const childWorktree = path.join(root, '.worktrees', 'sdk-shape-api');
       if (scenario === 'child-builder-failure') {
         await fs.writeFile(path.join(childWorktree, 'api.txt'), 'partial API\n');
-        const failureContext = { requestId: 'candidate-child-builder-failed', projectRoot: root };
+        const failureContext = {
+          requestId: 'candidate-child-builder-failed',
+          projectRoot: root,
+        };
         run = await runtime.claim({
           runId: run.runId,
           actionId: builder.id,
@@ -3150,12 +1936,17 @@ children:
             claimToken: 'candidate-child-builder-failed',
             outcomeId: 'candidate-child-builder-failed',
             status: 'failed',
-            output: { summary: 'The Child Builder stopped after writing api.txt.' },
+            output: {
+              summary: 'The Child Builder stopped after writing api.txt.',
+            },
           },
           context: failureContext,
         });
         const resumeWait = run.waits.at(-1)!;
-        expect(resumeWait).toMatchObject({ stepId: 'supervisor.child.resume', status: 'pending' });
+        expect(resumeWait).toMatchObject({
+          stepId: 'supervisor.child.resume',
+          status: 'pending',
+        });
         expect(await fs.readFile(path.join(childWorktree, 'api.txt'), 'utf8')).toBe(
           'partial API\n',
         );
@@ -3199,7 +1990,7 @@ children:
         ],
         { cwd: childWorktree, stdio: 'ignore' },
       );
-      const candidateCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+      let candidateCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
         cwd: childWorktree,
         encoding: 'utf8',
       }).trim();
@@ -3224,102 +2015,143 @@ children:
           status: 'succeeded',
           output: {
             candidateCommit,
-            verificationChecks: [
-              {
-                id: 'api-check',
-                name: 'API candidate check',
-                executable: process.execPath,
-                argv: ['-e', 'process.exit(0)'],
-                cwdRef: '.',
-                timeoutMs: 10000,
-                repeatable: true,
-              },
-            ],
           },
         },
         context: { requestId: 'builder-api-result', projectRoot: root },
       });
       expect(run.actions.at(-1)).toMatchObject({
-        stepId: 'supervisor.child.checks',
-        type: 'call_tool',
-        input: { activation: { child: 'api', candidateCommit, worktree: childWorktree } },
-      });
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'comet-native-checks',
-        context: { requestId: 'api-check-execution', projectRoot: root },
-      });
-      expect(run.actions.at(-1)).toMatchObject({
         stepId: 'supervisor.child.verifier',
         type: 'handoff',
-        input: { activation: { child: 'api', candidateCommit, worktree: childWorktree } },
+        input: {
+          activation: { child: 'api', candidateCommit, worktree: childWorktree },
+        },
       });
-      const verifier = run.actions.at(-1)!;
-      const verifierClaim = await runtime.claim({
-        runId: run.runId,
-        actionId: verifier.id,
-        attempt: verifier.attempt,
-        inputHash: verifier.inputHash,
-        executorId: 'native-host',
-        sessionId: 'verifier-api-session',
-        claimToken: 'verifier-api-claim',
-        context: { requestId: 'verifier-api-claim', projectRoot: root },
-      });
-      run = await runtime.recordOutcome({
-        runId: run.runId,
-        outcome: {
-          actionId: verifier.id,
-          attempt: verifier.attempt,
-          inputHash: verifier.inputHash,
-          claimToken: verifierClaim.actions.find((action) => action.id === verifier.id)!.claim!
-            .token,
-          outcomeId: 'verifier-api-result',
-          status: 'succeeded',
-          output: {
-            candidateCommit,
-            verdict: 'pass',
-            integrationChecks: [
+      // SIMULATED Agent executes a real platform check; Runtime receives observations only.
+      const markerCheck = (cwd: string) =>
+        spawnSync(
+          process.execPath,
+          [
+            '-e',
+            "const fs=require('node:fs');if(fs.readFileSync('marker.txt','utf8').trim()!=='repaired')process.exit(1)",
+          ],
+          { cwd, windowsHide: true },
+        );
+      const failedObservation = markerCheck(path.join(childWorktree, 'api-subdir'));
+      expect(failedObservation.status).toBe(1);
+      const failedChildVerifier = run.actions.at(-1)!;
+      run = await succeedLatestAction(
+        runtime,
+        run,
+        {
+          candidateCommit,
+          verdict: 'fail',
+          evidence: {
+            summary: 'SIMULATED Agent observed the actual marker command exit 1.',
+            checks: [],
+            acceptance: [
               {
-                id: 'api-integration',
-                name: 'API integration check',
-                executable: process.execPath,
-                argv: [
-                  '-e',
-                  "const fs=require('node:fs');if(fs.readFileSync('marker.txt','utf8').trim()!=='repaired')process.exit(1)",
-                ],
-                cwdRef: 'api-subdir',
-                timeoutMs: 10000,
-                repeatable: true,
+                id: 'child:api',
+                result: 'failed',
+                reason: 'Actual Node command exit 1: marker not repaired.',
               },
             ],
-            evidence: {
-              summary: 'Independent API review passed.',
-              checks: ['api-check'],
-              acceptance: [
-                { id: 'child:api', result: 'passed', reason: 'Reviewed the API behavior.' },
-              ],
+          },
+          checks: [
+            {
+              name: 'API integration behavior',
+              result: 'failed',
+              note: 'Actual Node exit 1 in api-subdir.',
             },
+          ],
+        },
+        root,
+        'api-verifier-observed-failure',
+        'verifier-api-session',
+      );
+      expect(run.actions.at(-1)).toMatchObject({
+        stepId: 'supervisor.child.builder',
+        type: 'handoff',
+        input: {
+          activation: {
+            child: 'api',
+            failedVerifierActionId: failedChildVerifier.id,
           },
         },
-        context: { requestId: 'verifier-api-result', projectRoot: root },
       });
+      await fs.writeFile(path.join(childWorktree, 'api-subdir', 'marker.txt'), 'repaired\n');
+      execFileSync('git', ['add', 'api-subdir/marker.txt'], {
+        cwd: childWorktree,
+        stdio: 'ignore',
+      });
+      execFileSync('git', ['commit', '-m', 'repair API behavior after actual platform failure'], {
+        cwd: childWorktree,
+        stdio: 'ignore',
+      });
+      candidateCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: childWorktree,
+        encoding: 'utf8',
+      }).trim();
+      expect(markerCheck(path.join(childWorktree, 'api-subdir')).status).toBe(0);
+      const apiChecks = [
+        {
+          name: 'API integration behavior',
+          result: 'passed',
+          note: 'Actual Node exit 0 after marker repair.',
+        },
+      ];
+      run = await succeedLatestAction(
+        runtime,
+        run,
+        { candidateCommit, checks: apiChecks },
+        root,
+        'api-repaired-builder-result',
+        'builder-api-session',
+      );
+      run = await succeedLatestAction(
+        runtime,
+        run,
+        {
+          candidateCommit,
+          verdict: 'pass',
+          evidence: {
+            summary: 'SIMULATED independent API review after actual Node exit 0.',
+            checks: [],
+            acceptance: [
+              {
+                id: 'child:api',
+                result: 'passed',
+                reason: 'Actual marker command exit 0.',
+              },
+            ],
+          },
+          checks: apiChecks,
+        },
+        root,
+        'api-repaired-verifier-result',
+        'verifier-api-session',
+      );
       expect(run.actions.at(-1)).toMatchObject({
         stepId: 'supervisor.child.integrate',
         type: 'call_tool',
-        input: { activation: { child: 'api', candidateCommit, worktree: childWorktree } },
+        input: {
+          activation: { child: 'api', candidateCommit, worktree: childWorktree },
+        },
       });
       const integration = run.actions.at(-1)!;
       run = await runtime.execute({
         runId: run.runId,
         actionId: integration.id,
         executorId: 'native-supervisor-integrate',
-        context: { requestId: 'integrate-api', projectRoot: root },
+        context: { requestId: 'integrate-repaired-api', projectRoot: root },
       });
-      expect(run.actions.find((action) => action.id === integration.id)).toMatchObject({
+      expect(run.actions.find((a) => a.id === integration.id)).toMatchObject({
         status: 'succeeded',
         outcome: {
-          output: { child: 'api', candidateCommit, integrationCommit: expect.any(String) },
+          output: {
+            child: 'api',
+            candidateCommit,
+            integrationCommit: expect.any(String),
+          },
         },
       });
       const integrationWorktree = path.join(root, '.worktrees', 'sdk-shape-integration');
@@ -3329,96 +2161,13 @@ children:
           stdio: 'ignore',
         }),
       ).not.toThrow();
-      expect(run.actions.at(-1)).toMatchObject({
-        stepId: 'supervisor.child.integration-checks',
-        type: 'call_tool',
-      });
-      const integrationChecks = run.actions.at(-1)!;
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: integrationChecks.id,
-        executorId: 'comet-native-checks',
-        context: { requestId: 'api-integration-checks', projectRoot: root },
-      });
-      expect(run.actions.find((action) => action.id === integrationChecks.id)).toMatchObject({
-        status: 'failed',
-        outcome: { output: { checks: [{ id: 'api-integration', status: 'failed' }] } },
-      });
-      expect(run.actions.at(-1)).toMatchObject({
-        stepId: 'supervisor.child.integration-repair',
-        type: 'handoff',
-        input: { activation: { child: 'api', failedCheckActionId: integrationChecks.id } },
-      });
-      await fs.writeFile(path.join(integrationWorktree, 'api-subdir', 'marker.txt'), 'repaired\n');
-      execFileSync('git', ['add', 'api-subdir/marker.txt'], {
-        cwd: integrationWorktree,
-        stdio: 'ignore',
-      });
-      execFileSync(
-        'git',
-        [
-          '-c',
-          'user.name=Comet Test',
-          '-c',
-          'user.email=comet-test@example.com',
-          'commit',
-          '-m',
-          'repair api integration',
-        ],
-        { cwd: integrationWorktree, stdio: 'ignore' },
-      );
-      const integrationRepairCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
-        cwd: integrationWorktree,
-        encoding: 'utf8',
-      }).trim();
-      run = await succeedLatestAction(
-        runtime,
-        run,
-        {
-          summary: 'Fixed API integration behavior.',
-          integrationCommit: integrationRepairCommit,
-          integrationChecks: [
-            {
-              id: 'api-integration',
-              name: 'API integration check',
-              executable: process.execPath,
-              argv: [
-                '-e',
-                "const fs=require('node:fs');if(fs.readFileSync('marker.txt','utf8').trim()!=='repaired')process.exit(1)",
-              ],
-              cwdRef: 'api-subdir',
-              timeoutMs: 10000,
-              repeatable: true,
-            },
-          ],
-        },
-        root,
-        'api-integration-repair-result',
-        'api-integration-repair-session',
-      );
-      expect(run.actions.at(-1)).toMatchObject({
-        stepId: 'supervisor.child.integration-checks',
-        input: {
-          activation: {
-            child: 'api',
-            integrationCommit: integrationRepairCommit,
-            repairActionId: expect.any(String),
-          },
-        },
-      });
-      const repairedIntegrationChecks = run.actions.at(-1)!;
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: repairedIntegrationChecks.id,
-        executorId: 'comet-native-checks',
-        context: { requestId: 'api-integration-repair-checks', projectRoot: root },
-      });
+      expect(markerCheck(path.join(integrationWorktree, 'api-subdir')).status).toBe(0);
+      expect(run.actions.at(-1)?.stepId).toBe('supervisor.child.archive');
       expect(
-        run.actions.find((action) => action.id === repairedIntegrationChecks.id),
-      ).toMatchObject({
-        status: 'succeeded',
-        outcome: { output: { checks: [{ id: 'api-integration', status: 'passed' }] } },
-      });
+        run.actions.some((a) =>
+          ['supervisor.child.checks', 'supervisor.child.integration-checks'].includes(a.stepId),
+        ),
+      ).toBe(false);
       const apiArchive = run.actions.find(
         (action) => action.stepId === 'supervisor.child.archive' && action.status === 'pending',
       )!;
@@ -3453,60 +2202,71 @@ children:
       });
       const uiWorktree = path.join(root, '.worktrees', 'sdk-shape-ui');
       await fs.writeFile(path.join(uiWorktree, 'ui.txt'), 'UI implemented\n');
-      execFileSync('git', ['add', 'ui.txt'], { cwd: uiWorktree, stdio: 'ignore' });
-      execFileSync('git', ['commit', '-m', 'ui candidate'], { cwd: uiWorktree, stdio: 'ignore' });
+      execFileSync('git', ['add', 'ui.txt'], {
+        cwd: uiWorktree,
+        stdio: 'ignore',
+      });
+      execFileSync('git', ['commit', '-m', 'ui candidate'], {
+        cwd: uiWorktree,
+        stdio: 'ignore',
+      });
       const uiCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
         cwd: uiWorktree,
         encoding: 'utf8',
       }).trim();
+      expect(
+        spawnSync(
+          process.execPath,
+          [
+            '-e',
+            "if(require('node:fs').readFileSync('ui.txt','utf8').trim()!=='UI implemented')process.exit(1)",
+          ],
+          { cwd: uiWorktree, windowsHide: true },
+        ).status,
+      ).toBe(0);
       run = await succeedLatestAction(
         runtime,
         run,
         {
           candidateCommit: uiCommit,
-          verificationChecks: [
-            {
-              id: 'ui-check',
-              name: 'UI candidate check',
-              executable: process.execPath,
-              argv: ['-e', 'process.exit(0)'],
-              cwdRef: '.',
-              timeoutMs: 10000,
-              repeatable: true,
-            },
-          ],
         },
         root,
         'ui-builder-result',
         'builder-ui-session',
       );
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'comet-native-checks',
-        context: { requestId: 'ui-checks', projectRoot: root },
-      });
+
+      expect(
+        spawnSync(
+          process.execPath,
+          [
+            '-e',
+            "if(require('node:fs').readFileSync('ui.txt','utf8').trim()!=='UI implemented')process.exit(1)",
+          ],
+          { cwd: uiWorktree, windowsHide: true },
+        ).status,
+      ).toBe(0);
       run = await succeedLatestAction(
         runtime,
         run,
         {
           candidateCommit: uiCommit,
           verdict: 'pass',
-          integrationChecks: [
-            {
-              id: 'ui-integration',
-              name: 'UI integration check',
-              executable: process.execPath,
-              argv: ['-e', 'process.exit(0)'],
-              cwdRef: '.',
-              timeoutMs: 10000,
-              repeatable: true,
-            },
-          ],
           evidence: {
             summary: 'Independent UI review passed.',
-            checks: ['ui-check'],
-            acceptance: [{ id: 'child:ui', result: 'passed', reason: 'Reviewed UI behavior.' }],
+            checks: [
+              {
+                name: 'UI behavior',
+                result: 'passed',
+                note: 'Actual Node observes committed UI file.',
+              },
+            ],
+            acceptance: [
+              {
+                id: 'child:ui',
+                result: 'passed',
+                reason: 'Reviewed UI behavior.',
+              },
+            ],
           },
         },
         root,
@@ -3519,12 +2279,7 @@ children:
         executorId: 'native-supervisor-integrate',
         context: { requestId: 'integrate-ui', projectRoot: root },
       });
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'comet-native-checks',
-        context: { requestId: 'ui-integration-checks', projectRoot: root },
-      });
+
       const uiArchive = run.actions.find(
         (action) => action.stepId === 'supervisor.child.archive' && action.status === 'pending',
       )!;
@@ -3547,7 +2302,10 @@ children:
         ).activation.integrationWorktree;
         const partialFile = path.join(integrationWorktree, 'parent-partial.txt');
         await fs.writeFile(partialFile, 'partial parent review\n');
-        const failureContext = { requestId: 'parent-builder-failed', projectRoot: root };
+        const failureContext = {
+          requestId: 'parent-builder-failed',
+          projectRoot: root,
+        };
         run = await runtime.claim({
           runId: run.runId,
           actionId: failedBuilder.id,
@@ -3572,7 +2330,10 @@ children:
           context: failureContext,
         });
         const resumeWait = run.waits.at(-1)!;
-        expect(resumeWait).toMatchObject({ stepId: 'supervisor.parent.resume', status: 'pending' });
+        expect(resumeWait).toMatchObject({
+          stepId: 'supervisor.parent.resume',
+          status: 'pending',
+        });
         expect(await fs.readFile(partialFile, 'utf8')).toBe('partial parent review\n');
         run = await runtime.resolveWait({
           runId: run.runId,
@@ -3597,6 +2358,10 @@ children:
         runtime,
         run,
         {
+          candidateCommit: execFileSync('git', ['rev-parse', 'HEAD'], {
+            cwd: integrationWorktree,
+            encoding: 'utf8',
+          }).trim(),
           summary: 'Integrated API and UI candidates.',
           addressedAcceptanceIds: ['A1'],
           acceptanceReview: fixtureAcceptanceReview(['A1']),
@@ -3604,20 +2369,6 @@ children:
           knownLimits: [],
           review: null,
           submittedAt: '2026-09-26T04:00:00.000Z',
-          verificationChecks: [
-            {
-              id: 'parent-check',
-              name: 'Parent integration check',
-              executable: process.execPath,
-              argv: [
-                '-e',
-                "const fs=require('node:fs');if(!fs.existsSync('api.txt')||!fs.existsSync('ui.txt'))process.exit(1)",
-              ],
-              cwdRef: '.',
-              timeoutMs: 10000,
-              repeatable: true,
-            },
-          ],
         },
         root,
         'parent-builder-result',
@@ -3627,53 +2378,31 @@ children:
         phase: 'verify',
         builder_handoff: { builder_execution_ref: 'parent-builder-session' },
       });
-      expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.checks', type: 'call_tool' });
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'comet-native-checks',
-        context: { requestId: 'parent-checks', projectRoot: root },
+      expect(run.actions.some((a) => a.stepId === 'verify.checks')).toBe(false);
+
+      expect(run.actions.at(-1)).toMatchObject({
+        stepId: 'verify.verifier',
+        type: 'handoff',
       });
-      expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', type: 'handoff' });
       const parentCandidateId = (run.state as NativePortableState).builder_handoff!.candidate_id;
-      run = await succeedLatestAction(
-        runtime,
-        run,
-        {
-          candidateId: parentCandidateId,
-          verifierExecutionRef: 'parent-verifier-session',
-          response: {
-            kind: 'request-checks',
-            iteration: 1,
-            attempt: 1,
-            checks: [
-              {
-                id: 'parent-extra',
-                name: 'Verifier-requested parent check',
-                executable: process.execPath,
-                argv: [
-                  '-e',
-                  "const fs=require('node:fs');if(!fs.existsSync('api.txt')||!fs.existsSync('ui.txt'))process.exit(1)",
-                ],
-                cwdRef: '.',
-                timeoutMs: 10000,
-                repeatable: true,
-              },
-            ],
-          },
-        },
-        root,
-        'parent-verifier-request',
-        'parent-verifier-session',
+      const requestedParentObservation = spawnSync(
+        process.execPath,
+        [
+          '-e',
+          "const fs=require('node:fs');if(!fs.existsSync('api.txt')||!fs.existsSync('ui.txt'))process.exit(1)",
+        ],
+        { cwd: integrationWorktree, windowsHide: true },
       );
-      expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.requested-checks' });
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'comet-native-checks',
-        context: { requestId: 'parent-extra-check', projectRoot: root },
-      });
-      expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier' });
+      expect(requestedParentObservation.status).toBe(0);
+      const actualParentFailure = spawnSync(
+        process.execPath,
+        [
+          '-e',
+          "const fs=require('node:fs');if(!fs.existsSync('parent-repair.txt'))process.exit(1)",
+        ],
+        { cwd: integrationWorktree, windowsHide: true },
+      );
+      expect(actualParentFailure.status).toBe(1);
       const failedParentVerifier = run.actions.at(-1)!;
       run = await succeedLatestAction(
         runtime,
@@ -3681,6 +2410,13 @@ children:
         {
           candidateId: parentCandidateId,
           verifierExecutionRef: 'parent-verifier-session',
+          checks: [
+            {
+              name: 'Parent repair behavior',
+              result: 'failed',
+              note: 'Actual Node exit 1: parent-repair.txt absent.',
+            },
+          ],
           response: {
             kind: 'final-result',
             result: {
@@ -3688,7 +2424,11 @@ children:
               attempt: 1,
               verdict: 'fail',
               acceptance: [
-                { id: 'A1', result: 'failed', reason: 'The parent integration needs a repair.' },
+                {
+                  id: 'A1',
+                  result: 'failed',
+                  reason: 'The parent integration needs a repair.',
+                },
               ],
               risks: [],
               summary: 'Repair the parent integration before delivery.',
@@ -3702,7 +2442,9 @@ children:
       expect(run.actions.at(-1)).toMatchObject({
         stepId: 'supervisor.parent.builder',
         type: 'handoff',
-        input: { activation: { failedVerifierActionId: failedParentVerifier.id } },
+        input: {
+          activation: { failedVerifierActionId: failedParentVerifier.id },
+        },
       });
       await fs.writeFile(path.join(integrationWorktree, 'parent-repair.txt'), 'Parent repaired\n');
       execFileSync('git', ['add', 'parent-repair.txt'], {
@@ -3738,31 +2480,12 @@ children:
           review: null,
           submittedAt: '2026-09-26T05:00:00.000Z',
           candidateCommit: repairedCommit,
-          verificationChecks: [
-            {
-              id: 'parent-repair-check',
-              name: 'Parent repair check',
-              executable: process.execPath,
-              argv: [
-                '-e',
-                "const fs=require('node:fs');if(!fs.existsSync('parent-repair.txt'))process.exit(1)",
-              ],
-              cwdRef: '.',
-              timeoutMs: 10000,
-              repeatable: true,
-            },
-          ],
         },
         root,
         'parent-repair-builder-result',
         'parent-repair-builder-session',
       );
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'comet-native-checks',
-        context: { requestId: 'parent-repair-checks', projectRoot: root },
-      });
+
       expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier' });
       const repairedState = run.state as NativePortableState;
       run = await succeedLatestAction(
@@ -3777,7 +2500,13 @@ children:
               iteration: repairedState.loop.iteration,
               attempt: repairedState.loop.attempt,
               verdict: 'pass',
-              acceptance: [{ id: 'A1', result: 'passed', reason: 'API and UI work together.' }],
+              acceptance: [
+                {
+                  id: 'A1',
+                  result: 'passed',
+                  reason: 'API and UI work together.',
+                },
+              ],
               risks: [],
               summary: 'Parent integration passed independent verification.',
             },
@@ -3792,14 +2521,12 @@ children:
         status: 'await-user',
         verification_result: 'pass',
       });
-      expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.report', type: 'call_tool' });
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'comet-native-report',
-        context: { requestId: 'parent-report', projectRoot: root },
+      expect(run.actions.some((a) => a.stepId === 'verify.report')).toBe(false);
+      await refreshNativeSdkVerificationReport(root, run);
+      expect(run.waits.at(-1)).toMatchObject({
+        stepId: 'verify.confirm',
+        status: 'pending',
       });
-      expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.confirm', status: 'pending' });
       const rejectedConfirmation = run.waits.at(-1)!;
       run = await runtime.resolveWait({
         runId: run.runId,
@@ -3830,31 +2557,12 @@ children:
           review: null,
           submittedAt: '2026-09-26T06:00:00.000Z',
           candidateCommit: repairedCommit,
-          verificationChecks: [
-            {
-              id: 'parent-final-check',
-              name: 'Parent final check',
-              executable: process.execPath,
-              argv: [
-                '-e',
-                "const fs=require('node:fs');if(!fs.existsSync('parent-repair.txt'))process.exit(1)",
-              ],
-              cwdRef: '.',
-              timeoutMs: 10000,
-              repeatable: true,
-            },
-          ],
         },
         root,
         'parent-final-builder-result',
         'parent-final-builder-session',
       );
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'comet-native-checks',
-        context: { requestId: 'parent-final-checks', projectRoot: root },
-      });
+
       const finalParentState = run.state as NativePortableState;
       run = await succeedLatestAction(
         runtime,
@@ -3869,7 +2577,11 @@ children:
               attempt: finalParentState.loop.attempt,
               verdict: 'pass',
               acceptance: [
-                { id: 'A1', result: 'passed', reason: 'Final parent candidate passed.' },
+                {
+                  id: 'A1',
+                  result: 'passed',
+                  reason: 'Final parent candidate passed.',
+                },
               ],
               risks: [],
               summary: 'Final parent candidate passed independent verification.',
@@ -3880,12 +2592,7 @@ children:
         'parent-final-verifier-result',
         'parent-final-verifier-session',
       );
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'comet-native-report',
-        context: { requestId: 'parent-final-report', projectRoot: root },
-      });
+      await refreshNativeSdkVerificationReport(root, run);
       const parentConfirmation = run.waits.at(-1)!;
       run = await runtime.resolveWait({
         runId: run.runId,
@@ -3894,12 +2601,7 @@ children:
         decisionId: 'parent-verification-approved',
         choice: 'approved',
       });
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'comet-native-report-revalidate',
-        context: { requestId: 'parent-report-revalidate', projectRoot: root },
-      });
+
       expect(run.actions.at(-1)).toMatchObject({
         stepId: 'supervisor.parent.deliver',
         type: 'call_tool',
@@ -3924,7 +2626,10 @@ children:
               runId: run.runId,
               actionId: run.actions.at(-1)!.id,
               executorId: 'native-supervisor-parent-deliver',
-              context: { requestId: 'parent-delivery-with-ref-lock', projectRoot: root },
+              context: {
+                requestId: 'parent-delivery-with-ref-lock',
+                projectRoot: root,
+              },
             }),
           ).rejects.toThrow(/已保留执行归属/);
         } finally {
@@ -3937,7 +2642,10 @@ children:
           reason: expect.stringMatching(/lock/),
         });
         expect(
-          execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
+          execFileSync('git', ['rev-parse', 'HEAD'], {
+            cwd: root,
+            encoding: 'utf8',
+          }).trim(),
         ).toBe(approvedTargetCommit);
         await registerSdkChangeOwner(root, {
           schema: COMET_CHANGE_OWNER_SCHEMA,
@@ -3971,7 +2679,10 @@ children:
           attempt: deliveryAction.attempt,
           reconciliation: {
             resolution: 'not-executed',
-            evidence: { targetBranch: branch, targetCommit: approvedTargetCommit },
+            evidence: {
+              targetBranch: branch,
+              targetCommit: approvedTargetCommit,
+            },
           },
         });
         expect(run.actions.at(-1)).toMatchObject({
@@ -3986,7 +2697,10 @@ children:
             runId: run.runId,
             actionId: deliveryAction.id,
             executorId: 'native-supervisor-parent-deliver',
-            context: { requestId: 'parent-delivery-with-unrelated-file', projectRoot: root },
+            context: {
+              requestId: 'parent-delivery-with-unrelated-file',
+              projectRoot: root,
+            },
           }),
         ).rejects.toThrow(/已保留执行归属/);
         const dirtyRetry = await runtime.inspect(run.runId);
@@ -4004,14 +2718,20 @@ children:
           attempt: dirtyRetry.actions.at(-1)!.attempt,
           reconciliation: {
             resolution: 'not-executed',
-            evidence: { targetBranch: branch, targetCommit: approvedTargetCommit },
+            evidence: {
+              targetBranch: branch,
+              targetCommit: approvedTargetCommit,
+            },
           },
         });
         run = await runtime.execute({
           runId: run.runId,
           actionId: deliveryAction.id,
           executorId: 'native-supervisor-parent-deliver',
-          context: { requestId: 'parent-delivery-after-ref-lock', projectRoot: root },
+          context: {
+            requestId: 'parent-delivery-after-ref-lock',
+            projectRoot: root,
+          },
         });
         expect(run.actions.at(-1)?.stepId).toBe('archive.prepare');
         return;
@@ -4035,7 +2755,10 @@ children:
             runId: run.runId,
             actionId: run.actions.at(-1)!.id,
             executorId: 'native-supervisor-parent-deliver',
-            context: { requestId: 'parent-delivery-after-target-drift', projectRoot: root },
+            context: {
+              requestId: 'parent-delivery-after-target-drift',
+              projectRoot: root,
+            },
           }),
         ).rejects.toThrow(/已保留执行归属/);
         const blockedDelivery = await runtime.inspect(run.runId);
@@ -4045,10 +2768,16 @@ children:
           reason: expect.stringMatching(/target branch changed after Shape confirmation/),
         });
         expect(
-          execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
+          execFileSync('git', ['rev-parse', 'HEAD'], {
+            cwd: root,
+            encoding: 'utf8',
+          }).trim(),
         ).toBe(concurrentTargetCommit);
         expect(
-          execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: root, encoding: 'utf8' }),
+          execFileSync('git', ['worktree', 'list', '--porcelain'], {
+            cwd: root,
+            encoding: 'utf8',
+          }),
         ).toContain(integrationWorktree.replaceAll('\\', '/'));
         await registerSdkChangeOwner(root, {
           schema: COMET_CHANGE_OWNER_SCHEMA,
@@ -4083,7 +2812,10 @@ children:
       }
       if (scenario === 'delivery-recovery') {
         const deliveryAction = run.actions.at(-1)!;
-        const deliveryContext = { requestId: 'parent-delivery', projectRoot: root };
+        const deliveryContext = {
+          requestId: 'parent-delivery',
+          projectRoot: root,
+        };
         const claimedDelivery = await runtime.claim({
           runId: run.runId,
           actionId: deliveryAction.id,
@@ -4135,9 +2867,15 @@ children:
           context: { requestId: 'parent-delivery', projectRoot: root },
         });
       }
-      expect(run.actions.at(-1)).toMatchObject({ stepId: 'archive.prepare', type: 'call_tool' });
+      expect(run.actions.at(-1)).toMatchObject({
+        stepId: 'archive.prepare',
+        type: 'call_tool',
+      });
       expect(
-        execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
+        execFileSync('git', ['rev-parse', 'HEAD'], {
+          cwd: root,
+          encoding: 'utf8',
+        }).trim(),
       ).toBe(
         execFileSync('git', ['rev-parse', 'HEAD'], {
           cwd: integrationWorktree,
@@ -4194,7 +2932,10 @@ children:
             runId: run.runId,
             actionId: cleanupAction.id,
             executorId: 'native-supervisor-cleanup',
-            context: { requestId: 'parent-cleanup-with-ref-lock', projectRoot: root },
+            context: {
+              requestId: 'parent-cleanup-with-ref-lock',
+              projectRoot: root,
+            },
           }),
         ).rejects.toThrow(/已保留执行归属/);
         const interrupted = await runtime.inspect(run.runId);
@@ -4204,7 +2945,10 @@ children:
           reason: expect.stringMatching(/lock/),
         });
         expect(
-          execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: root, encoding: 'utf8' }),
+          execFileSync('git', ['worktree', 'list', '--porcelain'], {
+            cwd: root,
+            encoding: 'utf8',
+          }),
         ).not.toContain(integrationWorktree.replaceAll('\\', '/'));
         expect(
           execFileSync('git', ['branch', '--list', 'comet/supervisor/sdk-shape/api'], {
@@ -4271,7 +3015,10 @@ children:
           cleanupExecutor.execute(claimedCleanup.actions.at(-1)!, cleanupContext, claimedCleanup),
         ).rejects.toThrow(/changed worktree/);
         expect(
-          execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: root, encoding: 'utf8' }),
+          execFileSync('git', ['worktree', 'list', '--porcelain'], {
+            cwd: root,
+            encoding: 'utf8',
+          }),
         ).toContain(integrationWorktree.replaceAll('\\', '/'));
         await fs.unlink(untracked);
         const firstChildWorktree = path.join(root, '.worktrees', 'sdk-shape-api');
@@ -4281,7 +3028,10 @@ children:
           stdio: 'ignore',
         });
         expect(
-          execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: root, encoding: 'utf8' }),
+          execFileSync('git', ['worktree', 'list', '--porcelain'], {
+            cwd: root,
+            encoding: 'utf8',
+          }),
         ).not.toContain(firstChildWorktree.replaceAll('\\', '/'));
         await runtime.markUnknown({
           runId: run.runId,
@@ -4316,7 +3066,10 @@ children:
         expect(blockedRecovery.dispatch.exitCode).not.toBe(0);
         expect(blockedRecovery.dispatch.error?.message).toMatch(/verified delivery/);
         expect(
-          execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: root, encoding: 'utf8' }),
+          execFileSync('git', ['worktree', 'list', '--porcelain'], {
+            cwd: root,
+            encoding: 'utf8',
+          }),
         ).toContain(integrationWorktree.replaceAll('\\', '/'));
         expect((await runtime.inspect(run.runId)).actions.at(-1)?.status).toBe('unknown');
         execFileSync(
@@ -4366,37 +3119,7 @@ children:
     240_000,
   );
 
-  it('rejects an incomplete formal brief before proposing Shape confirmation', async () => {
-    const { paths, changeDir, initialState } = await fixture();
-    await fs.writeFile(
-      path.join(changeDir, 'brief.md'),
-      '# Scope\nThe selected workflow.\n# Acceptance examples\n- The selected workflow resumes.\n',
-    );
-    await expect(collectProposal(paths, initialState)).rejects.toThrow(/brief-section-missing/);
-  });
-
-  it('retains the v2 document contract for a pending approval but upgrades a fresh proposal', async () => {
-    const { paths, changeDir, initialState } = await fixture();
-    const brief = path.join(changeDir, 'brief.md');
-    await fs.writeFile(
-      brief,
-      (await fs.readFile(brief, 'utf8')).replace(
-        /## Directory structure[\s\S]*?(?=# Non-goals)/u,
-        '',
-      ),
-    );
-    const legacyState = { ...initialState, document_constraints_version: 2 as const };
-    const pending = prepareNativePortableShapeConfirmation({
-      state: legacyState,
-      acceptance: [{ id: 'A1', source: 'brief.md', text: 'The selected workflow resumes.' }],
-    });
-    await expect(collectProposal(paths, pending)).resolves.toMatchObject({
-      acceptance: [{ id: 'A1', text: 'The selected workflow resumes.' }],
-    });
-    await expect(collectProposal(paths, legacyState)).rejects.toThrow(/brief-structure-missing/u);
-  });
-
-  it('repairs missing structure in the same SDK Run before confirming the complete Shape', async () => {
+  it('reproposes the same SDK Shape after rejection without requiring document structure', async () => {
     const { root, changeDir, runtime, run: prepared } = await preparedShape('sdk');
     const wait = prepared.waits.at(-1)!;
     const rejected = await runtime.resolveWait({
@@ -4406,22 +3129,17 @@ children:
       decisionId: 'shape-needs-revision',
       choice: 'rejected',
     });
+    expect(rejected.state).toMatchObject({ phase: 'shape', status: 'active' });
+    expect(rejected.waits.find(({ id }) => id === wait.id)).toMatchObject({
+      status: 'resolved',
+      decision: { choice: 'rejected' },
+    });
     const brief = path.join(changeDir, 'brief.md');
     const completeBrief = await fs.readFile(brief, 'utf8');
     await fs.writeFile(
       brief,
       completeBrief.replace(/## Directory structure[\s\S]*?(?=# Non-goals)/u, ''),
     );
-    await expect(advanceNativeSdkChange(root, 'sdk-shape')).rejects.toThrow(
-      /brief-structure-missing/u,
-    );
-    const afterFailure = await runtime.inspect(prepared.runId);
-    expect(afterFailure.state).toEqual(rejected.state);
-    expect(afterFailure.actions.at(-1)).toMatchObject({
-      id: rejected.actions.at(-1)!.id,
-      status: 'pending',
-    });
-    await fs.writeFile(brief, completeBrief);
     expect(await advanceNativeSdkChange(root, 'sdk-shape')).toMatchObject({ exitCode: 0 });
     const repaired = await runtime.inspect(prepared.runId);
     expect(repaired.state).toMatchObject({
@@ -4443,7 +3161,7 @@ children:
   });
 
   it('keeps SDK Shape approval current after formatting-only document edits', async () => {
-    const { root, paths, changeDir, runtime, run: prepared } = await preparedShape();
+    const { root, changeDir, runtime, run: prepared } = await preparedShape('sdk');
     expect(prepared.state).toMatchObject({ document_constraints_version: 3 });
     const wait = prepared.waits.at(-1)!;
     let run = await runtime.resolveWait({
@@ -4461,18 +3179,15 @@ children:
         'Ship the selected workflow.\n',
       ),
     );
-    run = await succeedLatestAction(
-      runtime,
-      run,
-      await collectProposal(paths, run.state as NativePortableState),
-      root,
-      'formatted-shape',
-    );
+    const approved = structuredClone(run.waits.find((entry) => entry.id === wait.id));
+    expect((await advanceNativeSdkChange(root, run.runId)).exitCode).toBe(0);
+    run = await runtime.inspect(run.runId);
+    expect(run.waits.find((entry) => entry.id === wait.id)).toEqual(approved);
     expect(run.state).toMatchObject({ phase: 'build' });
     expect(run.actions.at(-1)).toMatchObject({ stepId: 'build.builder' });
   });
 
-  it('enters Build through a host handoff only after revalidating the approved Shape', async () => {
+  it('enters Build through a host handoff only after the original Shape approval', async () => {
     const { root, paths, runtime, run: prepared } = await preparedShape();
     const wait = prepared.waits.at(-1)!;
     let run = await runtime.resolveWait({
@@ -4482,14 +3197,11 @@ children:
       decisionId: 'shape-approved',
       choice: 'approved',
     });
-    expect(run.actions.at(-1)).toMatchObject({ stepId: 'shape.revalidate', type: 'call_tool' });
-    run = await succeedLatestAction(
-      runtime,
-      run,
-      await collectProposal(paths, run.state as NativePortableState),
-      root,
-      'shape-revalidated',
-    );
+    expect(run.waits.find((entry) => entry.id === wait.id)).toMatchObject({
+      status: 'resolved',
+      decision: { id: 'shape-approved', choice: 'approved' },
+    });
+
     expect(run.state).toMatchObject({
       phase: 'build',
       status: 'active',
@@ -4510,13 +3222,7 @@ children:
       decisionId: 'shape-approved',
       choice: 'approved',
     });
-    run = await succeedLatestAction(
-      runtime,
-      run,
-      await collectProposal(paths, run.state as NativePortableState),
-      root,
-      'shape-revalidated',
-    );
+
     expect(run.state).toMatchObject({ phase: 'build' });
     expect(run.actions.at(-1)).toMatchObject({ stepId: 'build.builder', status: 'pending' });
 
@@ -4640,11 +3346,7 @@ children:
     expect(await afterApply.runtime.inspect(afterApply.run.runId)).toEqual(afterApply.run);
   });
 
-  it.each([
-    undefined,
-    [],
-    [{ id: 'A1', status: 'not-implemented', evidence: [], note: 'Work remains.' }],
-  ])(
+  it.each([[[]], [[{ id: 'A1', status: 'not-implemented', evidence: [], note: 'Work remains.' }]]])(
     'keeps an incomplete SDK Builder on its claimed Action for correction: %j',
     async (acceptanceReview) => {
       const { root, paths, runtime, run: prepared } = await preparedShape();
@@ -4656,13 +3358,7 @@ children:
         decisionId: 'shape-approved',
         choice: 'approved',
       });
-      run = await succeedLatestAction(
-        runtime,
-        run,
-        await collectProposal(paths, run.state as NativePortableState),
-        root,
-        'shape-revalidated',
-      );
+
       const builder = run.actions.at(-1)!;
       await expect(
         succeedLatestAction(
@@ -4680,7 +3376,7 @@ children:
           'incomplete-builder',
           'builder-session',
         ),
-      ).rejects.toMatchObject({ code: 'OUTCOME_REJECTED' });
+      ).rejects.toMatchObject({ code: 'OUTCOME_PROCESSING_ERROR' });
       const current = await runtime.inspect(run.runId);
       expect(current.state).toMatchObject({ phase: 'build', verification_result: 'pending' });
       expect(current.actions.at(-1)).toMatchObject({ id: builder.id, status: 'running' });
@@ -4688,7 +3384,7 @@ children:
     },
   );
 
-  it('records a claimed Builder handoff as a candidate before scheduling independent checks', async () => {
+  it('records a claimed Builder handoff as a candidate before scheduling acceptance', async () => {
     const { root, paths, runtime, run: prepared } = await preparedShape();
     const wait = prepared.waits.at(-1)!;
     let run = await runtime.resolveWait({
@@ -4698,13 +3394,7 @@ children:
       decisionId: 'shape-approved',
       choice: 'approved',
     });
-    run = await succeedLatestAction(
-      runtime,
-      run,
-      await collectProposal(paths, run.state as NativePortableState),
-      root,
-      'shape-revalidated',
-    );
+
     run = await succeedLatestAction(
       runtime,
       run,
@@ -4730,1359 +3420,242 @@ children:
         addressed_acceptance_ids: ['A1'],
       },
     });
-    expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.checks', type: 'call_tool' });
-  });
-
-  it('executes the Builder-bound check plan before dispatching an independent Verifier', async () => {
-    const { root, paths, runtime, run: prepared } = await preparedShape();
-    const wait = prepared.waits.at(-1)!;
-    let run = await runtime.resolveWait({
-      runId: prepared.runId,
-      waitId: wait.id,
-      proposalHash: wait.proposalHash,
-      decisionId: 'shape-approved',
-      choice: 'approved',
-    });
-    run = await succeedLatestAction(
-      runtime,
-      run,
-      await collectProposal(paths, run.state as NativePortableState),
-      root,
-      'shape-revalidated',
-    );
-    run = await succeedLatestAction(
-      runtime,
-      run,
-      {
-        summary: 'Implemented the selected workflow.',
-        addressedAcceptanceIds: ['A1'],
-        acceptanceReview: fixtureAcceptanceReview(['A1']),
-        checks: [],
-        knownLimits: [],
-        review: null,
-        submittedAt: '2026-09-24T01:00:00.000Z',
-        verificationChecks: [
-          {
-            id: 'focused',
-            name: 'Focused check',
-            executable: process.execPath,
-            argv: ['-e', 'process.stdout.write("sdk-check-ok")'],
-            cwdRef: '.',
-            timeoutMs: 5_000,
-            repeatable: true,
-          },
-        ],
-      },
-      root,
-      'builder-candidate',
-      'builder-session-1',
-    );
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: run.actions.at(-1)!.id,
-      executorId: 'comet-native-checks',
-      context: { requestId: 'native-check-execution', projectRoot: root },
-    });
-    const output = run.outputs['verify.checks'].value as {
-      checks: Array<{ status: string; logRef: string }>;
-    };
-    expect(output.checks).toMatchObject([{ status: 'passed' }]);
-    expect(
-      await fs.readFile(
-        path.join(resolveWorkspaceRuntimeRootSync(root), output.checks[0].logRef),
-        'utf8',
-      ),
-    ).toContain('sdk-check-ok');
     expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', type: 'handoff' });
-    // 旧日志引用只在访问本机存储时归一化，不改写已保存的执行回执。
-    const legacy = structuredClone(run);
-    const completedCheck = legacy.actions.find(
-      (action) => action.stepId === 'verify.checks' && action.status === 'succeeded',
-    )!;
-    const saved = completedCheck.outcome!.output as { checks: Array<{ logRef: string }> };
-    saved.checks[0].logRef = `.comet/runtime/${saved.checks[0].logRef}`;
-    const originalReceipt = JSON.stringify(completedCheck.outcome);
-    expect(await nativeSdkCurrentCheckSummaries({ run: legacy, projectRoot: root })).toMatchObject([
-      { status: 'passed' },
-    ]);
-    expect(JSON.stringify(completedCheck.outcome)).toBe(originalReceipt);
   });
 
-  it('continues a healthy previous-definition Run without an upgrade or replacing its claim', async () => {
-    const { root, store, run } = await dispatchedVerifier([], 'sdk', preCheckRecoveryApplication());
-    const next = await advanceNativeSdkChange(root, run.runId);
-    expect(next).toMatchObject({
-      exitCode: 0,
-      data: { phase: 'verify', pendingAction: { stepId: 'verify.verifier' } },
-    });
-    const doctor = await nativeDoctorCommand([run.runId], root);
-    expect(doctor).toMatchObject({
-      exitCode: 0,
-      data: { healthy: true, repaired: false },
-    });
-    const reconciled = (await store.read(run.runId))!;
-    expectOriginalActionFacts(reconciled, run.actions);
-    expect({
-      ...reconciled,
-      actions: run.actions,
-      revision: run.revision,
-    }).toEqual(run);
-    expect(reconciled.revision).toBe(run.revision + 1);
-    const { runtime } = await loadOwnedNativeSdkRuntime(root, run.runId);
-    const action = run.actions.at(-1)!;
-    const claimed = await runtime.claim({
-      runId: run.runId,
-      expectedRevision: reconciled.revision,
-      actionId: action.id,
-      attempt: action.attempt,
-      inputHash: action.inputHash,
-      executorId: 'native-host',
-      sessionId: 'existing-verifier',
-      claimToken: 'existing-claim',
-      context: { requestId: 'existing-claim', projectRoot: root },
-    });
-    expect((await advanceNativeSdkChange(root, run.runId)).data).toMatchObject({
-      phase: 'verify',
-      run: { revision: claimed.revision },
-      activeActions: [{ id: action.id, status: 'running', claim: { token: 'existing-claim' } }],
-    });
-    expect((await store.read(run.runId))?.workflow).toEqual(run.workflow);
-    expect((await nativeDoctorCommand([run.runId], root)).exitCode).toBe(0);
-  });
-
-  it.each([false, true])(
-    'upgrades a stopped check Run without replaying its execution (tampered=%s)',
-    async (tampered) => {
-      const { root, store, run } = await dispatchedVerifier(
-        [
-          {
-            id: 'old-failure',
-            name: 'Previously failed check',
-            executable: process.execPath,
-            argv: ['-e', "throw new Error('saved-check-failure')"],
-            cwdRef: '.',
-            timeoutMs: 5_000,
-            repeatable: true,
-          },
-        ],
-        'sdk',
-        preCheckRecoveryApplication(),
-      );
-      expect(run).toMatchObject({ status: 'failed', state: { phase: 'verify', status: 'active' } });
-      const failed = run.actions.at(-1)!;
-      const logRef = (failed.outcome!.output as { checks: Array<{ logRef: string }> }).checks[0]
-        .logRef;
-      const original = await store.read(run.runId);
-      const diagnostic = await nativeDoctorCommand([run.runId], root);
-      expect(diagnostic).toMatchObject({
-        exitCode: 65,
-        data: { findings: [{ code: 'sdk-definition-upgrade-required', ready: true }] },
-      });
-      expect(await store.read(run.runId)).toEqual(original);
-      if (tampered) {
-        await fs.appendFile(
-          path.join(resolveWorkspaceRuntimeRootSync(root), logRef),
-          'receipt changed',
-        );
-        await expect(inspectNativeSdkDefinitionUpgrade(root, run.runId, true)).rejects.toThrow(
-          'log changed',
-        );
-        expect(await store.read(run.runId)).toEqual(original);
-        return;
-      }
-      const repaired = await nativeDoctorCommand([run.runId, '--repair'], root);
-      expect(repaired, JSON.stringify(repaired)).toMatchObject({
-        exitCode: 0,
-        data: { repaired: true, phase: 'build' },
-      });
-      const recovered = await store.read(run.runId);
-      expectOriginalActionFacts(recovered!, original!.actions);
-      expect(recovered?.waits).toEqual(original?.waits);
-      expect(recovered?.outputs).toEqual(original?.outputs);
-      expect(recovered?.revision).toBe(run.revision + 2);
-      const next = await advanceNativeSdkChange(root, run.runId);
-      expect(next).toMatchObject({
-        exitCode: 0,
-        data: { phase: 'build', pendingAction: { stepId: 'build.builder' } },
-      });
-      expectOriginalActionFacts((await store.read(run.runId))!, [failed]);
-      expect(await inspectNativeSdkDefinitionUpgrade(root, run.runId, true)).toBeNull();
-    },
-  );
-
-  it('repairs a real failed Runtime check with a new candidate and preserves receipts through Archive', async () => {
-    const {
+  it('repairs a real Agent-platform failure with a new candidate and preserves its original report through Archive', async () => {
+    const f = await dispatchedVerifier([], 'sdk');
+    const { root, runtime } = f;
+    const originalCandidate = (f.run.state as NativePortableState).builder_handoff!.candidate_id,
+      shape = f.run.waits.find((w) => w.stepId === 'shape.confirm')!;
+    const failed = await migratedActualCheck(
       root,
-      runtime,
-      run: failed,
-    } = await dispatchedVerifier([
-      {
-        id: 'focused',
-        name: 'Focused check',
-        executable: process.execPath,
-        argv: ['-e', "throw new Error('controlled-check-failure')"],
-        cwdRef: '.',
-        timeoutMs: 5_000,
-        repeatable: true,
-      },
-    ]);
-    const failedAction = failed.actions.findLast((action) => action.stepId === 'verify.checks')!;
-    const failedOutput = failedAction.outcome!.output as {
-      candidateId: string;
-      checks: Array<{ status: string; exitCode: number; logRef: string; logSha256: string }>;
-    };
-    expect(failedAction).toMatchObject({ status: 'failed', attempt: 1 });
-    expect(failedOutput.checks).toMatchObject([{ status: 'failed', exitCode: 1 }]);
-    const log = await fs.readFile(
-      path.join(resolveWorkspaceRuntimeRootSync(root), failedOutput.checks[0].logRef),
+      'agent-failed-check',
+      "require('node:fs').appendFileSync('failed-check-count','once\\n'); throw new Error('controlled-check-failure')",
     );
-    expect(log.toString()).toContain('controlled-check-failure');
-    expect(createHash('sha256').update(log).digest('hex')).toBe(failedOutput.checks[0].logSha256);
-    expect(failed).toMatchObject({
-      status: 'running',
-      state: {
-        phase: 'build',
-        status: 'active',
-        loop: { failed_iteration_count: 1 },
-      },
+    expect(failed.actual.status).toBe(1);
+    expect(failed.log.toString()).toContain('controlled-check-failure');
+    let run = await migratedVerdict(
+      runtime,
+      f.run,
+      root,
+      'fail',
+      [failed.report],
+      'SIMULATED-failing-verifier',
+    );
+    const original = run.actions.find((a) => a.stepId === 'verify.verifier')!;
+    expect(run.state).toMatchObject({
+      phase: 'build',
+      verification_result: 'fail',
+      loop: { failed_iteration_count: 1 },
     });
-    expect((failed.state as NativePortableState).history.at(-1)?.summary.text).toContain('focused');
-    expect(failed.actions.at(-1)).toMatchObject({
-      stepId: 'build.builder',
-      status: 'pending',
-      input: { activation: { failedCheckActionId: failedAction.id } },
-    });
-    const shapeDecision = failed.waits.find((wait) => wait.stepId === 'shape.confirm')!;
-    const builder = failed.actions.at(-1)!;
+    expect(original.outcome!.output).toMatchObject({ checks: [{ result: 'failed' }] });
+    expect((run.state as NativePortableState).history.at(-1)!.summary.text).toContain(
+      'controlled-check-failure',
+    );
+    expect(run.actions.at(-1)).toMatchObject({ stepId: 'build.builder', status: 'pending' });
+    const builder = run.actions.at(-1)!;
     await expect(
       runtime.claim({
-        runId: failed.runId,
-        expectedRevision: failed.revision - 1,
+        runId: run.runId,
+        expectedRevision: run.revision - 1,
         actionId: builder.id,
         attempt: builder.attempt,
         inputHash: builder.inputHash,
         executorId: 'native-host',
-        sessionId: 'stale-builder',
-        claimToken: 'stale-claim',
+        sessionId: 'SIMULATED-stale-builder',
+        claimToken: 'SIMULATED-stale-token',
       }),
     ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
     await expect(
       runtime.retry({
-        runId: failed.runId,
-        expectedRevision: failed.revision,
-        actionId: failedAction.id,
-        attempt: failedAction.attempt,
+        runId: run.runId,
+        expectedRevision: run.revision,
+        actionId: original.id,
+        attempt: original.attempt,
       }),
-    ).rejects.toMatchObject({ code: 'ACTION_ALREADY_ADVANCED' });
-    let run = await succeedLatestAction(
-      runtime,
-      failed,
-      {
-        summary: 'Repaired the failed implementation.',
-        addressedAcceptanceIds: ['A1'],
-        acceptanceReview: fixtureAcceptanceReview(['A1']),
-        checks: [],
-        knownLimits: [],
-        submittedAt: '2026-09-24T02:00:00.000Z',
-        verificationChecks: [
-          {
-            id: 'focused',
-            name: 'Focused repaired check',
-            executable: process.execPath,
-            argv: ['-e', "process.stdout.write('repaired-check-passed')"],
-            cwdRef: '.',
-            timeoutMs: 5_000,
-            repeatable: true,
-          },
-        ],
-      },
+    ).rejects.toMatchObject({ code: 'ACTION_ACTIVE' });
+    expect(await runtime.inspect(run.runId)).toEqual(run);
+    const passed = await migratedActualCheck(
       root,
-      'repaired-candidate',
-      'repair-builder-session',
+      'agent-repaired-check',
+      "process.stdout.write('repaired candidate passed')",
     );
-    const candidate = (run.state as NativePortableState).builder_handoff!.candidate_id;
-    expect(candidate).not.toBe(failedOutput.candidateId);
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: run.actions.at(-1)!.id,
-      executorId: 'comet-native-checks',
-      context: { requestId: 'repaired-checks', projectRoot: root },
-    });
-    expect(run.outputs['verify.checks'].value).toMatchObject({
-      candidateId: candidate,
-      checks: [{ status: 'passed', exitCode: 0 }],
-    });
-    expect(run.actions.find((action) => action.id === failedAction.id)).toEqual(failedAction);
-    const state = run.state as NativePortableState;
+    expect(passed.actual.status).toBe(0);
     run = await succeedLatestAction(
       runtime,
       run,
       {
-        candidateId: candidate,
-        verifierExecutionRef: 'repair-verifier-session',
-        response: {
-          kind: 'final-result',
-          result: {
-            iteration: state.loop.iteration,
-            attempt: state.loop.attempt,
-            verdict: 'pass',
-            acceptance: [
-              { id: 'A1', result: 'passed', reason: 'Verified the repaired candidate.' },
-            ],
-            risks: [],
-            summary: 'Repaired candidate independently accepted.',
-          },
-        },
+        summary: 'SIMULATED Agent repaired the real failure.',
+        addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
+        checks: [passed.report],
+        knownLimits: [],
       },
       root,
-      'repaired-verification',
-      'repair-verifier-session',
+      'SIMULATED-repaired-candidate',
+      'SIMULATED-repair-builder',
     );
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: run.actions.at(-1)!.id,
-      executorId: 'comet-native-report',
-      context: { requestId: 'repaired-report', projectRoot: root },
-    });
-    const approval = run.waits.at(-1)!;
-    expect(approval).toMatchObject({ stepId: 'verify.confirm', status: 'pending' });
-    expect(run.actions.some((action) => action.stepId.startsWith('archive.'))).toBe(false);
-    run = await runtime.resolveWait({
-      runId: run.runId,
-      waitId: approval.id,
-      proposalHash: approval.proposalHash,
-      decisionId: 'explicit-repair-approval',
-      choice: 'approved',
-    });
-    for (const executorId of [
-      'comet-native-report-revalidate',
-      'comet-native-archive-preflight',
-      'comet-native-archive-apply',
-      'comet-native-archive-finalize',
-    ]) {
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId,
-        context: { requestId: `repaired-${executorId}`, projectRoot: root },
-      });
-    }
-    expect(run).toMatchObject({ status: 'completed', state: { archived: true, status: 'done' } });
-    expect(run.waits.find((wait) => wait.id === shapeDecision.id)).toEqual(shapeDecision);
-    expect(run.actions.find((action) => action.id === failedAction.id)).toEqual(failedAction);
-    expect(
-      await fs.readFile(
-        path.join(resolveWorkspaceRuntimeRootSync(root), failedOutput.checks[0].logRef),
-      ),
-    ).toEqual(log);
+    expect((run.state as NativePortableState).builder_handoff!.candidate_id).not.toBe(
+      originalCandidate,
+    );
+    expect(run.actions.find((a) => a.id === original.id)).toEqual(original);
+    run = await migratedVerdict(
+      runtime,
+      run,
+      root,
+      'pass',
+      [passed.report],
+      'SIMULATED-new-independent-verifier',
+    );
+    expect(run.actions.filter((a) => a.stepId === 'verify.verifier')).toHaveLength(2);
+    expect(run.actions.some((a) => a.stepId === 'verify.checks')).toBe(false);
+    run = await migratedAccept(runtime, run, root, 'SIMULATED-explicit-repair-approval');
+    run = await migratedArchive(runtime, run, root);
+    expect(run.waits.find((w) => w.id === shape.id)).toEqual(shape);
+    expect(run.actions.find((a) => a.id === original.id)).toEqual(original);
+    expect(await fs.readFile(path.join(root, 'agent-failed-check.log'))).toEqual(failed.log);
+    expect(await fs.readFile(path.join(root, 'failed-check-count'), 'utf8')).toBe('once\n');
   });
 
-  it('recovers a real complete check receipt without running its side effect again', async () => {
-    const counterRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-complete-check-counter-'));
-    roots.push(counterRoot);
-    const counter = path.join(counterRoot, 'check-count');
-    const {
-      root,
-      runtime,
-      run: ready,
-    } = await dispatchedVerifier(
-      [
-        {
-          id: 'once',
-          name: 'Once',
-          executable: process.execPath,
-          argv: [
-            '-e',
-            "require('node:fs').appendFileSync(process.argv[1], 'once\\n'); process.stdout.write('receipt')",
-            counter,
-          ],
-          cwdRef: '.',
-          timeoutMs: 5000,
-          repeatable: false,
-        },
-      ],
-      'sdk',
-      nativeApplication(),
-      false,
-    );
-    const pending = ready.actions.at(-1)!;
+  it('keeps an unknown platform Verifier on its original claim and binds later repair to the displayed user proposal', async () => {
+    const f = await dispatchedVerifier([], 'sdk');
+    const { root, runtime } = f;
+    const originalCandidate = (f.run.state as NativePortableState).builder_handoff!.candidate_id,
+      shape = f.run.waits.find((w) => w.stepId === 'shape.confirm')!,
+      action = f.run.actions.at(-1)!;
     const claimed = await runtime.claim({
-      runId: ready.runId,
-      actionId: pending.id,
-      attempt: pending.attempt,
-      inputHash: pending.inputHash,
-      executorId: 'comet-native-checks',
-      claimToken: 'complete-unsubmitted',
-
-      context: { projectRoot: root, requestId: 'native-check-claim-5081' },
-    });
-    const action = claimed.actions.at(-1)!;
-    const result = await nativeSdkCheckExecutor.execute(
-      action,
-      { projectRoot: root, requestId: 'complete-without-submit' },
-      claimed,
-    );
-    const log = path.join(
-      resolveWorkspaceRuntimeRootSync(root),
-      (result.output as { checks: Array<{ logRef: string }> }).checks[0].logRef,
-    );
-    const originalLog = await fs.readFile(log);
-    await fs.appendFile(log, 'tampered');
-    const rejected = await recoverNativeSdkChecks(
-      root,
-      await runtime.inspect(ready.runId),
-      runtime,
-    );
-    expect(rejected.actions.find((entry) => entry.id === action.id)?.status).toBe('running');
-    await fs.writeFile(log, originalLog);
-    expect((await runtime.inspect(ready.runId)).actions.at(-1)?.status).toBe('running');
-    const recovered = await recoverNativeSdkChecks(
-      root,
-      await runtime.inspect(ready.runId),
-      runtime,
-    );
-    expect(recovered.actions.find((entry) => entry.id === action.id)).toMatchObject({
-      status: 'succeeded',
-      attempt: 1,
-      claim: action.claim,
-    });
-    expect(recovered.actions.at(-1)).toMatchObject({
-      stepId: 'verify.verifier',
-      status: 'pending',
-    });
-    expect(await fs.readFile(counter, 'utf8')).toBe('once\n');
-    expect((await recoverNativeSdkChecks(root, recovered, runtime)).revision).toBe(
-      recovered.revision,
-    );
-    expect(await fs.readFile(counter, 'utf8')).toBe('once\n');
-  });
-
-  it('requires explicit stopped repair for a completed check whose input drifted, without replaying its result', async () => {
-    // 计数只观测执行次数，不是本测试要制造的候选输入漂移。
-    const counterRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-check-drift-counter-'));
-    roots.push(counterRoot);
-    const counter = path.join(counterRoot, 'check-count');
-    const {
-      root,
-      runtime,
-      run: ready,
-    } = await dispatchedVerifier(
-      [
-        {
-          id: 'once',
-          name: 'Once',
-          executable: process.execPath,
-          argv: ['-e', "require('node:fs').appendFileSync(process.argv[1], 'once\\n')", counter],
-          cwdRef: '.',
-          timeoutMs: 5000,
-          repeatable: false,
-        },
-      ],
-      'sdk',
-      nativeApplication(),
-      false,
-    );
-    const pending = ready.actions.at(-1)!;
-    let run = await runtime.claim({
-      runId: ready.runId,
-      actionId: pending.id,
-      attempt: pending.attempt,
-      inputHash: pending.inputHash,
-      executorId: 'comet-native-checks',
-      claimToken: 'completed-drift-original',
-
-      context: { projectRoot: root, requestId: 'native-check-claim-5156' },
-    });
-    const action = run.actions.at(-1)!;
-    const original = await nativeSdkCheckExecutor.execute(
-      action,
-      { projectRoot: root, requestId: 'completed-drift' },
-      run,
-    );
-    expect(original.status).toBe('succeeded');
-    const inspection = (await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0];
-    expect(inspection).toMatchObject({ phase: 'completed', quiescent: true, owner: 'alive' });
-    const execution = structuredClone(inspection.execution);
-    await fs.writeFile(path.join(root, 'new-source.js'), 'export const changed = true;\n');
-    run = await recoverNativeSdkChecks(root, run, runtime);
-    expect(run.actions.find((entry) => entry.id === action.id)?.status).toBe('running');
-    expect(run.waits.filter((wait) => wait.status === 'pending')).toHaveLength(0);
-    const projection = await projectNativeSdkContinuation({
-      projectRoot: root,
-      run,
-      state: run.state as NativePortableState,
-    });
-    expect(projection.continuation).toMatchObject({
-      disposition: 'blocked',
-      mode: 'reconcile',
-      requiresUserDecision: true,
-      commandArgs: expect.arrayContaining([
-        'doctor',
-        '--repair',
-        '--confirmed',
-        '--stopped-actions',
-      ]),
-      inputOptions: [
-        {
-          name: 'stopped-actions-json-file',
-          template: [
-            {
-              actionId: action.id,
-              attempt: action.attempt,
-              inputHash: action.inputHash,
-              claimToken: action.claim!.token,
-            },
-          ],
-        },
-      ],
-      userCommunication: { agentInstruction: expect.stringContaining('input has changed') },
-    });
-    const doctor = await nativeDoctorCommand([run.runId], root);
-    expect(doctor.data).toMatchObject({
-      findings: expect.arrayContaining([
-        expect.objectContaining({
-          code: 'sdk-check-execution-recovery-required',
-          actionId: action.id,
-          repairCommand: expect.stringContaining('--confirmed --stopped-actions'),
-          message: expect.stringContaining('输入随后变化'),
-        }),
-      ]),
-    });
-    const stopped = {
+      runId: f.run.runId,
       actionId: action.id,
       attempt: action.attempt,
       inputHash: action.inputHash,
-      claimToken: action.claim!.token,
-      evidence:
-        'The original Node check exited and its process group is quiescent. It started no detached descendants. Retain the original side effect and repair the changed candidate.',
-    };
-    await expect(
-      recoverNativeSdkChecks(root, run, runtime, {
-        reconcileInterrupted: true,
-        stoppedActions: [{ ...stopped, claimToken: 'wrong-claim' }],
-      }),
-    ).rejects.toThrow('中断核对需要');
-    // 输入变化不能掩盖日志损坏，必须保留原始证据后才可进入修复。
-    const log = path.join(
-      resolveWorkspaceRuntimeRootSync(root),
-      (original.output as { checks: Array<{ logRef: string }> }).checks[0].logRef,
-    );
-    const originalLog = await fs.readFile(log);
-    await fs.appendFile(log, 'tampered');
-    const options = { reconcileInterrupted: true, stoppedActions: [stopped] };
-    run = await recoverNativeSdkChecks(root, run, runtime, options);
-    expect(run.actions.find((entry) => entry.id === action.id)?.status).toBe('running');
-    await fs.writeFile(log, originalLog);
-    const racingRuntime = {
-      ...runtime,
-      recordOutcome: async (...args: Parameters<typeof runtime.recordOutcome>) => {
-        await fs.rm(path.join(root, 'new-source.js'));
-        return runtime.recordOutcome(...args);
-      },
-    };
-    await expect(recoverNativeSdkChecks(root, run, racingRuntime, options)).rejects.toThrow(
-      'OUTCOME_REJECTED',
-    );
-    expect(
-      (await runtime.inspect(run.runId)).actions.find((entry) => entry.id === action.id)?.status,
-    ).toBe('running');
-    await fs.writeFile(path.join(root, 'new-source.js'), 'export const changed = true;\n');
-    const stoppedFile = path.join(root, 'stopped-actions.json');
-    await fs.writeFile(stoppedFile, JSON.stringify([stopped]));
-    const repairDiagnostic = await nativeDoctorCommand(
-      [run.runId, '--repair', '--confirmed', '--stopped-actions', stoppedFile],
-      root,
-    );
-    expect(repairDiagnostic, JSON.stringify(repairDiagnostic)).toMatchObject({
-      data: { repaired: true },
+      executorId: 'native-host',
+      sessionId: 'SIMULATED-interrupted-verifier',
+      claimToken: 'SIMULATED-original-verifier-claim',
     });
-    const cold = (await loadOwnedNativeSdkRuntime(root, run.runId)).runtime;
-    run = await cold.inspect(run.runId);
-    const repaired = run.actions.find((entry) => entry.id === action.id)!;
-    expect(repaired).toMatchObject({
-      status: 'failed',
-      attempt: 1,
-      claim: action.claim,
-      outcome: {
-        output: {
-          checks: [{ id: 'once', status: 'passed' }],
-          interruption: { kind: 'completed-input-drift', unknownCheckIds: [], partialLogs: [] },
-        },
-      },
-    });
-    expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.checks-stop', status: 'pending' });
-    expect(run.state).toMatchObject({ phase: 'verify', status: 'await-user' });
-    expect(hasNativeSdkPortableStopEvidence(run, repaired)).toBe(true);
-    const portable = readPortableRunCheckpoint(createPortableRunCheckpoint(run), run.runId)!;
-    expect(
-      hasNativeSdkPortableStopEvidence(
-        portable,
-        portable.actions.find((entry) => entry.id === action.id)!,
-      ),
-    ).toBe(true);
-    expect(
-      (await inspectNativeSdkCheckExecutions({ projectRoot: root, run, includeSettled: true }))[0]
-        .execution,
-    ).toEqual(execution);
-    expect((await recoverNativeSdkChecks(root, run, cold)).revision).toBe(run.revision);
-    await expect(
-      cold.retry({ runId: run.runId, actionId: action.id, attempt: action.attempt }),
-    ).rejects.toMatchObject({ code: 'ACTION_ALREADY_ADVANCED' });
-    const wait = run.waits.at(-1)!;
-    run = await cold.resolveWait({
-      runId: run.runId,
-      waitId: wait.id,
-      proposalHash: wait.proposalHash,
-      decisionId: 'approve-changed-candidate-repair',
-      choice: 'repair',
-    });
-    expect(run.actions.at(-1)).toMatchObject({ stepId: 'build.builder', status: 'pending' });
-    run = await succeedLatestAction(
-      cold,
-      run,
-      {
-        summary: 'Review the changed implementation and submit a fresh candidate.',
-        addressedAcceptanceIds: ['A1'],
-        acceptanceReview: fixtureAcceptanceReview(['A1']),
-        checks: [],
-        knownLimits: [],
-        submittedAt: new Date().toISOString(),
-        verificationChecks: [
-          {
-            id: 'fresh',
-            name: 'Fresh check',
-            executable: process.execPath,
-            argv: ['-e', "process.stdout.write('fresh candidate checked')"],
-            cwdRef: '.',
-            timeoutMs: 5000,
-            repeatable: true,
-          },
-        ],
-      },
-      root,
-      'drift-fresh-candidate',
-      'drift-fresh-builder',
-    );
-    expect((run.state as NativePortableState).builder_handoff!.candidate_id).not.toBe(
-      (original.output as { candidateId: string }).candidateId,
-    );
-    run = await cold.execute({
-      runId: run.runId,
-      actionId: run.actions.at(-1)!.id,
-      executorId: 'comet-native-checks',
-      context: { projectRoot: root, requestId: 'drift-fresh-check' },
-    });
-    expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
-    expect(run.actions.find((entry) => entry.id === action.id)).toEqual(repaired);
-    expect(await fs.readFile(counter, 'utf8')).toBe('once\n');
-  });
-
-  it('reconciles an actual dead check owner into a stopped repair and completes a fresh candidate', async () => {
-    const controlRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-fresh-check-control-'));
-    roots.push(controlRoot);
-    const freshChecked = path.join(controlRoot, 'fresh-checked');
-    const {
-      root,
-      runtime,
-      run: ready,
-    } = await dispatchedVerifier(
-      [
-        {
-          id: 'first',
-          name: 'Completed once',
-          executable: process.execPath,
-          argv: [
-            '-e',
-            "require('node:fs').appendFileSync('original-count', 'once\\n'); process.stdout.write('first-receipt')",
-          ],
-          cwdRef: '.',
-          timeoutMs: 5000,
-          repeatable: false,
-        },
-        {
-          id: 'second',
-          name: 'Unknown after owner exit',
-          executable: process.execPath,
-          argv: [
-            '-e',
-            "const fs=require('node:fs'); fs.writeFileSync('owner-started','yes'); process.stdout.write('partial-output'); setTimeout(()=>fs.writeFileSync('late-effect','bad'),20000); setTimeout(()=>process.exit(0),30000)",
-          ],
-          cwdRef: '.',
-          timeoutMs: 10000,
-          repeatable: false,
-        },
-      ],
-      'sdk',
-      nativeApplication(),
-      false,
-    );
-    const action = ready.actions.at(-1)!;
-    const ownerModule = pathToFileURL(
-      path.resolve('domains/comet-native/native-runtime-ownership.ts'),
-    ).href;
-    const owner = spawn(
+    const task = spawn(
       process.execPath,
-      [
-        '--import',
-        pathToFileURL(path.resolve('test/helpers/native-source-loader.mjs')).href,
-        '--input-type=module',
-        '-e',
-        `import {loadOwnedNativeSdkRuntime} from ${JSON.stringify(ownerModule)}; const {runtime}=await loadOwnedNativeSdkRuntime(${JSON.stringify(root)},'sdk-shape'); await runtime.execute({runId:'sdk-shape',actionId:${JSON.stringify(action.id)},executorId:'comet-native-checks',context:{projectRoot:${JSON.stringify(root)},requestId:'real-owner'}});`,
-      ],
-      { stdio: ['ignore', 'pipe', 'pipe'] },
+      ['-e', "process.stdout.write('platform-task-started\\n');setInterval(()=>{},1000)"],
+      { cwd: root, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
     );
-    let stderr = '';
-    owner.stderr.on('data', (chunk) => {
-      stderr += chunk;
-    });
+    let closed = false;
+    const exit = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
+      (resolve, reject) => {
+        task.once('error', reject);
+        task.once('close', (code, signal) => {
+          closed = true;
+          resolve({ code, signal });
+        });
+      },
+    );
     try {
-      await waitForCondition(
-        () =>
-          fs.access(path.join(root, 'owner-started')).then(
-            () => true,
-            () => false,
-          ),
-        'owner check did not start',
-        // 先为完整源码冷加载预留启动时间，不改变检查自身的时限。
-        30000,
-      );
-      owner.kill('SIGTERM');
-      await waitForProcessExit(owner);
-      await waitForCondition(async () => {
-        const inspection = (
-          await inspectNativeSdkCheckExecutions({
-            projectRoot: root,
-            run: await runtime.inspect(ready.runId),
-          })
-        )[0];
-        // owner 被终止后没有 Windows 整树收据；退出的组长仍需下方人工停止证明。
-        return process.platform === 'win32'
-          ? inspection?.owner === 'dead' && inspection.process === 'dead' && !inspection.quiescent
-          : inspection?.quiescent === true;
-      }, 'original process boundary did not stop');
-      const diagnostic = await nativeDoctorCommand(['sdk-shape'], root);
-      expect(diagnostic).toMatchObject({ exitCode: 65, data: { healthy: false } });
-      expect((await runtime.inspect(ready.runId)).actions.at(-1)?.status).toBe('running');
-      await nativeDoctorCommand(['sdk-shape', '--repair'], root);
-      const unknown = await runtime.inspect(ready.runId);
-      const original = unknown.actions.find((entry) => entry.id === action.id)!;
-      expect(original.status).toBe('unknown');
-      expect(unknown.waits.some((wait) => wait.stepId === 'verify.checks-stop')).toBe(false);
-      const stoppedFile = path.join(root, 'stopped-checks.json');
-      await fs.writeFile(
-        stoppedFile,
-        JSON.stringify([
-          {
-            actionId: original.id,
-            attempt: original.attempt,
-            inputHash: original.inputHash,
-            claimToken: original.claim!.token,
-            evidence:
-              'Observed the original process group stopped. This fixture command created no detached descendants; its original execution and all child tasks have stopped.',
-          },
-        ]),
+      await new Promise<void>((resolve, reject) => {
+        task.stdout.once('data', () => resolve());
+        task.once('error', reject);
+      });
+      const unknown = await runtime.markUnknown({
+        runId: f.run.runId,
+        actionId: action.id,
+        attempt: action.attempt,
+        reason: 'SIMULATED platform lost return while ordinary Node task was running',
+      });
+      expect(unknown.actions.find((a) => a.id === action.id)).toMatchObject({
+        status: 'unknown',
+        claim: claimed.actions.find((a) => a.id === action.id)!.claim,
+      });
+      const observed = await advanceNativeSdkChange(root, f.run.runId);
+      expect(observed.exitCode).toBe(0);
+      expect(
+        (await runtime.inspect(f.run.runId)).actions.filter((a) => a.stepId === 'verify.verifier'),
+      ).toHaveLength(1);
+      expect((await runtime.inspect(f.run.runId)).actions.find((a) => a.id === action.id)).toEqual(
+        unknown.actions.find((a) => a.id === action.id),
       );
       await expect(
-        nativeDoctorCommand(['sdk-shape', '--repair', '--stopped-actions', stoppedFile], root),
-      ).rejects.toThrow(/confirmed/u);
-      await nativeDoctorCommand(
-        ['sdk-shape', '--repair', '--confirmed', '--stopped-actions', stoppedFile],
-        root,
-      );
-      let run = await runtime.inspect(ready.runId);
-      const interruptedAction = run.actions.find((entry) => entry.id === action.id)!;
-      expect(interruptedAction).toMatchObject({
-        status: 'failed',
-        attempt: 1,
-        outcome: {
-          output: {
-            checks: [{ id: 'first', status: 'passed' }],
-            interruption: {
-              kind: 'execution-unknown',
-              unknownCheckIds: ['second'],
-              partialLogs: [
-                { logRef: expect.stringContaining('-second.log'), logSha256: expect.any(String) },
-              ],
-            },
-          },
-        },
-      });
-      expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.checks-stop', status: 'pending' });
-      expect(run.state).toMatchObject({ phase: 'verify', status: 'await-user' });
-      const checkpoint = createPortableRunCheckpoint(run);
-      expect(JSON.stringify(checkpoint)).not.toContain(original.claim!.token);
-      const portable = readPortableRunCheckpoint(checkpoint, run.runId)!;
-      const restoredStore = createMemoryRuntimeStore<WorkflowRun>();
-      await restoredStore.compareAndSwap(portable.runId, null, portable);
-      const application = nativeApplication();
-      const restoredRuntime = createRuntime({
-        store: restoredStore,
-        workflows: [application.workflow],
-        transitionHandlers: [application.transitionHandler],
-        validators: application.validators,
-        stateValidators: application.stateValidators,
-        commandValidators: application.commandValidators,
-        executors: application.executors,
-      });
-      const portableWait = portable.waits.at(-1)!;
-      const restoredRepair = await restoredRuntime.resolveWait({
-        runId: portable.runId,
-        waitId: portableWait.id,
-        proposalHash: portableWait.proposalHash,
-        decisionId: 'portable-explicit-repair',
-        choice: 'repair',
-      });
-      expect(restoredRepair.actions.at(-1)).toMatchObject({
-        stepId: 'build.builder',
-        status: 'pending',
-      });
-      await nativeDoctorCommand(['sdk-shape', '--repair'], root);
-      expect((await runtime.inspect(run.runId)).revision).toBe(run.revision);
-      await expect(
-        runtime.retry({ runId: run.runId, actionId: action.id, attempt: 1 }),
-      ).rejects.toMatchObject({ code: 'ACTION_ALREADY_ADVANCED' });
-      const wait = run.waits.at(-1)!;
-      await advanceNativeSdkChange(root, 'sdk-shape', {
-        expectedAction: 'revise-implementation',
-        expectedStateVersion: (run.state as NativePortableState).state_version,
-        proposalHash: wait.proposalHash,
-        summary: 'Reviewed retained output and possible effects; repair with a new candidate.',
-      });
-      run = await runtime.inspect(run.runId);
-      run = await succeedLatestAction(
-        runtime,
-        run,
-        {
-          summary: 'Fresh repaired candidate.',
-          addressedAcceptanceIds: ['A1'],
-          acceptanceReview: fixtureAcceptanceReview(['A1']),
-          checks: [],
-          knownLimits: [],
-          submittedAt: new Date().toISOString(),
-          verificationChecks: [
-            {
-              id: 'fresh',
-              name: 'Fresh check',
-              executable: process.execPath,
-              argv: ['-e', "require('node:fs').writeFileSync(process.argv[1],'yes')", freshChecked],
-              cwdRef: '.',
-              timeoutMs: 5000,
-              repeatable: true,
-            },
-          ],
-        },
-        root,
-        'fresh-candidate',
-        'fresh-builder',
-      );
-      const candidate = (run.state as NativePortableState).builder_handoff!.candidate_id;
-      expect(candidate).not.toBe(
-        (interruptedAction.outcome!.output as { candidateId: string }).candidateId,
-      );
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'comet-native-checks',
-        context: { projectRoot: root, requestId: 'fresh-check' },
-      });
-      expect(run.outputs['verify.checks'].value).toMatchObject({
-        candidateId: candidate,
-        checks: [{ id: 'fresh', status: 'passed' }],
-      });
-      const state = run.state as NativePortableState;
-      run = await succeedLatestAction(
-        runtime,
-        run,
-        {
-          candidateId: candidate,
-          verifierExecutionRef: 'fresh-verifier',
-          response: {
-            kind: 'final-result',
-            result: {
-              iteration: state.loop.iteration,
-              attempt: state.loop.attempt,
-              verdict: 'pass',
-              acceptance: [
-                { id: 'A1', result: 'passed', reason: 'Verified the repaired candidate.' },
-              ],
-              risks: [],
-              summary: 'Fresh candidate accepted.',
-            },
-          },
-        },
-        root,
-        'fresh-verified',
-        'fresh-verifier',
-      );
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'comet-native-report',
-        context: { projectRoot: root, requestId: 'fresh-report' },
-      });
-      const approval = run.waits.at(-1)!;
-      run = await runtime.resolveWait({
-        runId: run.runId,
-        waitId: approval.id,
-        proposalHash: approval.proposalHash,
-        decisionId: 'fresh-approval',
-        choice: 'approved',
-      });
-      for (const executorId of [
-        'comet-native-report-revalidate',
-        'comet-native-archive-preflight',
-        'comet-native-archive-apply',
-        'comet-native-archive-finalize',
-      ])
-        run = await runtime.execute({
-          runId: run.runId,
-          actionId: run.actions.at(-1)!.id,
-          executorId,
-          context: { projectRoot: root, requestId: executorId },
-        });
-      expect(run).toMatchObject({ status: 'completed', state: { archived: true, status: 'done' } });
-      expect(run.actions.find((entry) => entry.id === action.id)).toEqual(interruptedAction);
-      expect(await fs.readFile(path.join(root, 'original-count'), 'utf8')).toBe('once\n');
-      await expect(fs.access(path.join(root, 'late-effect'))).rejects.toMatchObject({
-        code: 'ENOENT',
-      });
-      expect(await fs.readFile(freshChecked, 'utf8')).toBe('yes');
-    } catch (error) {
-      throw new Error(`${(error as Error).message}\nOwner stderr: ${stderr}`, { cause: error });
-    } finally {
-      owner.kill('SIGKILL');
-      await waitForProcessExit(owner);
-    }
-  });
-
-  it.each([false, true])(
-    'recovers a real reserved-before-child owner exit without replay (cancel=%s)',
-    async (cancel) => {
-      const plan = {
-        id: 'reserved',
-        name: 'Reserved check',
-        executable: process.execPath,
-        argv: ['-e', "require('node:fs').writeFileSync('reserved-side-effect', 'executed')"],
-        cwdRef: '.',
-        timeoutMs: 5000,
-        repeatable: false,
-      };
-      const {
-        root,
-        runtime,
-        run: ready,
-      } = await dispatchedVerifier([plan], 'sdk', nativeApplication(), false);
-      const pending = ready.actions.at(-1)!;
-      let run = await runtime.claim({
-        runId: ready.runId,
-        actionId: pending.id,
-        attempt: pending.attempt,
-        inputHash: pending.inputHash,
-        executorId: 'comet-native-checks',
-        claimToken: 'reserved-original-claim',
-
-        context: { projectRoot: root, requestId: 'native-check-claim-5644' },
-      });
-      const action = run.actions.at(-1)!;
-      const bundle = path.join(root, 'reserve-owner.cjs');
-      const payload = path.join(root, 'reserve-owner.json');
-      await fs.writeFile(
-        payload,
-        JSON.stringify({
-          projectRoot: root,
-          run,
-          action,
-          candidateId: (run.state as NativePortableState).builder_handoff!.candidate_id,
-          plansHash: hashRuntimeValue(
-            nativeSdkChecks.nativeSdkCheckPlans({ verificationChecks: [plan] }),
-          ),
-        }),
-      );
-      await build({
-        stdin: {
-          contents: `const { createNativeSdkCheckExecution } = require('./domains/comet-native/native-sdk-check-execution.ts'); createNativeSdkCheckExecution(JSON.parse(require('node:fs').readFileSync(process.argv[2], 'utf8'))).then(() => process.exit(0));`,
-          resolveDir: process.cwd(),
-        },
-        bundle: true,
-        platform: 'node',
-        format: 'cjs',
-        outfile: bundle,
-        logLevel: 'silent',
-      });
-      execFileSync(process.execPath, [bundle, payload], { env: process.env });
-      await fs.rm(bundle);
-      await fs.rm(payload);
-      expect((await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0]).toMatchObject({
-        owner: 'dead',
-        process: 'unknown',
-        phase: 'reserved',
-        quiescent: false,
-      });
-      const cold = (await loadOwnedNativeSdkRuntime(root, run.runId)).runtime;
-      run = await recoverNativeSdkChecks(root, await cold.inspect(run.runId), cold);
-      expect(run.actions.find((entry) => entry.id === action.id)?.status).toBe('unknown');
-      if (cancel) run = await cold.cancel({ runId: run.runId, reason: 'Stop reserved execution' });
-      if (cancel) {
-        const waiting = await inspectNativeSdkCancellation({ projectRoot: root, run });
-        expect(waiting?.outstandingActions[0].acknowledgementRequest).toMatchObject({
-          operation: 'doctor',
-          commandArgs: [
-            'comet',
-            'native',
-            'doctor',
-            run.runId,
-            '--repair',
-            '--confirmed',
-            '--stopped-actions',
-            '<path-to-stopped-actions-json>',
-          ],
-          stoppedActions: [{ actionId: action.id, claimToken: action.claim!.token }],
-        });
-      }
-      const options = {
-        reconcileInterrupted: true,
-        stoppedActions: [
-          {
+        runtime.recordOutcome({
+          runId: f.run.runId,
+          outcome: {
             actionId: action.id,
             attempt: action.attempt,
             inputHash: action.inputHash,
-            claimToken: action.claim!.token,
-            evidence:
-              'The synchronous parent observed the original reservation owner exit before it launched any child. No command or descendant was started.',
+            claimToken: 'wrong-claim',
+            outcomeId: 'SIMULATED-foreign-result',
+            status: 'failed',
+            output: { summary: 'Must not accept a foreign cancellation report' },
           },
-        ],
-      };
-      run = await recoverNativeSdkChecks(root, run, cold, options);
-      const recovered = run.actions.find((entry) => entry.id === action.id)!;
-      expect(recovered).toMatchObject({
-        status: cancel ? 'cancelled' : 'failed',
-        attempt: action.attempt,
-        claim: action.claim,
-      });
-      if (cancel) {
-        expect(await inspectNativeSdkCancellation({ projectRoot: root, run })).toMatchObject({
-          status: 'cancelled',
-          quiescent: true,
-        });
-        expect(recovered.outcome).toBeUndefined();
-      } else {
-        expect(recovered.outcome?.output).toMatchObject({
-          checks: [],
-          interruption: { unknownCheckIds: ['reserved'] },
-        });
-        expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.checks-stop', status: 'pending' });
-      }
-      const again = await recoverNativeSdkChecks(root, run, cold, options);
-      expect(again.actions.find((entry) => entry.id === action.id)?.outcome).toEqual(
-        recovered.outcome,
-      );
-      expect(
-        (
-          await inspectNativeSdkCheckExecutions({
-            projectRoot: root,
-            run: again,
-            includeSettled: true,
-          })
-        )[0],
-      ).toMatchObject({ quiescent: true });
-      await expect(fs.access(path.join(root, 'reserved-side-effect'))).rejects.toMatchObject({
-        code: 'ENOENT',
-      });
-    },
-  );
-
-  it('reconciles a legacy unregistered execution only with original-host stop evidence and keeps every result unknown', async () => {
-    const plan = {
-      id: 'legacy',
-      name: 'Legacy check',
-      executable: process.execPath,
-      argv: ['-e', "require('node:fs').appendFileSync('legacy-side-effect', 'executed\\n')"],
-      cwdRef: '.',
-      timeoutMs: 5000,
-      repeatable: false,
-    };
-    const {
-      root,
-      runtime,
-      run: ready,
-    } = await dispatchedVerifier([plan], 'sdk', nativeApplication(), false);
-    const pending = ready.actions.at(-1)!;
-    const run = await runtime.claim({
-      runId: ready.runId,
-      actionId: pending.id,
-      attempt: pending.attempt,
-      inputHash: pending.inputHash,
-      executorId: 'comet-native-checks',
-      claimToken: 'legacy-original-claim',
-
-      context: { projectRoot: root, requestId: 'native-check-claim-5776' },
-    });
-    const action = run.actions.at(-1)!;
-    // 旧执行器的真实路径：领取后运行命令，退出前未持久登记进程或提交结果。
-    execFileSync(plan.executable, plan.argv, { cwd: root, stdio: 'ignore' });
-    expect((await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0].phase).toBe(
-      'missing',
-    );
-    const unknown = await recoverNativeSdkChecks(root, run, runtime);
-    expect(unknown.actions.at(-1)?.status).toBe('unknown');
-    const recovered = await recoverNativeSdkChecks(root, unknown, runtime, {
-      reconcileInterrupted: true,
-      stoppedActions: [
-        {
+        }),
+      ).rejects.toThrow();
+      expect((await runtime.inspect(f.run.runId)).state).toEqual(unknown.state);
+      expect(task.kill()).toBe(true);
+      const actualExit = await exit;
+      expect(actualExit.signal !== null || actualExit.code !== 0).toBe(true);
+      let run = await runtime.recordOutcome({
+        runId: f.run.runId,
+        outcome: {
           actionId: action.id,
           attempt: action.attempt,
           inputHash: action.inputHash,
-          claimToken: action.claim!.token,
-          evidence:
-            'Observed the original Node command exit; it started no child processes. Its file side effect remains and is not treated as undone.',
-        },
-      ],
-    });
-    expect(recovered.actions.find((entry) => entry.id === action.id)).toMatchObject({
-      status: 'failed',
-      outcome: {
-        output: {
-          checks: [],
-          interruption: {
-            executionHash: null,
-            processBoundary: 'unknown',
-            unknownCheckIds: ['legacy'],
-          },
-        },
-      },
-    });
-    expect(recovered.waits.at(-1)).toMatchObject({
-      stepId: 'verify.checks-stop',
-      status: 'pending',
-    });
-    expect(await fs.readFile(path.join(root, 'legacy-side-effect'), 'utf8')).toBe('executed\n');
-  });
-
-  it('rejects legacy interruption reconciliation if a late process registration appears before commit', async () => {
-    const {
-      root,
-      runtime,
-      run: ready,
-    } = await dispatchedVerifier([], 'sdk', nativeApplication(), false);
-    const pending = ready.actions.at(-1)!;
-    const run = await runtime.claim({
-      runId: ready.runId,
-      actionId: pending.id,
-      attempt: pending.attempt,
-      inputHash: pending.inputHash,
-      executorId: 'comet-native-checks',
-      claimToken: 'registration-race-claim',
-
-      context: { projectRoot: root, requestId: 'native-check-claim-5832' },
-    });
-    const action = run.actions.at(-1)!;
-    let registration: Awaited<ReturnType<typeof createNativeSdkCheckExecution>> | undefined;
-    const racingRuntime = {
-      ...runtime,
-      recordOutcome: async (...args: Parameters<typeof runtime.recordOutcome>) => {
-        registration = await createNativeSdkCheckExecution({
-          projectRoot: root,
-          run,
-          action,
-          candidateId: (run.state as NativePortableState).builder_handoff!.candidate_id,
-          plansHash: 'late-owner',
-        });
-        return runtime.recordOutcome(...args);
-      },
-    };
-    await expect(
-      recoverNativeSdkChecks(root, run, racingRuntime, {
-        reconcileInterrupted: true,
-        stoppedActions: [
-          {
-            actionId: action.id,
-            attempt: action.attempt,
-            inputHash: action.inputHash,
-            claimToken: action.claim!.token,
-            evidence:
-              'The original host reported that all execution stopped; registry must still be rechecked at commit.',
-          },
-        ],
-      }),
-    ).rejects.toThrow(/OUTCOME_REJECTED/u);
-    expect(
-      (await runtime.inspect(run.runId)).waits.some((wait) => wait.stepId === 'verify.checks-stop'),
-    ).toBe(false);
-    await expect(registration!.assertNotStopped()).rejects.toThrow(/取消/u);
-  });
-
-  it.each(['missing', 'complete'] as const)(
-    'reconciles %s check receipts under the fixed old definition before upgrading it',
-    async (receipt) => {
-      const plan = {
-        id: 'old-check',
-        name: 'Old interrupted check',
-        executable: process.execPath,
-        argv: [
-          '-e',
-          "require('node:fs').appendFileSync('old-check-count', 'once\\n'); setTimeout(() => {}, 60000)",
-        ],
-        cwdRef: '.',
-        timeoutMs: 10000,
-        repeatable: false,
-      };
-      const {
-        root,
-        runtime,
-        run: ready,
-      } = await dispatchedVerifier([plan], 'sdk', preCheckRecoveryApplication(), false);
-      const pending = ready.actions.at(-1)!;
-      const run = await runtime.claim({
-        runId: ready.runId,
-        actionId: pending.id,
-        attempt: pending.attempt,
-        inputHash: pending.inputHash,
-        executorId: 'comet-native-checks',
-        claimToken: `old-${receipt}-claim`,
-
-        context: { projectRoot: root, requestId: 'native-check-claim-5897' },
-      });
-      const action = run.actions.at(-1)!;
-      if (receipt === 'complete') {
-        const result = await nativeSdkCheckExecutor.execute(
-          action,
-          { projectRoot: root, requestId: 'old-complete-unsubmitted' },
-          run,
-        );
-        expect(result).toMatchObject({
+          claimToken: 'SIMULATED-original-verifier-claim',
+          outcomeId: 'SIMULATED-actual-platform-cancellation',
           status: 'failed',
-          output: { checks: [{ status: 'interrupted' }] },
-        });
-      } else {
-        expect(() =>
-          execFileSync(
-            plan.executable,
-            [
-              '-e',
-              "require('node:fs').appendFileSync('old-check-count', 'once\\n'); process.exit(7)",
-            ],
-            { cwd: root, stdio: 'ignore' },
-          ),
-        ).toThrow();
-        const ordinary = await nativeDoctorCommand(['sdk-shape', '--repair'], root);
-        expect(ordinary.exitCode).toBe(65);
-        const unchanged = await runtime.inspect(run.runId);
-        expect(unchanged.workflow).toEqual(run.workflow);
-        expect(unchanged.actions.at(-1)?.status).toBe('unknown');
-      }
-      const stopped = path.join(root, 'old-stopped-actions.json');
-      await fs.writeFile(
-        stopped,
-        JSON.stringify([
-          {
-            actionId: action.id,
-            attempt: action.attempt,
-            inputHash: action.inputHash,
-            claimToken: action.claim!.token,
-            evidence:
-              'The original self-terminating Node process exited and created no descendants; its one file write remains preserved.',
+          output: {
+            summary:
+              'SIMULATED Agent reports that its actual ordinary Node fixture was cancelled and has exited; independent acceptance is incomplete.',
           },
-        ]),
-      );
-      const repaired = await nativeDoctorCommand(
-        ['sdk-shape', '--repair', '--confirmed', '--stopped-actions', stopped],
-        root,
-      );
-      expect(repaired.exitCode, JSON.stringify(repaired)).toBe(0);
-      const loaded = await loadOwnedNativeSdkRuntime(root, 'sdk-shape');
-      let current = await loaded.runtime.inspect(run.runId);
-      expect(current.workflow.hash).not.toBe(run.workflow.hash);
-      expect(current.actions.find((entry) => entry.id === action.id)).toMatchObject({
-        status: 'failed',
-        attempt: 1,
-        claim: action.claim,
-      });
-      expect(current.ready).toMatchObject([{ from: 'verify.checks', to: 'verify.checks-stop' }]);
-      expect(await fs.readFile(path.join(root, 'old-check-count'), 'utf8')).toBe('once\n');
-      await nativeDoctorCommand(['sdk-shape', '--repair'], root);
-      expect((await loaded.runtime.inspect(run.runId)).revision).toBe(current.revision);
-      const continued = await advanceNativeSdkChange(root, 'sdk-shape');
-      expect(continued).toMatchObject({
-        exitCode: 0,
-        data: { continuation: { disposition: 'await-user', requiresUserDecision: true } },
-      });
-      current = await loaded.runtime.inspect(run.runId);
-      expect(current.waits.at(-1)).toMatchObject({
-        stepId: 'verify.checks-stop',
-        status: 'pending',
-      });
-    },
-  );
-
-  it('keeps an interrupted Runtime check stopped until a proposal-bound repair decision', async () => {
-    const { root, runtime, run } = await dispatchedVerifier(
-      [
-        {
-          id: 'interrupted',
-          name: 'Interrupted check',
-          executable: process.execPath,
-          argv: ['-e', 'setTimeout(() => {}, 60000)'],
-          cwdRef: '.',
-          timeoutMs: 10000,
-          repeatable: false,
         },
-      ],
-      'sdk',
-    );
-    const failedCheck = run.actions.at(-1)!;
-    expect(failedCheck).toMatchObject({
-      stepId: 'verify.checks',
-      status: 'failed',
-      outcome: {
-        output: { checks: [{ status: 'interrupted' }] },
-      },
-    });
-    const interruptedExit = (
-      failedCheck.outcome!.output as { checks: Array<{ exitCode: number | null }> }
-    ).checks[0].exitCode;
-    // Windows 的进程树终止返回退出码；POSIX 信号终止通常返回 null。
-    expect(
-      interruptedExit === null || (Number.isInteger(interruptedExit) && interruptedExit !== 0),
-    ).toBe(true);
-    const stopped = await advanceNativeSdkChange(root, 'sdk-shape');
-    expect(stopped.exitCode).toBe(0);
-    expect(stopped.data).toMatchObject({
-      phase: 'verify',
-      status: 'await-user',
-      run: { revision: run.revision + 1, status: 'waiting' },
-      continuation: { disposition: 'await-user', requiresUserDecision: true },
-    });
-    const stoppedRun = await runtime.inspect(run.runId);
-    expect(
-      stoppedRun.actions.find((entry) => entry.id === failedCheck.id)?.executionStop,
-    ).toBeDefined();
-    expect(stoppedRun.actions.find((entry) => entry.id === failedCheck.id)?.outcome).toEqual(
-      failedCheck.outcome,
-    );
-    const wait = run.waits.at(-1)!;
-    expect(wait).toMatchObject({ stepId: 'verify.checks-stop', status: 'pending' });
-    const rejected = await advanceNativeSdkChange(root, 'sdk-shape', {
-      expectedAction: 'revise-implementation',
-      expectedStateVersion: (run.state as NativePortableState).state_version,
-      proposalHash: '0'.repeat(64),
-      summary: 'Try a safe repair.',
-    });
-    expect(rejected.exitCode).toBe(73);
-    expect(await runtime.inspect(run.runId)).toEqual(stoppedRun);
-    const repaired = await advanceNativeSdkChange(root, 'sdk-shape', {
-      expectedAction: 'revise-implementation',
-      expectedStateVersion: (run.state as NativePortableState).state_version,
-      proposalHash: wait.proposalHash,
-      summary: 'Try a safe repair.',
-    });
-    expect(repaired.exitCode).toBe(0);
-    expect(repaired.data).toMatchObject({
-      phase: 'build',
-      pendingAction: { stepId: 'build.builder' },
-    });
-    expect(
-      (await runtime.inspect(run.runId)).actions.find((action) => action.id === failedCheck.id),
-    ).toEqual(stoppedRun.actions.find((entry) => entry.id === failedCheck.id));
+        context: { requestId: 'SIMULATED-original-cancelled-result', projectRoot: root },
+      });
+      const failed = run.actions.find((a) => a.id === action.id)!;
+      expect(failed).toMatchObject({
+        status: 'failed',
+        claim: claimed.actions.find((a) => a.id === action.id)!.claim,
+      });
+      expect(failed.cancellation).toBeUndefined();
+      expect(failed.executionStop).toBeUndefined();
+      expect((run.state as NativePortableState).builder_handoff!.candidate_id).toBe(
+        originalCandidate,
+      );
+      expect(run.outputs['archive.finalize']).toBeUndefined();
+      expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
+      run = await migratedVerdict(
+        runtime,
+        run,
+        root,
+        'pass',
+        await platformFixtureChecks(root),
+        'SIMULATED-retried-independent-verifier',
+      );
+      await refreshNativeSdkVerificationReport(root, run);
+      const wait = run.waits.at(-1)!;
+      expect(wait).toMatchObject({ stepId: 'verify.confirm', status: 'pending' });
+      await expect(
+        runtime.resolveWait({
+          runId: run.runId,
+          waitId: wait.id,
+          proposalHash: '0'.repeat(64),
+          decisionId: 'SIMULATED-wrong-repair-decision',
+          choice: 'rejected',
+        }),
+      ).rejects.toThrow();
+      expect(await runtime.inspect(run.runId)).toEqual(run);
+      run = await runtime.resolveWait({
+        runId: run.runId,
+        waitId: wait.id,
+        proposalHash: wait.proposalHash,
+        decisionId: 'SIMULATED-user-requests-implementation-repair',
+        choice: 'rejected',
+      });
+      expect(run.state).toMatchObject({ phase: 'build', archived: false });
+      expect(run.actions.at(-1)).toMatchObject({ stepId: 'build.builder', status: 'pending' });
+      expect(run.actions.find((a) => a.id === failed.id)).toEqual(failed);
+      expect(run.waits.find((w) => w.id === shape.id)).toEqual(shape);
+      expect(run.actions.some((a) => a.stepId === 'verify.checks-stop')).toBe(false);
+    } finally {
+      if (!closed) {
+        task.kill();
+        await exit;
+      }
+    }
   });
 
   it.each(['memory', 'sdk'] as const)(
@@ -6136,15 +3709,10 @@ children:
         },
       });
       expect(run.actions.at(-1)).toMatchObject({
-        stepId: 'verify.report',
-        type: 'call_tool',
+        stepId: 'verify.verifier',
+        status: 'succeeded',
       });
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'comet-native-report',
-        context: { requestId: 'native-report', projectRoot: root },
-      });
+      await refreshNativeSdkVerificationReport(root, run);
       expect(await fs.readFile(path.join(changeDir, 'verification.md'), 'utf8')).toContain(
         'All acceptance scenarios passed.',
       );
@@ -6153,15 +3721,16 @@ children:
         status: 'pending',
       });
       const approvedReport = await fs.readFile(path.join(changeDir, 'verification.md'), 'utf8');
-      const approvedReportHash = createHash('sha256').update(approvedReport).digest('hex');
       const approvedReportStateVersion = (run.state as NativePortableState).state_version;
-      expect(run.outputs['verify.report'].value).toMatchObject({
-        reportSha256: approvedReportHash,
-        stateVersion: approvedReportStateVersion,
-      });
       const confirmation = run.waits.at(-1)!;
+      const originalProposal = structuredClone(confirmation.proposal);
       expect(confirmation.proposal).toMatchObject({
-        outputs: { 'verify.report': { reportSha256: approvedReportHash } },
+        activation: { report: { stateVersion: approvedReportStateVersion } },
+        outputs: {
+          'verify.verifier': {
+            candidateId: (run.state as NativePortableState).builder_handoff!.candidate_id,
+          },
+        },
       });
       run = await runtime.resolveWait({
         runId: run.runId,
@@ -6169,17 +3738,6 @@ children:
         proposalHash: confirmation.proposalHash,
         decisionId: 'verification-approved',
         choice: 'approved',
-      });
-      expect(run.state).toMatchObject({ phase: 'verify', status: 'await-user' });
-      expect(run.actions.at(-1)).toMatchObject({
-        stepId: 'verify.revalidate',
-        type: 'call_tool',
-      });
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'comet-native-report-revalidate',
-        context: { requestId: 'native-report-revalidate', projectRoot: root },
       });
       expect(run.state).toMatchObject({ phase: 'archive', status: 'active' });
       expect(run.actions.at(-1)).toMatchObject({ stepId: 'archive.prepare', type: 'call_tool' });
@@ -6191,7 +3749,6 @@ children:
       });
       expect(run.outputs['archive.prepare'].value).toMatchObject({
         ready: true,
-        reportSha256: approvedReportHash,
         reportStateVersion: approvedReportStateVersion,
       });
       expect(run.actions.at(-1)).toMatchObject({ stepId: 'archive.execute', type: 'call_tool' });
@@ -6216,7 +3773,7 @@ children:
       expect(run.waits.find((wait) => wait.id === confirmation.id)).toMatchObject({
         status: 'resolved',
         proposalHash: confirmation.proposalHash,
-        proposal: { outputs: { 'verify.report': { reportSha256: approvedReportHash } } },
+        proposal: originalProposal,
         decision: { choice: 'approved' },
       });
       expect(await fs.readFile(path.join(paths.specsDir, 'workflow', 'spec.md'), 'utf8')).toContain(
@@ -6237,9 +3794,7 @@ children:
         path.join(paths.archiveDir, archiveRef, 'verification.md'),
         'utf8',
       );
-      expect(finalReport).toContain(
-        `generated_from_state_version: ${(run.state as NativePortableState).state_version}`,
-      );
+      expect(finalReport).toBe(approvedReport);
       const finalReceipt = await inspectNativeSdkArchiveFinalization({
         paths,
         state: run.state as NativePortableState,
@@ -6248,7 +3803,6 @@ children:
       });
       expect(finalReceipt).toMatchObject({
         stateVersion: (run.state as NativePortableState).state_version,
-        reportSha256: createHash('sha256').update(finalReport).digest('hex'),
       });
       expect(run.outputs['archive.finalize'].value).toEqual(finalReceipt);
       if (storeKind === 'sdk') {
@@ -6274,7 +3828,14 @@ children:
             rootDir: path.join(resolveWorkspaceRuntimeRootSync(target), 'sdk-runs/native'),
           });
           expect(await restoredStore.read(run.runId)).toBeNull();
-          expect((await nativeDoctorCommand([run.runId], target)).exitCode).not.toBe(0);
+          const diagnostic = await nativeDoctorCommand([run.runId], target);
+          expect(diagnostic.exitCode).toBe(0);
+          expect(diagnostic.data).toMatchObject({
+            healthy: false,
+            repaired: false,
+            runtimeFormat: 'sdk',
+            recovery: { code: 'runtime-recovery-required' },
+          });
           expect(await restoredStore.read(run.runId)).toBeNull();
           const recovered = await nativeDoctorCommand(
             [run.runId, '--repair', '--confirmed'],
@@ -6288,11 +3849,11 @@ children:
               preserveSourceRevision: true,
             })!.actions,
           );
-          expect(await restoredStore.readDisposition(run.runId)).toBe('active');
+          expect(await restoredStore.readDisposition(run.runId)).toBe('closed');
           const sealed = await nativeDoctorCommand([run.runId, '--migrate-history'], target);
           expect(sealed.exitCode, JSON.stringify(sealed)).toBe(0);
-          expect(sealed.data).toMatchObject({ migrated: [run.runId], active: [], findings: [] });
-          // 新设备使用已持久化且绑定原领取的停止事实，不依赖缺失的本机 PID。
+          expect(sealed.data).toMatchObject({ healthy: true, migrated: [run.runId], active: [] });
+          // 关闭的是原业务 Run 的记录；不从历史材料推断进程停止或重新执行任务。
           expect(await restoredStore.readDisposition(run.runId)).toBe('closed');
           const continued = await advanceNativeSdkChange(target, run.runId);
           expect(continued.exitCode, JSON.stringify(continued)).toBe(0);
@@ -6338,9 +3899,18 @@ children:
           receiptFile,
           JSON.stringify({ ...finalReceipt, transactionId: 'changed-receipt' }),
         );
-        expect(
-          (await nativeDoctorCommand([run.runId, '--migrate-history'], root)).exitCode,
-        ).not.toBe(0);
+        const rejectedMigration = await nativeDoctorCommand([run.runId, '--migrate-history'], root);
+        expect(rejectedMigration.exitCode).toBe(65);
+        expect(rejectedMigration.data).toMatchObject({
+          healthy: false,
+          findings: [
+            {
+              change: run.runId,
+              code: 'native-history-migration-failed',
+              message: expect.stringMatching(/receipt.*does not match/),
+            },
+          ],
+        });
         expect(await fileStore.readDisposition(run.runId)).toBe('active');
         await fs.writeFile(receiptFile, receiptSource);
         await fs.writeFile(
@@ -6583,7 +4153,7 @@ children:
     expect(run.state).toMatchObject({
       phase: 'verify',
       status: 'await-user',
-      loop: { stop_reason: 'stalled', next_action: 'await-user' },
+      loop: { stop_reason: 'budget', next_action: 'await-user' },
     });
     expect(run.status).toBe('waiting');
     expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
@@ -6687,18 +4257,12 @@ children:
         knownLimits: [],
         review: null,
         submittedAt: '2026-09-24T02:00:00.000Z',
-        verificationChecks: [],
       },
       root,
       'second-builder-candidate',
       'builder-session-2',
     );
-    const checked = await runtime.execute({
-      runId: rebuilt.runId,
-      actionId: rebuilt.actions.at(-1)!.id,
-      executorId: 'comet-native-checks',
-      context: { requestId: 'second-candidate-checks', projectRoot: root },
-    });
+    const checked = rebuilt;
     const state = checked.state as NativePortableState;
     const verified = await succeedLatestAction(
       runtime,
@@ -6722,1242 +4286,8 @@ children:
       'second-verifier-passed',
       'verifier-session-2',
     );
-    expect(verified.actions.at(-1)).toMatchObject({ stepId: 'verify.report' });
+    expect(verified.waits.at(-1)).toMatchObject({ stepId: 'verify.confirm', status: 'pending' });
     expect(verified.state).toMatchObject({ verification_result: 'pass' });
-  });
-
-  it('runs Verifier-requested checks before accepting a final result from the same execution', async () => {
-    const { root, runtime, run: ready } = await dispatchedVerifier();
-    const candidateId = (ready.state as NativePortableState).builder_handoff!.candidate_id;
-    const requested = await succeedLatestAction(
-      runtime,
-      ready,
-      {
-        candidateId,
-        verifierExecutionRef: 'verifier-session-1',
-        response: {
-          kind: 'request-checks',
-          iteration: 1,
-          attempt: 1,
-          checks: [
-            {
-              id: 'requested',
-              name: 'Verifier requested check',
-              executable: process.execPath,
-              argv: ['-e', 'process.stdout.write("verified")'],
-              cwdRef: '.',
-              timeoutMs: 5_000,
-              repeatable: true,
-            },
-          ],
-        },
-      },
-      root,
-      'verifier-requested-checks',
-      'verifier-session-1',
-    );
-    expect(requested.actions.at(-1)).toMatchObject({
-      stepId: 'verify.requested-checks',
-      type: 'call_tool',
-    });
-    const checked = await runtime.execute({
-      runId: requested.runId,
-      actionId: requested.actions.at(-1)!.id,
-      executorId: 'comet-native-checks',
-      context: { requestId: 'verifier-requested-check-execution', projectRoot: root },
-    });
-    expect(checked.actions.at(-1)).toMatchObject({
-      stepId: 'verify.verifier',
-      type: 'handoff',
-    });
-    const verified = await succeedLatestAction(
-      runtime,
-      checked,
-      {
-        candidateId,
-        verifierExecutionRef: 'verifier-session-1',
-        response: {
-          kind: 'final-result',
-          result: {
-            iteration: 1,
-            attempt: 1,
-            verdict: 'pass',
-            acceptance: [{ id: 'A1', result: 'passed', reason: 'Requested check passed.' }],
-            risks: [],
-            summary: 'Passed with the requested check.',
-          },
-        },
-      },
-      root,
-      'verifier-final-after-checks',
-      'verifier-session-1',
-    );
-    expect(verified.state).toMatchObject({ phase: 'verify', verification_result: 'pass' });
-    expect(verified.actions.at(-1)).toMatchObject({ stepId: 'verify.report' });
-    expect(verified.actions.filter((action) => action.stepId === 'verify.verifier')).toHaveLength(
-      2,
-    );
-  });
-
-  it('rejects a Verifier pass after a requested Runtime check failed', async () => {
-    const { root, runtime, run: ready } = await dispatchedVerifier();
-    const candidateId = (ready.state as NativePortableState).builder_handoff!.candidate_id;
-    const requested = await succeedLatestAction(
-      runtime,
-      ready,
-      {
-        candidateId,
-        verifierExecutionRef: 'verifier-session-1',
-        response: {
-          kind: 'request-checks',
-          iteration: 1,
-          attempt: 1,
-          checks: [
-            {
-              id: 'failing',
-              name: 'Failing Runtime check',
-              executable: process.execPath,
-              argv: ['-e', 'process.exit(1)'],
-              cwdRef: '.',
-              timeoutMs: 5_000,
-              repeatable: true,
-            },
-          ],
-        },
-      },
-      root,
-      'verifier-failing-request',
-      'verifier-session-1',
-    );
-    const checked = await runtime.execute({
-      runId: requested.runId,
-      actionId: requested.actions.at(-1)!.id,
-      executorId: 'comet-native-checks',
-      context: { requestId: 'verifier-failing-check', projectRoot: root },
-    });
-    expect(checked.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier' });
-    await expect(
-      succeedLatestAction(
-        runtime,
-        checked,
-        {
-          candidateId,
-          verifierExecutionRef: 'verifier-session-1',
-          response: {
-            kind: 'final-result',
-            result: {
-              iteration: 1,
-              attempt: 1,
-              verdict: 'pass',
-              acceptance: [{ id: 'A1', result: 'passed', reason: 'Claimed pass.' }],
-              risks: [],
-              summary: 'Claimed pass despite failed check.',
-            },
-          },
-        },
-        root,
-        'verifier-invalid-pass',
-        'verifier-session-1',
-      ),
-    ).rejects.toThrow(/OUTCOME_REJECTED/);
-  });
-
-  it('rejects a conflicting command reused under the same Verifier check ID', async () => {
-    const { root, runtime, run: ready } = await dispatchedVerifier();
-    const candidateId = (ready.state as NativePortableState).builder_handoff!.candidate_id;
-    const check = {
-      id: 'requested',
-      name: 'Verifier requested check',
-      executable: process.execPath,
-      argv: ['-e', 'process.stdout.write("first")'],
-      cwdRef: '.',
-      timeoutMs: 5_000,
-      repeatable: true,
-    };
-    const requested = await succeedLatestAction(
-      runtime,
-      ready,
-      {
-        candidateId,
-        verifierExecutionRef: 'verifier-session-1',
-        response: {
-          kind: 'request-checks',
-          iteration: 1,
-          attempt: 1,
-          checks: [check],
-        },
-      },
-      root,
-      'verifier-first-request',
-      'verifier-session-1',
-    );
-    const checked = await runtime.execute({
-      runId: requested.runId,
-      actionId: requested.actions.at(-1)!.id,
-      executorId: 'comet-native-checks',
-      context: { requestId: 'verifier-first-request-execution', projectRoot: root },
-    });
-    await expect(
-      succeedLatestAction(
-        runtime,
-        checked,
-        {
-          candidateId,
-          verifierExecutionRef: 'verifier-session-1',
-          response: {
-            kind: 'request-checks',
-            iteration: 1,
-            attempt: 1,
-            checks: [{ ...check, argv: ['-e', 'process.stdout.write("different")'] }],
-          },
-        },
-        root,
-        'verifier-conflicting-request',
-        'verifier-session-1',
-      ),
-    ).rejects.toThrow(/OUTCOME_REJECTED/);
-  });
-
-  it('does not reserve a check ID or command from a rejected Verifier request', async () => {
-    const { root, runtime, store, run: ready } = await dispatchedVerifier();
-    const candidateId = (ready.state as NativePortableState).builder_handoff!.candidate_id;
-    const action = ready.actions.at(-1)!;
-    const context = { requestId: 'rejected-request', projectRoot: root };
-    await runtime.claim({
-      runId: ready.runId,
-      actionId: action.id,
-      attempt: action.attempt,
-      inputHash: action.inputHash,
-      executorId: 'native-host',
-      sessionId: 'verifier-session-1',
-      claimToken: 'original-verifier-claim',
-      context,
-    });
-    const submit = (outcomeId: string, attempt: number, code: string) =>
-      runtime.recordOutcome({
-        runId: ready.runId,
-        context,
-        outcome: {
-          actionId: action.id,
-          attempt: action.attempt,
-          inputHash: action.inputHash,
-          claimToken: 'original-verifier-claim',
-          outcomeId,
-          status: 'succeeded',
-          output: {
-            candidateId,
-            verifierExecutionRef: 'verifier-session-1',
-            response: {
-              kind: 'request-checks',
-              iteration: 1,
-              attempt,
-              checks: [
-                {
-                  id: 'corrected-check',
-                  name: 'Check',
-                  executable: process.execPath,
-                  argv: ['-e', code],
-                  cwdRef: '.',
-                  timeoutMs: 5000,
-                  repeatable: true,
-                },
-              ],
-            },
-          },
-        },
-      });
-    await expect(submit('rejected-plan', 999, 'process.exit(1)')).rejects.toThrow(
-      /expected iteration=1, attempt=1; received iteration=1, attempt=999/u,
-    );
-    const corrected = await submit('corrected-plan', 1, 'process.exit(0)');
-    expect(corrected.actions.at(-1)).toMatchObject({
-      stepId: 'verify.requested-checks',
-      status: 'pending',
-    });
-    expect(
-      (await store.read(ready.runId))!.actions.find(({ id }) => id === action.id)!.receipts,
-    ).toHaveLength(2);
-    const checked = await runtime.execute({
-      runId: corrected.runId,
-      actionId: corrected.actions.at(-1)!.id,
-      executorId: 'comet-native-checks',
-      context,
-    });
-    expect(checked.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
-    expect(
-      (checked.outputs['verify.requested-checks'].value as { checks: { status: string }[] })
-        .checks[0].status,
-    ).toBe('passed');
-  });
-
-  it('rejects a Verifier check ID that conflicts with a required Runtime check', async () => {
-    const {
-      root,
-      runtime,
-      run: ready,
-    } = await dispatchedVerifier([
-      {
-        id: 'required',
-        name: 'Required check',
-        executable: process.execPath,
-        argv: ['-e', 'process.stdout.write("required")'],
-        cwdRef: '.',
-        timeoutMs: 5_000,
-        repeatable: true,
-      },
-    ]);
-    await expect(
-      succeedLatestAction(
-        runtime,
-        ready,
-        {
-          candidateId: (ready.state as NativePortableState).builder_handoff!.candidate_id,
-          verifierExecutionRef: 'verifier-session-1',
-          response: {
-            kind: 'request-checks',
-            iteration: 1,
-            attempt: 1,
-            checks: [
-              {
-                id: 'required',
-                name: 'Different check',
-                executable: process.execPath,
-                argv: ['-e', 'process.stdout.write("different")'],
-                cwdRef: '.',
-                timeoutMs: 5_000,
-                repeatable: true,
-              },
-            ],
-          },
-        },
-        root,
-        'verifier-conflicts-with-required',
-        'verifier-session-1',
-      ),
-    ).rejects.toThrow(/OUTCOME_REJECTED/);
-  });
-
-  it('rejects a second Verifier request that contains no new checks', async () => {
-    const { root, runtime, run: ready } = await dispatchedVerifier();
-    const candidateId = (ready.state as NativePortableState).builder_handoff!.candidate_id;
-    const check = {
-      id: 'requested',
-      name: 'Verifier requested check',
-      executable: process.execPath,
-      argv: ['-e', 'process.stdout.write("verified")'],
-      cwdRef: '.',
-      timeoutMs: 5_000,
-      repeatable: true,
-    };
-    const requested = await succeedLatestAction(
-      runtime,
-      ready,
-      {
-        candidateId,
-        verifierExecutionRef: 'verifier-session-1',
-        response: { kind: 'request-checks', iteration: 1, attempt: 1, checks: [check] },
-      },
-      root,
-      'verifier-first-equivalent-request',
-      'verifier-session-1',
-    );
-    const checked = await runtime.execute({
-      runId: requested.runId,
-      actionId: requested.actions.at(-1)!.id,
-      executorId: 'comet-native-checks',
-      context: { requestId: 'verifier-first-equivalent-check', projectRoot: root },
-    });
-    await expect(
-      succeedLatestAction(
-        runtime,
-        checked,
-        {
-          candidateId,
-          verifierExecutionRef: 'verifier-session-1',
-          response: { kind: 'request-checks', iteration: 1, attempt: 1, checks: [check] },
-        },
-        root,
-        'verifier-repeated-equivalent-request',
-        'verifier-session-1',
-      ),
-    ).rejects.toThrow(/OUTCOME_REJECTED/);
-  });
-
-  it('refreshes byte-bound SDK checks in Verify after a non-behavioral edit', async () => {
-    const check = {
-      id: 'required',
-      name: 'Required check',
-      executable: process.execPath,
-      argv: ['-e', 'process.stdout.write("checked")'],
-      cwdRef: '.',
-      timeoutMs: 5000,
-      repeatable: true,
-    };
-    const prepared = await dispatchedVerifier(
-      [check],
-      'sdk',
-      undefined,
-      false,
-      undefined,
-      async (root) => {
-        await allowAgentDocumentReview(root);
-        await fs.writeFile(path.join(root, 'settings.json'), '{"enabled":true}');
-      },
-    );
-    const { root, runtime } = prepared;
-    const ready = await runtime.execute({
-      runId: prepared.run.runId,
-      actionId: prepared.run.actions.at(-1)!.id,
-      executorId: 'comet-native-checks',
-      context: { requestId: 'initial-format-check', projectRoot: root },
-    });
-    const state = ready.state as unknown as NativePortableState;
-    const candidateId = state.builder_handoff!.candidate_id;
-    await fs.writeFile(path.join(root, 'settings.json'), '{\n "enabled": true\n}');
-    await expect(nativeSdkCurrentCheckSummaries({ run: ready, projectRoot: root })).rejects.toThrow(
-      '检查输入已变化',
-    );
-    await recordNonBehavioralEdit(
-      root,
-      ready.runId,
-      'Only JSON whitespace changed; enabled remains true.',
-    );
-    const requested = await succeedLatestAction(
-      runtime,
-      ready,
-      {
-        candidateId,
-        verifierExecutionRef: 'verifier-session-1',
-        refreshChecks: true,
-        response: { kind: 'request-checks', iteration: 1, attempt: 1, checks: [check] },
-      },
-      root,
-      'refresh-request',
-      'verifier-session-1',
-    );
-    const refreshed = await runtime.execute({
-      runId: requested.runId,
-      actionId: requested.actions.at(-1)!.id,
-      executorId: 'comet-native-checks',
-      context: { requestId: 'refresh-execution', projectRoot: root },
-    });
-    expect((refreshed.state as unknown as NativePortableState).phase).toBe('verify');
-    expect((refreshed.state as unknown as NativePortableState).builder_handoff?.candidate_id).toBe(
-      candidateId,
-    );
-    expect(
-      await nativeSdkCurrentCheckSummaries({ run: refreshed, projectRoot: root }),
-    ).toHaveLength(1);
-    await fs.writeFile(path.join(root, 'settings.json'), '{\n    "enabled": true\n}\n');
-    await expect(
-      nativeSdkCurrentCheckSummaries({ run: refreshed, projectRoot: root }),
-    ).rejects.toThrow('检查输入已变化');
-    await recordNonBehavioralEdit(
-      root,
-      refreshed.runId,
-      'A second JSON format change preserves enabled=true.',
-    );
-    const requestedAgain = await succeedLatestAction(
-      runtime,
-      refreshed,
-      {
-        candidateId,
-        verifierExecutionRef: 'verifier-session-1',
-        refreshChecks: true,
-        response: { kind: 'request-checks', iteration: 1, attempt: 1, checks: [check] },
-      },
-      root,
-      'refresh-second-request',
-      'verifier-session-1',
-    );
-    const latest = await runtime.execute({
-      runId: requestedAgain.runId,
-      actionId: requestedAgain.actions.at(-1)!.id,
-      executorId: 'comet-native-checks',
-      context: { requestId: 'refresh-second-execution', projectRoot: root },
-    });
-    expect(await nativeSdkCurrentCheckSummaries({ run: latest, projectRoot: root })).toHaveLength(
-      1,
-    );
-    await fs.writeFile(path.join(root, 'settings.json'), '{"enabled":false}');
-    await expect(
-      succeedLatestAction(
-        runtime,
-        latest,
-        {
-          candidateId,
-          verifierExecutionRef: 'verifier-session-1',
-          refreshChecks: true,
-          response: { kind: 'request-checks', iteration: 1, attempt: 1, checks: [check] },
-        },
-        root,
-        'reject-code-rebind',
-        'verifier-session-1',
-      ),
-    ).rejects.toThrow('OUTCOME_REJECTED');
-  });
-
-  it('refreshes the same SDK candidate after its independent Verifier approves a structural edit', async () => {
-    const check = {
-      id: 'required',
-      name: 'Required check',
-      executable: process.execPath,
-      argv: ['-e', 'process.stdout.write("checked")'],
-      cwdRef: '.',
-      timeoutMs: 5000,
-      repeatable: true,
-    };
-    const before = 'export function value() { return 1; }';
-    const after = 'export function value() { const result = 1; return result; }';
-    const prepared = await dispatchedVerifier(
-      [check],
-      'memory',
-      undefined,
-      false,
-      undefined,
-      async (root) => {
-        await fs.writeFile(path.join(root, 'value.ts'), before);
-      },
-    );
-    const { root, paths, runtime } = prepared;
-    const target = path.join(root, 'value.ts');
-    const ready = await runtime.execute({
-      runId: prepared.run.runId,
-      actionId: prepared.run.actions.at(-1)!.id,
-      executorId: 'comet-native-checks',
-      context: { requestId: 'structural-initial-check', projectRoot: root },
-    });
-    const state = ready.state as NativePortableState;
-    const { nativeEditReviewScope } =
-      await import('../../../domains/comet-native/native-edit-review.js');
-    const {
-      prepareEditReview,
-      recordEditReview,
-      claimedEditReviewAuthority,
-      assertEditReviewsComplete,
-    } = await import('../../../domains/workflow-contract/edit-review.js');
-    const scope = { ...nativeEditReviewScope(paths, state), judgment: 'agent' as const };
-    const proposal = await prepareEditReview(scope, {
-      intent: 'write',
-      toolName: 'Write',
-      targets: ['value.ts'],
-      writes: [{ path: 'value.ts', content: after }],
-    });
-    await expect(assertEditReviewsComplete(scope)).rejects.toThrow('待复核');
-    const action = ready.actions.at(-1)!;
-    const context = { requestId: 'structural-review', projectRoot: root };
-    const claim = {
-      actionId: action.id,
-      attempt: action.attempt,
-      inputHash: action.inputHash,
-      claimToken: 'structural-review',
-      sessionId: 'verifier-session-1',
-    };
-    const claimed = await runtime.claim({
-      runId: ready.runId,
-      actionId: action.id,
-      attempt: action.attempt,
-      inputHash: action.inputHash,
-      executorId: 'native-host',
-      sessionId: claim.sessionId,
-      claimToken: claim.claimToken,
-      context,
-    });
-    await recordEditReview(
-      scope,
-      {
-        proposalHash: proposal.proposalHash,
-        decision: 'non-behavioral',
-        summary:
-          'The local constant preserves the returned value; callers and acceptance behavior are unchanged.',
-      },
-      claimedEditReviewAuthority(claimed.actions, 'verify.verifier', 'builder-session-1', claim),
-    );
-    await fs.writeFile(target, after);
-    await expect(nativeSdkCurrentCheckSummaries({ run: ready, projectRoot: root })).rejects.toThrow(
-      '检查输入已变化',
-    );
-    const requested = await runtime.recordOutcome({
-      runId: ready.runId,
-      outcome: {
-        actionId: action.id,
-        attempt: action.attempt,
-        inputHash: action.inputHash,
-        claimToken: claim.claimToken,
-        outcomeId: 'structural-refresh',
-        status: 'succeeded',
-        output: {
-          candidateId: state.builder_handoff!.candidate_id,
-          verifierExecutionRef: claim.sessionId,
-          refreshChecks: true,
-          response: { kind: 'request-checks', iteration: 1, attempt: 1, checks: [check] },
-        },
-      },
-      context,
-    });
-    const refreshed = await runtime.execute({
-      runId: requested.runId,
-      actionId: requested.actions.at(-1)!.id,
-      executorId: 'comet-native-checks',
-      context: { requestId: 'structural-refreshed-check', projectRoot: root },
-    });
-    expect(refreshed.state).toMatchObject({
-      phase: 'verify',
-      builder_handoff: { candidate_id: state.builder_handoff!.candidate_id },
-    });
-    expect(
-      await nativeSdkCurrentCheckSummaries({ run: refreshed, projectRoot: root }),
-    ).toHaveLength(1);
-    await fs.writeFile(target, after.replace('result = 1', 'result = 2'));
-    await expect(assertEditReviewsComplete(scope)).rejects.toThrow('不匹配');
-    await expect(
-      succeedLatestAction(
-        runtime,
-        refreshed,
-        {
-          candidateId: state.builder_handoff!.candidate_id,
-          verifierExecutionRef: claim.sessionId,
-          refreshChecks: true,
-          response: { kind: 'request-checks', iteration: 1, attempt: 1, checks: [check] },
-        },
-        root,
-        'unreviewed-structural-change',
-        claim.sessionId,
-      ),
-    ).rejects.toThrow('OUTCOME_REJECTED');
-  });
-
-  it('lets a new Verifier session reuse requested checks after the prior session fails', async () => {
-    const { root, runtime, run: ready } = await dispatchedVerifier();
-    const candidateId = (ready.state as NativePortableState).builder_handoff!.candidate_id;
-    const check = {
-      id: 'requested',
-      name: 'Verifier requested check',
-      executable: process.execPath,
-      argv: ['-e', 'process.stdout.write("verified")'],
-      cwdRef: '.',
-      timeoutMs: 5_000,
-      repeatable: true,
-    };
-    const requested = await succeedLatestAction(
-      runtime,
-      ready,
-      {
-        candidateId,
-        verifierExecutionRef: 'verifier-session-1',
-        response: { kind: 'request-checks', iteration: 1, attempt: 1, checks: [check] },
-      },
-      root,
-      'verifier-request-before-failure',
-      'verifier-session-1',
-    );
-    const checked = await runtime.execute({
-      runId: requested.runId,
-      actionId: requested.actions.at(-1)!.id,
-      executorId: 'comet-native-checks',
-      context: { requestId: 'requested-check-before-failure', projectRoot: root },
-    });
-    const action = checked.actions.at(-1)!;
-    const context = { requestId: 'verifier-failed-after-request', projectRoot: root };
-    const claimed = await runtime.claim({
-      runId: checked.runId,
-      actionId: action.id,
-      attempt: action.attempt,
-      inputHash: action.inputHash,
-      executorId: 'native-host',
-      sessionId: 'verifier-session-1',
-      claimToken: 'verifier-failed-after-request',
-      context,
-    });
-    const failed = await runtime.recordOutcome({
-      runId: checked.runId,
-      outcome: {
-        actionId: action.id,
-        attempt: action.attempt,
-        inputHash: action.inputHash,
-        claimToken: claimed.actions.find((entry) => entry.id === action.id)!.claim!.token,
-        outcomeId: 'verifier-failed-after-request',
-        status: 'failed',
-        output: { summary: 'The host confirmed this Verifier session failed.' },
-      },
-      context,
-    });
-    expect(failed.outputs['verify.requested-checks']).toMatchObject({
-      value: { candidateId, checks: [{ id: 'requested', status: 'passed' }] },
-    });
-    const resumed = await succeedLatestAction(
-      runtime,
-      failed,
-      {
-        candidateId,
-        verifierExecutionRef: 'verifier-session-2',
-        response: {
-          kind: 'final-result',
-          result: {
-            iteration: 1,
-            attempt: (failed.state as NativePortableState).loop.attempt,
-            verdict: 'pass',
-            acceptance: [{ id: 'A1', result: 'passed', reason: 'Checked by the new Verifier.' }],
-            risks: [],
-            summary: 'The new Verifier accepted the candidate.',
-          },
-        },
-      },
-      root,
-      'verifier-after-request-retry',
-      'verifier-session-2',
-    );
-    expect(resumed.actions.at(-1)).toMatchObject({ stepId: 'verify.report', status: 'pending' });
-  });
-
-  it('reuses a completed non-repeatable Runtime check requested by the Verifier', async () => {
-    const counterRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-one-shot-counter-'));
-    roots.push(counterRoot);
-    const counter = path.join(counterRoot, 'sdk-check-count.txt');
-    const check = {
-      id: 'required',
-      name: 'One-shot check',
-      executable: process.execPath,
-      argv: ['-e', 'require("node:fs").appendFileSync(process.argv[1], "x")', counter],
-      cwdRef: '.',
-      timeoutMs: 5_000,
-      repeatable: false,
-    };
-    const { root, runtime, run: ready } = await dispatchedVerifier([check]);
-    expect(await fs.readFile(counter, 'utf8')).toBe('x');
-    const requested = await succeedLatestAction(
-      runtime,
-      ready,
-      {
-        candidateId: (ready.state as NativePortableState).builder_handoff!.candidate_id,
-        verifierExecutionRef: 'verifier-session-1',
-        response: { kind: 'request-checks', iteration: 1, attempt: 1, checks: [check] },
-      },
-      root,
-      'verifier-reuses-required-check',
-      'verifier-session-1',
-    );
-    const checked = await runtime.execute({
-      runId: requested.runId,
-      actionId: requested.actions.at(-1)!.id,
-      executorId: 'comet-native-checks',
-      context: { requestId: 'verifier-reused-check', projectRoot: root },
-    });
-    expect(checked.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier' });
-    expect(await fs.readFile(counter, 'utf8')).toBe('x');
-  });
-
-  it('asks for fresh approval when the verification report changes before revalidation', async () => {
-    const { root, changeDir, runtime, run: ready } = await dispatchedVerifier();
-    let run = await succeedLatestAction(
-      runtime,
-      ready,
-      {
-        candidateId: (ready.state as NativePortableState).builder_handoff!.candidate_id,
-        verifierExecutionRef: 'verifier-session-1',
-        response: {
-          kind: 'final-result',
-          result: {
-            iteration: 1,
-            attempt: 1,
-            verdict: 'pass',
-            acceptance: [{ id: 'A1', result: 'passed', reason: 'Verified.' }],
-            risks: [],
-            summary: 'Passed.',
-          },
-        },
-      },
-      root,
-      'verifier-result',
-      'verifier-session-1',
-    );
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: run.actions.at(-1)!.id,
-      executorId: 'comet-native-report',
-      context: { requestId: 'native-report', projectRoot: root },
-    });
-    await fs.appendFile(path.join(changeDir, 'verification.md'), '\nUnexpected edit.\n');
-    const confirmation = run.waits.at(-1)!;
-    run = await runtime.resolveWait({
-      runId: run.runId,
-      waitId: confirmation.id,
-      proposalHash: confirmation.proposalHash,
-      decisionId: 'verification-approved',
-      choice: 'approved',
-    });
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: run.actions.at(-1)!.id,
-      executorId: 'comet-native-report-revalidate',
-      context: { requestId: 'native-report-revalidate', projectRoot: root },
-    });
-    expect(run.state).toMatchObject({ phase: 'verify', status: 'await-user' });
-    expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.report', type: 'call_tool' });
-    expect(run.actions.some((action) => action.stepId === 'archive.prepare')).toBe(false);
-  });
-
-  it('accepts a legacy candidate binding only while its original environment and source remain current', async () => {
-    const { root, paths, run } = await dispatchedVerifier();
-    const state = run.state as NativePortableState;
-    const check = run.actions.find((action) => action.stepId === 'verify.checks')!;
-    const legacy = await nativeCandidateInputGate({
-      projectRoot: root,
-      candidateId: state.builder_handoff!.candidate_id,
-      plans: [],
-      managedArtifactRoot: paths.artifactRoot,
-      editReviewScope: nativeEditReviewScope(paths, state),
-      shapeSemanticSnapshot: state.shape_semantic_snapshot,
-      legacyExecutionBinding: true,
-    });
-    const legacyRun = structuredClone(run);
-    const legacyOutput = legacyRun.actions.find((action) => action.id === check.id)!.outcome!
-      .output as Record<string, unknown>;
-    // 旧绑定使用执行环境摘要，没有现代 rawInput 与分离的 v2 输入快照。
-    const legacyInputs = await nativePortableChecks.nativeCheckInputSnapshot({
-      projectRoot: root,
-      state,
-      plans: [],
-      managedArtifactRoot: paths.artifactRoot,
-    });
-    legacyOutput.candidateInputFingerprintGate = legacy;
-    delete legacyOutput.rawInput;
-    delete legacyOutput.inputSnapshot;
-    legacyOutput.inputBefore = legacyInputs.fingerprint;
-    legacyOutput.inputAfter = legacyInputs.fingerprint;
-    await expect(
-      assertNativeSdkCandidateUnchanged({ run: legacyRun, projectRoot: root }),
-    ).resolves.toMatchObject({ complete: true, projectRoot: await fs.realpath(root) });
-    vi.stubEnv('NODE_ENV', 'legacy-context-changed');
-    await expect(
-      assertNativeSdkCandidateUnchanged({ run: legacyRun, projectRoot: root }),
-    ).rejects.toThrow('候选实现已变化');
-  });
-
-  it.each([
-    'environment-only',
-    'generated-input',
-    'input',
-    'non-repeatable',
-    'unknown-revalidation',
-    'missing-report',
-    'legacy-definition',
-  ] as const)(
-    'revalidates approved report %s changes without losing valid evidence',
-    async (kind) => {
-      const application = nativeApplication();
-      if (kind === 'legacy-definition') {
-        application.workflow = nativeSdkBeforeReportRecovery(application.workflow);
-        application.transitionHandler = nativeSdkLegacyTransitionHandler(
-          application.workflow,
-          application.transitionHandler,
-        );
-      }
-      const {
-        root,
-        changeDir,
-        runtime,
-        run: ready,
-      } = await dispatchedVerifier(
-        [
-          {
-            id: 'required',
-            name: 'Runtime check',
-            executable: process.execPath,
-            argv: [
-              '-e',
-              'process.stdout.write(require("node:fs").readFileSync("dist/check-input.txt", "utf8"))',
-            ],
-            cwdRef: '.',
-            timeoutMs: 5000,
-            repeatable: kind !== 'non-repeatable',
-          },
-        ],
-        kind === 'legacy-definition' ? 'sdk' : 'memory',
-        application,
-        true,
-        undefined,
-        async (root) => {
-          await fs.mkdir(path.join(root, 'dist'), { recursive: true });
-          await fs.writeFile(path.join(root, 'dist', 'check-input.txt'), 'checked input');
-        },
-      );
-      let run = await succeedLatestAction(
-        runtime,
-        ready,
-        {
-          candidateId: (ready.state as NativePortableState).builder_handoff!.candidate_id,
-          verifierExecutionRef: 'verifier-session-1',
-          response: {
-            kind: 'final-result',
-            result: {
-              iteration: 1,
-              attempt: 1,
-              verdict: 'pass',
-              acceptance: [{ id: 'A1', result: 'passed', reason: 'Verified.' }],
-              risks: [],
-              summary: 'Passed.',
-            },
-          },
-        },
-        root,
-        'verifier-result',
-        'verifier-session-1',
-      );
-      const submitted = { actionId: ready.actions.at(-1)!.id, outcomeId: 'verifier-result' };
-      expect(nativeSdkAutomaticReportAction(run, submitted)?.stepId).toBe('verify.report');
-      expect(nativeSdkAutomaticReportAction(run, { ...submitted, outcomeId: 'wrong' })).toBeNull();
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'comet-native-report',
-        context: { requestId: 'native-report', projectRoot: root },
-      });
-      if (kind === 'missing-report') await fs.rm(path.join(changeDir, 'verification.md'));
-      else if (kind === 'input')
-        await fs.writeFile(path.join(root, 'changed-input.txt'), 'new input');
-      else if (kind !== 'environment-only')
-        await fs.writeFile(path.join(root, 'dist', 'check-input.txt'), 'changed generated input');
-      const confirmation = run.waits.at(-1)!;
-      run = await runtime.resolveWait({
-        runId: run.runId,
-        waitId: confirmation.id,
-        proposalHash: confirmation.proposalHash,
-        decisionId: 'verification-approved',
-        choice: 'approved',
-      });
-      if (kind === 'environment-only') vi.stubEnv('NODE_ENV', 'changed-after-approval');
-      if (kind === 'missing-report') {
-        await expect(
-          runtime.execute({
-            runId: run.runId,
-            actionId: run.actions.at(-1)!.id,
-            executorId: 'comet-native-report-revalidate',
-            context: { requestId: 'missing-report', projectRoot: root },
-          }),
-        ).rejects.toThrow('EXECUTION_UNKNOWN');
-        const unknown = await runtime.inspect(run.runId);
-        expect(await recoverNativeSdkReportRevalidation(root, unknown, runtime)).toEqual(unknown);
-        expect(unknown.actions.at(-1)).toMatchObject({ status: 'unknown', reconciliations: [] });
-        return;
-      }
-      if (kind === 'unknown-revalidation') {
-        const action = run.actions.at(-1)!;
-        run = await runtime.claim({
-          runId: run.runId,
-          actionId: action.id,
-          attempt: action.attempt,
-          inputHash: action.inputHash,
-          executorId: 'comet-native-report-revalidate',
-          claimToken: 'old-check',
-          context: { requestId: 'old-check', projectRoot: root },
-        });
-        run = await runtime.markUnknown({
-          runId: run.runId,
-          actionId: action.id,
-          attempt: action.attempt,
-          reason: 'Native 检查输入已变化',
-        });
-        run = await recoverNativeSdkReportRevalidation(root, run, runtime);
-        expect(run.actions.find((entry) => entry.id === action.id)).toMatchObject({
-          attempt: 1,
-          reconciliations: [],
-          claim: { token: 'old-check' },
-        });
-      } else
-        run = await runtime.execute({
-          runId: run.runId,
-          actionId: run.actions.at(-1)!.id,
-          executorId: 'comet-native-report-revalidate',
-          context: { requestId: 'native-report-revalidate', projectRoot: root },
-        });
-      if (kind === 'environment-only') {
-        expect(run.state).toMatchObject({
-          phase: 'archive',
-          status: 'active',
-          verification_result: 'pass',
-        });
-        expect(run.actions.find((action) => action.stepId === 'verify.revalidate')).toMatchObject({
-          status: 'succeeded',
-        });
-        expect(run.actions.at(-1)).toMatchObject({ stepId: 'archive.prepare', status: 'pending' });
-        expect(run.actions.filter((action) => action.stepId === 'verify.checks')).toHaveLength(1);
-        expect(run.actions.filter((action) => action.stepId === 'verify.verifier')).toHaveLength(1);
-        return;
-      }
-      if (kind === 'legacy-definition') {
-        expect(run.status).toBe('failed');
-        expect(await nativeDoctorCommand([run.runId, '--repair'], root)).toMatchObject({
-          exitCode: 0,
-        });
-        const next = await advanceNativeSdkChange(root, run.runId);
-        expect(next.exitCode).toBe(0);
-        const loaded = await loadOwnedNativeSdkRuntime(root, run.runId);
-        const recovered = await loaded.runtime.inspect(run.runId);
-        expect(recovered.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier' });
-        expect(recovered.waits.find((wait) => wait.id === confirmation.id)).toMatchObject({
-          status: 'resolved',
-        });
-        return;
-      }
-      expect(run.state).toMatchObject({
-        phase: 'verify',
-        status: ['input', 'non-repeatable'].includes(kind) ? 'await-user' : 'active',
-        verification_result: 'pending',
-      });
-      expect(run.actions.find((action) => action.stepId === 'verify.revalidate')).toMatchObject({
-        status: 'failed',
-        outcome: { output: { reason: 'check-input-drift' } },
-      });
-      expect(run.actions.some((action) => action.stepId === 'archive.prepare')).toBe(false);
-      if (['input', 'non-repeatable'].includes(kind)) {
-        expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
-        return;
-      }
-      expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.checks', type: 'call_tool' });
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'comet-native-checks',
-        context: { requestId: 'refreshed-checks', projectRoot: root },
-      });
-      expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
-      expect((run.state as NativePortableState).builder_handoff).toEqual(
-        (ready.state as NativePortableState).builder_handoff,
-      );
-      expect(run.waits.find((wait) => wait.id === confirmation.id)).toMatchObject({
-        status: 'resolved',
-        decision: { choice: 'approved' },
-      });
-      expect(
-        run.actions.filter(
-          (action) => action.stepId === 'verify.checks' && action.status === 'succeeded',
-        ),
-      ).toHaveLength(2);
-      const freshState = run.state as NativePortableState;
-      run = await succeedLatestAction(
-        runtime,
-        run,
-        {
-          candidateId: freshState.builder_handoff!.candidate_id,
-          verifierExecutionRef: 'verifier-session-2',
-          response: {
-            kind: 'final-result',
-            result: {
-              iteration: freshState.loop.iteration,
-              attempt: freshState.loop.attempt,
-              verdict: 'pass',
-              acceptance: [{ id: 'A1', result: 'passed', reason: 'Rechecked current context.' }],
-              risks: [],
-              summary: 'Fresh independent verification.',
-            },
-          },
-        },
-        root,
-        'fresh-verifier-result',
-        'verifier-session-2',
-      );
-      expect(nativeSdkAutomaticReportAction(run, submitted)).toBeNull();
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'comet-native-report',
-        context: { requestId: 'fresh-report', projectRoot: root },
-      });
-      expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.confirm', status: 'pending' });
-      expect(run.waits.at(-1)!.proposalHash).not.toBe(confirmation.proposalHash);
-      expect(run.actions.some((action) => action.stepId === 'archive.prepare')).toBe(false);
-      vi.unstubAllEnvs();
-    },
-  );
-
-  it('rejects a Verifier pass when a required check log changed after dispatch', async () => {
-    const { root, runtime, run } = await dispatchedVerifier([
-      {
-        id: 'focused',
-        name: 'Focused check',
-        executable: process.execPath,
-        argv: ['-e', 'process.stdout.write("sdk-check-ok")'],
-        cwdRef: '.',
-        timeoutMs: 5_000,
-        repeatable: true,
-      },
-    ]);
-    const checkOutput = run.outputs['verify.checks'].value as {
-      checks: Array<{ logRef: string }>;
-    };
-    await fs.appendFile(
-      path.join(resolveWorkspaceRuntimeRootSync(root), checkOutput.checks[0].logRef),
-      'tampered',
-    );
-    await expect(
-      succeedLatestAction(
-        runtime,
-        run,
-        {
-          candidateId: (run.state as NativePortableState).builder_handoff!.candidate_id,
-          verifierExecutionRef: 'verifier-session-1',
-          response: {
-            kind: 'final-result',
-            result: {
-              iteration: 1,
-              attempt: 1,
-              verdict: 'pass',
-              acceptance: [{ id: 'A1', result: 'passed', reason: 'Verified.' }],
-              risks: [],
-              summary: 'Passed.',
-            },
-          },
-        },
-        root,
-        'verifier-after-tamper',
-        'verifier-session-1',
-      ),
-    ).rejects.toThrow(/OUTCOME_REJECTED/);
-  });
-
-  it('reverifies the same candidate after a passed result without returning to Build', async () => {
-    const prepared = await dispatchedVerifier(
-      [
-        {
-          id: 'required',
-          name: 'Required check',
-          executable: process.execPath,
-          argv: ['-e', 'process.stdout.write("checked")'],
-          cwdRef: '.',
-          timeoutMs: 5000,
-          repeatable: true,
-        },
-      ],
-      'sdk',
-      undefined,
-      false,
-      undefined,
-      async (root) => {
-        await allowAgentDocumentReview(root);
-        await fs.writeFile(path.join(root, 'settings.json'), '{"enabled":true}');
-      },
-    );
-    const { root, runtime } = prepared;
-    const ready = await runtime.execute({
-      runId: prepared.run.runId,
-      actionId: prepared.run.actions.at(-1)!.id,
-      executorId: 'comet-native-checks',
-      context: { requestId: 'initial-reverify-check', projectRoot: root },
-    });
-    const candidateId = (ready.state as unknown as NativePortableState).builder_handoff!
-      .candidate_id;
-    let run = await succeedLatestAction(
-      runtime,
-      ready,
-      {
-        candidateId,
-        verifierExecutionRef: 'verifier-session-1',
-        response: {
-          kind: 'final-result',
-          result: {
-            iteration: 1,
-            attempt: 1,
-            verdict: 'pass',
-            acceptance: [{ id: 'A1', result: 'passed', reason: 'Verified.' }],
-            risks: [],
-            summary: 'Passed.',
-          },
-        },
-      },
-      root,
-      'before-edit-pass',
-      'verifier-session-1',
-    );
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: run.actions.at(-1)!.id,
-      executorId: 'comet-native-report',
-      context: { requestId: 'before-edit-report', projectRoot: root },
-    });
-    await fs.writeFile(path.join(root, 'settings.json'), '{\n  "enabled": true\n}');
-    await recordNonBehavioralEdit(
-      root,
-      run.runId,
-      'Only JSON whitespace changed; enabled remains true.',
-    );
-    const wait = run.waits.at(-1)!;
-    run = await runtime.resolveWait({
-      runId: run.runId,
-      waitId: wait.id,
-      proposalHash: wait.proposalHash,
-      decisionId: 'reverify-after-edit',
-      choice: 'reverify',
-    });
-    expect(run.state).toMatchObject({
-      phase: 'verify',
-      verification_result: 'pending',
-      builder_handoff: { candidate_id: candidateId },
-    });
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: run.actions.at(-1)!.id,
-      executorId: 'comet-native-checks',
-      context: { requestId: 'after-edit-checks', projectRoot: root },
-    });
-    expect(run.state).toMatchObject({ phase: 'verify', loop: { iteration: 1, attempt: 2 } });
-    const verified = await succeedLatestAction(
-      runtime,
-      run,
-      {
-        candidateId,
-        verifierExecutionRef: 'verifier-session-2',
-        response: {
-          kind: 'final-result',
-          result: {
-            iteration: 1,
-            attempt: 2,
-            verdict: 'pass',
-            acceptance: [{ id: 'A1', result: 'passed', reason: 'Verified current bytes.' }],
-            risks: [],
-            summary: 'Passed current candidate.',
-          },
-        },
-      },
-      root,
-      'after-edit-pass',
-      'verifier-session-2',
-    );
-    expect(verified.state).toMatchObject({
-      phase: 'verify',
-      verification_result: 'pass',
-      builder_handoff: { candidate_id: candidateId },
-    });
-  });
-
-  it('does not enter Build when Shape documents change after approval', async () => {
-    const { root, paths, changeDir, runtime, run: prepared } = await preparedShape();
-    const wait = prepared.waits.at(-1)!;
-    const approved = await runtime.resolveWait({
-      runId: prepared.runId,
-      waitId: wait.id,
-      proposalHash: wait.proposalHash,
-      decisionId: 'shape-approved',
-      choice: 'approved',
-    });
-    const briefFile = path.join(changeDir, 'brief.md');
-    const brief = await fs.readFile(briefFile, 'utf8');
-    await fs.writeFile(
-      briefFile,
-      brief.replace('Preserve the selected workflow.', 'Preserve a different workflow.'),
-    );
-    await expect(
-      succeedLatestAction(
-        runtime,
-        approved,
-        await collectProposal(paths, approved.state as NativePortableState),
-        root,
-        'shape-stale',
-      ),
-    ).rejects.toThrow(/OUTCOME_REJECTED/);
-    const current = await runtime.inspect(approved.runId);
-    expect(current.state).toMatchObject({ phase: 'shape', status: 'await-user' });
-    expect(current.actions.some((action) => action.stepId === 'build.builder')).toBe(false);
   });
 
   it('rejects an incomplete Native state before the SDK Run is created', async () => {
@@ -7984,175 +4314,6 @@ children:
   });
 });
 
-async function passedOneShotReverify(legacy = false) {
-  const application = nativeApplication();
-  const counterRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'native-reverify-one-shot-'));
-  roots.push(counterRoot);
-  const counter = path.join(counterRoot, 'executions.txt');
-  const {
-    root,
-    runtime,
-    store,
-    run: ready,
-  } = await dispatchedVerifier([], 'sdk', application, true, undefined, initializeArchiveGit);
-  const candidateId = (ready.state as NativePortableState).builder_handoff!.candidate_id;
-  let run = await succeedLatestAction(
-    runtime,
-    ready,
-    {
-      candidateId,
-      verifierExecutionRef: 'v1',
-      response: {
-        kind: 'request-checks',
-        iteration: 1,
-        attempt: 1,
-        checks: [
-          {
-            id: 'oneshot',
-            name: 'oneshot',
-            executable: process.execPath,
-            argv: ['-e', 'require("fs").appendFileSync(process.argv[1],"once\\n")', counter],
-            cwdRef: '.',
-            timeoutMs: 5000,
-            repeatable: false,
-          },
-        ],
-      },
-    },
-    root,
-    'request',
-    'v1',
-  );
-  run = await runtime.execute({
-    runId: run.runId,
-    actionId: run.actions.at(-1)!.id,
-    executorId: 'comet-native-checks',
-    context: { requestId: 'checks', projectRoot: root },
-  });
-  run = await succeedLatestAction(
-    runtime,
-    run,
-    {
-      candidateId,
-      verifierExecutionRef: 'v1',
-      response: {
-        kind: 'final-result',
-        result: {
-          iteration: 1,
-          attempt: 1,
-          verdict: 'pass',
-          acceptance: [{ id: 'A1', result: 'passed', reason: 'Passed.' }],
-          risks: [],
-          summary: 'Passed.',
-        },
-      },
-    },
-    root,
-    'pass',
-    'v1',
-  );
-  run = await runtime.execute({
-    runId: run.runId,
-    actionId: run.actions.at(-1)!.id,
-    executorId: 'comet-native-report',
-    context: { requestId: 'report', projectRoot: root },
-  });
-  if (legacy) {
-    // 构造缺少原始输入证明的兼容快照；不伪造批准或正常阶段推进。
-    const snapshot = structuredClone(run);
-    for (const action of snapshot.actions) {
-      if (action.stepId !== 'verify.requested-checks' || !action.outcome) continue;
-      delete (action.outcome.output as Record<string, unknown>).rawInput;
-      const receipt = action.receipts.find(
-        ({ outcomeId }) => outcomeId === action.outcome!.outcomeId,
-      )!;
-      receipt.hash = hashRuntimeValue(action.outcome);
-    }
-    snapshot.revision += 1;
-    expect(await store.compareAndSwap(run.runId, run.revision, snapshot)).toBe(true);
-    run = await runtime.inspect(run.runId);
-  }
-  return { root, runtime, store, run, counter };
-}
-
-it('preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check', async () => {
-  const { root, store, run, counter } = await passedOneShotReverify(true);
-  const wait = run.waits.at(-1)!;
-  const rejected = await advanceNativeSdkChange(root, run.runId, {
-    expectedAction: 'retry-verifier',
-    expectedStateVersion: (run.state as NativePortableState).state_version,
-    proposalHash: wait.proposalHash,
-    summary: 'Please reverify',
-  });
-  expect(rejected.exitCode).toBe(73);
-  expect(rejected.data.continuation).not.toBeNull();
-  expect(rejected.data.continuation.commandAlternatives.map(({ name }) => name)).not.toContain(
-    'retry-verifier',
-  );
-  const final = await store.read(run.runId);
-  expect(final).toEqual(run);
-  expect(final!.waits.at(-1)).toMatchObject({ id: wait.id, status: 'pending' });
-  expect((final!.state as NativePortableState).verification_result).toBe('pass');
-  expect(await fs.readFile(counter, 'utf8')).toBe('once\n');
-});
-
-it('reuses a proven Verifier-added one-shot receipt during explicit reverify without replaying its effect', async () => {
-  const { root, runtime, run, counter } = await passedOneShotReverify();
-  const wait = run.waits.at(-1)!;
-  const result = await advanceNativeSdkChange(root, run.runId, {
-    expectedAction: 'retry-verifier',
-    expectedStateVersion: (run.state as NativePortableState).state_version,
-    proposalHash: wait.proposalHash,
-    summary: 'User explicitly requests another independent review.',
-  });
-  expect(result.exitCode, JSON.stringify(result)).toBe(0);
-  const current = await runtime.inspect(run.runId);
-  expect(current.state).toMatchObject({
-    phase: 'verify',
-    archived: false,
-    verification_result: 'pending',
-    builder_handoff: {
-      candidate_id: (run.state as NativePortableState).builder_handoff!.candidate_id,
-    },
-    loop: { iteration: 1, attempt: 2 },
-  });
-  expect(current.waits.find(({ id }) => id === wait.id)).toMatchObject({
-    status: 'resolved',
-    decision: { choice: 'reverify' },
-  });
-  expect(current.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
-  for (const original of run.actions.filter(({ stepId }) => stepId === 'verify.requested-checks'))
-    expect(current.actions.find(({ id }) => id === original.id)?.outcome).toEqual(original.outcome);
-  expect(await fs.readFile(counter, 'utf8')).toBe('once\n');
-  expect(current.actions.some(({ stepId }) => stepId.startsWith('archive.'))).toBe(false);
-});
-
-it('blocks tracked implementation drift at Archive preflight and offers the original Verify repair path', async () => {
-  const prepared = await awaitingArchiveApplication('sdk', undefined, true, initializeArchiveGit);
-  const { root, runtime } = prepared;
-  await fs.writeFile(path.join(root, 'implementation.js'), 'throw new Error("unverified");');
-  const result = await runNativeCli(['archive', 'sdk-shape', '--project-root', root, '--json']);
-  const run = await runtime.inspect(prepared.run.runId);
-  expect(run.state).toMatchObject({
-    phase: 'verify',
-    status: 'await-user',
-    archived: false,
-    verification_result: 'pending',
-  });
-  expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
-  expect(run.actions.at(-1)).toMatchObject({ stepId: 'archive.prepare', status: 'failed' });
-  expect(result.exitCode).toBe(73);
-  const wait = run.waits.at(-1)!;
-  const repaired = await runtime.resolveWait({
-    runId: run.runId,
-    waitId: wait.id,
-    proposalHash: wait.proposalHash,
-    choice: 'repair',
-    decisionId: 'repair-drift',
-  });
-  expect(repaired.actions.at(-1)).toMatchObject({ stepId: 'build.builder', status: 'pending' });
-});
-
 it.each(['archive.execute', 'archive.finalize', 'archive.finalize-before-move'] as const)(
   'recovers a returned but rejected %s through the public Archive command',
   async (scenario) => {
@@ -8170,6 +4331,18 @@ it.each(['archive.execute', 'archive.finalize', 'archive.finalize-before-move'] 
             validate: () => ({ accepted: false, reason: 'Simulated historical outcome rejection' }),
           },
     );
+    if (scenario === 'archive.finalize-before-move')
+      application.executors = application.executors.map((executor) =>
+        executor.id !== 'comet-native-archive-finalize'
+          ? executor
+          : {
+              ...executor,
+              execute: async () => ({
+                status: 'failed',
+                output: { reason: 'filesystem-unavailable' },
+              }),
+            },
+      );
     const f = await awaitingArchiveApplication(
       'sdk',
       undefined,
@@ -8188,9 +4361,6 @@ it.each(['archive.execute', 'archive.finalize', 'archive.finalize-before-move'] 
     }
     const action = run.actions.at(-1)!;
     const implementation = path.join(f.root, 'implementation.js');
-    const implementationBefore = await fs.readFile(implementation, 'utf8');
-    if (scenario === 'archive.finalize-before-move')
-      await fs.writeFile(implementation, 'throw new Error("unverified before finalize");');
     await expect(
       f.runtime.execute({
         runId: run.runId,
@@ -8209,9 +4379,8 @@ it.each(['archive.execute', 'archive.finalize', 'archive.finalize-before-move'] 
     if (scenario === 'archive.finalize-before-move') {
       expect(original.rejectedOutcomes![0].outcome).toMatchObject({
         status: 'failed',
-        output: { reason: 'candidate-drift' },
+        output: { reason: 'filesystem-unavailable' },
       });
-      await fs.writeFile(implementation, implementationBefore);
       expect(await fs.readdir(f.paths.transactionsDir)).toContain(
         `portable-archive-${run.runId}.json`,
       );
@@ -8230,14 +4399,7 @@ it.each(['archive.execute', 'archive.finalize', 'archive.finalize-before-move'] 
     ).toBe('docs/comet/specs/workflow/spec.md');
     const args = ['archive', run.runId, '--project-root', f.root, '--json'];
     if (stepId === 'archive.execute') {
-      const implementation = path.join(f.root, 'implementation.js');
-      const before = await fs.readFile(implementation, 'utf8');
       await fs.writeFile(implementation, 'throw new Error("unverified");');
-      const blocked = await runNativeCli([...args, '--recover']);
-      expect(blocked.exitCode).toBe(73);
-      expect((await f.runtime.inspect(run.runId)).actions.at(-1)!.status).not.toBe('succeeded');
-      expect((await fs.stat(specFile)).mtimeMs).toBe(specStat.mtimeMs);
-      await fs.writeFile(implementation, before);
     }
     const recovered =
       stepId === 'archive.execute'
@@ -8384,30 +4546,6 @@ it('keeps Archive next pending on a renamed branch and resumes the original Run 
   expect(completed.actions.filter((action) => action.stepId === 'archive.execute')).toHaveLength(1);
 });
 
-it.each([
-  'implementation.js',
-  'docs/comet/specs/workflow/hidden.js',
-  'docs/comet/changes/sdk-shape/hidden.js',
-])('blocks unapproved %s changes after Archive preflight', async (ref) => {
-  const { root, runtime, run } = await awaitingArchiveApplication(
-    'sdk',
-    undefined,
-    false,
-    initializeArchiveGit,
-  );
-  await fs.mkdir(path.dirname(path.join(root, ref)), { recursive: true });
-  await fs.writeFile(path.join(root, ref), 'throw new Error("unverified");');
-  const stopped = await runtime.execute({
-    runId: run.runId,
-    actionId: run.actions.at(-1)!.id,
-    executorId: 'comet-native-archive-apply',
-    context: { requestId: 'drift-apply', projectRoot: root },
-  });
-  expect(stopped.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
-  expect((await runtime.inspect(run.runId)).state).toMatchObject({ archived: false });
-  await expect(fs.stat(path.join(root, 'docs/comet/specs/workflow/spec.md'))).rejects.toThrow();
-});
-
 it('continues an authorized implementation edit without requesting the same decision again', async () => {
   const { root, runtime, run } = await awaitingArchiveApplication(
     'sdk',
@@ -8415,250 +4553,42 @@ it('continues an authorized implementation edit without requesting the same deci
     false,
     initializeArchiveGit,
   );
+
   await fs.writeFile(path.join(root, 'implementation.js'), 'export const result = "user edit";');
-  const result = await runNativeCli(['archive', run.runId, '--project-root', root, '--json']);
-  expect(result.exitCode).toBe(73);
-  const data = JSON.parse(result.stdout!).data;
-  expect(data.recovery.code).toBe('candidate-drift');
-  expect(data.continuation.requiresUserDecision).toBe(false);
-  expect(data.continuation.userCommunication.agentInstruction).toMatch(
-    /已有授权|already authorized/iu,
-  );
-  expect(data.continuation.userCommunication.agentInstruction).toMatch(/需求|requirements/iu);
-  expect(data.continuation.userCommunication.agentInstruction).toMatch(/一次性|one-shot/iu);
-  expect(data.continuation.userCommunication.agentInstruction).toMatch(
-    /缺少继续授权|not authorized/iu,
-  );
-  expect(data.continuation.userCommunication.agentInstruction).toMatch(
-    /不得自动接受|Do not automatically accept/iu,
-  );
-  expect(
-    data.continuation.commandAlternatives.find(
-      (option: { name: string }) => option.name === 'revise-implementation',
-    ).requiredInputs,
-  ).not.toContain('user-decision');
-  const preserved = await runtime.inspect(run.runId);
-  expect(preserved.state).toMatchObject({ archived: false });
-  expect(await fs.readFile(path.join(root, 'implementation.js'), 'utf8')).toBe(
-    'export const result = "user edit";',
-  );
-  const resumeArgs = (data.recovery.recoveryArgs as string[])
-    .slice(2)
-    .map((arg) => (arg === '<summary>' ? 'Continue the authorized implementation edit.' : arg));
-  const resumed = await runNativeCli(resumeArgs);
+  const before = await runtime.inspect(run.runId);
+  expect(before.state).toEqual(run.state);
+  const approval = run.waits.findLast(
+    (wait) =>
+      wait.stepId === 'verify.confirm' &&
+      wait.status === 'resolved' &&
+      wait.decision?.choice === 'approved',
+  )!;
+  const resumed = await runNativeCli([
+    'next',
+    run.runId,
+    '--project-root',
+    root,
+    '--json',
+    '--revise-implementation',
+    '--summary',
+    'Continue the authorized implementation edit.',
+    '--proposal-hash',
+    approval.proposalHash,
+    '--expected-state-version',
+    String((run.state as NativePortableState).state_version),
+    '--expected-action',
+    'revise-implementation',
+  ]);
   expect(resumed.exitCode, resumed.stdout).toBe(0);
   const continuing = await runtime.inspect(run.runId);
   expect(continuing.state).toMatchObject({ archived: false, phase: 'build' });
   expect(continuing.runId).toBe(run.runId);
+  expect(continuing.waits.filter((wait) => wait.stepId === 'shape.confirm')).toEqual(
+    run.waits.filter((wait) => wait.stepId === 'shape.confirm'),
+  );
   expect(await fs.readFile(path.join(root, 'implementation.js'), 'utf8')).toBe(
     'export const result = "user edit";',
   );
-});
-
-it('reports edited Archive-ready code before any Archive write and continues the same Run', async () => {
-  const { root, runtime, run } = await awaitingArchiveApplication(
-    'sdk',
-    undefined,
-    false,
-    initializeArchiveGit,
-  );
-  expect(run.actions.at(-1)).toMatchObject({ stepId: 'archive.execute', status: 'pending' });
-  const ref = path.join(root, 'implementation.js');
-  await fs.writeFile(ref, 'export const result = "user edit";');
-  await runNativeCli(['doctor', run.runId, '--repair', '--project-root', root, '--json']);
-  const before = await runtime.inspect(run.runId);
-  const status = await runNativeCli(['status', run.runId, '--project-root', root, '--json']);
-  expect(status.exitCode, status.stdout).toBe(0);
-  const data = JSON.parse(status.stdout!).data;
-  expect(data.recovery.code).toBe('candidate-drift');
-  expect(data.continuation.requiresUserDecision).toBe(false);
-  const doctor = await runNativeCli(['doctor', run.runId, '--project-root', root, '--json']);
-  expect(JSON.parse(doctor.stdout!).data.continuation.recovery.code).toBe('candidate-drift');
-  expect(await runtime.inspect(run.runId)).toEqual(before);
-  expect(await fs.readFile(ref, 'utf8')).toBe('export const result = "user edit";');
-  await expect(fs.stat(path.join(root, 'docs/comet/specs/workflow/spec.md'))).rejects.toThrow();
-  const args = (data.recovery.recoveryArgs as string[])
-    .slice(2)
-    .map((arg) => (arg === '<summary>' ? 'Continue from the user edit.' : arg));
-  await fs.writeFile(ref, 'export const result = true;');
-  const restored = await runNativeCli(args);
-  expect(restored.exitCode).not.toBe(0);
-  expect(await runtime.inspect(run.runId)).toEqual(before);
-  await expect(fs.stat(path.join(root, 'docs/comet/specs/workflow/spec.md'))).rejects.toThrow();
-  await fs.writeFile(ref, 'export const result = "user edit";');
-  const resumed = await runNativeCli(args);
-  expect(resumed.exitCode, resumed.stdout).toBe(0);
-  const after = await runtime.inspect(run.runId);
-  expect(after.runId).toBe(run.runId);
-  expect(after.state).toMatchObject({ phase: 'build', archived: false });
-  expect(after.actions.find((action) => action.id === run.actions.at(-1)!.id)).toMatchObject({
-    stepId: 'archive.execute',
-    status: 'cancelled',
-  });
-  expect(
-    after.actions.find((action) => action.id === run.actions.at(-1)!.id)?.claim,
-  ).toBeUndefined();
-  expect(
-    after.actions.find((action) => action.id === run.actions.at(-1)!.id)?.outcome,
-  ).toBeUndefined();
-  expect(after.actions.find((action) => action.stepId === 'repair.implementation')).toMatchObject({
-    status: 'succeeded',
-    outcome: { output: { drift: true, archiveStep: 'archive.execute' } },
-  });
-  expect(await fs.readFile(ref, 'utf8')).toBe('export const result = "user edit";');
-  await expect(fs.stat(path.join(root, 'docs/comet/specs/workflow/spec.md'))).rejects.toThrow();
-  const repeated = await runNativeCli(args);
-  expect(repeated.exitCode, repeated.stdout).toBe(0);
-  expect((await runtime.inspect(run.runId)).revision).toBe(after.revision);
-});
-
-it.each(['report', 'requirements-and-code'] as const)(
-  'retains a user-edited %s at Archive-ready and chooses the appropriate revision',
-  async (kind) => {
-    const { root, changeDir, runtime, run } = await awaitingArchiveApplication(
-      'sdk',
-      undefined,
-      false,
-      initializeArchiveGit,
-    );
-    await reconcileNativeSdkExecutionStops(root, run, runtime);
-    const code = path.join(root, 'implementation.js');
-    const edited =
-      kind === 'report'
-        ? path.join(changeDir, 'verification.md')
-        : path.join(changeDir, 'specs/workflow/spec.md');
-    const original = await fs.readFile(edited, 'utf8');
-    const changed =
-      kind === 'report'
-        ? `${original}\nUser added verification notes.\n`
-        : original.replace('without losing confirmed work', 'without losing the user changes');
-    expect(changed).not.toBe(original);
-    await fs.writeFile(edited, changed);
-    if (kind !== 'report') await fs.writeFile(code, 'export const result = "user edit";');
-    const before = await runtime.inspect(run.runId);
-    const status = await runNativeCli(['status', run.runId, '--project-root', root, '--json']);
-    expect(status.exitCode, status.stdout).toBe(0);
-    const data = JSON.parse(status.stdout!).data;
-    expect(data.recovery.code).toBe(
-      kind === 'report' ? 'verification-report-drift' : 'shape-drift',
-    );
-    const args = (data.recovery.recoveryArgs as string[])
-      .slice(2)
-      .map((arg) => (arg === '<summary>' ? 'Continue with the user changes.' : arg));
-    expect(args).toContain(kind === 'report' ? '--revise-implementation' : '--revise-requirements');
-    expect(await runtime.inspect(run.runId)).toEqual(before);
-    const resumed = await runNativeCli(args);
-    expect(resumed.exitCode, resumed.stdout).toBe(0);
-    const after = await runtime.inspect(run.runId);
-    expect(after.runId).toBe(run.runId);
-    expect(after.state).toMatchObject({
-      phase: kind === 'report' ? 'build' : 'shape',
-      archived: false,
-    });
-    expect(await fs.readFile(edited, 'utf8')).toBe(changed);
-    if (kind !== 'report')
-      expect(await fs.readFile(code, 'utf8')).toBe('export const result = "user edit";');
-    await expect(fs.stat(path.join(root, 'docs/comet/specs/workflow/spec.md'))).rejects.toThrow();
-  },
-);
-
-async function reviewAppliedCommentAtArchive(
-  preparePending: boolean,
-  decision: 'non-behavioral' | 'requirements-changed' = 'non-behavioral',
-) {
-  const { root, paths, changeDir, runtime, run } = await awaitingArchiveApplication(
-    'sdk',
-    undefined,
-    preparePending,
-    initializeArchiveGit,
-    nativeApplication(),
-    decision === 'requirements-changed' ? allowAgentDocumentReview : undefined,
-  );
-  await reconcileNativeSdkExecutionStops(root, run, runtime);
-  const before = await runtime.inspect(run.runId);
-  await captureApprovedShapeOriginals(paths, before.state as NativePortableState);
-  const brief = path.join(changeDir, 'brief.md');
-  const modified = `${await fs.readFile(brief, 'utf8')}\n<!-- The user clarified this example. -->\n`;
-  await fs.writeFile(brief, modified);
-  const status = await runNativeCli(['status', run.runId, '--project-root', root, '--json']);
-  expect(status.exitCode, status.stdout).toBe(0);
-  const data = JSON.parse(status.stdout!).data;
-  expect(data.continuation.commandArgs).toEqual(
-    expect.arrayContaining(['edit-review', 'prepare-applied']),
-  );
-  expect(await runtime.inspect(run.runId)).toEqual(before);
-  const prepared = (await runNativeEditReviewCommand({
-    projectRoot: root,
-    name: run.runId,
-    operation: 'prepare-applied',
-  })) as { proposal: { proposalHash: string } };
-  const claimed = (await runNativeEditReviewCommand({
-    projectRoot: root,
-    name: run.runId,
-    operation: 'claim',
-    proposalHash: prepared.proposal.proposalHash,
-    sessionId: 'archive-comment-reviewer',
-  })) as { recordTemplate: Record<string, unknown> };
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-archive-review-'));
-  roots.push(directory);
-  const receipt = path.join(directory, 'review.json');
-  await fs.writeFile(
-    receipt,
-    JSON.stringify({
-      ...claimed.recordTemplate,
-      decision,
-      summary: 'Review the user clarification.',
-    }),
-  );
-  await runNativeEditReviewCommand({
-    projectRoot: root,
-    name: run.runId,
-    operation: 'record',
-    file: receipt,
-  });
-  const ready = await runNativeCli(['status', run.runId, '--project-root', root, '--json']);
-  if (decision === 'requirements-changed') {
-    const continuation = JSON.parse(ready.stdout!).data.continuation;
-    expect(continuation.action).toBe('repair');
-    expect(continuation.commandArgs).toContain('--revise-requirements');
-    const args = (continuation.commandArgs as string[])
-      .slice(2)
-      .map((arg) => (arg === '<summary>' ? 'Revise the user clarification.' : arg));
-    const resumed = await runNativeCli(args);
-    expect(resumed.exitCode, resumed.stdout).toBe(0);
-    const after = await runtime.inspect(run.runId);
-    expect(after.runId).toBe(before.runId);
-    expect(after.state).toMatchObject({ phase: 'shape', archived: false });
-    expect(await fs.readFile(brief, 'utf8')).toBe(modified);
-    expect(
-      after.waits.filter((wait) => wait.stepId === 'shape.confirm' && wait.status === 'pending'),
-    ).toHaveLength(0);
-    return;
-  }
-  expect(JSON.parse(ready.stdout!).data.continuation.action).toBe('archive');
-  expect((await runtime.inspect(run.runId)).state).toMatchObject({
-    phase: 'archive',
-    archived: false,
-  });
-  const archived = await runNativeCli(['archive', run.runId, '--project-root', root, '--json']);
-  expect(archived.exitCode, archived.stdout).toBe(0);
-  const after = await runtime.inspect(run.runId);
-  expect(after.runId).toBe(before.runId);
-  expect(after.state).toMatchObject({ phase: 'archive', archived: true });
-  const ref = (after.outputs['archive.execute'].value as { archiveRef: string }).archiveRef;
-  expect(await fs.readFile(path.join(paths.archiveDir, ref, 'brief.md'), 'utf8')).toBe(modified);
-}
-
-it('reviews a user-applied formal comment at Archive-ready and continues without revising Shape', async () => {
-  await reviewAppliedCommentAtArchive(false);
-});
-
-it('reviews a user-applied formal comment before Archive preflight and continues', async () => {
-  await reviewAppliedCommentAtArchive(true);
-});
-
-it('continues a user-applied requirements change through the original Shape confirmation', async () => {
-  await reviewAppliedCommentAtArchive(false, 'requirements-changed');
 });
 
 it.each(['archive.prepare', 'archive.execute'] as const)(
@@ -8670,7 +4600,7 @@ it.each(['archive.prepare', 'archive.execute'] as const)(
       stage === 'archive.prepare',
       initializeArchiveGit,
     );
-    await reconcileNativeSdkExecutionStops(root, run, runtime);
+
     const report = path.join(changeDir, 'verification.md');
     const moved = path.join(changeDir, 'user-moved-report.md');
     const text = await fs.readFile(report, 'utf8');
@@ -8679,11 +4609,9 @@ it.each(['archive.prepare', 'archive.execute'] as const)(
     const status = await runNativeCli(['status', run.runId, '--project-root', root, '--json']);
     expect(status.exitCode, status.stdout).toBe(0);
     const data = JSON.parse(status.stdout!).data;
-    expect(data.recovery.code).toBe('verification-report-drift');
+    expect(data.recovery?.code).not.toBe('verification-report-drift');
     expect(await runtime.inspect(run.runId)).toEqual(before);
-    const args = (data.recovery.recoveryArgs as string[])
-      .slice(2)
-      .map((arg) => (arg === '<summary>' ? 'Revalidate after the report was moved.' : arg));
+    const args = implementationRevisionArgs(root, before, 'Revalidate after the report was moved.');
     const resumed = await runNativeCli(args);
     expect(resumed.exitCode, resumed.stdout).toBe(0);
     const after = await runtime.inspect(run.runId);
@@ -8697,27 +4625,111 @@ it.each(['archive.prepare', 'archive.execute'] as const)(
   },
 );
 
-it('reports a non-file verification path without offering Archive or changing the Run', async () => {
-  const { root, changeDir, runtime, run } = await awaitingArchiveApplication(
-    'sdk',
-    undefined,
-    false,
-    initializeArchiveGit,
-  );
-  await reconcileNativeSdkExecutionStops(root, run, runtime);
-  const report = path.join(changeDir, 'verification.md');
-  await fs.rename(report, path.join(changeDir, 'user-moved-report.md'));
-  await fs.mkdir(report);
-  const before = await runtime.inspect(run.runId);
-  const status = await runNativeCli(['status', run.runId, '--project-root', root, '--json']);
-  expect(status.exitCode, status.stdout).toBe(0);
-  const data = JSON.parse(status.stdout!).data;
-  expect(data.recovery.code).toBe('archive-blocked');
-  expect(data.recovery.reason).toMatch(/file|文件/iu);
-  expect(data.recovery.recoveryArgs).toBeNull();
-  expect(data.continuation.commandArgs).toBeNull();
-  expect(await runtime.inspect(run.runId)).toEqual(before);
-});
+it.each(['archive-ready', 'verification-wait'] as const)(
+  'preserves the completed Run and warns when its archived report view is not a file (route=%s)',
+  async (route) => {
+    const prepared =
+      route === 'archive-ready'
+        ? await awaitingArchiveApplication(
+            'sdk',
+            undefined,
+            false,
+            initializeArchiveGit,
+            nativeApplication('4'),
+          )
+        : await verifiedV3Candidate();
+    const { root, changeDir, runtime, paths } = prepared;
+    let run = prepared.run;
+    expect(run.workflow.version).toBe('4');
+    if (route === 'verification-wait') {
+      await refreshNativeSdkVerificationReport(root, run);
+      const approval = run.waits.at(-1)!;
+      run = await runtime.resolveWait({
+        runId: run.runId,
+        waitId: approval.id,
+        proposalHash: approval.proposalHash,
+        decisionId: 'optional-view-approved',
+        choice: 'approved',
+      });
+    }
+
+    const report = path.join(changeDir, 'verification.md');
+    const originalReport = await fs.readFile(report, 'utf8');
+    await fs.rename(report, path.join(changeDir, 'user-moved-report.md'));
+    await fs.mkdir(report);
+    const retained = '# User directory content\nDo not overwrite or traverse as a report.\n';
+    await fs.writeFile(path.join(report, 'user.txt'), retained);
+    const before = await runtime.inspect(run.runId);
+    const stateFile = path.join(changeDir, 'comet-state.yaml');
+    const stateBytes = await fs.readFile(stateFile);
+    const status = await runNativeCli(['status', run.runId, '--project-root', root, '--json']);
+    expect(status.exitCode, status.stdout).toBe(0);
+    expect(JSON.parse(status.stdout!).data.recovery?.code).not.toBe('archive-blocked');
+    expect(await runtime.inspect(run.runId)).toEqual(before);
+    expect(await fs.readFile(stateFile)).toEqual(stateBytes);
+    expect(await fs.readFile(path.join(report, 'user.txt'), 'utf8')).toBe(retained);
+
+    const archived = await runNativeCli(['archive', run.runId, '--project-root', root, '--json']);
+    const completed = await runtime.inspect(run.runId);
+    expect(
+      archived.exitCode,
+      JSON.stringify({
+        archived,
+        runId: completed.runId,
+        status: completed.status,
+        receipt: completed.outputs['archive.finalize']?.value,
+      }),
+    ).toBe(0);
+    expect(JSON.parse(archived.stdout!).data.warning).toMatchObject({
+      code: 'NATIVE_REPORT_PENDING',
+    });
+    expect(completed.runId).toBe(before.runId);
+    expect(completed.status).toBe('completed');
+    expect(completed.waits).toEqual(before.waits);
+    const receipt = completed.outputs['archive.finalize'].value as {
+      runId: string;
+      archiveRef: string;
+      transactionId: string;
+    };
+    expect(receipt.runId).toBe(before.runId);
+    expect(completed.outputs['archive.execute'].value).toMatchObject({
+      archiveRef: receipt.archiveRef,
+      transactionId: receipt.transactionId,
+    });
+    const archivedDirectory = path.join(paths.archiveDir, receipt.archiveRef);
+    expect(
+      await fs.readFile(path.join(archivedDirectory, 'verification.md/user.txt'), 'utf8'),
+    ).toBe(retained);
+    expect(await fs.readFile(path.join(archivedDirectory, 'user-moved-report.md'), 'utf8')).toBe(
+      originalReport,
+    );
+
+    const recovered = await runNativeCli([
+      'archive',
+      run.runId,
+      '--recover',
+      '--project-root',
+      root,
+      '--json',
+    ]);
+    expect(recovered.exitCode, recovered.stdout || recovered.stderr).toBe(0);
+    expect(JSON.parse(recovered.stdout!).data).toMatchObject({
+      alreadyArchived: true,
+      warning: { code: 'NATIVE_REPORT_PENDING' },
+    });
+    const repeated = await runtime.inspect(run.runId);
+    expect(repeated.runId).toBe(before.runId);
+    expect(repeated.actions).toEqual(completed.actions);
+    expect(repeated.waits).toEqual(completed.waits);
+    expect(repeated.outputs['archive.finalize']).toEqual(completed.outputs['archive.finalize']);
+    expect(repeated.actions.filter((action) => action.stepId === 'archive.execute')).toHaveLength(
+      1,
+    );
+    expect(
+      await fs.readFile(path.join(archivedDirectory, 'verification.md/user.txt'), 'utf8'),
+    ).toBe(retained);
+  },
+);
 
 it('generates a missing report without overwriting a user-moved file or inventing a backup', async () => {
   const { root, changeDir, runtime, run } = await dispatchedVerifier(
@@ -8757,14 +4769,16 @@ it('generates a missing report without overwriting a user-moved file or inventin
     'missing-report-verifier',
     'missing-report-verifier',
   );
-  verified = await runtime.execute({
-    runId: run.runId,
-    actionId: verified.actions.at(-1)!.id,
-    executorId: 'comet-native-report',
-    context: { requestId: 'new-report-after-move', projectRoot: root },
-  });
-  const output = verified.outputs['verify.report'].value as { preservedReportRef?: string };
-  expect(output.preservedReportRef).toBeUndefined();
+  await refreshNativeSdkVerificationReport(root, verified);
+  await expect(
+    fs.readdir(
+      path.join(
+        resolveWorkspaceRuntimeRootSync(root),
+        'native/preserved-verification',
+        verified.runId,
+      ),
+    ),
+  ).rejects.toMatchObject({ code: 'ENOENT' });
   expect(await fs.readFile(moved, 'utf8')).toBe('User retained report content.\n');
   expect(await fs.readFile(path.join(changeDir, 'verification.md'), 'utf8')).toContain('Verified');
 });
@@ -8776,22 +4790,21 @@ it('retains the user-edited verification report when the successor report is gen
     false,
     initializeArchiveGit,
   );
-  await reconcileNativeSdkExecutionStops(root, run, runtime);
+
   const report = path.join(changeDir, 'verification.md');
   const edited = `${await fs.readFile(report, 'utf8')}\nUser note: check the export behavior.\n`;
   await fs.writeFile(report, edited);
   const status = await runNativeCli(['status', run.runId, '--project-root', root, '--json']);
-  const data = JSON.parse(status.stdout!).data;
-  const args = (data.recovery.recoveryArgs as string[])
-    .slice(2)
-    .map((arg) => (arg === '<summary>' ? 'Review the user report notes.' : arg));
+  expect(status.exitCode, status.stdout).toBe(0);
+  const args = implementationRevisionArgs(
+    root,
+    await runtime.inspect(run.runId),
+    'Review the user report notes.',
+  );
   expect((await runNativeCli(args)).exitCode).toBe(0);
   let current = await runtime.inspect(run.runId);
-  expect(current.actions.at(-1)?.input).toMatchObject({
-    activation: {
-      repairContext: { userEditedReport: { ref: 'docs/comet/changes/sdk-shape/verification.md' } },
-    },
-  });
+  expect(current.state).toMatchObject({ phase: 'build', archived: false });
+  expect(await fs.readFile(report, 'utf8')).toBe(edited);
   current = await succeedLatestAction(
     runtime,
     current,
@@ -8803,21 +4816,12 @@ it('retains the user-edited verification report when the successor report is gen
       knownLimits: [],
       review: null,
       submittedAt: new Date().toISOString(),
-      verificationChecks: [],
     },
     root,
     'report-revision-builder',
     'report-revision-builder-session',
   );
-  current = await runtime.execute({
-    runId: run.runId,
-    actionId: current.actions.at(-1)!.id,
-    executorId: 'comet-native-checks',
-    context: { requestId: 'report-revision-checks', projectRoot: root },
-  });
-  expect(current.actions.at(-1)?.input).toMatchObject({
-    activation: { userEditedReport: { ref: 'docs/comet/changes/sdk-shape/verification.md' } },
-  });
+  expect(await fs.readFile(report, 'utf8')).toBe(edited);
   const state = current.state as NativePortableState;
   current = await succeedLatestAction(
     runtime,
@@ -8843,120 +4847,117 @@ it('retains the user-edited verification report when the successor report is gen
     'report-revision-verifier',
     'report-revision-verifier-session',
   );
-  current = await runtime.execute({
-    runId: run.runId,
-    actionId: current.actions.at(-1)!.id,
-    executorId: 'comet-native-report',
-    context: { requestId: 'successor-report', projectRoot: root },
-  });
-  const output = current.outputs['verify.report'].value as { preservedReportRef?: string };
-  expect(output.preservedReportRef).toEqual(expect.any(String));
-  expect(
-    await fs.readFile(
-      path.join(resolveWorkspaceRuntimeRootSync(root), output.preservedReportRef!),
-      'utf8',
-    ),
-  ).toBe(edited);
+  await refreshNativeSdkVerificationReport(root, current);
+  const directory = path.join(
+    resolveWorkspaceRuntimeRootSync(root),
+    'native/preserved-verification',
+    current.runId,
+  );
+  const preserved = await fs.readdir(directory);
+  expect(preserved).toHaveLength(1);
+  expect(await fs.readFile(path.join(directory, preserved[0]), 'utf8')).toBe(edited);
   expect(await fs.readFile(report, 'utf8')).not.toBe(edited);
   const after = await runNativeCli(['status', run.runId, '--project-root', root, '--json']);
-  expect(JSON.stringify(JSON.parse(after.stdout!).data)).toContain(output.preservedReportRef);
+  expect(JSON.parse(after.stdout!).data.preservedReportsDirectory.path).toBe(directory);
 });
 
-it('preserves completed one-shot checks while revising edited Archive-ready code', async () => {
-  const counterRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-archive-revision-check-'));
-  roots.push(counterRoot);
-  const counter = path.join(counterRoot, 'count');
-  const checks = [
-    {
-      id: 'once',
-      name: 'one-shot',
-      executable: process.execPath,
-      argv: ['-e', 'require("fs").appendFileSync(process.argv[1],"once\\n")', counter],
-      cwdRef: '.',
-      timeoutMs: 5000,
-      repeatable: false,
-    },
-    {
-      id: 'regular',
-      name: 'repeatable',
-      executable: process.execPath,
-      argv: ['-e', 'process.stdout.write("checked")'],
-      cwdRef: '.',
-      timeoutMs: 5000,
-      repeatable: true,
-    },
-  ];
-  const { root, runtime, run } = await awaitingArchiveApplication(
+it('preserves an Agent-selected one-shot report while explicitly revising Archive-ready code without replay', async () => {
+  const f = await dispatchedVerifier(
+    [],
     'sdk',
-    undefined,
-    false,
-    initializeArchiveGit,
     nativeApplication(),
+    true,
     undefined,
-    checks,
+    initializeArchiveGit,
   );
-  await runNativeCli(['doctor', run.runId, '--repair', '--project-root', root, '--json']);
+  const { root, runtime } = f;
+  const once = await migratedActualCheck(
+    root,
+    'agent-one-shot',
+    "require('node:fs').appendFileSync('one-shot-count','once\\n');process.stdout.write('one-shot completed')",
+  );
+  expect(once.actual.status).toBe(0);
+  const regular = await migratedActualCheck(
+    root,
+    'agent-repeatable',
+    "process.stdout.write('checked')",
+  );
+  expect(regular.actual.status).toBe(0);
+  const checks = [once.report, regular.report];
+  let run = await migratedVerdict(
+    runtime,
+    f.run,
+    root,
+    'pass',
+    checks,
+    'SIMULATED-first-independent-verifier',
+  );
+  run = await migratedAccept(runtime, run, root, 'SIMULATED-initial-result-approval');
+  run = await runtime.execute({
+    runId: run.runId,
+    actionId: run.actions.at(-1)!.id,
+    executorId: 'comet-native-archive-preflight',
+    context: { requestId: 'SIMULATED-archive-ready', projectRoot: root },
+  });
+  const originalReport = run.actions.find((a) => a.stepId === 'verify.verifier')!,
+    originalCandidate = (run.state as NativePortableState).builder_handoff!.candidate_id,
+    approved = run.waits.findLast((w) => w.stepId === 'verify.confirm')!;
   const code = path.join(root, 'implementation.js');
   await fs.writeFile(code, 'export const result = "user edit";');
   const status = await runNativeCli(['status', run.runId, '--project-root', root, '--json']);
-  const data = JSON.parse(status.stdout!).data;
-  expect(data.recovery.code).toBe('candidate-drift');
-  const args = (data.recovery.recoveryArgs as string[])
-    .slice(2)
-    .map((arg) => (arg === '<summary>' ? 'Continue the user edit.' : arg));
-  const resumed = await runNativeCli(args);
-  expect(resumed.exitCode, resumed.stdout).toBe(0);
-  const after = await runtime.inspect(run.runId);
-  expect(after.state).toMatchObject({ phase: 'build', archived: false });
-  expect(await fs.readFile(counter, 'utf8')).toBe('once\n');
-  expect(after.actions.filter((action) => action.stepId === 'verify.checks')).toHaveLength(1);
-  expect(after.actions.find((action) => action.stepId === 'verify.checks')?.outcome).toEqual(
-    run.actions.find((action) => action.stepId === 'verify.checks')?.outcome,
+  expect(JSON.parse(status.stdout!).data.recovery?.code).not.toBe('candidate-drift');
+  const args = implementationRevisionArgs(
+    root,
+    run,
+    'SIMULATED USER requests continuing this edited implementation.',
   );
+  const wrong = [...args];
+  wrong[wrong.indexOf('--proposal-hash') + 1] = '0'.repeat(64);
+  expect((await runNativeCli(wrong)).exitCode).not.toBe(0);
+  expect(await runtime.inspect(run.runId)).toEqual(run);
+  expect((await runNativeCli(args)).exitCode).toBe(0);
+  run = await runtime.inspect(run.runId);
+  expect(run.state).toMatchObject({ phase: 'build', archived: false });
+  expect(run.actions.find((a) => a.id === originalReport.id)).toEqual(originalReport);
+  expect(run.waits.find((w) => w.id === approved.id)).toEqual(approved);
   expect(await fs.readFile(code, 'utf8')).toBe('export const result = "user edit";');
-});
-
-it('revises a previous-definition Archive-ready Run without executing its Archive Action', async () => {
-  const application = nativeApplication();
-  application.workflow = nativeSdkBeforeImplementationRevision(application.workflow);
-  application.transitionHandler = nativeSdkLegacyTransitionHandler(
-    application.workflow,
-    application.transitionHandler,
+  run = await succeedLatestAction(
+    runtime,
+    run,
+    {
+      summary:
+        'SIMULATED Agent judges its original ordinary command reports still apply to this explanation-only repair.',
+      addressedAcceptanceIds: ['A1'],
+      acceptanceReview: fixtureAcceptanceReview(['A1']),
+      checks,
+      knownLimits: [],
+    },
+    root,
+    'SIMULATED-revised-one-shot-candidate',
+    'SIMULATED-revised-builder',
   );
-  const { root, runtime, run } = await awaitingArchiveApplication(
-    'sdk',
-    undefined,
+  expect((run.state as NativePortableState).builder_handoff!.candidate_id).not.toBe(
+    originalCandidate,
+  );
+  expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
+  expect(run.waits.some((w) => w.stepId === 'verify.confirm' && w.status === 'pending')).toBe(
     false,
-    initializeArchiveGit,
-    application,
   );
-  const settled = await reconcileNativeSdkExecutionStops(root, run, runtime);
-  const originalHash = settled.workflow.hash;
-  const originalArchive = settled.actions.at(-1)!;
-  expect(originalArchive).toMatchObject({ stepId: 'archive.execute', status: 'pending' });
-  const ref = path.join(root, 'implementation.js');
-  await fs.writeFile(ref, 'export const result = "legacy user edit";');
-  const status = await runNativeCli(['status', run.runId, '--project-root', root, '--json']);
-  expect(status.exitCode, status.stdout).toBe(0);
-  const data = JSON.parse(status.stdout!).data;
-  expect(data.recovery.code).toBe('candidate-drift');
-  const args = (data.recovery.recoveryArgs as string[])
-    .slice(2)
-    .map((arg) => (arg === '<summary>' ? 'Continue the existing work.' : arg));
-  const resumed = await runNativeCli(args);
-  expect(resumed.exitCode, resumed.stdout).toBe(0);
-  const current = (await loadOwnedNativeSdkRuntime(root, run.runId)).runtime;
-  const repaired = await current.inspect(run.runId);
-  expect(repaired.workflow.hash).not.toBe(originalHash);
-  expect(repaired.state).toMatchObject({ phase: 'build', archived: false });
-  expect(repaired.actions.find((action) => action.id === originalArchive.id)).toMatchObject({
-    status: 'cancelled',
-  });
-  expect(
-    repaired.actions.find((action) => action.id === originalArchive.id)?.claim,
-  ).toBeUndefined();
-  expect(await fs.readFile(ref, 'utf8')).toBe('export const result = "legacy user edit";');
-  await expect(fs.stat(path.join(root, 'docs/comet/specs/workflow/spec.md'))).rejects.toThrow();
+  run = await migratedVerdict(
+    runtime,
+    run,
+    root,
+    'pass',
+    checks,
+    'SIMULATED-full-revised-independent-verifier',
+  );
+  run = await migratedAccept(runtime, run, root, 'SIMULATED-new-explicit-result-approval');
+  run = await migratedArchive(runtime, run, root);
+  expect(await fs.readFile(path.join(root, 'one-shot-count'), 'utf8')).toBe('once\n');
+  expect(await fs.readFile(path.join(root, 'agent-one-shot.log'))).toEqual(once.log);
+  expect(run.actions.find((a) => a.id === originalReport.id)).toEqual(originalReport);
+  expect(run.actions.filter((a) => a.stepId === 'verify.verifier')).toHaveLength(2);
+  expect(run.actions.some((a) => a.stepId === 'verify.checks')).toBe(false);
 });
 
 it('continues a read-only revision after its claiming process exits without reporting an outcome', async () => {
@@ -8966,14 +4967,12 @@ it('continues a read-only revision after its claiming process exits without repo
     false,
     initializeArchiveGit,
   );
-  const settled = await reconcileNativeSdkExecutionStops(root, run, runtime);
+  const settled = run;
   const ref = path.join(root, 'implementation.js');
   await fs.writeFile(ref, 'export const result = "user edit";');
   const status = await runNativeCli(['status', run.runId, '--project-root', root, '--json']);
-  const data = JSON.parse(status.stdout!).data;
-  const args = (data.recovery.recoveryArgs as string[])
-    .slice(2)
-    .map((arg) => (arg === '<summary>' ? 'Continue after process exit.' : arg));
+  expect(status.exitCode, status.stdout).toBe(0);
+  const args = implementationRevisionArgs(root, settled, 'Continue after process exit.');
   const proposalHash = settled.waits.findLast(
     (wait) => wait.stepId === 'verify.confirm' && wait.status === 'resolved',
   )!.proposalHash;
@@ -9055,15 +5054,12 @@ it.each(['unknown', 'rejected'] as const)(
       false,
       initializeArchiveGit,
     );
-    const settled = await reconcileNativeSdkExecutionStops(root, run, runtime);
+    const settled = run;
     const ref = path.join(root, 'implementation.js');
     await fs.writeFile(ref, 'export const result = "user edit";');
     const status = await runNativeCli(['status', run.runId, '--project-root', root, '--json']);
-    const data = JSON.parse(status.stdout!).data;
-    expect(data.recovery.code).toBe('candidate-drift');
-    const args = (data.recovery.recoveryArgs as string[])
-      .slice(2)
-      .map((arg) => (arg === '<summary>' ? 'Continue the original work.' : arg));
+    expect(status.exitCode, status.stdout).toBe(0);
+    const args = implementationRevisionArgs(root, settled, 'Continue the original work.');
     const proposalHash = settled.waits.findLast(
       (wait) => wait.stepId === 'verify.confirm' && wait.status === 'resolved',
     )!.proposalHash;
@@ -9115,13 +5111,16 @@ it.each(['unknown', 'rejected'] as const)(
         context,
         claimed,
       );
-      await fs.writeFile(ref, 'export const result = true;');
       await expect(
         runtime.recordOutcome({
           runId: run.runId,
           context,
           outcome: {
             ...output,
+            output: {
+              ...(output.output as Record<string, RuntimeValue>),
+              archiveStep: 'foreign-archive-step',
+            },
             actionId: action.id,
             attempt: action.attempt,
             inputHash: action.inputHash,
@@ -9130,7 +5129,10 @@ it.each(['unknown', 'rejected'] as const)(
           },
         }),
       ).rejects.toThrow();
-      await fs.writeFile(ref, 'export const result = "user edit";');
+      expect(
+        (await runtime.inspect(run.runId)).actions.find((entry) => entry.id === action.id)
+          ?.rejectedOutcomes,
+      ).toHaveLength(1);
     }
     const resumed = await runNativeCli(args);
     expect(resumed.exitCode, resumed.stdout).toBe(0);
@@ -9148,49 +5150,6 @@ it.each(['unknown', 'rejected'] as const)(
     await expect(fs.stat(path.join(root, 'docs/comet/specs/workflow/spec.md'))).rejects.toThrow();
   },
 );
-
-it('keeps a recovered unknown preflight blocked when the original candidate has drifted', async () => {
-  const { root, runtime, run } = await awaitingArchiveApplication(
-    'sdk',
-    undefined,
-    true,
-    initializeArchiveGit,
-  );
-  const action = run.actions.at(-1)!;
-  await runtime.claim({
-    runId: run.runId,
-    actionId: action.id,
-    attempt: action.attempt,
-    inputHash: action.inputHash,
-    executorId: 'comet-native-archive-preflight',
-    claimToken: 'stopped-preflight',
-    context: { requestId: 'stopped-preflight', projectRoot: root },
-  });
-  await runtime.markUnknown({
-    runId: run.runId,
-    actionId: action.id,
-    attempt: action.attempt,
-    reason: 'The original executor has stopped.',
-  });
-  await fs.writeFile(path.join(root, 'implementation.js'), 'throw new Error("unverified");');
-  const result = await runNativeCli([
-    'archive',
-    run.runId,
-    '--project-root',
-    root,
-    '--recover',
-    '--json',
-  ]);
-  expect(result.exitCode).toBe(73);
-  const recovered = await runtime.inspect(run.runId);
-  expect(recovered.actions.at(-1)).toMatchObject({
-    id: action.id,
-    status: 'failed',
-    outcome: { output: { reason: 'candidate-drift' } },
-  });
-  expect(recovered.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
-  expect(recovered.state).toMatchObject({ archived: false, verification_result: 'pending' });
-});
 
 it.each(['archive.prepare', 'archive.execute', 'archive.finalize'])(
   'rejects implementation drift between %s execution and commit and recovers the original Action',
@@ -9240,7 +5199,7 @@ it.each(['archive.prepare', 'archive.execute', 'archive.finalize'])(
           claimToken: action.claim!.token,
           outcomeId: `${action.id}:${action.attempt}:executor-result`,
           status: executed.status,
-          output: executed.output,
+          output: { ...(executed.output as Record<string, RuntimeValue>), stateVersion: -1 },
         },
       }),
     ).rejects.toThrow(/OUTCOME_REJECTED/);
@@ -9271,847 +5230,6 @@ it.each(['archive.prepare', 'archive.execute', 'archive.finalize'])(
     expect(completed.actions.filter((entry) => entry.stepId === stepId)).toHaveLength(1);
   },
 );
-
-it('blocks implementation drift before finalization and resumes its existing Spec transaction after restoration', async () => {
-  const {
-    root,
-    runtime,
-    run: prepared,
-  } = await awaitingArchiveApplication('sdk', undefined, false, initializeArchiveGit);
-  const run = await runtime.execute({
-    runId: prepared.runId,
-    actionId: prepared.actions.at(-1)!.id,
-    executorId: 'comet-native-archive-apply',
-    context: { requestId: 'apply-before-finalize-drift', projectRoot: root },
-  });
-  const action = run.actions.at(-1)!;
-  await fs.writeFile(path.join(root, 'implementation.js'), 'throw new Error("unverified");');
-  const stopped = await runtime.execute({
-    runId: run.runId,
-    actionId: action.id,
-    executorId: 'comet-native-archive-finalize',
-    context: { requestId: 'finalize-drift', projectRoot: root },
-  });
-  expect(stopped.actions.at(-1)).toMatchObject({
-    status: 'failed',
-    outcome: { output: { reason: 'candidate-drift' } },
-  });
-  await fs.writeFile(path.join(root, 'implementation.js'), 'export const result = true;');
-  const result = await archiveNativeSdkChange({
-    projectRoot: root,
-    name: run.runId,
-    dryRun: false,
-    recover: false,
-    confirmed: false,
-  });
-  expect(result.exitCode).toBe(0);
-  const restored = await runtime.inspect(run.runId);
-  expect(restored.status).toBe('completed');
-  expect(restored.actions.filter((entry) => entry.stepId === 'archive.execute')).toHaveLength(1);
-});
-
-function legacyArchiveApplication() {
-  const application = nativeApplication();
-  const workflow = nativeSdkBeforeArchiveCandidateRecovery(application.workflow);
-  return {
-    ...application,
-    workflow,
-    transitionHandler: nativeSdkLegacyTransitionHandler(workflow, application.transitionHandler),
-    executors: application.executors.map((executor) =>
-      executor.id !== nativeSdkArchivePreflightExecutor.id
-        ? executor
-        : {
-            ...executor,
-            async execute(...args: Parameters<RuntimeExecutor['execute']>) {
-              const result = await executor.execute(...args);
-              const output = { ...(result.output as Record<string, never>) };
-              delete output.candidateBinding;
-              delete output.recoveryBinding;
-              return { ...result, output };
-            },
-          },
-    ),
-    validators: application.validators.map((validator) =>
-      validator.id !== nativeSdkArchivePreflightValidator.id
-        ? validator
-        : {
-            ...validator,
-            async validate(args: Parameters<RuntimeValidator['validate']>[0]) {
-              const expected = await nativeSdkArchivePreflightExecutor.execute(
-                args.action,
-                args.context,
-                args.run,
-              );
-              const output = { ...(expected.output as Record<string, never>) };
-              delete output.candidateBinding;
-              delete output.recoveryBinding;
-              return {
-                accepted:
-                  expected.status === args.outcome.status &&
-                  hashRuntimeValue(output) === hashRuntimeValue(args.outcome.output),
-              };
-            },
-          },
-    ),
-  };
-}
-
-async function interruptedLegacyArchive(kind: string) {
-  const original = '# Existing workflow\nPreserve the old acceptance.\n';
-  const prepared = await awaitingArchiveApplication(
-    'sdk',
-    undefined,
-    false,
-    undefined,
-    legacyArchiveApplication(),
-    async (root) => {
-      if (kind === 'non-git-update')
-        await fs.writeFile(path.join(root, 'implementation.js'), 'export const result = true;');
-      else await initializeArchiveGit(root);
-      if (kind !== 'create') {
-        const file = path.join(root, 'docs/comet/specs/workflow/spec.md');
-        await fs.mkdir(path.dirname(file), { recursive: true });
-        await fs.writeFile(file, original);
-        if (kind === 'untracked-update' || kind === 'non-git-update') {
-          for (const [ref, content] of [
-            ['docs/comet/specs/secondary/spec.md', original],
-            [
-              'docs/comet/changes/sdk-shape/specs/secondary/spec.md',
-              '# Secondary\nThe selected workflow resumes.\n',
-            ],
-          ]) {
-            await fs.mkdir(path.dirname(path.join(root, ref!)), { recursive: true });
-            await fs.writeFile(path.join(root, ref!), content!);
-          }
-        }
-        if (kind === 'tracked-update') {
-          execFileSync('git', ['add', 'docs/comet/specs/workflow/spec.md'], { cwd: root });
-          execFileSync('git', ['commit', '-m', 'existing spec'], { cwd: root, stdio: 'ignore' });
-        }
-      }
-    },
-  );
-  const { root, runtime, run } = prepared;
-  expect(run.outputs['archive.prepare'].value).not.toHaveProperty('candidateBinding');
-  const action = run.actions.at(-1)!;
-  // 旧实现已完成 apply 的事实由原事务保存；新 Runtime 不重放已经写入的 Spec。
-  const context = { requestId: 'legacy-apply', projectRoot: root };
-  const claimed = await runtime.claim({
-    runId: run.runId,
-    actionId: action.id,
-    attempt: action.attempt,
-    inputHash: action.inputHash,
-    executorId: 'comet-native-archive-apply',
-    claimToken: 'legacy-apply-owner',
-    context,
-  });
-  const { applyNativeSdkArchiveSpecs, inspectNativeSdkArchiveSpecs } =
-    await import('../../../domains/comet-native/native-portable-archive.js');
-  const state = claimed.state as NativePortableState;
-  await applyNativeSdkArchiveSpecs({
-    paths: prepared.paths,
-    state,
-    verificationReportStateVersion: (
-      run.outputs['archive.prepare'].value as { reportStateVersion: number }
-    ).reportStateVersion,
-  });
-  await runtime.markUnknown({
-    runId: run.runId,
-    actionId: action.id,
-    attempt: action.attempt,
-    reason: 'The legacy host stopped after applying its frozen transaction.',
-  });
-  const options = {
-    projectRoot: root,
-    name: run.runId,
-    dryRun: false,
-    recover: true,
-    confirmed: false,
-  };
-  return { ...prepared, state, options, original, inspectNativeSdkArchiveSpecs };
-}
-
-async function legacyArchiveOriginalsBackup(
-  fixture: Awaited<ReturnType<typeof interruptedLegacyArchive>>,
-) {
-  const { readNativePortableTransaction } =
-    await import('../../../domains/comet-native/native-portable-transactions.js');
-  const transaction = await readNativePortableTransaction(fixture.paths, {
-    kind: 'archive',
-    change: fixture.state.name,
-  });
-  const backupRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-archive-originals-'));
-  roots.push(backupRoot);
-  const backupRef = path.join(backupRoot, 'archive-originals.json');
-  await fs.writeFile(
-    backupRef,
-    JSON.stringify({
-      schema: 'comet.native.archive-originals.v1',
-      runId: fixture.run.runId,
-      transactionId: transaction!.journal.id,
-      files: [
-        { ref: 'docs/comet/specs/workflow/spec.md', content: fixture.original },
-        { ref: 'docs/comet/specs/secondary/spec.md', content: fixture.original },
-      ],
-    }),
-  );
-  return backupRef;
-}
-
-it.for(['untracked-update', 'non-git-update'])(
-  'rejects a file symlink backup for an old Archive %s transaction',
-  async (kind, context) => {
-    await requireFileSymlink(context);
-    const fixture = await interruptedLegacyArchive(kind);
-    const backupRef = await legacyArchiveOriginalsBackup(fixture);
-    const linked = path.join(path.dirname(backupRef), 'linked.json');
-    await fs.symlink(backupRef, linked, 'file');
-    await expectArchiveFailure(
-      archiveNativeSdkChange({ ...fixture.options, legacySpecBackup: linked }),
-      /symbolic|symlink/i,
-    );
-  },
-);
-
-it.each(['create', 'tracked-update', 'untracked-update', 'non-git-update'])(
-  'recovers an old Archive %s transaction by matching its original candidate evidence',
-  async (kind) => {
-    const prepared = await interruptedLegacyArchive(kind);
-    const { root, runtime, run, state, options, original, inspectNativeSdkArchiveSpecs } = prepared;
-    if (kind === 'untracked-update' || kind === 'non-git-update') {
-      await expectArchiveFailure(archiveNativeSdkChange(options), /原文/);
-      const backupRef = await legacyArchiveOriginalsBackup(prepared);
-      const validBackup = await fs.readFile(backupRef, 'utf8');
-      const parsedBackup = JSON.parse(validBackup);
-      for (const invalid of [
-        { ...parsedBackup, unknown: true },
-        { ...parsedBackup, runId: 'another-run' },
-        { ...parsedBackup, transactionId: 'another-transaction' },
-        { ...parsedBackup, files: [...parsedBackup.files, ...parsedBackup.files] },
-        { ...parsedBackup, files: [{ ref: '../escape/spec.md', content: original }] },
-        { ...parsedBackup, files: [{ ref: 'docs/comet/specs/extra/spec.md', content: original }] },
-        { ...parsedBackup, files: [{ ref: parsedBackup.files[0].ref, content: 'wrong original' }] },
-      ]) {
-        await fs.writeFile(backupRef, JSON.stringify(invalid));
-        await expectArchiveFailure(
-          archiveNativeSdkChange({ ...options, legacySpecBackup: backupRef }),
-        );
-        expect(await fs.readFile(backupRef, 'utf8')).toBe(JSON.stringify(invalid));
-      }
-      await fs.writeFile(backupRef, ' '.repeat(8 * 1024 * 1024 + 1));
-      await expectArchiveFailure(
-        archiveNativeSdkChange({ ...options, legacySpecBackup: backupRef }),
-      );
-      await fs.writeFile(backupRef, validBackup);
-      await expectArchiveFailure(
-        archiveNativeSdkChange({ ...options, legacySpecBackup: '../outside.json' }),
-      );
-      await fs.writeFile(path.join(root, 'implementation.js'), 'throw new Error("changed");');
-      await expectArchiveFailure(
-        archiveNativeSdkChange({ ...options, legacySpecBackup: backupRef }),
-        /候选实现/,
-      );
-      await fs.writeFile(path.join(root, 'implementation.js'), 'export const result = true;');
-      const { importNativeSdkArchiveOriginals } =
-        await import('../../../domains/comet-native/native-sdk-archive-originals.js');
-      await importNativeSdkArchiveOriginals({
-        projectRoot: root,
-        run: await runtime.inspect(run.runId),
-        ref: backupRef,
-      });
-      await importNativeSdkArchiveOriginals({
-        projectRoot: root,
-        run: await runtime.inspect(run.runId),
-        ref: backupRef,
-      });
-      await fs.writeFile(
-        backupRef,
-        JSON.stringify({ ...parsedBackup, files: [...parsedBackup.files].reverse() }),
-      );
-      await importNativeSdkArchiveOriginals({
-        projectRoot: root,
-        run: await runtime.inspect(run.runId),
-        ref: backupRef,
-      });
-      await fs.writeFile(
-        backupRef,
-        JSON.stringify({
-          ...parsedBackup,
-          files: parsedBackup.files.map((entry: { ref: string; content: string }) => ({
-            ...entry,
-            content: 'different original',
-          })),
-        }),
-      );
-      await expect(
-        importNativeSdkArchiveOriginals({
-          projectRoot: root,
-          run: await runtime.inspect(run.runId),
-          ref: backupRef,
-        }),
-      ).rejects.toThrow();
-      await fs.writeFile(backupRef, validBackup);
-      expect(
-        (
-          await runNativeCli([
-            'archive',
-            run.runId,
-            '--project-root',
-            root,
-            '--recover',
-            '--legacy-spec-backup',
-            backupRef,
-            '--json',
-          ])
-        ).exitCode,
-      ).toBe(0);
-      expect(await fs.readFile(backupRef, 'utf8')).toBe(validBackup);
-    } else {
-      await fs.writeFile(path.join(root, 'implementation.js'), 'throw new Error("changed");');
-      await expectArchiveFailure(archiveNativeSdkChange(options), /候选实现/);
-      await fs.writeFile(path.join(root, 'implementation.js'), 'export const result = true;');
-      expect((await archiveNativeSdkChange(options)).exitCode).toBe(0);
-    }
-    const restored = await runtime.inspect(run.runId);
-    expect(restored.outputs['archive.execute'].value).toEqual(
-      await inspectNativeSdkArchiveSpecs({ paths: prepared.paths, state }),
-    );
-    const result = await archiveNativeSdkChange({ ...options, recover: false });
-    expect(result.exitCode).toBe(0);
-    expect((await runtime.inspect(run.runId)).status).toBe('completed');
-    expect(
-      (await runtime.inspect(run.runId)).actions.filter(
-        (entry) => entry.stepId === 'archive.execute',
-      ),
-    ).toHaveLength(1);
-  },
-);
-
-it('upgrades a legacy failed Archive drift into the original Verify repair Wait', async () => {
-  const prepared = await awaitingArchiveApplication(
-    'sdk',
-    async ({ root }) => {
-      await fs.writeFile(path.join(root, 'implementation.js'), 'throw new Error("changed");');
-    },
-    false,
-    initializeArchiveGit,
-    legacyArchiveApplication(),
-  );
-  expect(prepared.run.status).toBe('failed');
-  expect(prepared.run.state).toMatchObject({ phase: 'archive', archived: false });
-  expect(
-    await inspectNativeSdkDefinitionUpgrade(prepared.root, prepared.run.runId, true),
-  ).toMatchObject({ ready: true, repaired: true });
-  await advanceNativeSdkChange(prepared.root, prepared.run.runId);
-  // load 会预读首个快照；跨另一条 command 推进后应重新加载，不能拿旧实例作最新查询。
-  const { runtime } = await loadOwnedNativeSdkRuntime(prepared.root, prepared.run.runId);
-  const run = await runtime.inspect(prepared.run.runId);
-  expect(run.state).toMatchObject({
-    phase: 'verify',
-    status: 'await-user',
-    verification_result: 'pending',
-  });
-  expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
-});
-
-it('requires fresh verification instead of trusting a legacy check without a candidate digest', async () => {
-  const countDir = await fs.mkdtemp(path.join(os.tmpdir(), 'native-check-proof-'));
-  roots.push(countDir);
-  const counter = path.join(countDir, 'executions');
-  const f = await dispatchedVerifier(
-    [
-      {
-        id: 'one-shot',
-        name: 'One-shot proof',
-        executable: process.execPath,
-        argv: ['-e', "require('node:fs').appendFileSync(process.argv[1], 'once\\n')", counter],
-        cwdRef: '.',
-        timeoutMs: 10_000,
-        repeatable: false,
-      },
-    ],
-    'memory',
-    nativeApplication(),
-    false,
-    undefined,
-    initializeArchiveGit,
-  );
-  const action = f.run.actions.at(-1)!;
-  const context = { projectRoot: f.root, requestId: 'original-check-proof' };
-  const claimed = await f.runtime.claim({
-    runId: f.run.runId,
-    actionId: action.id,
-    attempt: action.attempt,
-    inputHash: action.inputHash,
-    executorId: nativeSdkCheckExecutor.id,
-    claimToken: 'original-check-proof',
-    context,
-  });
-  const original = claimed.actions.at(-1)!;
-  const result = await nativeSdkCheckExecutor.execute(original, context, claimed);
-  const incomplete = { ...(result.output as Record<string, RuntimeValue>) };
-  delete incomplete.inputSnapshot;
-  delete incomplete.candidateInputFingerprintGate;
-  delete incomplete.rawInput;
-  const outcome = {
-    ...result,
-    actionId: action.id,
-    attempt: action.attempt,
-    inputHash: action.inputHash,
-    claimToken: original.claim!.token,
-    outcomeId: 'missing-check-proof',
-    output: incomplete,
-  };
-  await expect(f.runtime.recordOutcome({ runId: f.run.runId, outcome, context })).rejects.toThrow(
-    'OUTCOME_REJECTED',
-  );
-  const rejected = await f.runtime.inspect(f.run.runId);
-  expect(rejected.actions.at(-1)).toMatchObject({
-    id: action.id,
-    status: 'running',
-    claim: original.claim,
-    rejectedOutcomes: [
-      expect.objectContaining({
-        outcome: expect.objectContaining({ outcomeId: outcome.outcomeId }),
-      }),
-    ],
-  });
-  expect(rejected.state).toMatchObject({
-    phase: 'verify',
-    archived: false,
-    verification_result: 'pending',
-  });
-  expect(rejected.actions.some((a) => a.stepId === 'verify.verifier')).toBe(false);
-  const corrected = await f.runtime.recordOutcome({
-    runId: f.run.runId,
-    context,
-    outcome: { ...outcome, ...result, outcomeId: 'complete-original-check-proof' },
-  });
-  expect(corrected.actions.find((a) => a.id === action.id)).toMatchObject({
-    status: 'succeeded',
-    claim: original.claim,
-    rejectedOutcomes: rejected.actions.at(-1)!.rejectedOutcomes,
-  });
-  expect(corrected.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
-  expect(corrected.actions.some((a) => a.stepId.startsWith('archive.'))).toBe(false);
-  await expect(f.runtime.recordOutcome({ runId: f.run.runId, outcome, context })).rejects.toThrow();
-  expect(await f.runtime.inspect(f.run.runId)).toEqual(corrected);
-  expect(await fs.readFile(counter, 'utf8')).toBe('once\n');
-});
-
-it.each(['legacy', 'current'])(
-  'records an already-finalized %s receipt as history without revalidating changed implementation',
-  async (kind) => {
-    const prepared = await awaitingArchiveApplication(
-      'sdk',
-      undefined,
-      false,
-      initializeArchiveGit,
-      kind === 'legacy' ? legacyArchiveApplication() : undefined,
-    );
-    const { root, runtime, application } = prepared;
-    let run = await runtime.execute({
-      runId: prepared.run.runId,
-      actionId: prepared.run.actions.at(-1)!.id,
-      executorId: 'comet-native-archive-apply',
-      context: { requestId: 'legacy-completed-apply', projectRoot: root },
-    });
-    const action = run.actions.at(-1)!;
-    const context = { requestId: 'legacy-completed-finalize', projectRoot: root };
-    run = await runtime.claim({
-      runId: run.runId,
-      actionId: action.id,
-      attempt: action.attempt,
-      inputHash: action.inputHash,
-      executorId: 'comet-native-archive-finalize',
-      claimToken: 'legacy-finalize-owner',
-      context,
-    });
-    const executor = application.executors.find(
-      (entry) => entry.id === 'comet-native-archive-finalize',
-    )!;
-    const executed = await executor.execute(run.actions.at(-1)!, context, run);
-    expect(executed.status).toBe('succeeded');
-    await runtime.markUnknown({
-      runId: run.runId,
-      actionId: action.id,
-      attempt: action.attempt,
-      reason: 'The legacy host stopped after persisting the finalization receipt.',
-    });
-    await fs.writeFile(path.join(root, 'implementation.js'), 'throw new Error("later work");');
-    const result = await archiveNativeSdkChange({
-      projectRoot: root,
-      name: run.runId,
-      dryRun: false,
-      recover: true,
-      confirmed: false,
-    });
-    expect(result.exitCode).toBe(0);
-    expect(result.data).toMatchObject({
-      historicalRecovery: true,
-      currentImplementationRevalidated: false,
-    });
-    expect((await runtime.inspect(run.runId)).actions.at(-1)).toMatchObject({
-      id: action.id,
-      status: 'succeeded',
-      attempt: 1,
-    });
-    expect(await fs.readFile(path.join(root, 'implementation.js'), 'utf8')).toContain('later work');
-  },
-);
-
-it.each([1, 2])(
-  'rejects candidate drift after original gate observation %i before archive binding capture',
-  async (observation) => {
-    const { root, runtime, run } = await awaitingArchiveApplication(
-      'sdk',
-      undefined,
-      true,
-      initializeArchiveGit,
-    );
-    const original = nativeSdkChecks.assertNativeSdkCandidateUnchanged;
-    let calls = 0;
-    vi.spyOn(nativeSdkChecks, 'assertNativeSdkCandidateUnchanged').mockImplementation(
-      async (options) => {
-        await original(options);
-        if (++calls === observation)
-          await fs.writeFile(
-            path.join(root, 'implementation.js'),
-            'throw new Error("between observations");',
-          );
-      },
-    );
-    await expect(
-      runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'comet-native-archive-preflight',
-        context: { requestId: `observation-drift-${observation}`, projectRoot: root },
-      }),
-    ).rejects.toThrow(/OUTCOME_REJECTED/);
-    const stopped = await runtime.inspect(run.runId);
-    expect(stopped.state).toMatchObject({ archived: false });
-    expect(stopped.actions.some((action) => action.stepId === 'archive.execute')).toBe(false);
-  },
-);
-
-async function interruptArchiveFinalization(
-  point:
-    | 'report'
-    | 'report-journal'
-    | 'move'
-    | 'move-journal'
-    | 'portable-receipt'
-    | 'runtime-receipt'
-    | 'cleanup',
-  legacy = false,
-) {
-  const prepared = await awaitingArchiveApplication(
-    'sdk',
-    undefined,
-    false,
-    initializeArchiveGit,
-    legacy ? legacyArchiveApplication() : undefined,
-  );
-  const { root, paths, runtime } = prepared;
-  let run = await runtime.execute({
-    runId: prepared.run.runId,
-    actionId: prepared.run.actions.at(-1)!.id,
-    executorId: 'comet-native-archive-apply',
-    context: { requestId: 'interrupt-finalize-apply', projectRoot: root },
-  });
-  const action = run.actions.at(-1)!;
-  const context = { requestId: 'interrupt-finalize', projectRoot: root };
-  run = await runtime.claim({
-    runId: run.runId,
-    actionId: action.id,
-    attempt: action.attempt,
-    inputHash: action.inputHash,
-    executorId: 'comet-native-archive-finalize',
-    claimToken: 'original-finalize-owner',
-    context,
-  });
-  const applied = run.outputs['archive.execute'].value as {
-    transactionId: string;
-    archiveRef: string;
-  };
-  const archiveDir = path.join(paths.archiveDir, applied.archiveRef);
-  const transactionFile = path.join(paths.transactionsDir, `portable-archive-${run.runId}.json`);
-  const atomic = await import('../../../domains/comet-native/native-atomic-file.js');
-  const originalJson = atomic.atomicWriteJson;
-  const originalText = atomic.atomicWriteText;
-  const originalRename = fs.rename;
-  const originalRm = fs.rm;
-  let interrupted = false;
-  const fail = () => {
-    interrupted = true;
-    throw Object.assign(new Error(`Injected finalize interruption: ${point}`), { code: 'EIO' });
-  };
-  vi.spyOn(atomic, 'atomicWriteJson').mockImplementation(async (file, value, options) => {
-    const status = (value as { status?: string }).status;
-    if (
-      !interrupted &&
-      ((file === transactionFile && point === 'report-journal' && status === 'report-aligned') ||
-        (file === transactionFile && point === 'move-journal' && status === 'moved') ||
-        (point === 'runtime-receipt' &&
-          file.includes(`${path.sep}sdk-archive-receipts${path.sep}`)))
-    )
-      fail();
-    return originalJson(file, value, options);
-  });
-  vi.spyOn(atomic, 'atomicWriteText').mockImplementation(async (file, text, options) => {
-    if (
-      !interrupted &&
-      ((point === 'report' && file === path.join(prepared.changeDir, 'verification.md')) ||
-        (point === 'portable-receipt' &&
-          file === path.join(archiveDir, 'comet-state.yaml') &&
-          text.includes('archive_receipt:')))
-    )
-      fail();
-    return originalText(file, text, options);
-  });
-  vi.spyOn(fs, 'rename').mockImplementation(async (source, target) => {
-    if (!interrupted && point === 'move' && source === prepared.changeDir) fail();
-    return originalRename(source, target);
-  });
-  vi.spyOn(fs, 'rm').mockImplementation(async (file, options) => {
-    if (!interrupted && point === 'cleanup' && file === transactionFile) fail();
-    return originalRm(file, options);
-  });
-  await expect(
-    nativeSdkArchiveFinalizeExecutor.execute(run.actions.at(-1)!, context, run),
-  ).rejects.toThrow('Injected finalize interruption');
-  expect(interrupted).toBe(true);
-  vi.restoreAllMocks();
-  run = await runtime.markUnknown({
-    runId: run.runId,
-    actionId: action.id,
-    attempt: action.attempt,
-    reason: `Original host exited at ${point}`,
-  });
-  return { ...prepared, run, action: run.actions.at(-1)!, applied, archiveDir, transactionFile };
-}
-
-it.each([
-  'report',
-  'report-journal',
-  'move',
-  'move-journal',
-  'portable-receipt',
-  'runtime-receipt',
-  'cleanup',
-] as const)(
-  'resumes the original finalize after interruption at %s without replaying applied side effects',
-  async (point) => {
-    const f = await interruptArchiveFinalization(point);
-    const originalTransaction = JSON.parse(await fs.readFile(f.transactionFile, 'utf8'));
-    const specFile = path.join(f.paths.specsDir, 'workflow/spec.md');
-    const spec = await fs.readFile(specFile, 'utf8');
-    const specStat = await fs.stat(specFile);
-    const originalRename = fs.rename;
-    const moves: unknown[] = [];
-    vi.spyOn(fs, 'rename').mockImplementation(async (source, target) => {
-      if (source === f.changeDir) moves.push([source, target]);
-      return originalRename(source, target);
-    });
-    const recovered = await archiveNativeSdkChange({
-      projectRoot: f.root,
-      name: f.run.runId,
-      dryRun: false,
-      recover: true,
-      confirmed: false,
-    });
-    expect(recovered.exitCode, JSON.stringify(recovered)).toBe(0);
-    expect(recovered.data).toMatchObject({
-      historicalRecovery: false,
-      resumedFinalization: true,
-      currentImplementationRevalidated: false,
-    });
-    const completed = await f.runtime.inspect(f.run.runId);
-    expect(completed.status).toBe('completed');
-    expect(completed.actions.at(-1)).toMatchObject({
-      id: f.action.id,
-      attempt: f.action.attempt,
-      inputHash: f.action.inputHash,
-      claim: f.action.claim,
-      status: 'succeeded',
-    });
-    expect(completed.actions.filter((action) => action.stepId === 'archive.execute')).toHaveLength(
-      1,
-    );
-    expect(completed.outputs['archive.finalize'].value).toMatchObject({
-      transactionId: originalTransaction.id,
-    });
-    expect(moves).toHaveLength(['report', 'report-journal', 'move'].includes(point) ? 1 : 0);
-    expect(await fs.readFile(specFile, 'utf8')).toBe(spec);
-    expect((await fs.stat(specFile)).mtimeMs).toBe(specStat.mtimeMs);
-    await expect(fs.access(f.transactionFile)).rejects.toMatchObject({ code: 'ENOENT' });
-    const again = await archiveNativeSdkChange({
-      projectRoot: f.root,
-      name: f.run.runId,
-      dryRun: false,
-      recover: true,
-      confirmed: false,
-    });
-    expect(again.exitCode).toBe(0);
-    expect(again.data).toMatchObject({ alreadyArchived: true, historicalRecovery: true });
-    expect((await f.runtime.inspect(f.run.runId)).revision).toBe(completed.revision);
-  },
-);
-
-it.each(['implementation', 'material', 'spec', 'report', 'transaction-id', 'spec-cursor'])(
-  'preserves the interrupted finalize when %s no longer matches its original evidence',
-  async (drift) => {
-    const f = await interruptArchiveFinalization('move-journal');
-    const transaction = await fs.readFile(f.transactionFile, 'utf8');
-    const files: Record<string, string> = {
-      implementation: path.join(f.root, 'implementation.js'),
-      material: path.join(f.archiveDir, 'brief.md'),
-      spec: path.join(f.paths.specsDir, 'workflow/spec.md'),
-      report: path.join(f.archiveDir, 'verification.md'),
-      'transaction-id': f.transactionFile,
-      'spec-cursor': f.transactionFile,
-    };
-    const file = files[drift];
-    const original = await fs.readFile(file, 'utf8');
-    const changed =
-      drift === 'transaction-id'
-        ? JSON.stringify({ ...JSON.parse(original), id: '00000000-0000-4000-8000-000000000000' })
-        : drift === 'spec-cursor'
-          ? JSON.stringify({ ...JSON.parse(original), next_spec_index: 0 })
-          : `${original}\nChanged after interruption.\n`;
-    await fs.writeFile(file, changed);
-    await expectArchiveFailure(
-      archiveNativeSdkChange({
-        projectRoot: f.root,
-        name: f.run.runId,
-        dryRun: false,
-        recover: true,
-        confirmed: false,
-      }),
-    );
-    expect(await fs.readFile(file, 'utf8')).toBe(changed);
-    expect(await fs.readFile(f.transactionFile, 'utf8')).toBe(
-      file === f.transactionFile ? changed : transaction,
-    );
-    expect((await f.runtime.inspect(f.run.runId)).actions.at(-1)).toEqual(f.action);
-    await fs.writeFile(file, original);
-    expect(
-      (
-        await archiveNativeSdkChange({
-          projectRoot: f.root,
-          name: f.run.runId,
-          dryRun: false,
-          recover: true,
-          confirmed: false,
-        })
-      ).exitCode,
-    ).toBe(0);
-  },
-);
-
-it('resumes a legacy finalize after rename using the original candidate evidence', async () => {
-  const f = await interruptArchiveFinalization('move-journal', true);
-  expect(f.run.outputs['archive.prepare'].value).not.toHaveProperty('candidateBinding');
-  expect(
-    (
-      await archiveNativeSdkChange({
-        projectRoot: f.root,
-        name: f.run.runId,
-        dryRun: false,
-        recover: true,
-        confirmed: false,
-      })
-    ).exitCode,
-  ).toBe(0);
-  const completed = await f.runtime.inspect(f.run.runId);
-  expect(completed.status).toBe('completed');
-  expect(completed.actions.at(-1)).toMatchObject({
-    id: f.action.id,
-    claim: f.action.claim,
-    attempt: 1,
-    status: 'succeeded',
-  });
-});
-
-it('does not overwrite a changed pre-finalization report while resuming the original finalize', async () => {
-  const f = await interruptArchiveFinalization('report');
-  const reportFile = path.join(f.changeDir, 'verification.md');
-  const changed = `${await fs.readFile(reportFile, 'utf8')}\nUnconfirmed report change.\n`;
-  await fs.writeFile(reportFile, changed);
-  await expectArchiveFailure(
-    archiveNativeSdkChange({
-      projectRoot: f.root,
-      name: f.run.runId,
-      dryRun: false,
-      recover: true,
-      confirmed: false,
-    }),
-    /报告/,
-  );
-  expect(await fs.readFile(reportFile, 'utf8')).toBe(changed);
-  expect((await f.runtime.inspect(f.run.runId)).actions.at(-1)).toEqual(f.action);
-});
-
-it('rejects a rewritten frozen transaction even when the canonical Spec matches that rewrite', async () => {
-  const f = await interruptArchiveFinalization('move-journal');
-  const specFile = path.join(f.paths.specsDir, 'workflow/spec.md');
-  const transaction = JSON.parse(await fs.readFile(f.transactionFile, 'utf8'));
-  const content = '# Workflow\nThis replacement was never confirmed.\n';
-  transaction.spec_changes[0].content = content;
-  transaction.spec_changes[0].result_hash = createHash('sha256').update(content).digest('hex');
-  await fs.writeFile(f.transactionFile, JSON.stringify(transaction));
-  await fs.writeFile(specFile, content);
-  await expectArchiveFailure(
-    archiveNativeSdkChange({
-      projectRoot: f.root,
-      name: f.run.runId,
-      dryRun: false,
-      recover: true,
-      confirmed: false,
-    }),
-    /冻结 Spec/,
-  );
-  expect(await fs.readFile(specFile, 'utf8')).toBe(content);
-  expect((await f.runtime.inspect(f.run.runId)).actions.at(-1)).toEqual(f.action);
-});
-
-it('rejects a changed aligned report before moving the active change during recovery', async () => {
-  const f = await interruptArchiveFinalization('move');
-  const reportFile = path.join(f.changeDir, 'verification.md');
-  const report = `${await fs.readFile(reportFile, 'utf8')}\nUnconfirmed report change.\n`;
-  await fs.writeFile(reportFile, report);
-  await expectArchiveFailure(
-    archiveNativeSdkChange({
-      projectRoot: f.root,
-      name: f.run.runId,
-      dryRun: false,
-      recover: true,
-      confirmed: false,
-    }),
-    /报告/,
-  );
-  expect(await fs.readFile(reportFile, 'utf8')).toBe(report);
-  await expect(fs.access(f.archiveDir)).rejects.toMatchObject({ code: 'ENOENT' });
-  expect((await f.runtime.inspect(f.run.runId)).actions.at(-1)).toEqual(f.action);
-});
-
-it('keeps recovery blocked when neither the original transaction nor a complete receipt survived', async () => {
-  const f = await interruptArchiveFinalization('move-journal');
-  await fs.rm(f.transactionFile);
-  await expectArchiveFailure(
-    archiveNativeSdkChange({
-      projectRoot: f.root,
-      name: f.run.runId,
-      dryRun: false,
-      recover: true,
-      confirmed: false,
-    }),
-    /receipt/,
-  );
-  expect((await f.runtime.inspect(f.run.runId)).actions.at(-1)).toEqual(f.action);
-  await expect(fs.access(f.transactionFile)).rejects.toMatchObject({ code: 'ENOENT' });
-});
 
 it('recovers original archive history after a subsequent legitimate archive changes canonical Specs', async () => {
   const f = await awaitingArchiveApplication('sdk', undefined, false, initializeArchiveGit);
@@ -10168,13 +5286,7 @@ it('recovers original archive history after a subsequent legitimate archive chan
     decisionId: 'b-shape-approved',
     choice: 'approved',
   });
-  b = await succeedLatestAction(
-    runtime,
-    b,
-    await collectProposal(f.paths, b.state as NativePortableState),
-    f.root,
-    'b-revalidate',
-  );
+
   b = await succeedLatestAction(
     runtime,
     b,
@@ -10186,18 +5298,11 @@ it('recovers original archive history after a subsequent legitimate archive chan
       knownLimits: [],
       review: null,
       submittedAt: '2026-10-20T00:00:00.000Z',
-      verificationChecks: [],
     },
     f.root,
     'b-builder',
     'b-builder-session',
   );
-  b = await runtime.execute({
-    runId: b.runId,
-    actionId: b.actions.at(-1)!.id,
-    executorId: 'comet-native-checks',
-    context: { requestId: 'b-checks', projectRoot: f.root },
-  });
   b = await succeedLatestAction(
     runtime,
     b,
@@ -10221,8 +5326,6 @@ it('recovers original archive history after a subsequent legitimate archive chan
     'b-verifier-session',
   );
   for (const executorId of [
-    'comet-native-report',
-    'comet-native-report-revalidate',
     'comet-native-archive-preflight',
     'comet-native-archive-apply',
     'comet-native-archive-finalize',
@@ -10245,6 +5348,7 @@ it('recovers original archive history after a subsequent legitimate archive chan
     });
   }
   expect(b.status).toBe('completed');
+  const beforeDoctor = await f.runtime.inspect(a.runId);
   const doctor = await nativeDomain.runNativeCliDetailed([
     'doctor',
     a.runId,
@@ -10253,11 +5357,12 @@ it('recovers original archive history after a subsequent legitimate archive chan
     f.root,
     '--json',
   ]);
-  expect(doctor.dispatch.exitCode).not.toBe(0);
+  expect(doctor.dispatch.exitCode, JSON.stringify(doctor.dispatch)).toBe(0);
+  expect(await f.runtime.inspect(a.runId)).toEqual(beforeDoctor);
   const reportFile = path.join(f.paths.archiveDir, archiveRef, 'verification.md');
   const report = await fs.readFile(reportFile, 'utf8');
   await fs.writeFile(reportFile, report + '\nChanged historical evidence.\n');
-  const tampered = await nativeDomain.runNativeCliDetailed([
+  const recoveredWithEditedView = await nativeDomain.runNativeCliDetailed([
     'archive',
     a.runId,
     '--recover',
@@ -10265,9 +5370,14 @@ it('recovers original archive history after a subsequent legitimate archive chan
     f.root,
     '--json',
   ]);
-  expect(tampered.dispatch.exitCode).not.toBe(0);
-  expect((await f.runtime.inspect(a.runId)).actions.at(-1)?.status).toBe('unknown');
-  await fs.writeFile(reportFile, report);
+  expect(
+    recoveredWithEditedView.dispatch.exitCode,
+    JSON.stringify(recoveredWithEditedView.dispatch),
+  ).toBe(0);
+  const recoveredRun = await f.runtime.inspect(a.runId);
+  expect(recoveredRun.runId).toBe(a.runId);
+  expect(recoveredRun.status).toBe('completed');
+  expect(await fs.readFile(reportFile, 'utf8')).toBe(report + '\nChanged historical evidence.\n');
   const recover = await nativeDomain.runNativeCliDetailed([
     'archive',
     a.runId,
@@ -10277,6 +5387,421 @@ it('recovers original archive history after a subsequent legitimate archive chan
     '--json',
   ]);
   expect(recover.dispatch.exitCode, JSON.stringify(recover.dispatch)).toBe(0);
+  expect((await f.runtime.inspect(a.runId)).outputs['archive.finalize']).toEqual(
+    recoveredRun.outputs['archive.finalize'],
+  );
+});
+
+async function claimedArchiveBeforeWrite() {
+  const f = await verifiedV3Candidate();
+  const wait = f.run.waits.at(-1)!;
+  let run = await f.runtime.resolveWait({
+    runId: f.run.runId,
+    waitId: wait.id,
+    proposalHash: wait.proposalHash,
+    decisionId: 'prewrite-archive-approved',
+    choice: 'approved',
+  });
+  const context = { requestId: 'prewrite-archive', projectRoot: f.root };
+  run = await f.runtime.execute({
+    runId: run.runId,
+    actionId: run.actions.at(-1)!.id,
+    executorId: 'comet-native-archive-preflight',
+    context,
+  });
+  const action = run.actions.at(-1)!;
+  expect(action).toMatchObject({ stepId: 'archive.execute', status: 'pending' });
+  run = await f.runtime.claim({
+    runId: run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: nativeSdkArchiveApplyExecutor.id,
+    claimToken: 'prewrite-archive-claim',
+    context,
+  });
+  return { ...f, run, action: run.actions.at(-1)!, context };
+}
+
+async function rejectLegacyArchiveFailure(
+  f: Awaited<ReturnType<typeof claimedArchiveBeforeWrite>>,
+) {
+  // Inject the released executor's result; the real Runtime persists the rejection.
+  const outcome = {
+    actionId: f.action.id,
+    attempt: f.action.attempt,
+    inputHash: f.action.inputHash,
+    claimToken: f.action.claim!.token,
+    outcomeId: `${f.action.id}:${f.action.attempt}:executor-result`,
+    status: 'failed' as const,
+    output: {
+      ready: false,
+      reason: 'candidate-drift',
+      message: 'Candidate inputs were temporarily unreadable.',
+    },
+  };
+  await expect(
+    f.runtime.recordOutcome({ runId: f.run.runId, context: f.context, outcome }),
+  ).rejects.toThrow('OUTCOME_REJECTED');
+  return outcome;
+}
+
+async function expectArchivePrewriteFilesAbsent(
+  f: Awaited<ReturnType<typeof claimedArchiveBeforeWrite>>,
+) {
+  const name = (f.run.state as NativePortableState).name;
+  for (const key of new Set([name, f.run.runId])) {
+    await expect(
+      fs.access(path.join(f.paths.transactionsDir, `portable-archive-${key}.json`)),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  }
+  await expect(fs.access(path.join(f.paths.specsDir, 'workflow/spec.md'))).rejects.toMatchObject({
+    code: 'ENOENT',
+  });
+}
+
+async function runArchivePrewriteCli(projectRoot: string, args: string[]) {
+  if (!process.env.COMET_TEST_PACKAGE_ROOT) return nativeDomain.runNativeCliDetailed(args);
+  const result = spawnSync(
+    process.execPath,
+    [path.join(process.env.COMET_TEST_PACKAGE_ROOT, 'bin/comet.js'), 'native', ...args],
+    {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      env: { ...process.env, COMET_DAEMON: 'off' },
+    },
+  );
+  expect(result.error).toBeUndefined();
+  return { dispatch: JSON.parse(result.stdout) };
+}
+it('recovers a rejected Archive prewrite failure through the CLI without creating a transaction', async () => {
+  const f = await claimedArchiveBeforeWrite();
+  const outcome = await rejectLegacyArchiveFailure(f);
+  const rejected = await f.runtime.inspect(f.run.runId);
+  expect(rejected.actions.at(-1)?.rejectedOutcomes).toHaveLength(1);
+  const recovered = await runArchivePrewriteCli(f.root, [
+    'archive',
+    f.run.runId,
+    '--recover',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  const response = recovered.dispatch;
+  expect(response.exitCode).toBe(73);
+  expect(response.error?.message).toContain('归档执行');
+  expect(response.error?.message).not.toContain('预检');
+  expect(response.data.recoveryMessage).not.toContain('沿原 Specs 事务');
+  const run = await f.runtime.inspect(f.run.runId);
+  expect(run.actions.find((action) => action.id === f.action.id)).toMatchObject({
+    status: 'failed',
+    attempt: f.action.attempt,
+    inputHash: f.action.inputHash,
+    outcome: { status: 'failed', output: outcome.output },
+  });
+  expect(run.state).toMatchObject({ phase: 'verify', status: 'await-user', archived: false });
+  expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
+  expect(run.actions.filter((action) => action.stepId === 'archive.execute')).toHaveLength(1);
+  await expectArchivePrewriteFilesAbsent(f);
+  const repeated = await runArchivePrewriteCli(f.root, [
+    'archive',
+    f.run.runId,
+    '--recover',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(repeated.dispatch.exitCode).toBe(73);
+  expect((await f.runtime.inspect(f.run.runId)).actions).toEqual(run.actions);
+  await expectArchivePrewriteFilesAbsent(f);
+
+  const continuation = response.agent?.continuation ?? response.data.continuation;
+  const repair = continuation.commandAlternatives.find(
+    (item: { name: string }) => item.name === 'revise-implementation',
+  );
+  expect(repair).toBeDefined();
+  const repaired = await runArchivePrewriteCli(
+    f.root,
+    repair.commandArgs
+      .slice(2)
+      .map((arg: string) =>
+        arg === '<summary>'
+          ? 'Reverify the restored candidate after the recorded prewrite failure.'
+          : arg,
+      ),
+  );
+  expect(repaired.dispatch.exitCode, JSON.stringify(repaired.dispatch)).toBe(0);
+  let current = await f.runtime.inspect(f.run.runId);
+  expect(current.actions.at(-1)).toMatchObject({ stepId: 'build.builder', status: 'pending' });
+  current = await succeedLatestAction(
+    f.runtime,
+    current,
+    {
+      summary: 'Revalidated the restored implementation.',
+      addressedAcceptanceIds: ['A1'],
+      acceptanceReview: fixtureAcceptanceReview(['A1']),
+      checks: await platformFixtureChecks(f.root),
+      knownLimits: [],
+      review: null,
+      submittedAt: new Date().toISOString(),
+    },
+    f.root,
+    'prewrite-repair-builder',
+    'builder-session-1',
+  );
+  const state = current.state as NativePortableState;
+  current = await succeedLatestAction(
+    f.runtime,
+    current,
+    {
+      candidateId: state.builder_handoff!.candidate_id,
+      verifierExecutionRef: 'prewrite-repair-verifier',
+      response: {
+        kind: 'final-result',
+        result: {
+          iteration: state.loop.iteration,
+          attempt: state.loop.attempt,
+          verdict: 'pass',
+          acceptance: [
+            { id: 'A1', result: 'passed', reason: 'The restored implementation was reverified.' },
+          ],
+          risks: [],
+          summary: 'Reverification passed.',
+        },
+      },
+    },
+    f.root,
+    'prewrite-repair-verified',
+    'prewrite-repair-verifier',
+  );
+  const approval = current.waits.at(-1)!;
+  expect(approval).toMatchObject({ stepId: 'verify.confirm', status: 'pending' });
+  await f.runtime.resolveWait({
+    runId: current.runId,
+    waitId: approval.id,
+    proposalHash: approval.proposalHash,
+    decisionId: 'prewrite-repair-approved',
+    choice: 'approved',
+  });
+  const completed = await runArchivePrewriteCli(f.root, [
+    'archive',
+    current.runId,
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(completed.dispatch.exitCode, JSON.stringify(completed.dispatch)).toBe(0);
+  current = await f.runtime.inspect(f.run.runId);
+  expect(current.status).toBe('completed');
+  expect(current.actions.find((action) => action.id === f.action.id)?.status).toBe('failed');
+  expect(
+    current.actions.filter(
+      (action) => action.stepId === 'archive.execute' && action.status === 'succeeded',
+    ),
+  ).toHaveLength(1);
+});
+
+it('keeps legacy Archive recovery blocked without a rejected prewrite failure', async () => {
+  const f = await claimedArchiveBeforeWrite();
+  await f.runtime.markUnknown({
+    runId: f.run.runId,
+    actionId: f.action.id,
+    attempt: f.action.attempt,
+    reason: 'Executor result lost',
+  });
+  const result = await runArchivePrewriteCli(f.root, [
+    'archive',
+    f.run.runId,
+    '--recover',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(result.dispatch.exitCode).not.toBe(0);
+  expect((await f.runtime.inspect(f.run.runId)).actions.at(-1)?.status).toBe('unknown');
+  await expectArchivePrewriteFilesAbsent(f);
+});
+
+it('rejects mismatched legacy Archive failure identities and preflight candidates', async () => {
+  const f = await claimedArchiveBeforeWrite();
+  const outcome = await rejectLegacyArchiveFailure(f);
+  const run = await f.runtime.markUnknown({
+    runId: f.run.runId,
+    actionId: f.action.id,
+    attempt: f.action.attempt,
+    reason: 'Legacy executor returned',
+  });
+  const validator = f.application.validators.find(
+    (entry) => entry.id === 'comet-native-archive-apply-outcome',
+  )!;
+  for (const field of [
+    'actionId',
+    'attempt',
+    'inputHash',
+    'claimToken',
+    'outcomeId',
+    'status',
+    'event',
+  ] as const) {
+    const changed = structuredClone(run);
+    const action = changed.actions.at(-1)!;
+    Object.assign(action.rejectedOutcomes![0].outcome, {
+      [field]: field === 'attempt' ? 999 : 'foreign',
+    });
+    expect(
+      (await validator.validate({ run: changed, action, outcome, context: f.context })).accepted,
+      field,
+    ).toBe(false);
+  }
+  const changed = structuredClone(run);
+  (changed.outputs['archive.prepare'].value as Record<string, RuntimeValue>).candidateId =
+    'another-candidate';
+  expect(
+    (
+      await validator.validate({
+        run: changed,
+        action: changed.actions.at(-1)!,
+        outcome,
+        context: f.context,
+      })
+    ).accepted,
+  ).toBe(false);
+  expect(
+    (
+      await validator.validate({
+        run,
+        action: run.actions.at(-1)!,
+        outcome: { ...outcome, output: { ...outcome.output, message: 'Changed failure' } },
+        context: f.context,
+      })
+    ).accepted,
+  ).toBe(false);
+  expect(await f.runtime.inspect(run.runId)).toEqual(run);
+  await expectArchivePrewriteFilesAbsent(f);
+});
+
+it('recovers an existing Archive transaction instead of a rejected prewrite failure', async () => {
+  const f = await claimedArchiveBeforeWrite();
+  const outcome = await rejectLegacyArchiveFailure(f);
+  const applied = await nativeSdkArchiveApplyExecutor.execute(f.action, f.context, f.run);
+  expect(applied.status).toBe('succeeded');
+  const run = await f.runtime.markUnknown({
+    runId: f.run.runId,
+    actionId: f.action.id,
+    attempt: f.action.attempt,
+    reason: 'Original writer stopped after applying Specs',
+  });
+  const validator = f.application.validators.find(
+    (entry) => entry.id === 'comet-native-archive-apply-outcome',
+  )!;
+  expect(
+    (await validator.validate({ run, action: run.actions.at(-1)!, outcome, context: f.context }))
+      .accepted,
+  ).toBe(false);
+  const result = await runArchivePrewriteCli(f.root, [
+    'archive',
+    f.run.runId,
+    '--recover',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(result.dispatch.exitCode, JSON.stringify(result.dispatch)).toBe(0);
+  const finalized = await runArchivePrewriteCli(f.root, [
+    'archive',
+    f.run.runId,
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(finalized.dispatch.exitCode, JSON.stringify(finalized.dispatch)).toBe(0);
+  const completed = await f.runtime.inspect(run.runId);
+  expect(completed.status).toBe('completed');
+  expect(completed.actions.find((action) => action.id === f.action.id)).toMatchObject({
+    status: 'succeeded',
+    outcome: { output: applied.output },
+  });
+  expect(completed.actions.filter((action) => action.stepId === 'archive.execute')).toHaveLength(1);
+});
+
+it('recovers Archive transactions by change name when the Run ID differs', async () => {
+  const f = await awaitingArchiveApplication();
+  expect(f.run.runId).not.toBe((f.run.state as NativePortableState).name);
+  const action = f.run.actions.at(-1)!;
+  const context = { requestId: 'different-run-id', projectRoot: f.root };
+  const claimed = await f.runtime.claim({
+    runId: f.run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: nativeSdkArchiveApplyExecutor.id,
+    claimToken: 'different-run-id',
+    context,
+  });
+  const current = claimed.actions.at(-1)!;
+  const applied = await nativeSdkArchiveApplyExecutor.execute(current, context, claimed);
+  await expect(
+    f.runtime.recordOutcome({
+      runId: f.run.runId,
+      context,
+      outcome: {
+        actionId: current.id,
+        attempt: current.attempt,
+        inputHash: current.inputHash,
+        claimToken: current.claim!.token,
+        outcomeId: `${current.id}:${current.attempt}:executor-result`,
+        status: 'failed',
+        output: { ready: false, reason: 'candidate-drift', message: 'Legacy failure' },
+      },
+    }),
+  ).rejects.toThrow('OUTCOME_REJECTED');
+  await f.runtime.markUnknown({
+    runId: f.run.runId,
+    actionId: current.id,
+    attempt: current.attempt,
+    reason: 'Writer stopped',
+  });
+  const recovered = await recoverNativeSdkArchiveOutcome({
+    runtime: f.runtime,
+    runId: f.run.runId,
+    projectRoot: f.root,
+  });
+  expect(recovered.actions.find((entry) => entry.id === current.id)).toMatchObject({
+    status: 'succeeded',
+    outcome: { output: applied.output },
+  });
+});
+
+it('recovers a cancelled Archive transaction by change name when the Run ID differs', async () => {
+  const f = await awaitingArchiveApplication();
+  const name = (f.run.state as NativePortableState).name;
+  expect(f.run.runId).not.toBe(name);
+  const applied = await f.runtime.execute({
+    runId: f.run.runId,
+    actionId: f.run.actions.at(-1)!.id,
+    executorId: nativeSdkArchiveApplyExecutor.id,
+    context: { requestId: 'cancel-different-run-id', projectRoot: f.root },
+  });
+  const cancelled = await f.runtime.cancel({ runId: applied.runId, reason: 'Legacy cancellation' });
+  expect(cancelled.status).toBe('cancelled');
+  expect(await fs.readdir(f.paths.transactionsDir)).toContain(`portable-archive-${name}.json`);
+  const receipt = await recoverCancelledNativeSdkArchive({ projectRoot: f.root, run: cancelled });
+  expect(receipt.transactionId).toBe(
+    (
+      applied.actions.find((action) => action.stepId === 'archive.execute')!.outcome!.output as {
+        transactionId: string;
+      }
+    ).transactionId,
+  );
+  expect((await f.runtime.inspect(applied.runId)).status).toBe('cancelled');
+  for (const key of [name, applied.runId]) {
+    await expect(
+      fs.access(path.join(f.paths.transactionsDir, `portable-archive-${key}.json`)),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  }
+  expect(await recoverCancelledNativeSdkArchive({ projectRoot: f.root, run: cancelled })).toEqual(
+    receipt,
+  );
 });
 
 it('rejects cancellation before committing when applied Archive Specs still have a transaction', async () => {
@@ -10358,7 +5883,7 @@ it('recovers the durable transaction left by legacy cancellation without restart
     branch: null,
   });
   const selected = await readCometCurrentSelection(f.root);
-  const stopped = await reconcileNativeSdkExecutionStops(f.root, cancelled, f.runtime);
+  const stopped = cancelled;
   expect(stopped.status).toBe('cancelled');
   expectOriginalActionFacts(stopped, cancelled.actions);
   expect(await readCometCurrentSelection(f.root)).toEqual(selected);
@@ -10427,52 +5952,8 @@ it('rejects cancellation of a claimed Archive writer before it creates its trans
   expect(await f.runtime.inspect(run.runId)).toEqual(run);
 });
 
-it('keeps real check stop proof through cancel and cold copy without replay', async () => {
-  const plan = {
-    id: 'once',
-    name: 'Real original execution',
-    executable: process.execPath,
-    argv: [
-      '-e',
-      "const fs=require('node:fs'); fs.mkdirSync('dist',{recursive:true}); fs.appendFileSync('dist/cold-stop-count', 'once\\n')",
-    ],
-    cwdRef: '.',
-    timeoutMs: 5000,
-    repeatable: false,
-  };
-  const f = await dispatchedVerifier([plan], 'sdk');
-  expect(await fs.readFile(path.join(f.root, 'dist', 'cold-stop-count'), 'utf8')).toBe('once\n');
-  const cancelled = await runNativeCli(['cancel', f.run.runId, '--project-root', f.root, '--json']);
-  expect(cancelled.exitCode, cancelled.stderr).toBe(0);
-  const original = await f.runtime.inspect(f.run.runId);
-  const check = original.actions.find((action) => action.ref === 'native-required-checks')!;
-  expect(check.executionStop).toBeDefined();
-  const target = await fs.mkdtemp(path.join(os.tmpdir(), 'native-cold-stop-project-'));
-  const data = await fs.mkdtemp(path.join(os.tmpdir(), 'native-cold-stop-data-'));
-  roots.push(target, data);
-  await fs.cp(f.root, target, { recursive: true });
-  const previous = process.env.COMET_DATA_DIR;
-  process.env.COMET_DATA_DIR = data;
-  try {
-    const repair = await nativeDoctorCommand([f.run.runId, '--repair', '--confirmed'], target);
-    expect(repair.exitCode, JSON.stringify(repair)).toBe(0);
-    const doctor = await nativeDoctorCommand([f.run.runId], target);
-    expect(doctor.exitCode, JSON.stringify(doctor)).toBe(0);
-    const next = await runNativeCli(['next', f.run.runId, '--project-root', target, '--json']);
-    expect(next.exitCode, next.stderr).toBe(0);
-    expect(JSON.parse(next.stdout!).data).toMatchObject({
-      status: 'cancelled',
-      diagnostics: { healthy: true },
-    });
-    expect(await fs.readFile(path.join(target, 'dist', 'cold-stop-count'), 'utf8')).toBe('once\n');
-  } finally {
-    if (previous === undefined) delete process.env.COMET_DATA_DIR;
-    else process.env.COMET_DATA_DIR = previous;
-  }
-});
-
 it.each(['generated-output', 'implementation', 'material', 'transaction'] as const)(
-  'recovers an applied unknown Archive through the public CLI with %s changes',
+  'recovers an applied unknown Archive without replay after %s edits and rejects foreign transactions',
   async (change) => {
     const f = await awaitingArchiveApplication('sdk', undefined, false, async (root) => {
       await initializeArchiveGit(root);
@@ -10556,7 +6037,7 @@ it.each(['generated-output', 'implementation', 'material', 'transaction'] as con
       attempt: action.attempt,
       reason: 'Original Archive process stopped after writing Specs',
     });
-    const lost = await reconcileNativeSdkExecutionStops(f.root, unknown, f.runtime);
+    const lost = unknown;
     const cli = async (args: string[]) => {
       if (!process.env.COMET_TEST_PACKAGE_ROOT) return nativeDomain.runNativeCliDetailed(args);
       const result = spawnSync(
@@ -10578,17 +6059,19 @@ it.each(['generated-output', 'implementation', 'material', 'transaction'] as con
     if (change === 'generated-output')
       await fs.writeFile(path.join(f.root, '.next/server/output.js'), 'rebuilt output');
     if (change === 'implementation')
-      await fs.appendFile(path.join(f.root, 'implementation.js'), '\nexport const unsafe = true;');
+      await fs.appendFile(
+        path.join(f.root, 'implementation.js'),
+        '\n// Agent checked this explanation; behavior is unchanged.',
+      );
     if (change === 'material')
-      await fs.appendFile(path.join(f.changeDir, 'brief.md'), '\nUnapproved scope.');
+      await fs.appendFile(
+        path.join(f.changeDir, 'brief.md'),
+        '\n<!-- Agent clarified the same approved scope. -->',
+      );
     if (change === 'transaction') {
       const value = JSON.parse(transaction);
-      value.spec_changes[0].content = '# Workflow\nUnconfirmed replacement.\n';
-      value.spec_changes[0].result_hash = createHash('sha256')
-        .update(value.spec_changes[0].content)
-        .digest('hex');
+      value.spec_changes[0].capability = 'foreign-workflow';
       await fs.writeFile(transactionFile, JSON.stringify(value));
-      await fs.writeFile(specFile, value.spec_changes[0].content);
     }
     const recovered = await cli([
       'archive',
@@ -10598,7 +6081,7 @@ it.each(['generated-output', 'implementation', 'material', 'transaction'] as con
       f.root,
       '--json',
     ]);
-    if (change !== 'generated-output') {
+    if (change === 'transaction') {
       expect(recovered.dispatch.exitCode).not.toBe(0);
       expect(await f.runtime.inspect(f.run.runId)).toEqual(lost);
       return;
@@ -10650,7 +6133,15 @@ describe('Native streamlined verification', () => {
       root,
       runtime,
       run: prepared,
-    } = await dispatchedVerifier([], 'sdk', nativeApplication('2'), false);
+    } = await dispatchedVerifier(
+      [],
+      'sdk',
+      nativeApplication('4'),
+      false,
+      undefined,
+      undefined,
+      false,
+    );
     const next = await runNativeCli(['next', prepared.runId, '--project-root', root, '--json']);
     expect(next.exitCode).toBe(0);
     const run = await runtime.inspect(prepared.runId);
@@ -10692,168 +6183,15 @@ describe('Native streamlined verification', () => {
       'current-session-verification',
       'builder-session-1',
     );
-    expect(finished.actions.at(-1)?.stepId).toBe('verify.report');
-    expect(finished.waits.some((wait) => wait.stepId === 'verify.confirm')).toBe(false);
-    const reported = await runtime.execute({
-      runId: run.runId,
-      actionId: finished.actions.at(-1)!.id,
-      executorId: 'comet-native-report',
-      context: { requestId: 'current-session-report', projectRoot: root },
-    });
+    expect(finished.actions.some((action) => action.stepId === 'verify.report')).toBe(false);
+    await refreshNativeSdkVerificationReport(root, finished);
+    const reported = finished;
     expect(reported.waits.at(-1)).toMatchObject({ stepId: 'verify.confirm', status: 'pending' });
   });
-
-  it('rejects one-time check plans before v2 verification execution', async () => {
-    await expect(
-      dispatchedVerifier(
-        [
-          {
-            id: 'one-time',
-            name: 'One-time mutation',
-            executable: process.execPath,
-            argv: ['-e', 'process.exit(0)'],
-            cwdRef: '.',
-            timeoutMs: 5000,
-            repeatable: false,
-          },
-        ],
-        'memory',
-        nativeApplication('2'),
-      ),
-    ).rejects.toThrow(/repeatable/i);
-  });
-});
-
-it('returns one receipt result template for a claimed v2 Verifier', async () => {
-  const { root, runtime, run } = await dispatchedVerifier([], 'memory', nativeApplication('2'));
-  const action = run.actions.at(-1)!;
-  const claimed = await runtime.claim({
-    runId: run.runId,
-    actionId: action.id,
-    attempt: action.attempt,
-    inputHash: action.inputHash,
-    executorId: 'native-host',
-    sessionId: 'builder-session-1',
-    claimToken: 'compact-verifier',
-    context: { requestId: 'compact-claim', projectRoot: root },
-  });
-  const response = await projectNativeSdkDispatchResult({
-    run: claimed,
-    state: claimed.state as NativePortableState,
-    actionId: action.id,
-    projectRoot: root,
-  });
-  expect(response.resultRequest).toMatchObject({
-    operation: 'record-outcome',
-    receipt: expect.any(String),
-    result: { status: 'succeeded' },
-  });
-  expect(response).not.toHaveProperty('outcomeRequest');
-  expect(response.checkRequestTemplate).toMatchObject({ repeatable: true });
-  expect(response.activeActions?.[0]).not.toHaveProperty('outcomeRequest');
-  expect(response.activeActions?.[0]).not.toHaveProperty('resultRequest');
-});
-
-describe('Native v3 Build check reuse', () => {
-  it.each([false, true, 'failed-later'])(
-    'reuses a Build check only while inputs match (edited=%s)',
-    async (edited) => {
-      const f = await preparedShape('sdk', nativeApplication('3'));
-      const wait = f.run.waits.at(-1)!;
-      let run = await f.runtime.resolveWait({
-        runId: f.run.runId,
-        waitId: wait.id,
-        proposalHash: wait.proposalHash,
-        decisionId: 'build-check-shape',
-        choice: 'approved',
-      });
-      run = await succeedLatestAction(
-        f.runtime,
-        run,
-        await collectProposal(f.paths, run.state as NativePortableState),
-        f.root,
-        'shape-checked',
-      );
-      const plans = [
-        {
-          id: 'unit',
-          name: 'Unit',
-          executable: process.execPath,
-          argv: ['-e', "process.exit(require('fs').existsSync('fail-marker') ? 1 : 0)"],
-          cwdRef: '.',
-          timeoutMs: 10000,
-          repeatable: true,
-        },
-      ];
-      run = await succeedLatestAction(
-        f.runtime,
-        run,
-        { response: { kind: 'request-checks', checks: plans } },
-        f.root,
-        'build-check-request',
-        'builder-session-1',
-      );
-      expect(run.actions.at(-1)?.stepId).toBe('build.checks');
-      run = await f.runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'comet-native-checks',
-        context: { requestId: 'build-check-execute', projectRoot: f.root },
-      });
-      const original = run.actions.find((action) => action.stepId === 'build.checks')!;
-      expect(original.status).toBe('succeeded');
-      expect(run.actions.at(-1)?.stepId).toBe('build.builder');
-      if (edited === 'failed-later') {
-        await fs.writeFile(path.join(f.root, 'fail-marker'), 'fail');
-        run = await succeedLatestAction(
-          f.runtime,
-          run,
-          { response: { kind: 'request-checks', checks: plans } },
-          f.root,
-          'failed-check-request',
-          'builder-session-1',
-        );
-        run = await f.runtime.execute({
-          runId: run.runId,
-          actionId: run.actions.at(-1)!.id,
-          executorId: 'comet-native-checks',
-          context: { requestId: 'failed-build-check', projectRoot: f.root },
-        });
-        expect(
-          run.actions.filter((action) => action.stepId === 'build.checks').at(-1)?.status,
-        ).toBe('failed');
-        await fs.unlink(path.join(f.root, 'fail-marker'));
-      }
-      if (edited === true)
-        await fs.writeFile(path.join(f.root, 'implementation.ts'), 'export const value = 1;');
-      run = await succeedLatestAction(
-        f.runtime,
-        run,
-        { summary: 'Implementation ready', checks: [], knownLimits: [], verificationChecks: plans },
-        f.root,
-        'builder-final',
-        'builder-session-1',
-      );
-      expect(run.actions.at(-1)?.stepId).toBe('verify.checks');
-      run = await f.runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'comet-native-checks',
-        context: { requestId: 'verify-reuse', projectRoot: f.root },
-      });
-      const result = run.actions.find((action) => action.stepId === 'verify.checks')!.outcome!
-        .output as { checks: Array<{ reusedFrom?: { actionId: string } }> };
-      if (edited) expect(result.checks[0].reusedFrom).toBeUndefined();
-      else expect(result.checks[0].reusedFrom?.actionId).toBe(original.id);
-      expect(
-        (run.state as NativePortableState).acceptance.every((item) => item.result === 'pending'),
-      ).toBe(true);
-    },
-  );
 });
 
 it('omits unused recovery and failure templates for a healthy v3 Verifier', async () => {
-  const { root, runtime, run } = await dispatchedVerifier([], 'memory', nativeApplication('3'));
+  const { root, runtime, run } = await dispatchedVerifier([], 'memory', nativeApplication('4'));
   const action = run.actions.at(-1)!;
   const claimed = await runtime.claim({
     runId: run.runId,
@@ -10877,7 +6215,7 @@ it('omits unused recovery and failure templates for a healthy v3 Verifier', asyn
     result: { status: 'succeeded' },
   });
   expect(response).not.toHaveProperty('outcomeRequest');
-  expect(response.checkRequestTemplate).toMatchObject({ repeatable: true });
+  expect(response).not.toHaveProperty('checkRequestTemplate');
   expect(response.activeActions?.[0]).not.toHaveProperty('outcomeRequest');
   expect(response.activeActions?.[0]).not.toHaveProperty('resultRequest');
   expect(response).not.toHaveProperty('failureOutcomeRequest');
@@ -10887,7 +6225,7 @@ it('omits unused recovery and failure templates for a healthy v3 Verifier', asyn
   expect(response.activeActions?.[0]).not.toHaveProperty('requestChecksOutcomeRequestRef');
 });
 
-async function verifiedV3Candidate(application = nativeApplication('3')) {
+async function verifiedV3Candidate(application = nativeApplication('4')) {
   const prepared = await dispatchedVerifier(
     [],
     'sdk',
@@ -11015,7 +6353,7 @@ describe('Native SDK v3 checkpoint and report boundaries', () => {
       run.runId,
     );
     expect(guarded).toMatchObject({ allowed: true, phase: 'archive' });
-    expect(guarded.reason).toContain('edit-review observe native');
+    expect(guarded.reason).toMatch(/Agent/);
     expect(encodes).not.toHaveBeenCalled();
     expect(locks).not.toHaveBeenCalled();
     expect(await fs.readFile(stateFile, 'utf8')).toBe(source);
@@ -11036,7 +6374,7 @@ describe('Native SDK v3 checkpoint and report boundaries', () => {
     const { root, runtime, run, changeDir } = await dispatchedVerifier(
       [],
       'sdk',
-      nativeApplication('3'),
+      nativeApplication('4'),
     );
     const action = run.actions.at(-1)!;
     const claimed = await runtime.claim({
@@ -11070,17 +6408,14 @@ describe('Native SDK v3 checkpoint and report boundaries', () => {
       root,
       '--json',
     ]);
-    expect(repair.exitCode, repair.stderr || repair.stdout).toBe(65);
+    expect(repair.exitCode, repair.stderr || repair.stdout).toBe(0);
     expect(JSON.parse(repair.stdout).data).toMatchObject({
-      repaired: true,
       healthy: false,
-      findings: expect.arrayContaining([
-        expect.objectContaining({
-          code: 'sdk-action-outcome-unresolved',
-          actionId: action.id,
-          status: 'unknown',
-        }),
-      ]),
+      diagnostics: {
+        issues: expect.arrayContaining([
+          expect.objectContaining({ code: 'native-execution-outcome-unresolved' }),
+        ]),
+      },
     });
     const restored = await createNativeSdkStateStore(root, { readOnly: true }).read(run.runId);
     expect(restored?.revision).toBe(claimed.revision);
@@ -11097,14 +6432,15 @@ describe('Native SDK v3 checkpoint and report boundaries', () => {
     const original = '# Human notes\nKeep this exact original text.\n';
     await fs.writeFile(path.join(changeDir, 'verification.md'), original);
     await refreshNativeSdkVerificationReport(root, run);
-    const hash = createHash('sha256').update(original).digest('hex');
     const backup = path.join(
       resolveWorkspaceRuntimeRootSync(root),
       'native/preserved-verification',
-      hashRuntimeValue(run.runId),
-      `${hash}.md`,
+      encodeURIComponent(run.runId),
     );
-    expect(await fs.readFile(backup, 'utf8')).toBe(original);
+    const originals = await Promise.all(
+      (await fs.readdir(backup)).map((name) => fs.readFile(path.join(backup, name), 'utf8')),
+    );
+    expect(originals).toContain(original);
     expect(await fs.readFile(path.join(changeDir, 'verification.md'), 'utf8')).toContain(
       'Verified the approved criterion.',
     );
@@ -11117,9 +6453,12 @@ it.each(['missing', 'edited'] as const)(
     const { root, runtime, run, changeDir, paths } = await verifiedV3Candidate();
     const original = '# Human report\nKeep this original despite a rendering failure.\n';
     if (view === 'edited') await fs.writeFile(path.join(changeDir, 'verification.md'), original);
-    vi.spyOn(nativeReportView, 'writeNativeVerificationReport').mockRejectedValue(
-      new Error('Simulated reading-view write failure'),
-    );
+    else await fs.rm(path.join(changeDir, 'verification.md'), { force: true });
+    const rendering = vi
+      .spyOn(nativeReportView, 'renderNativeVerificationReport')
+      .mockImplementation(() => {
+        throw new Error('Simulated reading-view write failure');
+      });
     const wait = run.waits.at(-1)!;
     await runtime.resolveWait({
       runId: run.runId,
@@ -11130,20 +6469,17 @@ it.each(['missing', 'edited'] as const)(
     });
     const result = await runNativeCli(['archive', run.runId, '--project-root', root, '--json']);
     expect(result.exitCode, result.stderr).toBe(0);
-    expect(JSON.parse(result.stdout).data).toMatchObject({
-      warning: { code: 'NATIVE_REPORT_PENDING' },
-    });
+    if (view === 'missing') {
+      expect(rendering).toHaveBeenCalled();
+      expect(JSON.parse(result.stdout).data).toMatchObject({
+        warning: { code: 'NATIVE_REPORT_PENDING' },
+      });
+    } else expect(rendering).not.toHaveBeenCalled();
     const completed = await runtime.inspect(run.runId);
     expect(completed.status).toBe('completed');
     const receipt = completed.outputs['archive.finalize'].value as {
-      reportSha256: string | null;
       archiveRef: string;
-      verificationResultHash: string;
     };
-    expect(receipt.verificationResultHash).toMatch(/^[a-f0-9]{64}$/u);
-    expect(receipt.reportSha256).toBe(
-      view === 'edited' ? createHash('sha256').update(original).digest('hex') : null,
-    );
     if (view === 'edited')
       expect(
         await fs.readFile(
@@ -11164,64 +6500,9 @@ it.each(['missing', 'edited'] as const)(
   },
 );
 
-it('rejects candidate drift before v3 Archive publication after merging the revalidation Action', async () => {
-  const prepared = await dispatchedVerifier(
-    [],
-    'sdk',
-    nativeApplication('3'),
-    true,
-    undefined,
-    async (root) => {
-      await fs.writeFile(path.join(root, 'implementation.js'), 'export const value = true;');
-    },
-  );
-  const { root, runtime, paths } = prepared;
-  const state = prepared.run.state as NativePortableState;
-  const run = await succeedLatestAction(
-    runtime,
-    prepared.run,
-    {
-      candidateId: state.builder_handoff!.candidate_id,
-      verifierExecutionRef: 'v3-drift-verifier',
-      response: {
-        kind: 'final-result',
-        result: {
-          iteration: state.loop.iteration,
-          attempt: state.loop.attempt,
-          verdict: 'pass',
-          acceptance: [{ id: 'A1', result: 'passed', reason: 'Verified original implementation.' }],
-          risks: [],
-          summary: 'Original candidate passed.',
-        },
-      },
-    },
-    root,
-    'v3-drift-result',
-    'v3-drift-verifier',
-  );
-  await fs.writeFile(path.join(root, 'implementation.js'), 'export const value = false;');
-  const wait = run.waits.at(-1)!;
-  await runtime.resolveWait({
-    runId: run.runId,
-    waitId: wait.id,
-    proposalHash: wait.proposalHash,
-    decisionId: 'v3-drift-approved',
-    choice: 'approved',
-  });
-  const archived = await runNativeCli(['archive', run.runId, '--project-root', root, '--json']);
-  expect(archived.exitCode).toBe(73);
-  expect((await runtime.inspect(run.runId)).state).toMatchObject({
-    phase: 'verify',
-    verification_result: 'pending',
-  });
-  expect(
-    await fs.stat(path.join(paths.specsDir, 'workflow', 'spec.md')).catch(() => null),
-  ).toBeNull();
-});
-
 it('uses the shared default transition handler for v3 acceptance and Archive preflight', async () => {
-  const application = nativeApplication('3');
-  application.transitionHandler = nativeApplication('1').transitionHandler;
+  const application = nativeApplication('4');
+  application.transitionHandler = nativeApplication('4').transitionHandler;
   const { runtime, run } = await verifiedV3Candidate(application);
   const wait = run.waits.at(-1)!;
   expect(wait).toMatchObject({ stepId: 'verify.confirm', status: 'pending' });
@@ -11241,7 +6522,7 @@ it('uses the shared default transition handler for v3 acceptance and Archive pre
 async function nativeTaskBuilderFixture(git = true) {
   const prepared = await preparedShape(
     'sdk',
-    nativeApplication('3'),
+    nativeApplication('4'),
     git ? initializeArchiveGit : undefined,
   );
   const wait = prepared.run.waits.at(-1)!;
@@ -11252,13 +6533,6 @@ async function nativeTaskBuilderFixture(git = true) {
     decisionId: 'native-task-shape',
     choice: 'approved',
   });
-  run = await succeedLatestAction(
-    prepared.runtime,
-    run,
-    await collectProposal(prepared.paths, run.state as NativePortableState),
-    prepared.root,
-    'native-task-shape-current',
-  );
   const action = run.actions.at(-1)!;
   run = await prepared.runtime.claim({
     runId: run.runId,
@@ -11284,7 +6558,6 @@ async function nativeTaskBuilderFixture(git = true) {
         addressedAcceptanceIds: ['A1'],
         checks: [],
         knownLimits: [],
-        verificationChecks: [],
       },
     }),
   );
@@ -11565,6 +6838,10 @@ describe('Native high-level task safeguards', () => {
     expect(wrong.exitCode).toBe(64);
     expect((await f.runtime.inspect(f.run.runId)).actions.at(-1)?.status).toBe('running');
     await fs.writeFile(path.join(f.root, 'implementation.js'), 'export const result = false;');
+    // File edits are judged by the Agent; an outcome for another candidate remains invalid.
+    const obsoleteResult = JSON.parse(await fs.readFile(f.resultFile, 'utf8'));
+    obsoleteResult.output.candidateId = 'another-candidate';
+    await fs.writeFile(f.resultFile, JSON.stringify(obsoleteResult));
     const drift = await runNativeCli([
       ...args,
       '--session',
@@ -11610,12 +6887,12 @@ describe('Native high-level task safeguards', () => {
 it('skips unrelated recovery handlers while the ordinary Verifier is running', async () => {
   const f = await nativeTaskBuilderFixture();
   const built = await submitNativeTaskBuilder(f);
-  const checks = vi.spyOn(nativeSdkChecks, 'recoverNativeSdkChecks');
-  const reports = vi.spyOn(nativeSdkReportRecovery, 'recoverNativeSdkReportRevalidation');
+  const before = await f.runtime.inspect(f.run.runId);
+  const reports = vi.spyOn(nativeReportView, 'renderNativeVerificationReport');
   const revisions = vi.spyOn(nativeSdkRevisionRecovery, 'recoverNativeSdkImplementationRevision');
   const next = await runNativeCli(['next', f.run.runId, '--project-root', f.root, '--json']);
   expect(next.exitCode, next.stderr || next.stdout).toBe(0);
-  expect(checks).not.toHaveBeenCalled();
+  expect(await f.runtime.inspect(f.run.runId)).toEqual(before);
   expect(reports).not.toHaveBeenCalled();
   expect(revisions).not.toHaveBeenCalled();
   expect((await f.runtime.inspect(f.run.runId)).actions.at(-1)?.id).toBe(
@@ -11646,32 +6923,6 @@ it('keeps non-Git result transport outside candidate inputs through the high-lev
     verification_result: 'pass',
     status: 'await-user',
   });
-});
-
-it('preserves a committed Builder result when its internal check cannot start', async () => {
-  const f = await nativeTaskBuilderFixture();
-  vi.spyOn(nativeSdkChecks.nativeSdkCheckExecutor, 'execute').mockRejectedValueOnce(
-    new Error('Simulated check start failure'),
-  );
-  const result = await runNativeCli([
-    'next',
-    f.run.runId,
-    '--result',
-    f.resultFile,
-    '--action',
-    f.action.id,
-    '--session',
-    'task-builder',
-    '--project-root',
-    f.root,
-    '--json',
-  ]);
-  expect(result.exitCode).toBe(73);
-  expect(JSON.parse(result.stdout).error.message).toContain('本次结果已保存');
-  const current = await f.runtime.inspect(f.run.runId);
-  expect(current.actions.find((action) => action.id === f.action.id)?.status).toBe('succeeded');
-  expect(current.actions.some((action) => action.stepId === 'verify.verifier')).toBe(false);
-  expect(current.actions.some((action) => action.stepId.startsWith('archive.'))).toBe(false);
 });
 
 it('rejects incomplete or forged high-level results without completing the original Verify task', async () => {
@@ -11773,8 +7024,10 @@ it('completes Archive on the returned third call after the user accepts the curr
 });
 
 async function nativeSupervisorReviewFixture(
-  version: '2' | '3',
+  version: '4',
   requireIndependentReview: boolean,
+  interruptIntegration = false,
+  application = nativeApplication(version),
 ) {
   const f = await fixture();
   await fs.writeFile(
@@ -11784,15 +7037,34 @@ async function nativeSupervisorReviewFixture(
   await initializeArchiveGit(f.root);
   execFileSync('git', ['add', '-A'], { cwd: f.root });
   execFileSync('git', ['commit', '-m', 'Supervisor materials'], { cwd: f.root, stdio: 'ignore' });
-  const application = nativeApplication(version);
+  let interruptedOutput: RuntimeValue | undefined;
+  const store = createMemoryRuntimeStore<WorkflowRun>();
   const runtime = createRuntime({
-    store: createMemoryRuntimeStore<WorkflowRun>(),
+    store,
     workflows: [application.workflow],
     transitionHandlers: [application.transitionHandler],
     validators: application.validators,
     stateValidators: application.stateValidators,
     commandValidators: application.commandValidators,
-    executors: application.executors,
+    executors: application.executors.map((executor) =>
+      executor.id === 'native-supervisor-integrate'
+        ? {
+            ...executor,
+            async execute(...args) {
+              const result = await executor.execute(...args);
+              if (
+                interruptIntegration &&
+                interruptedOutput === undefined &&
+                result.status === 'succeeded'
+              ) {
+                interruptedOutput = result.output;
+                throw new Error('Simulated platform disconnect after the actual Git merge.');
+              }
+              return result;
+            },
+          }
+        : executor,
+    ),
   });
   const initialState = createNativePortableState({
     name: 'sdk-shape',
@@ -11820,13 +7092,6 @@ async function nativeSupervisorReviewFixture(
     decisionId: 'review-shape-approved',
     choice: 'multi-session',
   });
-  run = await succeedLatestAction(
-    runtime,
-    run,
-    await collectProposal(f.paths, run.state as NativePortableState),
-    f.root,
-    'review-shape-current',
-  );
   for (const executorId of ['native-supervisor-prepare', 'native-supervisor-child-prepare']) {
     run = await runtime.execute({
       runId: run.runId,
@@ -11852,12 +7117,13 @@ async function nativeSupervisorReviewFixture(
     timeoutMs: 10000,
     repeatable: true,
   };
-  if (version === '3') {
+  {
+    // Invalid review selection is rejected under the current protocol as well.
     await expect(
       succeedLatestAction(
         runtime,
         run,
-        { candidateCommit, verificationChecks: [check], requireIndependentReview: 'false' },
+        { candidateCommit, requireIndependentReview: 'false' },
         f.root,
         'invalid-review-type',
         'child-builder',
@@ -11886,24 +7152,93 @@ async function nativeSupervisorReviewFixture(
       claimToken: run.actions.at(-1)!.claim!.token,
       outcomeId: 'child-built',
       status: 'succeeded',
-      output: { candidateCommit, verificationChecks: [check], requireIndependentReview },
+      output: {
+        candidateCommit,
+        checks: await platformFixtureChecks(childWorktree),
+        requireIndependentReview,
+      },
     },
     context: { requestId: 'child-built', projectRoot: f.root },
   });
-  run = await runtime.execute({
-    runId: run.runId,
-    actionId: run.actions.at(-1)!.id,
-    executorId: 'comet-native-checks',
-    context: { requestId: 'child-checks', projectRoot: f.root },
-  });
-  return { ...f, runtime, run, childWorktree, candidateCommit, check };
+  return {
+    ...f,
+    runtime,
+    run,
+    childWorktree,
+    candidateCommit,
+    check,
+    store,
+    interruptedOutput: () => interruptedOutput,
+  };
 }
 
+it('integrates an accepted Supervisor child using existing Agent reports without creating another check task', async () => {
+  const f = await nativeSupervisorReviewFixture('4', false);
+  const builder = f.run.actions.findLast((a) => a.stepId === 'supervisor.child.builder')!,
+    reports = (builder.outcome!.output as { checks: unknown[] }).checks;
+  expect(reports).toHaveLength(1);
+  await expect(
+    f.runtime.execute({
+      runId: f.run.runId,
+      actionId: f.run.actions.at(-1)!.id,
+      executorId: 'native-supervisor-integrate',
+      context: { requestId: 'SIMULATED-unapproved-integration', projectRoot: f.root },
+    }),
+  ).rejects.toThrow();
+  expect(await f.runtime.inspect(f.run.runId)).toEqual(f.run);
+  let run = await succeedLatestAction(
+    f.runtime,
+    f.run,
+    {
+      candidateCommit: f.candidateCommit,
+      verdict: 'pass',
+      evidence: {
+        summary:
+          'SIMULATED Agent reviewed the complete child using its original actual platform report.',
+        checks: reports,
+        acceptance: [
+          { id: 'child:api', result: 'passed', reason: 'Observed the requested API behavior.' },
+        ],
+      },
+    },
+    f.root,
+    'SIMULATED-child-accepted-with-existing-report',
+    'child-builder',
+  );
+  for (const executorId of ['native-supervisor-integrate', 'native-supervisor-child-archive']) {
+    run = await f.runtime.execute({
+      runId: run.runId,
+      actionId: run.actions.at(-1)!.id,
+      executorId,
+      context: { requestId: 'SIMULATED-' + executorId, projectRoot: f.root },
+    });
+    expect(run.actions.at(-2)?.status).not.toBe('failed');
+  }
+  expect(run.outputs['supervisor.child.archive']).toBeDefined();
+  expect(run.actions.find((a) => a.id === builder.id)).toEqual(builder);
+  expect(
+    run.actions.some((a) =>
+      ['supervisor.child.checks', 'supervisor.child.integration-checks'].includes(a.stepId),
+    ),
+  ).toBe(false);
+  expect(
+    (
+      run.actions.find((a) => a.stepId === 'supervisor.child.verifier')!.outcome!.output as {
+        evidence: { checks: unknown[] };
+      }
+    ).evidence.checks,
+  ).toEqual(reports);
+});
+
 it.each([
-  { version: '2', required: false, session: 'child-builder', accepted: false },
-  { version: '3', required: false, session: 'child-builder', accepted: true },
-  { version: '3', required: true, session: 'child-builder', accepted: false },
-  { version: '3', required: true, session: 'actual-child-reviewer', accepted: true },
+  { version: '4', required: false, session: 'child-builder', accepted: true },
+  { version: '4', required: true, session: 'child-builder', accepted: false },
+  {
+    version: '4',
+    required: true,
+    session: 'actual-child-reviewer',
+    accepted: true,
+  },
 ] as const)(
   'preserves Supervisor review policy and archived assurance ($version, required=$required, session=$session)',
   async ({ version, required, session, accepted }) => {
@@ -11914,7 +7249,7 @@ it.each([
       projectRoot: f.root,
     });
     expect(projection.pendingActions.at(-1)?.sessionRequirements).toMatchObject({
-      independent: version === '2' || required,
+      independent: required,
       readOnly: true,
     });
     const output = {
@@ -11922,10 +7257,15 @@ it.each([
       verdict: 'pass',
       evidence: {
         summary: 'Reviewed actual API behavior.',
-        checks: ['api-check'],
-        acceptance: [{ id: 'child:api', result: 'passed', reason: 'The API scenario passed.' }],
+        checks: await platformFixtureChecks(f.childWorktree),
+        acceptance: [
+          {
+            id: 'child:api',
+            result: 'passed',
+            reason: 'The API scenario passed.',
+          },
+        ],
       },
-      integrationChecks: [{ ...f.check, id: 'api-integration' }],
     };
     const operation = succeedLatestAction(
       f.runtime,
@@ -11944,11 +7284,7 @@ it.each([
       return;
     }
     let run = await operation;
-    for (const executorId of [
-      'native-supervisor-integrate',
-      'comet-native-checks',
-      'native-supervisor-child-archive',
-    ]) {
+    for (const executorId of ['native-supervisor-integrate', 'native-supervisor-child-archive']) {
       run = await f.runtime.execute({
         runId: run.runId,
         actionId: run.actions.at(-1)!.id,
@@ -11956,7 +7292,9 @@ it.each([
         context: { requestId: executorId, projectRoot: f.root },
       });
     }
-    const receipt = run.outputs['supervisor.child.archive'].value as { archiveRef: string };
+    const receipt = run.outputs['supervisor.child.archive'].value as {
+      archiveRef: string;
+    };
     const archived = parseYaml(
       await fs.readFile(
         path.join(f.childWorktree, 'docs/comet/archive', receipt.archiveRef, 'comet-state.yaml'),
@@ -11969,3 +7307,321 @@ it.each([
     });
   },
 );
+
+async function integratedAgentSupervisorFixture(
+  interrupted: boolean,
+  application = nativeApplication('4'),
+) {
+  const f = await nativeSupervisorReviewFixture('4', false, interrupted, application);
+  let run = f.run;
+  for (const child of ['api', 'ui']) {
+    if (child === 'ui') {
+      expect(run.actions.at(-1)?.stepId).toBe('supervisor.child.prepare');
+      run = await f.runtime.execute({
+        runId: run.runId,
+        actionId: run.actions.at(-1)!.id,
+        executorId: 'native-supervisor-child-prepare',
+        context: { requestId: 'prepare-ui', projectRoot: f.root },
+      });
+      const worktree = path.join(f.root, '.worktrees', 'sdk-shape-ui');
+      await fs.writeFile(path.join(worktree, 'ui.txt'), 'UI implemented\n');
+      execFileSync('git', ['add', 'ui.txt'], { cwd: worktree });
+      execFileSync('git', ['commit', '-m', 'UI candidate'], { cwd: worktree, stdio: 'ignore' });
+      const candidateCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: worktree,
+        encoding: 'utf8',
+      }).trim();
+      run = await succeedLatestAction(
+        f.runtime,
+        run,
+        { candidateCommit, checks: [] },
+        f.root,
+        'ui-built',
+        'ui-agent',
+      );
+    }
+    expect(run.actions.at(-1)?.stepId).toBe('supervisor.child.verifier');
+    const activation = (run.actions.at(-1)!.input as { activation: { candidateCommit: string } })
+      .activation;
+    run = await succeedLatestAction(
+      f.runtime,
+      run,
+      {
+        candidateCommit: activation.candidateCommit,
+        verdict: 'pass',
+        evidence: {
+          summary: 'Observed approved child behavior.',
+          checks: [],
+          acceptance: [
+            { id: 'child:' + child, result: 'passed', reason: 'Observed child behavior.' },
+          ],
+        },
+      },
+      f.root,
+      child + '-verified',
+      child === 'api' ? 'child-builder' : 'ui-agent',
+    );
+    for (const executorId of ['native-supervisor-integrate', 'native-supervisor-child-archive']) {
+      if (interrupted && child === 'api' && executorId === 'native-supervisor-integrate') {
+        const actionId = run.actions.at(-1)!.id;
+        await expect(
+          f.runtime.execute({
+            runId: run.runId,
+            actionId,
+            executorId,
+            context: { requestId: 'interrupted-merge', projectRoot: f.root },
+          }),
+        ).rejects.toMatchObject({ code: 'EXECUTION_UNKNOWN' });
+        run = await f.runtime.inspect(run.runId);
+        const original = run.actions.find((a) => a.id === actionId)!;
+        expect(original.status).toBe('unknown');
+        expect(f.interruptedOutput()).not.toHaveProperty('completedAt');
+        run = await f.runtime.recordOutcome({
+          runId: run.runId,
+          outcome: {
+            actionId: original.id,
+            attempt: original.attempt,
+            inputHash: original.inputHash,
+            claimToken: original.claim!.token,
+            outcomeId: 'confirmed-original-merge',
+            status: 'succeeded',
+            output: f.interruptedOutput()!,
+          },
+          context: { requestId: 'confirmed-original-merge', projectRoot: f.root },
+        });
+        expect(run.actions.find((a) => a.id === actionId)?.status).toBe('succeeded');
+        expect(run.actions.filter((a) => a.stepId === 'supervisor.child.integrate')).toHaveLength(
+          1,
+        );
+        continue;
+      }
+      run = await f.runtime.execute({
+        runId: run.runId,
+        actionId: run.actions.at(-1)!.id,
+        executorId,
+        context: { requestId: child + '-' + executorId, projectRoot: f.root },
+      });
+      expect(run.actions.find((a) => a.id === run.actions.at(-2)?.id)?.reason ?? '').not.toContain(
+        'lacks',
+      );
+    }
+    expect(
+      run.actions.filter(
+        (a) => a.stepId === 'supervisor.child.archive' && a.status === 'succeeded',
+      ),
+    ).toHaveLength(child === 'api' ? 1 : 2);
+  }
+  expect(run.actions.at(-1)?.stepId).toBe('supervisor.parent.builder');
+  const input = (run.actions.at(-1)!.input as { activation: { integrationWorktree: string } })
+    .activation;
+  const candidateCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: input.integrationWorktree,
+    encoding: 'utf8',
+  }).trim();
+  run = await succeedLatestAction(
+    f.runtime,
+    run,
+    {
+      candidateCommit,
+      summary: 'Parent integration reviewed.',
+      addressedAcceptanceIds: ['A1'],
+      checks: [],
+      knownLimits: [],
+    },
+    f.root,
+    'parent-built',
+    'parent-agent',
+  );
+  return { ...f, run };
+}
+
+it.each([false, true])(
+  'integrates two agent-managed children and retains the complete parent acceptance without Runtime checks (interrupted merge: %s)',
+  async (interrupted) => {
+    const { run } = await integratedAgentSupervisorFixture(interrupted);
+    expect(run.actions.at(-1)?.stepId).toBe('verify.verifier');
+    expect((run.state as NativePortableState).acceptance.map((a) => a.id)).toEqual(['A1']);
+    expect(
+      run.actions.some((action) =>
+        ['shape.revalidate', 'verify.revalidate'].includes(action.stepId),
+      ),
+    ).toBe(false);
+    expect(
+      run.actions.some((a) =>
+        [
+          'build.checks',
+          'verify.checks',
+          'supervisor.child.checks',
+          'supervisor.child.integration-checks',
+        ].includes(a.stepId),
+      ),
+    ).toBe(false);
+  },
+  120_000,
+);
+
+it('rejects Archive prewrite recovery when a transaction appears before its commit', async () => {
+  const f = await claimedArchiveBeforeWrite();
+  await rejectLegacyArchiveFailure(f);
+  await f.runtime.markUnknown({
+    runId: f.run.runId,
+    actionId: f.action.id,
+    attempt: f.action.attempt,
+    reason: 'Recover the rejected executor result',
+  });
+  const validate = nativeSdkArchiveApplyValidator.validate;
+  const spy = vi
+    .spyOn(nativeSdkArchiveApplyValidator, 'validate')
+    .mockImplementation(async (input) => {
+      const result = await validate(input);
+      if (input.outcome.status === 'failed' && result.accepted) {
+        // A previously claimed executor completes after the no-transaction check.
+        await nativeSdkArchiveApplyExecutor.execute(f.action, f.context, f.run);
+      }
+      return result;
+    });
+  try {
+    await expect(
+      recoverNativeSdkArchiveOutcome({
+        runtime: f.runtime,
+        runId: f.run.runId,
+        projectRoot: f.root,
+      }),
+    ).rejects.toThrow('Native Archive has a transaction');
+  } finally {
+    spy.mockRestore();
+  }
+  const current = await f.runtime.inspect(f.run.runId);
+  expect(current.actions.find((action) => action.id === f.action.id)?.status).toBe('unknown');
+  const { readNativePortableTransaction } =
+    await import('../../../domains/comet-native/native-portable-transactions.js');
+  const transaction = await readNativePortableTransaction(f.paths, {
+    kind: 'archive',
+    change: (f.run.state as NativePortableState).name,
+  });
+  expect(transaction?.journal.status).toBe('specs-applied');
+  const recovered = await recoverNativeSdkArchiveOutcome({
+    runtime: f.runtime,
+    runId: f.run.runId,
+    projectRoot: f.root,
+  });
+  expect(recovered.actions.find((action) => action.id === f.action.id)?.status).toBe('succeeded');
+});
+async function migratedActualCheck(root: string, name: string, code: string) {
+  const actual = spawnSync(process.execPath, ['-e', code], {
+    cwd: root,
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  const log = Buffer.from((actual.stdout ?? '') + (actual.stderr ?? ''));
+  await fs.writeFile(path.join(root, name + '.log'), log);
+  return {
+    actual,
+    log,
+    report: {
+      name,
+      result: actual.status === 0 ? 'passed' : 'failed',
+      note:
+        'Actual ordinary Node exit=' +
+        actual.status +
+        '; Agent-owned report at ' +
+        name +
+        '.log. SIMULATED Agent protocol, no Comet executor.',
+    },
+  };
+}
+async function migratedVerdict(
+  runtime: ReturnType<typeof createRuntime>,
+  run: WorkflowRun,
+  root: string,
+  verdict: 'pass' | 'fail',
+  checks: unknown[],
+  session: string,
+) {
+  const state = run.state as NativePortableState;
+  return succeedLatestAction(
+    runtime,
+    run,
+    {
+      candidateId: state.builder_handoff!.candidate_id,
+      verifierExecutionRef: session,
+      checks,
+      response: {
+        kind: 'final-result',
+        result: {
+          iteration: state.loop.iteration,
+          attempt: state.loop.attempt,
+          verdict,
+          acceptance: state.acceptance.map((a) => ({
+            id: a.id,
+            result: verdict === 'pass' ? 'passed' : 'failed',
+            reason:
+              verdict === 'pass'
+                ? 'SIMULATED independent Agent verified every current acceptance item.'
+                : 'Actual ordinary Node failed; implementation must be repaired.',
+          })),
+          risks: [],
+          summary:
+            verdict === 'pass'
+              ? 'SIMULATED full independent acceptance passed.'
+              : 'Actual ordinary Node failure preserved; controlled-check-failure.',
+        },
+      },
+    },
+    root,
+    session + '-outcome',
+    session,
+  );
+}
+async function migratedAccept(
+  runtime: ReturnType<typeof createRuntime>,
+  run: WorkflowRun,
+  root: string,
+  id: string,
+) {
+  await refreshNativeSdkVerificationReport(root, run);
+  const wait = run.waits.at(-1)!;
+  expect(wait).toMatchObject({ stepId: 'verify.confirm', status: 'pending' });
+  const before = await runtime.inspect(run.runId);
+  await expect(
+    runtime.resolveWait({
+      runId: run.runId,
+      waitId: wait.id,
+      proposalHash: '0'.repeat(64),
+      decisionId: id + '-wrong',
+      choice: 'approved',
+    }),
+  ).rejects.toThrow();
+  expect(await runtime.inspect(run.runId)).toEqual(before);
+  expect(
+    run.actions.some(
+      (a) => ['archive.execute', 'archive.finalize'].includes(a.stepId) && a.status === 'succeeded',
+    ),
+  ).toBe(false);
+  return runtime.resolveWait({
+    runId: run.runId,
+    waitId: wait.id,
+    proposalHash: wait.proposalHash,
+    decisionId: id,
+    choice: 'approved',
+  });
+}
+async function migratedArchive(
+  runtime: ReturnType<typeof createRuntime>,
+  run: WorkflowRun,
+  root: string,
+) {
+  for (const executorId of [
+    'comet-native-archive-preflight',
+    'comet-native-archive-apply',
+    'comet-native-archive-finalize',
+  ])
+    run = await runtime.execute({
+      runId: run.runId,
+      actionId: run.actions.at(-1)!.id,
+      executorId,
+      context: { requestId: 'SIMULATED-' + executorId, projectRoot: root },
+    });
+  expect(run).toMatchObject({ status: 'completed', state: { archived: true, status: 'done' } });
+  return run;
+}

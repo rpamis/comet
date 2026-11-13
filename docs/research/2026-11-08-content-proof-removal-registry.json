@@ -1,0 +1,3441 @@
+{
+  "schema": "comet.workflow.migration-originals.v1",
+  "base": "5426c4cbb3569e749ce8050888517f93b8437f5d",
+  "cases": [
+    {
+      "id": "local-native-check-refresh-fixture-order",
+      "sources": [
+        "report:2026-11-04-local-test-failures",
+        "report:2026-11-05-pr539-ci-failures"
+      ],
+      "behavior": "检查刷新回归先准备原始输入，再以当前原始字节编辑协议审查格式或结构变化。",
+      "coverageLevel": "runtime",
+      "reproduction": "相邻测试中的 settings.json 和 value.ts 在 Builder 冻结后才创建，首次检查拒绝候选；修正顺序后，旧语义指纹复核仍不能证明当前原始输入。",
+      "expected": "已复核的非行为变化保持候选身份并刷新字节绑定的检查；后续未复核的 enabled=false 或返回值变化继续被拒绝。",
+      "forbidden": "删除连续编辑场景、使用旧语义指纹接受新字节、取消检查输入漂移断言或允许未复核的行为修改。",
+      "rootCause": "测试沿用旧候选冻结时点及语义指纹复核设置，尚未接入当前 Agent 的原始输入判断。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "refreshes byte-bound SDK checks in Verify after a non-behavioral edit|refreshes the same SDK candidate after its independent Verifier approves a structural edit",
+          "requiredNames": [
+            "Native SDK Workflow Application refreshes byte-bound SDK checks in Verify after a non-behavioral edit",
+            "Native SDK Workflow Application refreshes the same SDK candidate after its independent Verifier approves a structural edit"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-509-environment-candidate-binding",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/509"
+      ],
+      "behavior": "非Git协调根中的独立子仓包含已跟踪、未跟踪或被忽略的环境配置时，候选采集按原输入范围计算摘要，不因文件名返回空摘要。",
+      "coverageLevel": "unit",
+      "reproduction": "旧051源码在相同双子仓临时项目中，无.env时返回摘要，提交.env.development后连续3次返回null，直接以子仓为根正常；新增三个跟踪状态对照在修改前失败。",
+      "expected": "候选摘要非空、相同内容可复核；范围内配置内容变化使候选与检查摘要失效；结果不包含配置原文。",
+      "forbidden": "按.env文件名否决候选、直接跳过配置内容、向证据输出配置原文，或配置变化后复用旧摘要。",
+      "rootCause": "非Git回退的物理扫描按敏感文件名直接判定不完整，没有区分本地摘要采集与原文导出。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "binds environment files in independent child repositories under a non-Git root",
+          "requiredNames": [
+            "Native physical check input snapshots binds environment files in independent child repositories under a non-Git root (tracked)",
+            "Native physical check input snapshots binds environment files in independent child repositories under a non-Git root (untracked)",
+            "Native physical check input snapshots binds environment files in independent child repositories under a non-Git root (ignored)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-509-capture-failure-diagnostics",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/509"
+      ],
+      "behavior": "本次检查的候选采集失败时，报告收据中的路径和原因，在Archive之前也由只读诊断暴露，不误报为旧检查。",
+      "coverageLevel": "unit",
+      "reproduction": "相同损坏收据样本的空候选摘要在旧代码被报告为旧检查，且Archive之前没有候选诊断；修复后的断言要求具体采集失败原因和只读诊断。",
+      "expected": "明确本次采集未建立摘要、失败路径与排除读取问题后重新验收的前提；doctor不健康且不改变Run。",
+      "forbidden": "把null摘要当作undefined旧收据、无效反复验收建议、健康诊断或只读检查修改状态。",
+      "rootCause": "归档校验合并处理null与缺字段，doctor只在已生成Archive预检Action后检查候选。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "diagnoses a failed candidate capture before Archive without mislabeling it as legacy evidence",
+          "requiredNames": [
+            "diagnoses a failed candidate capture before Archive without mislabeling it as legacy evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-user-input-filename-hashing",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/509",
+        "report:2026-10-26-native-user-defined-inputs"
+      ],
+      "behavior": "用户明确要求范围内.env及密钥扩展名文件可参与本地内容摘要；无法读取或路径不安全时仍拒绝建立可复用证据。",
+      "coverageLevel": "unit",
+      "reproduction": "用户明确要求Comet不得按文件名否决其项目输入；旧代码拒绝dist中的.env、.env.local、.key和.pem，新增摘要及内容变化断言在旧代码失败。",
+      "expected": "范围内普通文件按内容绑定且不输出原文；读取失败返回具体路径并禁止候选复用。历史敏感材料反例保留原名称与.env样本，以实际EACCES故障继续验证不完整输入不可复用。",
+      "forbidden": "扩大扫描到原范围外、修改原文导出保护、吞掉读取失败、绕过链接限制或降低历史不完整证据断言。",
+      "rootCause": "本地指纹计算复用了文件名敏感性否决，将用户管理的配置和原文导出混淆。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "hashes environment and key filenames in generated inputs without exposing their contents|reports unreadable environment inputs by path without reusable evidence|reports incomplete generated input instead of stable reusable evidence",
+          "requiredNames": [
+            "Native physical check input snapshots hashes environment and key filenames in generated inputs without exposing their contents",
+            "Native physical check input snapshots reports unreadable environment inputs by path without reusable evidence",
+            "Native check input fingerprint reports incomplete generated input instead of stable reusable evidence (sensitive)",
+            "Native check input fingerprint reports incomplete generated input instead of stable reusable evidence (symlink-root)",
+            "Native check input fingerprint reports incomplete generated input instead of stable reusable evidence (symlink-ancestor)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "rejects checks whose initially incomplete generated inputs disappear during execution",
+          "requiredNames": [
+            "Native SDK verification input binding rejects checks whose initially incomplete generated inputs disappear during execution"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-successor-reuse-evidence-guards",
+      "behavior": "包声明、执行环境或原日志变化以及无法证明依赖范围的命令不能被后继候选误复用。",
+      "coverageLevel": "runtime",
+      "reproduction": "两个检查通过后创建后继候选，分别修改 package.json、PATH、原日志或使用任意 Node 执行脚本。",
+      "expected": "重新执行检查，重新建立当前候选证据；可靠范围之外的命令按完整项目输入处理。",
+      "forbidden": "将无法证明、环境已变或损坏的原收据作为当前候选的通过证据。",
+      "rootCause": "跨候选复用需要同时约束完整输入、执行条件和原执行证据，不能只按文件名或命令相同判断。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "does not reuse stale or unproven check evidence for a successor candidate:",
+          "requiredNames": [
+            "Native SDK verification input binding does not reuse stale or unproven check evidence for a successor candidate: package-declaration",
+            "Native SDK verification input binding does not reuse stale or unproven check evidence for a successor candidate: execution-environment",
+            "Native SDK verification input binding does not reuse stale or unproven check evidence for a successor candidate: tampered-log",
+            "Native SDK verification input binding does not reuse stale or unproven check evidence for a successor candidate: unproven-command"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-10-25-native-incremental-recovery"
+      ]
+    },
+    {
+      "id": "native-generated-input-literal-query-scope",
+      "behavior": "Native 生成输入扫描只进入实际生成目录，避免 ignored glob 穿过无关本地工作区、依赖和临时目录导致 30 秒 Git 超时；采样期间生成根发生变化必须拒绝复用。",
+      "sources": [
+        "report:2026-10-25-native-git-performance"
+      ],
+      "coverageLevel": "runtime",
+      "reproduction": "e8fdaebc 在 Comet 当前目录采样输入，Git ls-files 的多个 glob 进入 .worktrees、.tmp 和依赖目录，30 秒 ETIMEDOUT，完整采样约 35.6 秒并报告不完整。",
+      "expected": "每个 ignored 内容查询只选一个字面生成目录，生成内容变动改变摘要，无关依赖内容不进入摘要，采样期间出现新生成根报告不完整。",
+      "forbidden": "查询无关 ignored 树、漏掉嵌套项目生成输入、忽略采样期间新增的生成根或绑定旧证据。",
+      "rootCause": "多个 glob pathspec 没有共同的字面前缀，Git 在最终匹配和排除前遍历其他 ignored 目录。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "Native check input fingerprint restricts ignored input queries to literal generated roots instead of traversing unrelated trees",
+          "requiredNames": [
+            "Native check input fingerprint restricts ignored input queries to literal generated roots instead of traversing unrelated trees"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "Native check input fingerprint rejects a generated root appearing while the selected directories are queried",
+          "requiredNames": [
+            "Native check input fingerprint rejects a generated root appearing while the selected directories are queried"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "Native check input fingerprint keeps volatile Next output churn outside the generated root identity fence",
+          "requiredNames": [
+            "Native check input fingerprint keeps volatile Next output churn outside the generated root identity fence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-single-character-dirty-input-snapshot",
+      "behavior": "单字符已跟踪文件在未暂存修改时仍可完整绑定当前输入，未跟踪内容变化须失效旧检查。",
+      "reproduction": "本轮 Git 查询优化 Review 复现：trim 将原 M a 状态的前导空格裁掉，新 untracked 解析异常；同一真实 Git 用例在修正前 complete=false。",
+      "expected": "同次完整原文用于路径解析，历史 fingerprint.status 保留 trim 值；重复未变快照相同，未跟踪内容变化后指纹改变。",
+      "forbidden": "将合法项目判为输入不完整、忽略未跟踪文件，或改变已有指纹语义以回避失败。",
+      "rootCause": "新解析路径复用了已裁剪状态；改为保留原始 NUL 文本供解析。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "keeps a complete snapshot for a single-character dirty tracked path and binds untracked edits",
+          "requiredNames": [
+            "Native check input fingerprint keeps a complete snapshot for a single-character dirty tracked path and binds untracked edits"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-10-26-051-release-closure"
+      ],
+      "coverageLevel": "unit"
+    },
+    {
+      "id": "native-missing-shape-fingerprint-recovery",
+      "sources": [
+        "https://github.com/rpamis/comet/actions/runs/40459417300/job/122040652946"
+      ],
+      "behavior": "缺少确认摘要的旧 Shape 状态保留重新准备和确认入口。",
+      "coverageLevel": "public-cli",
+      "reproduction": "旧 parser 在原确认函数运行前拒绝语义快照，status 返回 invalid，无法回到 Shape。",
+      "expected": "拒绝旧确认，恢复同一 change 的 Shape，不能进入 Build。",
+      "forbidden": "自动批准缺失摘要，或无法通过原流程修复。",
+      "rootCause": "语义快照解析提前要求已有批准摘要，遮蔽原有边界恢复。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "fails closed when a persisted Shape confirmation boundary has no fingerprint",
+          "requiredNames": [
+            "Native portable Runtime vertical path fails closed when a persisted Shape confirmation boundary has no fingerprint"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-joint-shape-confirmation.test.ts",
+          "namePattern": "rejects a legacy pending boundary with no Shape fingerprint",
+          "requiredNames": [
+            "Native joint Supervisor Shape decision rejects a legacy pending boundary with no Shape fingerprint"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-approved-original-git-path-alias",
+      "sources": [
+        "https://github.com/rpamis/comet/actions/runs/40483968168/job/122121678638"
+      ],
+      "behavior": "工作区路径使用目录别名时，缺失的已批准原文仍能从匹配的 Git 内容恢复并继续已应用编辑复核。",
+      "coverageLevel": "public-cli",
+      "reproduction": "8c0dc520 的 macOS 回归两项找不到匹配原文；本地以 Windows junction 临时根重现同两项及公开 CLI 案例，共三项先失败。",
+      "expected": "用一致的物理路径定位 Git 原文，核对原批准摘要后恢复 LF 或 CRLF 原文，保留用户当前编辑和原 Run。",
+      "forbidden": "目录别名导致原文恢复永久阻塞、改写当前用户文件、接受伪造原文或陈旧编辑结果。",
+      "rootCause": "Git 返回规范工作区根，而原文路径仍含目录别名，两种写法计算出仓库外相对路径。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-incremental.test.ts",
+          "namePattern": "reviews an already applied formal comment using the approved original without restoring the file|prepares an applied document review through the public CLI without rewriting the user file|recovers a large CRLF approved original from matching Git LF content for applied review",
+          "requiredNames": [
+            "Native Shape incremental contract reviews an already applied formal comment using the approved original without restoring the file",
+            "Native Shape incremental contract prepares an applied document review through the public CLI without rewriting the user file",
+            "Native Shape incremental contract recovers a large CRLF approved original from matching Git LF content for applied review"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-language-neutral-raw-edit-observation",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "任意语言和二进制内容按原始输入观察，Git 暂存和空提交与字节变化分离。",
+      "coverageLevel": "runtime",
+      "reproduction": "旧实现将候选与 Git 身份及语言适配绑定；本分支同一临时 Git 项目对混合语言、未知后缀、二进制、暂存和空提交进行对照。",
+      "expected": "相同内容保持内容摘要；真实字节变化可观察，不要求项目编译器。",
+      "forbidden": "按语言或 Git 元数据误判实现变化，或忽略未知文件。",
+      "rootCause": "候选语义与语言规则、Git 身份和实际输入混在同一判定。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "observes raw mixed-language and binary changes without a compiler and separates Git metadata",
+          "requiredNames": [
+            "Native check input fingerprint observes raw mixed-language and binary changes without a compiler and separates Git metadata"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 current candidate: real model acceptance has not run. Deterministic Runtime evidence does not replace it."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-compat-formal-edit-continuation",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "Classic Compat 正式说明变化经当前 Agent 判断后保持原 handoff，再次编辑不能复用旧判断。",
+      "coverageLevel": "runtime",
+      "reproduction": "通过真实 Compat handoff 保存原文，在 design.md 补说明后对照原文判断，核对原 handoff 摘要和状态，再追加新内容。",
+      "expected": "经判断的说明保留原摘要和状态，新内容重新需要判断。",
+      "forbidden": "修改原文来伪装批准、补造过去原文、对新增编辑沿用旧判断。",
+      "rootCause": "正式来源直接按当前摘要使整个 handoff 失效。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-handoff.test.ts",
+          "namePattern": "retains the Compat handoff after the current Agent judges an applied formal edit",
+          "requiredNames": [
+            "Classic handoff command retains the Compat handoff after the current Agent judges an applied formal edit"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 current candidate: real model acceptance has not run. Deterministic Runtime evidence does not replace it."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-raw-final-cache-directory-fence",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "Native 缓存补读结束前新增生成输入时拒绝混合快照。",
+      "coverageLevel": "runtime",
+      "reproduction": "在隔离临时项目执行登记的精确场景；旧行为与当前证据见 052 验证记录。",
+      "expected": "保留原目录观察直到全部补读结束；新增实际输入使快照不完整。",
+      "forbidden": "用新 tracked 内容和遗漏的 generated 清单拼成完整快照。",
+      "rootCause": "缓存补读发生在原目录观察结束之后，未再核对初始目录范围。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "rejects generated inputs added while repairing",
+          "requiredNames": [
+            "Native check input fingerprint rejects generated inputs added while repairing a cached leaf at the final capture fence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-raw-clean-git-inputs",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "Classic 在 Git 显示干净时仍观察实际字节变化。",
+      "coverageLevel": "runtime",
+      "reproduction": "在隔离临时项目执行登记的精确场景；旧行为与当前证据见 052 验证记录。",
+      "expected": "assume-unchanged、CRLF、clean filter、checkStat minimal 均改变内容摘要并显式报告输入变化。",
+      "forbidden": "使用 index 对象代替当前工作区字节，从而继续沿用旧成功。",
+      "rootCause": "Git clean 状态被错误用作物理内容未变的证明。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-check-snapshot.test.ts",
+          "namePattern": "binds physical input bytes even when Git considers the worktree clean",
+          "requiredNames": [
+            "Classic check input snapshots binds physical input bytes even when Git considers the worktree clean (assume-unchanged)",
+            "Classic check input snapshots binds physical input bytes even when Git considers the worktree clean (crlf)",
+            "Classic check input snapshots binds physical input bytes even when Git considers the worktree clean (clean-filter)",
+            "Classic check input snapshots binds physical input bytes even when Git considers the worktree clean (checkstat-minimal)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-accepted-candidate-input-binding",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "Classic 补检查中新增文件仍需当前 Agent 判断，不能被下一次检查自动接纳。",
+      "coverageLevel": "runtime",
+      "reproduction": "在隔离临时项目执行登记的精确场景；旧行为与当前证据见 052 验证记录。",
+      "expected": "始终对照原已接受候选；新增变化未判断时不执行新检查，判断后保留原报告和批准续行。",
+      "forbidden": "后一次 post-check 清单覆盖原候选，静默采用未判断的实现。",
+      "rootCause": "仅对比最新检查输入，没有独立绑定原已验收的内容。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "keeps the accepted candidate baseline when a supplemental check changes inputs during execution",
+          "requiredNames": [
+            "Classic SDK Agent input judgment keeps the accepted candidate baseline when a supplemental check changes inputs during execution"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-formal-review-source-retirement",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "正式材料新批准只退役该来源的旧判断，其他来源的判断继续有效。",
+      "coverageLevel": "unit",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "同一 scope 内按具体批准来源区分适用编辑。",
+      "forbidden": "全局删除旧判断，或让无关正式来源丢失有效判断。",
+      "rootCause": "正式判断仅绑定创建时间或整体 scope，没有绑定具体来源批准。",
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/edit-review.test.ts",
+          "namePattern": "^(?:bound edit reviews keeps unaffected source judgments while a new approval retires only the corresponding formal edits)$",
+          "requiredNames": [
+            "bound edit reviews keeps unaffected source judgments while a new approval retires only the corresponding formal edits"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-formal-negative-review-reapproval",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "原负判断涉及的相同字节经真实新批准后，不再阻塞新的正式来源。",
+      "coverageLevel": "unit",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "以新批准身份退役旧 negative，而不是要求用户恢复旧文字。",
+      "forbidden": "requirements-changed 永久阻塞合法新批准，或仅凭相同内容假造批准。",
+      "rootCause": "旧负判断身份没有跟随正式批准来源更新。",
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/edit-review.test.ts",
+          "namePattern": "^(?:bound edit reviews does not keep an old negative decision active after the same bytes receive a new source approval)$",
+          "requiredNames": [
+            "bound edit reviews does not keep an old negative decision active after the same bytes receive a new source approval"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-compat-preset-open-source-capture",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "Compat preset canonical 原文仅在实际 Open guard 转换捕获。",
+      "coverageLevel": "runtime",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "只读观察不能建立批准原文；真正 Open 过渡后可轻量判断。",
+      "forbidden": "未执行实际 guard 就补造原文或授权，或要求 preset 生成无关 Design/Plan。",
+      "rootCause": "preset 缺少设计交接时没有可靠 canonical 原文捕获点。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-handoff.test.ts",
+          "namePattern": "^(?:Classic handoff command captures Compat preset canonical originals only at the actual Open transition)$",
+          "requiredNames": [
+            "Classic handoff command captures Compat preset canonical originals only at the actual Open transition"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 当前新增 A4/formalSource 行为尚无真实模型证明；确定性 Runtime 检查不替代模型语义判断。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-revision-report-input-isolation",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "Classic 返回 Build 时，未改变的真实旧 Verify 报告不使默认范围 B 检查误失效。",
+      "coverageLevel": "runtime",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "只按真实 resolved report 的 exact 内容及原 raw/Git 摘要识别 Runtime 输出，显式 files 仍绑定。",
+      "forbidden": "宽泛忽略报告目录、忽略用户修改，或将 B 一次性检查重跑。",
+      "rootCause": "返回 Build 清空当前 report 引用，磁盘旧报告重新进入默认全项目输入。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "^(?:Classic candidate revisions resumes an actual implementation revision from archive with default inputs, retaining only B)$",
+          "requiredNames": [
+            "Classic candidate revisions resumes an actual implementation revision from archive with default inputs, retaining only B"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 当前新增 A4/formalSource 行为尚无真实模型证明；确定性 Runtime 检查不替代模型语义判断。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-refresh-byte-identical-restoration",
+      "behavior": "补检查前真实新输入被拒绝；恢复相同字节后仅修改时间变化时沿原请求继续，保留原批准与真实失败结果",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "coverageLevel": "runtime",
+      "reproduction": "当前0.5.2安装包的Classic A3公开CLI场景在负控恢复确切字节后仍因mtime变化拒绝；同一SDK回归在修复前两项失败。",
+      "expected": "内容再次变化时原Action不领取、不执行；确切字节恢复后只补Verify检查，原报告与Wait保持，实际失败不能被旧成功覆盖。",
+      "forbidden": "用mtime漂移要求重复判断、接受未经判断的新字节、重跑无关检查或替换原批准。",
+      "rootCause": "refresh-checks直接比较含mtime的完整manifest摘要，将采样元数据误当成内容变化。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "^Classic SDK Agent input judgment refreshes only the Verify check after Archive approval without replacing the report or decision \\(failure=(false|true)\\)$",
+          "requiredNames": [
+            "Classic SDK Agent input judgment refreshes only the Verify check after Archive approval without replacing the report or decision (failure=false)",
+            "Classic SDK Agent input judgment refreshes only the Verify check after Archive approval without replacing the report or decision (failure=true)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "edit-review-preserve-completed-successive-judgments",
+      "behavior": "连续两轮普通编辑保留已完成的行为未变判断并串联原候选；新未判断内容及其他候选不可复用",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "coverageLevel": "runtime",
+      "reproduction": "0.5.2安装包Native A3场景第一轮补检查完成后，第二轮observe把第一轮成功判断投影为discard，refresh-checks误报原候选变化；同一共享回归修复前Native和Classic均失败。",
+      "expected": "两轮non-behavioral收据均保留，最终内容关联最初输入，B检查保留判断覆盖整个变化链；第三次未判断编辑仍阻止推进。",
+      "forbidden": "丢弃已完成的等价判断、重开Run或批准、将旧判断覆盖未知新内容或跨候选使用。",
+      "rootCause": "supersedeStaleAppliedEditReviews未区分已完成的non-behavioral判断和待判断提案，新的保存切断已确认的变化链。",
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/edit-review.test.ts",
+          "namePattern": "^bound edit reviews preserves completed non-behavioral edges across successive observed edits \\((native|classic)\\)$",
+          "requiredNames": [
+            "bound edit reviews preserves completed non-behavioral edges across successive observed edits (native)",
+            "bound edit reviews preserves completed non-behavioral edges across successive observed edits (classic)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "edit-review-raw-git-successive-identity-chain",
+      "behavior": "连续编辑中的SHA256与Git blob内容标识保持同一已批准链；未批准中间边、新字节、执行权限及其他候选不能借用",
+      "coverageLevel": "runtime",
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/edit-review.test.ts",
+          "namePattern": "^bound edit reviews connects approved raw and Git identities across successive observed edits without covering new bytes$",
+          "requiredNames": [
+            "bound edit reviews connects approved raw and Git identities across successive observed edits without covering new bytes"
+          ]
+        }
+      ],
+      "reproduction": "Classic full第二次refresh真实失败。实际第一轮git:original到raw(bad)同时登记git:bad，第二轮git:bad到raw(repaired)；完整性检查忽略别名而拒绝已判断的新内容。",
+      "expected": "仅使用已批准且同path的内容标识连通，完整性、候选等价与检查保留采用一致的链；未知中间边及权限变化继续拒绝。",
+      "forbidden": "丢弃第一轮判断、误判候选漂移、借未批准或其他候选的边连接，或忽略执行权限差异。",
+      "rootCause": "reaches及候选根选择只比较单一beforeHash/afterHash，检查保留的旧BFS也未在多跳时传播Git别名。",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ]
+    },
+    {
+      "id": "edit-review-supplement-retained-checks",
+      "sources": [
+        "report:2026-11-01-052-native-unselected-check-replay"
+      ],
+      "coverageLevel": "unit",
+      "behavior": "原 Agent 可以对同一字节和决定追加遗漏的检查保留依据，保留完整原收据，不重开 change",
+      "reproduction": "首次记录 non-behavioral 判断但遗漏 retainedChecks 后，再次 record 同一提案补 B；旧存储以已有不同记录拒绝，无法在原判断补齐检查依据。",
+      "expected": "只允许同一原 Agent、同字节和决定、保留集合单调增加；保存不可变历史收据并绑定完整历史链；同一补交幂等。",
+      "forbidden": "变更决定、换人、删除原保留项、覆盖新字节、丢弃或接受损坏的原判断历史。",
+      "rootCause": "原判断单文件仅允许完全相同的幂等回报，没有保留历史且只追加检查依据的路径。",
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/edit-review.test.ts",
+          "namePattern": "^bound edit reviews supplements retained checks on the same judged bytes without changing the original decision or losing its receipt$",
+          "requiredNames": [
+            "bound edit reviews supplements retained checks on the same judged bytes without changing the original decision or losing its receipt"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "public-cli",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-01-052-continuation-acceptance.zh.md：同提案追加检查保留依据，公开入口待验",
+            "v9 installed package b5265aa9d64bfee6d50bce6b080fe1900ca92545: same public dryrun fails on v8 at A/B/once=2/2/1; v9 rejects before execution with identical Run hash and 1/1/1, accepts the original Agent supplement, then completes 3/1/1 and one Archive. See docs/research/2026-11-01-052-continuation-acceptance.zh.md."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "agent-edit-review-formal-check-retention",
+      "sources": [
+        "report:2026-11-01-052-native-unselected-check-replay"
+      ],
+      "coverageLevel": "unit",
+      "behavior": "当前 Agent 对每份正式和普通材料均明确绑定仍适用的检查，不把选择补 A 当作保留 B 的证明",
+      "reproduction": "真实 A3 Native 模型只在普通文件判断保留 B/once，正式 brief 只写内容非行为且未填保留项，造成完整输入缺判断。",
+      "expected": "每份材料的全部实际差异都有相应检查判断；漏项沿原提案和身份追加，未选检查缺证据时补判断而非扩大执行。",
+      "forbidden": "普通变化的保留项掩盖正式材料缺项，或用修订、新 Builder、额外 Agent、用户重复批准替代补齐依据。",
+      "rootCause": "正式材料段落只强调批准语义，没有明确其变化也进入完整检查输入及同一提案的补充判断路径。",
+      "tests": [
+        {
+          "file": "test/domains/skill/sdk-flow-handoffs.test.ts",
+          "namePattern": "^skills(-zh)? SDK flow handoffs retains checks for every formal edit and supplements only the original Agent judgment$",
+          "requiredNames": [
+            "skills-zh SDK flow handoffs retains checks for every formal edit and supplements only the original Agent judgment",
+            "skills SDK flow handoffs retains checks for every formal edit and supplements only the original Agent judgment"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-01-052-continuation-acceptance.zh.md：真实 A3 失败保留，修复后的模型待验",
+            "Native A3 v9 real-model experiment 052_native_a3_a27d2db1845646f3911603a3888397d4 completed the formal-brief and ordinary-edit judgments with applicable original B/once retention under the strict selected-check preflight and final two-round oracle. The v11 public CLI separately proves rejection when formal retention is omitted, same-proposal supplementation by the original Agent, and two successful rounds without replay. Final v12 relevant Skill text matches v9. The public CLI is deterministic evidence and is not substituted for the actual Native model judgment."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-observe-formal-originals",
+      "behavior": "Native observe 一次返回正式原文与独立判断模板",
+      "sources": [
+        "report:2026-11-02-native-protocol-simplification"
+      ],
+      "coverageLevel": "runtime",
+      "reproduction": "旧observe只返回formalChanges，新增formalReview断言先失败。",
+      "expected": "响应包含已批准原文及绑定当前内容的提案。",
+      "forbidden": "自动确认语义或伪造缺失原文。",
+      "rootCause": "观察与正式编辑准备分为两次Agent操作。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "collects formal approved originals in the Native observe response",
+          "requiredNames": [
+            "Native protocol simplification collects formal approved originals in the Native observe response"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-shared-input-observation",
+      "sources": [
+        "report:2026-11-05-native-verify-archive-cost"
+      ],
+      "behavior": "Archive preflight shares input observations within each validation boundary.",
+      "coverageLevel": "runtime",
+      "reproduction": "The identical snapshot-count assertion on af02af63 observes eight captures; the current implementation observes two across execution and outcome commit.",
+      "expected": "One capture per boundary and rejection when the candidate changes between boundaries.",
+      "forbidden": "Reusing observations across a candidate edit.",
+      "rootCause": "Preflight independently collected the candidate, check inputs and two archive bindings.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native SDK v2 Archive simplification collects one current input snapshot per preflight execution and commit boundary|Native SDK v2 Archive simplification rejects candidate edits between preflight execution and its committed outcome)$",
+          "requiredNames": [
+            "Native SDK v2 Archive simplification collects one current input snapshot per preflight execution and commit boundary",
+            "Native SDK v2 Archive simplification rejects candidate edits between preflight execution and its committed outcome"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-portable-generated-input-revalidation",
+      "behavior": "Generated file changes invalidate Portable checks without changing the Builder source candidate.",
+      "rootCause": "The raw candidate digest included files already identified as generated inputs, so producing or changing generated files returned the change to Build before checks could execute.",
+      "expected": "Bind generated bytes in full check receipts, rerun changed generated inputs, retain the source candidate, and reject incomplete observations before execution until readable.",
+      "forbidden": "Reuse a passing check after generated input changes, accept unreadable input, or reset Build solely because a generated file changed.",
+      "reproduction": "All five generated-input variants failed locally before the candidate/check boundary was restored. Ordinary, Next production, large dependency, unreadable and 20001-file cases now pass with their real command exit assertions.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path reruns checks when an ignored generated input changes \\(ordinary\\)|Native portable Runtime vertical path reruns checks when an ignored generated input changes \\(next-production\\)|Native portable Runtime vertical path reruns checks when an ignored generated input changes \\(large-dependencies\\)|Native portable Runtime vertical path reruns checks when an ignored generated input changes \\(incomplete-sensitive-input\\)|Native portable Runtime vertical path reruns checks when an ignored generated input changes \\(incomplete-file-limit\\))$",
+          "requiredNames": [
+            "Native portable Runtime vertical path reruns checks when an ignored generated input changes (ordinary)",
+            "Native portable Runtime vertical path reruns checks when an ignored generated input changes (next-production)",
+            "Native portable Runtime vertical path reruns checks when an ignored generated input changes (large-dependencies)",
+            "Native portable Runtime vertical path reruns checks when an ignored generated input changes (incomplete-sensitive-input)",
+            "Native portable Runtime vertical path reruns checks when an ignored generated input changes (incomplete-file-limit)"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-11-05-pr539-ci-native-portable-generated-input-revalidation"
+      ],
+      "coverageLevel": "runtime"
+    },
+    {
+      "id": "native-portable-current-check-input-fingerprint",
+      "behavior": "A new Portable check attempt records the actual full input fingerprint while retaining the original Builder candidate.",
+      "rootCause": "Raw check reservation retained the Builder-era inputFingerprint even after a judged byte change started a new check operation.",
+      "expected": "After a bound non-behavioral edit, keep the candidate ID and record different input and operation fingerprints with the actual new bytes in the command log.",
+      "forbidden": "Expose a stale input fingerprint for a newly executed check or replace the candidate merely to refresh byte-bound evidence.",
+      "reproduction": "The original worker.py byte-edit case failed on an unchanged inputFingerprint. The public observe/record fixture now covers arbitrary text and a previously explicit JSON review, with the original candidate, fingerprint, operation and log assertions.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path reruns byte-bound checks without returning to Build after non-behavioral edits \\(settings\\.toml, dirty: value = 1\n\\)|Native portable Runtime vertical path reruns byte-bound checks without returning to Build after non-behavioral edits \\(labels\\.json, dirty: \\{\"value\":\"Ready 1\"\\}\\))$",
+          "requiredNames": [
+            "Native portable Runtime vertical path reruns byte-bound checks without returning to Build after non-behavioral edits (settings.toml, dirty: value = 1\n)",
+            "Native portable Runtime vertical path reruns byte-bound checks without returning to Build after non-behavioral edits (labels.json, dirty: {\"value\":\"Ready 1\"})"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-11-05-pr539-ci-native-portable-current-check-input-fingerprint"
+      ],
+      "coverageLevel": "runtime"
+    },
+    {
+      "id": "native-portable-reviewed-raw-candidate-binding",
+      "behavior": "Explicitly approved non-behavioral edits normalize raw candidates using their bound original bytes, including historical structured-edit receipts.",
+      "rootCause": "Raw hashing ignored a valid non-behavioral receipt whenever its legacy semantic fingerprint field was present, despite the receipt also binding exact before/after hashes.",
+      "expected": "Use the approved original hash and file mode for candidate identity while rerunning byte-bound checks against the real edited bytes.",
+      "forbidden": "Infer semantics from an extension, normalize unreviewed bytes, or reject a valid explicit judgment merely because its old receipt also has a structured fingerprint.",
+      "reproduction": "The original refactor.ts and labels.json strict-review cases failed after an explicit non-behavioral receipt. The labels.json case retains strict Hook rejection and approved continuation, then records the actual observed edit and passes all original execution assertions.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path reruns byte-bound checks without returning to Build after non-behavioral edits \\(labels\\.json, dirty: \\{\"value\":\"Ready 1\"\\}\\))$",
+          "requiredNames": [
+            "Native portable Runtime vertical path reruns byte-bound checks without returning to Build after non-behavioral edits (labels.json, dirty: {\"value\":\"Ready 1\"})"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-11-05-pr539-ci-native-portable-reviewed-raw-candidate-binding"
+      ],
+      "coverageLevel": "runtime"
+    },
+    {
+      "id": "native-generated-input-metadata-concurrency",
+      "sources": [
+        "https://github.com/rpamis/comet/actions/runs/42132150954/job/127611761192"
+      ],
+      "coverageLevel": "runtime",
+      "behavior": "Capture every generated input with bounded concurrent leaf metadata reads, drain failures, and rerun byte-bound checks for a complete 20001-file directory.",
+      "reproduction": "On 5736d365 the Windows core shard completed 55/56 groups; the incomplete-file-limit Runtime scenario exceeded the generic 120-second test deadline. The same scenario passed locally in 51 seconds, so the CI timeout was not reproduced locally. Two latency-controlled leaf-observation tests fail on the serial walker and pass after bounded overlap.",
+      "rootCause": "The new full-input Runtime scenario performs several complete captures of 20001 generated files. Its metadata walk awaited independent files serially and the scenario inherited a generic 120-second suite deadline rather than a dedicated allowance for its full disk workload.",
+      "expected": "Read all 20001 generated files without any count or byte cap; detect the edited input and execute the second command with exit code 7 and executionCount 2. Overlap at most 16 leaf observations, drain started work after failure, and report an incomplete snapshot. Only this large scenario receives a 240-second test allowance.",
+      "forbidden": "Drop files, relax byte or identity fences, restore project-level input limits, reuse incomplete evidence, alter the check command timeout, rename the five Runtime cases, or widen the other four scenario deadlines.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "captures generated leaf metadata with bounded overlap and drains failures \\(failure=(?:false|true)\\)",
+          "requiredNames": [
+            "Native check input fingerprint captures generated leaf metadata with bounded overlap and drains failures (failure=false)",
+            "Native check input fingerprint captures generated leaf metadata with bounded overlap and drains failures (failure=true)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^Native portable Runtime vertical path reruns checks when an ignored generated input changes \\(incomplete-file-limit\\)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path reruns checks when an ignored generated input changes (incomplete-file-limit)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t21-handoff-sources",
+      "sources": [
+        "report:2026-11-08-native-classic-overdesign-audit"
+      ],
+      "behavior": "Handoff preparation must reuse source bytes while commit validation takes a fresh observation.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Handoff preparation must reuse source bytes while commit validation takes a fresh observation.",
+      "forbidden": "Reading the same proposal source repeatedly or reusing prepared bytes after external edits and during final commit validation.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-handoff-performance.test.ts",
+          "namePattern": "reads each source once per off preparation and once per commit validation",
+          "requiredNames": [
+            "Classic handoff material reuse reads each source once per off preparation and once per commit validation"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-handoff-performance.test.ts",
+          "namePattern": "shares one source observation across proposal evidence, requirements and handoff rendering",
+          "requiredNames": [
+            "Classic handoff material reuse shares one source observation across proposal evidence, requirements and handoff rendering"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t23-formal-observe",
+      "sources": [
+        "report:2026-11-08-native-classic-overdesign-audit"
+      ],
+      "behavior": "One Classic observe call must return formal review preparation and approved original bytes without breaking ordinary continuation.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "One Classic observe call must return formal review preparation and approved original bytes without breaking ordinary continuation.",
+      "forbidden": "Requiring an extra preparation call for observed formal edits, inventing approved originals or deciding impact without review.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-edit-review.test.ts",
+          "namePattern": "reviews a generic edit after a normal SDK Build and continues Verify without a stuck claimed Action",
+          "requiredNames": [
+            "reviews a generic edit after a normal SDK Build and continues Verify without a stuck claimed Action"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-optimization-contract.test.ts",
+          "namePattern": "reuses Classic observe formal materials and retains missing-material preparation in both languages",
+          "requiredNames": [
+            "Chinese Classic efficiency contracts reuses Classic observe formal materials and retains missing-material preparation in both languages"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-436-large-check-input",
+      "behavior": "Classic检查可流式指纹大于64MiB的真实输入，不因任意文件字节上限阻止验收。",
+      "status": "covered",
+      "reason": "0.5.0 保留此行为；所列确定性测试直接断言该契约。covered 表示已映射，不表示本次清单审计已执行。",
+      "coverageLayer": "shared-check-input",
+      "evidence": [
+        "test/domains/comet-classic/classic-check-snapshot.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-check-snapshot.test.ts",
+          "namePattern": "fingerprints tracked files larger than 64 MiB without a byte cap",
+          "requiredNames": [
+            "fingerprints tracked files larger than 64 MiB without a byte cap"
+          ]
+        }
+      ]
+    },
+    {
+      "sources": [
+        "report:2026-11-05-pr539-ci-native-portable-delta-rebase-input-binding"
+      ],
+      "coverageLevel": "runtime",
+      "id": "native-portable-delta-rebase-input-binding",
+      "behavior": "Native delta rebase sends the same candidate through fresh Verify using only Runtime-proven merged Spec inputs.",
+      "rootCause": "Rebase updated portable Shape and Spec contents but retained the old candidate raw input reference, so a legitimate fresh check was rejected.",
+      "expected": "Bind the merged delta and canonical result after verifying original delta/source hashes and unchanged unrelated inputs, then rerun verification.",
+      "forbidden": "Adopt an unrelated source edit during rebase or reuse the old accepted verification result.",
+      "reproduction": "Both historical rebase-to-Verify cases failed locally on raw candidate drift and passed after narrow input rebinding. The independent-rebase case also rejects an added unreviewed source file before allowing recovery.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration returns a passed change to Verify when an independent rebase changes the result|Native portable delta integration requires fresh verification when the delta is already applied but another edit is present)$",
+          "requiredNames": [
+            "Native portable delta integration returns a passed change to Verify when an independent rebase changes the result",
+            "Native portable delta integration requires fresh verification when the delta is already applied but another edit is present"
+          ]
+        }
+      ]
+    },
+    {
+      "sources": [
+        "report:2026-11-05-pr539-ci-native-portable-delta-conflict-diagnostic"
+      ],
+      "coverageLevel": "runtime",
+      "id": "native-portable-delta-conflict-diagnostic",
+      "behavior": "Native Archive reports a conflicting delta section before generic candidate drift.",
+      "rootCause": "Archive collected delta conflict blockers but reached the generic raw-input assertion without reporting those blockers.",
+      "expected": "Preserve canonical content and report the conflicting requirement identifier before any Archive write.",
+      "forbidden": "Hide a known merge conflict behind unrelated recovery guidance or publish a conflicting Spec.",
+      "reproduction": "The original overlap case failed locally because the thrown error lost its requirement/conflict diagnostic, then passed with its unchanged assertions.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration rebases an independent canonical edit and blocks an overlapping edit)$",
+          "requiredNames": [
+            "Native portable delta integration rebases an independent canonical edit and blocks an overlapping edit"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-archive-prepared-input-recovery",
+      "behavior": "Classic 在 OpenSpec 副作用前保存原执行输入，搬迁后中断可在同一 Run 核对恢复且不重放归档。",
+      "sources": [
+        "report:2026-10-25-native-classic-core-review"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "8deff743 的 OpenSpec fixture 实际 rename 后退出 1，Action unknown；连续两次 archive --recover 要求恢复从未生成的 manifest/receipt。",
+      "expected": "公开 bundle 拒绝变动的归档工件，原内容恢复后核对执行前记录并完成原 Action；缺少原结果的规格同步必须由用户确认完整精确输出，变化后旧确认失效；重复恢复不重复调用 OpenSpec，仍可交付。",
+      "forbidden": "无原输入时补造成功证据、接受篡改内容、批准未知规格同步或重新执行已经发生的归档。",
+      "rootCause": "归档完成后才保存执行清单，恢复却强制依赖该清单，缺少执行前的持久化输入。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "recovers Archive interrupted after moving without replay or accepting changed artifacts",
+          "requiredNames": [
+            "recovers Archive interrupted after moving without replay or accepting changed artifacts"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "requires an exact user decision for specification outputs after interrupted Archive",
+          "requiredNames": [
+            "requires an exact user decision for specification outputs after interrupted Archive"
+          ]
+        }
+      ]
+    },
+    {
+      "sources": [
+        "report:2026-11-05-pr539-ci-classic-sdk-previous-preset-scope-decision"
+      ],
+      "coverageLevel": "runtime",
+      "id": "classic-sdk-previous-preset-scope-decision",
+      "behavior": "A known previous Classic preset can accept a current scope decision while stale proposal sources remain blocked.",
+      "rootCause": "The pending decision being resolved hid the last accepted scope from the legacy source comparison.",
+      "expected": "Hotfix and tweak continue the same Run after a bound decision and preserve completed Actions.",
+      "forbidden": "Accept changed proposal sources or require an already pending scope decision to have been resolved beforehand.",
+      "reproduction": "Both original previous-definition scope-decision cases failed locally on the current branch, then all16 preset-scope cases passed with additional changed-source rejection assertions.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-preset-scope.test.ts",
+          "namePattern": "^(?:hotfix approved scope upgrades a known previous definition for a fresh scope decision without rewriting completed Actions|tweak approved scope upgrades a known previous definition for a fresh scope decision without rewriting completed Actions)$",
+          "requiredNames": [
+            "hotfix approved scope upgrades a known previous definition for a fresh scope decision without rewriting completed Actions",
+            "tweak approved scope upgrades a known previous definition for a fresh scope decision without rewriting completed Actions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-first-managed-check",
+      "behavior": "Run the first complete Build or Verify check inside the original Classic Run and reuse its matching receipt during formal completion.",
+      "coverageLevel": "public-cli",
+      "reproduction": "The pre-change CLI rejected checks while build.execute or verify.run was pending; the same focused test failed before implementation. Generated command coverage additionally creates the declared report after the first check.",
+      "expected": "Stay in the original phase and Run, return to the original task, and execute a deterministic complete command once when final submission has matching inputs.",
+      "forbidden": "Advancing approval or acceptance on the preliminary check, fabricating shell evidence, replaying a failed check on a state read, or reusing changed inputs.",
+      "rootCause": "Only final pending check Actions could execute Runtime checks, so the first final GREEN before task/report submission had no trusted receipt.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "records the first (build|verify) check before completion and reuses it without advancing early|keeps the original task after a failed first (build|verify) check without replay|reuses the first generated Verify check after creating its declared report without a policy override|completes Archive and delivery in the same Run after the first managed check",
+          "requiredNames": [
+            "records the first build check before completion and reuses it without advancing early",
+            "records the first verify check before completion and reuses it without advancing early",
+            "keeps the original task after a failed first build check without replay",
+            "keeps the original task after a failed first verify check without replay",
+            "reuses the first generated Verify check after creating its declared report without a policy override",
+            "completes Archive and delivery in the same Run after the first managed check"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-11-08-skill-execution-optimization"
+      ]
+    },
+    {
+      "id": "native-archive-rejected-apply-recovery",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/526"
+      ],
+      "behavior": "Recover a returned but rejected archive.execute through the public Archive command without replaying applied Specs or accepting candidate drift.",
+      "coverageLevel": "public-cli",
+      "reproduction": "In an isolated Git SDK project, execute the real Spec application and reject its returned outcome to preserve the reported running Action and specs-applied transaction. The 0.5.1 npm Runtime and pre-fix HEAD return exit 73 with no single recoverable Action for archive --recover.",
+      "expected": "Reconcile the original Action, attempt, input and claim against the original transaction, preserve rejection history, and finish Archive after matching candidate inputs are restored.",
+      "forbidden": "Recovering with missing or mismatched rejection evidence, accepting changed implementation inputs, creating a replacement apply Action, or rewriting an already applied Spec.",
+      "rootCause": "The recovery command only converted returned archive.prepare rejections to unknown, while apply and finalize rejections remained running and were excluded from recovery.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^recovers a returned but rejected archive\\.execute through the public Archive command$",
+          "requiredNames": [
+            "recovers a returned but rejected archive.execute through the public Archive command"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-bugfree-submission-template-routing",
+      "sources": [
+        "report:2026-11-04-bugfree-verify-overhead"
+      ],
+      "behavior": "Keep the Native Skill entry, bugfree reference and claimed Action aligned on receipt-based resultRequest, with legacy outcomeRequest only as fallback.",
+      "coverageLevel": "runtime",
+      "reproduction": "Round-six bugfree Run comet-eval-3882e054-be3c-476d-9979-3194bf5fc93d had a valid resultRequest, but the main Agent copied the Skill entry directive to use outcomeRequest exactly. The reviewer then searched outcome IDs, runtime checkpoints and log hashes. The new English Skill contract fails on that unconditional legacy directive; the new claimed-Action reference assertion also failed before repair.",
+      "expected": "Expose direct reviewInput/resultRequest references after claim, preserve existing full-form references and input support, and align SDK guidance so the claimant fills result and preserves its Runtime receipt.",
+      "forbidden": "Regenerating claim identity, claiming for another actor, dropping candidate or acceptance checks, removing legacy input support, or synchronizing English Skill text before Chinese confirmation.",
+      "rootCause": "The main Skill contradicted its modern SDK reference and Runtime instruction; the claimed Action index exposed the legacy outcome reference without direct modern submission/material references.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "^delivers current review material once on claim and refuses material from changed bytes through (runtime|public-cli)$",
+          "requiredNames": [
+            "delivers current review material once on claim and refuses material from changed bytes through runtime",
+            "delivers current review material once on claim and refuses material from changed bytes through public-cli"
+          ]
+        },
+        {
+          "file": "test/domains/skill/native-sdk-skill-routing.test.ts",
+          "namePattern": "prefers receipt result submission consistently through SDK verification in (skills|skills-zh)$",
+          "requiredNames": [
+            "prefers receipt result submission consistently through SDK verification in skills",
+            "prefers receipt result submission consistently through SDK verification in skills-zh"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "model-eval",
+          "status": "pending",
+          "evidence": [
+            "User explicitly confirmed the Chinese Skill; English entry and both references are synchronized. All nine Native SDK Skill contracts pass, including the previously failing English route.",
+            "Round-seven source sha256:737bbca926abc704bbaf8d5b27b4e7be6e10f94b270fcd95b2e3e093d70b83ec is under original-task evaluation; bugfree run comet-eval-42e6a1d1-0a17-4b43-be72-7ef04256d480 has started. Model compliance and complete review cost are not yet verified."
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户明确要求移除 bugfree 模式。模式专用行为改验收入口已移除且旧策略不可推进；仍适用于普通 Native 的原始请求、收据和正式编辑复核继续执行相应断言。原来源、行为和选择器不改写，旧测试正文见移除前实现补丁。",
+        "authorization": "report:2026-11-05-bugfree-retirement",
+        "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes verification mode selection from public Eval CLI without launching a run$",
+            "requiredNames": [
+              "removes verification mode selection from public Eval CLI without launching a run"
+            ]
+          },
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes the unreleased verifier definition and compact pass protocol$",
+            "requiredNames": [
+              "removes the unreleased verifier definition and compact pass protocol"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/bugfree-retirement/regression-registry-before-removal.json",
+            "sha256": "cf33bdfcd50e42f0af102b31db54edc10559c0a2c340f3ab845833da16000680"
+          },
+          "patch": {
+            "file": "docs/research/bugfree-retirement/implementation-before-removal.patch",
+            "sha256": "674851450fac08bf987017fe9fa6a4b5df8a5f9879636b97918f7d30f428c44f"
+          },
+          "mapping": {
+            "file": "docs/research/bugfree-retirement/case-migrations.json",
+            "sha256": "b96fcd93e5c6cc251e4e594e378ce604899f9d11d1e4dae993e16f0f8131c463"
+          },
+          "tests": {
+            "file": "docs/research/bugfree-retirement/test-snapshots.json",
+            "sha256": "0dec6a1a5a6d519139f6df20862463f1fa6976f7e7e285ccb8ee9ab805f3a44a"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-bugfree-coordinator-handoff",
+      "sources": [
+        "report:2026-11-04-bugfree-verify-overhead"
+      ],
+      "behavior": "Deliver the existing bugfree verifier Action without a second task brief and wait on the same independent reviewer instead of empty coordinator turns.",
+      "coverageLevel": "runtime",
+      "reproduction": "Round-five original-task runs 9c5f74e3 and 71a200a2 both scored 10/14. Bugfree review was faster, but six coordinator messages versus four erased its child token savings: 869419 versus 867584 total review tokens including cache. The bugfree Agent was backgrounded and the coordinator queried Git ignores and ended a waiting turn.",
+      "expected": "Deliver existing Action/claim data or a saved response reference, let the independent session claim and review once, and use foreground waiting or the existing background task handle when no other necessary parallel work exists.",
+      "forbidden": "Claiming for the reviewer, weakening candidate or evidence checks, dropping acceptance items, treating a wait timeout as a failed review or spawning a duplicate reviewer.",
+      "rootCause": "The handoff instructions required independence but did not discourage a duplicate task brief or unnecessary background coordination with a large parent context.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "^delivers current review material once on claim and refuses material from changed bytes through (runtime|public-cli)$",
+          "requiredNames": [
+            "delivers current review material once on claim and refuses material from changed bytes through runtime",
+            "delivers current review material once on claim and refuses material from changed bytes through public-cli"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "^binds the original task and rejects a passing review that omits or contradicts it in (standard|bugfree)$",
+          "requiredNames": [
+            "binds the original task and rejects a passing review that omits or contradicts it in standard",
+            "binds the original task and rejects a passing review that omits or contradicts it in bugfree"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "model-eval",
+          "status": "pending",
+          "evidence": [
+            "Round-six original-task runs comet-eval-3a531cbc-4d55-40cb-9093-3905b9521b35 and comet-eval-3882e054-be3c-476d-9979-3194bf5fc93d both scored 10/14 with matching mode proof. Foreground waiting was observed; bugfree coordinator usage fell to 3 messages / 304619 tokens versus 6 / 414370, but the main Agent still rewrote the task and forced the legacy template. Complete review cost was 134.970 seconds / 1091381 tokens versus 102.917 / 779483, so the complete objective remains unmet."
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户明确要求移除 bugfree 模式。模式专用行为改验收入口已移除且旧策略不可推进；仍适用于普通 Native 的原始请求、收据和正式编辑复核继续执行相应断言。原来源、行为和选择器不改写，旧测试正文见移除前实现补丁。",
+        "authorization": "report:2026-11-05-bugfree-retirement",
+        "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes verification mode selection from public Eval CLI without launching a run$",
+            "requiredNames": [
+              "removes verification mode selection from public Eval CLI without launching a run"
+            ]
+          },
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes the unreleased verifier definition and compact pass protocol$",
+            "requiredNames": [
+              "removes the unreleased verifier definition and compact pass protocol"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/bugfree-retirement/regression-registry-before-removal.json",
+            "sha256": "cf33bdfcd50e42f0af102b31db54edc10559c0a2c340f3ab845833da16000680"
+          },
+          "patch": {
+            "file": "docs/research/bugfree-retirement/implementation-before-removal.patch",
+            "sha256": "674851450fac08bf987017fe9fa6a4b5df8a5f9879636b97918f7d30f428c44f"
+          },
+          "mapping": {
+            "file": "docs/research/bugfree-retirement/case-migrations.json",
+            "sha256": "b96fcd93e5c6cc251e4e594e378ce604899f9d11d1e4dae993e16f0f8131c463"
+          },
+          "tests": {
+            "file": "docs/research/bugfree-retirement/test-snapshots.json",
+            "sha256": "0dec6a1a5a6d519139f6df20862463f1fa6976f7e7e285ccb8ee9ab805f3a44a"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-bugfree-review-input-delivery",
+      "sources": [
+        "report:2026-11-04-bugfree-verify-overhead"
+      ],
+      "behavior": "bugfree 领取响应一次交付真实需求、适用目录规则、变更文本及检查摘要；字节变化不交付旧正文，同一原审查者才使用增量范围。",
+      "coverageLevel": "public-cli",
+      "reproduction": "R2 中两组同一正确候选均发生37次工具调用；bugfree 在分散读取和上下文核对中用299秒。原领取响应没有可直接阅读的需求与代码正文；新增材料断言在实施前失败。",
+      "expected": "正文只在领取响应出现一份，不写入 Run；需求、已有目录规则与真实变更字节匹配；观察后变更显示 incomplete，原验收仍拒绝；恢复原会话可用增量，新独立会话用全量。",
+      "forbidden": "用 Builder 自评替代代码、隐藏目录规则、将不匹配字节作为当前材料、默认填充验收结论、跨会话复用增量结论或放宽旧模式。",
+      "rootCause": "任务包只交付引用和协议摘要，审查者需要多次工具读取才能拼齐材料；原结果提交接口不能消除这部分读取。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "^delivers current review material once on claim and refuses material from changed bytes through (runtime|public-cli)$",
+          "requiredNames": [
+            "delivers current review material once on claim and refuses material from changed bytes through runtime",
+            "delivers current review material once on claim and refuses material from changed bytes through public-cli"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "^continues independent semantic review after a repair with new candidate identity$",
+          "requiredNames": [
+            "continues independent semantic review after a repair with new candidate identity"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-verification-cost",
+          "status": "pending",
+          "evidence": [
+            "docs/research/2026-11-05-bugfree-verify-cost.zh.md; current material delivery still requires real-model correctness and cost comparison."
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户明确要求移除 bugfree 模式。模式专用行为改验收入口已移除且旧策略不可推进；仍适用于普通 Native 的原始请求、收据和正式编辑复核继续执行相应断言。原来源、行为和选择器不改写，旧测试正文见移除前实现补丁。",
+        "authorization": "report:2026-11-05-bugfree-retirement",
+        "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes verification mode selection from public Eval CLI without launching a run$",
+            "requiredNames": [
+              "removes verification mode selection from public Eval CLI without launching a run"
+            ]
+          },
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes the unreleased verifier definition and compact pass protocol$",
+            "requiredNames": [
+              "removes the unreleased verifier definition and compact pass protocol"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/bugfree-retirement/regression-registry-before-removal.json",
+            "sha256": "cf33bdfcd50e42f0af102b31db54edc10559c0a2c340f3ab845833da16000680"
+          },
+          "patch": {
+            "file": "docs/research/bugfree-retirement/implementation-before-removal.patch",
+            "sha256": "674851450fac08bf987017fe9fa6a4b5df8a5f9879636b97918f7d30f428c44f"
+          },
+          "mapping": {
+            "file": "docs/research/bugfree-retirement/case-migrations.json",
+            "sha256": "b96fcd93e5c6cc251e4e594e378ce604899f9d11d1e4dae993e16f0f8131c463"
+          },
+          "tests": {
+            "file": "docs/research/bugfree-retirement/test-snapshots.json",
+            "sha256": "0dec6a1a5a6d519139f6df20862463f1fa6976f7e7e285ccb8ee9ab805f3a44a"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-bugfree-existing-instruction-refs",
+      "sources": [
+        "report:2026-11-04-bugfree-verify-overhead"
+      ],
+      "behavior": "bugfree 不把不存在的 AGENTS.md 列为需求输入；存在的项目规则仍交付给审查者，新增规则保持候选新鲜度约束。",
+      "coverageLevel": "public-cli",
+      "reproduction": "R2 固定正确候选对照中，bugfree 因 requirementRefs 无条件包含 AGENTS.md，反复寻找不存在的规则文件。相同临时项目的缺省规则引用断言在修复前失败。",
+      "expected": "无文件时不声明该引用；文件存在时提供引用；在已检查候选后新增规则时显示真实差异与候选变化，不修改 Run。",
+      "forbidden": "要求审查不存在的规则、隐藏已有规则、忽略新增规则导致的候选变化或伪造规则内容。",
+      "rootCause": "任务包直接拼接 AGENTS.md 字符串，没有核对文件是否存在，审查者把缺失引用理解为资料不完整。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "^does not require absent project instructions and observes newly added rules through (runtime|public-cli)$",
+          "requiredNames": [
+            "does not require absent project instructions and observes newly added rules through runtime",
+            "does not require absent project instructions and observes newly added rules through public-cli"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-verification-cost",
+          "status": "pending",
+          "evidence": [
+            "R2 before repair: bugfree reused checks but spent 299.410 seconds versus standard 205.458 seconds on the same correct candidate; both accepted. docs/research/2026-11-05-bugfree-verify-cost.zh.md. Repair still needs model evidence."
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户明确要求移除 bugfree 模式。模式专用行为改验收入口已移除且旧策略不可推进；仍适用于普通 Native 的原始请求、收据和正式编辑复核继续执行相应断言。原来源、行为和选择器不改写，旧测试正文见移除前实现补丁。",
+        "authorization": "report:2026-11-05-bugfree-retirement",
+        "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes verification mode selection from public Eval CLI without launching a run$",
+            "requiredNames": [
+              "removes verification mode selection from public Eval CLI without launching a run"
+            ]
+          },
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes the unreleased verifier definition and compact pass protocol$",
+            "requiredNames": [
+              "removes the unreleased verifier definition and compact pass protocol"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/bugfree-retirement/regression-registry-before-removal.json",
+            "sha256": "cf33bdfcd50e42f0af102b31db54edc10559c0a2c340f3ab845833da16000680"
+          },
+          "patch": {
+            "file": "docs/research/bugfree-retirement/implementation-before-removal.patch",
+            "sha256": "674851450fac08bf987017fe9fa6a4b5df8a5f9879636b97918f7d30f428c44f"
+          },
+          "mapping": {
+            "file": "docs/research/bugfree-retirement/case-migrations.json",
+            "sha256": "b96fcd93e5c6cc251e4e594e378ce604899f9d11d1e4dae993e16f0f8131c463"
+          },
+          "tests": {
+            "file": "docs/research/bugfree-retirement/test-snapshots.json",
+            "sha256": "0dec6a1a5a6d519139f6df20862463f1fa6976f7e7e285ccb8ee9ab805f3a44a"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-bugfree-formal-edit-preflight",
+      "sources": [
+        "report:2026-11-04-bugfree-verify-overhead"
+      ],
+      "behavior": "正式文档存在已复核未应用的提案时，准备命令显示原提案，bugfree 先处理编辑再派发；明确丢弃后同一 Run 可继续验收。",
+      "coverageLevel": "public-cli",
+      "reproduction": "3c40cd26 的 prepare-applied 在文件仍为批准原文时只读候选范围，返回空列表；最终验收读取正式材料范围并拒绝。新增测试在修复前以空列表失败。",
+      "expected": "准备与提交核对相同编辑范围，错误包含文件与提案；编辑未处理时不给新的派发模板，合法处理后仍可提交独立结果。",
+      "forbidden": "空列表掩盖正式材料阻塞、自动丢弃提案、未处理仍通过、修改已批准文件或将恢复写入交给只读审查者。",
+      "rootCause": "prepare-applied 无实际文档差异时只查询 candidate scope，最终验收同时查询 formal scope；续行仍附带 Verifier 领取模板。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "^surfaces an unapplied formal edit before dispatching a bugfree verifier through (runtime|public-cli)$",
+          "requiredNames": [
+            "surfaces an unapplied formal edit before dispatching a bugfree verifier through runtime",
+            "surfaces an unapplied formal edit before dispatching a bugfree verifier through public-cli"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-verification-cost",
+          "status": "pending",
+          "evidence": [
+            "docs/research/2026-11-05-bugfree-verify-cost.zh.md; deterministic recovery does not establish model behavior or performance savings."
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "用户明确要求移除 bugfree 模式。模式专用行为改验收入口已移除且旧策略不可推进；仍适用于普通 Native 的原始请求、收据和正式编辑复核继续执行相应断言。原来源、行为和选择器不改写，旧测试正文见移除前实现补丁。",
+        "authorization": "report:2026-11-05-bugfree-retirement",
+        "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-verifier-context.test.ts",
+            "namePattern": "^surfaces an unapplied formal edit before dispatching an independent verifier through runtime$",
+            "requiredNames": [
+              "surfaces an unapplied formal edit before dispatching an independent verifier through runtime"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-verifier-context.test.ts",
+            "namePattern": "^surfaces an unapplied formal edit before dispatching an independent verifier through public-cli$",
+            "requiredNames": [
+              "surfaces an unapplied formal edit before dispatching an independent verifier through public-cli"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/bugfree-retirement/regression-registry-before-removal.json",
+            "sha256": "cf33bdfcd50e42f0af102b31db54edc10559c0a2c340f3ab845833da16000680"
+          },
+          "patch": {
+            "file": "docs/research/bugfree-retirement/implementation-before-removal.patch",
+            "sha256": "674851450fac08bf987017fe9fa6a4b5df8a5f9879636b97918f7d30f428c44f"
+          },
+          "mapping": {
+            "file": "docs/research/bugfree-retirement/case-migrations.json",
+            "sha256": "b96fcd93e5c6cc251e4e594e378ce604899f9d11d1e4dae993e16f0f8131c463"
+          },
+          "tests": {
+            "file": "docs/research/bugfree-retirement/test-snapshots.json",
+            "sha256": "0dec6a1a5a6d519139f6df20862463f1fa6976f7e7e285ccb8ee9ab805f3a44a"
+          }
+        }
+      }
+    },
+    {
+      "id": "local-native-one-shot-reverify-proof",
+      "sources": [
+        "report:2026-11-04-local-test-failures",
+        "report:2026-11-05-pr539-ci-failures"
+      ],
+      "behavior": "单次检查重验回归区分缺少复用证明和完整成功收据，保留原拒绝断言并验证合法复用没有重复副作用。",
+      "coverageLevel": "runtime",
+      "reproduction": "原测试先在交接后初始化 Git 和实现文件而触发漂移；顺序修正后，原先一概拒绝重验的期望与完整收据可复用规则不符。",
+      "expected": "显式构造缺少 rawInput 的兼容快照时保留原 pass 和待确认 Wait 并拒绝重验；完整证明下启动第二次独立验收，实际计数文件仍只有一次写入。",
+      "forbidden": "将缺少证明的单次检查重新执行、伪造通过、删除原拒绝断言、跨候选复用或自动进入 Archive。",
+      "rootCause": "测试准备时点与单次检查的证据复用前提均已过时；兼容快照仅作为隔离测试输入，不代表真实旧包已执行。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check|reuses a proven Verifier-added one-shot receipt during explicit reverify without replaying its effect",
+          "requiredNames": [
+            "preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check",
+            "reuses a proven Verifier-added one-shot receipt during explicit reverify without replaying its effect"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "local-native-reverify-fixture-order",
+      "sources": [
+        "report:2026-11-04-local-test-failures",
+        "report:2026-11-05-pr539-ci-failures"
+      ],
+      "behavior": "同候选重验测试先准备输入，再按实际编辑复核协议处理 JSON 格式变化，保留独立重验覆盖。",
+      "coverageLevel": "runtime",
+      "reproduction": "052 的 144880f5 测试在 Builder 交接后才创建 settings.json，首次检查即因候选漂移失败，未到达原重验断言。",
+      "expected": "首次检查绑定已存在的输入；格式修改经当前 Agent 记录非行为判断后，在相同候选和迭代上启动第二次独立验收。",
+      "forbidden": "跳过候选绑定、删除格式变化场景、把 Builder 的判断冒充正式验收，或返回 Build 掩盖同候选重验缺口。",
+      "rootCause": "测试准备顺序落后于候选冻结和编辑复核契约；本次修正测试设置，不改变产品判定规则。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "reverifies the same candidate after a passed result without returning to Build",
+          "requiredNames": [
+            "Native SDK Workflow Application reverifies the same candidate after a passed result without returning to Build"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-transient-snapshot-preserves-acceptance",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/531"
+      ],
+      "behavior": "归档采样不完整时保留已通过验收和用户接受决定，输入稳定后重试预检。",
+      "coverageLevel": "public-cli",
+      "reproduction": "预检抛出输入快照不完整错误，旧路径将其归类为候选漂移并清空验收。",
+      "expected": "预检失败且不推进、不写Specs；保留候选、验收、报告和批准，稳定后原流程可完成。",
+      "forbidden": "将无法读取当作已证明内容变化，或将不完整采样算作成功。",
+      "rootCause": "快照不完整与内容漂移共用归档失败原因，触发了清空验收的状态转换。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "keeps acceptance when a preflight input snapshot is incomplete and archives after a stable retry",
+          "requiredNames": [
+            "Native protocol simplification keeps acceptance when a preflight input snapshot is incomplete and archives after a stable retry"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-declared-check-outputs",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/531"
+      ],
+      "behavior": "Builder预先声明生成目录内的测试outputs，检查和Verifier产生这些未跟踪副产物后仍可验收归档。",
+      "coverageLevel": "public-cli",
+      "reproduction": "基线07bd301b的检查写dist/eval/trace.json后，Verifier提交被候选内容变化拒绝；无显式产物声明能力。",
+      "expected": "声明绑定原Builder和检查计划，保留日志副产物，已跟踪文件及未声明生成输入继续进入摘要。",
+      "forbidden": "默认忽略整个dist、忽略已跟踪输入、事后扩大输出声明或缩小失败采样范围。",
+      "rootCause": "输入快照将显式测试输出与应用生成输入一并绑定，检查计划没有输出声明。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "archives declared test outputs while continuing to bind generated application inputs",
+          "requiredNames": [
+            "Native protocol simplification archives declared test outputs while continuing to bind generated application inputs"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "excludes only declared untracked test outputs and binds tracked files and undeclared generated inputs",
+          "requiredNames": [
+            "Native check input fingerprint excludes only declared untracked test outputs and binds tracked files and undeclared generated inputs"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-509-environment-archive",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/509"
+      ],
+      "behavior": "非Git协调根的两个独立子仓含已提交环境文件时，真实检查、独立Verifier结果、用户批准及Archive可完成；配置变化仍阻塞旧验收归档。",
+      "coverageLevel": "public-cli",
+      "reproduction": "新增双子仓案例在旧代码的真实检查执行阶段因输入快照不完整失败；同一案例修复后通过生成命令bundle的验收批准与归档。",
+      "expected": "检查收据包含完整输入和候选摘要，配置变化由Archive预览和doctor只读检出；恢复原内容后按原批准完成归档，重复Archive不改变终态或配置文件。",
+      "forbidden": "空摘要通过归档、修改配置后沿用旧验收、诊断推进状态、配置原文进入收据或重复归档产生新副作用。",
+      "rootCause": "物理扫描对.env的文件名拦截使候选和完整输入绑定同时不可用，合法工作流无法进入归档。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "archives tracked environment files in non-Git child repositories and rejects stale environment evidence",
+          "requiredNames": [
+            "blocked Verifier recovery command contract archives tracked environment files in non-Git child repositories and rejects stale environment evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-successor-scoped-check-reuse",
+      "behavior": "修复实现后保留已确认 Shape，只重跑输入变化的可靠范围检查，并保留原收据来源完成归档。",
+      "coverageLevel": "public-cli",
+      "reproduction": "两个单文件 Node 语法检查通过后，Verifier 要求修复；只修改左侧实现。原实现仍重新执行右侧检查。",
+      "expected": "后继候选保留 Shape 与修复上下文，右侧沿用原 Action 和日志，左侧重新检查，独立验收后可归档。",
+      "forbidden": "重开 Shape、伪造新的检查执行、沿用已变化输入的旧通过结果或无法归档。",
+      "rootCause": "检查复用只按整个候选和项目指纹判断，没有 Runtime 可证明的单项完整输入范围。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "reuses only unchanged Runtime-proven check inputs across a repaired candidate and retains the approved Shape",
+          "requiredNames": [
+            "Native SDK verification input binding reuses only unchanged Runtime-proven check inputs across a repaired candidate and retains the approved Shape"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "runs incremental repair and Archive through the generated CLI without repeating unchanged scoped checks",
+          "requiredNames": [
+            "blocked Verifier recovery command contract runs incremental repair and Archive through the generated CLI without repeating unchanged scoped checks"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "^(?:blocked Verifier recovery command contract runs both syntax checks through the generated CLI when the repaired candidate has no Agent input judgment)$",
+          "requiredNames": [
+            "blocked Verifier recovery command contract runs both syntax checks through the generated CLI when the repaired candidate has no Agent input judgment"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-10-25-native-incremental-recovery"
+      ]
+    },
+    {
+      "id": "native-dirty-gitlink-archive",
+      "behavior": "dirty 嵌套或独立 Git 子仓必须绑定实际内容，完整检查和接受后能够归档，验收后再次修改子仓必须被拒绝。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/506"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "修复前 HEAD 475666a3 的真实 SDK 检查因 dirty 子仓判为快照不完整；npm 0.5.0 在 dirty 子仓与忽略的链接缓存并存时返回 null 候选摘要。",
+      "expected": "读取 HEAD、索引、状态、实际修改字节和递归子仓；合法候选完成原 Run 归档。",
+      "forbidden": "dirty 标记代替内容摘要、null 摘要死锁、子仓后续修改沿用原验收，或读取无关忽略缓存。",
+      "rootCause": "目录 gitlink 不能按普通文件读取；干净子仓的特判不能处理内部 dirty，物理扫描回退又受无关忽略材料影响。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "Native SDK verification input binding archives a verified dirty embedded repository and rejects subsequent dirty content drift",
+          "requiredNames": [
+            "Native SDK verification input binding archives a verified dirty embedded repository and rejects subsequent dirty content drift"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "blocked Verifier recovery command contract excludes validated in-project SDK request transport while preserving ordinary source inputs",
+          "requiredNames": [
+            "blocked Verifier recovery command contract excludes validated in-project SDK request transport while preserving ordinary source inputs"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-request-transport-inputs",
+      "behavior": "已校验的未跟踪 SDK 请求传输文件不形成自身漂移；只读 inspect 重用已登记文件不写登记，普通或已跟踪文件仍绑定。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/506"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "项目内重复写入 dispatch 请求后，SDK 验收或 Archive 报检查/候选输入漂移；同一文件改写为 inspect 也触发漂移。",
+      "expected": "在写入入口校验并登记当前请求，识别原 Run 已登记文件中的严格 inspect；正式源码和未登记材料仍绑定。",
+      "forbidden": "按文件名或任意 JSON 全局排除、排除已跟踪源码、跨 Run 复用 inspect，或只读 inspect 写入元数据。",
+      "rootCause": "SDK 请求没有接入已有的输入材料登记；内容变动使旧登记摘要失配。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "blocked Verifier recovery command contract excludes validated in-project SDK request transport while preserving ordinary source inputs",
+          "requiredNames": [
+            "blocked Verifier recovery command contract excludes validated in-project SDK request transport while preserving ordinary source inputs"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-runner-input-artifacts.test.ts",
+          "namePattern": "recognizes a read-only inspection in an already validated SDK request file without writing bookkeeping",
+          "requiredNames": [
+            "validated Native Runner input boundaries recognizes a read-only inspection in an already validated SDK request file without writing bookkeeping"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-runner-input-artifacts.test.ts",
+          "namePattern": "keeps tracked input files in the candidate even if they were registered before staging",
+          "requiredNames": [
+            "validated Native Runner input boundaries keeps tracked input files in the candidate even if they were registered before staging"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-runner-input-artifacts.test.ts",
+          "namePattern": "excludes retained validated payloads while binding other untracked JSON and changed payload bytes",
+          "requiredNames": [
+            "validated Native Runner input boundaries excludes retained validated payloads while binding other untracked JSON and changed payload bytes"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-gitlink-generated-input-binding",
+      "behavior": "Native 绑定 Git 子仓中被忽略的生成输入，输入变化后拒绝旧检查；恢复原内容后仍可正常归档。",
+      "sources": [
+        "report:2026-10-25-native-classic-core-review",
+        "https://github.com/rpamis/comet/issues/501",
+        "https://github.com/rpamis/comet/issues/506"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "8deff743 中检查 cwd=dependency，读取被子仓忽略的 dist/output.txt；good 检查通过后改成 bad，原命令退出 1，但 Verifier 和 Archive 仍通过。",
+      "expected": "干净及 dirty 子仓的生成输入变化均拒绝陈旧证据，公开 Archive 不完成；恢复原内容后的有效独立验收可完成归档。",
+      "forbidden": "仅绑定 gitlink HEAD/status 就忽略实际生成输入，或为拦截变化而永久阻止合法归档。",
+      "rootCause": "父仓 ls-files 不进入 gitlink，子仓摘要只读取 Git status 路径，两处均遗漏 ignored 生成文件。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^rejects changed gitlink generated inputs and archives restored inputs \\(dirty=(?:false|true)\\)$",
+          "requiredNames": [
+            "rejects changed gitlink generated inputs and archives restored inputs (dirty=false)",
+            "rejects changed gitlink generated inputs and archives restored inputs (dirty=true)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "blocked Verifier recovery command contract rejects changed gitlink generated output at the public Archive boundary",
+          "requiredNames": [
+            "blocked Verifier recovery command contract rejects changed gitlink generated output at the public Archive boundary"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "archives ignored build artifact roots without treating its own moved documents as generated drift",
+          "requiredNames": [
+            "archives ignored build artifact roots without treating its own moved documents as generated drift"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-archive-failed-input-repair",
+      "behavior": "Classic 已退出且未产生归档副作用的失败可在同一 Run 重开 Open 修正输入，保留原执行记录，重新审批、验收并完成归档交付；未知结果、规格变化和部分目录副作用仍被拒绝。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/507"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "051 原归档进程因无效 delta 退出 1，原领取方补交 failed 后 Run 停止，已确认 Archive 无法改写输入或重新确认。",
+      "expected": "repair-archive 按 revision 核对原输入和规格、归档目录后重开原 Run；source 和生成 bundle 的 full 流程均完成新的确认与本地交付。",
+      "forbidden": "自动重放未知执行、丢弃原 claim/outcome、忽略部分规格或目录变更、复用旧审批直接归档。",
+      "rootCause": "失败 Run 缺少由应用核验无副作用后重新安排输入修订的命令；已退出进程仍一律被记录为 unknown，且标准输出中的诊断丢失。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "reopens the same Run after a stopped Archive without effects and completes fresh approval and delivery|rejects Archive input repair for (changed specifications|partial archive directory) and stale revisions|repairs a full Archive without effects and delivers the same Run through (source|generated)",
+          "requiredNames": [
+            "Classic SDK Archive input repair reopens the same Run after a stopped Archive without effects and completes fresh approval and delivery (legacy unknown: false)",
+            "Classic SDK Archive input repair reopens the same Run after a stopped Archive without effects and completes fresh approval and delivery (legacy unknown: true)",
+            "Classic SDK Archive input repair rejects Archive input repair for changed specifications and stale revisions",
+            "Classic SDK Archive input repair rejects Archive input repair for partial archive directory and stale revisions",
+            "Classic SDK Archive input repair repairs a full Archive without effects and delivers the same Run through source",
+            "Classic SDK Archive input repair repairs a full Archive without effects and delivers the same Run through generated"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-delivery-repair-baseline-input-drift",
+      "behavior": "交付修复核对原基线中未改动的实现文件，拒绝未经验证的代码变化。",
+      "sources": [
+        "report:2026-10-26-051-release-closure"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "原已提交 implementation.mjs 在归档后由 42 改为 99，早期实现只核对待交付差异而接受修复。 逐项日志与断言映射见 docs/architecture/051-low-cost-recovery.zh.md。",
+      "expected": "拒绝漂移且不改变 Run；恢复原内容后可完成。",
+      "forbidden": "仅核对原 deliveryInputs，遗漏旧 manifest 中的基线代码。",
+      "rootCause": "误把原待提交内容清单当成全部验证输入。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "repairs late declared check outputs after Archive without replaying Archive or committing generated files",
+          "requiredNames": [
+            "Classic candidate revisions repairs late declared check outputs after Archive without replaying Archive or committing generated files"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "built Classic command bundle and installed package delivery recovery",
+          "status": "verified",
+          "evidence": [
+            "Source CLI assertions cover this behavior; generated and installed candidate verification remains pending.",
+            "2026-10-26 installed candidate SHA-256 a2fc9d9fff2b736cf3bde00c046c74d49c1727d87591b6dd6daefb65128638fc; node_modules/.cache/recovery-051-release/installed-delivery-final.log and installed-bundle-delivery.log passed all corresponding source, checkpoint, scope, failed/unknown check and delivery continuation assertions. Actual checks 5, Archive 1, generated output absent from commit. OpenSpec uses explicit directory-move fixture; real model acceptance remains separate."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-delivery-repair-checkpoint-read-race",
+      "behavior": "读取权威 Run 后归档 checkpoint 被编辑时，不得用新摘要为旧 Run 背书。",
+      "sources": [
+        "report:2026-10-26-051-release-closure"
+      ],
+      "coverageLevel": "runtime",
+      "reproduction": "持有原 Run 后改写 comet-state.yaml 的 run_checkpoint.hash，再捕获修复证明，早期实现接受。 逐项日志与断言映射见 docs/architecture/051-low-cost-recovery.zh.md。",
+      "expected": "重新读取的完整 checkpoint 必须匹配原 Run 或严格归档交付基线，否则拒绝。",
+      "forbidden": "把后来读取的任意快照摘要直接绑定到先前权威 Run。",
+      "rootCause": "读取快照摘要时未核对同一读取中的状态和 Run 身份。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "repairs late declared check outputs after Archive without replaying Archive or committing generated files",
+          "requiredNames": [
+            "Classic candidate revisions repairs late declared check outputs after Archive without replaying Archive or committing generated files"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "built Classic command bundle and installed package delivery recovery",
+          "status": "verified",
+          "evidence": [
+            "Source CLI assertions cover this behavior; generated and installed candidate verification remains pending.",
+            "2026-10-26 installed candidate SHA-256 a2fc9d9fff2b736cf3bde00c046c74d49c1727d87591b6dd6daefb65128638fc; node_modules/.cache/recovery-051-release/installed-delivery-final.log and installed-bundle-delivery.log passed all corresponding source, checkpoint, scope, failed/unknown check and delivery continuation assertions. Actual checks 5, Archive 1, generated output absent from commit. OpenSpec uses explicit directory-move fixture; real model acceptance remains separate."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-classic-stale-build",
+      "behavior": "Classic Build 检查后用户修改代码，失效证据回退并保留用户工作，包括 preset 升级 full 的 Run。",
+      "reproduction": "临时项目先完成 Build 检查再修改代码；旧 tweak 的证据停在 pending，升级 full 的 preset 同样无法恢复。",
+      "expected": "原 Run 将旧证据标记失效，回到 Build，保留修改并在新检查后进入 Verify。",
+      "forbidden": "接受旧证据、丢弃用户修改、重复旧检查结果或替换 Run 身份。",
+      "rootCause": "preset 缺少证据失效转移，升级 full 后的原工作流身份也需保留。",
+      "sources": [
+        "report:2026-10-27-manual-workflow-recovery"
+      ],
+      "coverageLevel": "runtime",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "preserves user changes and returns tweak to Build after a stale check receipt",
+          "requiredNames": [
+            "Classic SDK stale Build check recovery preserves user changes and returns tweak to Build after a stale check receipt"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "preserves user changes and returns hotfix to Build after a stale check receipt",
+          "requiredNames": [
+            "Classic SDK stale Build check recovery preserves user changes and returns hotfix to Build after a stale check receipt"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "recovers a stale Build check after tweak is upgraded to full",
+          "requiredNames": [
+            "Classic SDK stale Build check recovery recovers a stale Build check after tweak is upgraded to full"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "recovers a stale Build check after hotfix is upgraded to full",
+          "requiredNames": [
+            "Classic SDK stale Build check recovery recovers a stale Build check after hotfix is upgraded to full"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "recovers stale Build evidence on a Run created with the previous preset definition",
+          "requiredNames": [
+            "Classic SDK stale Build check recovery recovers stale Build evidence on a Run created with the previous preset definition"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "recovers an edited tweak through the generated Classic CLI",
+          "requiredNames": [
+            "Classic SDK stale Build check recovery recovers an edited tweak through the generated Classic CLI"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real Classic model continuation after user edits",
+          "status": "pending",
+          "evidence": [
+            "The isolated Classic model attempt could not continue because the command execution policy rejected read-only PowerShell commands. The same Run and user-edited file remained intact; no model continuation is claimed."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-classic-stale-verify",
+      "behavior": "Classic Verify 检查证据失效时给出保留用户修改的重新验证入口。",
+      "reproduction": "临时项目检查后修改代码，旧 Guard 不提供可执行的重新验证指引。",
+      "expected": "full、tweak、hotfix 的检查与 Guard 都提示重开 Verify 并重新验收。",
+      "forbidden": "重新提交旧收据或丢失用户修改。",
+      "rootCause": "旧证据拒绝响应没有投影已有 reopen-verification 命令。",
+      "sources": [
+        "report:2026-10-27-manual-workflow-recovery"
+      ],
+      "coverageLevel": "runtime",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "guides a stale full Verify check receipt back to verification without losing user edits",
+          "requiredNames": [
+            "Classic SDK stale Build check recovery guides a stale full Verify check receipt back to verification without losing user edits"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "guides a stale tweak Verify check receipt back to verification without losing user edits",
+          "requiredNames": [
+            "Classic SDK stale Build check recovery guides a stale tweak Verify check receipt back to verification without losing user edits"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "guides a stale hotfix Verify check receipt back to verification without losing user edits",
+          "requiredNames": [
+            "Classic SDK stale Build check recovery guides a stale hotfix Verify check receipt back to verification without losing user edits"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real Classic model continuation after user edits",
+          "status": "pending",
+          "evidence": [
+            "The isolated Classic model attempt could not continue because the command execution policy rejected read-only PowerShell commands. The same Run and user-edited file remained intact; no model continuation is claimed."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-applied-comment",
+      "behavior": "Native 用户直接修改已批准文档的注释后，可保留当前文件并根据原文进行复核。",
+      "reproduction": "用户在 Verify 阶段直接编辑已批准正式文档注释，旧恢复要求先恢复旧文本才能复核。",
+      "expected": "Agent 自动准备差异并沿原候选复核；可匹配的原文从记录或 Git 恢复，保留当前文件。",
+      "forbidden": "未审阅直接接受修改，改写用户文件，或将真实需求变化作为注释直接通过。",
+      "rootCause": "通用编辑复核以当前磁盘文件作为旧文，缺少已应用修改的原文和连续编辑处理。",
+      "sources": [
+        "report:2026-10-27-manual-workflow-recovery"
+      ],
+      "coverageLevel": "runtime",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-incremental.test.ts",
+          "namePattern": "reviews an already applied formal comment using the approved original without restoring the file",
+          "requiredNames": [
+            "Native Shape incremental contract reviews an already applied formal comment using the approved original without restoring the file"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-shape-incremental.test.ts",
+          "namePattern": "prepares an applied document review through the public CLI without rewriting the user file",
+          "requiredNames": [
+            "Native Shape incremental contract prepares an applied document review through the public CLI without rewriting the user file"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real model recovery and continuation",
+          "status": "pending",
+          "evidence": [
+            "Runtime regression covers the deterministic continuation. A real-model run with the final candidate is still required.",
+            "A real Codex model inspected the user-applied comment and prepared review, but independent reviewer creation failed; the Run and edited file were preserved and Archive was not completed."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-repeat-edit",
+      "sources": [
+        "report:2026-10-27-manual-workflow-recovery"
+      ],
+      "behavior": "用户在已应用复核期间再次编辑时保留最新文件并继续审阅。",
+      "coverageLevel": "runtime",
+      "reproduction": "旧待审或已完成提案与新内容不匹配时阻挡当前工作；新的临时项目回归覆盖连续手工编辑和遗留 Hook 提案。",
+      "expected": "保留最新文本，沿当前候选审阅并使被替代的提案不再阻塞。",
+      "forbidden": "覆盖用户文件，或把未审阅的新内容视为通过。",
+      "rootCause": "复核记录未将已被更新内容替代的旧提案从当前待办中解除。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-incremental.test.ts",
+          "namePattern": "keeps later user edits and supersedes stale pending and completed applied reviews",
+          "requiredNames": [
+            "Native Shape incremental contract keeps later user edits and supersedes stale pending and completed applied reviews"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-large-crlf",
+      "sources": [
+        "report:2026-10-27-manual-workflow-recovery"
+      ],
+      "behavior": "Native 恢复已批准的大型 CRLF 文档时可从匹配的 Git 内容重建原文。",
+      "coverageLevel": "runtime",
+      "reproduction": "临时项目的已批准文档超过 1 MiB 且 Git 内容使用 LF，旧实现无法恢复并将 brief 判为缺失。",
+      "expected": "按批准摘要核对 Git 内容和换行形式，完整读取实际 Shape 并保留用户修改。",
+      "forbidden": "使用摘要不匹配的原文或按文件大小误报缺失。",
+      "rootCause": "已应用审阅和 Shape 读取使用固定大小与单一换行的原文假设。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-incremental.test.ts",
+          "namePattern": "recovers a large CRLF approved original from matching Git LF content for applied review",
+          "requiredNames": [
+            "Native Shape incremental contract recovers a large CRLF approved original from matching Git LF content for applied review"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-compat-edit",
+      "sources": [
+        "report:2026-10-27-manual-workflow-recovery",
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "Native Compat 用户已应用的正式文档修改可由独立模型会话审阅而无需重复用户确认。",
+      "coverageLevel": "runtime",
+      "reproduction": "Compat 临时项目中用户直接修改注释，旧应用复核路径要求重新向用户确认。",
+      "expected": "审阅当前修改并按已有流程继续，保留当前文件和用户已有决定。",
+      "forbidden": "未审阅接受变更，或改变普通未应用编辑的确认要求。",
+      "rootCause": "Compat 已应用修改缺少独立会话复核路径。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-incremental.test.ts",
+          "namePattern": "reviews an applied Compat formal edit without asking for another user confirmation",
+          "requiredNames": [
+            "Native Shape incremental contract reviews an applied Compat formal edit without asking for another user confirmation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-build-edit",
+      "sources": [
+        "report:2026-10-27-manual-workflow-recovery"
+      ],
+      "behavior": "Native Build 中的正式注释修改保留当前文件并给出可执行的需求修订指引。",
+      "coverageLevel": "runtime",
+      "reproduction": "Build 临时项目尚无 Verify 候选时，统一提示复核会指向当前不可执行的 Verify 入口。",
+      "expected": "维持现有工作，按原阶段继续或通过现有需求修订路径处理。",
+      "forbidden": "要求用户回滚修改或指向不存在的 Verify 候选。",
+      "rootCause": "文档漂移提示未区分是否存在 Verify 候选。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-incremental.test.ts",
+          "namePattern": "keeps a Build comment edit and points to requirement revision when no Verify candidate exists",
+          "requiredNames": [
+            "Native Shape incremental contract keeps a Build comment edit and points to requirement revision when no Verify candidate exists"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-archive-ready",
+      "sources": [
+        "report:2026-10-27-manual-workflow-recovery"
+      ],
+      "behavior": "Archive 已准备但尚未执行时，用户修改实现可直接沿同一 Run 回到 Build。",
+      "coverageLevel": "runtime",
+      "reproduction": "临时 Git 项目确认验收并完成 Archive 准备后修改实现；旧状态输出仍给归档，直接修订使用已关闭决定而失败。",
+      "expected": "只读状态和 doctor 给出当前恢复命令；保留需求、用户文件与原 Run，修订后进入 Build。",
+      "forbidden": "执行或伪造归档结果、丢失用户工作、自动接受新候选或重复调用造成重复推进。",
+      "rootCause": "旧续行仅根据已失败的 Archive Action 判断候选漂移，缺少已准备但未领取归档时的修订命令。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "reports edited Archive-ready code before any Archive write and continues the same Run",
+          "requiredNames": [
+            "reports edited Archive-ready code before any Archive write and continues the same Run"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "revises a previous-definition Archive-ready Run without executing its Archive Action",
+          "requiredNames": [
+            "revises a previous-definition Archive-ready Run without executing its Archive Action"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real Codex model continuation from Archive-ready to Build",
+          "status": "verified",
+          "evidence": [
+            "Intermediate candidate Runtime 8d88bcd1d83c4e9b3070259060c6630b8e006e90f6f633459a3ebbe75b20b1c6 reached Build with the same Run and user edit. Subsequent source changes required a final-candidate rerun.",
+            "Final candidate Native Runtime SHA-256 d38cb3ab43beee75e1848ec8c9a2024b6db7c033d24ad4eac1bc7bdf74f30359. The controller changed true to !false; the real Codex model inspected the edit and resumed the original Run without a repeated user decision.",
+            "The original Run reached Build with a pending Builder and the user-edited file preserved. The initial Archive-ready state was constructed by a Runtime test helper with no prior checks; the model did not execute the new Builder or independent verification and reported verifier subagent creation unavailable.",
+            "Trace and controller evidence are retained in the isolated D:/comet-manual-model-finalverify-247516df0e6d4512a73d3267dacccb12 directory."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-archive-report-edit",
+      "sources": [
+        "report:2026-10-27-manual-workflow-recovery"
+      ],
+      "behavior": "Archive 准备后用户修改验证报告时提供保留原文的重新验证路径。",
+      "coverageLevel": "runtime",
+      "reproduction": "临时项目修改 verification.md 后，旧状态查询吞掉报告内容漂移并继续显示归档。",
+      "expected": "指出报告变化并给出重新验证方向，不把用户旧报告当成新的验证结果。",
+      "forbidden": "静默将修改后的报告视为已验证或执行归档。",
+      "rootCause": "报告差异抛出普通错误，候选漂移检查未将它作为可诊断的状态。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "retains a user-edited report at Archive-ready and chooses the appropriate revision",
+          "requiredNames": [
+            "retains a user-edited report at Archive-ready and chooses the appropriate revision"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-archive-requirements-edit",
+      "sources": [
+        "report:2026-10-27-manual-workflow-recovery"
+      ],
+      "behavior": "Archive 准备后同时修改需求和代码时先沿原 Run 修订需求。",
+      "coverageLevel": "runtime",
+      "reproduction": "临时项目同时修改 Spec 和代码，原批准不能直接覆盖新的验收范围。",
+      "expected": "保留当前文件，向模型提供需求修订路径并按原流程确认。",
+      "forbidden": "沿旧 Shape 直接派发实现并接受未经确认的需求。",
+      "rootCause": "旧状态投影没有区分正式需求变化与仅有实现变化。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "retains a user-edited requirements-and-code at Archive-ready and chooses the appropriate revision",
+          "requiredNames": [
+            "retains a user-edited requirements-and-code at Archive-ready and chooses the appropriate revision"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real model recovery and continuation",
+          "status": "pending",
+          "evidence": [
+            "Deterministic Runtime regression covers this case. A real-model run with the final candidate is still required."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-archive-formal-comment",
+      "sources": [
+        "report:2026-10-27-manual-workflow-recovery"
+      ],
+      "behavior": "Archive 前用户仅修改正式文档注释时可在原 Run 复核并继续。",
+      "coverageLevel": "runtime",
+      "reproduction": "临时项目在 archive.prepare 前或 archive.execute 待执行时修改已批准文档注释，旧续行要求重新确认 Shape。",
+      "expected": "模型审阅当前注释并保留文件，按原阶段继续；检查证据失效时仍重验。",
+      "forbidden": "要求用户先恢复旧文件、将正式需求变化当作注释、移动材料后丢失复核关系。",
+      "rootCause": "Archive 阶段未区分可审阅注释和正式需求变更，且归档移动后复核引用需要映射。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "reviews a user-applied formal comment at Archive-ready and continues without revising Shape",
+          "requiredNames": [
+            "reviews a user-applied formal comment at Archive-ready and continues without revising Shape"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "reviews a user-applied formal comment before Archive preflight and continues",
+          "requiredNames": [
+            "reviews a user-applied formal comment before Archive preflight and continues"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-reviewed-requirements",
+      "sources": [
+        "report:2026-10-27-manual-workflow-recovery"
+      ],
+      "behavior": "独立复核认定已应用编辑改变需求时，沿原 Run 提供可执行需求修订命令。",
+      "coverageLevel": "runtime",
+      "reproduction": "临时项目的用户修改经复核判为 requirements-changed，旧状态停在 review-edit 而不提供修订命令。",
+      "expected": "保留用户文件并回到同一 Run 的 Shape，按原流程等待新的用户确认。",
+      "forbidden": "自动批准变更、覆盖用户修改或使用旧批准继续。",
+      "rootCause": "已应用编辑复核的需求变更结果没有映射到现有需求修订续行。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "continues a user-applied requirements change through the original Shape confirmation",
+          "requiredNames": [
+            "continues a user-applied requirements change through the original Shape confirmation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-ignored-parent-generated-input-binding",
+      "sources": [
+        "https://github.com/rpamis/comet/pull/510#discussion_r4385630080"
+      ],
+      "behavior": "被整体忽略的父目录内的生成输入仍绑定检查，修改后拒绝旧验收，恢复后保留原检查归档。",
+      "coverageLevel": "runtime",
+      "reproduction": "旧051对 scratch/ 整体忽略时，改写 scratch/app/dist/input.json 后生成摘要不变；新增同一断言先失败。",
+      "expected": "发现嵌套生成目录，排除依赖目录，改变真实输入后拒绝旧验收，恢复原文后完成归档。",
+      "forbidden": "遗漏生成输入却标记完整、遍历依赖、复用陈旧验收或重跑原检查。",
+      "rootCause": "Git --directory 折叠 ignored 父目录，根发现只解析已返回的目录名称。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "binds generated inputs inside an entirely ignored parent without traversing dependencies",
+          "requiredNames": [
+            "Native check input fingerprint binds generated inputs inside an entirely ignored parent without traversing dependencies"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "rejects stale verification for generated input inside an entirely ignored parent and archives restored input",
+          "requiredNames": [
+            "Native SDK verification input binding rejects stale verification for generated input inside an entirely ignored parent and archives restored input"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-ignored-cache-link-boundary",
+      "sources": [
+        "https://github.com/rpamis/comet/pull/510#discussion_r4386096194"
+      ],
+      "behavior": "忽略缓存内的无关链接不阻塞验收，生成输入的变化和实际范围内的链接仍阻止复用。",
+      "coverageLevel": "runtime",
+      "reproduction": "856bd277 的目录发现进入 .cache 并拒绝其中普通链接；相同目录 junction 用例和真实 SDK 验收均先失败。文件链接变体在具备权限的平台执行。",
+      "expected": "排除原有缓存边界，生成输入仍绑定；恢复原输入后保留原检查并完成归档。",
+      "forbidden": "缓存链接导致完整快照失败、生成输入变化后接受旧验收，或把实际生成输入链接作为普通文件复用。",
+      "rootCause": "新增 ignored 父目录发现没有沿用既有物理输入缓存排除。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "keeps unrelated ignored cache links outside generated input discovery",
+          "requiredNames": [
+            "Native check input fingerprint keeps unrelated ignored cache links outside generated input discovery (directory)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "archives with unrelated ignored cache links while keeping generated inputs bound",
+          "requiredNames": [
+            "Native SDK verification input binding archives with unrelated ignored cache links while keeping generated inputs bound"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ci-python-loader-environment-isolation",
+      "sources": [
+        "https://github.com/rpamis/comet/actions/runs/40467090141/job/122065507698"
+      ],
+      "behavior": "隔离执行的正向测试不继承 Python CI 注入的动态库路径，同时保留注入环境拒绝复用的反例。",
+      "coverageLevel": "unit",
+      "reproduction": "模拟 setup-python 的 LD_LIBRARY_PATH，856bd277 的跨候选复用正向用例失败，与 Ubuntu CI 的 logRef 和 reusedFrom 差异一致。",
+      "expected": "正向夹具使用隔离环境，动态库和 NODE_OPTIONS 注入仍不能建立窄范围证明。",
+      "forbidden": "放宽产品注入限制、删除复用断言，或依赖 runner 恰好没有动态库路径。",
+      "rootCause": "正向复用测试继承了 CI 安装 Python 后新增的 LD_LIBRARY_PATH。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-scope.test.ts",
+          "namePattern": "captures a stable complete input proof for an isolated Node syntax check",
+          "requiredNames": [
+            "captures a stable complete input proof for an isolated Node syntax check"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "reuses only unchanged Runtime-proven check inputs across a repaired candidate and retains the approved Shape",
+          "requiredNames": [
+            "Native SDK verification input binding reuses only unchanged Runtime-proven check inputs across a repaired candidate and retains the approved Shape"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "runs incremental repair and Archive through the generated CLI without repeating unchanged scoped checks",
+          "requiredNames": [
+            "blocked Verifier recovery command contract runs incremental repair and Archive through the generated CLI without repeating unchanged scoped checks"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-delivery-short-path-input-diagnostic",
+      "sources": [
+        "https://github.com/rpamis/comet/actions/runs/40467090141/job/122065507774"
+      ],
+      "behavior": "通过 Windows 短目录名进入工作区时，交付仍核对实际实现文件并报告验证内容变化。",
+      "coverageLevel": "public-cli",
+      "reproduction": "当前 CI 的 RUNNER~1 路径触发 Git outside repository；本地在真实 8.3 临时目录运行相同公开交付回归复现。",
+      "expected": "按同一物理路径比较 Git 索引；拒绝未验证实现，保留原 Run，并报告 source.js 的实际变化。",
+      "forbidden": "用不同目录拼写构造仓库外路径、丢失输入变化原因，或接受未经验证的实现。",
+      "rootCause": "Git 返回规范目录名，索引回退却从含短名称的文件路径计算相对路径。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "requires final verified implementation bytes throughout multi-commit delivery",
+          "requiredNames": [
+            "requires final verified implementation bytes throughout multi-commit delivery"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-runner-request-parent-alias",
+      "sources": [
+        "https://github.com/rpamis/comet/actions/runs/40493220406/job/122152726636"
+      ],
+      "behavior": "通过项目父目录别名访问时，已验证的请求传输文件仍从候选输入中排除，普通文件和已跟踪文件仍受内容绑定。",
+      "coverageLevel": "public-cli",
+      "reproduction": "dfd4833a 的 macOS SDK 验收把项目内请求误判为输入变化；新增父目录链接案例在旧登记逻辑返回空集合，先失败。",
+      "expected": "按同一物理项目根登记和复核请求文件，保留原检查与候选并完成生成命令包归档。",
+      "forbidden": "目录别名使请求写入失效旧验收、跳过普通或已跟踪输入，或链接和损坏登记被误当成有效请求。",
+      "rootCause": "请求文件的 realPath 与含别名的项目根直接计算相对路径，合法请求未能登记或匹配。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-runner-input-artifacts.test.ts",
+          "namePattern": "recognizes validated request files through a project parent alias without hiding ordinary inputs",
+          "requiredNames": [
+            "validated Native Runner input boundaries recognizes validated request files through a project parent alias without hiding ordinary inputs"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "excludes validated in-project SDK request transport while preserving ordinary source inputs",
+          "requiredNames": [
+            "blocked Verifier recovery command contract excludes validated in-project SDK request transport while preserving ordinary source inputs"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-current-agent-edit-judgment",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "连续编辑由当前 Agent 合并判断，原领取和未受影响检查保留，新编辑使旧判断失效。",
+      "coverageLevel": "unit",
+      "reproduction": "旧独立编辑复核需要新审查会话；同一当前 Agent claim、二进制/新增/删除输入和精确保留检查由共享契约定向对照。",
+      "expected": "当前 Action 可记录判断，只保留明确选中的真实检查，迟到编辑拒绝旧收据。",
+      "forbidden": "额外独立审查、凭摘要伪造检查成功、复用未覆盖的新内容。",
+      "rootCause": "编辑判断与当前执行上下文断开，检查有效性只能整体作废。",
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/edit-review.test.ts",
+          "namePattern": "batches raw binary, added and deleted files and rejects edits after observation",
+          "requiredNames": [
+            "bound edit reviews batches raw binary, added and deleted files and rejects edits after observation"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-parallel-worktree.test.ts",
+          "namePattern": "^Native parallel linked-worktree Runtime preserves default linked-worktree edits through current-Agent judgment and candidate revision$",
+          "requiredNames": [
+            "Native parallel linked-worktree Runtime preserves default linked-worktree edits through current-Agent judgment and candidate revision"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 current candidate: real model acceptance has not run. Deterministic Runtime evidence does not replace it."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-approved-selective-check-refresh",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "Native SDK 已接受候选只补受影响检查，新失败阻止旧成功归档。",
+      "coverageLevel": "runtime",
+      "reproduction": "在临时 SDK Run 原 Archive 前编辑说明，由当前 Agent 仅保留 B，使用固定原计划补 A，并分别让 A 成功和失败。",
+      "expected": "原 state、Wait 与 report 保持，A 执行两次、B 一次，失败时不能归档。",
+      "forbidden": "新检查替换用户决定、全组重跑、旧成功掩盖新失败。",
+      "rootCause": "原检查与接受流程绑定过紧，缺少保留原报告的补检查命令。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "refreshes only the affected check after approval and preserves the report and decision",
+          "requiredNames": [
+            "Native SDK verification input binding refreshes only the affected check after approval and preserves the report and decision (failure=false)",
+            "Native SDK verification input binding refreshes only the affected check after approval and preserves the report and decision (failure=true)"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 current candidate: real model acceptance has not run. Deterministic Runtime evidence does not replace it."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-raw-batch-parent-containment",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "Classic 批量读取时临时替换父目录并恢复仍须拒绝混合输入。",
+      "coverageLevel": "runtime",
+      "reproduction": "在隔离临时项目执行登记的精确场景；旧行为与当前证据见 052 验证记录。",
+      "expected": "保留原路径与用户字节，发现读取到的内容与稳定父目录下内容不一致。",
+      "forbidden": "Git 读取临时外部目录后，将其摘要与恢复后的原叶子身份组合成完整清单。",
+      "rootCause": "目录排除规则只比较过滤后的名称，未复核身份改变期间的实际输入。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-check-snapshot.test.ts",
+          "namePattern": "rejects a temporary parent junction while batch hashing",
+          "requiredNames": [
+            "Classic check input snapshots rejects a temporary parent junction while batch hashing without discarding excluded output writes"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-compat-interrupted-approved-refresh",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "Native Compat 补检查启动前中断保留原始来源，修复输入后继续同 Run，重复请求不重放。",
+      "coverageLevel": "runtime",
+      "reproduction": "运行隔离真实 Runtime 回归，核对候选、报告、原执行与副作用计数。",
+      "expected": "原批准、报告、候选及 source rawInputRef 保留；未执行不伪装通过，完成请求只复读原结果。",
+      "forbidden": "中断清除原始输入导致永久恢复死路，或把旧成功当作本次成功。",
+      "rootCause": "原执行身份或事务来源未贯穿编辑后的续行边界。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "Native portable Archive resumes an interrupted approved check without losing its source or replaying the completed request",
+          "requiredNames": [
+            "Native portable Archive resumes an interrupted approved check without losing its source or replaying the completed request"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-implementation-revision-not-acceptance",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "已应用的当前 Agent 实现变化只允许进入修订，不等价于原候选通过。",
+      "coverageLevel": "unit",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "只为实际 applied/runtime-agent implementation-changed 开放修订；新字节、未应用、requirements-changed 仍阻塞。",
+      "forbidden": "将实现变化收据加入普通等价内容，或让未判断的新字节通过修订边界。",
+      "rootCause": "接受候选与进入授权内修订使用了同一完成条件。",
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/edit-review.test.ts",
+          "namePattern": "^(?:bound edit reviews allows an applied current-Agent implementation decision only for revision and never treats it as equivalent accepted content)$",
+          "requiredNames": [
+            "bound edit reviews allows an applied current-Agent implementation decision only for revision and never treats it as equivalent accepted content"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-canonical-source-edit-continuation",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "Classic canonical Spec 的原文来自真实批准来源，普通编辑经当前 Agent 判断后保留批准。",
+      "coverageLevel": "runtime",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "原始字节可核对；真实需求变化走原修订并新批准。",
+      "forbidden": "读取编辑后的当前文件补造旧原文，或新批准仍被旧负判断阻塞。",
+      "rootCause": "canonical 来源未纳入正式原文及批准身份。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "^(?:Classic candidate revisions retains approved canonical source after the current Agent judges its original raw bytes)$",
+          "requiredNames": [
+            "Classic candidate revisions retains approved canonical source after the current Agent judges its original raw bytes"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 当前新增 A4/formalSource 行为尚无真实模型证明；确定性 Runtime 检查不替代模型语义判断。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-preset-source-reapproval",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "preset 的 canonical 编辑沿用真实 Open 来源，只有实际新 scope 决定才更新身份。",
+      "coverageLevel": "runtime",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "prepare/observe 不假造新来源；明确 continue/escalation 后更新批准身份。",
+      "forbidden": "原 Open 后的 ordinary 编辑要求重开流程，或只靠文件变化更新授权。",
+      "rootCause": "preset 无 Design/Plan 时缺少真实 Open 与后续 scope 决定的统一来源。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "^(?:Classic candidate revisions retains preset canonical edits under the real Open and retires them only after the actual new scope decision)$",
+          "requiredNames": [
+            "Classic candidate revisions retains preset canonical edits under the real Open and retires them only after the actual new scope decision"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 当前新增 A4/formalSource 行为尚无真实模型证明；确定性 Runtime 检查不替代模型语义判断。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-plan-source-edit-continuation",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "已接受 Plan 补充说明由当前 Builder 判断后继续原计划和原批准。",
+      "coverageLevel": "runtime",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "原 Plan 证据仍有效，真实原文与当前差异可核对。",
+      "forbidden": "把当前 Plan 补造为过去已接受原文，或因说明变化重新批准计划。",
+      "rootCause": "Plan 原始来源未在实际接受边界固定。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "^(?:Classic candidate revisions keeps accepted Plan evidence after the current Builder judges an applied explanation)$",
+          "requiredNames": [
+            "Classic candidate revisions keeps accepted Plan evidence after the current Builder judges an applied explanation"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 当前新增 A4/formalSource 行为尚无真实模型证明；确定性 Runtime 检查不替代模型语义判断。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-design-source-edit-continuation",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "Design 的已应用与待应用普通编辑保留对应已批准设计来源。",
+      "coverageLevel": "runtime",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "两种编辑位置都核对原设计字节和当前 Agent 判断。",
+      "forbidden": "对编辑后字节补造旧批准，或把未应用提案当作已应用。",
+      "rootCause": "Design 当前路径摘要代替了真实批准原文。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "^(?:Classic candidate revisions keeps accepted Design evidence after the current Agent judges a raw formatting edit \\(already applied: false\\)|Classic candidate revisions keeps accepted Design evidence after the current Agent judges a raw formatting edit \\(already applied: true\\))$",
+          "requiredNames": [
+            "Classic candidate revisions keeps accepted Design evidence after the current Agent judges a raw formatting edit (already applied: false)",
+            "Classic candidate revisions keeps accepted Design evidence after the current Agent judges a raw formatting edit (already applied: true)"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 当前新增 A4/formalSource 行为尚无真实模型证明；确定性 Runtime 检查不替代模型语义判断。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-compat-plan-source-edit-continuation",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "Compat Plan 原文由真实 Build 转换捕获，Verify 编辑判断可保留原 handoff。",
+      "coverageLevel": "runtime",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "真实 Build 过渡生成原文来源；后续当前 Agent 判断可继续 Verify。",
+      "forbidden": "在判断时把已改文件当成过去原文，或缺少来源时静默通过。",
+      "rootCause": "Compat 仅保留旧摘要，没有实际过渡的原文身份。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-handoff.test.ts",
+          "namePattern": "^(?:Classic handoff command continues Compat Verify after the current Agent judges the Plan captured by the real Build transition)$",
+          "requiredNames": [
+            "Classic handoff command continues Compat Verify after the current Agent judges the Plan captured by the real Build transition"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 当前新增 A4/formalSource 行为尚无真实模型证明；确定性 Runtime 检查不替代模型语义判断。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-authorized-implementation-continuation",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "Native 授权内 A 行为改变从 Verify/Archive 沿公开续行进入同 Run 后继候选，只补 A 并保留 B 一次性执行。",
+      "coverageLevel": "runtime",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "Builder pending/claim/outcome 可继续；Shape 批准和原历史保留，新 Verifier、报告、结果接受和一次 Archive。",
+      "forbidden": "旧负判断遮蔽修订或 Builder、把变化实现冒称 non-behavioral、重放 B 或沿用旧报告接受新候选。",
+      "rootCause": "编辑复核投影先覆盖原修订入口，普通 scope 又保留旧候选到 Builder 提交。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:A4 continues an Agent-reviewed behavior change from verify and retains only the unaffected one-shot check|A4 continues an Agent-reviewed behavior change from archive and retains only the unaffected one-shot check)$",
+          "requiredNames": [
+            "A4 continues an Agent-reviewed behavior change from verify and retains only the unaffected one-shot check",
+            "A4 continues an Agent-reviewed behavior change from archive and retains only the unaffected one-shot check"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 当前新增 A4/formalSource 行为尚无真实模型证明；确定性 Runtime 检查不替代模型语义判断。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-explicit-git-dependent-refresh",
+      "behavior": "相同字节仅暂存时，Agent 可显式补 Git index 检查，新失败遮蔽旧成功且保留一次性检查及批准",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "coverageLevel": "runtime",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^refreshes an explicitly selected Git check after byte-identical staging and preserves one-time evidence and approval$",
+          "requiredNames": [
+            "refreshes an explicitly selected Git check after byte-identical staging and preserves one-time evidence and approval"
+          ]
+        }
+      ],
+      "reproduction": "临时 Git 项目原 HEAD/index 为 0、working tree 为 1；原 cached diff 通过，接受候选后只暂存相同文件，再由 Agent 选择补查 git diff --cached --quiet。",
+      "expected": "原始 changes 为空，Git index 变化可见；补查真实退出 1，B/once 的原日志和来源、Shape、报告和原接受决定保持不变，归档拒绝新失败。",
+      "forbidden": "将暂存误判为实现修改、继续采用旧 Git 检查成功归档，或重放一次性 B。",
+      "rootCause": "字节候选与 Git 元数据须分别观察；显式选择的 Git 检查必须产生新真实收据并优先于旧成功。"
+    },
+    {
+      "id": "native-sdk-refresh-failed-preflight-recovery",
+      "behavior": "接受后补检查失败的真实归档预检保存失败收据；修复后沿同 Run 重试、仅补原检查并完成一次归档",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "coverageLevel": "runtime",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^refreshes an explicitly selected Git check after byte-identical staging and preserves one-time evidence and approval$",
+          "requiredNames": [
+            "refreshes an explicitly selected Git check after byte-identical staging and preserves one-time evidence and approval"
+          ]
+        }
+      ],
+      "reproduction": "0f0861fc 上运行同一 A9 案例：补查退出 1 后真实执行 archive.prepare，旧路径抛出 PROPOSAL_INPUT_MISSING: verify.verifier。",
+      "expected": "预检明确 failed 并保留原状态、报告、批准和检查失败；取消暂存后重试原只读 Action，显式补 Git 检查通过，B/once 不重跑，归档只执行一次。",
+      "forbidden": "丢失真实失败收据、产生缺 Verifier 提案的协议异常、伪造新批准、重建 Run 或重复归档/副作用。",
+      "rootCause": "refresh-checks 的后继上下文没有新的 verify.verifier 提案，不能将预检失败送入依赖该提案的 verify.stop；应保留原批准并使用既有只读预检恢复入口。"
+    },
+    {
+      "id": "classic-full-refresh-archive-document-provenance",
+      "behavior": "Classic full接受后补检查仍使用原接受的Design和Plan完成一次归档及本地交付",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "^Classic SDK Agent input judgment preserves full Archive documents after a supplemental check and completes local delivery$",
+          "requiredNames": [
+            "Classic SDK Agent input judgment preserves full Archive documents after a supplemental check and completes local delivery"
+          ]
+        }
+      ],
+      "reproduction": "实际npm0.5.2公开CLI full流程接受后refresh成功，再archive预检报Classic Archive documents are missing；源码相同case先失败。",
+      "expected": "沿refresh命令绑定的原检查和递减sequence找到原Design/Plan，继承原恢复分类；已复核的Design说明进入最终提交，后续未复核说明阻止推进，只归档一次且本地交付可完成。",
+      "forbidden": "丢失正式文档证据、借用后继/未接受的Design/Plan、把普通refresh误标为旧交付恢复、重复检查或归档。",
+      "rootCause": "归档文档解析遗漏refresh-checks的新Action上下文；补查回溯若统一设置recovered会将合法的已复核说明误按旧原文收据验证。",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "coverageLevel": "runtime"
+    },
+    {
+      "id": "native-archive-formal-requirements-judgment-route",
+      "behavior": "Archive正式材料经当前Agent判定需求变化后，公开continuation给出原Run修订Shape命令并保留用户修改",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^retains a user-edited requirements-and-code at Archive-ready and chooses the appropriate revision$",
+          "requiredNames": [
+            "retains a user-edited requirements-and-code at Archive-ready and chooses the appropriate revision"
+          ]
+        }
+      ],
+      "reproduction": "有原批准原文缓存，编辑Spec和实现并记录requirements-changed；status仍只返回show，无法沿返回命令修订。",
+      "expected": "同Run提供带stateVersion的revise-requirements，执行后回Shape但不自动批准，代码与正式材料保持。",
+      "forbidden": "循环show、不提供合法恢复命令、沿旧批准归档，或覆盖用户文件。",
+      "rootCause": "Archive续行只从review-edit中排除已判断的implementation-changed，没有让正式requirements-changed进入原Shape修订路径。",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "coverageLevel": "runtime"
+    },
+    {
+      "id": "classic-failed-refresh-archive-document-recovery",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "coverageLevel": "runtime",
+      "behavior": "Classic full补检查失败后修正输入，在原Run再次补查并沿原批准文档完成一次归档，不重放Build",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "^Classic SDK Agent input judgment recovers a failed supplemental full check without losing Archive documents or replaying Build$",
+          "requiredNames": [
+            "Classic SDK Agent input judgment recovers a failed supplemental full check without losing Archive documents or replaying Build"
+          ]
+        }
+      ],
+      "reproduction": "第一轮补查失败保留原批准；修正并再次判断后第二轮补查通过。归档文档解析只接受source succeeded且忽略当前补查Action自身的命令关联，因此取不到原Design/Plan。",
+      "expected": "保留第一次真实失败，第二次仅重跑Verify，沿有真实outcome的已完成补查及严格递减sequence取得原批准文档，Build执行一次、归档一次、交付完成。",
+      "forbidden": "将旧失败改成成功、重放Build或归档、信任未知或运行中来源、借用未接受的新文档。",
+      "rootCause": "递归回溯在来源为已完成失败补查时提前拒绝，并且查询之前的命令遗漏与该来源Action直接绑定的refresh-checks。"
+    },
+    {
+      "id": "agent-edit-review-check-evidence-versus-implementation",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "coverageLevel": "unit",
+      "behavior": "普通说明仅使相关检查证据过期时，当前Agent保留原候选和批准、只补相关检查；实际产品行为变化仍修订候选",
+      "reproduction": "实际0.5.2安装包A3 Native GLM记录产品首行与契约不变、仅检查a全文SHA证据失效，却选择implementation-changed，随后执行revise-implementation并创建Builder和额外Agent。原实验已保留，因具体禁止行为主动停止，未计为通过。",
+      "expected": "判断分别核对产品行为和检查证据；行为未变时non-behavioral并在同Run补检查，原报告和决定保留；检查无结果或未通过继续阻止归档。",
+      "forbidden": "仅因摘要、日志或检查输入过期就重开Builder或独立审查，或者把实际业务输出变化当成普通说明，或以原成功绕过补检查。",
+      "rootCause": "Skill列出了三种判断但未定义产品实现变化与检查证据过期的区别，模型把需要更新证据误当作实现变化。",
+      "tests": [
+        {
+          "file": "test/domains/skill/sdk-flow-handoffs.test.ts",
+          "namePattern": "^skills(-zh)? SDK flow handoffs distinguishes refreshed check evidence from product implementation changes$",
+          "requiredNames": [
+            "skills-zh SDK flow handoffs distinguishes refreshed check evidence from product implementation changes",
+            "skills SDK flow handoffs distinguishes refreshed check evidence from product implementation changes"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-01-052-continuation-acceptance.zh.md：真实模型误分类、旧实验失败与后续验证范围",
+            "Native A3 experiment 052_native_a3_a27d2db1845646f3911603a3888397d4 (v9) and Classic A3 experiment 052_classic_edit_20261101_123031 (v4) completed their original real-model and final Runtime checks: ordinary/formal explanatory edits retained the original Run and approvals rather than starting an implementation revision. Earlier failures remain preserved. This verifies the described non-behavioral classification only; it does not verify Native A4. Final v12 relevant Skill text matches v9, while v11 public CLI separately confirms current Runtime behavior."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "agent-edit-review-no-unauthorized-revision",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "coverageLevel": "unit",
+      "behavior": "正式材料实质变化但没有修订授权时，仅补齐当前判断并请求相关决定，保留原阶段和已有结果",
+      "reproduction": "实际A5 Classic GLM在只判断proposal后因遗漏Spec的checkpoint失败，错误执行Runtime建议的revise-design，从Archive回Design并清空当前验收和归档确认，虽然任务明确没有新增授权。模型最终承认该错误，原实验保留。",
+      "expected": "Runtime提供命令不构成新授权；多个正式来源可通过prepare-applied --file逐一补判断；缺授权时保持原Run、阶段、批准和检查，明确请求相关决定；已明确授权的修订仍可沿同Run继续。",
+      "forbidden": "用需求修订代替补齐判断，未获决定就改变阶段、创建后继或重置既有结果；或对已有明确授权机械新增确认。",
+      "rootCause": "Skill要求缺授权时请求决定，但未明确修订提示不授予授权以及判断多份已应用材料的补充入口，模型把技术恢复路径当作可以立即执行的动作。",
+      "tests": [
+        {
+          "file": "test/domains/skill/sdk-flow-handoffs.test.ts",
+          "namePattern": "^skills(-zh)? SDK flow handoffs (keeps an unapproved requirement revision from changing the original phase or results|routes actual edits through review before phase or revision commands)$",
+          "requiredNames": [
+            "skills-zh SDK flow handoffs keeps an unapproved requirement revision from changing the original phase or results",
+            "skills SDK flow handoffs keeps an unapproved requirement revision from changing the original phase or results",
+            "skills-zh SDK flow handoffs routes actual edits through review before phase or revision commands",
+            "skills SDK flow handoffs routes actual edits through review before phase or revision commands"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-01-052-continuation-acceptance.zh.md：A5真实模型越权修订及后续验证范围",
+            "GLM 5.3 Flash Native experiment 052_native_a5_cf67c1e8e3fd49e18b54af875f45e76a (v7) and Classic experiment 052_classic_a5_f92db040e20c49119a9e001d06a83531 (v9): both complete model/helper-tool/final Runtime oracles passed. Actual added JSON feature was judged, no new authorization simulated, original Run/phase/approvals/checks/files/HEAD/one-time effects unchanged; final responses requested the corresponding decision. Earlier failures remain preserved."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-successive-refresh-original-execution",
+      "sources": [
+        "report:2026-11-01-052-native-reused-check-origin"
+      ],
+      "coverageLevel": "runtime",
+      "behavior": "连续补查时允许当前判断保留真实原检查来源，不强迫引用没有重执行的中转收据，且一次性动作不重放",
+      "reproduction": "052_native_edit_20261101_131003 使用 v6 实际安装包，第一轮补 A 并复用原 B/once；第二轮仍明确保留最初真实执行 Action，Runtime 要求中转 Action 而进入 unknown。对应最小临时项目回归在旧源码第二轮 EXECUTION_UNKNOWN，新源码通过。",
+      "expected": "最新有效复用收据沿严格较早的来源链核对原执行、计划、日志、候选和完整输入；当前判断覆盖原输入到现输入的全部差异时只补 A，B/once 保持一次，原报告和批准保留。",
+      "forbidden": "跨过最新失败、未知或中断找旧成功；借历史引用自动接受未判断字节；接受伪造 attempt、候选或日志；重放原一次性效果。",
+      "rootCause": "选择和校验复用检查时仅用最新中转 Action 查询保留判断，没有识别该已验证复用链指向的真实执行身份。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^Native SDK verification input binding retains the original execution through successive refresh receipts without replaying one-shot checks$",
+          "requiredNames": [
+            "Native SDK verification input binding retains the original execution through successive refresh receipts without replaying one-shot checks"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "public-package-and-real-model-eval",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-01-052-continuation-acceptance.zh.md：原执行来源的连续复用；已复现，公开包与真实模型待补",
+            "Native A3 real-model experiment 052_native_a3_a27d2db1845646f3911603a3888397d4 used v9 and completed two refresh rounds retaining the original actual B/once execution. The v11 installed public CLI independently completed the same two-round boundary with A/B/once=3/1/1, fresh-byte rejection, original source/log bindings and exactly one archive (v11/native-public.log); v12 reads that completed Run with byte-identical Runtime files. This is not a claim that v12 reran that real-model sample."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-refresh-selected-check-scope",
+      "sources": [
+        "report:2026-11-01-052-native-unselected-check-replay"
+      ],
+      "coverageLevel": "runtime",
+      "behavior": "已接受结果后明确只补 A 时，未选 B 缺保留判断应在任何执行前阻塞，不得隐式重跑 B",
+      "reproduction": "052_native_a3_2b69582ee20d42989fcd294b92379bdf 用 v7 包，仅选择 A，正式 brief 判断漏保留项而普通文件判断正确保留 B/once。旧执行器仍执行未选 B，随后到 once 才失败为 unknown。",
+      "expected": "命令验证时核对所有未选检查，缺有效复用证据则原 Run、归档待办及计数均不变；原 Agent 补齐判断后同 Run 只执行所选 A。执行前复查新输入，执行中失效也禁止扩大范围。",
+      "forbidden": "未选检查自动落入执行分支；部分副作用后才发现既有缺项；跨过最新失败或用旧判断接受新字节。",
+      "rootCause": "refresh checkIds 仅决定强制执行项，未选项复用失败后仍进入一般可重复执行分支，没有预先验证完整复用计划。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^Native SDK verification input binding retains the original execution through successive refresh receipts without replaying one-shot checks$",
+          "requiredNames": [
+            "Native SDK verification input binding retains the original execution through successive refresh receipts without replaying one-shot checks"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "public-package",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-01-052-continuation-acceptance.zh.md：v7 实际未选检查重放；新包待验",
+            "v9 installed package b5265aa9d64bfee6d50bce6b080fe1900ca92545: same public dryrun fails on v8 at A/B/once=2/2/1; v9 rejects before execution with identical Run hash and 1/1/1, accepts the original Agent supplement, then completes 3/1/1 and one Archive. See docs/research/2026-11-01-052-continuation-acceptance.zh.md."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-517-utf8-bom-check-receipt",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/517"
+      ],
+      "behavior": "合法UTF-8 BOM源码在输入未变化且Node检查成功时可建立候选摘要并接受检查收据，读取不改写磁盘字节。",
+      "coverageLevel": "runtime",
+      "reproduction": "非Git协调根下的独立子仓含已提交BOM模块，Node导入exit 0，但旧代码以OUTCOME_REJECTED拒绝null候选摘要；同内容无BOM对照可通过。",
+      "expected": "有/无BOM均得到非空且匹配的候选摘要、完整稳定输入快照及通过的检查记录，源码字节保持原样，实际实现变更仍改变候选和检查摘要。",
+      "forbidden": "把合法BOM误报为候选漂移、写回去除BOM、绕过原始字节校验或对真实实现变化复用旧候选。",
+      "rootCause": "UTF-8 TextDecoder在内存中消耗BOM，候选检查将解码文本重编码后与原始字节摘要比较，三字节差异导致返回null。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "preserves UTF-8 source bytes while capturing candidate inputs",
+          "requiredNames": [
+            "Native check input gate preserves UTF-8 source bytes while capturing candidate inputs (BOM=false)",
+            "Native check input gate preserves UTF-8 source bytes while capturing candidate inputs (BOM=true)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "accepts successful checks for unchanged UTF-8 source without rewriting bytes",
+          "requiredNames": [
+            "blocked Verifier recovery command contract accepts successful checks for unchanged UTF-8 source without rewriting bytes (BOM=false)",
+            "blocked Verifier recovery command contract accepts successful checks for unchanged UTF-8 source without rewriting bytes (BOM=true)"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "built-checkout public CLI in a non-Git coordination root",
+          "status": "verified",
+          "evidence": [
+            "The fixture and public CLI sequence from issue #517 were replayed against the rebuilt bin/comet.js with fixed-behavior success assertions: plain and BOM fixtures both exited 0, retained 24/27 source bytes, produced complete unchanged snapshots and non-null matching candidate digests. No independent Verifier outcome or Archive was submitted.",
+            "After merging upstream 4901cac into the contribution branch, the rebuilt 0.5.2 public CLI again accepted plain and BOM fixtures with unchanged 24/27 disk bytes, successful Node checks and complete stable input snapshots with valid candidate digests. No Archive was attempted."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-528-recovery-original-evidence-guards",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/528"
+      ],
+      "behavior": "归档中断恢复仍拒绝实现、搬迁材料或已冻结事务的未批准变化。",
+      "coverageLevel": "runtime",
+      "reproduction": "沿真实 Native Runtime 应用 Specs 并标记 unknown，分别修改实现、brief 或同时重写事务与目标 Spec。",
+      "expected": "恢复失败，原 Archive Action、状态和已记录的执行证据保留。",
+      "forbidden": "仅凭 Specs 与被重写事务相等就放行，或借生成输出恢复豁免隐藏源代码、正式材料与事务篡改。",
+      "rootCause": "历史收尾必须保留原候选和冻结 Spec 的独立绑定，不能通过跳过全部候选校验解决恢复阻塞。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^recovers an applied unknown Archive through the public CLI with (implementation|material|transaction) changes$",
+          "requiredNames": [
+            "recovers an applied unknown Archive through the public CLI with implementation changes",
+            "recovers an applied unknown Archive through the public CLI with material changes",
+            "recovers an applied unknown Archive through the public CLI with transaction changes"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-528-legacy-archive-recovery",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/528"
+      ],
+      "behavior": "新旧检查收据及缺少恢复摘要的既有归档预检，均只凭原检查和批准材料核对已应用事务，不把变化后的生成输入视为当前验收通过。",
+      "coverageLevel": "runtime",
+      "reproduction": "使用真实执行器取得当前或旧格式收据，旧格式预检不含 recoveryBinding；原 apply 停止后生成输出变化，8c8478cd 的同一恢复调用被实时候选绑定拒绝。",
+      "expected": "原实现和批准材料可证明时恢复、完成一次归档；当前检查仍报告过期，不运行新检查或重写 Specs。",
+      "forbidden": "从当前文件补造历史信任、接受缺失原检查或未经批准的材料。",
+      "rootCause": "旧记录的完整摘要包含生成输出；必须复用原检查的实现证明和批准材料，而非重建当前摘要后自证。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^recovers applied Archive effects after generated output churn without revalidating current checks \\(legacy=(false|true)\\)$",
+          "requiredNames": [
+            "recovers applied Archive effects after generated output churn without revalidating current checks (legacy=false)",
+            "recovers applied Archive effects after generated output churn without revalidating current checks (legacy=true)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-verifier-live-input-retention",
+      "behavior": "独立审查展示当前输入变化，要求实际影响判断后保留有效证据，不重放一次性检查",
+      "coverageLevel": "runtime",
+      "expected": "显示检查后删除的实际文件；未经判断的变动拒绝通过；当前 Agent 绑定非行为变化及保留证明后无需重跑；一次性检查无整组刷新模板",
+      "forbidden": "把旧快照当当前输入、按扩展名忽略缓存、未复核修改直接通过或自动重放一次性操作",
+      "rootCause": "任务包差异只比较基线与最后检查快照，未显示检查之后的实际变化和已有证据适用状态",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "shows live check input changes and returns a bound refresh request without manual protocol fields",
+          "requiredNames": [
+            "shows live check input changes and returns a bound refresh request without manual protocol fields"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "does not offer a refresh template that would replay a one-time check",
+          "requiredNames": [
+            "does not offer a refresh template that would replay a one-time check"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "native-real-model-input-recovery-efficiency",
+          "status": "pending",
+          "evidence": [
+            "用户明确停止本轮 Eval；保留原始记录，不启动新一轮。确定性测试不能证明真实模型耗时或执行器完整链路改善。"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-11-04-native-bugfree-protocol-stall"
+      ],
+      "reproduction": "c3d0e82f 的已停止 Eval 暴露问题；相同确定性案例先红后绿，详见 docs/research/2026-11-04-native-bugfree-protocol-stall.zh.md。",
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户明确要求移除 bugfree 模式。模式专用行为改验收入口已移除且旧策略不可推进；仍适用于普通 Native 的原始请求、收据和正式编辑复核继续执行相应断言。原来源、行为和选择器不改写，旧测试正文见移除前实现补丁。",
+        "authorization": "report:2026-11-05-bugfree-retirement",
+        "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes verification mode selection from public Eval CLI without launching a run$",
+            "requiredNames": [
+              "removes verification mode selection from public Eval CLI without launching a run"
+            ]
+          },
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes the unreleased verifier definition and compact pass protocol$",
+            "requiredNames": [
+              "removes the unreleased verifier definition and compact pass protocol"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/bugfree-retirement/regression-registry-before-removal.json",
+            "sha256": "cf33bdfcd50e42f0af102b31db54edc10559c0a2c340f3ab845833da16000680"
+          },
+          "patch": {
+            "file": "docs/research/bugfree-retirement/implementation-before-removal.patch",
+            "sha256": "674851450fac08bf987017fe9fa6a4b5df8a5f9879636b97918f7d30f428c44f"
+          },
+          "mapping": {
+            "file": "docs/research/bugfree-retirement/case-migrations.json",
+            "sha256": "b96fcd93e5c6cc251e4e594e378ce604899f9d11d1e4dae993e16f0f8131c463"
+          },
+          "tests": {
+            "file": "docs/research/bugfree-retirement/test-snapshots.json",
+            "sha256": "0dec6a1a5a6d519139f6df20862463f1fa6976f7e7e285ccb8ee9ab805f3a44a"
+          }
+        }
+      }
+    },
+    {
+      "sources": [
+        "report:2026-11-05-pr539-ci-classic-sdk-recover-original-input-manifest"
+      ],
+      "coverageLevel": "runtime",
+      "id": "classic-sdk-recover-original-input-manifest",
+      "behavior": "Portable Classic recovery continues an identical accepted candidate after loss of its local original input manifest.",
+      "rootCause": "Archive always required the local manifest despite a durable command receipt binding both input digest and manifest hash.",
+      "expected": "Recover only when both original receipt hashes match the current complete snapshot, then permit the bound Archive decision.",
+      "forbidden": "Reconstruct from changed inputs, ignore a corrupted existing manifest, or accept stale evidence.",
+      "reproduction": "PR539 CI rejected portable recovery after the Runtime directory was removed. The repaired public command test also rejects subsequent source drift and a corrupt original manifest.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+          "namePattern": "^(?:Classic workflow application through the public Runtime SDK recovers an unchanged accepted candidate without its local input manifest while rejecting drift and corruption)$",
+          "requiredNames": [
+            "Classic workflow application through the public Runtime SDK recovers an unchanged accepted candidate without its local input manifest while rejecting drift and corruption"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "^(?:Classic SDK original execution receipts continues already accepted Build and Verify evidence after losing the entire Runtime directory)$",
+          "requiredNames": [
+            "Classic SDK original execution receipts continues already accepted Build and Verify evidence after losing the entire Runtime directory"
+          ]
+        }
+      ]
+    },
+    {
+      "sources": [
+        "report:2026-11-05-pr539-ci-classic-sdk-archive-reverification-guidance"
+      ],
+      "coverageLevel": "runtime",
+      "id": "classic-sdk-archive-reverification-guidance",
+      "behavior": "Classic Archive reports stale command inputs through the existing reopen-verification recovery path.",
+      "rootCause": "The newer accepted-candidate assertion ran before the command-input fingerprint check and hid the established stale-check recovery classification.",
+      "expected": "Preserve the accepted candidate and report the precise stale-input recovery command before accepting a new verification round.",
+      "forbidden": "Archive changed inputs, replace an accepted result with supplemental checks, or lose the executable reopen-verification guidance.",
+      "reproduction": "PR539 failed six source/generated lifecycle assertions expecting reopen-verification. Three source profiles passed unchanged after restoring the check-input diagnostic precedence.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "^(?:Classic SDK full Verify rounds completes the source Runtime lifecycle across sessions, declared outputs and a reopened verification|Classic SDK tweak Verify rounds completes the source Runtime lifecycle across sessions, declared outputs and a reopened verification|Classic SDK hotfix Verify rounds completes the source Runtime lifecycle across sessions, declared outputs and a reopened verification)$",
+          "requiredNames": [
+            "Classic SDK full Verify rounds completes the source Runtime lifecycle across sessions, declared outputs and a reopened verification",
+            "Classic SDK tweak Verify rounds completes the source Runtime lifecycle across sessions, declared outputs and a reopened verification",
+            "Classic SDK hotfix Verify rounds completes the source Runtime lifecycle across sessions, declared outputs and a reopened verification"
+          ]
+        }
+      ]
+    },
+    {
+      "sources": [
+        "report:2026-11-05-pr539-ci-native-portable-archive-explicit-revert-recovery"
+      ],
+      "coverageLevel": "runtime",
+      "id": "native-portable-archive-explicit-revert-recovery",
+      "behavior": "The explicit Native revert policy safely resumes frozen Archive material and returns external canonical drift to fresh verification.",
+      "rootCause": "Raw-candidate validation applied the default retained-edit policy to the historical revert recovery path, blocking frozen source restoration and the existing canonical drift transition.",
+      "expected": "Under explicit revert, restore only source bytes bound to the original frozen transaction and original input hash, preserve external canonical edits, and request fresh Verify for missing or changed canonical bindings.",
+      "forbidden": "Overwrite an external canonical edit, infer old approved content from current files, or silently apply revert behavior to the default allow policy.",
+      "reproduction": "The historical frozen-source, concurrent canonical edit, and old journal cases failed locally. The same assertions passed with explicit revert configuration and bound transaction recovery.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "^(?:Native portable Archive resumes from frozen Spec contents after a later active Spec edit|Native portable Archive preserves a concurrent canonical Spec edit when recovering an interrupted Archive|Native portable Archive does not resume an old full-Spec journal without canonical target bindings)$",
+          "requiredNames": [
+            "Native portable Archive resumes from frozen Spec contents after a later active Spec edit",
+            "Native portable Archive preserves a concurrent canonical Spec edit when recovering an interrupted Archive",
+            "Native portable Archive does not resume an old full-Spec journal without canonical target bindings"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration returns a specs-applied full Spec transaction to Verify after an external edit)$",
+          "requiredNames": [
+            "Native portable delta integration returns a specs-applied full Spec transaction to Verify after an external edit"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-ci539-mixed-write-review",
+      "sources": [
+        "report:2026-11-05-pr539-ci-failures"
+      ],
+      "behavior": "Keep every unclassified target in a mixed Verify write pending Agent judgment.",
+      "coverageLevel": "unit",
+      "reproduction": "The corresponding PR #539 CI test failed on commit 56744e50. Reproduce the independent behavior in its isolated project with the exact test selector below; local results and platform limitations are recorded in docs/research/2026-11-05-pr539-ci-repair.zh.md.",
+      "expected": "Keep the candidate and require a judgment for the unknown target.",
+      "forbidden": "Treating a mixed source write as neutral because another target is documentation.",
+      "rootCause": "A documentation target caused an early return before the remaining source targets were inspected.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-hook-guard.test.ts",
+          "namePattern": "^(?:preserves a Verify candidate for resource messages and holds unclassified mixed writes|holds an unclassified material write mixed with documents in Verify)$",
+          "requiredNames": [
+            "preserves a Verify candidate for resource messages and holds unclassified mixed writes",
+            "holds an unclassified material write mixed with documents in Verify"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "Vitest reports the enclosing suite in each complete test name; preserve the original registration and assertions while selecting their existing complete identities.",
+        "authorization": "https://github.com/rpamis/comet/pull/539",
+        "record": "docs/research/2026-11-05-pr539-regression-selectors.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-hook-guard.test.ts",
+            "namePattern": "^(?:Native phase Hook guard preserves a Verify candidate for resource messages and holds unclassified mixed writes|Native phase Hook guard holds an unclassified material write mixed with documents in Verify)$",
+            "requiredNames": [
+              "Native phase Hook guard preserves a Verify candidate for resource messages and holds unclassified mixed writes",
+              "Native phase Hook guard holds an unclassified material write mixed with documents in Verify"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/pr539-regression-selector-migration/registry-before.json",
+            "sha256": "8d567fb4216a827739ef65ba2e681a92db176b7519a85084e60f9c97137812ce"
+          },
+          "tests": {
+            "file": "docs/research/pr539-regression-selector-migration/test-snapshots.json",
+            "sha256": "14bad7461fb2dfb7dd6137c4f3994686cce8dd3224112f66dddea87558b87f92"
+          },
+          "mapping": {
+            "file": "docs/research/pr539-regression-selector-migration/case-migrations.json",
+            "sha256": "994cdf369ed1fbc6772519ecd9800f601eb1fb3cfb0ac9e04aa165f4e14dc505"
+          },
+          "patch": {
+            "file": "docs/research/pr539-regression-selector-migration/selector-correction.patch",
+            "sha256": "3089040ad21529c87c64ef3961beb3955c1a017d689d84ec6a32d5d0ba04c760"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-ci539-executed-input-binding",
+      "sources": [
+        "report:2026-11-05-pr539-ci-failures"
+      ],
+      "behavior": "Bind actual post-command source inputs and reject incomplete generated inputs.",
+      "coverageLevel": "runtime",
+      "reproduction": "The corresponding PR #539 CI test failed on commit 56744e50. Reproduce the independent behavior in its isolated project with the exact test selector below; local results and platform limitations are recorded in docs/research/2026-11-05-pr539-ci-repair.zh.md.",
+      "expected": "Reject a source-changing command until explicit repair and reject incomplete snapshots.",
+      "forbidden": "Accepting changed source or reusing a stale complete observation.",
+      "rootCause": "The raw executor gate duplicated the pre-command observation instead of binding the post-command snapshot.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:rejects source-changing checks and recovers to Build only after the repair approval|rejects checks whose initially incomplete generated inputs disappear during execution)$",
+          "requiredNames": [
+            "rejects source-changing checks and recovers to Build only after the repair approval",
+            "rejects checks whose initially incomplete generated inputs disappear during execution"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^keeps completed check results but rejects unjudged source writes during the check$",
+          "requiredNames": [
+            "keeps completed check results but rejects unjudged source writes during the check"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "Vitest reports the enclosing suite in each complete test name; preserve the original registration and assertions while selecting their existing complete identities.",
+        "authorization": "https://github.com/rpamis/comet/pull/539",
+        "record": "docs/research/2026-11-05-pr539-regression-selectors.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+            "namePattern": "^(?:Native SDK verification input binding rejects source-changing checks and recovers to Build only after the repair approval|Native SDK verification input binding rejects checks whose initially incomplete generated inputs disappear during execution)$",
+            "requiredNames": [
+              "Native SDK verification input binding rejects source-changing checks and recovers to Build only after the repair approval",
+              "Native SDK verification input binding rejects checks whose initially incomplete generated inputs disappear during execution"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+            "namePattern": "^(?:Native SDK verification input binding keeps completed check results but rejects unjudged source writes during the check)$",
+            "requiredNames": [
+              "Native SDK verification input binding keeps completed check results but rejects unjudged source writes during the check"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/pr539-regression-selector-migration/registry-before.json",
+            "sha256": "8d567fb4216a827739ef65ba2e681a92db176b7519a85084e60f9c97137812ce"
+          },
+          "tests": {
+            "file": "docs/research/pr539-regression-selector-migration/test-snapshots.json",
+            "sha256": "14bad7461fb2dfb7dd6137c4f3994686cce8dd3224112f66dddea87558b87f92"
+          },
+          "mapping": {
+            "file": "docs/research/pr539-regression-selector-migration/case-migrations.json",
+            "sha256": "994cdf369ed1fbc6772519ecd9800f601eb1fb3cfb0ac9e04aa165f4e14dc505"
+          },
+          "patch": {
+            "file": "docs/research/pr539-regression-selector-migration/selector-correction.patch",
+            "sha256": "3089040ad21529c87c64ef3961beb3955c1a017d689d84ec6a32d5d0ba04c760"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-ci539-applied-review-supersession",
+      "sources": [
+        "report:2026-11-05-pr539-ci-failures"
+      ],
+      "behavior": "Replace stale completed applied-edit proposals while requiring a review of the current content.",
+      "coverageLevel": "runtime",
+      "reproduction": "The corresponding PR #539 CI test failed on commit 56744e50. Reproduce the independent behavior in its isolated project with the exact test selector below; local results and platform limitations are recorded in docs/research/2026-11-05-pr539-ci-repair.zh.md.",
+      "expected": "Preserve every user edit, block the pending latest review and finish after its real receipt.",
+      "forbidden": "Accepting the latest bytes solely because an older edit was reviewed.",
+      "rootCause": "Supersession skipped completed non-behavioral applied reviews, leaving an old branch of the approved edit graph blocking newer content.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-incremental.test.ts",
+          "namePattern": "^(?:keeps later user edits and supersedes stale pending and completed applied reviews)$",
+          "requiredNames": [
+            "keeps later user edits and supersedes stale pending and completed applied reviews"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "Vitest reports the enclosing suite in each complete test name; preserve the original registration and assertions while selecting their existing complete identities.",
+        "authorization": "https://github.com/rpamis/comet/pull/539",
+        "record": "docs/research/2026-11-05-pr539-regression-selectors.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-shape-incremental.test.ts",
+            "namePattern": "^(?:Native Shape incremental contract keeps later user edits and supersedes stale pending and completed applied reviews)$",
+            "requiredNames": [
+              "Native Shape incremental contract keeps later user edits and supersedes stale pending and completed applied reviews"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/pr539-regression-selector-migration/registry-before.json",
+            "sha256": "8d567fb4216a827739ef65ba2e681a92db176b7519a85084e60f9c97137812ce"
+          },
+          "tests": {
+            "file": "docs/research/pr539-regression-selector-migration/test-snapshots.json",
+            "sha256": "14bad7461fb2dfb7dd6137c4f3994686cce8dd3224112f66dddea87558b87f92"
+          },
+          "mapping": {
+            "file": "docs/research/pr539-regression-selector-migration/case-migrations.json",
+            "sha256": "994cdf369ed1fbc6772519ecd9800f601eb1fb3cfb0ac9e04aa165f4e14dc505"
+          },
+          "patch": {
+            "file": "docs/research/pr539-regression-selector-migration/selector-correction.patch",
+            "sha256": "3089040ad21529c87c64ef3961beb3955c1a017d689d84ec6a32d5d0ba04c760"
+          }
+        }
+      }
+    },
+    {
+      "id": "classic-ci539-interrupted-check-plan",
+      "sources": [
+        "report:2026-11-05-pr539-ci-failures"
+      ],
+      "behavior": "Recover the original interrupted command plan without inferring a replacement build.",
+      "coverageLevel": "runtime",
+      "reproduction": "The corresponding PR #539 CI test failed on commit 56744e50. Reproduce the independent behavior in its isolated project with the exact test selector below; local results and platform limitations are recorded in docs/research/2026-11-05-pr539-ci-repair.zh.md.",
+      "expected": "Run the original validated plan and reject a corrupt SDK Action binding.",
+      "forbidden": "Inferring another build or executing a mismatched Action.",
+      "rootCause": "The not-executed checkpoint hid the original command plan from the interrupted-check lookup.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+          "namePattern": "^(?:preserves and reruns an interrupted check instead of inferring another build|does not rerun an interrupted check with a corrupted SDK Action binding)$",
+          "requiredNames": [
+            "preserves and reruns an interrupted check instead of inferring another build",
+            "does not rerun an interrupted check with a corrupted SDK Action binding"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "Vitest reports the enclosing suite in each complete test name; preserve the original registration and assertions while selecting their existing complete identities.",
+        "authorization": "https://github.com/rpamis/comet/pull/539",
+        "record": "docs/research/2026-11-05-pr539-regression-selectors.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+            "namePattern": "^(?:Classic executed check evidence preserves and reruns an interrupted check instead of inferring another build|Classic executed check evidence does not rerun an interrupted check with a corrupted SDK Action binding)$",
+            "requiredNames": [
+              "Classic executed check evidence preserves and reruns an interrupted check instead of inferring another build",
+              "Classic executed check evidence does not rerun an interrupted check with a corrupted SDK Action binding"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/pr539-regression-selector-migration/registry-before.json",
+            "sha256": "8d567fb4216a827739ef65ba2e681a92db176b7519a85084e60f9c97137812ce"
+          },
+          "tests": {
+            "file": "docs/research/pr539-regression-selector-migration/test-snapshots.json",
+            "sha256": "14bad7461fb2dfb7dd6137c4f3994686cce8dd3224112f66dddea87558b87f92"
+          },
+          "mapping": {
+            "file": "docs/research/pr539-regression-selector-migration/case-migrations.json",
+            "sha256": "994cdf369ed1fbc6772519ecd9800f601eb1fb3cfb0ac9e04aa165f4e14dc505"
+          },
+          "patch": {
+            "file": "docs/research/pr539-regression-selector-migration/selector-correction.patch",
+            "sha256": "3089040ad21529c87c64ef3961beb3955c1a017d689d84ec6a32d5d0ba04c760"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-ci539-lost-overlay-verifier-result",
+      "sources": [
+        "report:2026-11-05-pr539-ci-failures"
+      ],
+      "behavior": "Record the original Verifier failure when its machine overlay has been lost.",
+      "coverageLevel": "runtime",
+      "reproduction": "The corresponding PR #539 CI test failed on commit 56744e50. Reproduce the independent behavior in its isolated project with the exact test selector below; local results and platform limitations are recorded in docs/research/2026-11-05-pr539-ci-repair.zh.md.",
+      "expected": "Keep the original task identity and preserve missing local evidence.",
+      "forbidden": "Fabricating a passed check or replacing a lost local overlay with empty evidence.",
+      "rootCause": "Failure persistence required a local overlay even when the portable dispatch still identified the original task.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-verifier-start.test.ts",
+          "namePattern": "^(?:keeps the dispatched identity when the machine overlay is lost)$",
+          "requiredNames": [
+            "keeps the dispatched identity when the machine overlay is lost"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "Vitest reports the enclosing suite in each complete test name; preserve the original registration and assertions while selecting their existing complete identities.",
+        "authorization": "https://github.com/rpamis/comet/pull/539",
+        "record": "docs/research/2026-11-05-pr539-regression-selectors.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-verifier-start.test.ts",
+            "namePattern": "^(?:Native Verifier startup receipts keeps the dispatched identity when the machine overlay is lost)$",
+            "requiredNames": [
+              "Native Verifier startup receipts keeps the dispatched identity when the machine overlay is lost"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/pr539-regression-selector-migration/registry-before.json",
+            "sha256": "8d567fb4216a827739ef65ba2e681a92db176b7519a85084e60f9c97137812ce"
+          },
+          "tests": {
+            "file": "docs/research/pr539-regression-selector-migration/test-snapshots.json",
+            "sha256": "14bad7461fb2dfb7dd6137c4f3994686cce8dd3224112f66dddea87558b87f92"
+          },
+          "mapping": {
+            "file": "docs/research/pr539-regression-selector-migration/case-migrations.json",
+            "sha256": "994cdf369ed1fbc6772519ecd9800f601eb1fb3cfb0ac9e04aa165f4e14dc505"
+          },
+          "patch": {
+            "file": "docs/research/pr539-regression-selector-migration/selector-correction.patch",
+            "sha256": "3089040ad21529c87c64ef3961beb3955c1a017d689d84ec6a32d5d0ba04c760"
+          }
+        }
+      }
+    },
+    {
+      "id": "issue-324-spec-patch-handoff",
+      "behavior": "Spec Patch 后可重建 Design handoff；状态 hash 已对齐也须真实改写文件；进入 Build 后仍可合法恢复。",
+      "status": "covered",
+      "reason": "0.5.0 保留此行为；所列确定性测试直接断言该契约。covered 表示已映射，不表示本次清单审计已执行。",
+      "coverageLayer": "compat",
+      "evidence": [
+        "test/domains/comet-classic/classic-handoff.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-handoff.test.ts",
+          "namePattern": "refreshes the design handoff when source evidence changed after a completed handoff|rewrites stale context files even when the recorded hash was aligned|refreshes the design handoff from the build phase after a Spec Patch",
+          "requiredNames": [
+            "refreshes the design handoff when source evidence changed after a completed handoff",
+            "rewrites stale context files even when the recorded hash was aligned",
+            "refreshes the design handoff from the build phase after a Spec Patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-455-protocol-input-noise",
+      "behavior": "仓库内经验证的handoff输入JSON不让候选漂移，真实源码/变更payload仍绑定。",
+      "status": "covered",
+      "reason": "0.5.0 保留此行为；所列确定性测试直接断言该契约。covered 表示已映射，不表示本次清单审计已执行。",
+      "coverageLayer": "packaged-compat-and-shared-input",
+      "evidence": [
+        "test/domains/comet-native/native-issue-runtime.test.ts",
+        "test/domains/comet-native/native-runner-input-artifacts.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-issue-runtime.test.ts",
+          "namePattern": "rejects incomplete Build and reuses checks across retained in-repository protocol files",
+          "requiredNames": [
+            "rejects incomplete Build and reuses checks across retained in-repository protocol files"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-runner-input-artifacts.test.ts",
+          "namePattern": "excludes retained validated payloads while binding other untracked JSON and changed payload bytes",
+          "requiredNames": [
+            "excludes retained validated payloads while binding other untracked JSON and changed payload bytes"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-455-repair-checks",
+      "behavior": "检查输入真的变化时拒绝旧证据，恢复经显式批准；缓存输出变化不让验收永远refresh。",
+      "status": "covered",
+      "reason": "0.5.0 保留此行为；所列确定性测试直接断言该契约。covered 表示已映射，不表示本次清单审计已执行。",
+      "coverageLayer": "sdk",
+      "evidence": [
+        "test/domains/comet-native/native-sdk-verification-inputs.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "accepts the final result after Next cache, trace and non-type dev output churn|rejects source-changing checks and recovers to Build only after the repair approval",
+          "requiredNames": [
+            "accepts the final result after Next cache, trace and non-type dev output churn",
+            "rejects source-changing checks and recovers to Build only after the repair approval"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-486-ordinary-comments",
+      "behavior": "普通注释编辑可经独立edit-review保留候选；语法、类型、工具指令或混合业务修改不能伪装注释。",
+      "status": "covered",
+      "reason": "0.5.0 保留此行为；所列确定性测试直接断言该契约。covered 表示已映射，不表示本次清单审计已执行。",
+      "coverageLayer": "shared-classifier-and-sdk",
+      "evidence": [
+        "test/domains/comet-native/native-source-comments.test.ts",
+        "test/domains/comet-native/native-sdk-edit-review.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-source-comments.test.ts",
+          "namePattern": "recognizes ordinary comments in|keeps executable syntax and tool directives bound|keeps JSX text and TypeScript types bound",
+          "requiredNames": [
+            "recognizes ordinary comments in",
+            "keeps executable syntax and tool directives bound",
+            "keeps JSX text and TypeScript types bound"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-edit-review.test.ts",
+          "namePattern": "reviews a generic edit in an independent session without claiming the formal Native Verifier",
+          "requiredNames": [
+            "reviews a generic edit in an independent session without claiming the formal Native Verifier"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-494-autolink-parity",
+      "behavior": "相同brief/spec自动链接在bundle next与dist Doctor间具有一致Shape指纹，真实内容变化仍需重确认。",
+      "status": "covered",
+      "reason": "0.4.5报告保留的compat路径已有真实bundle/dist差分回归；不把此测试描述为默认SDK端到端验证。",
+      "coverageLayer": "packaged-compat-parity",
+      "evidence": [
+        "test/domains/comet-native/native-joint-shape-confirmation.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-joint-shape-confirmation.test.ts",
+          "namePattern": "retains autolink Shape confirmation between bundled next and dist Doctor",
+          "requiredNames": [
+            "retains autolink Shape confirmation between bundled next and dist Doctor"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-502-timeout-and-inputs",
+      "behavior": "Classic采用项目超时并允许CLI覆盖；仅排除输出，明确声明的ignored输入仍绑定。",
+      "status": "covered",
+      "reason": "0.5.0 保留此行为；所列确定性测试直接断言该契约。covered 表示已映射，不表示本次清单审计已执行。",
+      "coverageLayer": "sdk-shared-checks",
+      "evidence": [
+        "test/domains/comet-classic/classic-check-defaults.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-check-defaults.test.ts",
+          "namePattern": "applies project timeout|includes ignored files",
+          "requiredNames": [
+            "applies project timeout",
+            "includes ignored files"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-500-cross-shell",
+      "behavior": "检查与Verifier提交换shell仍可验收，保留原执行环境并拒绝真实源码变化。",
+      "status": "covered",
+      "reason": "0.5.0 保留此行为；所列确定性测试直接断言该契约。covered 表示已映射，不表示本次清单审计已执行。",
+      "coverageLayer": "sdk",
+      "evidence": [
+        "test/domains/comet-native/native-sdk-verification-inputs.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "upgrades a persisted 0\\.5\\.0 receipt once through refreshChecks before accepting another shell|rejects source-changing checks and recovers to Build only after the repair approval",
+          "requiredNames": [
+            "upgrades a persisted 0.5.0 receipt once through refreshChecks before accepting another shell",
+            "rejects source-changing checks and recovers to Build only after the repair approval"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-501-generated-inputs",
+      "behavior": "忽略目录快照不深入依赖目录，Next生成类型仍绑定；不完整输入拒绝复用，dev缓存不制造漂移。",
+      "status": "covered",
+      "reason": "0.5.0 保留此行为；所列确定性测试直接断言该契约。covered 表示已映射，不表示本次清单审计已执行。",
+      "coverageLayer": "sdk",
+      "evidence": [
+        "test/domains/comet-native/native-sdk-verification-inputs.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "rejects checks whose initially incomplete generated inputs disappear during execution|completes Archive when checks rebuild their generated Next type inputs|accepts the final result after Next cache, trace and non-type dev output churn",
+          "requiredNames": [
+            "rejects checks whose initially incomplete generated inputs disappear during execution",
+            "completes Archive when checks rebuild their generated Next type inputs",
+            "accepts the final result after Next cache, trace and non-type dev output churn"
+          ]
+        }
+      ]
+    }
+  ]
+}

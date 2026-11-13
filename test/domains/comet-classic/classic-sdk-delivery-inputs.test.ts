@@ -4,34 +4,26 @@ import { syncBuiltinESMExports } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { collectCheckSnapshot } from '../../../domains/comet-classic/classic-check-snapshot.js';
 import {
   assertClassicSdkDeliveryFileInputs,
   collectClassicSdkDeliveryInputs,
 } from '../../../domains/comet-classic/classic-sdk-delivery-inputs.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return { ...actual, execFileSync: vi.fn(actual.execFileSync) };
+});
+
 describe('Classic SDK declared delivery inputs', () => {
   let root: string;
-  const identity = { argv: [process.execPath, 'check.cjs'], cwd: '.' };
   const git = (...args: string[]) => execFileSync('git', args, { cwd: root, stdio: 'ignore' });
   const put = async (ref: string, source = 'original\n') => {
     await fs.mkdir(path.dirname(path.join(root, ref)), { recursive: true });
     await fs.writeFile(path.join(root, ref), source);
   };
-  const inputs = async (files: string[], outputs: string[] = []) => {
-    await put(
-      '.comet/check-policy.json',
-      JSON.stringify({ version: 2, commands: [{ ...identity, files, outputs }] }),
-    );
-    const snapshot = await collectCheckSnapshot(
-      root,
-      path.join(root, 'openspec/changes/example'),
-      identity,
-      { verificationReport: null },
-    );
-    return collectClassicSdkDeliveryInputs(root, snapshot.manifest, identity);
-  };
+  const inputs = (deliveryPaths?: string[]) =>
+    collectClassicSdkDeliveryInputs(root, undefined, deliveryPaths);
 
   beforeEach(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-delivery-inputs-'));
@@ -76,53 +68,58 @@ describe('Classic SDK declared delivery inputs', () => {
       vi.spyOn(nativeFs, 'lstatSync'),
     ];
     syncBuiltinESMExports();
+    const commandsBefore = vi.mocked(execFileSync).mock.calls.length;
     expect(await assertClassicSdkDeliveryFileInputs(root, inputs)).toEqual(new Set(names));
+    expect(vi.mocked(execFileSync).mock.calls.length - commandsBefore).toBeLessThanOrEqual(2);
     expect(probes.reduce((count, probe) => count + probe.mock.calls.length, 0)).toBeLessThanOrEqual(
       800,
     );
   });
 
-  it.each(['src', 'src/**'])('includes staged deletions covered by %s', async (pattern) => {
-    git('rm', '--', 'src/obsolete.js', 'src/nested/obsolete.js');
-    await put('source.js', 'updated\n');
-    await put('src/kept.js');
-    expect(await inputs(['source.js', pattern])).toEqual({
-      'source.js': expect.stringMatching(/^[a-f0-9]{64}$/u),
-      'src/kept.js': expect.stringMatching(/^[a-f0-9]{64}$/u),
-      'src/obsolete.js': 'missing',
-      'src/nested/obsolete.js': 'missing',
-    });
-  });
+  it.each(['staged', 'unstaged'])(
+    'includes %s deletions among current delivery paths',
+    async (mode) => {
+      if (mode === 'staged') git('rm', '--', 'src/obsolete.js', 'src/nested/obsolete.js');
+      else {
+        await fs.unlink(path.join(root, 'src/obsolete.js'));
+        await fs.unlink(path.join(root, 'src/nested/obsolete.js'));
+      }
+      await put('source.js', 'updated\n');
+      await put('src/kept.js');
+      expect(await inputs()).toEqual([
+        'source.js',
+        'src/kept.js',
+        'src/nested/obsolete.js',
+        'src/obsolete.js',
+      ]);
+    },
+  );
 
-  it('keeps deleted descendants when the declared directory no longer exists', async () => {
+  it('keeps deleted descendants when their directory no longer exists', async () => {
     git('rm', '-r', '--', 'src');
-    expect(await inputs(['src'])).toMatchObject({
-      'src/obsolete.js': 'missing',
-      'src/nested/obsolete.js': 'missing',
-    });
+    expect(await inputs()).toEqual(['src/nested/obsolete.js', 'src/obsolete.js']);
   });
 
-  it('does not include sibling paths or files outside the declared directory', async () => {
+  it('keeps an explicit delivery selection separate from deleted sibling paths', async () => {
     git('rm', '-r', '--', 'src', 'src-other', 'src.js', 'source.js');
-    expect(Object.keys((await inputs(['src']))!)).toEqual([
+    expect(await inputs(['src/nested/obsolete.js', 'src/obsolete.js'])).toEqual([
       'src/nested/obsolete.js',
       'src/obsolete.js',
     ]);
   });
 
-  it('preserves exact-file and glob output exclusions for staged deletions', async () => {
+  it('retains only the deleted output explicitly selected for delivery', async () => {
     await put('src/obsolete.js.map');
     git('add', '--all');
     git('commit', '-m', 'add sibling file');
     git('rm', '-r', '--', 'src');
-    expect(await inputs(['src'], ['src/obsolete.js', 'src/nested/**'])).toEqual({
-      'src/obsolete.js.map': 'missing',
-    });
+    expect(await inputs(['src/obsolete.js.map'])).toEqual(['src/obsolete.js.map']);
   });
 
-  it('keeps literal files exact and globs within their declared path segments', async () => {
+  it('keeps explicit delivery files exact without applying old check-policy globs', async () => {
     git('rm', '-r', '--', 'src');
-    expect(await inputs(['src/obsolete.js'])).toEqual({ 'src/obsolete.js': 'missing' });
-    expect(await inputs(['src/*.js'])).toEqual({ 'src/obsolete.js': 'missing' });
+    await put('.comet/check-policy.json', '{invalid retired policy');
+    expect(await inputs(['src/obsolete.js'])).toEqual(['src/obsolete.js']);
+    expect(await inputs()).toEqual(['src/nested/obsolete.js', 'src/obsolete.js']);
   });
 });

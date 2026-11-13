@@ -1,3 +1,5 @@
+// SIMULATED historical Native documents for read-only discovery and intent routing; no legacy Runtime is created.
+import { storedNativeChangeFixture } from '../../helpers/native-change-document.js';
 import { promises as fs } from 'fs';
 import { spawnSync } from 'child_process';
 import os from 'os';
@@ -5,10 +7,7 @@ import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { inspectCometProjectStatus } from '../../../domains/comet-entry/project-status.js';
-import {
-  createNativeChange,
-  nativeChangeDir,
-} from '../../../domains/comet-native/native-change.js';
+import { nativeChangeDir } from '../../../domains/comet-native/native-change.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -206,7 +205,7 @@ describe('Comet project status', () => {
     initializeGitProject(projectRoot);
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     const paths = await nativeProjectPaths(projectRoot, '.');
-    const state = await createNativeChange({ paths, name: 'native-only', language: 'en' });
+    const state = await storedNativeChangeFixture({ paths, name: 'native-only', language: 'en' });
     await fs.writeFile(path.join(nativeChangeDir(paths, state.name), state.brief), VALID_BRIEF);
 
     const status = await inspectCometProjectStatus(projectRoot);
@@ -223,7 +222,7 @@ describe('Comet project status', () => {
             {
               name: 'native-only',
               phase: 'shape',
-              nextCommand: 'comet native next native-only --summary "<summary>" --confirmed',
+              nextCommand: 'comet native doctor native-only --repair',
             },
           ],
         },
@@ -248,7 +247,7 @@ describe('Comet project status', () => {
             {
               name: 'native-only',
               phase: 'shape',
-              nextCommand: 'comet native next native-only --summary "<summary>" --confirmed',
+              nextCommand: 'comet native doctor native-only --repair',
             },
           ],
         },
@@ -526,7 +525,7 @@ describe('Comet project status', () => {
     initializeGitProject(projectRoot);
     await writeProjectConfig(projectRoot, bothProjectConfig('docs'));
     const paths = await nativeProjectPaths(projectRoot, 'docs');
-    const native = await createNativeChange({ paths, name: 'shared-name', language: 'en' });
+    const native = await storedNativeChangeFixture({ paths, name: 'shared-name', language: 'en' });
     await fs.writeFile(path.join(nativeChangeDir(paths, native.name), native.brief), VALID_BRIEF);
     await initializeClassicChange(projectRoot, 'shared-name');
     const unmanagedDir = path.join(projectRoot, 'openspec', 'changes', 'plain-change');
@@ -543,7 +542,7 @@ describe('Comet project status', () => {
     initializeGitProject(projectRoot);
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     const paths = await nativeProjectPaths(projectRoot, '.');
-    const native = await createNativeChange({ paths, name: 'stale-change', language: 'en' });
+    const native = await storedNativeChangeFixture({ paths, name: 'stale-change', language: 'en' });
     await fs.writeFile(path.join(nativeChangeDir(paths, native.name), native.brief), VALID_BRIEF);
     const config = defaultProjectConfig('.');
     config.native.pending_root_move = {
@@ -567,7 +566,11 @@ describe('Comet project status', () => {
     initializeGitProject(projectRoot);
     await writeProjectConfig(projectRoot, bothProjectConfig('docs'));
     const paths = await nativeProjectPaths(projectRoot, 'docs');
-    const native = await createNativeChange({ paths, name: 'nested-native', language: 'en' });
+    const native = await storedNativeChangeFixture({
+      paths,
+      name: 'nested-native',
+      language: 'en',
+    });
     await fs.writeFile(path.join(nativeChangeDir(paths, native.name), native.brief), VALID_BRIEF);
     await initializeClassicChange(projectRoot, 'nested-classic');
     const nested = path.join(projectRoot, 'src', 'feature');
@@ -586,7 +589,7 @@ describe('Comet project status', () => {
     initializeGitProject(projectRoot);
     await writeProjectConfig(projectRoot, bothProjectConfig('.'));
     const paths = await nativeProjectPaths(projectRoot, '.');
-    const healthyNative = await createNativeChange({
+    const healthyNative = await storedNativeChangeFixture({
       paths,
       name: 'native-healthy',
       language: 'en',
@@ -650,7 +653,11 @@ describe('Comet project status', () => {
     initializeGitProject(projectRoot);
     await writeProjectConfig(projectRoot, bothProjectConfig('docs'));
     const paths = await nativeProjectPaths(projectRoot, 'docs');
-    const native = await createNativeChange({ paths, name: 'native-readonly', language: 'en' });
+    const native = await storedNativeChangeFixture({
+      paths,
+      name: 'native-readonly',
+      language: 'en',
+    });
     await fs.writeFile(path.join(nativeChangeDir(paths, native.name), native.brief), VALID_BRIEF);
     await initializeClassicChange(projectRoot, 'classic-readonly');
     const classicState = path.join(

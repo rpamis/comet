@@ -28,6 +28,7 @@ describe.each(['skills-zh', 'skills'])('%s SDK flow handoffs', (root) => {
       const main = await read(`${name}/SKILL.md`);
       expect(main).toContain('](reference/compat.md)');
       expect(main).toContain('../comet-classic/reference/sdk-methods.md');
+      if (['comet-build', 'comet-verify'].includes(name)) expect(main).toContain('--checks');
       expect(main).not.toContain('comet state set <name>');
       const compat = await read(`${name}/reference/compat.md`);
       expect(compat).toContain('comet state select');
@@ -38,7 +39,7 @@ describe.each(['skills-zh', 'skills'])('%s SDK flow handoffs', (root) => {
       'comet-task-authority',
       'base-ref',
       'CRITICAL/IMPORTANT',
-      '--local',
+      'platform-execution.md',
       'rulings.md',
       'complete-delivery',
     ])
@@ -65,16 +66,25 @@ describe.each(['skills-zh', 'skills'])('%s SDK flow handoffs', (root) => {
   });
   it('ships the complete edit-review protocol and distinguishes SDK Archive from Git delivery', async () => {
     const review = await read('comet/reference/edit-review.md');
-    for (const command of [
-      'claim',
-      'recordTemplate',
-      'non-behavioral',
-      'implementation-changed',
-      'requirements-changed',
-      'discard',
-      '--confirmed',
-    ])
-      expect(review).toContain(command);
+    const required =
+      root === 'skills-zh'
+        ? [
+            '当前 Agent 判断实际影响',
+            '文件内容变化不自动撤回批准',
+            '不提交文件指纹',
+            '用户决定',
+            '归档进度',
+          ]
+        : [
+            'current Agent judges their effect',
+            'do not automatically revoke approval',
+            'Do not submit file fingerprints',
+            'user decisions',
+            'Archive progress',
+          ];
+    for (const term of required) expect(review).toContain(term);
+    for (const obsolete of ['recordTemplate', 'prepare-applied --', 'edit-review record'])
+      expect(review).not.toContain(obsolete);
     const native = await read('comet-native/SKILL.md');
     expect(native).toContain('reference/edit-review.md');
     expect(await read('comet-native/reference/edit-review.md')).toBe(review);
@@ -84,78 +94,5 @@ describe.each(['skills-zh', 'skills'])('%s SDK flow handoffs', (root) => {
     expect(workspace).toContain('SDK');
     expect(workspace).toContain('SHA');
     expect(workspace).toContain('Compat');
-  });
-  it('distinguishes refreshed check evidence from product implementation changes', async () => {
-    const review = await read('comet/reference/edit-review.md');
-    const boundaries =
-      root === 'skills-zh'
-        ? [
-            '产品行为与验收含义不变',
-            '检查证据需要更新',
-            '产品实现变化',
-            '说明文字参与实际产品行为时',
-            '保留原报告、批准和候选',
-          ]
-        : [
-            'product behavior and acceptance meaning stay unchanged',
-            'check evidence needs updating',
-            'product implementation change',
-            'explanatory text participates in actual product behavior',
-            'keep the original report, approvals, and candidate',
-          ];
-    for (const boundary of boundaries) expect(review).toContain(boundary);
-    for (const decision of ['non-behavioral', 'implementation-changed', 'requirements-changed'])
-      expect(review).toContain(decision);
-    expect(review).toContain('refreshInputTemplate');
-    expect(review).toContain('retainedChecks');
-    expect(await read('comet-native/reference/edit-review.md')).toBe(review);
-  });
-  it('routes actual edits through review before phase or revision commands', async () => {
-    const classic = await read('comet-classic/SKILL.md');
-    const native = await read('comet-native/SKILL.md');
-    expect(classic).toContain('../comet/reference/edit-review.md');
-    expect(native).toContain('reference/edit-review.md');
-    for (const entry of [classic, native]) {
-      expect(entry).toContain(root === 'skills-zh' ? '实际文件变化' : 'actual file changes');
-      expect(entry).toContain(
-        root === 'skills-zh'
-          ? '修订命令不构成用户授权'
-          : 'revision commands do not grant user authorization',
-      );
-    }
-  });
-
-  it('retains checks for every formal edit and supplements only the original Agent judgment', async () => {
-    const review = await read('comet/reference/edit-review.md');
-    const boundaries =
-      root === 'skills-zh'
-        ? ['每份正式材料', '全部实际差异', '同一提案', '原 Agent', '追加保留检查', '未选检查']
-        : [
-            'each formal material',
-            'all actual changes',
-            'same proposal',
-            'original Agent',
-            'add retained checks',
-            'unselected check',
-          ];
-    for (const boundary of boundaries) expect(review).toContain(boundary);
-    expect(await read('comet-native/reference/edit-review.md')).toBe(review);
-  });
-
-  it('keeps an unapproved requirement revision from changing the original phase or results', async () => {
-    const review = await read('comet/reference/edit-review.md');
-    const boundaries =
-      root === 'skills-zh'
-        ? ['不构成用户授权', '保留原阶段、已接受结果和待办', '未覆盖的目标']
-        : [
-            'does not grant user authorization',
-            'preserve the original phase, accepted results, and pending work',
-            'targets not yet covered',
-          ];
-    for (const boundary of boundaries) expect(review).toContain(boundary);
-    expect(review).toContain('prepare-applied');
-    expect(review).toContain('--file');
-    expect(review).toContain('requirements-changed');
-    expect(await read('comet-native/reference/edit-review.md')).toBe(review);
   });
 });

@@ -6,7 +6,7 @@ import path from 'path';
 import { parseDocument } from 'yaml';
 
 import { memoizedHookReadSync } from '../../platform/process/hook-read-cache.js';
-import { withClassicStateLock } from './classic-store.js';
+import { withClassicStateMutation } from './classic-store.js';
 import { CLASSIC_PROJECT_FILE_MAX_BYTES } from './classic-protected-path.js';
 import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
@@ -118,7 +118,9 @@ export async function resolveBranchBinding(
   options: { heal: boolean; cwd: string },
 ): Promise<BranchBindingOutcome> {
   if (options.heal)
-    return withClassicStateLock(changeDir, () => resolveBranchBindingLocked(changeDir, options));
+    return withClassicStateMutation(changeDir, () =>
+      resolveBranchBindingLocked(changeDir, options),
+    );
   return resolveBranchBindingLocked(changeDir, options);
 }
 
@@ -152,7 +154,7 @@ async function resolveBranchBindingLocked(
 }
 
 export async function healBoundBranch(changeDir: string, branch: string): Promise<void> {
-  return withClassicStateLock(changeDir, () => healBoundBranchLocked(changeDir, branch));
+  return withClassicStateMutation(changeDir, () => healBoundBranchLocked(changeDir, branch));
 }
 
 async function healBoundBranchLocked(changeDir: string, branch: string): Promise<void> {

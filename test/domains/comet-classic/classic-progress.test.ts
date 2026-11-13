@@ -1,37 +1,91 @@
-import { resolveClassicRunDirectory } from '../../../domains/comet-classic/classic-runtime-paths.js';
-import { resolveWorkspaceRuntimeRoot } from '../../../domains/workflow-contract/workspace-runtime.js';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import '../../helpers/isolated-agent-home.js';
 import * as childProcess from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import {
-  mkdtemp,
   mkdir,
+  mkdtemp,
   readFile,
   readdir,
-  writeFile,
-  rm,
   rename,
+  rm,
   symlink,
+  writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
-import { promises as fs } from 'node:fs';
+import { stat, utimes } from 'node:fs/promises';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  readClassicCheckpoint,
-  writeClassicCheckpoint,
-  readClassicDelivery,
-  writeClassicDelivery,
-  reauthorizeClassicDelivery,
   invalidateClassicDelivery,
+  readClassicCheckpoint,
+  readClassicDelivery,
+  reauthorizeClassicDelivery,
   recordClassicDocumentArchive,
+  writeClassicCheckpoint,
+  writeClassicDelivery,
 } from '../../../domains/comet-classic/classic-progress.js';
-import { classicTaskRevision } from '../../../domains/comet-classic/classic-tasks.js';
+import { resolveClassicRunDirectory } from '../../../domains/comet-classic/classic-runtime-paths.js';
+import { withClassicStateMutation } from '../../../domains/comet-classic/classic-store.js';
+import { resolveWorkspaceRuntimeRoot } from '../../../domains/workflow-contract/workspace-runtime.js';
+import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
+import { classicProjectTargetExists } from '../../../domains/comet-classic/classic-protected-path.js';
 import { independentGitEnvironment } from '../../../platform/process/git-environment.js';
-import { withClassicStateLock } from '../../../domains/comet-classic/classic-store.js';
 
 vi.mock('node:child_process', async (importOriginal) => {
   const original = await importOriginal<typeof import('node:child_process')>();
   return { ...original, execFileSync: vi.fn(original.execFileSync) };
+});
+
+it('reads an absent optional Runtime record without creating its root', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'classic-missing-runtime-read-'));
+  try {
+    const runtime = resolveWorkspaceRuntimeRootSync(root);
+    expect(
+      await classicProjectTargetExists(root, path.join(runtime, 'classic-delivery/absent.json'), {
+        label: 'Optional delivery authorization',
+        expected: 'file',
+      }),
+    ).toBe(false);
+    await expect(readdir(runtime)).rejects.toMatchObject({ code: 'ENOENT' });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it('preserves complete Classic archive Specs beyond 64 MiB', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'classic-large-archive-'));
+  const change = path.join(root, 'docs/openspec/changes/demo');
+  try {
+    await mkdir(change, { recursive: true });
+    await writeFile(
+      path.join(change, '.comet.yaml'),
+      'phase: archive\nverify_result: pass\narchived: false\nrun_id: large-document-run\n',
+    );
+    const source = '# Feature\n' + 'x'.repeat(64 * 1024 * 1024 + 1) + '\nEND';
+    const spec = path.join(root, 'docs/openspec/specs/feature/spec.md');
+    await mkdir(path.dirname(spec), { recursive: true });
+    await writeFile(spec, source);
+    await writeClassicDelivery(
+      root,
+      change,
+      { action: 'archive-only' },
+      { phase: 'archive', verifyResult: 'pass', archived: false },
+    );
+    await writeFile(
+      path.join(change, '.comet.yaml'),
+      'phase: archive\nverify_result: pass\narchived: true\nrun_id: large-document-run\n',
+    );
+    const archived = path.join(root, 'docs/openspec/changes/archive/2026-11-12-demo');
+    await mkdir(path.dirname(archived), { recursive: true });
+    await rename(change, archived);
+    await recordClassicDocumentArchive(root, archived);
+    const saved = JSON.parse(await readFile(path.join(archived, '.comet/main-specs.json'), 'utf8'));
+    expect(Buffer.from(saved.files['feature/spec.md'], 'base64').toString('utf8') === source).toBe(
+      true,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 it('archives documents in a non-Git coordinator without claiming a child repository commit', async () => {
@@ -80,54 +134,22 @@ it('archives documents in a non-Git coordinator without claiming a child reposit
     const [receiptName] = await readdir(receiptDir);
     const receiptFile = path.join(receiptDir, receiptName);
     const receipt = JSON.parse(await readFile(receiptFile, 'utf8'));
-    receipt.archiveFiles = Object.fromEntries(Object.entries(receipt.archiveFiles).reverse());
     await writeFile(receiptFile, JSON.stringify(receipt));
     await expect(readClassicDelivery(root, archived)).resolves.toMatchObject({
       verification: { status: 'complete', archiveVerified: true },
     });
-    for (const code of ['ENOENT', 'ENOTDIR']) {
-      const missing = vi
-        .spyOn(fs, 'readdir')
-        .mockRejectedValueOnce(
-          Object.assign(new Error('archive directory disappeared during verification'), { code }),
-        );
-      try {
-        await expect(readClassicDelivery(root, archived)).resolves.toMatchObject({
-          verification: { status: 'needsVerification', archiveVerified: false },
-        });
-      } finally {
-        missing.mockRestore();
-      }
-    }
-    const denied = vi
-      .spyOn(fs, 'readdir')
-      .mockRejectedValueOnce(
-        Object.assign(new Error('archive directory is unreadable'), { code: 'EACCES' }),
-      );
-    try {
-      await expect(readClassicDelivery(root, archived)).rejects.toMatchObject({ code: 'EACCES' });
-    } finally {
-      denied.mockRestore();
-    }
+    const moved = archived + '-missing';
+    await rename(archived, moved);
+    await expect(readClassicDelivery(root, archived)).resolves.toMatchObject({
+      verification: { status: 'needsAuthorization' },
+    });
+    await rename(moved, archived);
     await writeFile(spec, '# Modified feature\n');
+    await writeFile(path.join(archived, 'proposal.md'), '# Agent accepted the updated wording\n');
     await expect(readClassicDelivery(root, archived)).resolves.toMatchObject({
       verification: { status: 'complete', archiveVerified: true },
     });
-    const snapshot = path.join(archived, '.comet', 'main-specs.json');
-    const snapshotSource = await readFile(snapshot, 'utf8');
-    expect(
-      Buffer.from(JSON.parse(snapshotSource).files['feature/spec.md'], 'base64').toString('utf8'),
-    ).toBe('# Feature\n');
-    await writeFile(snapshot, '# Damaged snapshot\n');
-    await expect(readClassicDelivery(root, archived)).resolves.toMatchObject({
-      verification: { status: 'needsVerification', archiveVerified: false },
-    });
-    await writeFile(snapshot, snapshotSource);
-    await writeFile(path.join(archived, 'proposal.md'), '# Changed\n');
-    await expect(readClassicDelivery(root, archived)).resolves.toMatchObject({
-      verification: { status: 'needsVerification', archiveVerified: false },
-    });
-    await expect(recordClassicDocumentArchive(root, archived)).rejects.toThrow('sealed receipt');
+    await expect(recordClassicDocumentArchive(root, archived)).resolves.toBeUndefined();
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -187,7 +209,6 @@ describe('Classic structured progress', () => {
   const input = () => ({
     schemaVersion: 1,
     taskIds: ['a', 'b'],
-    revision: classicTaskRevision(tasks),
     stage: 'implementing',
     sessionId: 'worker-1',
     evidence: ['test passed'],
@@ -259,15 +280,32 @@ describe('Classic structured progress', () => {
     );
     expect(
       (await readClassicCheckpoint(root, change, tasks.replace('First', 'Changed'))).stale,
-    ).toBe(true);
+    ).toBe(false);
     expect((await readClassicCheckpoint(root, change, '')).checkpoint).toEqual(input());
+  });
+
+  it('keeps identical coordination reports unchanged and repairs only a missing reading projection', async () => {
+    await writeClassicCheckpoint(root, change, input(), tasks);
+    const directory = path.join(await resolveClassicRunDirectory(change, root), '.comet');
+    const record = path.join(directory, 'coordination.json');
+    const view = path.join(directory, 'subagent-progress.md');
+    const preservedTime = new Date('2000-01-01T00:00:00Z');
+    await utimes(record, preservedTime, preservedTime);
+    await utimes(view, preservedTime, preservedTime);
+    await writeClassicCheckpoint(root, change, input(), tasks);
+    expect((await stat(record)).mtimeMs).toBe(preservedTime.getTime());
+    expect((await stat(view)).mtimeMs).toBe(preservedTime.getTime());
+    await rm(view);
+    await writeClassicCheckpoint(root, change, input(), tasks);
+    expect((await stat(record)).mtimeMs).toBe(preservedTime.getTime());
+    expect(await readFile(view, 'utf8')).toContain('Tasks: a, b');
+    expect((await readClassicCheckpoint(root, change, tasks)).checkpoint).toEqual(input());
   });
 
   it.each([
     { taskIds: ['a', 'a'] },
     { taskIds: ['missing'] },
     { taskIds: [] },
-    { revision: '0'.repeat(64) },
     { schemaVersion: 2 },
     { stage: 'complete' },
     { reviewRounds: -1 },
@@ -711,16 +749,9 @@ describe('Classic structured progress', () => {
     },
   );
 
-  it('records an archive commit while the real state lock is held, without ignoring other changes', async () => {
-    await writeFile(path.join(root, '.gitignore'), 'changes/demo/.comet-state.lock\n');
+  it('records an archive commit during a serial state operation without ignoring other changes', async () => {
     const commit = await archivedDelivery('push');
-    await withClassicStateLock(change, async () => {
-      expect(
-        await readFile(
-          path.join(await resolveClassicRunDirectory(change, root), '.comet-state.lock'),
-          'utf8',
-        ),
-      ).toBeTruthy();
+    await withClassicStateMutation(change, async () => {
       const result = await writeClassicDelivery(
         root,
         change,
@@ -997,5 +1028,15 @@ describe('Classic structured progress', () => {
     } finally {
       await rm(outside, { recursive: true, force: true });
     }
+  });
+  it('rejects an invalid first checkpoint reading view before writing coordination', async () => {
+    const local = await resolveClassicRunDirectory(change, root),
+      dir = path.join(local, '.comet');
+    await mkdir(path.join(dir, 'subagent-progress.md'), { recursive: true });
+    await expect(writeClassicCheckpoint(root, change, input(), tasks)).rejects.toThrow();
+    await expect(readFile(path.join(dir, 'coordination.json'), 'utf8')).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    expect((await stat(path.join(dir, 'subagent-progress.md'))).isDirectory()).toBe(true);
   });
 });

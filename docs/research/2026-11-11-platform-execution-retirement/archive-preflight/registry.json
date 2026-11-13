@@ -1,0 +1,25 @@
+{
+  "cases": [
+    {
+      "id": "native-automated-receipt-git-parent-alias",
+      "sources": [
+        "report:2026-10-27-badcase-ci-repeated-failures"
+      ],
+      "behavior": "通过项目父目录别名执行自动验证时，成功命令仍产生绑定真实 Git 工作区的通过收据；执行中变更提交仍被阻塞。",
+      "coverageLevel": "runtime",
+      "reproduction": "核对同类路径比较时新增真实 Git 项目父目录链接案例，旧代码把成功命令收据标为 blocked；物理路径比较修正后通过。",
+      "expected": "兼容收据执行保留 Git 根和前后提交身份，正常检查通过，执行中提交变化仍阻塞。",
+      "forbidden": "把路径别名当成非 Git 工作区、错误阻塞成功检查，或接受执行中 Git 身份变化。",
+      "rootCause": "Git 输出物理工作区根，自动收据却相对于含目录别名的项目根计算边界并降级为 none。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-archive-inspection.test.ts",
+          "namePattern": "issues automated Git-bound verification receipts through a project parent alias",
+          "requiredNames": [
+            "issues automated Git-bound verification receipts through a project parent alias"
+          ]
+        }
+      ]
+    }
+  ]
+}

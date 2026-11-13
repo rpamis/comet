@@ -1,0 +1,120 @@
+{
+  "cases": [
+    {
+      "id": "native-delta-shape-materialization",
+      "behavior": "Generate an associated capability's complete target Spec from its Delta before Shape confirmation without overwriting independent edits.",
+      "coverageLevel": "runtime",
+      "reproduction": "The Delta-only Shape fixture retained the old complete target before implementation; the identical new test failed on missing added behavior.",
+      "expected": "Generate the complete target, update a previously generated target when its receipt matches, and keep complete Specs in approval and acceptance.",
+      "forbidden": "Replacing independently edited targets, changing confirmed targets during revalidation, or treating conflicting baseline requirements as compatible.",
+      "rootCause": "Shape validated the agent-maintained target against Delta but did not materialize it through the public preparation path.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "materializes a Delta target before Shape and refuses independent target edits|does not enter Build when Shape documents change after approval",
+          "requiredNames": [
+            "materializes a Delta target before Shape and refuses independent target edits",
+            "does not enter Build when Shape documents change after approval"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-11-08-skill-execution-optimization"
+      ]
+    },
+    {
+      "id": "native-builder-shape-drift-recovery",
+      "behavior": "正式 Spec 改变导致 Builder 提交被拒绝后，以原 claim 的失败收据结束原 Action，再在同一 change 内重新确认，保留拒绝记录。",
+      "coverageLevel": "public-cli",
+      "reproduction": "批准 Shape 并 claim Builder 后修改正式 Spec，再从公开 Runtime 提交原候选；原错误响应只有 inspect 入口，没有原失败收据和变化文件。",
+      "expected": "拒绝仍记录审计收据，响应指出变化的 Spec 并提供绑定原 Action/claim 的失败请求；原命令可执行且重复提交不重复推进，随后原 change 可进入 Shape 重新确认。",
+      "forbidden": "自动批准改动、清除原 Run 或拒绝记录、要求重建 change，或向错误 claim 提供原失败收据。",
+      "rootCause": "状态转换已支持失败 Builder 的需求修订，但拒绝响应没有将这条恢复链与原 Action、变化文件和现有失败请求模板关联。",
+      "tests": [
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "recovers a rejected Builder after formal Spec drift|does not disclose a Builder failure receipt",
+          "requiredNames": [
+            "Native dispatch CLI presentation recovers a rejected Builder after formal Spec drift through the original failure receipt and reconfirms the same change",
+            "Native dispatch CLI presentation does not disclose a Builder failure receipt to a rejected outcome with another claim"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-10-25-native-incremental-recovery"
+      ]
+    },
+    {
+      "id": "native-v3-archive-report-failure",
+      "sources": [
+        "report:2026-11-05-native-verify-archive-cost"
+      ],
+      "behavior": "Archive completes with structured accepted evidence when derived report rendering fails.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Make missing and edited report rendering fail during public Archive, then recover the completed receipt. Separately edit the approved implementation.",
+      "expected": "Preserve edited report bytes and stable receipts; reject changed candidates before Spec publication.",
+      "forbidden": "Lose authored report text, rerun accepted checks solely for report failure, or publish a changed candidate.",
+      "rootCause": "Generated reading views previously blocked completion and occupied separate revalidation Actions.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:completes v3 Archive with a missing report when view rendering fails and preserves its receipt|completes v3 Archive with a edited report when view rendering fails and preserves its receipt|rejects candidate drift before v3 Archive publication after merging the revalidation Action)$",
+          "requiredNames": [
+            "completes v3 Archive with a missing report when view rendering fails and preserves its receipt",
+            "completes v3 Archive with a edited report when view rendering fails and preserves its receipt",
+            "rejects candidate drift before v3 Archive publication after merging the revalidation Action"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-192-checks",
+      "behavior": "非内建项目可执行明确argv登记有效检查；失败不得被自动推断成功覆盖",
+      "status": "covered",
+      "reason": "050 仍保留该行为；使用当前入口的确定性回归。",
+      "coverageLayer": "sdk-and-compat",
+      "evidence": [
+        "test/domains/comet-classic/classic-executed-checks.test.ts",
+        "test/domains/comet-classic/classic-guard.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+          "namePattern": "executes literal argv, preserves child JSON/help flags, and records runtime provenance|persists a bound SDK Action across check start and completion",
+          "requiredNames": [
+            "executes literal argv, preserves child JSON/help flags, and records runtime provenance",
+            "persists a bound SDK Action across check start and completion"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-guard.test.ts",
+          "namePattern": "preserves an explicit failed build instead of replacing it with an inferred command|lists workspace candidates instead of choosing when several packages build",
+          "requiredNames": [
+            "preserves an explicit failed build instead of replacing it with an inferred command",
+            "lists workspace candidates instead of choosing when several packages build"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-240-archive-freshness",
+      "behavior": "Verify 后源文件或报告改变时 Archive 不得复用旧通过",
+      "status": "covered",
+      "reason": "SDK Archive 执行与提交边界都有实际输入核验。",
+      "coverageLayer": "SDK and Compat",
+      "evidence": [
+        "https://github.com/rpamis/comet/issues/240"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "blocks tracked implementation drift at Archive preflight and offers the original Verify repair path|rechecks Archive documents after executor output and before committing the outcome",
+          "requiredNames": [
+            "blocks tracked implementation drift at Archive preflight and offers the original Verify repair path",
+            "rechecks Archive documents after executor output and before committing the outcome"
+          ]
+        }
+      ]
+    }
+  ]
+}

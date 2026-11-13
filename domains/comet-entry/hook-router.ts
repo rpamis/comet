@@ -1,3 +1,4 @@
+import { isNeutralDocumentPath } from '../workflow-contract/neutral-document-path.js';
 import { resolveWorkspaceRuntimeRootSync } from '../workflow-contract/workspace-runtime.js';
 import { normalizeCometHookTargets } from '../../platform/process/hook-adapter.js';
 import path from 'path';
@@ -31,7 +32,7 @@ import { configuredHookWritePath } from '../workflow-contract/hook-write-policy.
 import type { CometHookDecision, CometHookRequest } from './hook-types.js';
 import type { CometWorkflow } from './types.js';
 import { collectCometHookContext, collectCometPluginContext } from './plugin-context.js';
-import { readSelectedWorkflowApplication } from '../workflow-application/index.js';
+import { readSelectedWorkflowApplication } from '../workflow-application/application.js';
 
 export interface ActiveHookChange {
   workflow: CometWorkflow;
@@ -453,6 +454,37 @@ export async function inspectCometHook(
         };
       const decision = await application.implementation.inspectHook(run, projectRequest);
       return { ...decision, ...identity };
+    }
+    // With no selected change, ordinary documentation does not require historical Run recovery.
+    const selection = await readHookCurrentSelection(projectRoot);
+    if (selection.status === 'missing') {
+      const config = await readCachedProjectConfig(projectRoot);
+      const layout = classicLayoutPaths(projectRoot, config?.classic?.artifact_layout ?? 'legacy');
+      const reserved = [
+        path.join(projectRoot, '.git'),
+        path.join(projectRoot, '.comet'),
+        layout.openSpecRoot,
+        layout.superpowersRoot,
+        ...(config?.native ? [path.join(projectRoot, config.native.artifact_root, 'comet')] : []),
+      ];
+      const strict = config?.classic?.document_evidence === 'strict';
+      const neutral =
+        !strict &&
+        projectRequest.targets.every((target) =>
+          isNeutralDocumentPath(
+            path.relative(projectRoot, path.resolve(projectRoot, target)).replaceAll('\\', '/'),
+          ),
+        );
+      if (neutral) {
+        let protectedTarget = false;
+        for (const target of projectRequest.targets)
+          for (const root of reserved) {
+            if (await isCometHookTargetWithin(root, path.resolve(projectRoot, target)))
+              protectedTarget = true;
+          }
+        if (!protectedTarget)
+          return { allowed: true, reason: 'Unselected neutral documentation write' };
+      }
     }
     const resolution = await resolveHookWorkflowOwner(projectRoot, dependencies);
     if (resolution.status === 'none') {

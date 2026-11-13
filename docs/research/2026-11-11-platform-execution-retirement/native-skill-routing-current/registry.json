@@ -1,0 +1,42 @@
+{
+  "cases": [
+    {
+      "id": "native-user-artifact-location-retention",
+      "sources": [
+        "report:2026-10-25-low-cost-workflow-recovery",
+        "report:2026-10-26-051-release-closure"
+      ],
+      "behavior": "Native Shape、Build和独立Verify保留用户明确指定的产物位置、必需章节和格式，恢复时不以其他文件中的同类内容代替。",
+      "coverageLevel": "unit",
+      "reproduction": "recovery051_native_20261025_220723 将要求位于brief的测试计划放在Spec；仅修正检查name/id误配后，原brief位置断言仍失败。中文契约先红后绿，用户明确确认后同步英文，英文同一契约先红后绿。",
+      "expected": "Shape在brief约束登记原位置并准备内容，Build按原位置补齐并将可自动检查项纳入Runtime计划，Verifier核对位置、章节与格式，缺项或错位不通过。",
+      "forbidden": "移动到模板默认位置、用另一文件中同类内容抵消遗漏、静默变更正式约束或放宽原固定产物验收。",
+      "rootCause": "原Skill没有将用户指定的产物落点贯穿Shape交接、Build自查和独立验收，模型沿模板误放文件。",
+      "tests": [
+        {
+          "file": "test/domains/skill/native-sdk-skill-routing.test.ts",
+          "namePattern": "preserves user-specified artifact locations through Shape, Build and independent Verify",
+          "requiredNames": [
+            "Chinese Native SDK Skill route preserves user-specified artifact locations through Shape, Build and independent Verify"
+          ]
+        },
+        {
+          "file": "test/domains/skill/native-sdk-skill-routing.test.ts",
+          "namePattern": "keeps confirmed artifact-location requirements in the English Native route",
+          "requiredNames": [
+            "Chinese Native SDK Skill route keeps confirmed artifact-location requirements in the English Native route"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real configured GLM Native current candidate with unchanged brief placement, cold recovery, independent verification and Archive assertions",
+          "status": "pending",
+          "evidence": [
+            "Original failed experiment recovery051_native_20261025_220723 retained. Chinese and English Skill contracts do not establish model compliance."
+          ]
+        }
+      ]
+    }
+  ]
+}

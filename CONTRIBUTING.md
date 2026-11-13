@@ -89,7 +89,7 @@ After `pnpm build`, run `pnpm test:openspec-upstream` to check the real OpenSpec
 | `pnpm lint`                   | ESLint + architecture linter                                                          |
 | `pnpm lint:architecture`      | Repository layering linter (`scripts/lint/architecture.mjs`)                          |
 | `pnpm lint:fix`               | ESLint auto-fix                                                                       |
-| `pnpm format`                 | Prettier formatting for `app/`, `domains/`, `platform/`                               |
+| `pnpm format`                 | Prettier formatting for `app/`, `domains/`, `platform/`, `plugin/`                    |
 | `pnpm format:check`           | Prettier check (CI-enforced)                                                          |
 | `pnpm benchmark:context`      | Context compression benchmark                                                         |
 | `pnpm benchmark:execution`    | Context execution benchmark                                                           |
@@ -218,7 +218,8 @@ docs: update contributor commit rules
 
 The repository ships a Git pre-commit hook (`.husky/pre-commit` + `lint-staged`)
 that runs `prettier --write` on every `git commit` against staged source files
-under `app/`, `domains/`, and `platform/`. The scope matches CI `format:check`,
+under `app/`, `domains/`, `platform/`, `plugin/`, `scripts/`, `test/`, `.github/`,
+and `config/`. The scope matches CI `format:check`,
 is editor-independent, and applies to every contributor.
 
 - The hook is installed by `husky` during `pnpm install`.
@@ -283,6 +284,10 @@ platform/            # Platform adaptation; domain code does not leak platform d
 ├── process/         # Subprocesses, error handling, shell quoting
 └── version/         # Version comparison
 
+plugin/              # Platform plugin source and templates
+├── codex/           # Codex manifest, MCP entries, and Dashboard wrapper
+└── dsh/             # DeepSeek Harness Host/Client plugin
+
 scripts/             # Repository automation (build / release / benchmark / lint / install)
 ├── benchmark/       # Benchmark suites
 ├── build/           # Classic, Native, and entry runtime builders
@@ -309,10 +314,11 @@ configurations.
 
 - The top-level directory whitelist
   (`config/repository-layout.json`'s `allowedTopLevelEntries`).
-- Active source roots are restricted to `app` / `domains` / `platform`
+- Active source roots are restricted to `app` / `domains` / `platform` / `plugin`
   (`sourceRoots`).
 - Sub-modules of each layer
-  (`appModules` / `domainModules` / `platformModules` / `scriptModules`).
+  (`appModules` / `domainModules` / `platformModules` / `pluginModules` / `scriptModules`).
+  Platform plugins in `plugin/codex` and `plugin/dsh` depend on shared layers; shared layers do not depend on plugins.
 - Classic, Native, and entry runtime entry/output consistency.
 - Built-in skill roots and the install manifest are consistent.
 - Test ownership (see the next section).

@@ -1,9 +1,10 @@
-import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-import os from 'node:os';
+import '../../helpers/isolated-agent-home.js';
 import { execFileSync } from 'node:child_process';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -11,49 +12,26 @@ import {
 import {
   ensureNativeDirectories,
   nativeProjectPaths,
-  nativePreferredChangeRuntimeDir,
 } from '../../../domains/comet-native/native-paths.js';
+import { archiveNativePortableChange } from '../../../domains/comet-native/native-portable-archive.js';
 import {
+  confirmNativePortableShape,
+  confirmNativePortableSkillCoordinatedPass,
   createNativePortableChange,
+  dispatchNativePortableVerifier,
   nativePortableChangeDir,
   prepareNativePortableShapeConfirmation,
-  confirmNativePortableShape,
-  submitNativePortableBuilderCandidate,
-  executeNativePortableCheckPlan,
-  dispatchNativePortableVerifier,
-  submitNativePortableVerifierResult,
-  confirmNativePortableSkillCoordinatedPass,
   readNativePortableChange,
+  submitNativePortableBuilderCandidate,
+  submitNativePortableVerifierResult,
   syncNativePortableSpecReferences,
-  inspectNativePortableAcceptanceDrift,
 } from '../../../domains/comet-native/native-portable-runtime.js';
 import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
-import { archiveNativePortableChange } from '../../../domains/comet-native/native-portable-archive.js';
 import {
   inspectDiscoveredNativeStatus,
   listDiscoveredNativeStatusPage,
 } from '../../../domains/comet-native/native-status-discovery.js';
-import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
-import {
-  applyNativeRunnerInput,
-  parseNativeRunnerInput,
-} from '../../../domains/comet-native/native-runner-input.js';
-import {
-  dispatchNativeSupervisorReadyTasks,
-  readNativeSupervisorState,
-  nativeSupervisorStateFile,
-} from '../../../domains/comet-native/native-supervisor.js';
-import { executeNativeSupervisorChecks } from '../../../domains/comet-native/native-supervisor-evidence.js';
-
-function requireStoppedPid(): number {
-  // Reap a real short-lived process, then prove its PID is not currently alive.
-  const pid = Number(
-    execFileSync(process.execPath, ['-p', 'process.pid'], { encoding: 'utf8' }).trim(),
-  );
-  expect(() => process.kill(pid, 0)).toThrow();
-  return pid;
-}
-
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 const roots: string[] = [];
 afterEach(async () => {
   for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true });
@@ -64,15 +42,6 @@ const git = (root: string, ...args: string[]) =>
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   }).trim();
-const plan = (id = 'test', code = 'process.exit(0)') => ({
-  id,
-  name: id,
-  executable: process.execPath,
-  argv: ['-e', code],
-  cwdRef: '.',
-  timeoutMs: 10000,
-  repeatable: true,
-});
 async function project() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-reliability-'));
   roots.push(root);
@@ -106,42 +75,55 @@ async function shape(paths: Awaited<ReturnType<typeof nativeProjectPaths>>) {
   return confirmNativePortableShape({ paths, name: 'change' });
 }
 async function verify(paths: Awaited<ReturnType<typeof nativeProjectPaths>>, failSecond = false) {
-  const runner = createNativeRunnerChannel();
-  const initial = await readNativePortableChange(paths, 'change');
+  const runner = createNativeRunnerChannel(),
+    initial = await readNativePortableChange(paths, 'change'),
+    observed = execFileSync(
+      process.execPath,
+      ['-e', 'process.stdout.write("real-platform-check")'],
+      { cwd: paths.projectRoot, encoding: 'utf8' },
+    );
+  expect(observed).toBe('real-platform-check');
+  const checks = [
+    {
+      name: 'Actual Agent-platform Node probe',
+      result: 'passed' as const,
+      note: 'Actual process exited 0 and printed real-platform-check.',
+    },
+  ];
   await submitNativePortableBuilderCandidate({
     paths,
     name: 'change',
     input: {
       identity: runner.captureExecutionIdentity({
-        identityProvider: 'test-host',
+        identityProvider: 'SIMULATED-Agent',
         executionRef: 'builder',
       }),
       candidateId: 'candidate',
-      summary: 'Implemented.',
-      addressedAcceptanceIds: initial.acceptance.map(({ id }) => id),
-      acceptanceReview: fixtureAcceptanceReview(initial.acceptance.map(({ id }) => id)),
+      summary: 'SIMULATED implementation with actual platform probe.',
+      addressedAcceptanceIds: initial.acceptance.map((a) => a.id),
+      acceptanceReview: fixtureAcceptanceReview(initial.acceptance.map((a) => a.id)),
+      checks,
       review: {
         status: 'passed',
-        summary: 'Independently reviewed.',
+        summary: 'SIMULATED independent review.',
         reviewerExecutionRef: 'reviewer',
       },
     },
   });
-  const executed = await executeNativePortableCheckPlan({ paths, name: 'change', plans: [plan()] });
   const state = await dispatchNativePortableVerifier({
     paths,
     name: 'change',
-    checks: executed.checks,
+    verifierExecutionId: 'verifier',
   });
   return submitNativePortableVerifierResult({
     paths,
     name: 'change',
-    checks: executed.checks,
+    checks,
     maxVerifyFailures: 5,
     envelope: runner.envelopeVerifierResponse({
       candidateId: 'candidate',
       identity: runner.captureExecutionIdentity({
-        identityProvider: 'test-host',
+        identityProvider: 'SIMULATED-Agent',
         executionRef: 'verifier',
       }),
       payload: {
@@ -153,18 +135,17 @@ async function verify(paths: Awaited<ReturnType<typeof nativeProjectPaths>>, fai
           acceptance: state.acceptance.map(({ id }) => ({
             id,
             result: failSecond && id === 'A2' ? 'failed' : 'passed',
-            reason: 'Independently checked.',
+            reason: 'SIMULATED independent inspection of the requested behavior.',
           })),
           risks: [],
-          summary: 'Checked.',
+          summary: 'SIMULATED complete independent result with actual platform observation.',
         },
       },
     }),
   });
 }
-
 describe('Native reliability issue regressions', () => {
-  it('selects a proven archive across worktrees, preserves duplicate provenance and isolates corrupt archives', async () => {
+  it('reads explicitly selected and imported archives while preserving local provenance and isolating corrupt records', async () => {
     const { root, paths, changeDir } = await project();
     await shape(paths);
     git(root, 'add', 'docs');
@@ -172,6 +153,7 @@ describe('Native reliability issue regressions', () => {
     const old = path.join(root, '.worktrees', 'old');
     git(root, 'worktree', 'add', '-b', 'old', old);
     await verify(paths);
+    // SIMULATED USER explicitly accepts the independently verified current result.
     await confirmNativePortableSkillCoordinatedPass({ paths, name: 'change' });
     const archive = await archiveNativePortableChange({ paths, name: 'change' });
     git(root, 'add', 'docs');
@@ -179,17 +161,27 @@ describe('Native reliability issue regressions', () => {
     await fs.writeFile(path.join(old, 'unrelated.txt'), 'unrelated');
     git(old, 'add', 'unrelated.txt');
     git(old, 'commit', '-m', 'unrelated');
+    const oldOnly = await inspectDiscoveredNativeStatus({
+      projectRoot: old,
+      name: 'change',
+      details: true,
+    });
+    expect(oldOnly.status).not.toBe('done');
     const query = () =>
+      inspectDiscoveredNativeStatus({ projectRoot: root, name: 'change', details: true });
+    const queryLocal = () =>
       inspectDiscoveredNativeStatus({ projectRoot: old, name: 'change', details: true });
     expect(await query()).toMatchObject({
       status: 'done',
       archived: true,
       acceptance: { passed: 2, total: 2 },
-      localExecution: { status: 'not-expected' },
       continuation: { disposition: 'done' },
     });
     const copy = path.join(old, path.relative(root, archive.archiveDir));
     await fs.cp(archive.archiveDir, copy, { recursive: true });
+    git(old, 'add', path.relative(old, copy));
+    git(old, 'commit', '-m', 'SIMULATED explicit business archive import');
+    expect(await queryLocal()).toMatchObject({ status: 'done', archived: true });
     expect(await query()).toMatchObject({ status: 'done' });
     const bad = path.join(paths.archiveDir, '2026-01-01-broken');
     await fs.mkdir(bad);
@@ -219,7 +211,7 @@ describe('Native reliability issue regressions', () => {
       staleFile,
       (await fs.readFile(staleFile, 'utf8')).replace('state_version: 3', 'state_version: 4'),
     );
-    expect(await query()).toMatchObject({
+    expect(await queryLocal()).toMatchObject({
       status: 'blocked',
       inspectionError: expect.stringContaining('supersession'),
     });
@@ -308,10 +300,6 @@ describe('Native reliability issue regressions', () => {
       '[quoted-example](old.md)',
     );
     expect(synced.history.at(-1)?.summary.text).toContain('reviewer');
-    expect(await inspectNativePortableAcceptanceDrift({ paths, state: synced })).toEqual({
-      drifted: false,
-      reason: null,
-    });
     await expect(syncNativePortableSpecReferences(input)).rejects.toThrow('stale');
     await expect(
       syncNativePortableSpecReferences({
@@ -339,321 +327,15 @@ describe('Native reliability issue regressions', () => {
       ).stdout!,
     );
     expect(result.exitCode).toBe(65);
-    expect(result.error.message).toContain('comet.native.v99');
-    expect(result.error.message).toContain('protocol');
-  }, 120000);
-
-  it.each(['fail', 'blocked'] as const)(
-    'records %s without a check receipt and rejects unsafe check plans',
-    async (verdict) => {
-      const { paths, changeDir } = await project();
-      await fs.writeFile(
-        path.join(changeDir, 'children.yaml'),
-        'schema: comet.native.children.v2\nacceptance_index:\n  A1:\n    source: brief.md\n    text: The first behavior works.\n  A2:\n    source: brief.md\n    text: The second behavior works.\nchildren:\n  - name: core\n    depends_on: []\n    covers: [A1, A2]\n',
-      );
-      await shape(paths);
-      const dispatch = await dispatchNativeSupervisorReadyTasks({ paths, parent: 'change' });
-      const builder = dispatch.tasks[0];
-      expect(builder.acceptance?.map(({ id }) => id)).toEqual(['A1', 'A2']);
-      expect(builder.checksReason).toBe('not-run');
-      await fs.writeFile(path.join(builder.projectRoot, 'feature.txt'), 'implemented');
-      git(builder.projectRoot, 'add', 'feature.txt');
-      git(builder.projectRoot, 'commit', '-m', 'implement');
-      const candidateCommit = git(builder.projectRoot, 'rev-parse', 'HEAD');
-      const buildResult = await applyNativeRunnerInput({
-        paths,
-        name: 'change',
-        maxVerifyFailures: 5,
-        input: {
-          kind: 'supervisor-builder-result',
-          child: 'core',
-          runId: builder.runId,
-          candidateCommit,
-        },
-      });
-      const task = buildResult.supervisorTask!;
-
-      const before = await readNativeSupervisorState(paths, 'change');
-      await expect(
-        executeNativeSupervisorChecks({
-          paths,
-          parent: 'change',
-          child: 'core',
-          runId: task.runId,
-          plans: [{ ...plan(), repeatable: false }],
-          materials: [],
-        }),
-      ).rejects.toThrow('repeatable');
-      expect(await readNativeSupervisorState(paths, 'change')).toEqual(before);
-      const failed = await applyNativeRunnerInput({
-        paths,
-        name: 'change',
-        maxVerifyFailures: 5,
-        input: parseNativeRunnerInput({
-          kind: 'supervisor-verifier-result',
-          child: 'core',
-          runId: task.runId,
-          verdict,
-          evidence: {
-            summary: 'Cannot confirm behavior.',
-            checks: [],
-            receiptRef: null,
-            acceptance: [
-              {
-                id: 'A1',
-                result: verdict === 'fail' ? 'failed' : 'blocked',
-                reason: 'Behavior unavailable.',
-              },
-              { id: 'A2', result: 'passed', reason: 'Inspected.' },
-            ],
-          },
-        }),
-      });
-      expect(failed.supervisorState!.children[0]).toMatchObject({
-        status: verdict === 'fail' ? 'ready' : 'needs-reverify',
-        task: null,
-        verifiedCommit: null,
-      });
-      expect(failed.supervisorState!.children[0].verification?.checks ?? []).toEqual([]);
-    },
-    120000,
-  );
-
-  it('requires Runtime checks and complete child acceptance, binds immutable material and integrates with executed checks', async () => {
-    const { root, paths, changeDir } = await project();
-    await fs.writeFile(
-      path.join(changeDir, 'children.yaml'),
-      'schema: comet.native.children.v2\nacceptance_index:\n  A1:\n    source: brief.md\n    text: The first behavior works.\n  A2:\n    source: brief.md\n    text: The second behavior works.\nchildren:\n  - name: core\n    depends_on: []\n    covers: [A1, A2]\n',
-    );
-    await shape(paths);
-    const dispatch = await dispatchNativeSupervisorReadyTasks({ paths, parent: 'change' });
-    const builder = dispatch.tasks[0];
-    expect(builder.acceptance?.map(({ id }) => id)).toEqual(['A1', 'A2']);
-    expect(builder.checksReason).toBe('not-run');
-    await fs.writeFile(path.join(builder.projectRoot, 'feature.txt'), 'implemented');
-    git(builder.projectRoot, 'add', 'feature.txt');
-    git(builder.projectRoot, 'commit', '-m', 'implement');
-    const candidateCommit = git(builder.projectRoot, 'rev-parse', 'HEAD');
-    const buildResult = await applyNativeRunnerInput({
-      paths,
-      name: 'change',
-      maxVerifyFailures: 5,
-      input: {
-        kind: 'supervisor-builder-result',
-        child: 'core',
-        runId: builder.runId,
-        candidateCommit,
-      },
+    expect(result.error.message).toContain('comet native doctor change --repair');
+    const diagnosed = JSON.parse(
+      (await runNativeCli(['status', 'change', '--project-root', root, '--json'])).stdout!,
+    ).data;
+    expect(diagnosed).toMatchObject({
+      phase: 'invalid',
+      schema: 'comet.native.v99',
+      nextCommand: null,
     });
-    const task = buildResult.supervisorTask!;
-    // Simulate an in-flight rc.5 overlay without newly introduced scope fields.
-    const legacyFile = nativeSupervisorStateFile(paths, 'change');
-    const legacy = JSON.parse(await fs.readFile(legacyFile, 'utf8'));
-    for (const child of legacy.children) {
-      delete child.acceptanceScope;
-      delete child.contractHash;
-      if (child.task) {
-        delete child.task.acceptance;
-        delete child.task.contractHash;
-      }
-    }
-    await fs.writeFile(legacyFile, JSON.stringify(legacy));
-    expect(
-      (await readNativeSupervisorState(paths, 'change'))!.children[0].task!.acceptance?.map(
-        ({ id }) => id,
-      ),
-    ).toEqual(['A1', 'A2']);
-    const options = {
-      paths,
-      parent: 'change',
-      child: 'core',
-      runId: task.runId,
-      plans: [plan()],
-      materials: [{ name: 'probe', content: 'Current candidate probe.' }],
-    };
-    await expect(executeNativeSupervisorChecks({ ...options, runId: 'stale-run' })).rejects.toThrow(
-      'runId is not current',
-    );
-    await expect(
-      executeNativeSupervisorChecks({
-        ...options,
-        materials: [{ name: 'oversize', content: 'x'.repeat(1024 * 1024 + 1) }],
-      }),
-    ).rejects.toThrow('size is invalid');
-    const failing = await executeNativeSupervisorChecks({
-      ...options,
-      plans: [plan('failing', 'process.exit(2)')],
-    });
-    await expect(
-      applyNativeRunnerInput({
-        paths,
-        name: 'change',
-        maxVerifyFailures: 5,
-        input: parseNativeRunnerInput({
-          kind: 'supervisor-verifier-result',
-          child: 'core',
-          runId: task.runId,
-          verdict: 'pass',
-          evidence: {
-            summary: 'Self-reported pass',
-            checks: ['claimed pass'],
-            receiptRef: failing.receiptRef,
-            acceptance: [
-              { id: 'A1', result: 'passed', reason: 'claimed' },
-              { id: 'A2', result: 'passed', reason: 'claimed' },
-            ],
-          },
-        }),
-      }),
-    ).rejects.toThrow('every Runtime check succeeds');
-    await expect(
-      executeNativeSupervisorChecks({
-        ...options,
-        plans: [
-          plan('dirty', "require('fs').writeFileSync('unexpected-check-output.txt','changed')"),
-        ],
-      }),
-    ).rejects.toThrow('clean current candidate');
-    expect(
-      (await readNativeSupervisorState(paths, 'change'))!.children[0].task!.checkExecution?.status,
-    ).toBe('interrupted');
-    await fs.rm(path.join(task.projectRoot, 'unexpected-check-output.txt'));
-    const checked = await applyNativeRunnerInput({
-      paths,
-      name: 'change',
-      maxVerifyFailures: 5,
-      input: parseNativeRunnerInput({
-        kind: 'supervisor-checks',
-        child: 'core',
-        runId: task.runId,
-        checks: options.plans,
-        materials: options.materials,
-      }),
-    });
-    let receipt = checked.checkExecution!;
-    expect(receipt.status).toBe('completed');
-    expect(await executeNativeSupervisorChecks(options)).toEqual(receipt);
-    const expired = JSON.parse(await fs.readFile(legacyFile, 'utf8'));
-    expired.children[0].task.checkExecution.status = 'running';
-    expired.children[0].task.checkExecution.ownerPid = process.pid;
-    expired.children[0].task.checkExecution.expiresAt = '2000-01-01T00:00:00.000Z';
-    await fs.writeFile(legacyFile, JSON.stringify(expired));
-    await expect(executeNativeSupervisorChecks(options)).rejects.toThrow('owner PID is alive');
-    expect(JSON.parse(await fs.readFile(legacyFile, 'utf8'))).toEqual(expired);
-    // A reused PID belongs to a different process instance, even while that PID is alive.
-    expired.children[0].task.checkExecution.ownerIdentity = 'exited-process-instance';
-    await fs.writeFile(legacyFile, JSON.stringify(expired));
-    const reused = await executeNativeSupervisorChecks(options);
-    expect(reused.status).toBe('completed');
-    expect(reused.operationId).toBe(receipt.operationId);
-    receipt = reused;
-    const stopped = requireStoppedPid();
-    expired.children[0].task.checkExecution.ownerPid = stopped;
-    await fs.writeFile(legacyFile, JSON.stringify(expired));
-    const recovered = await executeNativeSupervisorChecks(options);
-    expect(recovered.status).toBe('completed');
-    expect(recovered.operationId).toBe(receipt.operationId);
-    receipt = recovered;
-    const evidence = {
-      summary: 'Verified both behaviors.',
-      checks: ['non-formal note'],
-      receiptRef: receipt.receiptRef!,
-      acceptance: [
-        { id: 'A1', result: 'passed', reason: 'Checked first.' },
-        { id: 'A2', result: 'passed', reason: 'Checked second.' },
-      ],
-    };
-    const input = (acceptance = evidence.acceptance) =>
-      parseNativeRunnerInput({
-        kind: 'supervisor-verifier-result',
-        child: 'core',
-        runId: task.runId,
-        verdict: 'pass',
-        evidence: { ...evidence, acceptance },
-      });
-    await expect(
-      applyNativeRunnerInput({
-        paths,
-        name: 'change',
-        maxVerifyFailures: 5,
-        input: input(evidence.acceptance.slice(0, 1)),
-      }),
-    ).rejects.toThrow('missing: A2');
-    await expect(
-      applyNativeRunnerInput({
-        paths,
-        name: 'change',
-        maxVerifyFailures: 5,
-        input: input([...evidence.acceptance, evidence.acceptance[0]]),
-      }),
-    ).rejects.toThrow('duplicate: A1');
-    await expect(
-      applyNativeRunnerInput({
-        paths,
-        name: 'change',
-        maxVerifyFailures: 5,
-        input: input([{ ...evidence.acceptance[0], result: 'failed' }, evidence.acceptance[1]]),
-      }),
-    ).rejects.toThrow('every acceptance');
-    const file = path.join(
-      nativePreferredChangeRuntimeDir(paths, 'change'),
-      receipt.receiptRef!.replace(/^runtime\//u, ''),
-    );
-    const original = await fs.readFile(file, 'utf8');
-    await fs.writeFile(
-      file,
-      original.replace('Current candidate probe.', 'Tampered candidate probe.'),
-    );
-    await expect(
-      applyNativeRunnerInput({ paths, name: 'change', maxVerifyFailures: 5, input: input() }),
-    ).rejects.toThrow('hash');
-    await fs.writeFile(file, original);
-    await applyNativeRunnerInput({ paths, name: 'change', maxVerifyFailures: 5, input: input() });
-    expect((await readNativeSupervisorState(paths, 'change'))!.children[0].status).toBe('verified');
-    await expect(
-      applyNativeRunnerInput({ paths, name: 'change', maxVerifyFailures: 5, input: input() }),
-    ).rejects.toThrow('not active');
-    const integrationState = await readNativeSupervisorState(paths, 'change');
-    const integrationHead = git(integrationState!.integration.worktree, 'rev-parse', 'HEAD');
-    await expect(
-      applyNativeRunnerInput({
-        paths,
-        name: 'change',
-        maxVerifyFailures: 5,
-        input: parseNativeRunnerInput({
-          kind: 'supervisor-integrate',
-          child: 'core',
-          checks: [{ ...plan('unsafe-integration'), repeatable: false }],
-        }),
-      }),
-    ).rejects.toThrow('repeatable');
-    expect(git(integrationState!.integration.worktree, 'rev-parse', 'HEAD')).toBe(integrationHead);
-    await expect(
-      applyNativeRunnerInput({
-        paths,
-        name: 'change',
-        maxVerifyFailures: 5,
-        input: parseNativeRunnerInput({
-          kind: 'supervisor-integrate',
-          child: 'core',
-          checks: [plan('failed-integration', 'process.exit(7)')],
-        }),
-      }),
-    ).rejects.toThrow(/failed-integration: exit 7.*receipt runtime\/evidence/);
-    const integrated = await applyNativeRunnerInput({
-      paths,
-      name: 'change',
-      maxVerifyFailures: 5,
-      input: parseNativeRunnerInput({
-        kind: 'supervisor-integrate',
-        child: 'core',
-        checks: [plan('integration')],
-      }),
-    });
-    expect(integrated.supervisorState!.children[0]).toMatchObject({
-      status: 'integrated',
-      checks: [{ status: 'passed', receiptRef: expect.any(String) }],
-    });
-    expect(git(root, 'rev-parse', 'main')).not.toBe(candidateCommit);
+    expect(diagnosed.error).toContain('protocol');
   }, 120000);
 });

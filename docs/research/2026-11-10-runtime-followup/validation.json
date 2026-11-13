@@ -1,0 +1,334 @@
+{
+  "source": "report:2026-11-10-runtime-remaining-failures",
+  "base": "59b5c58b1c0eb01a964b9f7d3e611dacf0d2ec14",
+  "scope": "Local Native/Classic follow-up, retired tests/private implementations and CI duplication; no push.",
+  "fullFrozen": {
+    "command": "pnpm exec vitest run --maxWorkers=2",
+    "exitCode": 1,
+    "success": false,
+    "files": 746,
+    "total": 9501,
+    "passed": 9348,
+    "failed": 37,
+    "skipped": 116,
+    "minutes": 134.39402283528645,
+    "sourceUnchangedDuringRun": true,
+    "suiteCleanupErrors": [
+      {
+        "file": "D:/Project/Comet-runtime-followup-053/test/domains/comet-native/native-sdk-application.test.ts",
+        "message": "EBUSY: resource busy or locked, unlink 'C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-test-data-jgLt1T\\workspaces\\b86613fe89bafdff8b9591d15622fae0f213d469b2ae86b78838db3883324c1c\\runtime\\native\\sdk-checks\\c43e4019875d1e4ac3910666615d0f0d1272b9dd3903317602a735a5a9659f43\\executions\\166f0a310482c384135de5b05ded640e41175151d8a857c0ed4a7ceee703ad5e.json.active.lock.sqlite'"
+      }
+    ]
+  },
+  "fullFailureClassification": {
+    "windowsSymlinkPrivilege": 35,
+    "matchingActualLinuxEvidence": [
+      {
+        "file": "test/domains/comet-entry/project-sdk-status.test.ts",
+        "name": "SDK ownership in shared project status retains a per-change error for symlink-checkpoint without hiding other changes",
+        "linuxReport": "coverage/repair-053-followup/linux-shared-status.json"
+      },
+      {
+        "file": "test/domains/eval/eval-run-store.test.ts",
+        "name": "Eval run history and baselines checks every path component once and never reuses a previous symlink check",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/eval/eval-run-store.test.ts",
+        "name": "Eval run history and baselines rejects cross-run evidence through a report-file symlink",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'absolute' file link to 'project-local' before deciding the Hook allowance",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'relative' file link to 'project-local' before deciding the Hook allowance",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'chain' file link to 'project-local' before deciding the Hook allowance",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'absolute' file link to 'external' before deciding the Hook allowance",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'relative' file link to 'external' before deciding the Hook allowance",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'chain' file link to 'external' before deciding the Hook allowance",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'absolute' file link to 'native-owned' before deciding the Hook allowance",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'relative' file link to 'native-owned' before deciding the Hook allowance",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'chain' file link to 'native-owned' before deciding the Hook allowance",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'absolute' file link to 'classic-owned' before deciding the Hook allowance",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'relative' file link to 'classic-owned' before deciding the Hook allowance",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'chain' file link to 'classic-owned' before deciding the Hook allowance",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'absolute' file link to 'runtime' before deciding the Hook allowance",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'relative' file link to 'runtime' before deciding the Hook allowance",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'chain' file link to 'runtime' before deciding the Hook allowance",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'absolute' file link to 'git' before deciding the Hook allowance",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'relative' file link to 'git' before deciding the Hook allowance",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'chain' file link to 'git' before deciding the Hook allowance",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'absolute' file link to 'control' before deciding the Hook allowance",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'relative' file link to 'control' before deciding the Hook allowance",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'chain' file link to 'control' before deciding the Hook allowance",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "fails closed for an allowlisted cycle link chain without hanging",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "fails closed for an allowlisted over-depth link chain without hanging",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+        "name": "rejects a replaced archive manifest symlink and keeps the same Run pending",
+        "linuxReport": "coverage/repair-053-followup/legacy/linux-links-three-green.json"
+      },
+      {
+        "file": "test/domains/comet-classic/classic-layout.test.ts",
+        "name": "Classic project discovery boundaries rejects a dangling .comet/config.yaml link instead of selecting a parent project",
+        "linuxReport": "coverage/repair-053-followup/legacy/linux-links-three-green.json"
+      },
+      {
+        "file": "test/platform/process/runtime-dependency-permissions.test.ts",
+        "name": "rejects a dependency manifest redirected outside its package",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/engine/runtime-store-history.test.ts",
+        "name": "rejects symlink history and absent checkpoint without reopening authority",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/engine/runtime-store-discovery.test.ts",
+        "name": "read-only RuntimeStore discovery fails closed on link history metadata instead of hiding a possible owner",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/workflow-application/evaluation-evidence.test.ts",
+        "name": "rejects incomplete or inconsistent historical evidence: symlink",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/workflow-application/evaluation-evidence.test.ts",
+        "name": "rejects incomplete or inconsistent historical evidence: manifest-symlink",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      },
+      {
+        "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+        "name": "rejects symlink history entries and directories instead of hiding an active identity",
+        "linuxReport": "coverage/repair-053-followup/legacy/linux-links-three-green.json"
+      },
+      {
+        "file": "test/domains/eval/eval-run-sources.test.ts",
+        "name": "Eval source discovery rejects cached report files replaced by symlinks and recovers after repair",
+        "linuxReport": "coverage/repair-053-followup/linux-links.json"
+      }
+    ],
+    "registrationReference": "Fixed by preserved migrations; selected core registration test passed.",
+    "sdkSuiteCleanup": "Exact red/green reproduced; fault-injection fixture now releases its lease in finally.",
+    "unresolved": "Third interrupted repeatable check returned CLI65 once. Original exact expectation retained; diagnostics enhanced; isolated samples and whole-file retry passed. Root cause remains unreproduced/unresolved."
+  },
+  "postReview": {
+    "reports": [
+      {
+        "report": "post-review/ci-final.json",
+        "passed": 32,
+        "failed": 0,
+        "unselectedOrSkipped": 0
+      },
+      {
+        "report": "post-review/legacy/cleanup-repair-first.json",
+        "passed": 16,
+        "failed": 0,
+        "unselectedOrSkipped": 95
+      },
+      {
+        "report": "post-review/spec/post-freeze-four.json",
+        "passed": 4,
+        "failed": 0,
+        "unselectedOrSkipped": 245
+      },
+      {
+        "report": "post-review/core-registration.json",
+        "passed": 1,
+        "failed": 0,
+        "unselectedOrSkipped": 16
+      },
+      {
+        "report": "post-review/eval-tooling-contract.json",
+        "passed": 1,
+        "failed": 0,
+        "unselectedOrSkipped": 33
+      },
+      {
+        "report": "post-review/spec/registration-race-green.json",
+        "passed": 1,
+        "failed": 0,
+        "unselectedOrSkipped": 181
+      },
+      {
+        "report": "post-review/spec/legacy-eperm-two-green.json",
+        "passed": 2,
+        "failed": 0,
+        "unselectedOrSkipped": 179
+      }
+    ],
+    "totalPassed": 57,
+    "boundary": "Selected deterministic tests only; unselected pending does not count as passing. No second full suite."
+  },
+  "collection": {
+    "baseline": {
+      "cases": 9467,
+      "files": 746
+    },
+    "final": {
+      "cases": 9383,
+      "files": 742
+    },
+    "netCasesRemoved": 84,
+    "netTestFilesRemoved": 4,
+    "provenance": "post-review/collection-provenance.json",
+    "boundary": "Collection is not execution; includes only cases returned by Vitest list."
+  },
+  "retiredPrivateModules": [
+    "native-checkpoint-command",
+    "native-receipt-command",
+    "native-edit-review",
+    "classic-edit-review",
+    "native-edit-review-scope",
+    "native-receipt-refresh"
+  ],
+  "currentFixCases": [
+    "native-root-move-released-sqlite-sidecars",
+    "native-optional-archive-view-render-failure",
+    "native-optional-archived-view-path-warning",
+    "classic-reused-store-portable-runtime-recovery",
+    "native-doctor-no-implicit-unknown-owner-confirmation",
+    "native-malformed-lock-preserves-repair-evidence",
+    "native-prepared-delta-preserves-independent-canonical-edit",
+    "hook-resource-only-events-preserve-native-state",
+    "classic-archive-manifest-link-refusal",
+    "native-missing-trajectory-runtime-diagnostics",
+    "classic-delivery-continuation-command-args"
+  ],
+  "coreSelectors": {
+    "boundary": "Collection and selector audit only. No test execution or passing result is inferred.",
+    "groups": 251,
+    "collected": 9383,
+    "files": 742,
+    "missing": []
+  },
+  "checks": {
+    "build": "passed",
+    "types": "passed",
+    "lint": "passed with 9 existing warnings",
+    "architecture": "passed",
+    "generated": "passed",
+    "sdkApi": "passed in identical reviewed workspace",
+    "registrationBaselineRetention": "passed",
+    "prettier": "103 authored files passed",
+    "diffCheck": "Authored files passed; raw audit .patch context whitespace excluded by path. Registered full test patch passed reverse-apply check without modifying files."
+  },
+  "ci": {
+    "ordinaryLinuxDuplicateStepsRemoved": 6,
+    "exactFilesReused": 26,
+    "source": "same-workflow completed quality report",
+    "retained": [
+      "Windows/macOS ordinary Runtime execution",
+      "Node22 full shards and minimum Node SDK boundary",
+      "SDK/install package matrix",
+      "real Docker integration"
+    ],
+    "remoteRun": "not executed; no push"
+  },
+  "release": {
+    "currentVersion": "0.5.3",
+    "masterVersion": "0.5.2",
+    "masterSha": "a61a2e5b4766e1ad62377dec598e402560a259b6",
+    "decision": "No bump or development-only changelog entry; fixes are on unreleased 0.5.3."
+  },
+  "notExecuted": [
+    "Second full repository suite",
+    "Full Linux/macOS suite",
+    "Remote CI for this unpublished commit",
+    "Real model or container Eval",
+    "Real Agent platform Hook execution",
+    "Full release installation validation"
+  ],
+  "overallRepositoryGreen": false
+}

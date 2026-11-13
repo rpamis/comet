@@ -1,0 +1,117 @@
+{
+  "scenarios": 7,
+  "transitionAccuracy": 0.8571428571428571,
+  "migrationSuccessRate": 1,
+  "idempotencyRate": 0.8571428571428571,
+  "contractMatchRate": 0.8571428571428571,
+  "durationMs": 68179,
+  "results": [
+    {
+      "name": "profile-full",
+      "transitionAccuracy": true,
+      "migrationSuccess": true,
+      "idempotent": true,
+      "contractMatch": true,
+      "durationMs": 7397,
+      "detail": {
+        "currentStep": "full.open",
+        "migrationGuard": {
+          "phase": "open",
+          "status": 1,
+          "signal": null,
+          "controlledOutcome": true,
+          "diagnostic": "BLOCKED — fix failing checks before proceeding to next phase"
+        }
+      }
+    },
+    {
+      "name": "profile-hotfix",
+      "transitionAccuracy": true,
+      "migrationSuccess": true,
+      "idempotent": true,
+      "contractMatch": true,
+      "durationMs": 7207,
+      "detail": {
+        "currentStep": "hotfix.open",
+        "migrationGuard": {
+          "phase": "open",
+          "status": 1,
+          "signal": null,
+          "controlledOutcome": true,
+          "diagnostic": "BLOCKED — fix failing checks before proceeding to next phase"
+        }
+      }
+    },
+    {
+      "name": "profile-tweak",
+      "transitionAccuracy": true,
+      "migrationSuccess": true,
+      "idempotent": true,
+      "contractMatch": true,
+      "durationMs": 6966,
+      "detail": {
+        "currentStep": "tweak.open",
+        "migrationGuard": {
+          "phase": "open",
+          "status": 1,
+          "signal": null,
+          "controlledOutcome": true,
+          "diagnostic": "BLOCKED — fix failing checks before proceeding to next phase"
+        }
+      }
+    },
+    {
+      "name": "retry-fix",
+      "transitionAccuracy": true,
+      "migrationSuccess": true,
+      "idempotent": true,
+      "contractMatch": true,
+      "durationMs": 11748,
+      "detail": {
+        "currentStep": "hotfix.build.execute",
+        "migrationGuard": {
+          "phase": "build",
+          "status": 1,
+          "signal": null,
+          "controlledOutcome": true,
+          "diagnostic": "BLOCKED — fix failing checks before proceeding to next phase"
+        }
+      }
+    },
+    {
+      "name": "handoff-resume",
+      "transitionAccuracy": false,
+      "migrationSuccess": true,
+      "idempotent": false,
+      "contractMatch": false,
+      "durationMs": 11804,
+      "detail": {
+        "currentStep": "full.design.document",
+        "recoveries": 0
+      }
+    },
+    {
+      "name": "archive-recovery",
+      "transitionAccuracy": true,
+      "migrationSuccess": true,
+      "idempotent": true,
+      "contractMatch": true,
+      "durationMs": 21589,
+      "detail": {
+        "currentStep": "completed",
+        "recoveries": 1
+      }
+    },
+    {
+      "name": "malformed-rejection",
+      "transitionAccuracy": true,
+      "migrationSuccess": true,
+      "idempotent": true,
+      "contractMatch": true,
+      "durationMs": 1466,
+      "detail": {
+        "rejected": true
+      }
+    }
+  ]
+}

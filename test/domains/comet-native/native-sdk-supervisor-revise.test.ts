@@ -1,4 +1,4 @@
-import { hasNativeSdkPortableStopEvidence } from '../../../domains/comet-native/native-sdk-check-execution.js';
+import '../../helpers/isolated-agent-home.js';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -14,15 +14,8 @@ import type { RuntimeAction, WorkflowRun } from '../../../domains/engine/runtime
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 
 function expectOriginalActionFacts(run: WorkflowRun, expected: WorkflowRun['actions']) {
-  const actual = run.actions.filter((action) => expected.some(({ id }) => id === action.id));
-  expect(actual).toHaveLength(expected.length);
-  for (let index = 0; index < expected.length; index += 1) {
-    const { executionStop: oldStop, ...oldFacts } = expected[index];
-    const { executionStop: newStop, ...newFacts } = actual[index];
-    expect(newFacts).toEqual(oldFacts);
-    if (oldStop) expect(newStop).toEqual(oldStop);
-    else if (newStop) expect(hasNativeSdkPortableStopEvidence(run, actual[index])).toBe(true);
-  }
+  for (const action of expected)
+    expect(run.actions.find((a) => a.id === action.id)).toEqual(action);
 }
 
 const roots: string[] = [];
@@ -79,7 +72,8 @@ async function supervisor() {
   const targetCommit = git(project, ['rev-parse', 'HEAD']);
   git(project, ['config', 'user.name', 'Comet Test']);
   git(project, ['config', 'user.email', 'comet-test@example.com']);
-  const candidateCli = process.env.COMET_NATIVE_CANDIDATE_CLI ?? path.resolve('bin/comet.js');
+  const candidateCli =
+    process.env.COMET_NATIVE_CANDIDATE_CLI ?? path.resolve('dist/app/cli/index.js');
   const baselineCli = process.env.COMET_NATIVE_BASELINE_CLI ?? candidateCli;
   function cli(argv: string[], file = candidateCli, projectRoot = project) {
     const result = spawnSync(
@@ -93,6 +87,10 @@ async function supervisor() {
       },
     );
     if (result.error) throw result.error;
+    if (!result.stdout.trim())
+      throw new Error(
+        `Native CLI returned no JSON: ${JSON.stringify({ status: result.status, signal: result.signal, stderr: result.stderr })}`,
+      );
     return {
       exitCode: result.status,
       response: JSON.parse(result.stdout),
@@ -136,7 +134,7 @@ async function supervisor() {
     {
       operation: 'start',
       runId: name,
-      workflow: { id: 'comet-native', version: '1' },
+      workflow: { id: 'comet-native', version: '4' },
       input: { name, artifactRootRef: 'docs' },
       initialState: createNativePortableState({
         name,
@@ -228,8 +226,40 @@ async function supervisor() {
       },
       file,
     );
-  const report = (action: RuntimeAction, output: unknown, file = candidateCli) =>
-    dispatch(
+  const report = (action: RuntimeAction, output: unknown, file = candidateCli) => {
+    const value = output as {
+      verificationChecks?: Array<{
+        name: string;
+        executable: string;
+        argv: string[];
+        cwdRef: string;
+      }>;
+      checks?: unknown;
+      response?: unknown;
+    };
+    if (value.verificationChecks) {
+      const activation = (
+        action.input as {
+          activation?: { worktree?: string; integrationWorktree?: string };
+        }
+      ).activation;
+      const worktree = activation?.worktree ?? activation?.integrationWorktree ?? project;
+      const observed = value.verificationChecks.map((plan) => {
+        const actual = spawnSync(plan.executable, plan.argv, {
+          cwd: path.resolve(worktree, plan.cwdRef),
+          windowsHide: true,
+        });
+        expect(actual.status).toBe(0);
+        return {
+          name: plan.name,
+          result: 'passed',
+          note: 'Actual Agent platform Node command exited 0; SIMULATED report, no Eval.',
+        };
+      });
+      output = { ...value, verificationChecks: undefined, checks: observed };
+      delete (output as { verificationChecks?: unknown }).verificationChecks;
+    } else if (value.response && !value.checks) output = { ...value, checks: [] };
+    return dispatch(
       {
         operation: 'record-outcome',
         runId: name,
@@ -245,6 +275,7 @@ async function supervisor() {
       },
       file,
     );
+  };
   const checkPlan = (child: string) => [
     {
       id: 'artifact-' + child,
@@ -262,7 +293,9 @@ async function supervisor() {
   async function submitChild(value: WorkflowRun, file = candidateCli, includeBase = false) {
     const builder = pending(value, 'supervisor.child.builder');
     const input = (
-      builder.input as { activation: { child: string; worktree: string; baseCommit: string } }
+      builder.input as {
+        activation: { child: string; worktree: string; baseCommit: string };
+      }
     ).activation;
     if (includeBase) git(input.worktree, ['merge', '--ff-only', input.baseCommit]);
     await fs.writeFile(path.join(input.worktree, input.child + '.txt'), 'approved\n');
@@ -282,7 +315,13 @@ async function supervisor() {
   async function verifyChild(value: WorkflowRun, file = candidateCli) {
     const verifier = pending(value, 'supervisor.child.verifier');
     const input = (
-      verifier.input as { activation: { child: string; worktree: string; candidateCommit: string } }
+      verifier.input as {
+        activation: {
+          child: string;
+          worktree: string;
+          candidateCommit: string;
+        };
+      }
     ).activation;
     expect(
       (await fs.readFile(path.join(input.worktree, input.child + '.txt'), 'utf8')).trim(),
@@ -295,10 +334,15 @@ async function supervisor() {
         verdict: 'pass',
         evidence: {
           summary: 'Distinct test executor inspected actual artifact',
-          checks: ['artifact-' + input.child],
+          checks: [
+            {
+              name: 'Actual ' + input.child + ' artifact',
+              result: 'passed',
+              note: 'Agent read actual committed Child file.',
+            },
+          ],
           acceptance: [{ id: 'A1', result: 'passed', reason: 'Actual artifact read' }],
         },
-        integrationChecks: checkPlan(input.child),
       },
       file,
     );
@@ -344,7 +388,10 @@ async function supervisor() {
         action.status === 'succeeded' &&
         (action.outcome?.output as { child?: string } | null)?.child === child,
     )!;
-    const receipt = archive.outcome!.output as { archiveRef: string; archiveCommit: string };
+    const receipt = archive.outcome!.output as {
+      archiveRef: string;
+      archiveCommit: string;
+    };
     const integration = path.join(project, '.worktrees', name + '-integration');
     const relative = 'docs/comet/archive/' + receipt.archiveRef;
     const directory = path.join(integration, relative);
@@ -364,7 +411,15 @@ async function supervisor() {
         }),
       ]),
     );
-    return { archive, receipt, integration, relative, directory, files, committedFiles };
+    return {
+      archive,
+      receipt,
+      integration,
+      relative,
+      directory,
+      files,
+      committedFiles,
+    };
   }
   const restoreArchiveMaterials = (value: WorkflowRun, targetProjectRoot: string, dryRun = true) =>
     backfillNativeSdkSupervisorChildArchiveMaterials({
@@ -386,9 +441,6 @@ async function supervisor() {
         ),
       ).toEqual(bytes);
   }
-  console.info(
-    JSON.stringify({ baselineCli, candidateCli, definitionHashes: started.definitionHashes }),
-  );
   return {
     root,
     project,
@@ -418,12 +470,14 @@ async function supervisor() {
   };
 }
 
-it('recovers a completed Supervisor Build after an independent Child reports blocked through the public CLI', async () => {
+it('revises the original Supervisor Build after an independent Child reports blocked through the public CLI', async () => {
   const f = await supervisor();
   await f.submitChild(f.run, f.baselineCli);
   let run = await f.next(f.baselineCli);
   const verifier = f.pending(run, 'supervisor.child.verifier');
-  const activation = verifier.input as { activation: { candidateCommit: string } };
+  const activation = verifier.input as {
+    activation: { candidateCommit: string };
+  };
   run = await f.claim(verifier, f.baselineCli);
   run = await f.report(
     run.actions.find((action) => action.id === verifier.id)!,
@@ -432,25 +486,19 @@ it('recovers a completed Supervisor Build after an independent Child reports blo
       verdict: 'blocked',
       evidence: {
         summary: 'External host evidence has not been supplied',
-        checks: ['artifact-left'],
-        acceptance: [{ id: 'A1', result: 'blocked', reason: 'External host evidence is missing' }],
+        checks: [],
+        acceptance: [
+          {
+            id: 'A1',
+            result: 'blocked',
+            reason: 'External host evidence is missing',
+          },
+        ],
       },
     },
     f.baselineCli,
   );
   const revised = f.revise(run);
-  console.info(
-    JSON.stringify({
-      reproduction: 'blocked-supervisor-completed-build',
-      runId: run.runId,
-      revision: run.revision,
-      status: run.status,
-      phase: (run.state as { phase: string }).phase,
-      blockedActionId: verifier.id,
-      originalDefinitionHashes: run.definitionHashes,
-      revisionResult: revised,
-    }),
-  );
   expect(revised.exitCode, JSON.stringify(revised.response)).toBe(0);
   const revisedRun = await f.inspect();
   expect(revisedRun.runId).toBe(run.runId);
@@ -504,7 +552,7 @@ it('recovers a blocked Child with a successor candidate without replaying an int
   const verifier = f.pending(run, 'supervisor.child.verifier');
   const input = (
     verifier.input as {
-      activation: { candidateCommit: string; checkActionId: string; worktree: string };
+      activation: { candidateCommit: string; worktree: string };
     }
   ).activation;
   run = await f.claim(verifier, f.baselineCli);
@@ -515,123 +563,33 @@ it('recovers a blocked Child with a successor candidate without replaying an int
       verdict: 'blocked',
       evidence: {
         summary: 'External evidence must be supplied',
-        checks: ['artifact-right'],
+        checks: [],
         acceptance: [{ id: 'A1', result: 'blocked', reason: 'Missing external evidence' }],
       },
     },
     f.baselineCli,
   );
   const before = run;
-  const originalChecks = run.actions.find((action) => action.id === input.checkActionId)!;
+  const originalChecks = [...run.actions]
+    .reverse()
+    .find(
+      (action) =>
+        action.stepId === 'supervisor.child.builder' &&
+        action.status === 'succeeded' &&
+        (action.outcome?.output as { candidateCommit?: string }).candidateCommit ===
+          input.candidateCommit,
+    )!;
   const settled = run.actions.filter((action) =>
     ['succeeded', 'failed', 'cancelled'].includes(action.status),
   );
   const integration = path.join(f.project, '.worktrees', f.name + '-integration');
   const integratedHead = f.git(integration, ['rev-parse', 'HEAD']);
   const publicNext = f.cli(['native', 'next', f.name, '--json']);
-  if (before.status === 'completed') {
-    const { inspectNativeSdkSupervisorRecovery } =
-      await import('../../../domains/comet-native/native-sdk-supervisor-recovery.js');
-    const rejectedStates = [
-      { ...before, workflow: { id: 'comet-native', version: 'wrong-version' } },
-      { ...before, status: 'failed' as const },
-      { ...before, status: 'cancelled' as const },
-      {
-        ...before,
-        state: {
-          ...(before.state as Record<string, unknown>),
-          phase: 'archive',
-          status: 'archived',
-          archived: true,
-        },
-      },
-    ];
-    for (const rejected of rejectedStates) {
-      expect(
-        await inspectNativeSdkSupervisorRecovery(rejected as WorkflowRun, f.project).catch(
-          () => null,
-        ),
-      ).toBeNull();
-    }
-    const ordinary = structuredClone(before);
-    (ordinary.actions.at(-1)!.outcome!.output as { verdict: string }).verdict = 'pass';
-    expect(await inspectNativeSdkSupervisorRecovery(ordinary, f.project)).toBeNull();
-    const continuation = publicNext.response.agent.continuation;
-    expect(continuation?.action, JSON.stringify(publicNext.response)).toBe(
-      'resolve-verifier-blocker',
-    );
-    const args = (continuation.commandArgs as string[])
-      .slice(1)
-      .map((value) =>
-        value === '<summary>' ? 'Continue the original Child after inspecting its blocker' : value,
-      );
-    const withGuard = (flag: string, value: string) => {
-      const changed = [...args];
-      changed[changed.indexOf(flag) + 1] = value;
-      return [...changed, '--json'];
-    };
-    expect(
-      f.cli(
-        withGuard(
-          '--expected-state-version',
-          String((run.state as { state_version: number }).state_version + 1),
-        ),
-      ).exitCode,
-    ).toBe(73);
-    expect(f.cli(withGuard('--proposal-hash', 'stale')).exitCode).toBe(73);
-    expect(f.cli(withGuard('--expected-action', 'continue-builder')).exitCode).not.toBe(0);
-    expect(await f.inspect()).toEqual(before);
-    const staleRecovery = await f.dispatchResult({
-      operation: 'retry',
-      runId: run.runId,
-      expectedRevision: run.revision,
-      actionId: verifier.id,
-      attempt: verifier.attempt,
-      proposalHash: 'stale-backend-proposal',
-    });
-    expect(staleRecovery.exitCode).not.toBe(0);
-    expect(staleRecovery.response.error).toMatchObject({ code: 'ACTION_TERMINAL' });
-    expect(staleRecovery.response.error.message).toContain('当前结果不是可恢复的 Native Child');
-    expect(await f.inspect()).toEqual(before);
-    const checkLog = path.join(
-      f.project,
-      (originalChecks.outcome!.output as { checks: Array<{ logRef: string }> }).checks[0].logRef,
-    );
-    const originalLog = await fs.readFile(checkLog);
-    await fs.appendFile(checkLog, 'altered evidence\n');
-    expect(f.cli([...args, '--json']).exitCode).not.toBe(0);
-    expect(await f.inspect()).toEqual(before);
-    await fs.writeFile(checkLog, originalLog);
-    const brief = path.join(f.change, 'brief.md');
-    const originalBrief = await fs.readFile(brief);
-    await fs.appendFile(brief, '\nAdditional unconfirmed scope.\n');
-    expect(f.cli([...args, '--json']).exitCode).not.toBe(0);
-    expect(await f.inspect()).toEqual(before);
-    await fs.writeFile(brief, originalBrief);
-    await fs.writeFile(path.join(input.worktree, 'repair.txt'), 'actual successor repair\n');
-    expect(f.cli([...args, '--json']).exitCode).not.toBe(0);
-    expect(await f.inspect()).toEqual(before);
-    f.git(input.worktree, ['add', 'repair.txt']);
-    f.git(input.worktree, ['commit', '-m', 'repair blocked Child']);
-    expect(f.cli([...args, '--json']).exitCode).toBe(73);
-    expect(await f.inspect()).toEqual(before);
-    const refreshed = f.cli(['native', 'next', f.name, '--json']).response.agent.continuation;
-    const recoveryArgs = (refreshed.commandArgs as string[])
-      .slice(1)
-      .map((value) =>
-        value === '<summary>' ? 'Continue from the inspected successor repair' : value,
-      );
-    const recovered = f.cli([...recoveryArgs, '--json']);
-    expect(recovered.exitCode, JSON.stringify(recovered.response)).toBe(0);
-    expect(f.cli([...recoveryArgs, '--json']).exitCode).toBe(73);
-    run = await f.inspect();
-  } else {
-    expect(before.status).toBe('running');
-    expect(f.pending(before, 'supervisor.child.builder')).toBeDefined();
-    await fs.writeFile(path.join(input.worktree, 'repair.txt'), 'actual successor repair\n');
-    f.git(input.worktree, ['add', 'repair.txt']);
-    f.git(input.worktree, ['commit', '-m', 'repair blocked Child']);
-  }
+  expect(before.status).toBe('running');
+  expect(f.pending(before, 'supervisor.child.builder')).toBeDefined();
+  await fs.writeFile(path.join(input.worktree, 'repair.txt'), 'actual successor repair\n');
+  f.git(input.worktree, ['add', 'repair.txt']);
+  f.git(input.worktree, ['commit', '-m', 'repair blocked Child']);
   expect(run.runId).toBe(before.runId);
   expect(run.state).toEqual(before.state);
   expect(run.definitionHashes).toEqual(before.definitionHashes);
@@ -657,15 +615,17 @@ it('recovers a blocked Child with a successor candidate without replaying an int
   );
   run = await f.next();
   const fresh = f.pending(run, 'supervisor.child.verifier');
-  const freshInput = (
-    fresh.input as { activation: { checkActionId: string; candidateCommit: string } }
-  ).activation;
+  const freshInput = (fresh.input as { activation: { candidateCommit: string } }).activation;
   expect(fresh.id).not.toBe(verifier.id);
   expect(freshInput.candidateCommit).toBe(successor);
-  expect(freshInput.checkActionId).not.toBe(originalChecks.id);
-  expect(
-    run.actions.find((action) => action.id === freshInput.checkActionId)?.outcome?.output,
-  ).toMatchObject({ candidateId: successor });
+  const freshBuilder = [...run.actions]
+    .reverse()
+    .find((a) => a.stepId === 'supervisor.child.builder' && a.status === 'succeeded')!;
+  expect(freshBuilder.id).not.toBe(originalChecks.id);
+  expect(freshBuilder.outcome?.output).toMatchObject({
+    candidateCommit: successor,
+    checks: [{ result: 'passed' }],
+  });
   expectOriginalActionFacts(run, [originalChecks]);
   run = await f.verifyChild(run);
   expect(run.actions.find((action) => action.id === verifier.id)?.outcome?.output).toMatchObject({
@@ -675,20 +635,6 @@ it('recovers a blocked Child with a successor candidate without replaying an int
   expect(run.actions.find((action) => action.id === failedBuilder.id)?.status).toBe('failed');
   expectOriginalActionFacts(run, settled);
   expect(f.git(integration, ['rev-parse', 'HEAD'])).toBe(integratedHead);
-  console.info(
-    JSON.stringify({
-      recovery: 'original-blocked-child-successor',
-      originalStatus: before.status,
-      originalDefinitionHashes: before.definitionHashes,
-      originalCandidate: input.candidateCommit,
-      successor,
-      originalCheckActionId: originalChecks.id,
-      freshCheckActionId: freshInput.checkActionId,
-      blockedActionId: verifier.id,
-      builderActionId: builder.id,
-      freshVerifierActionId: fresh.id,
-    }),
-  );
 }, 360000);
 
 it('revises a quiescent Supervisor Build through the candidate public CLI without changing its original definition', async () => {
@@ -715,7 +661,10 @@ it('revises a quiescent Supervisor Build through the candidate public CLI withou
   const revised = await f.dispatch({ operation: 'inspect', runId: f.name });
   expect(revised.definitionHashes).toEqual(f.started.definitionHashes);
   expect(revised.state).toMatchObject({ phase: 'shape', status: 'active' });
-  expect(revised.actions.at(-1)).toMatchObject({ stepId: 'shape.prepare', status: 'pending' });
+  expect(revised.actions.at(-1)).toMatchObject({
+    stepId: 'shape.prepare',
+    status: 'pending',
+  });
   expect(
     revised.actions.some((a) => a.id === f.run.actions.at(-1)!.id && a.status === 'cancelled'),
   ).toBe(true);
@@ -750,7 +699,10 @@ it('executes the actual returned Shape continuation with summary and guards with
   expect(prepared.response, JSON.stringify({ prepared, continuation })).not.toHaveProperty('error');
   expect(prepared.exitCode).toBe(0);
   const proposed = await f.inspect();
-  expect(proposed.state).toMatchObject({ phase: 'shape', status: 'await-user' });
+  expect(proposed.state).toMatchObject({
+    phase: 'shape',
+    status: 'await-user',
+  });
   expect(
     proposed.waits.filter(
       (wait) => wait.stepId === 'supervisor.shape.confirm' && wait.status === 'pending',
@@ -786,7 +738,10 @@ it('executes the actual returned Shape continuation with summary and guards with
     '--json',
   ]);
   expect(summaryOnly.response, JSON.stringify(summaryOnly)).not.toHaveProperty('error');
-  expect((await f.inspect()).state).toMatchObject({ phase: 'shape', status: 'await-user' });
+  expect((await f.inspect()).state).toMatchObject({
+    phase: 'shape',
+    status: 'await-user',
+  });
   // 多次独立 CLI 核对版本、动作和阶段边界；每条命令仍保留原执行期限。
 }, 300000);
 
@@ -841,7 +796,9 @@ it('reintegrates an already included Child after public Shape reconfirmation (sa
   run = await f.next();
   const builder = f.pending(run, 'supervisor.child.builder');
   const input = (
-    builder.input as { activation: { child: string; worktree: string; baseCommit: string } }
+    builder.input as {
+      activation: { child: string; worktree: string; baseCommit: string };
+    }
   ).activation;
   expect(input.child).toBe('left');
   expect(input.baseCommit).toBe(archivedIntegrationCommit);
@@ -858,23 +815,21 @@ it('reintegrates an already included Child after public Shape reconfirmation (sa
     },
   );
   run = await f.next();
-  const checks = [...run.actions].reverse().find((a) => a.stepId === 'supervisor.child.checks')!;
+  const checks = [...run.actions]
+    .reverse()
+    .find((a) => a.stepId === 'supervisor.child.builder' && a.status === 'succeeded')!;
   expect(checks.status).toBe('succeeded');
   expect(retainedFacts.some((a) => a.id === checks.id)).toBe(false);
   run = await f.verifyChild(run);
   const integration = f.pending(run, 'supervisor.child.integrate');
   const beforeHead = f.git(firstOutput.integrationWorktree, ['rev-parse', 'HEAD']);
   expect(beforeHead).toBe(archivedIntegrationCommit);
-  const result = f.cli(['native', 'next', f.name, '--json']);
-  console.info(
-    JSON.stringify({
-      candidateKind: 'same',
-      candidate,
-      checkedBase: beforeHead,
-      exitCode: result.exitCode,
-      error: result.response.error,
-    }),
-  );
+  const result = await f.dispatchResult({
+    operation: 'execute',
+    runId: f.name,
+    actionId: integration.id,
+    executorId: 'native-supervisor-integrate',
+  });
   expect(result.exitCode, JSON.stringify(result)).toBe(0);
   run = await f.inspect();
   expect(run.actions.find((a) => a.id === integration.id)).toMatchObject({
@@ -890,18 +845,21 @@ it('reintegrates an already included Child after public Shape reconfirmation (sa
   });
   expect(f.git(firstOutput.integrationWorktree, ['rev-parse', 'HEAD'])).toBe(beforeHead);
   for (const fact of retainedFacts) expect(run.actions.find((a) => a.id === fact.id)).toEqual(fact);
-  const integrationChecks = f.pending(run, 'supervisor.child.integration-checks');
+  const integrationChecks = f.pending(run, 'supervisor.child.archive');
   expect(integrationChecks).toBeTruthy();
   expect(f.pending(run, 'supervisor.child.builder')).toBeUndefined();
   run = await f.next();
   expect(run.actions.find((a) => a.id === integrationChecks.id)).toMatchObject({
     status: 'succeeded',
-    outcome: { output: { candidateId: beforeHead } },
+    outcome: { output: { child: 'left' } },
   });
   run = await f.next();
   expect(
-    (f.pending(run, 'supervisor.child.builder').input as { activation: { child: string } })
-      .activation.child,
+    (
+      f.pending(run, 'supervisor.child.builder').input as {
+        activation: { child: string };
+      }
+    ).activation.child,
   ).toBe('right');
   expect(run.definitionHashes).toEqual(f.started.definitionHashes);
   const repeatedArchive = await f.archiveSnapshot(run, 'left');
@@ -921,10 +879,14 @@ it('reintegrates an already included Child after public Shape reconfirmation (sa
   const sourceFile = path.join(repeatedArchive.directory, 'archive-source.md');
   await fs.unlink(briefFile);
   await fs.appendFile(sourceFile, 'unbound material edit\n');
-  await expect(f.restoreArchiveMaterials(run, repeatedArchive.integration, false)).rejects.toThrow(
-    'material conflict: archive-source.md',
+  expect(await f.restoreArchiveMaterials(run, repeatedArchive.integration, false)).toMatchObject({
+    archives: [{ archiveActionId: repeatedArchive.archive.id, missing: ['brief.md'] }],
+  });
+  expect(await fs.readFile(sourceFile, 'utf8')).toBe(
+    repeatedArchive.files['archive-source.md'].toString('utf8') + 'unbound material edit\n',
   );
-  await expect(fs.access(briefFile)).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(await fs.readFile(briefFile)).toEqual(repeatedArchive.committedFiles['brief.md']);
+  await fs.unlink(briefFile);
   await fs.writeFile(sourceFile, repeatedArchive.files['archive-source.md']);
   expect(await f.restoreArchiveMaterials(run, repeatedArchive.integration)).toMatchObject({
     archives: [{ archiveActionId: repeatedArchive.archive.id, missing: ['brief.md'] }],
@@ -964,12 +926,7 @@ it('reintegrates an already included Child after public Shape reconfirmation (sa
     actions: beforeDrift.actions,
     revision: beforeDrift.revision,
   }).toEqual(beforeDrift);
-  const stopProofAdded = stoppedBeforeDrift.actions.some(
-    (action) =>
-      action.executionStop !== undefined &&
-      beforeDrift.actions.find(({ id }) => id === action.id)?.executionStop === undefined,
-  );
-  expect(stoppedBeforeDrift.revision).toBe(beforeDrift.revision + Number(stopProofAdded));
+  expect(stoppedBeforeDrift.revision).toBe(beforeDrift.revision);
   for (const operation of ['execute', 'claim']) {
     const request = {
       operation,
@@ -1015,8 +972,7 @@ it('preserves integrated and uncommitted Child work, then rechecks every Child i
   const integration = path.join(f.project, '.worktrees', f.name + '-integration');
   const left = path.join(f.project, '.worktrees', f.name + '-left');
   const heads = [left, rightRoot, integration].map((root) => f.git(root, ['rev-parse', 'HEAD']));
-  const oldShapeHash = (run.state as { shape_confirmation_hash: string }).shape_confirmation_hash;
-  const oldContractHash = (run.state as { children_contract_hash: string }).children_contract_hash;
+  const oldStateVersion = (run.state as { state_version: number }).state_version;
   const oldFacts = run.actions.filter((a) => a.status === 'succeeded');
   const originalArchive = await f.archiveSnapshot(run, 'left');
   const result = f.revise(run);
@@ -1044,11 +1000,8 @@ it('preserves integrated and uncommitted Child work, then rechecks every Child i
     '\n# Actual host acceptance\nClaude Code only; product Codex support remains.\n',
   );
   revised = await f.confirmAgain();
-  expect((revised.state as { shape_confirmation_hash: string }).shape_confirmation_hash).not.toBe(
-    oldShapeHash,
-  );
-  expect((revised.state as { children_contract_hash: string }).children_contract_hash).toBe(
-    oldContractHash,
+  expect((revised.state as { state_version: number }).state_version).toBeGreaterThan(
+    oldStateVersion,
   );
   revised = await f.next();
   expect(revised.outputs['supervisor.prepare'].value).toMatchObject({
@@ -1084,8 +1037,11 @@ it('preserves integrated and uncommitted Child work, then rechecks every Child i
   expect(f.pending(revised, 'supervisor.parent.builder')).toBeUndefined();
   revised = await f.next();
   expect(
-    (f.pending(revised, 'supervisor.child.builder').input as { activation: { child: string } })
-      .activation.child,
+    (
+      f.pending(revised, 'supervisor.child.builder').input as {
+        activation: { child: string };
+      }
+    ).activation.child,
   ).toBe('right');
   expect(await fs.readFile(path.join(rightRoot, 'draft.txt'), 'utf8')).toBe(
     'unfinished right work\n',
@@ -1110,9 +1066,9 @@ it('preserves integrated and uncommitted Child work, then rechecks every Child i
     (a) => a.stepId === 'shape.revise' && a.status === 'succeeded',
   );
   for (const step of [
-    'supervisor.child.checks',
+    'supervisor.child.builder',
     'supervisor.child.verifier',
-    'supervisor.child.integration-checks',
+    'supervisor.child.integrate',
   ])
     expect(
       revised.actions
@@ -1192,24 +1148,22 @@ it('preserves integrated and uncommitted Child work, then rechecks every Child i
   const confirmation = revised.waits.find(
     (wait) => wait.status === 'pending' && wait.stepId === 'verify.confirm',
   )!;
-  const accepted = f.cli([
-    'native',
-    'next',
-    f.name,
-    '--accept-result',
-    '--summary',
-    'Test user accepts revised scope result',
-    '--expected-state-version',
-    String((revised.state as { state_version: number }).state_version),
-    '--expected-action',
-    'accept-result',
-    '--proposal-hash',
-    confirmation.proposalHash,
-    '--json',
-  ]);
+  const accepted = await f.dispatchResult({
+    operation: 'resolve-wait',
+    runId: f.name,
+    expectedRevision: revised.revision,
+    waitId: confirmation.id,
+    proposalHash: confirmation.proposalHash,
+    choice: 'approved',
+    decisionId: 'SIMULATED-USER-accepts-revised-scope',
+    reason: 'Test user accepts revised scope result',
+  });
   expect(accepted.response, JSON.stringify(accepted)).not.toHaveProperty('error');
   revised = await f.inspect();
-  expect(revised.state).toMatchObject({ phase: 'archive', verification_result: 'pass' });
+  expect(revised.state).toMatchObject({
+    phase: 'archive',
+    verification_result: 'pass',
+  });
   expect(f.pending(revised, 'supervisor.parent.deliver')).toBeTruthy();
   const currentQueryFile = path.join(f.root, 'current-query.json');
   await fs.writeFile(
@@ -1234,8 +1188,30 @@ it('preserves integrated and uncommitted Child work, then rechecks every Child i
   expect(current.stdoutBytes).toBeLessThan(128 * 1024);
   const status = f.cli(['native', 'status', f.name, '--json']);
   expect(status.exitCode, status.stderr).toBe(0);
-  expect(status.response.data.run).toMatchObject({ id: f.name, revision: revised.revision });
+  expect(status.response.data.run).toMatchObject({
+    id: f.name,
+    revision: revised.revision,
+  });
   expect(status.stdoutBytes).toBeLessThan(128 * 1024);
+  const draft = path.join(rightRoot, 'draft.txt');
+  const draftBytes = await fs.readFile(draft);
+  const cleanupHeads = [left, rightRoot, integration].map((root) =>
+    f.git(root, ['rev-parse', 'HEAD']),
+  );
+  const dirtyArchive = f.cli(['native', 'archive', f.name, '--dry-run', '--json']);
+  expect(dirtyArchive.exitCode).not.toBe(0);
+  expect(dirtyArchive.response.error.message).toContain('cleanup found a changed worktree');
+  expect(await fs.readFile(draft)).toEqual(draftBytes);
+  expect(await f.inspect()).toEqual(revised);
+  expect(f.git(f.project, ['rev-parse', 'HEAD'])).toBe(f.targetCommit);
+  expect([left, rightRoot, integration].map((root) => f.git(root, ['rev-parse', 'HEAD']))).toEqual(
+    cleanupHeads,
+  );
+  // The Agent explicitly preserves its unfinished draft before temporary worktree cleanup.
+  const preservedDraft = path.join(f.root, 'preserved-right-draft.txt');
+  await fs.copyFile(draft, preservedDraft);
+  expect(await fs.readFile(preservedDraft)).toEqual(draftBytes);
+  await fs.unlink(draft);
   const dryRun = f.cli(['native', 'archive', f.name, '--dry-run', '--json']);
   expect(dryRun.response, JSON.stringify(dryRun)).not.toHaveProperty('error');
   expect(dryRun.response.data).toMatchObject({
@@ -1254,6 +1230,7 @@ it('preserves integrated and uncommitted Child work, then rechecks every Child i
   expect(rejectedDelivery.response.error.message).toContain('target branch changed');
   expect(f.git(f.project, ['rev-parse', 'HEAD'])).toBe(changedTarget);
   expect(await f.inspect()).toEqual(revised);
+  expect(await fs.readFile(preservedDraft)).toEqual(draftBytes);
 }, 420000);
 
 it.each(['running', 'unknown'] as const)(
@@ -1289,7 +1266,16 @@ it('blocks a retained integration HEAD change without resetting Git or accepting
   const integration = path.join(f.project, '.worktrees', f.name + '-integration');
   f.git(integration, ['commit', '--allow-empty', '-m', 'unexpected change during Shape']);
   const changedHead = f.git(integration, ['rev-parse', 'HEAD']);
-  await f.confirmAgain();
+  const proposal = await f.next(),
+    shapeWait = proposal.waits.findLast((w) => w.status === 'pending')!;
+  await f.dispatch({
+    operation: 'resolve-wait',
+    runId: f.name,
+    waitId: shapeWait.id,
+    proposalHash: shapeWait.proposalHash,
+    choice: 'multi-session',
+    decisionId: 'SIMULATED-USER-reconfirms-retained-scope',
+  });
   const before = await f.inspect();
   const execution = f.cli(['native', 'next', f.name, '--json']);
   const rejected = await f.inspect();
@@ -1454,7 +1440,9 @@ it('retains a genuine failed Child outcome and resume decision when Build return
         claimToken: original.claim!.token,
         outcomeId: original.id + '-blocked',
         status: 'failed',
-        output: { summary: 'Actual host budget exhausted before independent evidence completed' },
+        output: {
+          summary: 'Actual host budget exhausted before independent evidence completed',
+        },
       },
     },
     f.baselineCli,

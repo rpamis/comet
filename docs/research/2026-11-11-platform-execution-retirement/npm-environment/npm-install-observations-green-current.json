@@ -1,0 +1,71 @@
+[
+  {
+    "args": [
+      "root",
+      "--global"
+    ],
+    "actualRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 0oy6Rt\\prefix\\node_modules",
+    "expectedRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 0oy6Rt\\prefix\\node_modules",
+    "prefixKeys": {
+      "npm_config_prefix": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 0oy6Rt\\prefix"
+    }
+  },
+  {
+    "args": [
+      "root",
+      "--global"
+    ],
+    "actualRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 0oy6Rt\\prefix\\node_modules",
+    "expectedRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 0oy6Rt\\prefix\\node_modules",
+    "prefixKeys": {
+      "npm_config_prefix": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 0oy6Rt\\prefix"
+    }
+  },
+  {
+    "args": [
+      "install",
+      "--global",
+      "--no-audit",
+      "--no-fund",
+      "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 0oy6Rt\\plugin\\server\\comet-cli.tgz"
+    ],
+    "actualRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 0oy6Rt\\prefix\\node_modules",
+    "expectedRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 0oy6Rt\\prefix\\node_modules",
+    "prefixKeys": {
+      "npm_config_prefix": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 0oy6Rt\\prefix"
+    }
+  },
+  {
+    "args": [
+      "root",
+      "--global"
+    ],
+    "actualRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 0oy6Rt\\prefix\\node_modules",
+    "expectedRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 0oy6Rt\\prefix\\node_modules",
+    "prefixKeys": {
+      "npm_config_prefix": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 0oy6Rt\\prefix"
+    }
+  },
+  {
+    "args": [
+      "root",
+      "--global"
+    ],
+    "actualRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 wUWXGN\\prefix\\node_modules",
+    "expectedRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 wUWXGN\\prefix\\node_modules",
+    "prefixKeys": {
+      "npm_config_prefix": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 wUWXGN\\prefix"
+    }
+  },
+  {
+    "args": [
+      "root",
+      "--global"
+    ],
+    "actualRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 8JNa7E\\prefix\\node_modules",
+    "expectedRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 8JNa7E\\prefix\\node_modules",
+    "prefixKeys": {
+      "npm_config_prefix": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet npm 中文 8JNa7E\\prefix"
+    }
+  }
+]

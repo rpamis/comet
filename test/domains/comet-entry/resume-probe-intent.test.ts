@@ -1,3 +1,12 @@
+import { stringify } from 'yaml';
+import { nativeChangeDocument } from '../../../domains/comet-native/native-change.js';
+import {
+  nativePreferredChangeRuntimeDir,
+  nativeRuntimeRefFile,
+} from '../../../domains/comet-native/native-paths.js';
+import { NATIVE_RUN_STORAGE } from '../../../domains/engine/storage-layout.js';
+// SIMULATED historical Native documents for read-only discovery and intent routing; no legacy Runtime is created.
+import { storedNativeChangeFixture } from '../../helpers/native-change-document.js';
 import { promises as fs } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
@@ -8,10 +17,7 @@ import {
   COMET_RESUME_PROBE_SCHEMA_VERSION,
   resolveCometEntryResumeProbe,
 } from '../../../domains/comet-entry/resume-probe.js';
-import {
-  createNativeChange,
-  nativeChangeDir,
-} from '../../../domains/comet-native/native-change.js';
+import { nativeChangeDir } from '../../../domains/comet-native/native-change.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -66,7 +72,7 @@ async function createNative(projectRoot: string, name: string, artifactRoot = '.
   const initialized = spawnSync('git', ['init', '-q', projectRoot]);
   expect(initialized.status).toBe(0);
   const paths = await nativeProjectPaths(projectRoot, artifactRoot);
-  const state = await createNativeChange({ paths, name, language: 'en' });
+  const state = await storedNativeChangeFixture({ paths, name, language: 'en' });
   await fs.writeFile(path.join(nativeChangeDir(paths, name), state.brief), VALID_BRIEF, 'utf8');
 }
 
@@ -148,7 +154,13 @@ describe('Comet entry resume intent priority', () => {
       await writeFile(path.join(projectRoot, 'README.md'), 'Unrelated typo fix.\n');
       const before = await snapshot(projectRoot);
       const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
-      const beforeRuntime = context === 'empty' ? null : await snapshot(runtimeRoot);
+      const beforeRuntime = await fs.access(runtimeRoot).then(
+        () => snapshot(runtimeRoot),
+        (error: NodeJS.ErrnoException) => {
+          if (error.code === 'ENOENT') return null;
+          throw error;
+        },
+      );
       for (const utterance of [
         '只提交现有代码，不要启动/继续 Comet 流程',
         '只提交现有代码，不要启动 Comet 流程',
@@ -264,8 +276,8 @@ describe('Comet entry resume intent priority', () => {
     await writeFile(path.join(projectRoot, 'README.md'), 'Unrelated typo fix.\n');
     const before = await snapshot(projectRoot);
     for (const [utterance, changeName] of [
-      ['继续', 'login-flow'],
-      ['continue', 'login-flow'],
+      ['继续当前 change', 'login-flow'],
+      ['continue the selected change', 'login-flow'],
       ['提交当前 change', 'login-flow'],
       ['只提交当前的 change', 'login-flow'],
       ['Commit the current change', 'login-flow'],
@@ -413,3 +425,70 @@ describe('Comet entry resume intent priority', () => {
     expect(await snapshot(runtimeRoot)).toEqual(beforeRuntime);
   });
 });
+
+it('resumes a SIMULATED legacy Shape document read-only without creating its absent Runtime directory', async () => {
+  const project = await fs.mkdtemp(path.join(os.tmpdir(), 'legacy-readonly-shape-'));
+  try {
+    await writeProjectConfig(project, defaultProjectConfig('.'));
+    const paths = await nativeProjectPaths(project, '.');
+    const state = await storedNativeChangeFixture({ paths, name: 'legacy-shape', language: 'en' });
+    await fs.writeFile(path.join(nativeChangeDir(paths, state.name), state.brief), VALID_BRIEF);
+    const runtime = nativePreferredChangeRuntimeDir(paths, state.name),
+      before = await snapshot(project);
+    await expect(fs.lstat(runtime)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(
+      await resolveCometEntryResumeProbe(project, input('Continue legacy-shape')),
+    ).toMatchObject({
+      action: 'auto_resume',
+      changeName: 'legacy-shape',
+      nextCommand: '/comet-native',
+    });
+    expect(await snapshot(project)).toEqual(before);
+    await expect(fs.lstat(runtime)).rejects.toMatchObject({ code: 'ENOENT' });
+  } finally {
+    await fs.rm(project, { recursive: true, force: true });
+  }
+});
+it.each(['declared-run-missing', 'malformed-run'] as const)(
+  'keeps a SIMULATED legacy %s invalid and unchanged during readonly resume',
+  async (kind) => {
+    const project = await fs.mkdtemp(path.join(os.tmpdir(), 'legacy-readonly-invalid-'));
+    try {
+      await writeProjectConfig(project, defaultProjectConfig('.'));
+      const paths = await nativeProjectPaths(project, '.');
+      const state = await storedNativeChangeFixture({ paths, name: kind, language: 'en' });
+      await fs.writeFile(path.join(nativeChangeDir(paths, state.name), state.brief), VALID_BRIEF);
+      const runtime = nativePreferredChangeRuntimeDir(paths, state.name),
+        file = path.join(nativeChangeDir(paths, state.name), 'comet-state.yaml');
+      if (kind === 'declared-run-missing')
+        await fs.writeFile(
+          file,
+          stringify(
+            nativeChangeDocument({ ...state, run_id: 'SIMULATED declared historical Run' }),
+          ),
+        );
+      else {
+        await fs.mkdir(runtime, { recursive: true });
+        await fs.writeFile(
+          nativeRuntimeRefFile(runtime, NATIVE_RUN_STORAGE.stateRef),
+          '{ SIMULATED malformed Run bytes\n',
+        );
+      }
+      const stateBytes = await fs.readFile(file),
+        before = await snapshot(project),
+        runtimeBytes = kind === 'malformed-run' ? await snapshot(runtime) : null;
+      expect(await resolveCometEntryResumeProbe(project, input('Continue ' + kind))).toMatchObject({
+        action: 'ask_user',
+        reasonCode: 'native-change-invalid',
+        nextCommand: null,
+      });
+      expect(await fs.readFile(file)).toEqual(stateBytes);
+      expect(await snapshot(project)).toEqual(before);
+      if (runtimeBytes === null)
+        await expect(fs.lstat(runtime)).rejects.toMatchObject({ code: 'ENOENT' });
+      else expect(await snapshot(runtime)).toEqual(runtimeBytes);
+    } finally {
+      await fs.rm(project, { recursive: true, force: true });
+    }
+  },
+);

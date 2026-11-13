@@ -12,9 +12,9 @@ Read only the section relevant to the current blocker.
 
 ## Fault recovery
 
-If local SDK Run history is missing, first inspect with `comet native doctor <change-name> --json`. When `comet-state.yaml` contains `run_checkpoint`, named `native status` or `native next` restores the saved phase, Actions, and approvals on the new device. Confirm the original device's execution process has stopped before continuing external work; reconcile an Action with an unknown outcome instead of replaying it. Only when an older state file has no checkpoint, explain that explicit restoration returns to Shape and requires fresh approvals and checks, then obtain consent before running `comet native doctor <change-name> --repair --confirmed`.
+If local SDK Run history is missing, first inspect read-only with `comet native doctor <change-name> --json`, then follow its explicit recovery or import action. The original `run_checkpoint` in `comet-state.yaml` or a known older business source preserves saved phases, Actions, claims, and valid approvals; `status` does not write or restore records. Without a trusted source, preserve the workspace instead of restarting Shape or repeating approvals. Before further external work, reconcile unfinished or unknown tasks through their original platform without replaying possible side effects.
 
-When a command returns a specific error, current state, and recovery action, use that response first. Correct Runner validation errors through [filling command inputs](commands.md#filling-command-inputs), and continue commit or merge failures through [Archive completion](workspace.md#archive-completion), keeping active task identifiers. If current state is missing, the call was interrupted, or the workspace disagrees with the response, stop dependent edits and run `status --details --json` once. Run read-only `doctor` only if the state or recovery records still do not explain the issue. Execute only recovery actions explicitly returned by `continuation` or `doctor`. Runtime owns portable state, local execution state, locks, and transactions. If safe automatic recovery cannot be established, preserve the workspace and wait for a user decision.
+When a command returns a specific error, current state, and recovery action, use that response first. Correct Runner validation errors through [filling command inputs](commands.md#filling-command-inputs), and continue commit or merge failures through [Archive completion](workspace.md#archive-completion), keeping active task identifiers. If current state is missing, the call was interrupted, or the workspace disagrees with the response, stop dependent edits and run `status --details --json` once. Run read-only `doctor` only if the state or recovery records still do not explain the issue. Execute only recovery actions explicitly returned by `continuation` or `doctor`. Runtime owns business state and actual Archive transactions; the Agent inspects and cleans up platform tasks through their original platform. If safe automatic recovery cannot be established, preserve the workspace and wait for a user decision.
 
 For external-input waits, follow [external input and monitoring](#external-input-and-monitoring) while independent work continues. Before redispatching Supervisor tasks after recovery, read [Supervisor coordination](commands.md#supervisor-coordination). Before relaunching a Verifier, read [Verify protocol](commands.md#verify-protocol) and check current task identifiers, candidate version, and execution state.
 
@@ -22,27 +22,15 @@ SDK recovery reads only the SDK Run and SDK Verify protocol in commands.md. Comp
 
 ### Workspace
 
-`status` searches registered worktrees for the change associated with the current project and branch and returns `workspace.projectRoot`. Enter it and run `select` again. Reuse the located change and workspace; do not copy it or recreate the same name elsewhere.
+Continue a known change or Run in its current workspace. For another worktree, enter its known directory and run `select`; ordinary status does not search all worktrees. Reuse the located change and workspace; do not copy it or recreate the same name elsewhere.
 
 Runtime blocks writes if project root, branch, workspace type, or Git state disagrees with `comet-state.yaml`. Follow its action if Runtime can safely find or create the declared worktree; otherwise it enters blocked await-user (`disposition: blocked`, recovery action `await-user`). If the original directory or branch is truly lost, the user chooses the recovery location, whether to restore from a trusted backup, or whether to abandon the change.
 
-### Older Runtime workflow records and local execution
+### Older business records
 
-SDK Runs recover from `run_checkpoint` in `comet-state.yaml`; the `state.json` rebuild rules below apply only to the older Runtime. For that Runtime, `comet-state.yaml` records the last safely recoverable workflow state. Local `state.json` only describes execution on this machine. If missing, behind, or associated with an old task, Runtime rebuilds it from YAML, the brief, and target Specs. Local state cannot override newer YAML.
+Continue the original change and Run. Entry adapts business data automatically, preserving accepted Shape, user decisions, tasks, and candidates. Use current templates. Old executors, PIDs, stop handshakes, and content snapshots are not restored. Inspect unfinished or unknown tasks through their original platform; cancelled scheduling does not establish termination or authorize replaying side effects.
 
-- Shape: stay in Shape and continue clarification or confirmation.
-- Build: `repairing` means Verify failed and returned to Build. Ordinary changes retain the current iteration and continue implementation. Supervisor Changes use `repair-child` to add a new repair child for unresolved items (edit `children.yaml`, then run `comet native next <parent> --summary "<note>"` so the contract change returns the change to Shape for reconfirmation) rather than reopening archived children.
-- Verify (`verify-ready`): rerun checks needed for the current implementation and launch a new Verifier; do not reuse passes from the old device.
-- Archive (`archive-ready`): safely return to Verify, reset acceptance to `pending`, and assess the implementation synchronized to this device.
-- `await-user` / `blocked`: restore the original blocker, responsible party, and allowed actions, then wait for the corresponding condition.
-- `done` in active: perform directory moves and cleanup only as Runtime directs; continue pending Git finishing through [Archive completion](workspace.md#archive-completion).
-- `done` in archive: check workspace finishing in public status first. Show it read-only only after the selected finish is completed or kept; continue incomplete or `blocked` finishing through [Archive completion](workspace.md#archive-completion).
-
-Treat old processes, log connections, and Agent sessions as lost; leftover files do not prove success. If checks ended before YAML recorded them, rerun only safe repeatable checks. Operations that could duplicate external effects require a user decision.
-
-If `verification.md` is missing, its write was interrupted, or `generated_from_state_version` is behind, rebuild only the report from YAML. YAML remains authoritative for recovery; report and state versions must agree before Archive.
-
-Older active changes appear read-only as `migration-required`. Use `doctor --repair` or Runtime's explicit migration command. Preserve old files on migration failure and wait for Runtime's next action.
+Restore missing SDK Runs from their original `run_checkpoint` or known old data source. Without a trusted source, preserve the workspace and use doctor’s explicit import or recovery entry rather than searching other workspaces. Reports are views of business state and do not replace approvals or actual results.
 
 ### Cross-device recovery without chat history
 
@@ -50,21 +38,21 @@ A new device without chat history needs the same synchronized project code, `com
 
 Stop advancement on the old device and finish synchronization first. Git conflicts or different contents for the same state version block progress and require user resolution.
 
-Workflow state cannot recover code that was never synchronized from the old device. The same subagent execution cannot continue across devices. Under the older Runtime, the new device creates local execution from YAML's working directory, iteration, acceptance results, blockers, Builder handoff, and next action. If synchronized implementation is incomplete, the new Verifier identifies the omissions and returns to Build.
+Business state cannot recover unsynchronized code. Inspect original tasks and side effects, then judge whether synchronized implementation, environment, and previous results apply. Collect only missing or invalidated evidence.
 
-Under the older Runtime, reverification of Verify or Archive-ready work on a new device is recovery; it does not increase iteration, failure, or no-progress counters. The Verifier attempt count increases only when a new Verifier actually launches. Completed Shape and Build are not repeated, and Runtime does not scan the entire project to guess progress.
+Recovery retains original tasks and counters. Update counters only when a candidate is resubmitted, a review starts, or an actual failure occurs under its business rule. Accepted Shape and Build do not restart merely because the machine changed.
 
-### Failed Verify and repeated lack of progress
+### Failed Verify and Execution Errors
 
-After Verify fails, read failed or blocked acceptance items and failed checks. Make actual repairs before submitting another Builder handoff. Progress requires fewer unresolved problems; changed wording, identical checks, or the same reported cause do not resolve them.
+Read actual failed or blocked criteria and check results. The Agent judges repair direction and progress and submits a new Builder handoff after necessary changes. Repeated or alternating acceptance IDs and nonshrinking sets do not create another pause.
 
-After repeated lack of progress or Verifier execution errors, follow Runtime's blocker-handling action. At `native.max_verify_failures`, wait for the user to continue the current objective, change confirmed requirements, or stop. Verification-failure counts reset after the user confirms a new acceptance list and starts a new objective round.
+When actual failures reach `native.max_verify_failures`, or Verifier executions repeatedly fail, follow the current response for the budget or original execution recovery. Do not record unknown or failed results as passed. Retain the original Run, valid approvals, and existing results. Record a user-confirmed new objective cycle through the existing requirements protocol.
 
 ### Spec and Archive conflicts
 
 If an archived project Spec changes while this change is active, reread that Spec, the brief, and this change's complete target specifications. Revise according to user intent, execute the rebase action in Runtime's conflict response, then implement and verify again. Preserve concurrent additions.
 
-When two active changes modify the same capability, Archive waits for the user to choose which archives first; the other then realigns with the latest Spec.
+Active changes in separate workspaces may modify the same capability. Archive handles actual conflicts in the current canonical Spec; preserve both changes and follow its conflict and realignment actions. Any unresolved user proposal already present in the original Run still requires its original decision.
 
 If Archive or a change-directory move is interrupted, use `doctor` transaction state and allowed actions for recovery. If paths, workflow state, and files disagree, preserve both sides and wait for an explicit recovery action.
 
@@ -72,6 +60,5 @@ If `workspaceFinishResult.status` is `blocked`, Archive or the Git commit may al
 
 ### Damaged state
 
-- Runtime owns locks; repair only when `doctor` explicitly supplies a command.
 - If config, change, brief, Specs, or verification is damaged, preserve original files and wait for `doctor` or the user to identify a recovery source.
 - If a change appears in both active and archive, file ownership is unclear, or transaction progress cannot be established, preserve the workspace and stop writes.

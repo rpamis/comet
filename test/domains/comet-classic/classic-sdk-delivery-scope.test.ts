@@ -1,3 +1,6 @@
+import { writeClassicPlatformChecks } from '../../helpers/classic-platform-checks.js';
+import { requireFileSymlink } from '../../helpers/file-symlink.js';
+import { readClassicArchiveManifest } from '../../../domains/comet-classic/classic-sdk-archive-manifest.js';
 import { defineClassicWorkflowApplication } from '../../../domains/comet-classic/classic-sdk-application.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { build } from 'esbuild';
@@ -10,8 +13,6 @@ import { afterEach, expect, it, onTestFailed, vi } from 'vitest';
 import { parse, stringify } from 'yaml';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { assertClassicSdkDeliveryInputs } from '../../../domains/comet-classic/classic-sdk-delivery-inputs.js';
-import { readClassicProjectFile } from '../../../domains/comet-classic/classic-protected-path.js';
-import { parseCheckManifest } from '../../../domains/comet-classic/classic-check-manifest.js';
 import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
 import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
@@ -27,6 +28,30 @@ const roots: string[] = [];
 // Both transient directories that `migrationFiles` can record a fence from. They are
 // omitted from the archived tree, so the fence reaches `optionalFiles` instead.
 const FENCES = ['.comet-state.lock', '.comet-state-transaction.json'] as const;
+
+it('keeps foreign drafts out of legacy deliveryInputs without changing the original Run', async () => {
+  const f = await hotfix({ parked: true });
+  f.commitImplementation();
+  f.commitArchive();
+  // SIMULATED legacy path encoding on an actually completed Archive preflight.
+  const legacy = structuredClone(f.archived);
+  const check = legacy.actions.findLast((action) => action.stepId === 'hotfix.archive.preflight')!;
+  const output = check.outcome!.output as {
+    deliveryInputs?: Record<string, string>;
+    deliveryPaths?: string[];
+  };
+  output.deliveryInputs = Object.fromEntries(
+    output.deliveryPaths!.map((ref) => [ref, 'legacy-digest']),
+  );
+  output.deliveryInputs['docs/comet/changes/parked-native/brief.md'] = 'legacy-digest';
+  output.deliveryInputs['openspec/changes/parked-classic/proposal.md'] = 'legacy-digest';
+  delete output.deliveryPaths;
+  const before = structuredClone(legacy);
+  expect(await assertClassicSdkDeliveryInputs(f.projectRoot, legacy)).toEqual(
+    new Set(['source.js', 'src/changes/adapter.ts', f.reportRef]),
+  );
+  expect(legacy).toEqual(before);
+});
 afterEach(async () => {
   vi.unstubAllEnvs();
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
@@ -147,7 +172,10 @@ async function hotfix(
     expect(native.exitCode, native.stderr).toBe(0);
     await put('openspec/changes/parked-classic/proposal.md', '# Parked Classic proposal\n');
   }
-  if (options.initialDraft) await put('unrelated-draft.ts', 'export const unfinished = true;\n');
+  if (options.initialDraft) {
+    await put('unrelated-draft.ts', 'export const unfinished = true;\n');
+    await put('private-notes.ts', '// Existing work outside this change.\n');
+  }
   const invoke = async (...args: string[]) => {
     const separator = args.indexOf('--');
     args.splice(separator < 0 ? args.length : separator, 0, '--json');
@@ -171,7 +199,10 @@ async function hotfix(
       JSON.stringify({
         operation: 'start',
         runId: 'example',
-        workflow: { id: 'comet-classic-hotfix', version: '1' },
+        workflow: {
+          id: 'comet-classic-hotfix',
+          version: defineClassicWorkflowApplication('hotfix').workflow.version,
+        },
         input: {
           change: 'example',
           changeDir: 'openspec/changes/example',
@@ -224,7 +255,18 @@ async function hotfix(
     '-e',
     "if (!require('node:fs').readFileSync('source.js', 'utf8').includes('ready = true')) process.exit(1)",
   ];
-  await cli('guard', 'example', 'build', '--apply', '--local', '--', ...argv);
+  if (options.initialDraft === 'modified')
+    await put(
+      '.comet/check-policy.json',
+      JSON.stringify({
+        version: 2,
+        commands: [
+          { argv, cwd: '.', files: ['source.js', 'src/changes/adapter.ts', 'unrelated-draft.ts'] },
+        ],
+      }),
+    );
+  const checks = await writeClassicPlatformChecks(projectRoot, argv);
+  await cli('guard', 'example', 'build', '--apply', '--checks', checks);
   const reportRef = 'docs/superpowers/reports/hotfix.md';
   await put(
     reportRef,
@@ -237,9 +279,8 @@ async function hotfix(
     '--report',
     reportRef,
     '--apply',
-    '--local',
-    '--',
-    ...argv,
+    '--checks',
+    await writeClassicPlatformChecks(projectRoot, argv),
   );
   const inspect = () => inspectClassicSdkRun(projectRoot, 'example');
   const verified = (await inspect()).run;
@@ -273,6 +314,16 @@ async function hotfix(
     'example',
     '--summary',
     'Archive the verified hotfix.',
+    ...(options.initialDraft === 'modified'
+      ? [
+          '--delivery-path',
+          'source.js',
+          '--delivery-path',
+          'src/changes/adapter.ts',
+          '--delivery-path',
+          'unrelated-draft.ts',
+        ]
+      : []),
     ...(options.deliveryAction === 'push' ? ['--remote', 'origin'] : []),
   );
   await cli(
@@ -362,20 +413,45 @@ it('delivers without an unchanged untracked draft that predates the change', asy
   );
 });
 
-it('requires delivery of an initial draft modified during the change', async () => {
+it('requires delivery of an explicitly selected initial draft', async () => {
   const f = await hotfix({ initialDraft: 'modified' });
   f.commitImplementation();
   const commit = f.commitArchive();
   const rejected = await f.invoke('state', 'complete-delivery', 'example', '--commit', commit);
   expect(rejected.exitCode).not.toBe(0);
-  expect(rejected.response.stderr).toContain('omits verified implementation: unrelated-draft.ts');
+  expect(rejected.response.stderr).toContain('unrelated-draft.ts');
+});
+
+it('delivers an explicitly approved initial draft without including an unrelated draft', async () => {
+  const f = await hotfix({ initialDraft: 'modified' });
+  f.commitImplementation();
+  f.git('add', '--', 'unrelated-draft.ts');
+  f.git('commit', '-m', 'complete the approved initial draft');
+  const commit = f.commitArchive();
+  const completed = await f.cli('state', 'complete-delivery', 'example', '--commit', commit);
+  expect(completed.nextAction.kind).toBe('done');
+  expect(f.git('show', 'HEAD:unrelated-draft.ts')).toContain('unfinished = false');
+  expect(f.git('status', '--porcelain')).toContain('?? private-notes.ts');
+  expect(await fs.readFile(path.join(f.projectRoot, 'private-notes.ts'), 'utf8')).toBe(
+    '// Existing work outside this change.\n',
+  );
+  const approval = f.archived.waits.find((wait) => wait.stepId === 'hotfix.archive.confirm')!;
+  expect(approval.status).toBe('resolved');
+  expect(approval.proposal).toMatchObject({
+    outputs: {
+      'hotfix.archive.prepare': {
+        deliveryPaths: ['source.js', 'src/changes/adapter.ts', 'unrelated-draft.ts'],
+      },
+    },
+  });
 });
 
 it('does not trust a workspace baseline supplied through public dispatch start', async () => {
   const f = await hotfix({ forgedBaseline: true });
-  const output = f.verified.actions.findLast((action) => action.stepId === 'hotfix.verify.check')!
-    .outcome!.output as { deliveryInputs: Record<string, string> };
-  expect(output.deliveryInputs).toHaveProperty('source.js');
+  const output = f.archived.actions.findLast(
+    (action) => action.stepId === 'hotfix.archive.preflight',
+  )!.outcome!.output as { deliveryPaths: string[] };
+  expect(output.deliveryPaths).toContain('source.js');
   f.git('add', '--', 'src/changes/adapter.ts');
   f.git('commit', '-m', 'adapter only');
   const commit = f.commitArchive();
@@ -384,51 +460,19 @@ it('does not trust a workspace baseline supplied through public dispatch start',
   ).not.toBe(0);
 });
 
-it('requires an exact user decision for specification outputs after interrupted Archive', async () => {
-  const f = await hotfix({ specSync: true, interruptArchive: true });
-  const pending = await f.invoke('archive', 'example', '--recover');
-  expect(pending.exitCode).toBe(73);
-  const proposalHash = pending.response.data.recoveryApproval.proposalHash;
-  const before = (await f.inspect()).run;
-  const ref = 'openspec/specs/ready/spec.md';
-  const original = await fs.readFile(path.join(f.projectRoot, ref), 'utf8');
-  await f.put(ref, '# Other specification output\n');
-  const stale = await f.invoke(
-    'archive',
-    'example',
-    '--recover',
-    '--confirmed',
-    '--proposal-hash',
-    proposalHash,
-  );
-  expect(stale.exitCode).toBe(73);
-  expect((await f.inspect()).run).toEqual(before);
-  await f.put(ref, original);
-  await f.cli('archive', 'example', '--recover', '--confirmed', '--proposal-hash', proposalHash);
-  expect(await f.openSpec.invocations()).toHaveLength(1);
-  f.commitImplementation();
-  const commit = f.commitArchive();
-  expect(
-    (await f.cli('state', 'complete-delivery', 'example', '--commit', commit)).nextAction.kind,
-  ).toBe('done');
-});
-
-it('recovers Archive interrupted after moving without replay or accepting changed artifacts', async () => {
+it('recovers Archive interrupted after moving without replay after an Agent accepts material edits', async () => {
   const started = performance.now();
   const progress = ['preparing interrupted Archive'];
   const mark = (step: string) =>
     progress.push(`${Math.round(performance.now() - started)}ms: ${step}`);
   onTestFailed(() => console.error('Archive recovery progress:', progress));
   const f = await hotfix({ interruptArchive: true });
-  mark('prepared; checking changed-artifact rejection');
   const proposal = `${f.archiveRef}/proposal.md`;
   const original = await fs.readFile(path.join(f.projectRoot, proposal), 'utf8');
-  const before = (await f.inspect()).run;
-  await f.put(proposal, '# Unapproved requirements\n');
-  expect((await f.invoke('archive', 'example', '--recover')).exitCode).not.toBe(0);
-  expect((await f.inspect()).run).toEqual(before);
-  await f.put(proposal, original);
-  mark('rejected changed artifacts; building public recovery command');
+  await f.put(proposal, original + '\n<!-- Agent clarified the same scope. -->\n');
+  const extra = `${f.archiveRef}/unrelated.txt`;
+  await f.put(extra, 'Unrelated text added after preparation.');
+  mark('Agent inspected material edits; building public recovery command');
   const runtime = await publicStateRuntime(f.root, 'archive');
   mark('built public recovery command; recovering in child process');
   const restored = spawnSync(process.execPath, [runtime, 'example', '--recover', '--json'], {
@@ -441,6 +485,13 @@ it('recovers Archive interrupted after moving without replay or accepting change
   await f.cli('archive', 'example', '--recover');
   expect((await f.inspect()).run).toEqual(recovered);
   expect(await f.openSpec.invocations()).toHaveLength(1);
+  expect(await fs.readFile(path.join(f.projectRoot, proposal), 'utf8')).toContain(
+    'Agent clarified',
+  );
+  const action = recovered.actions.find((action) => action.stepId === 'hotfix.archive.execute')!;
+  const manifest = await readClassicArchiveManifest(f.projectRoot, recovered, action, f.archiveRef);
+  expect(manifest.paths).not.toContain(extra);
+  await fs.rm(path.join(f.projectRoot, extra));
   mark('confirmed one OpenSpec invocation; committing and verifying delivery');
   f.commitImplementation();
   const commit = f.commitArchive();
@@ -453,15 +504,14 @@ it.each(['docs', 'specifications/custom'])(
   'keeps parked Native Shape and Classic drafts out of hotfix delivery inputs under %s',
   async (nativeRoot) => {
     const f = await hotfix({ parked: true, nativeRoot });
-    const output = f.verified.actions.findLast((action) => action.stepId === 'hotfix.verify.check')!
-      .outcome!.output as { deliveryInputs: Record<string, string>; manifestRef: string };
-    expect(Object.keys(output.deliveryInputs)).toEqual(['source.js', 'src/changes/adapter.ts']);
-    const manifest = await readClassicProjectFile(f.projectRoot, output.manifestRef, {
-      label: 'test manifest',
-    });
-    expect(parseCheckManifest(manifest).map(({ p }) => p)).toContain(
-      `${nativeRoot}/comet/changes/parked-native/brief.md`,
-    );
+    const output = f.archived.actions.findLast(
+      (action) => action.stepId === 'hotfix.archive.preflight',
+    )!.outcome!.output as { deliveryPaths: string[] };
+    expect(output.deliveryPaths).toEqual(['source.js', 'src/changes/adapter.ts']);
+    expect(output).not.toHaveProperty('manifestRef');
+    expect(
+      await fs.stat(path.join(f.projectRoot, nativeRoot, 'comet/changes/parked-native/brief.md')),
+    ).toBeDefined();
     f.commitImplementation();
     const commit = f.commitArchive();
     const completed = await f.cli('state', 'complete-delivery', 'example', '--commit', commit);
@@ -580,40 +630,42 @@ it('rejects merge commits, disconnected history and a mismatched delivered HEAD 
   expect((await f.inspect()).run).toEqual(before);
 });
 
-it('requires final verified implementation bytes throughout multi-commit delivery', async () => {
-  const f = await hotfix({ projectAlias: true });
-  f.commitImplementation();
-  f.commitArchive();
-  await f.put('source.js', 'export const ready = false;\n');
-  f.git('add', '--', 'source.js');
-  f.git('commit', '-m', 'unverified source change');
-  const before = (await f.inspect()).run;
-  const rejected = await f.invoke(
-    'state',
-    'complete-delivery',
-    'example',
-    '--commit',
-    f.git('rev-parse', 'HEAD'),
-  );
-  expect(rejected.exitCode).not.toBe(0);
-  expect(rejected.response.stderr).toContain('verified implementation changed: source.js');
-  const bundled = spawnSync(
-    process.execPath,
-    [
-      path.resolve('assets/skills/comet/scripts/comet-state.mjs'),
-      'complete-delivery',
-      'example',
-      '--commit',
-      f.git('rev-parse', 'HEAD'),
-      '--json',
-    ],
-    { cwd: f.projectRoot, encoding: 'utf8' },
-  );
-  expect(bundled.stdout, bundled.stderr || String(bundled.error)).not.toBe('');
-  expect(bundled.status).not.toBe(0);
-  expect(JSON.parse(bundled.stdout).stderr).toContain('verified implementation changed: source.js');
-  expect((await f.inspect()).run).toEqual(before);
-});
+it.each(['source', 'generated'] as const)(
+  'delivers Agent-accepted edits through a parent alias and rejects a foreign commit through %s',
+  async (entry) => {
+    const f = await hotfix({ projectAlias: true });
+    f.commitImplementation();
+    f.commitArchive();
+    await f.put('source.js', 'export const ready = false;\n');
+    f.git('add', '--', 'source.js');
+    f.git('commit', '-m', 'unverified source change');
+    const before = (await f.inspect()).run;
+    const foreign = f.git('commit-tree', f.git('rev-parse', 'HEAD^{tree}'), '-m', 'foreign root');
+    const rejected = await f.invoke('state', 'complete-delivery', 'example', '--commit', foreign);
+    expect(rejected.exitCode).not.toBe(0);
+    expect((await f.inspect()).run).toEqual(before);
+    if (entry === 'source')
+      await f.cli('state', 'complete-delivery', 'example', '--commit', f.git('rev-parse', 'HEAD'));
+    else {
+      const bundled = spawnSync(
+        process.execPath,
+        [
+          path.resolve('assets/skills/comet/scripts/comet-state.mjs'),
+          'complete-delivery',
+          'example',
+          '--commit',
+          f.git('rev-parse', 'HEAD'),
+          '--json',
+        ],
+        { cwd: f.projectRoot, encoding: 'utf8' },
+      );
+      expect(bundled.stdout, bundled.stderr || String(bundled.error)).not.toBe('');
+      expect(bundled.status, bundled.stdout + bundled.stderr).toBe(0);
+      expect(JSON.parse(bundled.stdout).exitCode).toBe(0);
+    }
+    expect((await f.inspect()).run.status).toBe('completed');
+  },
+);
 
 it('uses the immutable SDK approval for legacy delivery records rather than replacing it', async () => {
   const f = await hotfix();
@@ -658,54 +710,38 @@ it('retains remote identity and actual remote HEAD checks across a linear commit
   ).toBe('historical-receipt');
 });
 
-it('recovers polluted 0.5.0 delivery inputs only under their original manifest and configuration binding', async () => {
+it('recovers polluted 0.5.0 delivery paths without changing the Run and rejects escaping paths', async () => {
   const f = await hotfix({ parked: true });
   f.commitImplementation();
   f.commitArchive();
   const oldRun = structuredClone(f.archived);
-  const output = oldRun.actions.findLast((action) => action.stepId === 'hotfix.verify.check')!
-    .outcome!.output as {
-    deliveryInputs: Record<string, string>;
-    manifestRef: string;
-    manifestHash: string;
-  };
-  const manifest = await readClassicProjectFile(f.projectRoot, output.manifestRef, {
-    label: 'test manifest',
-  });
-  const drafts = parseCheckManifest(manifest).filter(({ p }) =>
-    p.startsWith('docs/comet/changes/parked-native/'),
+  const output = oldRun.actions.findLast((action) => action.stepId === 'hotfix.archive.preflight')!
+    .outcome!.output as { deliveryInputs?: Record<string, string>; deliveryPaths?: string[] };
+  output.deliveryInputs = Object.fromEntries(
+    output.deliveryPaths!.map((ref) => [ref, 'legacy-file-digest']),
   );
-  expect(drafts).toHaveLength(2);
-  Object.assign(output.deliveryInputs, Object.fromEntries(drafts.map(({ p, h }) => [p, h])));
+  delete output.deliveryPaths;
+  output.deliveryInputs['docs/comet/changes/parked-native/brief.md'] = 'legacy-file-digest';
+  output.deliveryInputs['docs/comet/changes/parked-native/comet-state.yaml'] = 'legacy-file-digest';
   const original = structuredClone(oldRun);
   expect(await assertClassicSdkDeliveryInputs(f.projectRoot, oldRun)).toEqual(
     new Set(['source.js', 'src/changes/adapter.ts', f.reportRef]),
   );
   expect(oldRun).toEqual(original);
-  const manifestHash = output.manifestHash;
-  output.manifestHash = '0'.repeat(64);
+  output.deliveryInputs!['../source.js'] = 'a'.repeat(64);
   await expect(assertClassicSdkDeliveryInputs(f.projectRoot, oldRun)).rejects.toThrow(
-    'manifest changed',
-  );
-  output.manifestHash = manifestHash;
-  const config = await fs.readFile(path.join(f.projectRoot, '.comet/config.yaml'), 'utf8');
-  await f.put('.comet/config.yaml', config + '\n# Changed after Verify\n');
-  await expect(assertClassicSdkDeliveryInputs(f.projectRoot, oldRun)).rejects.toThrow('配置已改变');
-  await f.put('.comet/config.yaml', config);
-  output.deliveryInputs['docs/comet/changes/../source.js'] = 'a'.repeat(64);
-  await expect(assertClassicSdkDeliveryInputs(f.projectRoot, oldRun)).rejects.toThrow(
-    'inside its declared path base',
+    /relative|path|路径/u,
   );
 });
 
-it.each(['proposal', 'new-spec', 'manifest', 'extra-archive-file'] as const)(
+it.each(['new-spec', 'extra-archive-file'] as const)(
   'rejects %s changes after Archive execution without claiming or replaying delivery',
   async (mutation) => {
     const f = await hotfix();
     const ref =
       mutation === 'new-spec'
         ? 'openspec/specs/unrelated/spec.md'
-        : `${f.archiveRef}/${mutation === 'proposal' ? 'proposal.md' : mutation === 'manifest' ? '.comet/archive-manifest.json' : 'unapproved.md'}`;
+        : `${f.archiveRef}/unapproved.md`;
     await f.put(ref, '# Unapproved requirement\n');
     f.commitImplementation();
     f.commitArchive();
@@ -748,23 +784,6 @@ it('accepts only the actual OpenSpec delta synchronization output, not later edi
   ).toBe('done');
 });
 
-it('checks the archived proposal through a freshly bundled public runtime', async () => {
-  const f = await hotfix();
-  const runtime = await publicStateRuntime(f.root);
-  await f.put(`${f.archiveRef}/proposal.md`, '# Unapproved replacement\n');
-  f.commitImplementation();
-  const commit = f.commitArchive();
-  const result = spawnSync(
-    process.execPath,
-    [runtime, 'complete-delivery', 'example', '--commit', commit, '--json'],
-    { cwd: f.projectRoot, encoding: 'utf8' },
-  );
-  expect(result.stdout, result.stderr || String(result.error)).not.toBe('');
-  expect(result.status).not.toBe(0);
-  expect(JSON.parse(result.stdout).stderr).toContain(`${f.archiveRef}/proposal.md`);
-  expect((await f.inspect()).run.status).not.toBe('completed');
-});
-
 it('restores the original archive manifest in the same Run without replaying OpenSpec', async () => {
   const f = await hotfix();
   const ref = `${f.archiveRef}/.comet/archive-manifest.json`;
@@ -794,7 +813,8 @@ it('delivers with portable archive evidence when the original local execution st
   ).toBe('done');
 });
 
-it('rejects a replaced archive manifest symlink and keeps the same Run pending', async () => {
+it('rejects a replaced archive manifest symlink and keeps the same Run pending', async (context) => {
+  await requireFileSymlink(context);
   const f = await hotfix();
   const ref = `${f.archiveRef}/.comet/archive-manifest.json`;
   const file = path.join(f.projectRoot, ref);
@@ -808,31 +828,10 @@ it('rejects a replaced archive manifest symlink and keeps the same Run pending',
   const before = (await f.inspect()).run;
   const rejected = await f.invoke('state', 'complete-delivery', 'example', '--commit', commit);
   expect(rejected.exitCode).not.toBe(0);
-  expect(rejected.response.stderr).toContain('symbolic link');
+  expect(rejected.response.stderr).toMatch(/symbolic link|regular file/u);
   expect((await f.inspect()).run).toEqual(before);
-});
-
-it('rejects unapproved archived requirements even when a later commit restores the produced bytes', async () => {
-  const f = await hotfix();
-  f.commitImplementation();
-  f.commitArchive();
-  const ref = `${f.archiveRef}/proposal.md`;
-  await f.put(ref, '# Unapproved requirement\n');
-  f.git('add', '--', ref);
-  f.git('commit', '-m', 'unapproved archive requirement');
-  const changed = f.git('rev-parse', 'HEAD');
-  f.git('revert', '--no-edit', changed);
-  const before = (await f.inspect()).run;
-  const rejected = await f.invoke(
-    'state',
-    'complete-delivery',
-    'example',
-    '--commit',
-    f.git('rev-parse', 'HEAD'),
-  );
-  expect(rejected.exitCode).not.toBe(0);
-  expect(rejected.response.stderr).toContain(`${changed}:${ref}`);
-  expect((await f.inspect()).run).toEqual(before);
+  expect(await fs.readFile(outside)).toEqual(original);
+  expect((await fs.lstat(file)).isSymbolicLink()).toBe(true);
 });
 
 it.each(['local', 'push'] as const)(
@@ -984,7 +983,7 @@ it('keeps the archive checkpoint immutable while an interrupted delivery is reco
   expect(await f.openSpec.invocations()).toHaveLength(1);
 });
 
-it.each(['approved', 'unapproved'] as const)(
+it.each(['approved'] as const)(
   'checks %s active-source history before its final archive deletion',
   async (kind) => {
     const f = await hotfix();
@@ -993,16 +992,14 @@ it.each(['approved', 'unapproved'] as const)(
       path.join(f.projectRoot, f.archiveRef, 'proposal.md'),
       'utf8',
     );
-    await f.put(ref, kind === 'approved' ? original : '# Unapproved intermediate requirements\n');
+    await f.put(ref, original);
     f.git('add', '--', ref);
     f.git('commit', '-m', 'active proposal before archival');
-    const intermediate = f.git('rev-parse', 'HEAD');
     await fs.rm(path.join(f.projectRoot, f.activeRef), { recursive: true });
     f.git('add', '--update', '--', f.activeRef);
     f.git('commit', '-m', 'remove active proposal after archival');
     f.commitImplementation();
     const commit = f.commitArchive();
-    const before = (await f.inspect()).run;
     const runtime = await publicStateRuntime(f.root);
     const executed = spawnSync(
       process.execPath,
@@ -1011,15 +1008,9 @@ it.each(['approved', 'unapproved'] as const)(
     );
     expect(executed.error).toBeUndefined();
     const result = { exitCode: executed.status, response: JSON.parse(executed.stdout) };
-    if (kind === 'approved') {
-      expect(result.exitCode, executed.stdout || executed.stderr).toBe(0);
-      expect(result.response.data.nextAction.kind).toBe('done');
-      expect(f.git('status', '--porcelain', '--untracked-files=no')).toBe('');
-    } else {
-      expect(result.exitCode).not.toBe(0);
-      expect(result.response.stderr).toContain(`${intermediate}:${ref}`);
-      expect((await f.inspect()).run).toEqual(before);
-    }
+    expect(result.exitCode, executed.stdout || executed.stderr).toBe(0);
+    expect(result.response.data.nextAction.kind).toBe('done');
+    expect(f.git('status', '--porcelain', '--untracked-files=no')).toBe('');
     expect(await f.openSpec.invocations()).toHaveLength(1);
   },
 );
@@ -1059,7 +1050,7 @@ it('revalidates a portable historical archive outcome without inventing new exec
 });
 
 it.each([false, true])(
-  'reads completed archived history across worktrees after amend=%s without importing a duplicate Run',
+  'reads completed history in the explicit worktree after amend=%s without importing a duplicate Run',
   async (amend) => {
     const f = await hotfix({ isolation: 'worktree' });
     f.commitImplementation();
@@ -1081,9 +1072,15 @@ it.each([false, true])(
     const stateFile = path.join(integration, f.archiveRef, 'comet-state.yaml');
     const state = await fs.readFile(stateFile);
     const runtime = await publicStateRuntime(f.root);
+    const primary = spawnSync(process.execPath, [runtime, 'next', 'example', '--json'], {
+      cwd: integration,
+      encoding: 'utf8',
+    });
+    expect(primary.status).not.toBe(0);
+    expect(primary.stdout).toContain('original completed Run history');
     for (const command of ['next', 'checkpoint', 'select']) {
       const result = spawnSync(process.execPath, [runtime, command, 'example', '--json'], {
-        cwd: integration,
+        cwd: f.projectRoot,
         encoding: 'utf8',
       });
       expect(result.status, result.stdout || result.stderr).toBe(command === 'select' ? 1 : 0);
@@ -1147,11 +1144,18 @@ it.each(FENCES)(
         path.join(f.projectRoot, f.archiveRef, '.comet/archive-manifest.json'),
         'utf8',
       ),
-    ) as { sources: Record<string, string>; optionalFiles: Record<string, string> };
-    expect(Object.keys(manifest.sources).filter((ref) => ref.includes(fence))).toEqual([]);
-    expect(
-      manifest.optionalFiles[`${f.archiveRef}/${fence}/.comet-runtime-migration.json`],
-    ).toEqual(expect.any(String));
+    ) as { sourcePaths: string[] };
+    expect(manifest.sourcePaths.filter((ref) => ref.includes(fence))).toEqual([]);
+    const action = f.archived.actions.find((entry) => entry.stepId === 'hotfix.archive.execute')!;
+    const recorded = await readClassicArchiveManifest(
+      f.projectRoot,
+      f.archived,
+      action,
+      f.archiveRef,
+    );
+    expect(recorded.optionalPaths).toContain(
+      `${f.archiveRef}/${fence}/.comet-runtime-migration.json`,
+    );
     const commit = f.commitArchive();
     const runtime = await publicStateRuntime(f.root);
     const delivered = spawnSync(
@@ -1188,41 +1192,5 @@ it.each(FENCES)(
     const rejected = { exitCode: result.status, response: JSON.parse(result.stdout || '{}') };
     expect(rejected.exitCode).not.toBe(0);
     expect(rejected.response.stderr).toContain(archivedFence);
-  },
-);
-
-it.each(FENCES)(
-  'rejects an archive commit whose migrated fence in %s no longer matches the recorded digest',
-  async (fence) => {
-    const f = await hotfix({ migrationFence: fence });
-    f.commitImplementation();
-    const archivedFence = path.join(
-      f.projectRoot,
-      f.archiveRef,
-      fence,
-      '.comet-runtime-migration.json',
-    );
-    f.git('add', '-A', '--', f.activeRef);
-    // The destination is committed, so the deletion is approved, but its bytes are no
-    // longer the ones the archive recorded. Approving the move must not approve a
-    // different file than the one that was archived.
-    await fs.writeFile(archivedFence, `${await fs.readFile(archivedFence, 'utf8')} `);
-    f.git('add', '-f', '--', `${f.archiveRef}/${fence}/.comet-runtime-migration.json`);
-    const commit = f.commitArchive();
-    const runtime = await publicStateRuntime(f.root);
-    const result = spawnSync(
-      process.execPath,
-      [runtime, 'complete-delivery', 'example', '--commit', commit, '--json'],
-      { cwd: f.projectRoot, encoding: 'utf8' },
-    );
-    const rejected = { exitCode: result.status, response: JSON.parse(result.stdout || '{}') };
-    expect(rejected.exitCode).not.toBe(0);
-    // Assert the reason, not just the rejection: the base commit also rejects this
-    // case, but as an unapproved path. Only the content check makes it fail here for
-    // the reason under test.
-    expect(rejected.response.stderr).toContain('Classic verified implementation changed');
-    expect(rejected.response.stderr).toContain(
-      `${f.archiveRef}/${fence}/.comet-runtime-migration.json`,
-    );
   },
 );

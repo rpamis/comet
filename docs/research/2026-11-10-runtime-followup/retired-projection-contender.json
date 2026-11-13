@@ -1,0 +1,7 @@
+{
+  "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+  "reason": "The retired .contenders queue does not participate in SQLite locking; actual Native coordinator claims and writer locks retain exact-command recovery tests.",
+  "start": 8961,
+  "end": 10017,
+  "source": "\n\n  it('reports abandoned coordinator tickets even if the projection lock is missing', async () => {\n    const { root, name, lock } = await fixture();\n    const ticket = path.join(`${lock}.contenders`, 'abandoned.ticket');\n    await fs.mkdir(path.dirname(ticket), { recursive: true });\n    await fs.writeFile(\n      ticket,\n      JSON.stringify({\n        pid: 1,\n        hostname: 'another-host',\n        nonce: 'abandoned',\n        createdAt: 1,\n        ticket: 1,\n      }),\n    );\n    const before = await files(root);\n    const doctor = await nativeDoctorCommand([name], root);\n    const findings = (\n      doctor.data as { healthy: boolean; findings: Array<{ code: string; token: string }> }\n    ).findings;\n    expect(findings[0].code).toBe('sdk-projection-coordinator-unknown');\n    expect(await files(root)).toEqual(before);\n    const repaired = await nativeDoctorCommand(\n      [name, '--repair', '--confirmed', '--lock-token', findings[0].token],\n      root,\n    );\n    expect(repaired.data).toMatchObject({ healthy: true, repaired: true });\n  });"
+}

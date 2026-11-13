@@ -5,7 +5,7 @@ import { atomicWriteContainedText } from './contained-atomic-write.js';
 import { inspectProtectedProjectPath, readProtectedProjectFile } from './protected-project-path.js';
 
 const PROJECT_GITIGNORE_PATH = '.gitignore';
-const PROJECT_GITIGNORE_MAX_BYTES = 4 * 1024 * 1024;
+const PROJECT_GITIGNORE_MAX_BYTES = Number.MAX_SAFE_INTEGER;
 const MANAGED_BLOCK_START = '# >>> Comet managed project state >>>';
 const MANAGED_BLOCK_END = '# <<< Comet managed project state <<<';
 const LOCAL_ARTIFACT_PATTERNS = [
@@ -76,20 +76,29 @@ function hasLegacyCometRuntimeCoverage(source: string): boolean {
 
 export function renderCometProjectGitignore(source: string): string {
   const newline = lineEnding(source);
-  let preserved = withoutManagedBlocks(source);
+  withoutManagedBlocks(source);
+  const canonical = ['!/.comet/', '/.comet/*', '!/.comet/config.yaml', ...LOCAL_ARTIFACT_PATTERNS];
+  const lines = linesWithEndings(source);
+  const start = lines.findIndex((line) => lineText(line) === MANAGED_BLOCK_START);
+  if (start >= 0) {
+    const end = lines.findIndex((line) => lineText(line) === MANAGED_BLOCK_END);
+    if (lines.slice(end + 1).some((line) => lineText(line) === MANAGED_BLOCK_START)) {
+      throw new Error('Multiple Comet .gitignore managed blocks require manual consolidation');
+    }
+    // 只移除旧版生成的整目录规则；用户行及已有规则的相对顺序保持不变。
+    const body = lines.slice(start + 1, end).filter((line) => lineText(line) !== '.comet/');
+    for (const [index, pattern] of canonical.entries()) {
+      if (body.some((line) => lineText(line) === pattern)) continue;
+      const next = body.findIndex((line) => canonical.indexOf(lineText(line)) > index);
+      let previous = body.length - 1;
+      while (previous >= 0 && !canonical.includes(lineText(body[previous]))) previous--;
+      body.splice(next >= 0 ? next : previous + 1, 0, pattern + newline);
+    }
+    return [...lines.slice(0, start + 1), ...body, ...lines.slice(end)].join('');
+  }
+  let preserved = source;
   if (preserved.length > 0 && !/(?:\r\n|\n|\r)$/u.test(preserved)) preserved += newline;
-  return (
-    preserved +
-    [
-      MANAGED_BLOCK_START,
-      '!/.comet/',
-      '/.comet/*',
-      '!/.comet/config.yaml',
-      ...LOCAL_ARTIFACT_PATTERNS,
-      MANAGED_BLOCK_END,
-      '',
-    ].join(newline)
-  );
+  return preserved + [MANAGED_BLOCK_START, ...canonical, MANAGED_BLOCK_END, ''].join(newline);
 }
 
 /**

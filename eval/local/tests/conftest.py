@@ -662,14 +662,21 @@ def _model_execution_config() -> dict[str, str | None]:
 
 def _capture_execution_identity(test_dir: Path, *, model: str | None, interaction):
     """Capture an immutable image/tool identity and a safe report payload."""
+    agent = _resolve_eval_agent(_plugin.config).agent if _plugin else "claude-code"
+    _build_docker_image_with_lock(
+        test_dir,
+        agent if agent != "claude-code" else None,
+        environment=getattr(_plugin.config, "_comet_execution_env", None) if _plugin else None,
+    )
     result = run_shell(
         "docker.sh",
         "execution-identity",
         str(test_dir),
         "--agent",
-        _resolve_eval_agent(_plugin.config).agent if _plugin else "claude-code",
+        agent,
         timeout=300,
         check=False,
+        terminate_process_tree=True,
     )
     if result.returncode != 0:
         raise RuntimeError("Could not verify eval Docker/agent execution identity")
@@ -1852,7 +1859,14 @@ def _docker_environment_dirs_for_request(request, tasks_dir: Path) -> list[Path]
 @pytest.fixture(scope="session", autouse=True)
 def prebuild_docker_image(request):
     """Pre-build Docker image once per session to avoid race conditions."""
-    if _is_unit_tests_only(request.config) or request.config.option.collectonly:
+    if (
+        _is_unit_tests_only(request.config)
+        or request.config.option.collectonly
+        or _getoption(request.config, "--treatment")
+        in {"COMET_NATIVE_SDK_CURRENT", "COMET_NATIVE_040_RC1"}
+    ):
+        # Current Native builds after its case workspace installs the selected
+        # CLI snapshot and adapts legacy business environments to Node 22.
         yield
         return
 
@@ -2601,19 +2615,15 @@ def _build_docker_image_with_lock(
         if context is not None
         else DOCKER_BUILD_LOCK
     )
-    with file_lock(lock_path):
+    from scaffold.python.utils import docker_build_timeout
+
+    build_timeout = docker_build_timeout(environment_dir, default=900)
+    with file_lock(lock_path, timeout=build_timeout):
         # A cold image build downloads Debian packages and installs the selected CLI.
         # Five minutes is insufficient after cache cleanup or on a proxied connection.
         command = ["docker.sh", "build", str(environment_dir)]
         if agent:
             command.extend(["--agent", agent])
-        # 内置数据集还需安装原题和独立评分环境，首次下载允许最多 30 分钟。
-        build_timeout = 900
-        if (environment_dir / ".dataset-task.json").is_file():
-            metadata = json.loads(
-                (environment_dir / ".dataset-task.json").read_text(encoding="utf-8")
-            )
-            build_timeout = metadata.get("execution", {}).get("buildTimeoutSeconds", 1800)
         run_options = {"timeout": build_timeout, "check": False, "terminate_process_tree": True}
         if environment is not None:
             run_options["env"] = environment
@@ -2636,14 +2646,14 @@ def _build_docker_image_with_lock(
 
 
 @contextmanager
-def file_lock(path: Path, timeout: float = 600):
+def file_lock(path: Path, timeout: float | None = 600):
     """Cross-platform exclusive file lock for pytest-xdist coordination."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a+b") as lock_file:
         if os.name == "nt":
             import msvcrt
 
-            deadline = time.monotonic() + timeout
+            deadline = time.monotonic() + timeout if timeout is not None else None
             while True:
                 lock_file.seek(0)
                 try:
@@ -2652,7 +2662,7 @@ def file_lock(path: Path, timeout: float = 600):
                 except OSError as error:
                     if error.errno not in {13, 36}:
                         raise
-                    if time.monotonic() >= deadline:
+                    if deadline is not None and time.monotonic() >= deadline:
                         raise
                     time.sleep(0.05)
             try:

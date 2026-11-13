@@ -3,29 +3,19 @@ import type {
   RuntimeExecutor,
   RuntimeValidator,
   RuntimeValue,
-  WorkflowRuntime,
   WorkflowRun,
+  WorkflowRuntime,
 } from '../engine/runtime.js';
 import { hashRuntimeValue } from '../engine/runtime.js';
 import { parseNativePortableState } from './native-portable-state.js';
-import { collectNativeSupervisorRevisionWorkspaces } from './native-sdk-supervisor-revision.js';
-import { inspectNativeSdkSupervisorRecovery } from './native-sdk-supervisor-recovery.js';
 import type { NativePortableState } from './native-portable-types.js';
-import { inspectNativeSdkPendingArchiveDrift } from './native-sdk-archive.js';
-import { inspectNativePortableAcceptanceDrift } from './native-portable-requirements.js';
-import { nativeProjectPaths } from './native-paths.js';
-import {
-  inspectNativeSdkCheckExecutions,
-  hasNativeSdkPortableStopEvidence,
-} from './native-sdk-check-execution.js';
-
+import { collectNativeSupervisorRevisionWorkspaces } from './native-sdk-supervisor-revision.js';
 type ImplementationRevision = {
   reason: string;
   expectedStateVersion: number;
   proposalHash: string;
   archiveActionId: string;
 };
-
 function implementationRevisionInput(value: unknown): ImplementationRevision | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const input = value as Record<string, unknown>;
@@ -41,7 +31,6 @@ function implementationRevisionInput(value: unknown): ImplementationRevision | n
     return null;
   return input as ImplementationRevision;
 }
-
 /** 只替换尚未执行的 Archive Action，原批准和实际检查历史仍保留。 */
 export const nativeSdkImplementationRevisionCommandValidator: RuntimeCommandValidator = {
   id: 'comet-native-implementation-revision-command',
@@ -84,48 +73,13 @@ export const nativeSdkImplementationRevisionCommandValidator: RuntimeCommandVali
         accepted: false,
         reason: 'Native implementation revision is stale or Archive is already in progress',
       };
-    const checks = await inspectNativeSdkCheckExecutions({
-      projectRoot: context.projectRoot,
-      run,
-      includeSettled: true,
-    });
-    if (
-      checks.some((check) => {
-        const action = run.actions.find((entry) => entry.id === check.actionId);
-        return !check.quiescent || !action || !hasNativeSdkPortableStopEvidence(run, action);
-      })
-    )
-      return {
-        accepted: false,
-        reason: 'Native original check execution has not been confirmed stopped',
-      };
-    const paths = await nativeProjectPaths(
-      context.projectRoot,
-      (run.input as { artifactRootRef: string }).artifactRootRef,
-      { readOnly: true },
-    );
-    const shape = await inspectNativePortableAcceptanceDrift({ paths, state });
-    if (shape.drifted)
-      return {
-        accepted: false,
-        reason: 'Native requirements changed; read the current status and revise the requirements',
-      };
-    const drift = await inspectNativeSdkPendingArchiveDrift({
-      run,
-      action: archive,
-      projectRoot: context.projectRoot,
-    });
-    return {
-      accepted: drift !== null,
-      reason: 'Native candidate no longer differs; read the current status',
-    };
+    return { accepted: true };
   },
 };
-
 async function observeImplementationRevision(
   run: Readonly<WorkflowRun>,
   input: ImplementationRevision,
-  projectRoot: string,
+  _projectRoot: string,
 ) {
   const original = run.actions.find((action) => action.id === input.archiveActionId);
   if (
@@ -134,25 +88,14 @@ async function observeImplementationRevision(
     !['archive.prepare', 'archive.execute'].includes(original.stepId)
   )
     throw new Error('Native implementation revision has no original pending Archive action');
-  const state = parseNativePortableState(run.state);
-  const paths = await nativeProjectPaths(
-    projectRoot,
-    (run.input as { artifactRootRef: string }).artifactRootRef,
-    { readOnly: true },
-  );
-  const shape = await inspectNativePortableAcceptanceDrift({ paths, state });
-  const drift = shape.drifted
-    ? null
-    : await inspectNativeSdkPendingArchiveDrift({ run, action: original, projectRoot });
   return {
-    drift: shape.drifted || drift !== null,
-    requirementsChanged: shape.drifted,
-    driftKind: shape.drifted ? 'shape-drift' : (drift?.reason ?? null),
+    drift: true,
+    requirementsChanged: false,
+    driftKind: 'implementation-changed',
     archiveStep: original.stepId,
     reason: input.reason.trim(),
   };
 }
-
 export const nativeSdkImplementationRevisionExecutor: RuntimeExecutor = {
   id: 'comet-native-revise-implementation',
   capabilities: [],
@@ -160,7 +103,11 @@ export const nativeSdkImplementationRevisionExecutor: RuntimeExecutor = {
     action.stepId === 'repair.implementation' && action.ref === 'native-revise-implementation',
   async execute(action, context, run) {
     const input = implementationRevisionInput(
-      (action.input as { activation?: unknown }).activation,
+      (
+        action.input as {
+          activation?: unknown;
+        }
+      ).activation,
     );
     if (!run || !input || !context?.projectRoot)
       throw new Error('Native implementation revision lacks its input');
@@ -170,13 +117,16 @@ export const nativeSdkImplementationRevisionExecutor: RuntimeExecutor = {
     };
   },
 };
-
 export const nativeSdkImplementationRevisionValidator: RuntimeValidator = {
   id: 'comet-native-implementation-revision-outcome',
   version: '1',
   async validate({ run, action, outcome, context }) {
     const input = implementationRevisionInput(
-      (action.input as { activation?: unknown }).activation,
+      (
+        action.input as {
+          activation?: unknown;
+        }
+      ).activation,
     );
     if (
       !input ||
@@ -195,7 +145,6 @@ export const nativeSdkImplementationRevisionValidator: RuntimeValidator = {
     };
   },
 };
-
 /** 只重新读取原修订 Action，沿用原 claim；不会执行被替换的 Archive。 */
 export async function recoverNativeSdkImplementationRevision(
   projectRoot: string,
@@ -229,13 +178,16 @@ export async function recoverNativeSdkImplementationRevision(
     context,
   });
 }
-
 /** 普通 Build 只在原 Builder 明确失败且仍等待恢复决定时允许修改需求。 */
 export function nativeSdkStoppedBuilderWait(run: Readonly<WorkflowRun>) {
   return run.waits.find((wait) => {
     if (wait.status !== 'pending' || wait.stepId !== 'build.resume') return false;
     const failedBuilderActionId = (
-      wait.proposal as { activation?: { failedBuilderActionId?: unknown } }
+      wait.proposal as {
+        activation?: {
+          failedBuilderActionId?: unknown;
+        };
+      }
     )?.activation?.failedBuilderActionId;
     return run.actions.some(
       (action) =>
@@ -245,7 +197,6 @@ export function nativeSdkStoppedBuilderWait(run: Readonly<WorkflowRun>) {
     );
   });
 }
-
 export function nativeSdkRequirementsRevisionAllowed(
   run: Readonly<WorkflowRun>,
   state: NativePortableState,
@@ -254,19 +205,18 @@ export function nativeSdkRequirementsRevisionAllowed(
   if (run.actions.some((action) => ['running', 'unknown'].includes(action.status))) return false;
   if (['verify', 'archive'].includes(state.phase)) return proposalHash === undefined;
   if (state.phase !== 'build') return false;
-  if (state.children_contract_hash) return proposalHash === undefined;
+  if (state.children_contract_ref) return proposalHash === undefined;
   const pending = nativeSdkPendingBuilderRevisionHash(run);
   if (pending) return proposalHash === pending;
   const wait = nativeSdkStoppedBuilderWait(run);
   return wait !== undefined && wait.proposalHash === proposalHash;
 }
-
 /** 尚未领取的 Builder 可以被当前修订取代；哈希绑定原 Action，不能使用旧入口。 */
 export function nativeSdkPendingBuilderRevisionHash(run: Readonly<WorkflowRun>): string | null {
   const state = parseNativePortableState(run.state);
   if (
     state.phase !== 'build' ||
-    state.children_contract_hash ||
+    state.children_contract_ref ||
     !['running', 'waiting'].includes(run.status) ||
     run.actions.some((action) => ['running', 'unknown'].includes(action.status))
   )
@@ -276,16 +226,16 @@ export function nativeSdkPendingBuilderRevisionHash(run: Readonly<WorkflowRun>):
   const { id: actionId, attempt, inputHash } = pending[0];
   return hashRuntimeValue({ actionId, attempt, inputHash });
 }
-
 export const nativeSdkReviseCommandValidator: RuntimeCommandValidator = {
   id: 'comet-native-revise-command',
   version: '1',
-  async validate({ run, name, input, context }) {
+  async validate({ run, name, input }) {
     const state = parseNativePortableState(run.state);
     if (
       name !== 'revise-requirements' ||
       state.archived ||
       !['active', 'await-user', 'blocked'].includes(state.status) ||
+      run.status === 'completed' ||
       input === null ||
       typeof input !== 'object' ||
       Array.isArray(input) ||
@@ -307,20 +257,9 @@ export const nativeSdkReviseCommandValidator: RuntimeCommandValidator = {
         reason: 'Native requirements revision is stale or cannot interrupt Archive application',
       };
     }
-    if (run.status === 'completed') {
-      try {
-        const recovery = context?.projectRoot
-          ? await inspectNativeSdkSupervisorRecovery(run, context.projectRoot)
-          : null;
-        return { accepted: recovery !== null, allowCompleted: recovery !== null };
-      } catch (error) {
-        return { accepted: false, reason: error instanceof Error ? error.message : String(error) };
-      }
-    }
     return { accepted: true };
   },
 };
-
 export const nativeSdkReviseExecutor: RuntimeExecutor = {
   id: 'comet-native-revise-requirements',
   capabilities: [],
@@ -331,7 +270,10 @@ export const nativeSdkReviseExecutor: RuntimeExecutor = {
     if (!run) throw new Error('Native SDK Run is required');
     const activation = (
       action.input as {
-        activation?: { reason?: unknown; expectedStateVersion?: unknown };
+        activation?: {
+          reason?: unknown;
+          expectedStateVersion?: unknown;
+        };
       }
     ).activation;
     const state = parseNativePortableState(run.state);
@@ -342,9 +284,9 @@ export const nativeSdkReviseExecutor: RuntimeExecutor = {
     ) {
       throw new Error('Native requirements revision references a stale change');
     }
-    if (state.children_contract_hash && !context?.projectRoot)
+    if (state.children_contract_ref && !context?.projectRoot)
       throw new Error('Native Supervisor 需求修订缺少实际项目');
-    const workspaces = state.children_contract_hash
+    const workspaces = state.children_contract_ref
       ? collectNativeSupervisorRevisionWorkspaces(run, context!.projectRoot!)
       : undefined;
     return {
@@ -353,20 +295,29 @@ export const nativeSdkReviseExecutor: RuntimeExecutor = {
     };
   },
 };
-
 export const nativeSdkReviseValidator: RuntimeValidator = {
   id: 'comet-native-revise-outcome',
   version: '1',
   validate({ run, action, outcome, context }) {
-    const activation = (action.input as { activation?: { reason?: unknown } }).activation;
+    const activation = (
+      action.input as {
+        activation?: {
+          reason?: unknown;
+        };
+      }
+    ).activation;
     const state = parseNativePortableState(run.state);
     let retained = true;
     try {
-      if (state.children_contract_hash) {
+      if (state.children_contract_ref) {
         retained =
           Boolean(context?.projectRoot) &&
           hashRuntimeValue(
-            (outcome.output as { workspaces?: RuntimeValue } | null)?.workspaces ?? null,
+            (
+              outcome.output as {
+                workspaces?: RuntimeValue;
+              } | null
+            )?.workspaces ?? null,
           ) ===
             hashRuntimeValue(collectNativeSupervisorRevisionWorkspaces(run, context!.projectRoot!));
       }
@@ -378,7 +329,11 @@ export const nativeSdkReviseValidator: RuntimeValidator = {
         outcome.status === 'succeeded' &&
         action.stepId === 'shape.revise' &&
         typeof activation?.reason === 'string' &&
-        (outcome.output as { reason?: unknown } | null)?.reason === activation.reason.trim() &&
+        (
+          outcome.output as {
+            reason?: unknown;
+          } | null
+        )?.reason === activation.reason.trim() &&
         retained,
       reason: 'Native requirements revision has no matching receipt',
     };

@@ -1,0 +1,177 @@
+{
+  "scope": [
+    "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+    "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+    "test/domains/comet-classic/comet-scripts.test.ts",
+    "test/domains/comet-classic/classic-executed-checks.test.ts",
+    "test/domains/comet-classic/classic-layout.test.ts",
+    "test/domains/comet-classic/comet-scripts-guard.test.ts",
+    "test/domains/comet-classic/classic-guard.test.ts",
+    "test/domains/comet-classic/classic-runtime.test.ts",
+    "test/domains/comet-classic/classic-spec-paths.test.ts"
+  ],
+  "constraints": "Test-only changes; no production/catalog/frozen evidence modified; no Eval or whole-file/full-suite execution.",
+  "changes": [
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "behavior": "implementation revision A/B",
+      "change": "Remove retired observe/record and file-manifest retention checks. Agent explicitly calls continue-build with the original revision; stale revision still rejects unchanged Run. B uses --local and preserves its original receipt/counter; A intentionally omits --local and reruns. Keep approvals, Run identity, original checks, task execution count, one Archive, real Git delivery."
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "behavior": "formal requirement revisions",
+      "change": "Retire content-scan-generated remediation; call revise-design/revise-plan explicitly. Keep old Action/proposal/revision rejection, task IDs, fixed-definition forgery rejection, same Run and preserved Build configuration."
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "behavior": "delivery repair",
+      "change": "Use business next --continue for one repair check, and construct explicit low-level execute request from original pending Action for public dispatch/recovery cases. Replace deliveryInputs digest assertion with deliveryPaths. Retire inference that untracked source bytes or policy labels automatically invalidate prior checks; keep checkpoint tampering, unapproved delivery, actual failure/unknown recovery and generated outputs exclusion."
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "behavior": "handoff and Archive recovery",
+      "change": "Archive handoff points to original proposal.md, not retired copied JSON. Match actual missing original archive preparation error; original receipt restore and no replay assertions remain."
+    },
+    {
+      "file": "classic-sdk-delivery-scope.test.ts",
+      "behavior": "initial existing draft",
+      "change": "Agent explicitly selects modified initial draft through existing files policy before checks; omitted/uncommitted selected path still rejects. No automatic byte comparison restored."
+    },
+    {
+      "file": "classic-sdk-delivery-scope.test.ts",
+      "behavior": "path contract",
+      "change": "Replace obsolete deliveryInputs/manifestRef expectations with deliveryPaths; keep public forged baseline and Native/Classic parked-draft isolation. Old 0.5.0 output is deliberately reconstructed as legacy deliveryInputs without mutating Run; ../ path still rejects."
+    }
+  ],
+  "removedRetiredParameterNames": [
+    "rejects proposal changes after Archive execution without claiming or replaying delivery",
+    "rejects manifest changes after Archive execution without claiming or replaying delivery",
+    "checks unapproved active-source history before its final archive deletion"
+  ],
+  "renamed": [
+    {
+      "before": "recovers polluted 0.5.0 delivery inputs only under their original manifest and configuration binding",
+      "after": "recovers polluted 0.5.0 delivery paths without changing the Run and rejects escaping paths",
+      "why": "file-manifest/config byte binding removed; current compatibility and path boundary retained",
+      "catalogAction": "Parent must inspect effective selectors and append audited mapping if referenced."
+    }
+  ],
+  "preservedProductionRegression": {
+    "name": "restores the original archive manifest in the same Run without replaying OpenSpec",
+    "productionOwner": "parent",
+    "result": "passed",
+    "report": "coverage/repair-053/archive-manifest-view-recovery.json"
+  },
+  "validation": [
+    {
+      "report": "coverage/repair-053/classic-pruning-followup-probe1.json",
+      "passed": 8,
+      "failed": 0,
+      "scope": "8 precise selected cases; only unchanged-to-that-run relevant edits are covered"
+    },
+    {
+      "report": "coverage/repair-053/classic-pruning-followup-probe2.json",
+      "passed": 13,
+      "failed": 0,
+      "scope": "exact retained delivery repair, IDs, stale handles, original Archive recovery and path-history cases"
+    },
+    {
+      "report": "coverage/repair-053/classic-pruning-followup-probe3.json",
+      "passed": 4,
+      "failed": 2,
+      "note": "Two obsolete automatic-remediation expectations failed, then removed while preserving explicit revision/approval flow."
+    },
+    {
+      "report": "coverage/repair-053/classic-pruning-followup-formal-final.json",
+      "passed": 2,
+      "failed": 0,
+      "note": "Both explicit formal revision retained scenarios now pass."
+    },
+    {
+      "report": "coverage/repair-053/classic-extra-pruning-validation.json",
+      "passed": 2,
+      "failed": 3,
+      "failures": [
+        {
+          "name": "Classic executed check evidence compares argv before validating previous evidence",
+          "message": "AssertionError: expected \"checkEnvironmentFingerprint\" to be called 2 times, but got 0 times"
+        },
+        {
+          "name": "Classic executed check evidence compares cwd before validating previous evidence",
+          "message": "AssertionError: expected \"checkEnvironmentFingerprint\" to be called 2 times, but got 0 times"
+        },
+        {
+          "name": "Classic project discovery boundaries rejects a dangling .comet/config.yaml link instead of selecting a parent project",
+          "message": "Error: EPERM: operation not permitted, symlink 'C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-classic-layout-UNYevk\\missing' -> 'C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-classic-layout-UNYevk\\child\\.comet\\config.yaml'"
+        }
+      ]
+    },
+    {
+      "report": "coverage/repair-053/classic-execution-identity-final.json",
+      "passed": 3,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "report": "coverage/repair-053/classic-guard-diagnostics-final.json",
+      "passed": 4,
+      "failed": 1,
+      "failures": [
+        {
+          "name": "comet guard recorded command-check evidence keeps a bound_branch healed during guard --apply",
+          "message": "AssertionError: {\"stderr\":\"Usage: comet guard <change-name> <open|design|build|verify|archive> [--apply]\\n\"}: expected 1 to be +0 // Object.is equality"
+        }
+      ]
+    },
+    {
+      "report": "coverage/repair-053/classic-guard-healing-final.json",
+      "passed": 1,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "report": "coverage/repair-053/classic-nested-paths-final.json",
+      "passed": 2,
+      "failed": 2,
+      "failures": [
+        {
+          "name": "Classic runtime CLI adapter discovers the docs project from a nested cwd across all Classic launchers",
+          "message": "AssertionError: Usage: comet handoff <change-name> design --write [--full]"
+        },
+        {
+          "name": "Classic runtime CLI adapter discovers the legacy project from a nested cwd across all Classic launchers",
+          "message": "AssertionError: Usage: comet handoff <change-name> design --write [--full]"
+        }
+      ]
+    },
+    {
+      "report": "coverage/repair-053/classic-nested-launchers-final.json",
+      "passed": 2,
+      "failed": 0,
+      "failures": []
+    }
+  ],
+  "knownLimitations": [
+    "Windows file-symlink creation EPERM remains environment limitation; symlink safety test retained.",
+    "No test failure is classified as passed without actual execution.",
+    "Further mixed tests may reveal retained production bugs; no production behavior restored to satisfy retired assertions.",
+    "Earlier red probes remain archived. Final passing reports replace old retired-expectation failures only for selected affected names; this is not proof all tests in edited files pass."
+  ],
+  "extraRetirementAudit": "coverage/repair-053/classic-extra-pruning-applied.json",
+  "unhandledRegisteredRetiredTests": [
+    {
+      "file": "test/domains/comet-classic/classic-guard.test.ts",
+      "fullName": "Classic guard command lists workspace candidates instead of choosing when several packages build",
+      "effectiveGroup": "history-domains-comet-classic-classic-guard",
+      "action": "kept; parent must add audited migration before retiring package-scan assertion"
+    }
+  ],
+  "extraAdjustments": [
+    "classic-layout only diagnostic regex, path rejection unchanged",
+    "argv/cwd tests forbid retired input/environment collection but preserve actual command identity",
+    "commandless scope/run refusal diagnostics updated; bound-branch healing runs a real explicit check first",
+    "nested layout launcher test uses same Run public open-complete then current design --write; resume-probe phase tracks actual Design",
+    "nested Spec path test keeps recursive path content and explicit full Markdown in both legacy settings, removes automatic content hashes/copy JSON policy"
+  ],
+  "status": "edits stopped; precise affected-path checks finished; no full suite or Eval executed"
+}

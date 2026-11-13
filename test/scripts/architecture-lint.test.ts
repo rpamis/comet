@@ -57,10 +57,12 @@ async function makeMinimalRepository(): Promise<string> {
       'eval',
       'package.json',
       'platform',
+      'plugin',
       'test',
       'tsconfig.json',
     ],
-    sourceRoots: ['app', 'domains', 'platform'],
+    sourceRoots: ['app', 'domains', 'platform', 'plugin'],
+    pluginModules: ['codex', 'dsh'],
     dependencyRules: {
       allowedDomainDependencies: [],
       compatibilityFacades: [],
@@ -80,6 +82,8 @@ async function makeMinimalRepository(): Promise<string> {
   await Promise.all([
     fs.mkdir(path.join(root, 'app'), { recursive: true }),
     fs.mkdir(path.join(root, 'platform'), { recursive: true }),
+    fs.mkdir(path.join(root, 'plugin/codex'), { recursive: true }),
+    fs.mkdir(path.join(root, 'plugin/dsh'), { recursive: true }),
     fs.mkdir(path.join(root, 'test'), { recursive: true }),
     fs.mkdir(path.join(root, 'assets', 'skills'), { recursive: true }),
     fs.mkdir(path.join(root, 'assets', 'skills-zh'), { recursive: true }),
@@ -95,7 +99,7 @@ async function makeMinimalRepository(): Promise<string> {
             moduleResolution: 'NodeNext',
             target: 'ES2022',
           },
-          include: ['app/**/*', 'domains/**/*', 'platform/**/*'],
+          include: ['app/**/*', 'domains/**/*', 'platform/**/*', 'plugin/**/*'],
         },
         null,
         2,
@@ -109,7 +113,7 @@ async function makeMinimalRepository(): Promise<string> {
       JSON.stringify(
         {
           scripts: {
-            lint: 'eslint app/ domains/ platform/ && pnpm run lint:architecture',
+            lint: 'eslint app/ domains/ platform/ plugin/ && pnpm run lint:architecture',
             'lint:architecture': 'node scripts/lint/architecture.mjs',
           },
         },
@@ -129,6 +133,29 @@ async function makeMinimalRepository(): Promise<string> {
 }
 
 describe('architecture lint', () => {
+  it('allows platform plugins to use shared modules and rejects reverse core dependencies', async () => {
+    const root = await makeMinimalRepository();
+    await writeFile(root, '.gitignore', '');
+    await writeFile(
+      root,
+      'plugin/codex/adapter.ts',
+      "import '../../domains/comet-classic/classic-state-entry.js';\nexport {};\n",
+    );
+    const check = () =>
+      spawnSync(process.execPath, [path.resolve('scripts/lint/architecture.mjs')], {
+        cwd: root,
+        encoding: 'utf8',
+      });
+    const accepted = check();
+    expect(accepted.status, accepted.stderr).toBe(0);
+    await writeFile(root, 'platform/reverse.ts', "import '../plugin/codex/adapter.js';\n");
+    const rejected = check();
+    expect(rejected.status).not.toBe(0);
+    expect(rejected.stderr).toContain(
+      'platform/reverse.ts must not depend on plugin/codex/adapter.ts',
+    );
+  });
+
   it('accepts only registered archive modules whose bytes match the frozen manifest', async () => {
     const root = await makeMinimalRepository();
     await writeFile(root, '.gitignore', '');
@@ -802,21 +829,22 @@ describe('architecture lint', () => {
     );
   });
 
-  it('registers the Native stop-evidence transaction without allowing unreviewed lock callers', async () => {
+  it('registers Native Archive transactions without allowing retired or unreviewed mutation callers', async () => {
     const repositoryLayout = JSON.parse(
       await fs.readFile(path.resolve('config/repository-layout.json'), 'utf8'),
     ) as DependencyTestLayout;
-    const target = 'domains/comet-native/native-mutation-lock.ts';
-    const importer = 'domains/comet-native/native-check-stop-evidence.ts';
+    const target = 'domains/comet-native/native-mutation.ts';
+    const importer = 'domains/comet-native/native-portable-archive.ts';
     const rule = repositoryLayout.dependencyRules.restrictedDependencies.find(
       (entry) => entry.target === target,
     );
     expect(rule?.importers).toContain(importer);
+    expect(rule?.importers).not.toContain('domains/comet-native/native-check-stop-evidence.ts');
 
     const root = await makeMinimalRepository();
     await writeFile(root, '.gitignore', '\n');
-    await writeFile(root, target, 'export const lock = true;\n');
-    const content = "import { lock } from './native-mutation-lock.js';\nexport { lock };\n";
+    await writeFile(root, target, 'export const mutation = true;\n');
+    const content = "import { mutation } from './native-mutation.js';\nexport { mutation };\n";
     await writeFile(root, importer, content);
     const layoutPath = path.join(root, 'config/repository-layout.json');
     const layout = JSON.parse(await fs.readFile(layoutPath, 'utf8')) as DependencyTestLayout;

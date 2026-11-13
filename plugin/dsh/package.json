@@ -1,0 +1,56 @@
+{
+  "name": "comet-dsh-plugin",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Comet 是一个面向 Agent 的可恢复长程任务工作流与 Skill 平台，帮助你从需求推进到实现、验收和归档，并持续积累个人记忆与项目知识。在 DeepSeek Harness 中，可从侧栏打开当前项目的 Dashboard，并随插件安装匹配版本的 Comet CLI。",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rpamis/comet"
+  },
+  "homepage": "https://github.com/rpamis/comet",
+  "type": "module",
+  "icon": "icon.png",
+  "engines": {
+    "dsh": ">=0.2.2-rc.1"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-hooks-claude-code": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-hook-protocol": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-llm": "0.2.2-rc.1",
+    "@rpamis/comet": "__COMET_CLI_SPEC__"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.png"
+  },
+  "files": [
+    "skills",
+    "rules",
+    "server",
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.png",
+    "README.md",
+    "README.en.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  }
+}

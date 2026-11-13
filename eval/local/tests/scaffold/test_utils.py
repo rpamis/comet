@@ -3107,3 +3107,82 @@ def test_native_terminal_probe_ends_without_requiring_completion_words(tmp_path,
     assert result.returncode == 0, result.stderr
     assert counter.read_text() == ("x" if completed else "xxx"), result.stderr
     assert ("workflow completion detected" in result.stderr) is completed
+
+
+@pytest.mark.parametrize(
+    ("budget", "required_seconds", "expected_timeout"),
+    [(None, 10, 300), (1800, 301, 1800), (61, 60, 61)],
+)
+def test_dataset_workspace_build_uses_declared_budget_and_preserves_regular_limit(
+    tmp_path, monkeypatch, budget, required_seconds, expected_timeout
+):
+    from types import SimpleNamespace
+
+    if budget is not None:
+        (tmp_path / ".dataset-task.json").write_text(
+            json.dumps({"execution": {"buildTimeoutSeconds": budget}}), encoding="utf-8"
+        )
+    calls = []
+
+    def build(*args, **kwargs):
+        calls.append((args, kwargs))
+        if kwargs["timeout"] < required_seconds:
+            raise subprocess.TimeoutExpired("cold dataset build", kwargs["timeout"])
+        return SimpleNamespace(returncode=0, stdout="ready-image\n")
+
+    monkeypatch.setattr(utils, "run_shell", build)
+    assert utils.build_docker_image(tmp_path, agent="claude-code") == "ready-image"
+    assert calls[0][1]["timeout"] == expected_timeout
+    assert calls[0][0][-2:] == ("--agent", "claude-code")
+
+
+@pytest.mark.parametrize("builder", ["workspace", "prebuild"])
+def test_unlimited_image_build_override_keeps_task_contract(tmp_path, monkeypatch, builder):
+    from types import SimpleNamespace
+    import conftest
+
+    (tmp_path / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
+    metadata = {"execution": {"buildTimeoutSeconds": 1800, "timeoutSeconds": 3600}}
+    marker = tmp_path / ".dataset-task.json"
+    marker.write_text(json.dumps(metadata), encoding="utf-8")
+    monkeypatch.setenv("COMET_EVAL_BUILD_TIMEOUT_SECONDS", "0")
+    monkeypatch.setattr(conftest, "context_from_environment", lambda: None)
+    monkeypatch.setattr(conftest, "DOCKER_BUILD_LOCK", tmp_path / "build.lock")
+    calls = []
+
+    def build(*args, **kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(returncode=0, stdout="ready-image\n", stderr="")
+
+    monkeypatch.setattr(utils, "run_shell", build)
+    monkeypatch.setattr(conftest, "run_shell", build)
+    result = (
+        utils.build_docker_image(tmp_path)
+        if builder == "workspace"
+        else conftest._build_docker_image_with_lock(tmp_path)
+    )
+    assert result == "ready-image"
+    assert calls[-1]["timeout"] is None
+    assert json.loads(marker.read_text(encoding="utf-8")) == metadata
+
+
+def test_unlimited_image_build_lock_waits_until_available_on_windows(tmp_path, monkeypatch):
+    import conftest
+    from types import SimpleNamespace
+
+    lock = tmp_path / "build.lock"
+    calls = []
+
+    def locking(fd, mode, count):
+        calls.append(mode)
+        if mode == 1 and len(calls) < 3:
+            raise OSError(13, "busy")
+
+    monkeypatch.setitem(
+        sys.modules, "msvcrt", SimpleNamespace(LK_NBLCK=1, LK_UNLCK=2, locking=locking)
+    )
+    monkeypatch.setattr(conftest.os, "name", "nt")
+    monkeypatch.setattr(conftest.time, "sleep", lambda _: None)
+    with conftest.file_lock(lock, timeout=None):
+        assert calls == [1, 1, 1]
+    assert calls == [1, 1, 1, 2]

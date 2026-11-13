@@ -1,41 +1,19 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-import { defaultProjectConfig, readProjectConfig } from './native-config.js';
-import { atomicWriteText } from './native-atomic-file.js';
 import {
   discoverWorkflowCapabilityCandidates,
   renderCapabilityAssociationDraft,
 } from '../project-knowledge/capability-discovery.js';
+import { assertChangeNotSdkOwned } from '../workflow-contract/change-runtime-owner.js';
+import { ensureCometProjectGitignore } from '../workflow-contract/project-gitignore.js';
+import { atomicWriteText } from './native-atomic-file.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
-import {
-  inspectNativeTotalSpec,
-  nativeLegacySectionHash,
-  nativeTotalSpecHash,
-  renderNativeDelta,
-  type NativeDeltaDocument,
-} from './native-delta-spec.js';
 import {
   createNativeCapabilityKnowledgeProvider,
   readNativeCapabilityDiscoveryCache,
   writeNativeCapabilityDiscoveryCache,
 } from './native-capability-discovery.js';
-import {
-  ensureNativeDirectories,
-  nativeChangeArtifactPaths,
-  nativeProjectPaths,
-} from './native-paths.js';
-import { nativePortableContinuation } from './native-portable-continuation.js';
-import { createNativePortableChange, nativePortableChangeDir } from './native-portable-runtime.js';
-import { selectNativeChange } from './native-selection.js';
-import { prepareNativeWorkspace } from './native-workspace-preparation.js';
-import { recordNativeWorkspaceConfig } from './native-workspace-config.js';
-import { type NativeWorkspaceIsolation } from './native-workspace.js';
-import { ensureCometProjectGitignore } from '../workflow-contract/project-gitignore.js';
-import { assertChangeNotSdkOwned } from '../workflow-contract/change-runtime-owner.js';
-import { createNativeSdkChange } from './native-sdk-create.js';
-import { parseNativePortableState } from './native-portable-state.js';
-import { projectNativeSdkStatus } from './native-sdk-status.js';
 import {
   assertNoArguments,
   languageOption,
@@ -45,12 +23,28 @@ import {
   takeOption,
   type DispatchResult,
 } from './native-cli-shared.js';
+import { defaultProjectConfig, readProjectConfig } from './native-config.js';
+import { renderNativeDelta, type NativeDeltaDocument } from './native-delta-spec.js';
+import {
+  ensureNativeDirectories,
+  nativeChangeArtifactPaths,
+  nativeProjectPaths,
+} from './native-paths.js';
+import { nativePortableContinuation } from './native-portable-continuation.js';
+import { createNativePortableChange, nativePortableChangeDir } from './native-portable-runtime.js';
+import { parseNativePortableState } from './native-portable-state.js';
+import { createNativeSdkChange } from './native-sdk-create.js';
+import { projectNativeSdkStatus } from './native-sdk-status.js';
+import { selectNativeChange } from './native-selection.js';
+import { recordNativeWorkspaceConfig } from './native-workspace-config.js';
+import { prepareNativeWorkspace } from './native-workspace-preparation.js';
+import { type NativeWorkspaceIsolation } from './native-workspace.js';
 
 async function initializeNativeDeltaProposal(options: {
   paths: Awaited<ReturnType<typeof nativeProjectPaths>>;
   changeName: string;
   capability: string;
-}): Promise<{ specSource: string; deltaSource: string; baseHash: string }> {
+}): Promise<{ specSource: string; deltaSource: string }> {
   const canonical = await readNativeBoundedTextFile({
     root: options.paths.specsDir,
     ref: `${options.capability}/spec.md`,
@@ -65,20 +59,10 @@ async function initializeNativeDeltaProposal(options: {
   await atomicWriteText(path.join(changeRoot, ...specSource.split('/')), canonical.text, {
     containedRoot: options.paths.nativeRoot,
   });
-  const baseHash = nativeTotalSpecHash(canonical.text);
-  const inspected = inspectNativeTotalSpec(canonical.text);
   const delta: NativeDeltaDocument = {
     schema: 'comet.native.delta.v1',
     capability: options.capability,
-    base_hash: baseHash,
     base_version: 1,
-    legacy_hash: nativeLegacySectionHash(canonical.text),
-    base_requirements: Object.fromEntries(
-      inspected.requirements.map((requirement) => [
-        requirement.id,
-        nativeTotalSpecHash(requirement.raw),
-      ]),
-    ),
     operations: [],
   };
   await atomicWriteText(
@@ -86,7 +70,7 @@ async function initializeNativeDeltaProposal(options: {
     renderNativeDelta(delta),
     { containedRoot: options.paths.nativeRoot },
   );
-  return { specSource, deltaSource, baseHash };
+  return { specSource, deltaSource };
 }
 
 async function discoverNativeCapability(

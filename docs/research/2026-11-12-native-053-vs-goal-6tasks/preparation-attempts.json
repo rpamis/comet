@@ -1,0 +1,140 @@
+[
+  {
+    "stage": "旧范围 / Windows",
+    "group": "skillsbench-goal",
+    "runId": "comet-eval-33bc102d-4850-4cf5-9a88-674027172c20",
+    "exitCode": 1,
+    "rawStdoutFiles": 0,
+    "rawStdoutBytes": 0,
+    "reports": 0,
+    "consumedModelSamples": 0
+  },
+  {
+    "stage": "旧范围 / Windows",
+    "group": "skillsbench-native",
+    "runId": "comet-eval-ab14f503-3838-42ca-afb4-37da7d5830b0",
+    "exitCode": 1,
+    "rawStdoutFiles": 8,
+    "rawStdoutBytes": 0,
+    "reports": 7,
+    "consumedModelSamples": 0
+  },
+  {
+    "stage": "旧范围 / Linux 用户权限",
+    "group": "workbuddy-code-native",
+    "runId": "comet-eval-b8fc1eed-c5c9-42a3-88b7-b56e894ac72b",
+    "rawStdoutFiles": 3,
+    "rawStdoutBytes": 0,
+    "reports": 3,
+    "exitCode": 1,
+    "invalidBeforeModel": true,
+    "consumedModelSamples": 0,
+    "cause": "Root controller created mode-0700 workspace; image Agent UID was 1000"
+  },
+  {
+    "stage": "旧范围 / Linux 用户权限",
+    "group": "workbuddy-code-goal",
+    "runId": "comet-eval-be824267-6c80-47c8-a743-f6f64b84fc86",
+    "rawStdoutFiles": 3,
+    "rawStdoutBytes": 0,
+    "reports": 3,
+    "exitCode": 1,
+    "invalidBeforeModel": true,
+    "consumedModelSamples": 0,
+    "cause": "Root controller created mode-0700 workspace; image Agent UID was 1000"
+  },
+  {
+    "stage": "六题 / Native 冷构建",
+    "group": "workbuddy-code-native",
+    "runId": "comet-eval-198fdf67-6fed-43f2-a3ee-4fe56af3428c",
+    "exitCode": 1,
+    "invalidBeforeModel": true,
+    "consumedModelSamples": 0,
+    "cause": "Fixed 300-second workspace image build timeout; stopped before model execution"
+  },
+  {
+    "stage": "六题 / Native 冷构建",
+    "group": "skillsbench-native",
+    "runId": "comet-eval-511d9480-de7f-43f5-a5c1-9291f22a4226",
+    "exitCode": 1,
+    "invalidBeforeModel": true,
+    "consumedModelSamples": 0,
+    "cause": "Fixed 300-second workspace image build timeout; stopped before model execution"
+  },
+  {
+    "stage": "六题 / 隔离恢复准备",
+    "group": "workbuddy-code-native",
+    "runId": "未创建 Run",
+    "exitCode": 1,
+    "consumedModelSamples": 0,
+    "reason": "Copied controller project venv was an external symlink; public CLI owner-root check rejected it before a Run or model execution.",
+    "sourceClaim": "native-day7-r2-recovery/workbuddy-code-native.launch.json"
+  },
+  {
+    "stage": "六题 / 隔离恢复准备",
+    "group": "workbuddy-code-native",
+    "runId": "comet-eval-07eef16b-33e2-4996-8b46-37bfe0a52be4",
+    "exitCode": 1,
+    "consumedModelSamples": 0,
+    "reason": "Isolated packaged harness lacked the required schema; pytest preflight stopped before test collection and model execution.",
+    "sourceClaim": "native-day7-r2-recovery-owned/workbuddy-code-native.launch.json"
+  },
+  {
+    "stage": "六题 / 隔离恢复准备",
+    "group": "workbuddy-code-native",
+    "runId": "comet-eval-b1ad6bf5-edfe-466e-8bf0-5f516c2da1bc",
+    "exitCode": 1,
+    "consumedModelSamples": 0,
+    "reason": "Frozen asset file modes prevented setup from rewriting the copied Skill entry before run_claude; copied catalogue was incomplete. Six deterministic setup/catalogue/storage checks now pass in the isolated copy.",
+    "sourceClaim": "native-day7-r2-recovery-ready/workbuddy-code-native.launch.json"
+  },
+  {
+    "stage": "六题 / 隔离恢复准备",
+    "group": "workbuddy-code-native",
+    "runId": "未创建 Run",
+    "exitCode": 1,
+    "consumedModelSamples": 0,
+    "reason": "Copied controller project venv was an external symlink; public CLI owner-root check rejected it before a Run or model execution.",
+    "sourceClaim": "native-lru-r1-recovery/workbuddy-code-native.launch.json"
+  },
+  {
+    "stage": "六题 / 隔离恢复准备",
+    "group": "workbuddy-code-native",
+    "runId": "comet-eval-46d339ec-467b-4c8f-9fe1-28540304a25d",
+    "exitCode": 1,
+    "consumedModelSamples": 0,
+    "reason": "Isolated packaged harness lacked the required schema; pytest preflight stopped before test collection and model execution.",
+    "sourceClaim": "native-lru-r1-recovery-owned/workbuddy-code-native.launch.json"
+  },
+  {
+    "stage": "六题 / 隔离恢复准备",
+    "group": "workbuddy-code-native",
+    "runId": "comet-eval-d6110d01-e196-41e3-a2a5-342462b5511b",
+    "exitCode": 1,
+    "consumedModelSamples": 0,
+    "reason": "Frozen asset file modes prevented setup from rewriting the copied Skill entry before run_claude; copied catalogue was incomplete. Six deterministic setup/catalogue/storage checks now pass in the isolated copy.",
+    "sourceClaim": "native-lru-r1-recovery-ready/workbuddy-code-native.launch.json"
+  },
+  {
+    "stage": "六题 / 单位置启动前失败",
+    "group": "skillsbench-goal",
+    "runId": "comet-eval-0e3c17c0-fb5d-4bda-ad7f-a4084165f422",
+    "exitCode": null,
+    "consumedModelSamples": 0,
+    "task": "court-form-filling",
+    "repetition": 1,
+    "reason": "Docker/agent identity verification failed before run_claude; no raw files or report for r1. Same image completed model runs r2/r3.",
+    "evidence": "skillsbench-pdf-goal/skillsbench-goal.console.log"
+  },
+  {
+    "stage": "六题 / 单位置启动前失败",
+    "group": "workbuddy-code-native",
+    "runId": "comet-eval-0ea3b467-e010-4812-bacb-af23d553645b",
+    "exitCode": null,
+    "consumedModelSamples": 0,
+    "task": "feature-easy-lru_caching_to_tzoffset",
+    "repetition": 1,
+    "reason": "Native image construction failed before execution; r1 has no raw stdout/report; the same task image was successfully used for r2 and r3.",
+    "evidence": "workbuddy-native-recovery/workbuddy-code-native.console.log"
+  }
+]

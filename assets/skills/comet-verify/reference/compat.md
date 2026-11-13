@@ -83,26 +83,16 @@ Accepting WARNING/SUGGESTION deviations or choosing a strategy after the fourth 
 
 When verification needs OpenSpec artifacts, use the handoff status already returned by entry. Run this only if entry lacks the current comparison:
 
-```bash
-comet handoff <change-name> --hash-only
-```
+The Agent reads the current requirements, implementation and actual check results and decides which checks remain applicable. File edits do not automatically withdraw approval or require revalidation. After context loss, reload the required source text; a handoff summary cannot replace unread acceptance criteria.
 
-Read the `[HANDOFF] status:` verdict from stderr and act on it; the stdout hash stays for scripted callers and is never compared by hand:
+Autonomous executes the actual checks and records results through this Skill without requiring another verification Skill; other strategies load Superpowers verification-before-completion. Self-assessment alone cannot establish success.
 
-- `FRESH`: reuse artifact content already in context, read only acceptance sections still missing, and still verify task completion marks.
-- `STALE (changed: <files>)`: read the listed changed artifacts in full before verifying acceptance against them; if runtime's NEXT suggests `comet handoff <change-name> design --write`, run it before reading.
-- `STALE` without a file list: read every required source file in full because the recorded handoff is missing or predates the current artifacts.
+Verify owns the single final integration code review for the whole change. Build retains task or section reviews. Before selecting the verify_mode branch, review the final diff including Build review fixes:
 
-A FRESH verdict does not mean the content is still in context. After context loss, truncation, or uncertainty about what was read, reload the corresponding sources. A handoff summary cannot replace acceptance clauses that have not been read.
+- With review_mode off, record why automatic code review was skipped.
+- With review_mode standard or thorough, use an independent reviewer to examine requirements, actual diffs, checks and fixes, focusing on correctness, security and edge cases. Autonomous needs no external review Skill; other strategies load requesting-code-review once. Reuse a still-applicable review covering the final diff and inspect only affected parts after input changes. Stop if independent review is unavailable; the implementer's self-review cannot replace it.
 
-Autonomous performs the actual checks and records results under this Skill without requiring an external verification skill. Other strategies load Superpowers `verification-before-completion` through the Skill tool. No strategy may declare verification successful based only on self-assessment.
-
-Verify owns the single final integration code review for the whole change. Build retains task/section reviews only. Before taking the verify_mode branch, review the final diff, including fixes from Build reviews:
-
-- `review_mode: off`: skip automatic code review and record why in the report.
-- `review_mode: standard|thorough`: dispatch an independent reviewer across the entire change. Check requirements, actual diffs, check results, and repairs, focusing on correctness, security, and edge cases. Autonomous needs no external review skill; other strategies load requesting-code-review once. Reuse a valid review covering the current final diff. After input changes, review affected parts rather than unconditionally repeating the whole review. Stop if independent review is unavailable; implementer self-review is not a substitute.
-
-Return CRITICAL/IMPORTANT integration-review findings to Build under Step 1b. Handle non-CRITICAL deviations using Step 1b's tradeoff rules. Then follow verify_mode:
+Return CRITICAL/IMPORTANT findings to Build under Step 1b. Handle other deviations under the same decision rules, then select the verification mode.
 
 ### 2a. Light verification
 
@@ -110,24 +100,13 @@ Check all 7 items:
 
 1. Every tasks.md task is completed `[x]`.
 2. Changed files match tasks.md; compare task content against `git diff --stat` / `git diff --cached --stat` / `git diff --stat <base-ref>...HEAD`. Documentation-only edits in the neutral document set are reported next to the comparison instead of being treated as an implementation mismatch.
-3. Compilation passes; reuse Build evidence only when Runtime confirms it remains valid, otherwise rerun it.
+3. Compilation passes; the Agent judges whether Build results still apply and reruns only invalidated checks.
 4. Relevant tests pass.
 5. No obvious security issues, such as hard-coded secrets or new unsafe operations.
 6. Final integration review passes, or its omission under non-full-autonomous `review_mode: off` is recorded. Full autonomous cannot skip independent review.
 7. Core success, important failure/edge cases, and the high-risk requirements affected by this change all pass. Small changes may not omit these.
 
-To reuse a build, call `comet check run <change-name> build --local -- <program> [args...]` with the same cwd, program, and arguments used in Build. Reuse counts only when Runtime returns `reused=true`; changed inputs or environment cause an actual rerun. Evidence cwd must equal the directory where guard is later invoked (usually the project root); record subdirectory builds in a form that executes from the root (for example `npm --prefix <subdir> run build`), or declare the command's cwd in `.comet/check-policy.json` (version 2) and record it with `--cwd <subdir>` — otherwise the guard rejects the evidence with an explanation. A past conversation saying “build passed” does not justify skipping the check. Evidence is judged by "input scope": the default inputs are working-tree file contents, so commits, staging, task checkbox ticks, and environment variable changes do not invalidate evidence by default. When guard reports invalid evidence it prints the reason and changed files; handle those instead of rerunning everything. Incremental `--incremental` evidence left by Build supports preview confirmation, while `--apply` requires full evidence from the complete command.
-
-Both light and full must execute actual verification commands through Runtime. Record the intended report path first so changes to the report are not counted as changes to verification inputs. Fill in results after tests and acceptance checks finish:
-
-```bash
-comet state set <change-name> verification_report docs/superpowers/reports/YYYY-MM-DD-<change-name>-verify.md
-comet check run <change-name> verify --local -- <program> [args...]
-```
-
-Use `--local` only for deterministic local checks. Omit it for external-service checks; their results may support only one successful phase transition. Guard preview does not consume them. `--apply` rechecks them and makes them unusable again after successful advancement. After context loss or input/environment changes, let Runtime decide which checks need rerunning.
-
-The platform adapter handles ordinary Windows npm/pnpm shims. Batch arguments containing shell metacharacters are rejected. Execute multiple required commands through an existing project verification entry that propagates any failure; a successful last command must not hide an earlier failure. Manual `record-check` only stores a declaration, cannot automatically advance the phase, and shadows earlier valid Runtime evidence until a fresh `comet check run` runs. Verify and Build evidence are separate and cannot substitute for one another. Evidence for different check requirements stays independent; Runtime may reuse a local full command across Build and Verify only when argv, cwd, inputs, environment, and semantics all match. `COMET_SKIP_BUILD=1` is not a verifiable check record. Read logs through `logRef` as needed. Use `comet check run` for the first actual execution; after a failure, fix the cause and use `comet check rerun` to retry the exact command. Run guard immediately after success with no intervening `comet state` writes, and commit only after guard passes.
+Follow [ordinary commands and checks](../../comet/reference/platform-execution.md). Use platform tools, inspect original tasks and side effects, judge result applicability, and submit actual reports. Comet does not repeat checks or maintain ordinary-command content snapshots, supervision, or recovery. Light and full verification retain their acceptance requirements. Reference applicable Build results directly. Describe failures, timeouts, omitted checks, and unknown results separately. Register the report with `comet state set <change-name> verification_report <report-ref>`.
 
 The integration review uses this change's diff, tasks.md, and necessary test results. It does not replace spec coverage, Design Doc consistency, or divergence checks. `review_mode: off` skips only automatic code review, not builds, tests, security checks, or the debugging protocol.
 
@@ -177,7 +156,7 @@ comet state transition <change-name> verify-fail
 **Resolve spec divergence with the user:**
 
 - If item 6 finds content in delta spec that the Design Doc does not reflect, **pause, present a single-choice question, and wait for the user**. Do not choose automatically. Include:
-  - A: append an “Implementation Divergence” section explaining the deviation to the Design Doc. This is an allowed Verify artifact; do not trigger another Step 1b dirty-worktree decision because of this design edit. The Design Doc is a check input (not a neutral document), so after writing rerun `comet check run <change-name> verify --local -- <command>` and then `comet guard <change-name> verify --apply`.
+  - A: append an “Implementation Divergence” section explaining the deviation to the Design Doc. This is an allowed Verify artifact; do not trigger another Step 1b dirty-worktree decision because of this design edit. The Agent judges whether that document change affects previous results, runs only necessary checks, records actual results, then runs `comet guard <change-name> verify --apply`.
   - B: run `comet state transition <change-name> verify-fail` after the user chooses B, then invoke `/comet-build`. Build loads Superpowers `brainstorming` under its spec-update rules to update the Design Doc + delta spec.
   - C: accept the deviation and continue verification. Archive will mark the Design Doc `superseded-by-main-spec`.
 

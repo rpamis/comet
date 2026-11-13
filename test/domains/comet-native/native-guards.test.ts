@@ -1,192 +1,120 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { promises as fs } from 'fs';
-import os from 'os';
-import path from 'path';
-
+import '../../helpers/isolated-agent-home.js';
 import {
-  createNativeChange,
-  nativeChangeDir,
-} from '../../../domains/comet-native/native-change.js';
-import { inspectNativeGuard } from '../../../domains/comet-native/native-guards.js';
+  defaultProjectConfig,
+  writeProjectConfig,
+} from '../../../domains/comet-native/native-config.js';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, expect, it } from 'vitest';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
-import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
-import type {
-  NativeChangeState,
-  NativeProjectPaths,
-} from '../../../domains/comet-native/native-types.js';
-
-const completeBrief = `# Outcome
-Ship the feature.
-# Scope
-One capability.
-# Non-goals
-No migration.
-# Acceptance examples
-- The feature works.
-# Constraints and invariants
-Keep compatibility.
-# Decisions
-Use existing APIs.
-# Open questions
-
-# Verification expectations
-Run focused tests.
-`;
-
-describe('Native phase guards', () => {
-  let projectRoot: string;
-  let paths: NativeProjectPaths;
-  let state: NativeChangeState;
-  let changeDir: string;
-
-  beforeEach(async () => {
-    projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-guards-'));
-    paths = await nativeProjectPaths(projectRoot, '.');
-    state = await createNativeChange({
-      paths,
-      name: 'guarded-change',
-      language: 'en',
-      verificationProtocol: 'legacy-v1',
-    });
-    changeDir = nativeChangeDir(paths, state.name);
+import {
+  createNativePortableChange,
+  confirmNativePortableShape as confirmPreparedShape,
+  prepareNativePortableShapeConfirmation,
+  readNativePortableChange,
+  submitNativePortableBuilderCandidate,
+} from '../../../domains/comet-native/native-portable-runtime.js';
+import { nativeNextCommand } from '../../../domains/comet-native/native-next-command.js';
+import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
+import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
+const roots: string[] = [];
+afterEach(async () => {
+  for (const r of roots.splice(0)) await fs.rm(r, { recursive: true, force: true });
+});
+async function fixture() {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-current-guard-business-'));
+  roots.push(root);
+  await writeProjectConfig(root, defaultProjectConfig('.', 'en'));
+  const paths = await nativeProjectPaths(root, '.'),
+    name = 'guarded-change';
+  await createNativePortableChange({ paths, name, language: 'en' });
+  const dir = path.join(paths.changesDir, name),
+    stateFile = path.join(dir, 'comet-state.yaml');
+  return { root, paths, name, dir, stateFile };
+}
+it('blocks an empty Shape brief without mutating state through the current confirmation boundary', async () => {
+  const f = await fixture();
+  await fs.writeFile(path.join(f.dir, 'brief.md'), '');
+  const before = await fs.readFile(f.stateFile, 'utf8');
+  await expect(
+    prepareNativePortableShapeConfirmation({ paths: f.paths, name: f.name }),
+  ).rejects.toThrow();
+  expect(await fs.readFile(f.stateFile, 'utf8')).toBe(before);
+  const state = await readNativePortableChange(f.paths, f.name);
+  expect(state.phase).toBe('shape');
+  expect(state.shape_confirmation_hash).toBeFalsy();
+});
+it('requires explicit shared-understanding confirmation and rejects a stale confirmation without advancing Build', async () => {
+  const f = await fixture();
+  await fs.writeFile(
+    path.join(f.dir, 'brief.md'),
+    '# Acceptance examples\n- The selected workflow remains guarded.\n',
+  );
+  let state = await prepareNativePortableShapeConfirmation({
+    paths: f.paths,
+    name: f.name,
   });
-
-  afterEach(async () => {
-    await fs.rm(projectRoot, { recursive: true, force: true });
-  });
-
-  it('blocks incomplete Shape without mutating state', async () => {
-    const result = await inspectNativeGuard({
-      paths,
-      state,
-      evidence: { summary: 'ready' },
-      clarificationMode: 'sequential',
-    });
-    expect(result.valid).toBe(false);
-    expect(result.findings).toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: 'brief-section-empty' })]),
-    );
-    expect(result.findings).not.toContainEqual(
-      expect.objectContaining({ code: 'shape-confirmation-required' }),
-    );
-  });
-
-  it('does not let a confirmation flag bypass a blocking decision', async () => {
-    await fs.writeFile(
-      path.join(changeDir, 'brief.md'),
-      completeBrief.replace(
-        '# Open questions\n',
-        '# Open questions\n- [blocking] Choose the public behavior.\n',
-      ),
-    );
-    expect(
-      (
-        await inspectNativeGuard({
-          paths,
-          state,
-          evidence: { summary: 'ready', confirmed: true },
-          clarificationMode: 'sequential',
-        })
-      ).findings,
-    ).toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: 'brief-blocking-question' })]),
-    );
-
-    await fs.writeFile(path.join(changeDir, 'brief.md'), completeBrief);
-    expect(
-      await inspectNativeGuard({
-        paths,
-        state,
-        evidence: { summary: 'ready', confirmed: true },
-        clarificationMode: 'sequential',
-      }),
-    ).toEqual({
-      valid: true,
-      findings: [],
-    });
-  });
-
-  it('requires explicit shared-understanding confirmation in Batch mode', async () => {
-    await fs.writeFile(path.join(changeDir, 'brief.md'), completeBrief);
-    const result = await inspectNativeGuard({
-      paths,
-      state,
-      evidence: { summary: 'batch frontier is complete' },
-      clarificationMode: 'batch',
-    });
-
-    expect(result).toMatchObject({
-      valid: false,
-      findings: [
-        expect.objectContaining({
-          code: 'shape-confirmation-required',
-          message:
-            'Native clarification requires explicit user confirmation of the shared understanding before Build',
-        }),
+  expect(state.phase).toBe('shape');
+  expect(state.status).toBe('await-user');
+  const before = await fs.readFile(f.stateFile, 'utf8');
+  await nativeNextCommand([f.name], f.root);
+  expect(await fs.readFile(f.stateFile, 'utf8')).toBe(before);
+  await expect(
+    nativeNextCommand(
+      [
+        f.name,
+        '--confirmed',
+        '--expected-state-version',
+        String(state.state_version - 1),
+        '--expected-action',
+        'confirm-shape',
       ],
-    });
-  });
-
-  it('requires a real artifact or a no-code reason in Build', async () => {
-    await fs.writeFile(path.join(changeDir, 'brief.md'), completeBrief);
-    state = (
-      await advanceNativeChange({
-        paths,
-        name: state.name,
-        evidence: { summary: 'shape is ready', confirmed: true },
-        clarificationMode: 'batch',
-      })
-    ).change;
-    expect(
-      (
-        await inspectNativeGuard({
-          paths,
-          state,
-          evidence: { summary: 'built' },
-          clarificationMode: 'batch',
-        })
-      ).findings,
-    ).toContainEqual(expect.objectContaining({ code: 'build-evidence-missing' }));
-    expect(
-      await inspectNativeGuard({
-        paths,
-        state,
-        evidence: { summary: 'docs only', noCodeReason: 'The change only updates documentation.' },
-        clarificationMode: 'batch',
+      f.root,
+    ),
+  ).rejects.toThrow();
+  expect(await fs.readFile(f.stateFile, 'utf8')).toBe(before);
+  state = await confirmPreparedShape({ paths: f.paths, name: f.name });
+  expect(state.phase).toBe('build');
+});
+it('requires complete Agent acceptance evidence before Build can reach Verify and leaves rejected reports unchanged', async () => {
+  const f = await fixture();
+  await fs.writeFile(
+    path.join(f.dir, 'brief.md'),
+    '# Acceptance examples\n- The selected workflow remains guarded.\n',
+  );
+  const state = await confirmNativePortableShape({
+      paths: f.paths,
+      name: f.name,
+    }),
+    before = await fs.readFile(f.stateFile, 'utf8'),
+    runner = createNativeRunnerChannel();
+  for (const acceptanceReview of [
+    undefined,
+    state.acceptance.map((a) => ({
+      id: a.id,
+      status: 'known-fail' as const,
+      evidence: [],
+      note: 'SIMULATED incomplete isolated Agent report',
+    })),
+  ]) {
+    await expect(
+      submitNativePortableBuilderCandidate({
+        paths: f.paths,
+        name: f.name,
+        input: {
+          identity: runner.captureExecutionIdentity({
+            identityProvider: 'SIMULATED-fixture',
+            executionRef: 'SIMULATED-builder',
+          }),
+          summary: 'SIMULATED isolated report.',
+          addressedAcceptanceIds: state.acceptance.map((a) => a.id),
+          acceptanceReview,
+          checks: [],
+          knownLimits: [],
+        },
       }),
-    ).toEqual({ valid: true, findings: [] });
-  });
-
-  it('keeps a newly discovered blocking decision from leaving Build', async () => {
-    await fs.writeFile(path.join(changeDir, 'brief.md'), completeBrief);
-    state = (
-      await advanceNativeChange({
-        paths,
-        name: state.name,
-        evidence: { summary: 'shape is ready', confirmed: true },
-        clarificationMode: 'batch',
-      })
-    ).change;
-    await fs.writeFile(
-      path.join(changeDir, 'brief.md'),
-      completeBrief.replace(
-        '# Open questions\n',
-        '# Open questions\n- [blocking] Choose the newly discovered public behavior.\n',
-      ),
-    );
-
-    const result = await inspectNativeGuard({
-      paths,
-      state,
-      clarificationMode: 'batch',
-      evidence: {
-        summary: 'implementation paused for the decision',
-        noCodeReason: 'The decision is still unresolved.',
-        confirmed: true,
-      },
-    });
-    expect(result.findings).toContainEqual(
-      expect.objectContaining({ code: 'brief-blocking-question' }),
-    );
-  });
+    ).rejects.toThrow(/handoff is incomplete/);
+    expect(await fs.readFile(f.stateFile, 'utf8')).toBe(before);
+  }
 });

@@ -1,0 +1,1213 @@
+{
+  "base": "6b4c26f34b5969912edc04591e513ef4ad2b7d57",
+  "note": "从实际Vitest JSON报告逐断言抽取；早期失败报告包含已明确退休的旧策略及夹具迁移中的失败，不能整体算作当前通过。精确选择器采用最终正文完整名称。",
+  "fixCaseCount": 7,
+  "uniqueFixTests": 36,
+  "migrationCount": 21,
+  "uniqueMigrationTests": 49,
+  "missing": [],
+  "selections": [
+    {
+      "id": "native-docker-syntax-scope",
+      "classification": "migration",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "continues the same Native Verify after an Agent accepts an ordinary edit without content proof",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 9889.5334
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "keeps a real failed Native check failed after file edits without replay",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 5384.861099999998
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "continues Native Verify and Archive through the generated Runtime without content proof",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 12038.1594
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "blocks Native Archive when a new real check fails after an accepted pass",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 8633.791000000005
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "reuses an Agent-selected original Runtime check for a repaired Native candidate",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 8763.1348
+        }
+      ]
+    },
+    {
+      "id": "classic-compat-proven-prelaunch-retry",
+      "classification": "migration",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+          "name": "Classic command check evidence retries only a proven prelaunch failure in the same check Action without replaying a process",
+          "report": "classic-1.json",
+          "status": "passed",
+          "duration": 2206.6056
+        }
+      ]
+    },
+    {
+      "id": "native-unapproved-shape-replace-target",
+      "classification": "migration",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-target-replacement.test.ts",
+          "name": "Native Shape target replacement replaces an unapproved target without removing the canonical capability",
+          "report": "native-2.json",
+          "status": "passed",
+          "duration": 5531.654799999999
+        }
+      ]
+    },
+    {
+      "id": "native-unapproved-shape-withdraw-last-target",
+      "classification": "migration",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-agent-document-judgment.test.ts",
+          "name": "prepares a Native Shape without fixed sections or a Spec exemption phrase through source",
+          "report": "business-final.json",
+          "status": "passed",
+          "duration": 2614.3836
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-document-judgment.test.ts",
+          "name": "prepares a Native Shape without fixed sections or a Spec exemption phrase through generated",
+          "report": "business-final.json",
+          "status": "passed",
+          "duration": 3369.1695
+        },
+        {
+          "file": "test/domains/comet-native/native-shape-target-replacement.test.ts",
+          "name": "Native Shape target replacement replaces an unapproved target without removing the canonical capability",
+          "report": "native-2.json",
+          "status": "passed",
+          "duration": 5531.654799999999
+        },
+        {
+          "file": "test/domains/comet-native/native-shape-target-replacement.test.ts",
+          "name": "Native Shape target replacement preserves an explicit removal while refreshing the unapproved target set",
+          "report": "native-2.json",
+          "status": "passed",
+          "duration": 3908.9491
+        }
+      ]
+    },
+    {
+      "id": "issue-188-evidence",
+      "classification": "migration",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "continues the same Native Verify after an Agent accepts an ordinary edit without content proof",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 9889.5334
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "keeps a real failed Native check failed after file edits without replay",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 5384.861099999998
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "continues Native Verify and Archive through the generated Runtime without content proof",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 12038.1594
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "blocks Native Archive when a new real check fails after an accepted pass",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 8633.791000000005
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "reuses an Agent-selected original Runtime check for a repaired Native candidate",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 8763.1348
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "continues the original Native Run through a parent directory alias",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 9390.307099999998
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "continues the original Native Run through a generated Runtime and parent directory alias",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 12757.808700000001
+        }
+      ]
+    },
+    {
+      "id": "native-240-failed-incomplete-checks",
+      "classification": "migration",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-verifier-protocol.test.ts",
+          "name": "Native package-local Verifier protocol rejects pass when a required check failed or any criterion did not pass",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 3.2165999999999997
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "continues the same Native Verify after an Agent accepts an ordinary edit without content proof",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 9889.5334
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "keeps a real failed Native check failed after file edits without replay",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 5384.861099999998
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "continues Native Verify and Archive through the generated Runtime without content proof",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 12038.1594
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "blocks Native Archive when a new real check fails after an accepted pass",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 8633.791000000005
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "reuses an Agent-selected original Runtime check for a repaired Native candidate",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 8763.1348
+        }
+      ]
+    },
+    {
+      "id": "issue-391-reference-sync",
+      "classification": "migration",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-reliability-regressions.test.ts",
+          "name": "Native reliability issue regressions audits reference sync and preserves unaffected passes while rejecting semantic and stale updates",
+          "report": "reliability-4.json",
+          "status": "passed",
+          "duration": 3520.861899999998
+        }
+      ]
+    },
+    {
+      "id": "native-classic-check-plan-continuation",
+      "classification": "migration",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "name": "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=false)",
+          "report": "native-selection-final.json",
+          "status": "passed",
+          "duration": 3680.2520999999997
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "name": "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=true)",
+          "report": "native-selection-final.json",
+          "status": "passed",
+          "duration": 4252.936600000001
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "name": "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=failed-later)",
+          "report": "native-selection-final.json",
+          "status": "passed",
+          "duration": 5649.020199999999
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 17640.1014
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 7297.1847000000125
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 7454.113299999997
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK full Verify rounds retains the exact external check plan without adding local reuse",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 16214.520799999998
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK tweak Verify rounds retains the exact external check plan without adding local reuse",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 7858.516400000008
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK hotfix Verify rounds retains the exact external check plan without adding local reuse",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 7744.883099999992
+        }
+      ]
+    },
+    {
+      "id": "native-verifier-failure-original-claim",
+      "classification": "migration",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "name": "blocked Verifier recovery command contract ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: running",
+          "report": "blocked-2.json",
+          "status": "passed",
+          "duration": 16755.277000000002
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "name": "blocked Verifier recovery command contract ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: changed-requirements",
+          "report": "blocked-2.json",
+          "status": "passed",
+          "duration": 16638.27870000001
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "name": "blocked Verifier recovery command contract ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: unknown",
+          "report": "blocked-2.json",
+          "status": "passed",
+          "duration": 16934.057100000005
+        }
+      ]
+    },
+    {
+      "id": "native-archive-readonly-candidate-diagnostics",
+      "classification": "migration",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "name": "blocked Verifier recovery command contract keeps Archive and Doctor read-only after an Agent-accepted edit without content proof",
+          "report": "blocked-2.json",
+          "status": "passed",
+          "duration": 19219.2575
+        }
+      ]
+    },
+    {
+      "id": "native-archive-implementation-repair-continuation",
+      "classification": "migration",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "name": "blocked Verifier recovery command contract repairs an implementation edited after Archive approval through explicit revision and original Shape",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 28011.3808
+        }
+      ]
+    },
+    {
+      "id": "native-branch-and-archive-repair-combination",
+      "classification": "migration",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "name": "blocked Verifier recovery command contract recovers a branch rename followed by implementation changes without replaying one-shot checks",
+          "report": "blocked-2.json",
+          "status": "passed",
+          "duration": 32773.5176
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-implementation",
+      "classification": "migration",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "name": "continues an authorized implementation edit without requesting the same decision again",
+          "report": "native-authorized-final.json",
+          "status": "passed",
+          "duration": 7831.082899999999
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "name": "blocked Verifier recovery command contract hands the existing user revision to the successor Builder without requiring a rewrite",
+          "report": "blocked-2.json",
+          "status": "passed",
+          "duration": 10968.4994
+        }
+      ]
+    },
+    {
+      "id": "native-build-managed-check-reuse",
+      "classification": "migration",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "name": "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=false)",
+          "report": "native-selection-final.json",
+          "status": "passed",
+          "duration": 3680.2520999999997
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "name": "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=true)",
+          "report": "native-selection-final.json",
+          "status": "passed",
+          "duration": 4252.936600000001
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "name": "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=failed-later)",
+          "report": "native-selection-final.json",
+          "status": "passed",
+          "duration": 5649.020199999999
+        },
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "name": "Native dispatch CLI presentation executes managed Build checks through public receipt dispatch and resumes the Builder",
+          "report": "public-managed-final.json",
+          "status": "passed",
+          "duration": 4476.7893
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-authoritative-handoff-sources",
+      "classification": "migration",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+          "name": "Classic workflow application through the public Runtime SDK keeps check inputs unchanged when adopting a raw SDK Run into its portable projection",
+          "report": "raw-adoption-final.json",
+          "status": "passed",
+          "duration": 3495.7581999999998
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+          "name": "Classic workflow application through the public Runtime SDK keeps Build authoritative until original Runtime check evidence is accepted after an Agent-reviewed edit",
+          "report": "recovery-final.json",
+          "status": "passed",
+          "duration": 931.8180000000002
+        },
+        {
+          "file": "test/domains/comet-classic/classic-application.test.ts",
+          "name": "runs actual full domain checks with source.js and archive recovery=false",
+          "report": "classic-composition-2.json",
+          "status": "passed",
+          "duration": 26329.022599999997
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-reuse-read-overhead",
+      "classification": "migration",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 17640.1014
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 7297.1847000000125
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 7454.113299999997
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-readonly.test.ts",
+          "name": "Classic SDK read-only diagnostics reads a current writable projection without writes and repairs only stale projections",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 1232.3784
+        }
+      ]
+    },
+    {
+      "id": "native-portable-explicit-interrupted-check-retry",
+      "classification": "migration",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "name": "Native portable Runtime vertical path returns a retry action for an interrupted check and reruns it explicitly",
+          "report": "recovery-final.json",
+          "status": "passed",
+          "duration": 18060.8615
+        }
+      ]
+    },
+    {
+      "id": "native-explicit-document-write-policy-update",
+      "classification": "migration",
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/workflow-contract.test.ts",
+          "name": "workflow contract normalization merges Native document writes when explicit allow replaces revert",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 14.256400000000042
+        },
+        {
+          "file": "test/domains/workflow-contract/workflow-contract.test.ts",
+          "name": "workflow contract normalization merges Native document writes when omitted policy preserves revert",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 1.511199999999974
+        },
+        {
+          "file": "test/domains/workflow-contract/workflow-contract.test.ts",
+          "name": "workflow contract normalization merges Native document writes when explicit revert replaces allow",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 1.3605999999999767
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "continues the same Native Verify after an Agent accepts an ordinary edit without content proof",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 9889.5334
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "keeps a real failed Native check failed after file edits without replay",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 5384.861099999998
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "continues Native Verify and Archive through the generated Runtime without content proof",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 12038.1594
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "blocks Native Archive when a new real check fails after an accepted pass",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 8633.791000000005
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "reuses an Agent-selected original Runtime check for a repaired Native candidate",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 8763.1348
+        }
+      ]
+    },
+    {
+      "id": "native-portable-orphan-interruption-persistence",
+      "classification": "migration",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+          "name": "Native portable unconfirmed check termination persists a proven orphan interruption before allowing an explicit check retry",
+          "report": "recovery-final.json",
+          "status": "passed",
+          "duration": 3150.9310000000005
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "name": "Native portable Runtime vertical path recovers an orphaned running check only when process exit can be proven",
+          "report": "recovery-final.json",
+          "status": "passed",
+          "duration": 27908.284700000004
+        }
+      ]
+    },
+    {
+      "id": "classic-existing-tests-as-verification-command",
+      "classification": "migration",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 17640.1014
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 7297.1847000000125
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 7454.113299999997
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK full Verify rounds reports the current continuation after failure and accepts a revised report after Build repair",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 24036.878600000004
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK tweak Verify rounds reports the current continuation after failure and accepts a revised report after Build repair",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 13161.828899999993
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK hotfix Verify rounds reports the current continuation after failure and accepts a revised report after Build repair",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 13267.659199999995
+        },
+        {
+          "file": "test/domains/skill/classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing routes SDK Verify review failures and checked reports through one Run",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 3.6990000000000123
+        }
+      ]
+    },
+    {
+      "id": "classic-custom-validation-script-and-result",
+      "classification": "migration",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 17640.1014
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 7297.1847000000125
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 7454.113299999997
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK full Verify rounds reports the current continuation after failure and accepts a revised report after Build repair",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 24036.878600000004
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK tweak Verify rounds reports the current continuation after failure and accepts a revised report after Build repair",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 13161.828899999993
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK hotfix Verify rounds reports the current continuation after failure and accepts a revised report after Build repair",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 13267.659199999995
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK full Verify rounds keeps the selected report path and original check after Agent-accepted report edits",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 16747.5564
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK tweak Verify rounds keeps the selected report path and original check after Agent-accepted report edits",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 8829.519799999995
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK hotfix Verify rounds keeps the selected report path and original check after Agent-accepted report edits",
+          "report": "migration-gaps.json",
+          "status": "passed",
+          "duration": 8895.175099999993
+        }
+      ]
+    },
+    {
+      "id": "classic-legacy-verify-receipt-continuation",
+      "classification": "fix",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-legacy-check-continuation.test.ts",
+          "name": "accepts an original legacy Verify receipt after business continuation through source without repeating the command",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 12775.0743
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-legacy-check-continuation.test.ts",
+          "name": "accepts an original legacy Verify receipt after business continuation through generated without repeating the command",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 14840.757599999999
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-legacy-check-continuation.test.ts",
+          "name": "retains original receipt, latest failure, and pending user decision checks for legacy continuation",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 10586.638899999998
+        }
+      ]
+    },
+    {
+      "id": "classic-approved-preset-upgrade-continuation",
+      "classification": "fix",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "runs first managed checks after 'tweak' upgrades to full through 'source'",
+          "report": "classic-rounds-2.json",
+          "status": "passed",
+          "duration": 21774.792699999998
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "runs first managed checks after 'tweak' upgrades to full through 'generated'",
+          "report": "classic-rounds-2.json",
+          "status": "passed",
+          "duration": 26752.175399999996
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "runs first managed checks after 'hotfix' upgrades to full through 'source'",
+          "report": "classic-rounds-2.json",
+          "status": "passed",
+          "duration": 22320.2053
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "runs first managed checks after 'hotfix' upgrades to full through 'generated'",
+          "report": "classic-rounds-2.json",
+          "status": "passed",
+          "duration": 33812.6624
+        }
+      ]
+    },
+    {
+      "id": "classic-committed-check-without-auxiliary-receipt",
+      "classification": "fix",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-legacy-check-continuation.test.ts",
+          "name": "continues a committed Classic Verify through source after losing auxiliary receipts without replay",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 11672.473000000002
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-legacy-check-continuation.test.ts",
+          "name": "continues a committed Classic Verify through generated after losing auxiliary receipts without replay",
+          "report": "runtime-smoke-final.json",
+          "status": "passed",
+          "duration": 15104.7555
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK interrupted check recovery returns the original claim and completed check request, then resumes without executing again",
+          "report": "classic-receipts-3.json",
+          "status": "passed",
+          "duration": 7425.802199999999
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK original execution receipts keeps a previously committed successful check usable without new receipts (checkpoint recovery=false)",
+          "report": "classic-receipts-3.json",
+          "status": "passed",
+          "duration": 5429.990300000001
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK original execution receipts keeps a previously committed successful check usable without new receipts (checkpoint recovery=true)",
+          "report": "classic-receipts-3.json",
+          "status": "passed",
+          "duration": 5988.291000000001
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK original execution receipts rejects failed-result in recovery and direct SDK evidence without replay",
+          "report": "classic-receipts-3.json",
+          "status": "passed",
+          "duration": 6322.003000000001
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK original execution receipts rejects removed-binding in recovery and direct SDK evidence without replay",
+          "report": "classic-receipts-3.json",
+          "status": "passed",
+          "duration": 6125.532099999997
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK original execution receipts rejects old-claim in recovery and direct SDK evidence without replay",
+          "report": "classic-receipts-3.json",
+          "status": "passed",
+          "duration": 6005.871700000003
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK original execution receipts rejects changed-receipt in recovery and direct SDK evidence without replay",
+          "report": "classic-receipts-3.json",
+          "status": "passed",
+          "duration": 6203.073499999999
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK original execution receipts rejects missing-receipt in recovery and direct SDK evidence without replay",
+          "report": "classic-receipts-3.json",
+          "status": "passed",
+          "duration": 6307.402600000001
+        }
+      ]
+    },
+    {
+      "id": "classic-reverified-full-delivery-without-document-proof",
+      "classification": "fix",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK full Verify rounds completes the source Runtime lifecycle across sessions, declared outputs and a reopened verification",
+          "report": "classic-full-4.json",
+          "status": "passed",
+          "duration": 43380.6679
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK full Verify rounds completes the generated Runtime lifecycle across sessions, declared outputs and a reopened verification",
+          "report": "classic-full-4.json",
+          "status": "passed",
+          "duration": 53504.1394
+        }
+      ]
+    },
+    {
+      "id": "classic-composed-archive-fixed-command-scope",
+      "classification": "fix",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-application.test.ts",
+          "name": "runs actual full domain checks with source.js and archive recovery=false",
+          "report": "classic-composition-2.json",
+          "status": "passed",
+          "duration": 26329.022599999997
+        },
+        {
+          "file": "test/domains/comet-classic/classic-application.test.ts",
+          "name": "runs actual hotfix domain checks with source.js and archive recovery=false",
+          "report": "classic-composition-2.json",
+          "status": "passed",
+          "duration": 18073.1875
+        },
+        {
+          "file": "test/domains/comet-classic/classic-application.test.ts",
+          "name": "runs actual tweak domain checks with source.js and archive recovery=false",
+          "report": "classic-composition-2.json",
+          "status": "passed",
+          "duration": 17900.9533
+        },
+        {
+          "file": "test/domains/comet-classic/classic-application.test.ts",
+          "name": "runs actual tweak domain checks with docs/openspec/changes/example/proposal.md and archive recovery=false",
+          "report": "classic-composition-2.json",
+          "status": "passed",
+          "duration": 18266.6388
+        },
+        {
+          "file": "test/domains/comet-classic/classic-application.test.ts",
+          "name": "runs actual full domain checks with docs/superpowers/plans/example-plan.md and archive recovery=false",
+          "report": "classic-composition-2.json",
+          "status": "passed",
+          "duration": 25785.53450000001
+        },
+        {
+          "file": "test/domains/comet-classic/classic-application.test.ts",
+          "name": "runs actual full domain checks with docs/superpowers/specs/example-design.md and archive recovery=false",
+          "report": "classic-composition-2.json",
+          "status": "passed",
+          "duration": 26191.6308
+        },
+        {
+          "file": "test/domains/comet-classic/classic-application.test.ts",
+          "name": "runs actual tweak domain checks with docs/openspec/changes/example/proposal.md and archive recovery=true",
+          "report": "classic-composition-2.json",
+          "status": "passed",
+          "duration": 18908.28700000001
+        },
+        {
+          "file": "test/domains/comet-classic/classic-application.test.ts",
+          "name": "runs actual full domain checks with docs/superpowers/plans/example-plan.md and archive recovery=true",
+          "report": "classic-composition-2.json",
+          "status": "passed",
+          "duration": 26854.564199999993
+        }
+      ]
+    },
+    {
+      "id": "native-proven-orphan-check-explicit-retry",
+      "classification": "fix",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+          "name": "Native portable unconfirmed check termination persists a proven orphan interruption before allowing an explicit check retry",
+          "report": "recovery-final.json",
+          "status": "passed",
+          "duration": 3150.9310000000005
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+          "name": "Native portable unconfirmed check termination preserves the registered process and blocks retries for runtime checks",
+          "report": "recovery-final.json",
+          "status": "passed",
+          "duration": 2404.9062000000004
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+          "name": "Native portable unconfirmed check termination preserves the registered process and blocks retries for verifier checks",
+          "report": "recovery-final.json",
+          "status": "passed",
+          "duration": 2334.473
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+          "name": "Native portable unconfirmed check termination preserves the registered process and blocks retries for legacy-verifier checks",
+          "report": "recovery-final.json",
+          "status": "passed",
+          "duration": 2398.254499999999
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "name": "Native portable Runtime vertical path returns a retry action for an interrupted check and reruns it explicitly",
+          "report": "recovery-final.json",
+          "status": "passed",
+          "duration": 18060.8615
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "name": "Native portable Runtime vertical path recovers an orphaned running check only when process exit can be proven",
+          "report": "recovery-final.json",
+          "status": "passed",
+          "duration": 27908.284700000004
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "name": "Native portable Runtime vertical path does not infer that an external Verifier ended when its dispatch process exits",
+          "report": "recovery-final.json",
+          "status": "passed",
+          "duration": 1447.1656999999977
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "name": "Native portable Runtime vertical path returns an interrupted non-repeatable check to Build before exposing retry",
+          "report": "mixed-3.json",
+          "status": "passed",
+          "duration": 6187.973099999996
+        }
+      ]
+    },
+    {
+      "id": "badcase-large-baseline-registry",
+      "classification": "fix",
+      "tests": [
+        {
+          "file": "test/scripts/badcase-registration.test.ts",
+          "name": "continuous badcase registration reads a committed baseline registry larger than the default process output buffer",
+          "report": "registry-final.json",
+          "status": "passed",
+          "duration": 462.4336999999996
+        }
+      ]
+    }
+  ],
+  "reportRuns": [
+    {
+      "file": "blocked-2.json",
+      "passed": 9,
+      "failed": 0,
+      "pending": 18
+    },
+    {
+      "file": "business-final.json",
+      "passed": 21,
+      "failed": 1,
+      "pending": 0
+    },
+    {
+      "file": "classic-1.json",
+      "passed": 214,
+      "failed": 40,
+      "pending": 2
+    },
+    {
+      "file": "classic-composition-2.json",
+      "passed": 8,
+      "failed": 0,
+      "pending": 26
+    },
+    {
+      "file": "classic-composition-final.json",
+      "passed": 0,
+      "failed": 8,
+      "pending": 26
+    },
+    {
+      "file": "classic-full-3.json",
+      "passed": 0,
+      "failed": 2,
+      "pending": 78
+    },
+    {
+      "file": "classic-full-4.json",
+      "passed": 2,
+      "failed": 0,
+      "pending": 78
+    },
+    {
+      "file": "classic-receipts-3.json",
+      "passed": 8,
+      "failed": 0,
+      "pending": 72
+    },
+    {
+      "file": "classic-rounds-2.json",
+      "passed": 22,
+      "failed": 2,
+      "pending": 56
+    },
+    {
+      "file": "final-recovery-counters.json",
+      "passed": 2,
+      "failed": 1,
+      "pending": 127
+    },
+    {
+      "file": "legacy-before-actual.json",
+      "passed": 0,
+      "failed": 1,
+      "pending": 2
+    },
+    {
+      "file": "legacy-before-regression.json",
+      "passed": 0,
+      "failed": 1,
+      "pending": 2
+    },
+    {
+      "file": "legacy-final.json",
+      "passed": 5,
+      "failed": 0,
+      "pending": 0
+    },
+    {
+      "file": "legacy-source-after-2.json",
+      "passed": 2,
+      "failed": 0,
+      "pending": 1
+    },
+    {
+      "file": "legacy-source-after.json",
+      "passed": 1,
+      "failed": 1,
+      "pending": 1
+    },
+    {
+      "file": "migration-gaps.json",
+      "passed": 22,
+      "failed": 5,
+      "pending": 511
+    },
+    {
+      "file": "mixed-3.json",
+      "passed": 134,
+      "failed": 5,
+      "pending": 0
+    },
+    {
+      "file": "mixed-failed-4.json",
+      "passed": 5,
+      "failed": 0,
+      "pending": 95
+    },
+    {
+      "file": "native-1.json",
+      "passed": 134,
+      "failed": 14,
+      "pending": 9
+    },
+    {
+      "file": "native-2.json",
+      "passed": 39,
+      "failed": 0,
+      "pending": 0
+    },
+    {
+      "file": "native-authorized-final.json",
+      "passed": 1,
+      "failed": 0,
+      "pending": 203
+    },
+    {
+      "file": "native-portable-blocked-1.json",
+      "passed": 40,
+      "failed": 42,
+      "pending": 0
+    },
+    {
+      "file": "native-selection-final.json",
+      "passed": 3,
+      "failed": 1,
+      "pending": 200
+    },
+    {
+      "file": "orphan-red.json",
+      "passed": 0,
+      "failed": 1,
+      "pending": 6
+    },
+    {
+      "file": "public-managed-final.json",
+      "passed": 1,
+      "failed": 0,
+      "pending": 17
+    },
+    {
+      "file": "raw-adoption-final.json",
+      "passed": 1,
+      "failed": 0,
+      "pending": 98
+    },
+    {
+      "file": "recovery-final.json",
+      "passed": 8,
+      "failed": 1,
+      "pending": 128
+    },
+    {
+      "file": "recovery-policy-3.json",
+      "passed": 34,
+      "failed": 2,
+      "pending": 0
+    },
+    {
+      "file": "registry-final.json",
+      "passed": 18,
+      "failed": 0,
+      "pending": 0
+    },
+    {
+      "file": "registry-red.json",
+      "passed": 0,
+      "failed": 1,
+      "pending": 17
+    },
+    {
+      "file": "reliability-4.json",
+      "passed": 4,
+      "failed": 1,
+      "pending": 0
+    },
+    {
+      "file": "runtime-smoke-final.json",
+      "passed": 12,
+      "failed": 0,
+      "pending": 0
+    }
+  ],
+  "checks": {
+    "typescript": "passed",
+    "generatedRuntimes": "passed",
+    "sourceEslint": "passed with existing warnings",
+    "badcaseRegistration": "passed against base and local declaration",
+    "fullLint": "blocked by existing .ruff_cache top-level directory",
+    "extraTestEslint": "four pre-existing explicit-any errors in test/scripts/badcase-registration.test.ts; three pre-existing unused binding warnings",
+    "notRun": [
+      "repository full suite",
+      "real model Eval: not authorized",
+      "npm package/install",
+      "real Agent platform Hook",
+      "performance comparison"
+    ]
+  },
+  "afterNativeMerge": {
+    "base": "3142becf402032d8394e51f59c774e39a2241160",
+    "fixCases": 7,
+    "passed": 36,
+    "failed": 0,
+    "missing": [],
+    "report": "Temp/workflow-review-current-fixes.json",
+    "typescript": "passed",
+    "generated": "passed",
+    "badcase": "passed against 3142becf",
+    "sourceEslint": "0 errors, 9 existing warnings",
+    "fullLint": "architecture blocked by existing .ruff_cache; a temporary test build lock was also present while tests ran"
+  }
+}

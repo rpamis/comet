@@ -1,16 +1,12 @@
-import { resolveClassicRunDirectory } from '../../../domains/comet-classic/classic-runtime-paths.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  computeContextHash,
-  validateClassicSdkDesignContext,
-  writeClassicSdkDesignContext,
-} from '../../../domains/comet-classic/classic-handoff.js';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
-import { readRunState } from '../../../domains/engine/state.js';
-import { readClassicState } from '../../../domains/comet-classic/classic-store.js';
+import {
+  resolveClassicDesignContext,
+  validateClassicSdkDesignContext,
+} from '../../../domains/comet-classic/classic-handoff.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
 describe('Classic handoff material reuse', () => {
@@ -47,41 +43,34 @@ describe('Classic handoff material reuse', () => {
   }
 
   it.each(['off', 'beta'] as const)(
-    'reads each source once per %s preparation and once per commit validation',
+    'reads only the original proposal for %s handoff references',
     async (contextCompression) => {
       await initializeDesignContext();
       const open = vi.spyOn(fs, 'open');
       const options = { projectRoot: root, changeDir, change: 'demo', contextCompression };
-      const prepared = await writeClassicSdkDesignContext(options);
+      const prepared = await resolveClassicDesignContext(options);
+      expect(prepared).toEqual({
+        handoffContext: 'openspec/changes/demo/proposal.md',
+        handoffHash: null,
+      });
       for (const file of sources)
-        expect(open.mock.calls.filter(([target]) => String(target) === file)).toHaveLength(1);
+        expect(open.mock.calls.filter(([target]) => String(target) === file)).toHaveLength(
+          file === sources[0] ? 1 : 0,
+        );
       open.mockClear();
       expect(await validateClassicSdkDesignContext({ ...options, ...prepared })).toBe(true);
       for (const file of sources)
-        expect(open.mock.calls.filter(([target]) => String(target) === file)).toHaveLength(1);
-      expect(prepared.handoffHash).toBe(
-        await computeContextHash(root, changeDir, 'openspec/changes/demo'),
-      );
-      const document = JSON.parse(
-        await fs.readFile(path.join(root, prepared.handoffContext), 'utf8'),
-      );
-      expect(document.files).toHaveLength(sources.length);
-      if (contextCompression === 'beta') {
-        const markdown = await fs.readFile(
-          path.join(root, prepared.handoffContext.replace(/\.json$/u, '.md')),
-          'utf8',
+        expect(open.mock.calls.filter(([target]) => String(target) === file)).toHaveLength(
+          file === sources[0] ? 1 : 0,
         );
-        for (let index = 0; index < 10; index += 1) {
-          expect(markdown).toContain(`## openspec/changes/demo/specs/capability-${index}/spec.md`);
-        }
-        expect(markdown).toContain('```md\n# spec.md');
-        expect(markdown).not.toContain('No delta spec files found.');
-      }
+      await expect(fs.stat(path.join(changeDir, '.comet/handoff'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
     },
   );
 
   it.each(['edit', 'add', 'remove'] as const)(
-    'rechecks source %s after preparing a handoff',
+    'keeps the original handoff reference after Agent-managed source %s',
     async (change) => {
       await initializeDesignContext();
       const options = {
@@ -90,15 +79,16 @@ describe('Classic handoff material reuse', () => {
         change: 'demo',
         contextCompression: 'off' as const,
       };
-      const prepared = await writeClassicSdkDesignContext(options);
-      if (change === 'edit') await fs.appendFile(sources[0], '\nchanged\n');
+      const prepared = await resolveClassicDesignContext(options);
+      if (change === 'edit') await fs.appendFile(sources[0], '\nUpdated source.\n');
       else if (change === 'remove') await fs.unlink(sources.at(-1)!);
       else {
-        const spec = path.join(changeDir, 'specs', 'new', 'spec.md');
-        await fs.mkdir(path.dirname(spec));
-        await fs.writeFile(spec, '# New requirement\n');
+        const spec = path.join(changeDir, 'specs/new/spec.md');
+        await fs.mkdir(path.dirname(spec), { recursive: true });
+        await fs.writeFile(spec, 'A new requirement.\n');
       }
-      expect(await validateClassicSdkDesignContext({ ...options, ...prepared })).toBe(false);
+      expect(await validateClassicSdkDesignContext({ ...options, ...prepared })).toBe(true);
+      expect(prepared.handoffContext).toBe('openspec/changes/demo/proposal.md');
     },
   );
 
@@ -110,7 +100,7 @@ describe('Classic handoff material reuse', () => {
       change: 'demo',
       contextCompression: 'off' as const,
     };
-    const prepared = await writeClassicSdkDesignContext(options);
+    const prepared = await resolveClassicDesignContext(options);
     await fs.unlink(sources[0]);
     try {
       await fs.symlink(sources[1], sources[0]);
@@ -121,39 +111,7 @@ describe('Classic handoff material reuse', () => {
       throw error;
     }
     await expect(validateClassicSdkDesignContext({ ...options, ...prepared })).rejects.toThrow(
-      /symbolic link|junction/i,
-    );
-  });
-
-  it('releases only its stale handoff claim so a changed source can be retried', async () => {
-    const run = (args: string[]) =>
-      runClassicCli(args, undefined, { projectRoot: root, invocationCwd: root });
-    expect((await run(['state', 'init', 'demo', 'full', '--runtime', 'compat'])).exitCode).toBe(0);
-    expect((await run(['state', 'transition', 'demo', 'open-complete'])).exitCode).toBe(0);
-    const rename = fs.rename.bind(fs);
-    let changed = false;
-    vi.spyOn(fs, 'rename').mockImplementation(async (...args: Parameters<typeof fs.rename>) => {
-      const result = await rename(...args);
-      if (
-        !changed &&
-        String(args[1]).endsWith(`${path.sep}handoff${path.sep}design-context.json`)
-      ) {
-        changed = true;
-        await fs.appendFile(sources[0], '\nsource changed during preparation\n');
-      }
-      return result;
-    });
-    const rejected = await run(['handoff', 'demo', 'design', '--write']);
-    expect(changed).toBe(true);
-    expect(rejected.exitCode).not.toBe(0);
-    expect(rejected.stderr).toContain('handoff sources changed before completion');
-    expect((await readClassicState(changeDir)).classic?.handoffHash).toBeNull();
-    expect((await readRunState(await resolveClassicRunDirectory(changeDir)))?.pending).toBeNull();
-    const retried = await run(['handoff', 'demo', 'design', '--write']);
-    expect(retried.exitCode, retried.stderr).toBe(0);
-    expect((await readRunState(await resolveClassicRunDirectory(changeDir)))?.pending).toBeNull();
-    expect((await readClassicState(changeDir)).classic?.handoffHash).toBe(
-      await computeContextHash(root, changeDir, 'openspec/changes/demo'),
+      /regular file|symbolic link|junction/i,
     );
   });
 });

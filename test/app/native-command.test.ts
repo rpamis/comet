@@ -14,6 +14,21 @@ vi.mock('../../app/commands/comet-task-context.js', () => ({
 }));
 
 describe('Native command facade', () => {
+  it('does not learn a claim or repeated outcome without new completed work', async () => {
+    runNativeCliDetailed.mockResolvedValue({
+      dispatch: { command: 'next', exitCode: 0, workflowCompleted: false },
+      output: { exitCode: 0, stdout: '{}' },
+      experience: {
+        lifecycle: { changedPaths: [], artifactRefs: [] },
+        outcome: { reviewResolved: false, failureResolved: false },
+      },
+    });
+    const { runNativeFacade } = await import('../../app/commands/native.js');
+    await runNativeFacade(['next', 'change-name', '--session', 'builder']);
+    expect(recordCometWorkflowResult).not.toHaveBeenCalled();
+    await runNativeFacade(['next', 'change-name', '--comet-task', 'explicit completion']);
+    expect(recordCometWorkflowResult).toHaveBeenCalledTimes(1);
+  });
   it('does not learn a successful archive from a dry-run preview', async () => {
     runNativeCli.mockResolvedValue({ exitCode: 0, stdout: JSON.stringify({ ready: false }) });
     const { runNativeFacade } = await import('../../app/commands/native.js');

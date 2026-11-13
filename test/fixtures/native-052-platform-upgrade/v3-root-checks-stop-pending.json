@@ -1,0 +1,2073 @@
+{
+  "provenance": {
+    "package": "@rpamis/comet",
+    "version": "0.5.2",
+    "packageRoot": "C:/Users/BENYM/AppData/Local/Temp/comet-052-cli-package-626acda290b5479fb72b05334de5c0e5/package",
+    "simulation": "SIMULATED Agent reports/User approvals. Real published Factory, validators, state transitions, Git worktrees and explicitly selected harmless Node failure check. No model or Eval.",
+    "protocolLog": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-supervisor-upgrade-IZ8VtH\\protocol-requests.json"
+  },
+  "run": {
+    "protocolVersion": 1,
+    "schemaVersion": 1,
+    "runId": "published-root-stop",
+    "revision": 10,
+    "workflow": {
+      "id": "comet-native",
+      "version": "3",
+      "hash": "2ad17ce994b28ee081494a62e7f68eeae671bf8cc9c7af893940a5920db43dbd"
+    },
+    "definitionHashes": {
+      "[\"comet-native\",\"3\"]": "2ad17ce994b28ee081494a62e7f68eeae671bf8cc9c7af893940a5920db43dbd"
+    },
+    "initialStateHash": "77da84b43cdefa274186fac0a2a26b8e1bb224b8c3be2a9558f4238d0404f14e",
+    "input": {
+      "artifactRootRef": "docs",
+      "maxVerifyFailures": 1,
+      "name": "published-root-stop",
+      "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-supervisor-upgrade-IZ8VtH\\published-root-stop"
+    },
+    "state": {
+      "acceptance": [
+        {
+          "id": "A1",
+          "reason": null,
+          "result": "pending",
+          "source": "brief.md",
+          "text": "The selected workflow resumes."
+        }
+      ],
+      "archived": false,
+      "blockers": [
+        {
+          "acceptance_ids": [],
+          "owner": "user",
+          "reason": {
+            "text": "Runtime checks failed: harmless-failure. Preserve their receipts and submit a new Builder candidate after repair.",
+            "truncated": false
+          },
+          "resolution_action": "await-user"
+        }
+      ],
+      "brief": "brief.md",
+      "builder_handoff": {
+        "acceptance_review": [
+          {
+            "evidence": [
+              "SIMULATED protocol evidence"
+            ],
+            "id": "A1",
+            "note": "SIMULATED Agent",
+            "status": "implemented-with-evidence"
+          }
+        ],
+        "addressed_acceptance_ids": [
+          "A1"
+        ],
+        "builder_execution_ref": "simulated-agent-build.builder",
+        "candidate_id": "25377774716af12ad7b83ed980b1bc99b57b0fb8b33140d4460f18c4e24bd2a7",
+        "checks": [
+          {
+            "name": {
+              "text": "Not executed",
+              "truncated": false
+            },
+            "note": {
+              "text": "SIMULATED Agent report",
+              "truncated": false
+            },
+            "result": "not-run"
+          }
+        ],
+        "checks_truncated": false,
+        "identity_provider": "skill-coordinated",
+        "iteration": 1,
+        "known_limits": [
+          {
+            "text": "SIMULATED report",
+            "truncated": false
+          }
+        ],
+        "known_limits_truncated": false,
+        "review": null,
+        "submitted_at": "2026-11-10T15:22:46.779Z",
+        "summary": {
+          "text": "SIMULATED Agent candidate report",
+          "truncated": false
+        }
+      },
+      "created_at": "2026-11-10T15:22:46.359Z",
+      "document_constraints_version": 3,
+      "history": [
+        {
+          "attempt": 0,
+          "completed_at": "2026-11-10T15:22:48.412Z",
+          "goal_cycle": 1,
+          "iteration": 1,
+          "outcome": "recovery",
+          "summary": {
+            "text": "Runtime checks failed: harmless-failure. Preserve their receipts and submit a new Builder candidate after repair.",
+            "truncated": false
+          },
+          "unresolved_ids": []
+        }
+      ],
+      "history_overflow": {
+        "dropped_entries": 0,
+        "first_dropped_at": null,
+        "last_dropped_at": null,
+        "outcome_counts": {
+          "blocked": 0,
+          "execution-error": 0,
+          "fail": 0,
+          "pass": 0,
+          "recovery": 0
+        }
+      },
+      "language": "en",
+      "loop": {
+        "attempt": 0,
+        "execution_failure_count": 0,
+        "failed_iteration_count": 1,
+        "goal_cycle": 1,
+        "iteration": 1,
+        "next_action": "await-user",
+        "no_progress_count": 0,
+        "previous_unresolved_ids": [],
+        "retry_epoch": 0,
+        "stage": "await-user",
+        "stop_reason": "budget"
+      },
+      "name": "published-root-stop",
+      "phase": "verify",
+      "schema": "comet.native.v4",
+      "shape_confirmation_hash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+      "shape_semantic_snapshot": {
+        "artifacts": [
+          {
+            "auxiliary": [],
+            "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+            "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+            "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+            "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+            "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+            "source": "brief.md"
+          },
+          {
+            "auxiliary": [],
+            "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+            "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+            "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+            "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+            "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+            "source": "specs/workflow/spec.md"
+          }
+        ],
+        "schema": "comet.native.shape-semantics.v1"
+      },
+      "spec_changes": [
+        {
+          "capability": "workflow",
+          "operation": "create",
+          "source": "specs/workflow/spec.md"
+        }
+      ],
+      "state_version": 5,
+      "status": "await-user",
+      "verification": null,
+      "verification_report": null,
+      "verification_result": "fail",
+      "workspace": {
+        "change_branch": "main",
+        "finish": null,
+        "isolation": "current",
+        "target_branch": "main"
+      }
+    },
+    "status": "waiting",
+    "sequence": 6,
+    "actions": [
+      {
+        "protocolVersion": 1,
+        "id": "published-root-stop:1",
+        "runId": "published-root-stop",
+        "stepId": "shape.prepare",
+        "type": "call_tool",
+        "ref": "native-shape-prepare",
+        "attempt": 1,
+        "input": {
+          "input": {
+            "artifactRootRef": "docs",
+            "maxVerifyFailures": 1,
+            "name": "published-root-stop",
+            "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-supervisor-upgrade-IZ8VtH\\published-root-stop"
+          },
+          "outputs": {}
+        },
+        "inputHash": "0f91d4e847d28105d1dd286104dc68f14572c8fdd2d07555a6b9e92533970ce0",
+        "status": "succeeded",
+        "retry": "manual",
+        "requiredCapabilities": [],
+        "receipts": [
+          {
+            "outcomeId": "simulated-published-root-stop:1",
+            "hash": "591bca9c4aef5bc0680212056d42a6f956fe338c3acffc84191e64c495b83b30"
+          }
+        ],
+        "reconciliations": [],
+        "claim": {
+          "executorId": "simulated-agent",
+          "token": "simulated-published-root-stop:1",
+          "sessionId": "simulated-agent-shape.prepare"
+        },
+        "executionOrigin": {
+          "workflow": {
+            "id": "comet-native",
+            "version": "3",
+            "hash": "2ad17ce994b28ee081494a62e7f68eeae671bf8cc9c7af893940a5920db43dbd"
+          }
+        },
+        "outcome": {
+          "actionId": "published-root-stop:1",
+          "attempt": 1,
+          "claimToken": "simulated-published-root-stop:1",
+          "inputHash": "0f91d4e847d28105d1dd286104dc68f14572c8fdd2d07555a6b9e92533970ce0",
+          "outcomeId": "simulated-published-root-stop:1",
+          "output": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "The selected workflow resumes."
+              }
+            ],
+            "children": null,
+            "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+            "semanticSnapshot": {
+              "artifacts": [
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                  "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                  "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                  "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                  "source": "brief.md"
+                },
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                  "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                  "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                  "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                  "source": "specs/workflow/spec.md"
+                }
+              ],
+              "schema": "comet.native.shape-semantics.v1"
+            },
+            "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+            "specChanges": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ]
+          },
+          "status": "succeeded"
+        }
+      },
+      {
+        "protocolVersion": 1,
+        "id": "published-root-stop:3",
+        "runId": "published-root-stop",
+        "stepId": "shape.revalidate",
+        "type": "call_tool",
+        "ref": "native-shape-revalidate",
+        "attempt": 1,
+        "input": {
+          "input": {
+            "artifactRootRef": "docs",
+            "maxVerifyFailures": 1,
+            "name": "published-root-stop",
+            "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-supervisor-upgrade-IZ8VtH\\published-root-stop"
+          },
+          "outputs": {
+            "shape.prepare": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                    "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                    "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                    "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                    "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                    "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                    "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            },
+            "shape.confirm": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "maxVerifyFailures": 1,
+                  "name": "published-root-stop",
+                  "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-supervisor-upgrade-IZ8VtH\\published-root-stop"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "The selected workflow resumes."
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+                    "semanticSnapshot": {
+                      "artifacts": [
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                          "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                          "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                          "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                          "source": "brief.md"
+                        },
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                          "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                          "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                          "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                          "source": "specs/workflow/spec.md"
+                        }
+                      ],
+                      "schema": "comet.native.shape-semantics.v1"
+                    },
+                    "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+                    "specChanges": [
+                      {
+                        "capability": "workflow",
+                        "operation": "create",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "inputHash": "7d61aade09de7fb3f47698a099624d319d18f4b16df606d01b8723db1b0803d8",
+        "status": "succeeded",
+        "retry": "manual",
+        "requiredCapabilities": [],
+        "receipts": [
+          {
+            "outcomeId": "simulated-published-root-stop:3",
+            "hash": "1b1ca15f2b212637b75985aba7180c75ac1a5712f1c13bd1fb8c50f6efcaf9d9"
+          }
+        ],
+        "reconciliations": [],
+        "claim": {
+          "executorId": "simulated-agent",
+          "token": "simulated-published-root-stop:3",
+          "sessionId": "simulated-agent-shape.revalidate"
+        },
+        "executionOrigin": {
+          "workflow": {
+            "id": "comet-native",
+            "version": "3",
+            "hash": "2ad17ce994b28ee081494a62e7f68eeae671bf8cc9c7af893940a5920db43dbd"
+          }
+        },
+        "outcome": {
+          "actionId": "published-root-stop:3",
+          "attempt": 1,
+          "claimToken": "simulated-published-root-stop:3",
+          "inputHash": "7d61aade09de7fb3f47698a099624d319d18f4b16df606d01b8723db1b0803d8",
+          "outcomeId": "simulated-published-root-stop:3",
+          "output": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "The selected workflow resumes."
+              }
+            ],
+            "children": null,
+            "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+            "semanticSnapshot": {
+              "artifacts": [
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                  "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                  "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                  "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                  "source": "brief.md"
+                },
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                  "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                  "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                  "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                  "source": "specs/workflow/spec.md"
+                }
+              ],
+              "schema": "comet.native.shape-semantics.v1"
+            },
+            "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+            "specChanges": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ]
+          },
+          "status": "succeeded"
+        }
+      },
+      {
+        "protocolVersion": 1,
+        "id": "published-root-stop:4",
+        "runId": "published-root-stop",
+        "stepId": "build.builder",
+        "type": "handoff",
+        "ref": "native-builder",
+        "attempt": 1,
+        "input": {
+          "input": {
+            "artifactRootRef": "docs",
+            "maxVerifyFailures": 1,
+            "name": "published-root-stop",
+            "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-supervisor-upgrade-IZ8VtH\\published-root-stop"
+          },
+          "outputs": {
+            "shape.prepare": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                    "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                    "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                    "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                    "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                    "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                    "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            },
+            "shape.confirm": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "maxVerifyFailures": 1,
+                  "name": "published-root-stop",
+                  "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-supervisor-upgrade-IZ8VtH\\published-root-stop"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "The selected workflow resumes."
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+                    "semanticSnapshot": {
+                      "artifacts": [
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                          "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                          "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                          "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                          "source": "brief.md"
+                        },
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                          "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                          "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                          "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                          "source": "specs/workflow/spec.md"
+                        }
+                      ],
+                      "schema": "comet.native.shape-semantics.v1"
+                    },
+                    "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+                    "specChanges": [
+                      {
+                        "capability": "workflow",
+                        "operation": "create",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "shape.revalidate": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                    "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                    "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                    "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                    "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                    "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                    "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          }
+        },
+        "inputHash": "ca3b495e8a4420adf9559d52955077c6199c734122e52d67ae1aa660b4257522",
+        "status": "succeeded",
+        "retry": "manual",
+        "requiredCapabilities": [],
+        "receipts": [
+          {
+            "outcomeId": "simulated-published-root-stop:4",
+            "hash": "19d7b5cb971166d59762f279352df42ec46b42e46b6e640fce8ab8270c93b9e1"
+          }
+        ],
+        "reconciliations": [],
+        "claim": {
+          "executorId": "simulated-agent",
+          "token": "simulated-published-root-stop:4",
+          "sessionId": "simulated-agent-build.builder"
+        },
+        "executionOrigin": {
+          "workflow": {
+            "id": "comet-native",
+            "version": "3",
+            "hash": "2ad17ce994b28ee081494a62e7f68eeae671bf8cc9c7af893940a5920db43dbd"
+          }
+        },
+        "outcome": {
+          "actionId": "published-root-stop:4",
+          "attempt": 1,
+          "claimToken": "simulated-published-root-stop:4",
+          "inputHash": "ca3b495e8a4420adf9559d52955077c6199c734122e52d67ae1aa660b4257522",
+          "outcomeId": "simulated-published-root-stop:4",
+          "output": {
+            "acceptanceReview": [
+              {
+                "evidence": [
+                  "SIMULATED protocol evidence"
+                ],
+                "id": "A1",
+                "note": "SIMULATED Agent",
+                "status": "implemented-with-evidence"
+              }
+            ],
+            "addressedAcceptanceIds": [
+              "A1"
+            ],
+            "checks": [
+              {
+                "name": "Not executed",
+                "note": "SIMULATED Agent report",
+                "result": "not-run"
+              }
+            ],
+            "knownLimits": [
+              "SIMULATED report"
+            ],
+            "review": null,
+            "summary": "SIMULATED Agent candidate report",
+            "verificationChecks": [
+              {
+                "argv": [
+                  "-e",
+                  "process.exit(1)"
+                ],
+                "cwdRef": ".",
+                "executable": "D:\\nodejs\\node.exe",
+                "id": "harmless-failure",
+                "name": "Harmless Node exit for migration fixture",
+                "repeatable": true,
+                "timeoutMs": 5000
+              }
+            ]
+          },
+          "status": "succeeded"
+        }
+      },
+      {
+        "protocolVersion": 1,
+        "id": "published-root-stop:5",
+        "runId": "published-root-stop",
+        "stepId": "verify.checks",
+        "type": "call_tool",
+        "ref": "native-required-checks",
+        "attempt": 1,
+        "input": {
+          "input": {
+            "artifactRootRef": "docs",
+            "maxVerifyFailures": 1,
+            "name": "published-root-stop",
+            "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-supervisor-upgrade-IZ8VtH\\published-root-stop"
+          },
+          "outputs": {
+            "shape.prepare": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                    "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                    "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                    "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                    "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                    "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                    "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            },
+            "shape.confirm": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "maxVerifyFailures": 1,
+                  "name": "published-root-stop",
+                  "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-supervisor-upgrade-IZ8VtH\\published-root-stop"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "The selected workflow resumes."
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+                    "semanticSnapshot": {
+                      "artifacts": [
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                          "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                          "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                          "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                          "source": "brief.md"
+                        },
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                          "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                          "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                          "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                          "source": "specs/workflow/spec.md"
+                        }
+                      ],
+                      "schema": "comet.native.shape-semantics.v1"
+                    },
+                    "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+                    "specChanges": [
+                      {
+                        "capability": "workflow",
+                        "operation": "create",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "shape.revalidate": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                    "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                    "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                    "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                    "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                    "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                    "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            },
+            "build.builder": {
+              "acceptanceReview": [
+                {
+                  "evidence": [
+                    "SIMULATED protocol evidence"
+                  ],
+                  "id": "A1",
+                  "note": "SIMULATED Agent",
+                  "status": "implemented-with-evidence"
+                }
+              ],
+              "addressedAcceptanceIds": [
+                "A1"
+              ],
+              "checks": [
+                {
+                  "name": "Not executed",
+                  "note": "SIMULATED Agent report",
+                  "result": "not-run"
+                }
+              ],
+              "knownLimits": [
+                "SIMULATED report"
+              ],
+              "review": null,
+              "summary": "SIMULATED Agent candidate report",
+              "verificationChecks": [
+                {
+                  "argv": [
+                    "-e",
+                    "process.exit(1)"
+                  ],
+                  "cwdRef": ".",
+                  "executable": "D:\\nodejs\\node.exe",
+                  "id": "harmless-failure",
+                  "name": "Harmless Node exit for migration fixture",
+                  "repeatable": true,
+                  "timeoutMs": 5000
+                }
+              ]
+            }
+          }
+        },
+        "inputHash": "a5d361ff13fbfd8e28b0757e41c878df0c31df8008569ff4c54d302f02282149",
+        "status": "failed",
+        "retry": "manual",
+        "requiredCapabilities": [],
+        "receipts": [
+          {
+            "outcomeId": "published-root-stop:5:1:executor-result",
+            "hash": "d9c548471c5e6108b1dc9cdefffaacaa6e8cee8aacbd08dac7e412f4073912c2"
+          }
+        ],
+        "reconciliations": [],
+        "claim": {
+          "executorId": "comet-native-checks",
+          "token": "fd942834-2c27-4389-af94-7c9b8139dd7a"
+        },
+        "executionOrigin": {
+          "workflow": {
+            "id": "comet-native",
+            "version": "3",
+            "hash": "2ad17ce994b28ee081494a62e7f68eeae671bf8cc9c7af893940a5920db43dbd"
+          }
+        },
+        "outcome": {
+          "actionId": "published-root-stop:5",
+          "attempt": 1,
+          "claimToken": "fd942834-2c27-4389-af94-7c9b8139dd7a",
+          "inputHash": "a5d361ff13fbfd8e28b0757e41c878df0c31df8008569ff4c54d302f02282149",
+          "outcomeId": "published-root-stop:5:1:executor-result",
+          "output": {
+            "candidateId": "25377774716af12ad7b83ed980b1bc99b57b0fb8b33140d4460f18c4e24bd2a7",
+            "candidateInputFingerprintGate": "7497438808a666644c3e480dc20b92cde53e3d08e64f98e89b19ff35f787a972",
+            "checks": [
+              {
+                "argvDisplay": [
+                  "-e",
+                  "process.exit(1)"
+                ],
+                "cwdRef": ".",
+                "durationMs": 515,
+                "exitCode": 1,
+                "id": "harmless-failure",
+                "logRef": "native/sdk-checks/3796522d2aade01fac92d5cb0bd7063bd159ff047dfb991a8f60a52eb7522f27/logs/checks/6681bb4966aea379f8b73a12ee41ecd806358c4a34825c3cd6016d0548c3f74e-harmless-failure.log",
+                "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "name": "Harmless Node exit for migration fixture",
+                "status": "failed"
+              }
+            ],
+            "completedAt": "2026-11-10T15:22:48.286Z",
+            "inputAfter": "28317fc82c5cec1316be51547cd0706e8ebd6a97b873dee0b1d04c5e9db0c477",
+            "inputBefore": "28317fc82c5cec1316be51547cd0706e8ebd6a97b873dee0b1d04c5e9db0c477",
+            "inputSnapshot": {
+              "after": "9ae234ad71f7f1b189eb77d14046237c3777b35e8ed9d689b64c57d83ba9923e",
+              "before": "9ae234ad71f7f1b189eb77d14046237c3777b35e8ed9d689b64c57d83ba9923e",
+              "candidateBefore": "7497438808a666644c3e480dc20b92cde53e3d08e64f98e89b19ff35f787a972",
+              "complete": true,
+              "diagnostics": [],
+              "schema": "comet.native.check-input.v2"
+            },
+            "rawInput": {
+              "afterRef": "native/sdk-checks/3796522d2aade01fac92d5cb0bd7063bd159ff047dfb991a8f60a52eb7522f27/inputs/f30359cb5669ff2d992767ea7d8fe74dd4e4647aeee93e24db2bb948ed0670af.json",
+              "beforeRef": "native/sdk-checks/3796522d2aade01fac92d5cb0bd7063bd159ff047dfb991a8f60a52eb7522f27/inputs/f30359cb5669ff2d992767ea7d8fe74dd4e4647aeee93e24db2bb948ed0670af.json"
+            }
+          },
+          "status": "failed"
+        }
+      }
+    ],
+    "actionContexts": {
+      "published-root-stop:1": {
+        "sequence": 1,
+        "results": {}
+      },
+      "published-root-stop:3": {
+        "sequence": 3,
+        "results": {
+          "shape.prepare": {
+            "sequence": 1,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                    "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                    "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                    "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                    "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                    "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                    "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          },
+          "shape.confirm": {
+            "sequence": 2,
+            "value": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "maxVerifyFailures": 1,
+                  "name": "published-root-stop",
+                  "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-supervisor-upgrade-IZ8VtH\\published-root-stop"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "The selected workflow resumes."
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+                    "semanticSnapshot": {
+                      "artifacts": [
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                          "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                          "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                          "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                          "source": "brief.md"
+                        },
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                          "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                          "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                          "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                          "source": "specs/workflow/spec.md"
+                        }
+                      ],
+                      "schema": "comet.native.shape-semantics.v1"
+                    },
+                    "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+                    "specChanges": [
+                      {
+                        "capability": "workflow",
+                        "operation": "create",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "published-root-stop:4": {
+        "sequence": 4,
+        "results": {
+          "shape.prepare": {
+            "sequence": 1,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                    "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                    "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                    "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                    "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                    "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                    "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          },
+          "shape.confirm": {
+            "sequence": 2,
+            "value": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "maxVerifyFailures": 1,
+                  "name": "published-root-stop",
+                  "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-supervisor-upgrade-IZ8VtH\\published-root-stop"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "The selected workflow resumes."
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+                    "semanticSnapshot": {
+                      "artifacts": [
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                          "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                          "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                          "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                          "source": "brief.md"
+                        },
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                          "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                          "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                          "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                          "source": "specs/workflow/spec.md"
+                        }
+                      ],
+                      "schema": "comet.native.shape-semantics.v1"
+                    },
+                    "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+                    "specChanges": [
+                      {
+                        "capability": "workflow",
+                        "operation": "create",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "shape.revalidate": {
+            "sequence": 3,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                    "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                    "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                    "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                    "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                    "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                    "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "published-root-stop:5": {
+        "sequence": 5,
+        "results": {
+          "shape.prepare": {
+            "sequence": 1,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                    "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                    "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                    "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                    "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                    "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                    "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          },
+          "shape.confirm": {
+            "sequence": 2,
+            "value": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "maxVerifyFailures": 1,
+                  "name": "published-root-stop",
+                  "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-supervisor-upgrade-IZ8VtH\\published-root-stop"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "The selected workflow resumes."
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+                    "semanticSnapshot": {
+                      "artifacts": [
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                          "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                          "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                          "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                          "source": "brief.md"
+                        },
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                          "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                          "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                          "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                          "source": "specs/workflow/spec.md"
+                        }
+                      ],
+                      "schema": "comet.native.shape-semantics.v1"
+                    },
+                    "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+                    "specChanges": [
+                      {
+                        "capability": "workflow",
+                        "operation": "create",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "shape.revalidate": {
+            "sequence": 3,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                    "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                    "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                    "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                    "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                    "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                    "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          },
+          "build.builder": {
+            "sequence": 4,
+            "value": {
+              "acceptanceReview": [
+                {
+                  "evidence": [
+                    "SIMULATED protocol evidence"
+                  ],
+                  "id": "A1",
+                  "note": "SIMULATED Agent",
+                  "status": "implemented-with-evidence"
+                }
+              ],
+              "addressedAcceptanceIds": [
+                "A1"
+              ],
+              "checks": [
+                {
+                  "name": "Not executed",
+                  "note": "SIMULATED Agent report",
+                  "result": "not-run"
+                }
+              ],
+              "knownLimits": [
+                "SIMULATED report"
+              ],
+              "review": null,
+              "summary": "SIMULATED Agent candidate report",
+              "verificationChecks": [
+                {
+                  "argv": [
+                    "-e",
+                    "process.exit(1)"
+                  ],
+                  "cwdRef": ".",
+                  "executable": "D:\\nodejs\\node.exe",
+                  "id": "harmless-failure",
+                  "name": "Harmless Node exit for migration fixture",
+                  "repeatable": true,
+                  "timeoutMs": 5000
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "waits": [
+      {
+        "id": "published-root-stop:2",
+        "stepId": "shape.confirm",
+        "sequence": 2,
+        "status": "resolved",
+        "proposal": {
+          "input": {
+            "artifactRootRef": "docs",
+            "maxVerifyFailures": 1,
+            "name": "published-root-stop",
+            "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-supervisor-upgrade-IZ8VtH\\published-root-stop"
+          },
+          "outputs": {
+            "shape.prepare": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                    "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                    "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                    "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                    "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                    "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                    "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          }
+        },
+        "proposalHash": "9313fb09aea50c2d603300a09fe13f6e8a70eb6ea8fdb3000194f96155138a0f",
+        "choices": [
+          "approved",
+          "rejected"
+        ],
+        "results": {
+          "shape.prepare": {
+            "sequence": 1,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                    "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                    "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                    "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                    "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                    "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                    "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          }
+        },
+        "decision": {
+          "id": "simulated-user-published-root-stop",
+          "choice": "approved",
+          "proposalHash": "9313fb09aea50c2d603300a09fe13f6e8a70eb6ea8fdb3000194f96155138a0f",
+          "reason": "SIMULATED USER APPROVAL for isolated published data fixture"
+        }
+      },
+      {
+        "id": "published-root-stop:6",
+        "stepId": "verify.checks-stop",
+        "sequence": 6,
+        "status": "pending",
+        "proposal": {
+          "input": {
+            "artifactRootRef": "docs",
+            "maxVerifyFailures": 1,
+            "name": "published-root-stop",
+            "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-supervisor-upgrade-IZ8VtH\\published-root-stop"
+          },
+          "outputs": {
+            "verify.checks": {
+              "candidateId": "25377774716af12ad7b83ed980b1bc99b57b0fb8b33140d4460f18c4e24bd2a7",
+              "candidateInputFingerprintGate": "7497438808a666644c3e480dc20b92cde53e3d08e64f98e89b19ff35f787a972",
+              "checks": [
+                {
+                  "argvDisplay": [
+                    "-e",
+                    "process.exit(1)"
+                  ],
+                  "cwdRef": ".",
+                  "durationMs": 515,
+                  "exitCode": 1,
+                  "id": "harmless-failure",
+                  "logRef": "native/sdk-checks/3796522d2aade01fac92d5cb0bd7063bd159ff047dfb991a8f60a52eb7522f27/logs/checks/6681bb4966aea379f8b73a12ee41ecd806358c4a34825c3cd6016d0548c3f74e-harmless-failure.log",
+                  "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                  "name": "Harmless Node exit for migration fixture",
+                  "status": "failed"
+                }
+              ],
+              "completedAt": "2026-11-10T15:22:48.286Z",
+              "inputAfter": "28317fc82c5cec1316be51547cd0706e8ebd6a97b873dee0b1d04c5e9db0c477",
+              "inputBefore": "28317fc82c5cec1316be51547cd0706e8ebd6a97b873dee0b1d04c5e9db0c477",
+              "inputSnapshot": {
+                "after": "9ae234ad71f7f1b189eb77d14046237c3777b35e8ed9d689b64c57d83ba9923e",
+                "before": "9ae234ad71f7f1b189eb77d14046237c3777b35e8ed9d689b64c57d83ba9923e",
+                "candidateBefore": "7497438808a666644c3e480dc20b92cde53e3d08e64f98e89b19ff35f787a972",
+                "complete": true,
+                "diagnostics": [],
+                "schema": "comet.native.check-input.v2"
+              },
+              "rawInput": {
+                "afterRef": "native/sdk-checks/3796522d2aade01fac92d5cb0bd7063bd159ff047dfb991a8f60a52eb7522f27/inputs/f30359cb5669ff2d992767ea7d8fe74dd4e4647aeee93e24db2bb948ed0670af.json",
+                "beforeRef": "native/sdk-checks/3796522d2aade01fac92d5cb0bd7063bd159ff047dfb991a8f60a52eb7522f27/inputs/f30359cb5669ff2d992767ea7d8fe74dd4e4647aeee93e24db2bb948ed0670af.json"
+              }
+            }
+          },
+          "activation": {
+            "failedCheckActionId": "published-root-stop:5"
+          }
+        },
+        "proposalHash": "197442c92655a57388d8262e934c85c18e7495007c58152cb483de8fc6cbd004",
+        "choices": [
+          "repair"
+        ],
+        "results": {
+          "shape.prepare": {
+            "sequence": 1,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                    "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                    "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                    "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                    "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                    "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                    "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          },
+          "shape.confirm": {
+            "sequence": 2,
+            "value": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "maxVerifyFailures": 1,
+                  "name": "published-root-stop",
+                  "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-supervisor-upgrade-IZ8VtH\\published-root-stop"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "The selected workflow resumes."
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+                    "semanticSnapshot": {
+                      "artifacts": [
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                          "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                          "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                          "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                          "source": "brief.md"
+                        },
+                        {
+                          "auxiliary": [],
+                          "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                          "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                          "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                          "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                          "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                          "source": "specs/workflow/spec.md"
+                        }
+                      ],
+                      "schema": "comet.native.shape-semantics.v1"
+                    },
+                    "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+                    "specChanges": [
+                      {
+                        "capability": "workflow",
+                        "operation": "create",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "shape.revalidate": {
+            "sequence": 3,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The selected workflow resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                    "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                    "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                    "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                    "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                    "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                    "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          },
+          "build.builder": {
+            "sequence": 4,
+            "value": {
+              "acceptanceReview": [
+                {
+                  "evidence": [
+                    "SIMULATED protocol evidence"
+                  ],
+                  "id": "A1",
+                  "note": "SIMULATED Agent",
+                  "status": "implemented-with-evidence"
+                }
+              ],
+              "addressedAcceptanceIds": [
+                "A1"
+              ],
+              "checks": [
+                {
+                  "name": "Not executed",
+                  "note": "SIMULATED Agent report",
+                  "result": "not-run"
+                }
+              ],
+              "knownLimits": [
+                "SIMULATED report"
+              ],
+              "review": null,
+              "summary": "SIMULATED Agent candidate report",
+              "verificationChecks": [
+                {
+                  "argv": [
+                    "-e",
+                    "process.exit(1)"
+                  ],
+                  "cwdRef": ".",
+                  "executable": "D:\\nodejs\\node.exe",
+                  "id": "harmless-failure",
+                  "name": "Harmless Node exit for migration fixture",
+                  "repeatable": true,
+                  "timeoutMs": 5000
+                }
+              ]
+            }
+          },
+          "verify.checks": {
+            "sequence": 5,
+            "value": {
+              "candidateId": "25377774716af12ad7b83ed980b1bc99b57b0fb8b33140d4460f18c4e24bd2a7",
+              "candidateInputFingerprintGate": "7497438808a666644c3e480dc20b92cde53e3d08e64f98e89b19ff35f787a972",
+              "checks": [
+                {
+                  "argvDisplay": [
+                    "-e",
+                    "process.exit(1)"
+                  ],
+                  "cwdRef": ".",
+                  "durationMs": 515,
+                  "exitCode": 1,
+                  "id": "harmless-failure",
+                  "logRef": "native/sdk-checks/3796522d2aade01fac92d5cb0bd7063bd159ff047dfb991a8f60a52eb7522f27/logs/checks/6681bb4966aea379f8b73a12ee41ecd806358c4a34825c3cd6016d0548c3f74e-harmless-failure.log",
+                  "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                  "name": "Harmless Node exit for migration fixture",
+                  "status": "failed"
+                }
+              ],
+              "completedAt": "2026-11-10T15:22:48.286Z",
+              "inputAfter": "28317fc82c5cec1316be51547cd0706e8ebd6a97b873dee0b1d04c5e9db0c477",
+              "inputBefore": "28317fc82c5cec1316be51547cd0706e8ebd6a97b873dee0b1d04c5e9db0c477",
+              "inputSnapshot": {
+                "after": "9ae234ad71f7f1b189eb77d14046237c3777b35e8ed9d689b64c57d83ba9923e",
+                "before": "9ae234ad71f7f1b189eb77d14046237c3777b35e8ed9d689b64c57d83ba9923e",
+                "candidateBefore": "7497438808a666644c3e480dc20b92cde53e3d08e64f98e89b19ff35f787a972",
+                "complete": true,
+                "diagnostics": [],
+                "schema": "comet.native.check-input.v2"
+              },
+              "rawInput": {
+                "afterRef": "native/sdk-checks/3796522d2aade01fac92d5cb0bd7063bd159ff047dfb991a8f60a52eb7522f27/inputs/f30359cb5669ff2d992767ea7d8fe74dd4e4647aeee93e24db2bb948ed0670af.json",
+                "beforeRef": "native/sdk-checks/3796522d2aade01fac92d5cb0bd7063bd159ff047dfb991a8f60a52eb7522f27/inputs/f30359cb5669ff2d992767ea7d8fe74dd4e4647aeee93e24db2bb948ed0670af.json"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "ready": [],
+    "joins": {},
+    "outputs": {
+      "shape.prepare": {
+        "sequence": 1,
+        "value": {
+          "acceptance": [
+            {
+              "id": "A1",
+              "source": "brief.md",
+              "text": "The selected workflow resumes."
+            }
+          ],
+          "children": null,
+          "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+          "semanticSnapshot": {
+            "artifacts": [
+              {
+                "auxiliary": [],
+                "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                "source": "brief.md"
+              },
+              {
+                "auxiliary": [],
+                "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                "source": "specs/workflow/spec.md"
+              }
+            ],
+            "schema": "comet.native.shape-semantics.v1"
+          },
+          "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+          "specChanges": [
+            {
+              "capability": "workflow",
+              "operation": "create",
+              "source": "specs/workflow/spec.md"
+            }
+          ]
+        }
+      },
+      "shape.confirm": {
+        "sequence": 2,
+        "value": {
+          "choice": "approved",
+          "proposal": {
+            "input": {
+              "artifactRootRef": "docs",
+              "maxVerifyFailures": 1,
+              "name": "published-root-stop",
+              "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\comet-052-supervisor-upgrade-IZ8VtH\\published-root-stop"
+            },
+            "outputs": {
+              "shape.prepare": {
+                "acceptance": [
+                  {
+                    "id": "A1",
+                    "source": "brief.md",
+                    "text": "The selected workflow resumes."
+                  }
+                ],
+                "children": null,
+                "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+                "semanticSnapshot": {
+                  "artifacts": [
+                    {
+                      "auxiliary": [],
+                      "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                      "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                      "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                      "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                      "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                      "source": "brief.md"
+                    },
+                    {
+                      "auxiliary": [],
+                      "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                      "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                      "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                      "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                      "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                      "source": "specs/workflow/spec.md"
+                    }
+                  ],
+                  "schema": "comet.native.shape-semantics.v1"
+                },
+                "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+                "specChanges": [
+                  {
+                    "capability": "workflow",
+                    "operation": "create",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "shape.revalidate": {
+        "sequence": 3,
+        "value": {
+          "acceptance": [
+            {
+              "id": "A1",
+              "source": "brief.md",
+              "text": "The selected workflow resumes."
+            }
+          ],
+          "children": null,
+          "formalHash": "cd8920c7691c6b45f6ef41d74890fe621da53ec0d613ea5755005fd2f30bc773",
+          "semanticSnapshot": {
+            "artifacts": [
+              {
+                "auxiliary": [],
+                "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                "contentHash": "57c99c33f0a66b257e34f735ebb52b7d8cbebe62a1c4e0082ed5a5f0143e6c8c",
+                "contractHash": "156fe335585e7b36b4599e146f9fb90b2ec38cb8e9f7aca77c7819efd1251df9",
+                "inputHash": "108f421a7d098e66f58a45c87b2d2739aa28e64b229ea9039eec9706bc1d7db2",
+                "legacyFingerprint": "d8f0e53a88adc7721d10b018b746a22127f61ca914a358b8391e6e341dcb1083",
+                "source": "brief.md"
+              },
+              {
+                "auxiliary": [],
+                "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                "contentHash": "382ded524064dfd1f82f4b9d5d1feed1c8a51003560d0b8c3c75a8559d3c2431",
+                "contractHash": "5d8af9db0c44c0802536477ef5ca78664e52af78568eeabd90774862a7a6bea1",
+                "inputHash": "0f9e375f5e9137c71bcc6afc34e90617f5076183f73a70aea1fd5be885065c4e",
+                "legacyFingerprint": "3061f95374baefcb21f8e5f6094745bb5d431dc2413adcea9ca0dfb153b7312c",
+                "source": "specs/workflow/spec.md"
+              }
+            ],
+            "schema": "comet.native.shape-semantics.v1"
+          },
+          "shapeConfirmationHash": "e8f1e2e52d112d2e86ad2e82e9b2aba407b4d0222a0227a02cc01f902ef8c76f",
+          "specChanges": [
+            {
+              "capability": "workflow",
+              "operation": "create",
+              "source": "specs/workflow/spec.md"
+            }
+          ]
+        }
+      },
+      "build.builder": {
+        "sequence": 4,
+        "value": {
+          "acceptanceReview": [
+            {
+              "evidence": [
+                "SIMULATED protocol evidence"
+              ],
+              "id": "A1",
+              "note": "SIMULATED Agent",
+              "status": "implemented-with-evidence"
+            }
+          ],
+          "addressedAcceptanceIds": [
+            "A1"
+          ],
+          "checks": [
+            {
+              "name": "Not executed",
+              "note": "SIMULATED Agent report",
+              "result": "not-run"
+            }
+          ],
+          "knownLimits": [
+            "SIMULATED report"
+          ],
+          "review": null,
+          "summary": "SIMULATED Agent candidate report",
+          "verificationChecks": [
+            {
+              "argv": [
+                "-e",
+                "process.exit(1)"
+              ],
+              "cwdRef": ".",
+              "executable": "D:\\nodejs\\node.exe",
+              "id": "harmless-failure",
+              "name": "Harmless Node exit for migration fixture",
+              "repeatable": true,
+              "timeoutMs": 5000
+            }
+          ]
+        }
+      },
+      "verify.checks": {
+        "sequence": 5,
+        "value": {
+          "candidateId": "25377774716af12ad7b83ed980b1bc99b57b0fb8b33140d4460f18c4e24bd2a7",
+          "candidateInputFingerprintGate": "7497438808a666644c3e480dc20b92cde53e3d08e64f98e89b19ff35f787a972",
+          "checks": [
+            {
+              "argvDisplay": [
+                "-e",
+                "process.exit(1)"
+              ],
+              "cwdRef": ".",
+              "durationMs": 515,
+              "exitCode": 1,
+              "id": "harmless-failure",
+              "logRef": "native/sdk-checks/3796522d2aade01fac92d5cb0bd7063bd159ff047dfb991a8f60a52eb7522f27/logs/checks/6681bb4966aea379f8b73a12ee41ecd806358c4a34825c3cd6016d0548c3f74e-harmless-failure.log",
+              "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "name": "Harmless Node exit for migration fixture",
+              "status": "failed"
+            }
+          ],
+          "completedAt": "2026-11-10T15:22:48.286Z",
+          "inputAfter": "28317fc82c5cec1316be51547cd0706e8ebd6a97b873dee0b1d04c5e9db0c477",
+          "inputBefore": "28317fc82c5cec1316be51547cd0706e8ebd6a97b873dee0b1d04c5e9db0c477",
+          "inputSnapshot": {
+            "after": "9ae234ad71f7f1b189eb77d14046237c3777b35e8ed9d689b64c57d83ba9923e",
+            "before": "9ae234ad71f7f1b189eb77d14046237c3777b35e8ed9d689b64c57d83ba9923e",
+            "candidateBefore": "7497438808a666644c3e480dc20b92cde53e3d08e64f98e89b19ff35f787a972",
+            "complete": true,
+            "diagnostics": [],
+            "schema": "comet.native.check-input.v2"
+          },
+          "rawInput": {
+            "afterRef": "native/sdk-checks/3796522d2aade01fac92d5cb0bd7063bd159ff047dfb991a8f60a52eb7522f27/inputs/f30359cb5669ff2d992767ea7d8fe74dd4e4647aeee93e24db2bb948ed0670af.json",
+            "beforeRef": "native/sdk-checks/3796522d2aade01fac92d5cb0bd7063bd159ff047dfb991a8f60a52eb7522f27/inputs/f30359cb5669ff2d992767ea7d8fe74dd4e4647aeee93e24db2bb948ed0670af.json"
+          }
+        }
+      }
+    },
+    "children": [],
+    "lineage": []
+  }
+}

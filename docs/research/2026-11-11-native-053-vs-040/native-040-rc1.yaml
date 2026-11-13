@@ -1,0 +1,25 @@
+apiVersion: comet.eval/v1alpha1
+kind: SkillEvalManifest
+metadata:
+  name: native-040-rc1-deepseek
+skill:
+  name: comet-native
+  source: ../../../coverage/native-053-vs-040-20261111/native-040-rc1-package/package/assets/skills/comet-native
+evaluation:
+  recommendedTasks:
+    - comet-agent-memory-routing
+    - comet-api-cache-ttl
+    - comet-cross-file-refactor
+    - comet-dependency-confusion
+    - comet-fix-median
+    - comet-framework-selection
+    - comet-full-workflow
+    - comet-graph-execution-review
+    - comet-human-approval-flow
+    - comet-layered-streaming-fix
+    - comet-noise-distractor
+    - comet-observability-env-template
+    - comet-perf-dedupe
+    - comet-persistence-threading
+    - comet-refactor-counter
+    - comet-robust-config

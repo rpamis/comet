@@ -1,0 +1,394 @@
+{
+  "source": "report:2026-11-11-native-runtime-retirement-test-migration",
+  "capturedAt": "2026-11-10T20:49:03.487Z",
+  "originalDeclarationCount": 14,
+  "retiredDeclarationCount": 8,
+  "currentExpandedTestCount": 13,
+  "currentResultFile": "native-doctor-v4-all-business-final-results.json",
+  "originalsRetained": "originals/native-doctor-v4.test.ts; each row originalBody/line/registry retained",
+  "rows": [
+    {
+      "originalFile": "test/domains/comet-native/native-doctor-v4.test.ts",
+      "originalName": "keeps a fresh portable change healthy in named and project-wide Doctor",
+      "line": 233,
+      "originalBody": "it('keeps a fresh portable change healthy in named and project-wide Doctor', async () => {\n    await createPortable('fresh-portable');\n\n    await expect(nativeDoctorCommand(['fresh-portable'], projectRoot)).resolves.toMatchObject({\n      exitCode: 0,\n      data: { healthy: true, workflow: 'native-portable', change: 'fresh-portable' },\n    });\n    await expect(nativeDoctorCommand([], projectRoot)).resolves.toMatchObject({\n      exitCode: 0,\n      data: {\n        healthy: true,\n        workflow: 'native-portable',\n        findings: [],\n      },\n    });\n  })",
+      "registry": [],
+      "classification": "tests-moved-current-business",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+          "exactTitle": "keeps a fresh portable change healthy in named and project-wide Doctor",
+          "evidence": "native-doctor-v4-all-business-final-results.json 13/13 pass; current source Temp imports, no build/Eval"
+        }
+      ],
+      "limitations": [],
+      "remainingGaps": [],
+      "review": "保留named/global健康诊断及报告bytes不变；输出字段由旧workflow/findings投影适配为当前runtimeFormat与紧凑changes。"
+    },
+    {
+      "originalFile": "test/domains/comet-native/native-doctor-v4.test.ts",
+      "originalName": "reports an orphaned Runtime check instead of claiming the change is healthy",
+      "line": 250,
+      "originalBody": "it('reports an orphaned Runtime check instead of claiming the change is healthy', async () => {\n    const name = 'orphaned-check-doctor';\n    await fs.mkdir(path.join(projectRoot, '.git'));\n    await refreshRuntimePaths();\n    await createPortable(name);\n    await fs.writeFile(\n      path.join(nativePortableChangeDir(paths, name), 'brief.md'),\n      '# Acceptance examples\\n- Doctor reports an orphaned check owner.\\n',\n    );\n    await confirmNativePortableShape({ paths, name });\n    const runner = createNativeRunnerChannel();\n    const state = await submitNativePortableBuilderCandidate({\n      paths,\n      name,\n      input: {\n        identity: runner.captureExecutionIdentity({\n          identityProvider: 'test-host',\n          executionRef: 'orphaned-doctor-builder',\n        }),\n        candidateId: 'orphaned-doctor-candidate',\n        summary: 'Implemented.',\n        addressedAcceptanceIds: ['A1'],\n        acceptanceReview: fixtureAcceptanceReview(['A1']),\n        review: null,\n      },\n    });\n    const marker = path.join(projectRoot, 'orphaned-doctor-starts.txt');\n    const plan = {\n      id: 'orphaned-doctor-check',\n      name: 'Orphaned Doctor check',\n      executable: process.execPath,\n      argv: [\n        '-e',\n        \"const fs=require('node:fs');fs.writeFileSync(process.argv[1]+'.pid',String(process.pid));fs.appendFileSync(process.argv[1],'start\\\\n');setInterval(()=>{},1000)\",\n        marker,\n      ],\n      cwdRef: '.',\n      timeoutMs: 60_000,\n      repeatable: true,\n    } as const;\n    const repositoryRoot = path.resolve(import.meta.dirname, '../../..');\n    const file = nativeLocalExecutionFile(paths, name);\n    const owner = spawnDoctorCheckProcess({\n      repositoryRoot,\n      payload: { action: 'execute-checks', paths, name: state.name, plans: [plan] },\n    });\n    await waitForCondition(async () => {\n      const local = await readNativeLocalExecution(file);\n      const reserved =\n        local?.execution?.status === 'running' &&\n        local.checks[0]?.activeProcess?.status === 'running' &&\n        typeof local.checks[0].activeProcess.instanceId === 'string';\n      const mutationLockReleased = await fs\n        .access(path.join(paths.locksDir, 'root-move.lock'))\n        .then(() => false)\n        .catch(() => true);\n      return (\n        reserved &&\n        mutationLockReleased &&\n        (await fs.access(marker).then(\n          () => true,\n          () => false,\n        ))\n      );\n    }, 'Runtime owner did not start the orphaned Doctor check');\n    const running = await readNativeLocalExecution(file);\n    const activePid = Number(await fs.readFile(marker + '.pid', 'utf8'));\n    expect(activePid).toEqual(expect.any(Number));\n    owner.kill('SIGKILL');\n    await waitForProcessExit(owner);\n    try {\n      if (processIsAlive(activePid)) {\n        if (process.platform === 'win32')\n          (await import('node:child_process')).execFileSync(\n            'taskkill',\n            ['/PID', String(activePid), '/T', '/F'],\n            { stdio: 'ignore' },\n          );\n        else process.kill(activePid, 'SIGKILL');\n      }\n    } catch (error) {\n      if (processIsAlive(activePid)) throw error;\n    }\n    await waitForCondition(() => {\n      try {\n        process.kill(activePid, 0);\n        return false;\n      } catch (error) {\n        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;\n        return true;\n      }\n    }, 'Doctor check process tree did not stop after its Runtime owner exited');\n\n    await expect(nativeDoctorCommand([name], projectRoot)).resolves.toMatchObject({\n      exitCode: 65,\n      data: {\n        healthy: false,\n        findings: [\n          expect.objectContaining({\n            code: 'portable-check-execution-stuck',\n          }),\n        ],\n      },\n    });\n    await expect(nativeDoctorCommand([name, '--repair'], projectRoot)).resolves.toMatchObject({\n      exitCode: 65,\n      data: {\n        healthy: false,\n        repaired: false,\n        result: { reason: 'execution-active' },\n      },\n    });\n    expect(await readNativeLocalExecution(file)).toEqual(running);\n    expect(await fs.readFile(marker, 'utf8')).toBe('start\\n');\n  })",
+      "registry": [],
+      "classification": "feature-removed-managed-process-overlay",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "exactTitle": "preserves the original agent task as unknown when recovering a v4 checkpoint",
+          "evidence": "source verified; this subtask did not rerun repository selector"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+          "exactTitle": "keeps an unknown verifier bound to its original task and creates no retry Wait",
+          "evidence": "earlier Temp current protocol complete unknown claim/result chain passed; parent applied migration"
+        }
+      ],
+      "limitations": [
+        "No Runtime checker/process/stop receipt or startup takeover remains. Preserve generic unknown Agent Action via current original claim/result, not old overlay."
+      ],
+      "remainingGaps": [],
+      "review": "原Runtime worker/PID/停止/启动接管已明确撤下。不是同一故障修复；保留平台Agent未决claim、原任务身份和不重放业务，不能把unknown标stopped或自动新派发。原正文保持归档。"
+    },
+    {
+      "originalFile": "test/domains/comet-native/native-doctor-v4.test.ts",
+      "originalName": "preserves a migrated live Runtime check during Doctor repair (legacy projection: %s)",
+      "line": 366,
+      "originalBody": "it.each([false, true])(\n    'preserves a migrated live Runtime check during Doctor repair (legacy projection: %s)',\n    async (legacyProjection) => {\n      const name = 'live-check-doctor';\n      await fs.mkdir(path.join(projectRoot, '.git'));\n      await refreshRuntimePaths();\n      await createPortable(name);\n      const localRuntime = path.dirname(nativeLocalExecutionFile(paths, name));\n      const legacyRuntime = path.join(nativePortableChangeDir(paths, name), 'runtime');\n      await fs.cp(localRuntime, legacyRuntime, { recursive: true });\n      await fs.rm(localRuntime, { recursive: true });\n      paths = await nativeProjectPaths(projectRoot, 'docs');\n      const fenceBefore = await fs.readFile(legacyRuntime);\n      const evidenceFile = path.join(localRuntime, 'retained-check.log');\n      const trajectoryFile = path.join(localRuntime, 'trajectory.jsonl');\n      await fs.writeFile(evidenceFile, 'retained check evidence\\n');\n      await fs.writeFile(trajectoryFile, '{\"type\":\"retained-trajectory\"}\\n');\n      await fs.writeFile(\n        path.join(nativePortableChangeDir(paths, name), 'brief.md'),\n        '# Acceptance examples\\n- Doctor preserves a live Runtime check.\\n',\n      );\n      await confirmNativePortableShape({ paths, name });\n      const runner = createNativeRunnerChannel();\n      const state = await submitNativePortableBuilderCandidate({\n        paths,\n        name,\n        input: {\n          identity: runner.captureExecutionIdentity({\n            identityProvider: 'test-host',\n            executionRef: 'live-doctor-builder',\n          }),\n          candidateId: 'live-doctor-candidate',\n          summary: 'Implemented.',\n          addressedAcceptanceIds: ['A1'],\n          acceptanceReview: fixtureAcceptanceReview(['A1']),\n          review: null,\n        },\n      });\n      const marker = path.join(projectRoot, 'doctor-check-starts.txt');\n      const release = path.join(projectRoot, 'release-doctor-check');\n      const plan = {\n        id: 'live-doctor-check',\n        name: 'Live Doctor check',\n        executable: process.execPath,\n        argv: [\n          '-e',\n          \"const fs=require('node:fs');fs.appendFileSync(process.argv[1],'start\\\\n');setInterval(()=>{if(fs.existsSync(process.argv[2]))process.exit(0)},25)\",\n          marker,\n          release,\n        ],\n        cwdRef: '.',\n        timeoutMs: 60_000,\n        repeatable: true,\n      } as const;\n      const repositoryRoot = path.resolve(import.meta.dirname, '../../..');\n      const owner = spawnDoctorCheckProcess({\n        repositoryRoot,\n        payload: { action: 'execute-checks', paths, name: state.name, plans: [plan] },\n      });\n      const file = nativeLocalExecutionFile(paths, name);\n      await waitForCondition(async () => {\n        const local = await readNativeLocalExecution(file);\n        const reserved =\n          local?.execution?.status === 'running' &&\n          local.checks[0]?.activeProcess?.status === 'running' &&\n          typeof local.checks[0].activeProcess.instanceId === 'string';\n        const mutationLockReleased = await fs\n          .access(path.join(paths.locksDir, 'root-move.lock'))\n          .then(() => false)\n          .catch(() => true);\n        const commandStarted = await fs\n          .access(marker)\n          .then(() => true)\n          .catch(() => false);\n        return reserved && mutationLockReleased && commandStarted;\n      }, 'Runtime owner did not start the Doctor test check');\n\n      const beforeRepair = await fs.readFile(file);\n      if (legacyProjection) {\n        await fs.writeFile(\n          path.join(nativePortableChangeDir(paths, name), 'checkpoint.md'),\n          'old projection',\n        );\n      }\n      const repaired = await nativeDoctorCommand([name, '--repair'], projectRoot);\n      expect(await fs.readFile(file)).toEqual(beforeRepair);\n      expect(await fs.readFile(legacyRuntime)).toEqual(fenceBefore);\n      expect(await fs.readFile(evidenceFile, 'utf8')).toBe('retained check evidence\\n');\n      expect(await fs.readFile(trajectoryFile, 'utf8')).toBe('{\"type\":\"retained-trajectory\"}\\n');\n      const duringRepair = await readNativeLocalExecution(file);\n      const startsDuringRepair = (await fs.readFile(marker, 'utf8')).trim().split(/\\r?\\n/);\n\n      await fs.writeFile(release, 'release\\n');\n      await waitForProcessExit(owner);\n\n      expect(repaired, JSON.stringify(repaired)).toMatchObject({\n        exitCode: legacyProjection ? 0 : 65,\n        data: {\n          healthy: legacyProjection,\n          repaired: legacyProjection,\n          ...(legacyProjection\n            ? { migration: { recovered: true } }\n            : { result: { reason: 'execution-active' } }),\n        },\n      });\n      expect(duringRepair).toMatchObject({\n        execution: { status: 'running' },\n        checks: [{ status: 'running' }],\n      });\n      expect(startsDuringRepair).toHaveLength(1);\n      expect(owner.exitCode).toBe(0);\n      await expect(readNativeLocalExecution(file)).resolves.toMatchObject({\n        execution: { status: 'completed' },\n        checks: [{ status: 'passed' }],\n      });\n    },\n  )",
+      "registry": [],
+      "classification": "feature-removed-managed-process-overlay",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "exactTitle": "preserves the original agent task as unknown when recovering a v4 checkpoint",
+          "evidence": "source verified; this subtask did not rerun repository selector"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+          "exactTitle": "keeps an unknown verifier bound to its original task and creates no retry Wait",
+          "evidence": "earlier Temp current protocol complete unknown claim/result chain passed; parent applied migration"
+        }
+      ],
+      "limitations": [
+        "No Runtime checker/process/stop receipt or startup takeover remains. Preserve generic unknown Agent Action via current original claim/result, not old overlay."
+      ],
+      "remainingGaps": [],
+      "review": "原Runtime worker/PID/停止/启动接管已明确撤下。不是同一故障修复；保留平台Agent未决claim、原任务身份和不重放业务，不能把unknown标stopped或自动新派发。原正文保持归档。"
+    },
+    {
+      "originalFile": "test/domains/comet-native/native-doctor-v4.test.ts",
+      "originalName": "takes over a verifier dispatch that never confirmed startup",
+      "line": 484,
+      "originalBody": "it('takes over a verifier dispatch that never confirmed startup', async () => {\n    const name = 'stale-verifier-dispatch';\n    await createPortable(name);\n    await fs.writeFile(\n      path.join(nativePortableChangeDir(paths, name), 'brief.md'),\n      '# Acceptance examples\\n- The verifier can recover after a lost startup.\\n',\n    );\n    await confirmNativePortableShape({ paths, name });\n    const runner = createNativeRunnerChannel();\n    await submitNativePortableBuilderCandidate({\n      paths,\n      name,\n      input: {\n        identity: runner.captureExecutionIdentity({\n          identityProvider: 'test-host',\n          executionRef: 'stale-verifier-builder',\n        }),\n        candidateId: 'stale-verifier-candidate',\n        summary: 'Implemented.',\n        addressedAcceptanceIds: ['A1'],\n        acceptanceReview: fixtureAcceptanceReview(['A1']),\n        review: null,\n      },\n    });\n    const executed = await executeNativePortableCheckPlan({ paths, name, plans: [] });\n    const dispatched = await dispatchNativePortableVerifier({\n      paths,\n      name,\n      checks: executed.checks,\n      verifierExecutionId: 'stale-verifier-execution',\n    });\n    const local = await readNativeLocalExecution(nativeLocalExecutionFile(paths, name));\n    await writeNativeLocalExecution(\n      nativeLocalExecutionFile(paths, name),\n      {\n        ...local!,\n        basedOnStateVersion: dispatched.state_version,\n        execution: {\n          operationId: 'stale-verifier-operation',\n          stage: 'verifying',\n          actor: 'verifier',\n          executionId: 'stale-verifier-execution',\n          status: 'running',\n          startedAt: new Date(Date.now() - 31 * 60 * 1_000).toISOString(),\n          requestCheckRounds: 0,\n        },\n      },\n      { containedRoot: paths.runtimeDir },\n    );\n\n    await expect(nativeDoctorCommand([name, '--repair'], projectRoot)).resolves.toMatchObject({\n      exitCode: 0,\n      data: {\n        healthy: true,\n        repaired: true,\n        result: { verifierTakeover: true, waitedMinutes: expect.any(Number) },\n      },\n    });\n    const recovered = await readNativeLocalExecution(nativeLocalExecutionFile(paths, name));\n    expect(recovered?.execution?.status).toBe('running');\n    expect(recovered?.execution?.verifierStartedAt).toBeUndefined();\n  })",
+      "registry": [],
+      "classification": "feature-removed-managed-process-overlay",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "exactTitle": "preserves the original agent task as unknown when recovering a v4 checkpoint",
+          "evidence": "source verified; this subtask did not rerun repository selector"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+          "exactTitle": "keeps an unknown verifier bound to its original task and creates no retry Wait",
+          "evidence": "earlier Temp current protocol complete unknown claim/result chain passed; parent applied migration"
+        }
+      ],
+      "limitations": [
+        "No Runtime checker/process/stop receipt or startup takeover remains. Preserve generic unknown Agent Action via current original claim/result, not old overlay."
+      ],
+      "remainingGaps": [],
+      "review": "原Runtime worker/PID/停止/启动接管已明确撤下。不是同一故障修复；保留平台Agent未决claim、原任务身份和不重放业务，不能把unknown标stopped或自动新派发。原正文保持归档。"
+    },
+    {
+      "originalFile": "test/domains/comet-native/native-doctor-v4.test.ts",
+      "originalName": "repairs an exact empty v2 overlay left beside a legacy v1 child contract",
+      "line": 547,
+      "originalBody": "it('repairs an exact empty v2 overlay left beside a legacy v1 child contract', async () => {\n    const name = 'stale-v1-overlay';\n    const { buildState, file } = await createLegacySupervisorFixture(name);\n\n    await expect(nativeDoctorCommand([name], projectRoot)).resolves.toMatchObject({\n      exitCode: 65,\n      data: {\n        healthy: false,\n        findings: [\n          expect.objectContaining({\n            code: 'portable-supervisor-overlay-stale',\n            repairCommand: `comet native doctor ${name} --repair`,\n          }),\n        ],\n      },\n    });\n\n    await expect(nativeDoctorCommand([name, '--repair'], projectRoot)).resolves.toMatchObject({\n      exitCode: 0,\n      data: { healthy: true, repaired: true },\n    });\n    await expect(fs.stat(file)).rejects.toMatchObject({ code: 'ENOENT' });\n    await expect(readNativePortableChange(paths, name)).resolves.toMatchObject({\n      name,\n      phase: 'build',\n      state_version: buildState.state_version,\n    });\n\n    await archiveLegacyChild(buildState);\n\n    const applied = await applyNativeRunnerInput({\n      paths,\n      name,\n      input: {\n        kind: 'builder-handoff',\n        summary: 'The legacy child result is ready for verification.',\n        addressed_acceptance_ids: buildState.acceptance.map(({ id }) => id),\n        acceptance_review: fixtureAcceptanceReview(buildState.acceptance.map(({ id }) => id)),\n        checks: [],\n        known_limits: [],\n        review: {\n          status: 'passed',\n          summary: 'Read-only review passed.',\n          reviewer_execution_ref: 'reviewer',\n        },\n      },\n      maxVerifyFailures: 3,\n    });\n    expect(applied.state.phase).toBe('verify');\n  })",
+      "registry": [],
+      "classification": "feature-removed-second-supervisor-progress-authority",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+          "exactTitle": "keeps the original SDK Run authoritative and preserves a retired Supervisor overlay as uninterpreted data",
+          "evidence": "native-doctor-v4-all-business-final-results.json 13/13 pass; current source Temp imports, no build/Eval"
+        },
+        {
+          "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+          "exactTitle": "preserves every independent old Child frontier: %s",
+          "evidence": "source inspected; assertions original live sibling claim/input/inputHash, verifier activation acceptance/contractRef and exact original waits; not re-run here"
+        },
+        {
+          "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+          "exactTitle": "keeps a published running Supervisor preparation bound to its original approval and claim",
+          "evidence": "source inspected; exact original claim/input/status/executionOrigin plus original waits; not re-run here"
+        }
+      ],
+      "limitations": [
+        "Do not reconstruct/repair a second Supervisor progress graph. Current SDK Run owns Child/approval/task identity; original overlay filenames/empty inferred versions can retire, actual sibling/Wait progress must remain."
+      ],
+      "remainingGaps": [],
+      "review": "旧local overlay不再作为独立推进权威；原手工old-overlay状态/父漂移/unknown进度字段的Doctor修复或拒绝合同退休。新negative实测不解析/覆写这些旧rawbytes、不改真实SDK Run；真实批准/Child/claim映到实际052 SDK数据升级，禁止据overlay重建第二套图。这些当前安全合同与原辅助文件拒绝语义不同，须Review明确feature-removed。"
+    },
+    {
+      "originalFile": "test/domains/comet-native/native-doctor-v4.test.ts",
+      "originalName": "auto-recovers the stale overlay before accepting a public runner handoff",
+      "line": 598,
+      "originalBody": "it('auto-recovers the stale overlay before accepting a public runner handoff', async () => {\n    const name = 'auto-recover-v1-overlay';\n    const { buildState, file } = await createLegacySupervisorFixture(name);\n    await archiveLegacyChild(buildState);\n    const status = await inspectNativePortableStatus({ paths, name });\n    expect(status).toMatchObject({\n      childSummary: { total: 1, done: 1 },\n      supervisorOverlay: {\n        status: 'repairable-legacy-overlay',\n        repairCommand: `comet native doctor ${name} --repair`,\n      },\n      continuation: { action: 'builder-handoff' },\n    });\n    expect(status).not.toHaveProperty('supervisor');\n    const runnerInputFile = path.join(projectRoot, 'builder-handoff.json');\n    await fs.writeFile(\n      runnerInputFile,\n      JSON.stringify({\n        kind: 'builder-handoff',\n        summary: 'The legacy child result is ready for verification.',\n        addressed_acceptance_ids: buildState.acceptance.map(({ id }) => id),\n        acceptance_review: fixtureAcceptanceReview(buildState.acceptance.map(({ id }) => id)),\n        checks: [],\n        known_limits: [],\n        review: {\n          status: 'passed',\n          summary: 'Read-only review passed.',\n          reviewer_execution_ref: 'reviewer',\n        },\n      }),\n    );\n\n    await expect(\n      nativeNextCommand([name, '--runner-input', runnerInputFile], projectRoot),\n    ).resolves.toMatchObject({\n      exitCode: 0,\n      data: { state: { phase: 'verify' } },\n    });\n    await expect(fs.stat(file)).rejects.toMatchObject({ code: 'ENOENT' });\n  })",
+      "registry": [],
+      "classification": "feature-removed-second-supervisor-progress-authority",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+          "exactTitle": "keeps the original SDK Run authoritative and preserves a retired Supervisor overlay as uninterpreted data",
+          "evidence": "native-doctor-v4-all-business-final-results.json 13/13 pass; current source Temp imports, no build/Eval"
+        },
+        {
+          "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+          "exactTitle": "preserves every independent old Child frontier: %s",
+          "evidence": "source inspected; assertions original live sibling claim/input/inputHash, verifier activation acceptance/contractRef and exact original waits; not re-run here"
+        },
+        {
+          "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+          "exactTitle": "keeps a published running Supervisor preparation bound to its original approval and claim",
+          "evidence": "source inspected; exact original claim/input/status/executionOrigin plus original waits; not re-run here"
+        }
+      ],
+      "limitations": [
+        "Do not reconstruct/repair a second Supervisor progress graph. Current SDK Run owns Child/approval/task identity; original overlay filenames/empty inferred versions can retire, actual sibling/Wait progress must remain."
+      ],
+      "remainingGaps": [],
+      "review": "旧local overlay不再作为独立推进权威；原手工old-overlay状态/父漂移/unknown进度字段的Doctor修复或拒绝合同退休。新negative实测不解析/覆写这些旧rawbytes、不改真实SDK Run；真实批准/Child/claim映到实际052 SDK数据升级，禁止据overlay重建第二套图。这些当前安全合同与原辅助文件拒绝语义不同，须Review明确feature-removed。"
+    },
+    {
+      "originalFile": "test/domains/comet-native/native-doctor-v4.test.ts",
+      "originalName": "fails closed for Supervisor overlay progress, parent drift, and unknown fields",
+      "line": 639,
+      "originalBody": "it('fails closed for Supervisor overlay progress, parent drift, and unknown fields', async () => {\n    const name = 'incompatible-v1-overlay';\n    const { file, overlay } = await createLegacySupervisorFixture(name);\n    const base = JSON.stringify(overlay);\n    const cases: Array<[string, (value: Record<string, unknown>) => void]> = [\n      [\n        'advanced integration head',\n        (value) => {\n          (value.integration as Record<string, unknown>).headCommit = 'b'.repeat(40);\n        },\n      ],\n      [\n        'parent mismatch',\n        (value) => {\n          value.parent = 'different-parent';\n        },\n      ],\n      [\n        'history',\n        (value) => {\n          value.history = [\n            {\n              kind: 'target-refreshed',\n              child: null,\n              runId: null,\n              summary: 'Already started.',\n              at: new Date().toISOString(),\n            },\n          ];\n        },\n      ],\n      [\n        'final verification layers',\n        (value) => {\n          (value.finalVerification as Record<string, unknown>).layers = {};\n        },\n      ],\n      [\n        'child progress',\n        (value) => {\n          const child = (value.children as Array<Record<string, unknown>>)[0];\n          child.baseCommit = 'c'.repeat(40);\n        },\n      ],\n      [\n        'unknown child field',\n        (value) => {\n          const child = (value.children as Array<Record<string, unknown>>)[0];\n          child.futureProgress = 'keep me';\n        },\n      ],\n      [\n        'unknown top-level field',\n        (value) => {\n          value.futureProgress = 'keep me';\n        },\n      ],\n      [\n        'unknown integration field',\n        (value) => {\n          (value.integration as Record<string, unknown>).futureProgress = 'keep me';\n        },\n      ],\n    ];\n\n    for (const [label, mutate] of cases) {\n      const value = JSON.parse(base) as Record<string, unknown>;\n      mutate(value);\n      await fs.writeFile(file, JSON.stringify(value));\n      await expect(nativeDoctorCommand([name, '--repair'], projectRoot)).resolves.toMatchObject({\n        exitCode: 65,\n        data: {\n          healthy: false,\n          findings: [\n            expect.objectContaining({\n              code: 'portable-supervisor-overlay-incompatible',\n            }),\n          ],\n        },\n      });\n      await expect(fs.stat(file), label).resolves.toBeTruthy();\n      await fs.writeFile(file, base);\n    }\n  })",
+      "registry": [],
+      "classification": "feature-removed-second-supervisor-progress-authority",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+          "exactTitle": "keeps the original SDK Run authoritative and preserves a retired Supervisor overlay as uninterpreted data",
+          "evidence": "native-doctor-v4-all-business-final-results.json 13/13 pass; current source Temp imports, no build/Eval"
+        },
+        {
+          "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+          "exactTitle": "preserves every independent old Child frontier: %s",
+          "evidence": "source inspected; assertions original live sibling claim/input/inputHash, verifier activation acceptance/contractRef and exact original waits; not re-run here"
+        },
+        {
+          "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+          "exactTitle": "keeps a published running Supervisor preparation bound to its original approval and claim",
+          "evidence": "source inspected; exact original claim/input/status/executionOrigin plus original waits; not re-run here"
+        }
+      ],
+      "limitations": [
+        "Do not reconstruct/repair a second Supervisor progress graph. Current SDK Run owns Child/approval/task identity; original overlay filenames/empty inferred versions can retire, actual sibling/Wait progress must remain."
+      ],
+      "remainingGaps": [],
+      "review": "旧local overlay不再作为独立推进权威；原手工old-overlay状态/父漂移/unknown进度字段的Doctor修复或拒绝合同退休。新negative实测不解析/覆写这些旧rawbytes、不改真实SDK Run；真实批准/Child/claim映到实际052 SDK数据升级，禁止据overlay重建第二套图。这些当前安全合同与原辅助文件拒绝语义不同，须Review明确feature-removed。"
+    },
+    {
+      "originalFile": "test/domains/comet-native/native-doctor-v4.test.ts",
+      "originalName": "leaves a valid v2 Supervisor overlay on the normal path",
+      "line": 724,
+      "originalBody": "it('leaves a valid v2 Supervisor overlay on the normal path', async () => {\n    const name = 'current-v2-overlay';\n    // A real Supervisor overlay only exists after a Git-bound confirmation;\n    // seed the repository and the workspace binding the normal path produces.\n    runGitCommand(projectRoot, ['init', '-b', 'main']);\n    runGitCommand(projectRoot, ['config', 'user.email', 'native@example.test']);\n    runGitCommand(projectRoot, ['config', 'user.name', 'Native Test']);\n    await refreshRuntimePaths();\n    runGitCommand(projectRoot, ['add', '.']);\n    runGitCommand(projectRoot, ['commit', '--allow-empty', '-m', 'seed test repository']);\n    await createPortable(name);\n    const changeDir = nativePortableChangeDir(paths, name);\n    const childrenSource = `schema: comet.native.children.v2\nchildren:\n  - name: foundation\n    summary: Implement the foundation.\n    depends_on: []\n`;\n    await fs.writeFile(path.join(changeDir, 'children.yaml'), childrenSource);\n    const contract = parseNativeChildrenContract(childrenSource);\n    const overlay = createNativeSupervisorState({\n      parent: name,\n      targetBranch: 'main',\n      targetCommit: 'a'.repeat(40),\n      integrationBranch: 'main',\n      integrationWorktree: projectRoot,\n      contract,\n    });\n    await writeNativeSupervisorState(paths, overlay);\n    const state = await readNativePortableChange(paths, name);\n    await writeNativePortableState(nativePortableStateFile(paths, name), {\n      ...state,\n      workspace: { ...state.workspace, change_branch: 'main', target_branch: 'main' },\n    });\n\n    await expect(nativeDoctorCommand([name, '--repair'], projectRoot)).resolves.toMatchObject({\n      exitCode: 0,\n      data: { healthy: true, repaired: true },\n    });\n    await expect(fs.stat(nativeSupervisorStateFile(paths, name))).resolves.toBeTruthy();\n  })",
+      "registry": [],
+      "classification": "feature-removed-second-supervisor-progress-authority",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+          "exactTitle": "keeps the original SDK Run authoritative and preserves a retired Supervisor overlay as uninterpreted data",
+          "evidence": "native-doctor-v4-all-business-final-results.json 13/13 pass; current source Temp imports, no build/Eval"
+        },
+        {
+          "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+          "exactTitle": "preserves every independent old Child frontier: %s",
+          "evidence": "source inspected; assertions original live sibling claim/input/inputHash, verifier activation acceptance/contractRef and exact original waits; not re-run here"
+        },
+        {
+          "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+          "exactTitle": "keeps a published running Supervisor preparation bound to its original approval and claim",
+          "evidence": "source inspected; exact original claim/input/status/executionOrigin plus original waits; not re-run here"
+        }
+      ],
+      "limitations": [
+        "Do not reconstruct/repair a second Supervisor progress graph. Current SDK Run owns Child/approval/task identity; original overlay filenames/empty inferred versions can retire, actual sibling/Wait progress must remain."
+      ],
+      "remainingGaps": [],
+      "review": "旧local overlay不再作为独立推进权威；原手工old-overlay状态/父漂移/unknown进度字段的Doctor修复或拒绝合同退休。新negative实测不解析/覆写这些旧rawbytes、不改真实SDK Run；真实批准/Child/claim映到实际052 SDK数据升级，禁止据overlay重建第二套图。这些当前安全合同与原辅助文件拒绝语义不同，须Review明确feature-removed。"
+    },
+    {
+      "originalFile": "test/domains/comet-native/native-doctor-v4.test.ts",
+      "originalName": "keeps a generated portable verification report out of migration findings",
+      "line": 766,
+      "originalBody": "it('keeps a generated portable verification report out of migration findings', async () => {\n    const name = 'verified-portable';\n    await createPortable(name);\n    const report = path.join(paths.changesDir, name, 'verification.md');\n    await fs.writeFile(report, '# Verification\\n\\nPassed\\n');\n\n    await expect(nativeDoctorCommand([name], projectRoot)).resolves.toMatchObject({\n      exitCode: 0,\n      data: { healthy: true, workflow: 'native-portable', change: name },\n    });\n    await expect(nativeDoctorCommand([name, '--repair'], projectRoot)).resolves.toMatchObject({\n      exitCode: 0,\n      data: { healthy: true, repaired: true },\n    });\n    await expect(fs.stat(report)).resolves.toBeTruthy();\n    await expect(nativeDoctorCommand([], projectRoot)).resolves.toMatchObject({\n      exitCode: 0,\n      data: { healthy: true, workflow: 'native-portable', findings: [] },\n    });\n  })",
+      "registry": [],
+      "classification": "tests-moved-current-business",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+          "exactTitle": "keeps a generated portable verification report out of migration findings",
+          "evidence": "native-doctor-v4-all-business-final-results.json 13/13 pass; current source Temp imports, no build/Eval"
+        }
+      ],
+      "limitations": [],
+      "remainingGaps": [],
+      "review": "保留named/global健康诊断及报告bytes不变；输出字段由旧workflow/findings投影适配为当前runtimeFormat与紧凑changes。"
+    },
+    {
+      "originalFile": "test/domains/comet-native/native-doctor-v4.test.ts",
+      "originalName": "merges portable statuses with legacy migration findings in a mixed project",
+      "line": 787,
+      "originalBody": "it('merges portable statuses with legacy migration findings in a mixed project', async () => {\n    await createPortable('portable-change');\n    await createLegacy('legacy-change');\n\n    const result = await nativeDoctorCommand([], projectRoot);\n\n    expect(result).toMatchObject({\n      command: 'doctor',\n      exitCode: 65,\n      data: {\n        healthy: false,\n        workflow: 'native-mixed',\n        changes: [{ name: 'portable-change', schema: 'comet.native.status.v2' }],\n        legacyChanges: ['legacy-change'],\n        findings: expect.arrayContaining([\n          expect.objectContaining({\n            severity: 'error',\n            code: 'portable-migration-required',\n            repair: 'migrate',\n          }),\n        ]),\n      },\n      error: { code: 'invalid-data', message: 'Native project needs attention' },\n    });\n  })",
+      "registry": [],
+      "classification": "tests-moved-real-published-legacy-readonly",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+          "exactTitle": "merges current portable statuses with a published unmigrated legacy change without implicit conversion",
+          "evidence": "native-doctor-v4-all-business-final-results.json 13/13 pass; current source Temp imports, no build/Eval"
+        }
+      ],
+      "limitations": [
+        "Existing old test hand-builds v3 plain state/migration journal. Use actual frozen old material and known upgrade entry; do not restore old factory, local Runtime overlay or broad project migration scanner. Not exact equivalent proof yet."
+      ],
+      "remainingGaps": [],
+      "review": "原手写v3换真实052材料；两个合法独立项目材料静态复制共存，仅显式Doctor枚举当前changes目录。保留旧change诊断+当前portable phase+逐旧change显式repair命令，state bytes不变；不恢复跨worktree扫描或普通隐式转换。输出不保留重复legacyChanges列表。"
+    },
+    {
+      "originalFile": "test/domains/comet-native/native-doctor-v4.test.ts",
+      "originalName": "reports an active and archived portable change with the same name as unhealthy",
+      "line": 813,
+      "originalBody": "it('reports an active and archived portable change with the same name as unhealthy', async () => {\n    const name = 'layout-conflict';\n    await createPortable(name);\n    const archiveDir = path.join(paths.archiveDir, `2026-08-09-${name}`);\n    await fs.cp(path.join(paths.changesDir, name), archiveDir, { recursive: true });\n\n    const result = await nativeDoctorCommand([name], projectRoot);\n\n    expect(result).toMatchObject({\n      command: 'doctor',\n      exitCode: 65,\n      data: {\n        healthy: false,\n        workflow: 'native-portable',\n        change: name,\n        repaired: false,\n        findings: [\n          {\n            severity: 'error',\n            code: 'portable-active-archive-conflict',\n            path: archiveDir,\n          },\n        ],\n      },\n      error: { code: 'invalid-data', message: 'Native project needs attention' },\n    });\n  })",
+      "registry": [],
+      "classification": "feature-removed-directory-name-conflict-radar",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+          "exactTitle": "does not treat an unarchived Shape copy in an archive-named directory as completed conflicting history",
+          "evidence": "native-doctor-v4-all-business-final-results.json 13/13 pass; current source Temp imports, no build/Eval"
+        }
+      ],
+      "limitations": [
+        "Original copies an unarchived active Shape into an archive-named folder (archived:false). New Doctor treats it as no completed archive and reports healthy. This is not a proof about conflicting valid completed history. Unique valid named archive recovery is now guarded in root implementation."
+      ],
+      "remainingGaps": [],
+      "review": "原样本只是未归档Shape复制到归档名目录(archived:false)，没有真实已完成历史、没有原用户冲突Wait；不应据目录名阻塞。新negative证明原active与copy bytes不变仍可诊断。真正两个done归档歧义保护独立保留，不宣称本case已测该输入。"
+    },
+    {
+      "originalFile": "test/domains/comet-native/native-doctor-v4.test.ts",
+      "originalName": "finishes an incomplete portable migration through named Doctor repair",
+      "line": 841,
+      "originalBody": "it('finishes an incomplete portable migration through named Doctor repair', async () => {\n    const name = 'migration-recovery';\n    await createLegacy(name);\n    const state = await migrateNativeLegacyChangeToPortable({ paths, name });\n    const activeDir = path.join(paths.changesDir, name);\n    const legacyRuntime = path.join(activeDir, 'runtime');\n    await fs.mkdir(legacyRuntime, { recursive: true });\n    await fs.writeFile(path.join(legacyRuntime, 'trajectory.jsonl'), '{\"type\":\"legacy-history\"}\\n');\n    await fs.writeFile(path.join(activeDir, 'evidence.md'), 'legacy projection');\n    await fs.rm(path.join(paths.changesRuntimeDir, name), { recursive: true, force: true });\n\n    const inspected = await nativeDoctorCommand([name], projectRoot);\n    expect(inspected).toMatchObject({\n      exitCode: 65,\n      data: {\n        healthy: false,\n        findings: [{ code: 'portable-migration-incomplete', repair: 'migrate' }],\n      },\n    });\n\n    const repaired = await nativeDoctorCommand([name, '--repair'], projectRoot);\n    expect(repaired).toMatchObject({\n      exitCode: 0,\n      data: {\n        healthy: true,\n        repaired: true,\n        migration: { recovered: true, to: 'comet.native.v4', stateVersion: state.state_version },\n      },\n    });\n    expect(\n      await isWorkspaceRuntimeMigrationFence(\n        legacyRuntime,\n        path.join(paths.changesRuntimeDir, name),\n      ),\n    ).toBe(true);\n    await expect(fs.stat(path.join(activeDir, 'evidence.md'))).rejects.toMatchObject({\n      code: 'ENOENT',\n    });\n    expect((await fs.readdir(path.join(paths.changesRuntimeDir, name))).sort()).toEqual([\n      'state.json',\n      'trajectory.jsonl',\n    ]);\n    expect(\n      await fs.readFile(path.join(paths.changesRuntimeDir, name, 'trajectory.jsonl'), 'utf8'),\n    ).toBe('{\"type\":\"legacy-history\"}\\n');\n  })",
+      "registry": [],
+      "classification": "split-feature-removed-filename-cleanup-and-retained-actual-journal",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+          "exactTitle": "does not infer incomplete migration from five ordinary document names or delete their original contents",
+          "evidence": "native-doctor-v4-all-business-final-results.json 13/13 pass; current source Temp imports, no build/Eval"
+        },
+        {
+          "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+          "exactTitle": "reports and resumes a persisted portable migration transaction from published 052 prepared",
+          "evidence": "native-doctor-v4-all-business-final-results.json 13/13 pass; current source Temp imports, no build/Eval"
+        },
+        {
+          "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+          "exactTitle": "reports and resumes a persisted portable migration transaction from published 052 yaml-committed",
+          "evidence": "native-doctor-v4-all-business-final-results.json 13/13 pass; current source Temp imports, no build/Eval"
+        }
+      ],
+      "limitations": [
+        "Existing old test hand-builds v3 plain state/migration journal. Use actual frozen old material and known upgrade entry; do not restore old factory, local Runtime overlay or broad project migration scanner. Not exact equivalent proof yet."
+      ],
+      "remainingGaps": [],
+      "review": "按evidence.md存在推断迁移、删除正文及wholeRuntime重建断言退休；真实migration journal显式续行保留且RED/GREEN。5同名文件无txn不误迁移/删除已实测，真实报告Writer保存旧verification bytes另有独立已过测试。"
+    },
+    {
+      "originalFile": "test/domains/comet-native/native-doctor-v4.test.ts",
+      "originalName": "reports and resumes a persisted portable migration transaction",
+      "line": 888,
+      "originalBody": "it('reports and resumes a persisted portable migration transaction', async () => {\n    const name = 'migration-transaction';\n    await createLegacy(name);\n    const file = path.join(paths.transactionsDir, `portable-migration-${name}.json`);\n    await fs.writeFile(\n      file,\n      `${JSON.stringify({\n        schema: 'comet.native.portable-migration.v1',\n        id: randomUUID(),\n        change: name,\n        fromSchema: 'comet.native.v3',\n        status: 'prepared',\n        createdAt: new Date().toISOString(),\n      })}\\n`,\n    );\n\n    await expect(nativeDoctorCommand([name], projectRoot)).resolves.toMatchObject({\n      exitCode: 65,\n      data: {\n        findings: [\n          expect.objectContaining({\n            code: 'portable-migration-incomplete',\n            path: file,\n            repair: 'migrate',\n          }),\n        ],\n      },\n    });\n    await expect(nativeDoctorCommand([name, '--repair'], projectRoot)).resolves.toMatchObject({\n      exitCode: 0,\n      data: {\n        healthy: true,\n        repaired: true,\n        migration: { recovered: true, to: 'comet.native.v4' },\n      },\n    });\n    await expect(fs.stat(file)).rejects.toMatchObject({ code: 'ENOENT' });\n  })",
+      "registry": [],
+      "classification": "tests-moved-real-published-migration-wal",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+          "exactTitle": "reports and resumes a persisted portable migration transaction from published 052 prepared",
+          "evidence": "native-doctor-v4-all-business-final-results.json 13/13 pass; current source Temp imports, no build/Eval"
+        },
+        {
+          "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+          "exactTitle": "reports and resumes a persisted portable migration transaction from published 052 yaml-committed",
+          "evidence": "native-doctor-v4-all-business-final-results.json 13/13 pass; current source Temp imports, no build/Eval"
+        }
+      ],
+      "limitations": [
+        "Existing old test hand-builds v3 plain state/migration journal. Use actual frozen old material and known upgrade entry; do not restore old factory, local Runtime overlay or broad project migration scanner. Not exact equivalent proof yet."
+      ],
+      "remainingGaps": [],
+      "review": "真实发布函数的prepared/yaml-committed写边界；readonly原state+txn字节不变，named repair显式续行、实际journal消失、无伪造批准/candidate/pass。原RED→GREEN，非快照/progress框架。"
+    },
+    {
+      "originalFile": "test/domains/comet-native/native-doctor-v4.test.ts",
+      "originalName": "repairs a persisted portable transaction from project-wide Doctor",
+      "line": 927,
+      "originalBody": "it('repairs a persisted portable transaction from project-wide Doctor', async () => {\n    const name = 'project-migration-transaction';\n    await createLegacy(name);\n    const file = path.join(paths.transactionsDir, `portable-migration-${name}.json`);\n    await fs.writeFile(\n      file,\n      `${JSON.stringify({\n        schema: 'comet.native.portable-migration.v1',\n        id: randomUUID(),\n        change: name,\n        fromSchema: 'comet.native.v3',\n        status: 'prepared',\n        createdAt: new Date().toISOString(),\n      })}\\n`,\n    );\n\n    const repaired = await nativeDoctorCommand(['--repair'], projectRoot);\n\n    expect(repaired).toMatchObject({\n      exitCode: 0,\n      data: {\n        healthy: true,\n        workflow: 'native-portable',\n        repaired: true,\n        repairedPortableTransactions: [\n          { kind: 'migration', change: name, transactionId: expect.any(String) },\n        ],\n      },\n    });\n    await expect(fs.stat(file)).rejects.toMatchObject({ code: 'ENOENT' });\n  })",
+      "registry": [],
+      "classification": "tests-moved-real-published-migration-wal",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+          "exactTitle": "repairs a persisted portable transaction from project-wide Doctor from published 052 prepared",
+          "evidence": "native-doctor-v4-all-business-final-results.json 13/13 pass; current source Temp imports, no build/Eval"
+        },
+        {
+          "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+          "exactTitle": "repairs a persisted portable transaction from project-wide Doctor from published 052 yaml-committed",
+          "evidence": "native-doctor-v4-all-business-final-results.json 13/13 pass; current source Temp imports, no build/Eval"
+        }
+      ],
+      "limitations": [
+        "Existing old test hand-builds v3 plain state/migration journal. Use actual frozen old material and known upgrade entry; do not restore old factory, local Runtime overlay or broad project migration scanner. Not exact equivalent proof yet."
+      ],
+      "remainingGaps": [],
+      "review": "只在显式global --repair续已解析migration txn；invalid和Archive不处理有独立安全反例。只读列出原txn而不变bytes，成功后无pending txn。原RED→GREEN。"
+    }
+  ],
+  "additionalLegacyTrajectoryMapping": {
+    "originalFile": "test/domains/comet-native/native-doctor.test.ts",
+    "originalName": "reports malformed Run trajectory data with its path",
+    "line": 242,
+    "originalBody": "it('reports malformed Run trajectory data with its path', async () => {\n    const state = await createNativeChange({\n      paths,\n      name: 'broken-trajectory',\n      language: 'en',\n      verificationProtocol: 'legacy-v1',\n    });\n    const changeDir = nativeChangeDir(paths, state.name);\n    await fs.writeFile(path.join(changeDir, 'brief.md'), validBrief);\n    await advanceNativeChange({\n      paths,\n      name: state.name,\n      evidence: { summary: 'shape is ready' },\n    });\n    const trajectory = path.join(nativeChangeRuntimeDir(paths, state.name), 'trajectory.jsonl');\n    await fs.appendFile(trajectory, '{not-json}\\n');\n\n    const inspected = await doctorNativeProject({ paths });\n    expect(inspected).toMatchObject({ healthy: false });\n    expect(inspected.findings).toContainEqual(\n      expect.objectContaining({\n        code: 'trajectory-invalid',\n        severity: 'error',\n        path: trajectory,\n      }),\n    );\n  })",
+    "registry": [
+      {
+        "caseId": "native-doctor-no-implicit-unknown-owner-confirmation",
+        "sources": [
+          "report:2026-11-10-runtime-remaining-failures"
+        ],
+        "selector": {
+          "file": "test/domains/comet-native/native-doctor.test.ts",
+          "namePattern": "preserves active and unknown locks until the exact stopped owner is confirmed",
+          "requiredNames": [
+            "Native doctor preserves active and unknown locks until the exact stopped owner is confirmed"
+          ]
+        }
+      }
+    ],
+    "classification": "tests-moved-published-run-trajectory-readonly-diagnostic",
+    "targets": [
+      {
+        "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+        "exactTitle": "reports malformed published legacy Run trajectory with its exact path without changing or repairing its bytes",
+        "evidence": "native-doctor-v4-all-business-final-results.json 13/13 pass; current source Temp imports, no build/Eval"
+      }
+    ],
+    "limitations": [],
+    "review": "真实052批准WAL经现存业务continue形成原Run/trajectory，再append坏完整JSON行；named readonly与--repair都给精确trajectory-invalid/path并保留state/trajectory bytes。未引入轨迹自动修复、旧checkpoint一致性、hash或worker。"
+  },
+  "reviewRequired": "All feature-removed/split contracts require explicit Review; these are not historical bug fixes or proof models obey skills. Do not delete old registry entries: archive original bodies and append explicit testMigration with source/behavior mapping."
+}

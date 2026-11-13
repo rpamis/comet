@@ -1,14 +1,15 @@
-import { parseNativeShapeSemanticSnapshot } from './native-shape-semantics.js';
 import { promises as fs } from 'node:fs';
+import { toNativePortableText } from './native-portable-text.js';
 import {
   assertNativeBuilderAcceptanceComplete,
   parseNativeBuilderAcceptanceReview,
 } from './native-builder-acceptance-review.js';
+import { parseNativeChildrenContract } from './native-children-contract.js';
 import { NATIVE_BUILDER_CHECK_RESULTS, NATIVE_VERIFIER_VERDICTS } from './native-input-enum.js';
 
 import { stringify } from 'yaml';
-import { parseNativeStateDocument } from './native-state-document.js';
 import { parseRuntimeAction } from '../engine/runtime-action.js';
+import { parseNativeStateDocument } from './native-state-document.js';
 import {
   nativeVerifierActionInput,
   nativeVerifierActionMatchesState,
@@ -51,7 +52,9 @@ const ROOT_KEYS = new Set([
   'document_constraints_version',
   'shape_confirmation_hash',
   'shape_semantic_snapshot',
+  'children_contract_ref',
   'children_contract_hash',
+  'children_contract',
   'coordination_mode',
   'spec_changes',
   'workspace',
@@ -71,6 +74,29 @@ const ROOT_KEYS = new Set([
   'archive_receipt',
   'application_checkpoint',
 ]);
+
+function parseStoredChildren(value: unknown, acceptance: NativePortableAcceptanceState[]) {
+  const plan = record(value, 'Native approved children plan');
+  if (!Array.isArray(plan.children))
+    throw new Error('Native approved children plan requires children');
+  const children = plan.children.map((value) => {
+    const child = { ...record(value, 'Native approved child') };
+    // 领域模型含 summary 和 covers；还原用户 YAML 形式后复用同一个边界解析器。
+    if (
+      plan.schema === 'comet.native.children.v2' &&
+      !plan.acceptance_index &&
+      typeof child.summary === 'string'
+    )
+      delete child.covers;
+    else delete child.summary;
+    return child;
+  });
+  return parseNativeChildrenContract(
+    JSON.stringify({ ...plan, children }),
+    acceptance.map((item) => item.id),
+    { acceptanceCatalog: acceptance },
+  );
+}
 
 export class NativePortableStateVersionConflictError extends Error {
   readonly code = 'native-state-version-conflict';
@@ -227,12 +253,6 @@ function parseSpecChange(value: unknown, index: number): NativePortableSpecChang
   if (delta_source !== undefined && operation === 'remove') {
     throw new Error(`${label} remove cannot contain delta_source`);
   }
-  if (delta_source !== undefined && (base_hash === undefined || base_hash === null)) {
-    throw new Error(`${label} delta_source requires a non-null base_hash`);
-  }
-  if (base_hash !== undefined && delta_source === undefined && operation !== 'remove') {
-    throw new Error(`${label} base_hash requires delta_source for non-remove specs`);
-  }
   return {
     capability,
     operation,
@@ -364,6 +384,24 @@ function parseBuilderCheck(value: unknown, index: number): NativeBuilderCheckSum
     result: enumValue(root.result, NATIVE_BUILDER_CHECK_RESULTS, `${label}.result`),
     note: root.note === null ? null : parsePortableText(root.note, `${label}.note`),
   };
+}
+
+/** Platform-tool results are business reports, not Runtime execution receipts. */
+export function parseNativeReportedChecks(value: unknown): NativeBuilderCheckSummary[] {
+  return arrayValue(value, 'Native reported checks', (entry, index) => {
+    const check = record(entry, `Native reported checks[${index}]`);
+    return parseBuilderCheck(
+      {
+        name: toNativePortableText(stringValue(check.name, 'Reported check name')),
+        result: check.result,
+        note:
+          check.note == null
+            ? null
+            : toNativePortableText(stringValue(check.note, 'Reported check note')),
+      },
+      index,
+    );
+  });
 }
 
 function parseBuilderHandoff(value: unknown): NativeBuilderHandoff {
@@ -518,6 +556,7 @@ function parseVerification(value: unknown): NativePortableVerificationState {
       'assurance',
       'verdict',
       'checks',
+      'reported_checks',
       'summary',
       'risks',
       'risks_truncated',
@@ -558,6 +597,15 @@ function parseVerification(value: unknown): NativePortableVerificationState {
           ),
     verdict: enumValue(root.verdict, NATIVE_VERIFIER_VERDICTS, `${label}.verdict`),
     checks,
+    ...(root.reported_checks === undefined
+      ? {}
+      : {
+          reported_checks: arrayValue(
+            root.reported_checks,
+            `${label}.reported_checks`,
+            parseBuilderCheck,
+          ),
+        }),
     summary: parsePortableText(root.summary, `${label}.summary`),
     risks: arrayValue(root.risks, `${label}.risks`, (entry, index) =>
       parsePortableText(entry, `${label}.risks[${index}]`),
@@ -868,19 +916,26 @@ export function parseNativePortableState(value: unknown): NativePortableState {
             'Native Shape confirmation hash',
           ),
         }),
-    ...(root.shape_semantic_snapshot === undefined
+
+    ...((root.children_contract_ref ?? root.children_contract_hash) === undefined
       ? {}
       : {
-          shape_semantic_snapshot: parseNativeShapeSemanticSnapshot(root.shape_semantic_snapshot),
-        }),
-    ...(root.children_contract_hash === undefined
-      ? {}
-      : {
-          children_contract_hash: hashValue(
-            root.children_contract_hash,
-            'Native children contract hash',
+          children_contract_ref: stringValue(
+            root.children_contract_ref ?? root.children_contract_hash,
+            'Native children approval reference',
           ),
         }),
+    ...(root.children_contract_ref !== undefined && root.children_contract_hash !== undefined
+      ? {
+          children_contract_hash: stringValue(
+            root.children_contract_hash,
+            'Legacy children approval reference',
+          ),
+        }
+      : {}),
+    ...(root.children_contract === undefined
+      ? {}
+      : { children_contract: parseStoredChildren(root.children_contract, acceptance) }),
     ...(root.coordination_mode === undefined
       ? {}
       : {
@@ -919,19 +974,6 @@ export function parseNativePortableState(value: unknown): NativePortableState {
     archived: booleanValue(root.archived, 'Native archived'),
     created_at: timestamp(root.created_at, 'Native created_at'),
   };
-  if (state.shape_semantic_snapshot) {
-    if (!state.shape_confirmation_hash && state.phase !== 'shape')
-      throw new Error('Native Shape semantic snapshot requires its approval fingerprint');
-    const expected = [
-      'brief.md',
-      ...state.spec_changes.flatMap(({ source }) => (source ? [source] : [])),
-    ].sort();
-    const actual = state.shape_semantic_snapshot.artifacts.map(({ source }) => source).sort();
-    if (JSON.stringify(expected) !== JSON.stringify(actual))
-      throw new Error(
-        'Native Shape semantic snapshot must match the approved artifact declarations',
-      );
-  }
   assertReferences(state);
   assertLifecycle(state);
   return state;

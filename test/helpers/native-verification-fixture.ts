@@ -1,3 +1,4 @@
+import './isolated-agent-home.js';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -53,7 +54,10 @@ export async function nativeVerificationFixture(
     return { ...owned, run: await owned.runtime.inspect('verification-test') };
   };
   const git = (...args: string[]) =>
-    execFileSync('git', ['-C', root, ...args], { windowsHide: true, stdio: 'pipe' });
+    execFileSync('git', ['-C', root, ...args], {
+      windowsHide: true,
+      stdio: 'pipe',
+    });
   git('init');
   await fs.writeFile(path.join(root, 'value.txt'), 'initial\n');
   git('add', 'value.txt');
@@ -82,12 +86,16 @@ export async function nativeVerificationFixture(
   };
   const change = path.join(root, 'docs/comet/changes/verification-test');
   await fs.mkdir(change, { recursive: true });
-  // Exercise the legacy typed receipt and mandatory independent review contract.
+  // Current business workflow; independent review is selected explicitly in the fixture report.
   const initial = {
     operation: 'start',
     runId: 'verification-test',
-    workflow: { id: 'comet-native', version: '1' },
-    input: { name: 'verification-test', artifactRootRef: 'docs', ...(task ? { task } : {}) },
+    workflow: { id: 'comet-native', version: '4' },
+    input: {
+      name: 'verification-test',
+      artifactRootRef: 'docs',
+      ...(task ? { task } : {}),
+    },
     initialState: createNativePortableState({
       name: 'verification-test',
       language: 'zh-CN',
@@ -130,7 +138,10 @@ export async function nativeVerificationFixture(
   );
   const submit = async (output: RuntimeValue, sessionId: string) => {
     if (cliPath) {
-      const run = await dispatch({ operation: 'inspect', runId: 'verification-test' });
+      const run = await dispatch({
+        operation: 'inspect',
+        runId: 'verification-test',
+      });
       const action = run.actions.at(-1)!;
       const claimToken =
         action.claim?.sessionId === sessionId ? action.claim.token : crypto.randomUUID();
@@ -190,11 +201,7 @@ export async function nativeVerificationFixture(
       context,
     });
   };
-  const candidate = async (
-    value: string,
-    sessionId = 'builder',
-    verificationChecks: RuntimeValue[] = [],
-  ) => {
+  const candidate = async (value: string, sessionId = 'builder') => {
     await fs.writeFile(path.join(root, 'value.txt'), value);
     await submit(
       {
@@ -202,7 +209,7 @@ export async function nativeVerificationFixture(
         acceptanceReview: fixtureAcceptanceReview(['A1']) as unknown as RuntimeValue,
         checks: [],
         knownLimits: [],
-        verificationChecks,
+        requireIndependentReview: true,
       },
       sessionId,
     );

@@ -1,4 +1,5 @@
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
+import { importLegacyWorkspaceRuntimeData } from '../../../domains/workflow-contract/legacy-runtime-import.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -42,7 +43,7 @@ describe('application adaptation and SDK authority', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
   const input = { topic: 'Actual topic' };
-  it('repairs only an observed application or Run writer lock and preserves the authoritative Run', async () => {
+  it('repairs only an observed generic SDK Run writer lock and preserves the authoritative Run', async () => {
     const { runtime, fixture } = await application();
     const run = await runtime.start({
       runId: 'lock-recovery',
@@ -52,11 +53,7 @@ describe('application adaptation and SDK authority', () => {
     const applicationId = fixture.manifest.id;
     const before = await readWorkflowApplicationRun(root, applicationId, run.runId);
     const locks = await inspectWorkflowApplicationLocks(root, applicationId, run.runId);
-    expect(locks.map(({ kind }) => kind)).toEqual([
-      'run-store',
-      'application-scope',
-      'application-scope',
-    ]);
+    expect(locks.map(({ kind }) => kind)).toEqual(['run-store']);
     for (const target of locks) {
       await fs.mkdir(path.dirname(target.file), { recursive: true });
       await fs.writeFile(target.file, '{interrupted-writer');
@@ -142,9 +139,10 @@ describe('application adaptation and SDK authority', () => {
       input,
     });
     expect(await readWorkflowApplicationRun(root, loaded.manifest.id, run.runId)).toEqual(run);
-    expect((await fs.stat(path.join(root, '.comet/runtime'))).isFile()).toBe(true);
+    expect((await fs.stat(runtimeRoot)).isDirectory()).toBe(true);
+    expect(await fs.stat(path.join(root, '.comet/runtime')).catch(() => null)).toBeNull();
   });
-  it('reads legacy application records without migration and rejects dual authority', async () => {
+  it('keeps current application records authoritative and imports legacy records only on explicit request', async () => {
     const { runtime, loaded } = await application();
     const run = await runtime.start({
       runId: 'legacy-report',
@@ -157,22 +155,21 @@ describe('application adaptation and SDK authority', () => {
       loaded.manifest.id,
     );
     const legacyRoot = path.join(root, '.comet/runtime');
-    await fs.unlink(legacyRoot);
     const legacy = path.join(legacyRoot, 'applications', loaded.manifest.id);
     await fs.mkdir(path.dirname(legacy), { recursive: true });
     await fs.cp(current, legacy, { recursive: true });
-    await expect(readWorkflowApplicationRun(root, loaded.manifest.id, run.runId)).rejects.toThrow(
-      '同时存在',
-    );
-    expect((await listWorkflowApplicationRunRecords(root))[0]).toMatchObject({
-      record: null,
-      error: { code: 'APPLICATION_UNREADABLE' },
-    });
-    await fs.rm(current, { recursive: true });
-    expect((await listWorkflowApplicationRunRecords(root))[0].record?.run).toEqual(run);
     expect(await readWorkflowApplicationRun(root, loaded.manifest.id, run.runId)).toEqual(run);
+    expect((await listWorkflowApplicationRunRecords(root))[0].record?.run).toEqual(run);
+    await fs.rm(current, { recursive: true });
+    expect(await listWorkflowApplicationRunRecords(root)).toEqual([]);
+    expect(await readWorkflowApplicationRun(root, loaded.manifest.id, run.runId)).toBeNull();
     expect((await fs.lstat(legacyRoot)).isDirectory()).toBe(true);
     expect(await fs.stat(current).catch(() => null)).toBeNull();
+    const imported = await importLegacyWorkspaceRuntimeData(root);
+    expect(imported.imported).toContain(`applications/${loaded.manifest.id}/${run.runId}`);
+    expect(await readWorkflowApplicationRun(root, loaded.manifest.id, run.runId)).toEqual(run);
+    expect((await fs.lstat(legacyRoot)).isDirectory()).toBe(true);
+    expect((await importLegacyWorkspaceRuntimeData(root)).imported).toEqual([]);
   });
   async function application(parallel = false) {
     const fixture = await createDiskApplication(root, { parallel });

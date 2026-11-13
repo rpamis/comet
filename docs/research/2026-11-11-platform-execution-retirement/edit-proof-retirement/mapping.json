@@ -1,0 +1,312 @@
+{
+  "authorization": "report:2026-11-11-single-writer-workspaces",
+  "mappings": [
+    {
+      "file": "test/domains/workflow-contract/edit-review.test.ts",
+      "index": 0,
+      "name": "retains only explicitly selected checks for exactly covered raw input changes",
+      "body": "it('retains only explicitly selected checks for exactly covered raw input changes', async () => {\n    const f = await fixture();\n    const scope = { ...f.scope, judgment: 'agent' as const };\n    const proposal = await prepareEditReview(scope, f.request);\n    const before = 'value = 1\\n',\n      after = '# Explain the value.\\nvalue = 1\\n';\n    const digest = (source: string) => createHash('sha256').update(source).digest('hex');\n    const changes = [{ path: 'worker.py', beforeHash: digest(before), afterHash: digest(after) }];\n    await recordEditReview(\n      scope,\n      {\n        proposalHash: proposal.proposalHash,\n        decision: 'non-behavioral',\n        summary: 'Check B is unaffected; check A still needs execution.',\n        retainedCheckActionIds: ['check-B'],\n        retainedChecks: [{ actionId: 'check-batch', checkId: 'B' }],\n      },\n      { kind: 'runtime-agent', executionRef: 'run:4/1/builder' },\n    );\n    expect(await isCheckInputRetained(scope, 'check-B', changes)).toBe(true);\n    expect(\n      await isCheckInputRetained({ ...scope, candidateKey: 'later-context' }, 'check-B', changes),\n    ).toBe(true);\n    const blob = `git:${createHash('sha1')\n      .update(`blob ${Buffer.byteLength(before)}\\0`)\n      .update(before)\n      .digest('hex')}`;\n    expect(\n      await isCheckInputRetained(scope, 'check-B', [{ ...changes[0], beforeHash: blob }]),\n    ).toBe(true);\n    expect(await isCheckInputRetained(scope, 'check-A', changes)).toBe(false);\n    expect(await isCheckInputRetained(scope, 'check-batch', changes, [], 'B')).toBe(true);\n    expect(await isCheckInputRetained(scope, 'check-batch', changes, [], 'A')).toBe(false);\n    expect(await isCheckInputRetained(scope, 'check-batch', changes)).toBe(false);\n    expect(\n      await isCheckInputRetained(scope, 'check-B', [\n        ...changes,\n        { path: 'other.unknown', beforeHash: 'old', afterHash: 'new' },\n      ]),\n    ).toBe(false);\n    expect(\n      await isCheckInputRetained(scope, 'check-B', [\n        { ...changes[0], afterHash: digest(after + 'another edit') },\n      ]),\n    ).toBe(false);\n    expect(await isCheckInputRetained(scope, 'check-B', [])).toBe(false);\n    expect(await isCheckInputRetained({ ...scope, change: 'other' }, 'check-B', changes)).toBe(\n      false,\n    );\n  })",
+      "classification": "split-retired-mechanism-and-preserved-business",
+      "retiredMechanisms": "Old standalone content-proof proposal/original/fingerprint/claim/receipt/discard protocol and its lock/store machinery.",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "preserves an Agent-selected prior report for a repaired candidate and requires full new verification",
+          "evidence": "coverage/native-agent-content-current-complete-results.json"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/workflow-contract/edit-review.test.ts",
+      "index": 1,
+      "name": "supersedes only stale applied judgments and rejects a result for reverted content",
+      "body": "it('supersedes only stale applied judgments and rejects a result for reverted content', async () => {\n    const f = await fixture();\n    const scope = { ...f.scope, judgment: 'agent' as const };\n    const original = 'value = 1\\n';\n    const after = '# Explanation\\nvalue = 1\\n';\n    const request = {\n      intent: 'write' as const,\n      toolName: 'Write',\n      targets: ['worker.py'],\n      writes: [{ path: 'worker.py', content: after }],\n    };\n    await fs.writeFile(path.join(scope.projectRoot, 'worker.py'), after);\n    const first = await prepareEditReview(scope, request, new Map([['worker.py', original]]));\n    await fs.writeFile(path.join(scope.projectRoot, 'worker.py'), original);\n    await expect(\n      recordEditReview(\n        scope,\n        {\n          proposalHash: first.proposalHash,\n          decision: 'non-behavioral',\n          summary: 'Stale observation',\n        },\n        { kind: 'runtime-agent', executionRef: 'run:4/1/builder' },\n      ),\n    ).rejects.toThrow('再次变化');\n    await supersedeStaleAppliedEditReviews(scope);\n    expect((await inspectEditReviews(scope))[0].receipt?.authority.kind).toBe('runtime-superseded');\n    expect(await fs.readFile(path.join(scope.projectRoot, 'worker.py'), 'utf8')).toBe(original);\n  })",
+      "classification": "split-retired-mechanism-and-preserved-business",
+      "retiredMechanisms": "Old standalone content-proof proposal/original/fingerprint/claim/receipt/discard protocol and its lock/store machinery.",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "rejects a wrong result session and candidate drift before accepting Verify",
+          "evidence": "coverage/edit-proof-retirement-business-green.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "blocks Native Archive when a new real check fails after an accepted pass",
+          "evidence": "coverage/native-agent-content-current-complete-results.json"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/workflow-contract/edit-review.test.ts",
+      "index": 2,
+      "name": "retains exact approved originals without language normalization or compiler support",
+      "body": "it('retains exact approved originals without language normalization or compiler support', async () => {\n    const f = await fixture();\n    const source = '# 说明\\r\\nunknown syntax ???\\r\\n';\n    const hash = createHash('sha256').update(source).digest('hex');\n    await rememberApprovedEditOriginal(f.scope, 'design.unknown', source, hash);\n    await expect(readApprovedEditOriginal(f.scope, 'design.unknown', hash)).resolves.toBe(source);\n    await rememberApprovedEditOriginal(f.scope, 'design.unknown', source, hash);\n    await expect(\n      rememberApprovedEditOriginal(f.scope, 'design.unknown', source + 'edit', hash),\n    ).rejects.toThrow('摘要');\n    await expect(\n      readApprovedEditOriginal({ ...f.scope, change: 'other' }, 'design.unknown', hash),\n    ).rejects.toThrow();\n  })",
+      "classification": "retired-mechanism",
+      "retiredMechanisms": "Old standalone content-proof proposal/original/fingerprint/claim/receipt/discard protocol and its lock/store machinery.",
+      "targets": [],
+      "limitations": "Unwired exact approved-original side store is retired. Original formal documents and existing original report backup remain at current business paths; no replacement reader/store is introduced."
+    },
+    {
+      "file": "test/domains/workflow-contract/edit-review.test.ts",
+      "index": 3,
+      "name": "uses the current Agent claim without creating another review session",
+      "body": "it('uses the current Agent claim without creating another review session', () => {\n    const claim = {\n      actionId: 'run:4',\n      attempt: 1,\n      inputHash: 'input',\n      claimToken: 'token',\n      sessionId: 'builder',\n    };\n    const actions = [\n      {\n        id: 'run:4',\n        stepId: 'build.builder',\n        attempt: 1,\n        inputHash: 'input',\n        status: 'running',\n        claim: { token: 'token', sessionId: 'builder' },\n      },\n    ];\n    expect(claimedAgentEditReviewAuthority(actions, ['build.builder'], claim)).toEqual({\n      kind: 'runtime-agent',\n      executionRef: 'run:4/1/builder',\n    });\n    for (const invalid of [\n      { ...claim, claimToken: 'old' },\n      { ...claim, sessionId: 'other' },\n      { ...claim, attempt: 2 },\n      { ...claim, inputHash: 'old' },\n    ])\n      expect(() => claimedAgentEditReviewAuthority(actions, ['build.builder'], invalid)).toThrow();\n    expect(() => claimedAgentEditReviewAuthority(actions, ['verify.verifier'], claim)).toThrow();\n    expect(() =>\n      claimedAgentEditReviewAuthority(\n        [{ ...actions[0], status: 'succeeded' }],\n        ['build.builder'],\n        claim,\n      ),\n    ).toThrow();\n  })",
+      "classification": "split-retired-mechanism-and-preserved-business",
+      "retiredMechanisms": "Old standalone content-proof proposal/original/fingerprint/claim/receipt/discard protocol and its lock/store machinery.",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "submits Build and claims same-session Verify in one call, then completes authorized Archive in one result call",
+          "evidence": "coverage/native-sdk-main-current-business-results.json"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/workflow-contract/edit-review.test.ts",
+      "index": 4,
+      "name": "records raw edits for current Agent judgment in %s",
+      "body": "it.each(['worker.py', 'worker.ts', 'document.unknown', 'AGENTS.md'])(\n    'records raw edits for current Agent judgment in %s',\n    async (file) => {\n      const f = await fixture();\n      await fs.writeFile(path.join(f.scope.projectRoot, file), 'value = 1\\n');\n      const request = {\n        ...f.request,\n        targets: [file],\n        writes: f.request.writes.map((write) => ({ ...write, path: file })),\n      };\n      const scope = { ...f.scope, judgment: 'agent' as const };\n      const proposal = await prepareEditReview(scope, request);\n      expect(proposal.judgment).toBe('agent');\n      expect(proposal.edits[0].beforeFingerprint).toBeNull();\n      expect(proposal.edits[0].beforeInputHash).toMatch(/^[a-f0-9]{64}$/);\n      const continuation = await editReviewContinuation(\n        scope,\n        await inspectEditReviews(scope),\n        true,\n      );\n      expect(continuation?.commandArgs).toContain('record');\n      expect(continuation?.commandArgs).not.toContain('claim');\n      expect(\n        (await editReviewContinuation(f.scope, await inspectEditReviews(f.scope), true))\n          ?.commandArgs,\n      ).toContain('record');\n      const receipt = await recordEditReview(\n        scope,\n        {\n          proposalHash: proposal.proposalHash,\n          decision: 'non-behavioral',\n          summary: '当前Agent核对实际使用方，只有说明变化。',\n        },\n        { kind: 'runtime-agent', executionRef: 'run:4/1/builder' },\n      );\n      expect((await inspectEditReviews(scope))[0].receipt).toEqual(receipt);\n      await fs.writeFile(path.join(f.scope.projectRoot, file), 'value = 2\\n');\n      await expect(\n        recordEditReview(\n          scope,\n          {\n            proposalHash: proposal.proposalHash,\n            decision: 'non-behavioral',\n            summary: '旧判断',\n          },\n          { kind: 'runtime-agent', executionRef: 'run:4/1/builder' },\n        ),\n      ).rejects.toThrow('不匹配');\n    },\n  )",
+      "classification": "split-retired-mechanism-and-preserved-business",
+      "retiredMechanisms": "Old standalone content-proof proposal/original/fingerprint/claim/receipt/discard protocol and its lock/store machinery.",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "preserves an Agent-selected prior report for a repaired candidate and requires full new verification",
+          "evidence": "coverage/native-agent-content-current-complete-results.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "blocks Native Archive when a new real check fails after an accepted pass",
+          "evidence": "coverage/native-agent-content-current-complete-results.json"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/workflow-contract/edit-review.test.ts",
+      "index": 5,
+      "name": "recovers a bound independent review without claiming the formal Verifier Action",
+      "body": "it('recovers a bound independent review without claiming the formal Verifier Action', async () => {\n    const f = await fixture();\n    const proposal = await prepareEditReview(f.scope, f.request);\n    await expect(\n      claimEditReview(f.scope, { sessionId: 'builder', builderExecutionRef: 'builder' }),\n    ).rejects.toThrow('独立');\n    const claimed = await claimEditReview(f.scope, {\n      sessionId: 'reviewer',\n      builderExecutionRef: 'builder',\n    });\n    expect(\n      (await claimEditReview(f.scope, { sessionId: 'reviewer', builderExecutionRef: 'builder' }))\n        .recordTemplate,\n    ).toEqual(claimed.recordTemplate);\n    const input = {\n      ...claimed.recordTemplate,\n      decision: 'non-behavioral' as const,\n      summary: 'Only explanatory text changes.',\n    };\n    await expect(\n      claimedEditReviewExecutionAuthority(f.scope, 'builder', {\n        ...input,\n        reviewer: { sessionId: 'reviewer', claimToken: 'wrong' },\n      }),\n    ).rejects.toThrow('回执');\n    await expect(\n      claimedEditReviewExecutionAuthority({ ...f.scope, candidateKey: 'other' }, 'builder', input),\n    ).rejects.toThrow();\n    const authority = await claimedEditReviewExecutionAuthority(f.scope, 'builder', input);\n    const receipt = await recordEditReview(f.scope, input, authority);\n    expect(JSON.stringify(receipt)).not.toContain(input.reviewer.claimToken);\n    expect(\n      (\n        await claimEditReview(f.scope, {\n          sessionId: 'reviewer',\n          builderExecutionRef: 'builder',\n          proposalHash: proposal.proposalHash,\n        })\n      ).recordTemplate.reviewer.claimToken,\n    ).toBe(input.reviewer.claimToken);\n    await expect(\n      claimEditReview(f.scope, {\n        sessionId: 'another-reviewer',\n        builderExecutionRef: 'builder',\n        proposalHash: proposal.proposalHash,\n      }),\n    ).rejects.toThrow('已有复核结论');\n    expect(\n      (await editReviewContinuation(f.scope, await inspectEditReviews(f.scope), true))\n        ?.requiredInputs,\n    ).toContain('重试已经复核通过的原始编辑调用');\n    await fs.writeFile(\n      path.join(f.scope.projectRoot, 'worker.py'),\n      '# Explain the value.\\nvalue = 1\\n',\n    );\n    expect(\n      await editReviewContinuation(f.scope, await inspectEditReviews(f.scope), true),\n    ).toBeNull();\n    expect(receipt.proposalHash).toBe(proposal.proposalHash);\n  })",
+      "classification": "split-retired-mechanism-and-preserved-business",
+      "retiredMechanisms": "Old standalone content-proof proposal/original/fingerprint/claim/receipt/discard protocol and its lock/store machinery.",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "hands independent Verify to its actual receiver and rejects the Builder session",
+          "evidence": "coverage/edit-proof-retirement-business-green.json"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/workflow-contract/edit-review.test.ts",
+      "index": 6,
+      "name": "keeps original input outside Runtime and refuses to reuse a changed input reference",
+      "body": "it('keeps original input outside Runtime and refuses to reuse a changed input reference', async () => {\n    const f = await fixture();\n    const proposal = await prepareEditReview(f.scope, f.request);\n    const inputFile = path.join(f.scope.projectRoot, 'request.json');\n    const source = JSON.stringify(f.request);\n    await fs.writeFile(inputFile, source);\n    await rememberEditReviewInput(f.scope, proposal.proposalHash, inputFile, source);\n    const next = await editReviewContinuation(f.scope, await inspectEditReviews(f.scope), true);\n    expect(next?.commandArgs).toContain(inputFile);\n    const claimed = await claimEditReview(f.scope, {\n      sessionId: 'reviewer',\n      builderExecutionRef: 'builder',\n      proposalHash: proposal.proposalHash,\n    });\n    expect(claimed.originalRequestRef).toBe(inputFile);\n    expect(claimed.originalRequestHash).toMatch(/^[a-f0-9]{64}$/u);\n    expect(claimed).not.toHaveProperty('request');\n    await fs.writeFile(inputFile, '{}');\n    expect(\n      (await editReviewContinuation(f.scope, await inspectEditReviews(f.scope), true))\n        ?.requiredInputs,\n    ).toContain('原始编辑请求');\n    await expect(\n      rememberEditReviewInput(f.scope, proposal.proposalHash, inputFile, source),\n    ).rejects.toThrow('发生变化');\n  })",
+      "classification": "split-retired-mechanism-and-preserved-business",
+      "retiredMechanisms": "Old standalone content-proof proposal/original/fingerprint/claim/receipt/discard protocol and its lock/store machinery.",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "keeps non-Git result transport outside candidate inputs through the high-level task path",
+          "evidence": "coverage/native-sdk-main-current-business-results.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "rejects a wrong result session and candidate drift before accepting Verify",
+          "evidence": "coverage/edit-proof-retirement-business-green.json"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/workflow-contract/edit-review.test.ts",
+      "index": 7,
+      "name": "requires the current independent claimed Verifier session",
+      "body": "it('requires the current independent claimed Verifier session', () => {\n    const action = {\n      id: 'verify-1',\n      stepId: 'verify.verifier',\n      status: 'running',\n      attempt: 1,\n      inputHash: 'input-1',\n      claim: { token: 'token-1', sessionId: 'verifier' },\n    };\n    const claim = {\n      actionId: action.id,\n      attempt: 1,\n      inputHash: action.inputHash,\n      claimToken: 'token-1',\n      sessionId: 'verifier',\n    };\n    expect(claimedEditReviewAuthority([action], action.stepId, 'builder', claim).kind).toBe(\n      'runtime-verifier',\n    );\n    for (const changed of [\n      { ...claim, claimToken: 'stale' },\n      { ...claim, attempt: 2 },\n      { ...claim, sessionId: 'builder' },\n      { ...claim, inputHash: 'stale' },\n    ])\n      expect(() => claimedEditReviewAuthority([action], action.stepId, 'builder', changed)).toThrow(\n        '独立 Verifier',\n      );\n    expect(() =>\n      claimedEditReviewAuthority(\n        [{ ...action, status: 'succeeded' }],\n        action.stepId,\n        'builder',\n        claim,\n      ),\n    ).toThrow();\n  })",
+      "classification": "split-retired-mechanism-and-preserved-business",
+      "retiredMechanisms": "Old standalone content-proof proposal/original/fingerprint/claim/receipt/discard protocol and its lock/store machinery.",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "hands independent Verify to its actual receiver and rejects the Builder session",
+          "evidence": "coverage/edit-proof-retirement-business-green.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "rejects a wrong result session and candidate drift before accepting Verify",
+          "evidence": "coverage/edit-proof-retirement-business-green.json"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/workflow-contract/edit-review.test.ts",
+      "index": 8,
+      "name": "holds the current candidate until its exact reviewed edit is applied",
+      "body": "it('holds the current candidate until its exact reviewed edit is applied', async () => {\n    const f = await fixture();\n    const proposal = await prepareEditReview(f.scope, f.request);\n    await expect(assertEditReviewsComplete(f.scope)).rejects.toThrow('待复核');\n    await recordEditReview(\n      f.scope,\n      {\n        proposalHash: proposal.proposalHash,\n        decision: 'non-behavioral',\n        summary: 'Only a Python comment changed.',\n      },\n      { kind: 'runtime-verifier', executionRef: 'verifier-1' },\n    );\n    await expect(assertEditReviewsComplete(f.scope)).rejects.toThrow('尚未应用');\n    await fs.writeFile(\n      path.join(f.scope.projectRoot, 'worker.py'),\n      '# Explain the value.\\nvalue = 1\\n',\n    );\n    await expect(assertEditReviewsComplete(f.scope)).resolves.toBeUndefined();\n    expect(\n      await approvedEditFingerprint(f.scope, 'worker.py', '# Explain the value.\\nvalue = 1\\n'),\n    ).toMatchObject({ fingerprint: proposal.edits[0].beforeInputHash, semantic: false });\n    await fs.writeFile(\n      path.join(f.scope.projectRoot, 'worker.py'),\n      '# Explain the value.\\nvalue = 2\\n',\n    );\n    await expect(assertEditReviewsComplete(f.scope)).rejects.toThrow('不匹配');\n  })",
+      "classification": "split-retired-mechanism-and-preserved-business",
+      "retiredMechanisms": "Old standalone content-proof proposal/original/fingerprint/claim/receipt/discard protocol and its lock/store machinery.",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "rejects a wrong result session and candidate drift before accepting Verify",
+          "evidence": "coverage/edit-proof-retirement-business-green.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "blocks Native Archive when a new real check fails after an accepted pass",
+          "evidence": "coverage/native-agent-content-current-complete-results.json"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/workflow-contract/edit-review.test.ts",
+      "index": 9,
+      "name": "keeps unrelated candidates isolated and refuses conflicting decisions",
+      "body": "it('keeps unrelated candidates isolated and refuses conflicting decisions', async () => {\n    const f = await fixture();\n    const proposal = await prepareEditReview(f.scope, f.request);\n    expect(await inspectEditReviews({ ...f.scope, candidateKey: 'candidate-2' })).toEqual([]);\n    await expect(\n      recordEditReview(\n        { ...f.scope, candidateKey: 'candidate-2' },\n        {\n          proposalHash: proposal.proposalHash,\n          decision: 'non-behavioral',\n          summary: 'Wrong candidate.',\n        },\n        { kind: 'runtime-verifier', executionRef: 'verifier' },\n      ),\n    ).rejects.toThrow();\n    await recordEditReview(\n      f.scope,\n      { proposalHash: proposal.proposalHash, decision: 'non-behavioral', summary: 'Reviewed.' },\n      { kind: 'runtime-verifier', executionRef: 'verifier' },\n    );\n    await expect(\n      recordEditReview(\n        f.scope,\n        {\n          proposalHash: proposal.proposalHash,\n          decision: 'implementation-changed',\n          summary: 'Different decision.',\n        },\n        { kind: 'runtime-verifier', executionRef: 'verifier' },\n      ),\n    ).rejects.toThrow('已有');\n  })",
+      "classification": "split-retired-mechanism-and-preserved-business",
+      "retiredMechanisms": "Old standalone content-proof proposal/original/fingerprint/claim/receipt/discard protocol and its lock/store machinery.",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "rejects a wrong result session and candidate drift before accepting Verify",
+          "evidence": "coverage/edit-proof-retirement-business-green.json"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/workflow-contract/edit-review.test.ts",
+      "index": 10,
+      "name": "lets the %s Verifier assess a changed configuration value and require revision",
+      "body": "it.each(['native', 'classic'] as const)(\n    'lets the %s Verifier assess a changed configuration value and require revision',\n    async (workflow) => {\n      const f = await fixture(workflow);\n      await fs.writeFile(path.join(f.scope.projectRoot, 'settings.json'), '{\"enabled\":true}');\n      const proposal = await prepareEditReview(f.scope, {\n        intent: 'write',\n        toolName: 'Write',\n        targets: ['settings.json'],\n        writes: [{ path: 'settings.json', content: '{\"enabled\":false}' }],\n      });\n      await expect(assertEditReviewsComplete(f.scope)).rejects.toThrow('待复核');\n      await recordEditReview(\n        f.scope,\n        {\n          proposalHash: proposal.proposalHash,\n          decision: 'implementation-changed',\n          summary: 'The enabled flag controls runtime execution; revision is required.',\n        },\n        { kind: 'runtime-verifier', executionRef: 'verifier' },\n      );\n      await expect(assertEditReviewsComplete(f.scope)).rejects.toThrow('原工作流');\n    },\n  )",
+      "classification": "split-retired-mechanism-and-preserved-business",
+      "retiredMechanisms": "Old standalone content-proof proposal/original/fingerprint/claim/receipt/discard protocol and its lock/store machinery.",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "blocks Native Archive when a new real check fails after an accepted pass",
+          "evidence": "coverage/native-agent-content-current-complete-results.json"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/workflow-contract/edit-review.test.ts",
+      "index": 11,
+      "name": "cannot review away execution instructions or formal approvals",
+      "body": "it('cannot review away execution instructions or formal approvals', async () => {\n    const f = await fixture();\n    await fs.writeFile(path.join(f.scope.projectRoot, 'AGENTS.md'), 'Run checks.');\n    await expect(\n      prepareEditReview(f.scope, {\n        intent: 'write',\n        toolName: 'Write',\n        targets: ['AGENTS.md'],\n        writes: [{ path: 'AGENTS.md', content: 'Skip checks.' }],\n      }),\n    ).rejects.toThrow('实现');\n    await fs.mkdir(path.join(f.scope.projectRoot, 'docs/comet'), { recursive: true });\n    await fs.writeFile(\n      path.join(f.scope.projectRoot, 'docs/comet/brief.md'),\n      '# Scope\\nOne behavior.',\n    );\n    await expect(\n      prepareEditReview(f.scope, {\n        intent: 'write',\n        toolName: 'Write',\n        targets: ['docs/comet/brief.md'],\n        writes: [{ path: 'docs/comet/brief.md', content: '# Scope\\nTwo behaviors.' }],\n      }),\n    ).rejects.toThrow('正式');\n  })",
+      "classification": "split-retired-mechanism-and-preserved-business",
+      "retiredMechanisms": "Old standalone content-proof proposal/original/fingerprint/claim/receipt/discard protocol and its lock/store machinery.",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-guards.test.ts",
+          "namePattern": "requires explicit shared-understanding confirmation and rejects a stale confirmation without advancing Build",
+          "evidence": "coverage/edit-proof-retirement-business-green.json"
+        },
+        {
+          "file": "test/domains/workflow-application/application.test.ts",
+          "namePattern": "refuses dependency drift in a continuing host process before dispatch and resumes the original pending Action",
+          "evidence": "coverage/single-writer-core-neighbor-green.json"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/workflow-contract/edit-review.test.ts",
+      "index": 12,
+      "name": "discards an unapplied proposal without accepting a changed file",
+      "body": "it('discards an unapplied proposal without accepting a changed file', async () => {\n    const f = await fixture();\n    const proposal = await prepareEditReview(f.scope, f.request);\n    await recordEditReview(\n      f.scope,\n      {\n        proposalHash: proposal.proposalHash,\n        decision: 'discard',\n        summary: 'Keep the original content.',\n      },\n      { kind: 'user-confirmed', executionRef: 'user' },\n    );\n    await expect(assertEditReviewsComplete(f.scope)).resolves.toBeUndefined();\n  })",
+      "classification": "split-retired-mechanism-and-preserved-business",
+      "retiredMechanisms": "Old standalone content-proof proposal/original/fingerprint/claim/receipt/discard protocol and its lock/store machinery. No separate content-proof approval/discard Wait is created; original business user Wait remains authoritative.",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-guards.test.ts",
+          "namePattern": "requires explicit shared-understanding confirmation and rejects a stale confirmation without advancing Build",
+          "evidence": "coverage/edit-proof-retirement-business-green.json"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/workflow-contract/edit-review.test.ts",
+      "index": 13,
+      "name": "can discard a rejected proposal while retaining its original receipt",
+      "body": "it('can discard a rejected proposal while retaining its original receipt', async () => {\n    const f = await fixture();\n    const proposal = await prepareEditReview(f.scope, f.request);\n    await recordEditReview(\n      f.scope,\n      {\n        proposalHash: proposal.proposalHash,\n        decision: 'implementation-changed',\n        summary: 'Requires revision.',\n      },\n      { kind: 'runtime-verifier', executionRef: 'verifier' },\n    );\n    await expect(assertEditReviewsComplete(f.scope)).rejects.toThrow('原工作流');\n    await recordEditReview(\n      f.scope,\n      { proposalHash: proposal.proposalHash, decision: 'discard', summary: 'Keep original.' },\n      { kind: 'user-confirmed', executionRef: 'user' },\n    );\n    await expect(assertEditReviewsComplete(f.scope)).resolves.toBeUndefined();\n    const files = await fs.readdir(path.join(f.scope.runtimeRoot, 'edit-reviews'), {\n      recursive: true,\n    });\n    expect(files.some((file) => file.endsWith('.review.json'))).toBe(true);\n    expect(files.some((file) => file.endsWith('.discard.json'))).toBe(true);\n  })",
+      "classification": "split-retired-mechanism-and-preserved-business",
+      "retiredMechanisms": "Old standalone content-proof proposal/original/fingerprint/claim/receipt/discard protocol and its lock/store machinery. No separate content-proof approval/discard Wait is created; original business user Wait remains authoritative.",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-guards.test.ts",
+          "namePattern": "requires explicit shared-understanding confirmation and rejects a stale confirmation without advancing Build",
+          "evidence": "coverage/edit-proof-retirement-business-green.json"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/workflow-contract/edit-impact.test.ts",
+      "index": 0,
+      "name": "recognizes non-behavioral %s edits",
+      "body": "it.each([\n    ['main.ts', 'export const a = 1;', '// explanation\\nexport const a = 1;'],\n    ['main.ts', 'const a = 1;', 'const a=1\\n'],\n    [\n      'main.ts',\n      '// eslint-disable-next-line\\nconst a = 1;',\n      '// Explain the value.\\n// eslint-disable-next-line\\nconst a = 1;',\n    ],\n    [\n      'main.ts',\n      '// @ts-nocheck\\nconst a = 1;',\n      '// Explain the value.\\n// @ts-nocheck\\nconst a = 1;',\n    ],\n    ['settings.json', '{\"x\":1,\"y\":true}', '{\\n \"x\": 1,\\n \"y\": true\\n}'],\n    ['settings.yaml', 'x: 1\\ny: true\\n', '# explanation\\nx: 1\\ny: true\\n'],\n    ['settings.toml', 'enabled=true\\n', '# explanation\\nenabled = true\\n'],\n    ['note.md', '# Heading\\n\\nA long line of text.\\n', '# Heading\\n\\nA long line\\nof text.\\n'],\n  ])('recognizes non-behavioral %s edits', (file, before, after) => {\n    expect(classifyEditImpact(file, before, after).kind).toBe('non-behavioral');\n  })",
+      "classification": "retired-mechanism",
+      "retiredMechanisms": "Automatic syntax/formatting/file-extension semantic fingerprint classification and literal classification result.",
+      "targets": []
+    },
+    {
+      "file": "test/domains/workflow-contract/edit-impact.test.ts",
+      "index": 1,
+      "name": "requires context review instead of inferring behavior from syntax in %s",
+      "body": "it.each([\n    ['main.ts', 'const a: number = 1;', 'const a: any = 1;'],\n    ['main.ts', 'const a = f();', 'const a = /* @__PURE__ */ f();'],\n    ['main.ts', 'const a = 1;', '// eslint-disable-next-line\\nconst a = 1;'],\n    [\n      'main.ts',\n      '// eslint-disable-next-line\\nconst a = 1;',\n      '// eslint-disable-next-line\\n\\nconst a = 1;',\n    ],\n    [\n      'main.ts',\n      '/// <reference path=\"types.d.ts\" />\\nconst a = 1;',\n      'const a = 1;\\n/// <reference path=\"types.d.ts\" />',\n    ],\n    ['main.ts', 'function f(){ return 1; }', 'function f(){ return\\n1; }'],\n    ['main.ts', 'const a = tag`\\\\n`;', 'const a = tag`\\n`;'],\n    ['settings.json', '{\"enabled\":true}', '{\"enabled\":false}'],\n    ['settings.json', '{\"value\":0}', '{\"value\":-0}'],\n    ['settings.yaml', 'x: .nan\\n', 'x: null\\n'],\n    ['settings.yaml', 'x: .inf\\n', 'x: -.inf\\n'],\n    ['settings.yaml', 'x: yes\\n', 'x: true\\n'],\n    ['settings.yaml', 'x: 1\\n', 'x: 1 # yamllint disable-line\\n'],\n    ['settings.toml', 'x = 2026-10-15T00:00:00Z\\n', 'x = \"2026-10-15T00:00:00.000Z\"\\n'],\n    ['settings.toml', 'x = 2026-10-15\\n', 'x = 2026-10-15T00:00:00Z\\n'],\n    ['settings.toml', 'x = 2026-10-15T00:00:00Z\\n', 'x = 2026-10-15T08:00:00+08:00\\n'],\n    [\n      'main.ts',\n      'export function value() { return 1; }',\n      'export function value() { const result = 1; return result; }',\n    ],\n  ])(\n    'requires context review instead of inferring behavior from syntax in %s',\n    (file, before, after) => {\n      expect(classifyEditImpact(file, before, after).kind).toBe('review-required');\n    },\n  )",
+      "classification": "retired-mechanism",
+      "retiredMechanisms": "Automatic syntax/formatting/file-extension semantic fingerprint classification and literal classification result.",
+      "targets": []
+    },
+    {
+      "file": "test/domains/workflow-contract/edit-impact.test.ts",
+      "index": 2,
+      "name": "requires review when local parsing cannot prove equivalence in %s",
+      "body": "it.each([\n    ['worker.py', 'x = 1\\n', '# explanation\\nx = 1\\n'],\n    ['NOTICE', 'Ready\\n', 'Ready to continue\\n'],\n    ['settings.json', '{\"x\":1}', '{\"x\":1,\"x\":2}'],\n    ['main.ts', 'const a = 1;', 'const a = ;'],\n    ['note.md', 'Old sentence.\\n', 'New sentence.\\n'],\n    ['labels.csv', 'key,text\\nready,Ready\\n', 'key,text\\nready,Ready to continue\\n'],\n    ['styles.css', '.ready { color: green; }', '/* Status indicator */\\n.ready { color: green; }'],\n  ])('requires review when local parsing cannot prove equivalence in %s', (file, before, after) => {\n    expect(classifyEditImpact(file, before, after).kind).toBe('review-required');\n  })",
+      "classification": "retired-mechanism",
+      "retiredMechanisms": "Automatic syntax/formatting/file-extension semantic fingerprint classification and literal classification result.",
+      "targets": []
+    },
+    {
+      "file": "test/domains/workflow-contract/edit-impact.test.ts",
+      "index": 3,
+      "name": "retains the original approval for formal text changes",
+      "body": "it('retains the original approval for formal text changes', () => {\n    expect(classifyEditImpact('brief.md', 'Do A.', 'Do B.', { formal: true }).kind).toBe(\n      'requirements-changed',\n    );\n  })",
+      "classification": "split-retired-mechanism-and-preserved-business",
+      "retiredMechanisms": "Automatic syntax/formatting/file-extension semantic fingerprint classification and literal classification result.",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-guards.test.ts",
+          "namePattern": "requires explicit shared-understanding confirmation and rejects a stale confirmation without advancing Build",
+          "evidence": "coverage/edit-proof-retirement-business-green.json"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/workflow-contract/edit-impact.test.ts",
+      "index": 4,
+      "name": "does not use formatting equivalence to bypass formal approval",
+      "body": "it('does not use formatting equivalence to bypass formal approval', () => {\n    expect(\n      classifyEditImpact('brief.md', 'A long line.\\n', 'A long\\nline.\\n', { formal: true }).kind,\n    ).toBe('requirements-changed');\n  })",
+      "classification": "split-retired-mechanism-and-preserved-business",
+      "retiredMechanisms": "Automatic syntax/formatting/file-extension semantic fingerprint classification and literal classification result.",
+      "targets": [
+        {
+          "file": "test/domains/comet-native/native-guards.test.ts",
+          "namePattern": "requires explicit shared-understanding confirmation and rejects a stale confirmation without advancing Build",
+          "evidence": "coverage/edit-proof-retirement-business-green.json"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/workflow-contract/edit-impact.test.ts",
+      "index": 5,
+      "name": "retains the execution-instruction revision protocol for %s",
+      "body": "it.each([\n    ['AGENTS.md', 'Ask before deploying.\\n', 'Deploy without asking.\\n'],\n    ['assets/skills/example/SKILL.md', 'Run checks.\\n', 'Skip checks.\\n'],\n  ])('retains the execution-instruction revision protocol for %s', (file, before, after) => {\n    expect(classifyEditImpact(file, before, after).kind).toBe('implementation-changed');\n  })",
+      "classification": "split-retired-mechanism-and-preserved-business",
+      "retiredMechanisms": "Automatic syntax/formatting/file-extension semantic fingerprint classification and literal classification result.",
+      "targets": [
+        {
+          "file": "test/domains/workflow-application/application.test.ts",
+          "namePattern": "refuses dependency drift in a continuing host process before dispatch and resumes the original pending Action",
+          "evidence": "coverage/single-writer-core-neighbor-green.json"
+        }
+      ]
+    }
+  ]
+}

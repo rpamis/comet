@@ -7,7 +7,11 @@ export function currentNativeSdkSupervisorActions(
 ): readonly RuntimeAction[] {
   for (let index = run.actions.length - 1; index >= 0; index--) {
     const action = run.actions[index];
-    if (action.stepId === 'shape.revalidate' && action.status === 'succeeded')
+    if (
+      (action.id === (run.state as { children_contract_ref?: string }).children_contract_ref ||
+        action.stepId === 'shape.revalidate') &&
+      action.status === 'succeeded'
+    )
       return run.actions.slice(index + 1);
   }
   return run.actions;

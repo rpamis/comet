@@ -1,23 +1,16 @@
-import { resolveClassicLocalTarget } from './classic-runtime-paths.js';
 import path from 'node:path';
 import type { RunState } from '../engine/types.js';
-import type { ClassicState } from './classic-state.js';
-import { assertClassicLayoutReadable } from './classic-layout.js';
-import { classicProjectTargetExists, readClassicProjectFile } from './classic-protected-path.js';
-import {
-  classicTaskRevision,
-  inspectClassicPlanTasks,
-  parseClassicTasks,
-  type ClassicTask,
-} from './classic-tasks.js';
-import { readClassicCheckpoint, readClassicDelivery } from './classic-progress.js';
-import { inspectClassicPlanReadiness } from './classic-plan-readiness.js';
-import { inspectClassicDesignReadiness } from './classic-design-readiness.js';
-import { readClassicState } from './classic-store.js';
 import { classicConfigurationReadiness } from './classic-build-configuration.js';
-import { inspectEditReviews, editReviewContinuation } from '../workflow-contract/edit-review.js';
-import { classicEditReviewScope } from './classic-edit-review.js';
+import { inspectClassicDesignReadiness } from './classic-design-readiness.js';
+import { assertClassicLayoutReadable } from './classic-layout.js';
+import { inspectClassicPlanReadiness } from './classic-plan-readiness.js';
+import { readClassicCheckpoint, readClassicDelivery } from './classic-progress.js';
+import { classicProjectTargetExists, readClassicProjectFile } from './classic-protected-path.js';
+import { resolveClassicLocalTarget } from './classic-runtime-paths.js';
+import type { ClassicState } from './classic-state.js';
+import { readClassicState } from './classic-store.js';
 import { classicTaskContextRequest } from './classic-task-context.js';
+import { inspectClassicPlanTasks, parseClassicTasks, type ClassicTask } from './classic-tasks.js';
 
 export interface ClassicNextAction {
   kind: string;
@@ -34,7 +27,7 @@ export async function classicRecoveryContext(
   state: ClassicState,
   details = false,
   run?: RunState | null,
-  options: { editReview?: boolean } = {},
+  _options: { editReview?: boolean } = {},
 ) {
   const paths = await assertClassicLayoutReadable(root);
   // Callers that just read the projection hand over its run part; only the
@@ -220,14 +213,6 @@ export async function classicRecoveryContext(
         : 'Preserve explicit archive and delivery authorization; do not infer it from branch_status.',
     };
   }
-  const reviewScope =
-    state.phase === 'verify' && options.editReview !== false
-      ? await classicEditReviewScope(root, path.basename(directory), state)
-      : null;
-  const editReviews = reviewScope ? await inspectEditReviews(reviewScope) : [];
-  const editContinuation = reviewScope
-    ? await editReviewContinuation(reviewScope, editReviews, false)
-    : null;
   return {
     projectRoot: root,
     workspace: { projectRoot: root },
@@ -258,7 +243,6 @@ export async function classicRecoveryContext(
     },
     configurationReadiness,
     nextAction,
-    ...(editReviews.length ? { editReviews } : {}),
     continuation: {
       ...nextAction,
       cwd: root,
@@ -277,14 +261,12 @@ export async function classicRecoveryContext(
           ? `comet-${state.workflow}`
           : `comet-${state.phase}`,
       automatic: state.autoTransition ?? true,
-      ...(editContinuation ?? {}),
     },
     evidence: { status: 'not-revalidated', reason: 'entry' },
     nextTask: next?.text ?? null,
     taskState: {
       authority: taskFile,
       exists: taskFileExists,
-      revision: classicTaskRevision(source),
       total: tasks.length,
       completed: tasks.filter((task) => task.completed).length,
       needsIds: tasks.some((task) => !task.id),
@@ -303,7 +285,7 @@ export async function classicRecoveryContext(
               root,
               path.join(directory, '.comet', 'coordination.json'),
               {
-                migrate: false,
+                readOnly: true,
               },
             )
           )?.target ?? path.join(directory, '.comet', 'coordination.json'))

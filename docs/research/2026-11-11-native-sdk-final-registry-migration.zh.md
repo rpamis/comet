@@ -1,0 +1,20 @@
+# Native SDK 最终测试迁移登记建议
+
+授权来源：report:2026-11-10-agent-platform-execution。本记录仅在旧迁移链末端追加tests-moved；原case的行为、来源、tests、additionalAcceptance以及旧链全部保留。旧managed runner、纯内部revalidate步骤、log/content fingerprint或机械补检查端口只按每项reason单独退休，不能把mixed case整体标feature-removed，也不能把未完成的模型验收改成通过。
+
+本批42个关联ID里19个仅旧链与7文件有关，最新契约属于其他文件，本批不追加；其余改名/拆分10个ID需要正确的新末端选择器，32个不追加的现有选择器只同步执行证据。10个建议中9个全部目标取得已知GREEN，local-native-supervisor-auto-preparation保留两项当前未补证的原Native application任务，不能删掉它们来使迁移显得完成。
+
+- native-builder-check-result-diagnostic：Preserve the exact checks.result field/allowed-values/rejected-value diagnostic; update the required full name to the current Agent-platform reports suite. No claim diagnostic or original case field is weakened. 已有精确GREEN。
+- native-builder-review-evidence-diagnostic：Preserve the exact A1 acceptance-review evidence array/string diagnostic; only update the observed suite prefix after removing the old checker fixture. 已有精确GREEN。
+- native-builder-review-note-diagnostic：Preserve the exact A1 concrete review-note diagnostic; only update the observed current full test name. 已有精确GREEN。
+- native-sdk-explicit-git-dependent-refresh：Preserve real byte-identical Git-index failure, original once-only effect and prior approval history, refusal to Archive failed evidence, selected rerun and eventual legal Archive. Retire only the removed supplemental Runtime-check port and its no-new-result-approval policy; current explicit revision requires a fresh independent result and approval. 已有精确GREEN。
+- native-sdk-refresh-failed-preflight-recovery：Preserve the observed failed Git-index result blocking Archive and subsequent selected repair without repeating the unrelated once-only effect. Retire only the old checker latest-receipt preflight/recovery mechanism; the current failed Verifier and explicit repair keep old decisions as history. 已有精确GREEN。
+- issue-389-child-evidence-retry：Preserve original custom review failure and its claim/candidate, independent sibling progress, no retry of unknown original work, and retry only after the original claim truthfully ends. Retire only managed-check log-digest/stop-proof authority; requiredNames now include the observed describe prefix. 已有精确GREEN。
+- issue-500-cross-shell：Preserve original published check history across shells, all three current environment variants, real source-changing nonzero failure returning Build, and explicit implementation revision with original approval/once-only history. Retire only shell/content-fingerprint and synthetic 0.5.0 receipt-upgrade authority; true published history is not relabeled as an older missing-field sample. 已有精确GREEN。
+- native-check-no-alias-replay：Preserve actual SDK one-shot counter, original candidate/Builder and same-claim correction, and Compat refusal of a retired check request without changing the active platform task. Retire only SDK/Compat automatic check execution and alias/repeatable-plan replay; no new executor replaces it. 已有精确GREEN。
+- native-archive-awaits-accepted-revalidation：Preserve original accepted result, unchanged semantic failure budget, one completed Archive, and the existing pending approval/evidence stop boundaries. Retire only verify.revalidate as a new internal Action; no extra approval or fabricated successful check is introduced. 已有精确GREEN。
+- local-native-supervisor-auto-preparation：Preserve every original Native application transfer, reverse Child review/parent repair and unknown-sibling assertion, plus current original-failure retry and fixed-identity/dirty-work transfer. Retire only the artificial pre-verifier-recovery old-hash/factory migration path; the current fixed application proof is not claimed as a true old fixed-package upgrade. 原选择器仍保留；两个Native application任务需补当前执行证据。
+
+每个requiredNames均取实际Vitest fullName，包含describe前缀及已展开参数；namePattern为这些完整名字转义后的精确或式。完整旧测试正文、当前case（含原链）和逐项映射均冻结，哈希仅满足已有registry审计协议，不构成Runtime指纹机制。旧native-schema-migration13另有逐声明Review与28981字节原文；无当前或历史registry直接引用，可删除旧文件，不新增假case或迁移链。
+
+主Native SDK整文件由root执行中，这里不伪报其结果。已知root65/0、final29/0和其他分组结果的原JSON路径见计划索引；追加Archive pending approval/evidence单元边界2/0。未运行全量、build、安装或Eval。本记录是待Review的计划，不能当成registry已经写入。

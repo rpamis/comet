@@ -1,27 +1,15 @@
-import { resolveClassicStateFile, CLASSIC_STATE_FILES } from './classic-state-file.js';
-import { CLASSIC_LOCAL_RECORDS, selectClassicLocalReadTarget } from './classic-runtime-paths.js';
-import {
-  migrateWorkspaceRuntimePath,
-  isWorkspaceRuntimeMigrationFence,
-  resolveWorkspaceRuntimeRoot,
-  resolveWorkspaceRuntimeRootSync,
-} from '../workflow-contract/workspace-runtime.js';
-import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import { parseDocument } from 'yaml';
-import {
-  hashProtectedProjectFile,
-  readProtectedProjectFile,
-} from '../workflow-contract/protected-project-path.js';
 import {
   ExternalCommandError,
   runExternalCommand,
 } from '../../platform/process/external-command.js';
 import { nonInteractiveGitEnvironment } from '../../platform/process/git-environment.js';
-import { memoizedHookRead, memoizedHookReadSync } from '../../platform/process/hook-read-cache.js';
-import { classicTaskRevision, parseClassicTasks } from './classic-tasks.js';
-import type { ClassicState } from './classic-state.js';
+import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
+import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
+import { resolveWorkspaceRuntimeRootSync } from '../workflow-contract/workspace-runtime.js';
 import {
   classicProjectTargetExists,
   ensureClassicProjectDirectory,
@@ -29,20 +17,21 @@ import {
   readClassicProjectFile,
   writeClassicProjectText,
 } from './classic-protected-path.js';
-
+import { CLASSIC_LOCAL_RECORDS } from './classic-runtime-paths.js';
+import { CLASSIC_STATE_FILES, resolveClassicStateFile } from './classic-state-file.js';
+import type { ClassicState } from './classic-state.js';
+import { parseClassicTasks } from './classic-tasks.js';
 const STAGES = ['implementing', 'task-review', 'checkoff', 'done', 'blocked'] as const;
-
 export interface ClassicCheckpoint {
   schemaVersion: 1;
   taskIds: string[];
-  revision: string;
+  revision?: string;
   stage: (typeof STAGES)[number];
   sessionId: string;
   evidence: string[];
   unresolved: string[];
   reviewRounds: number;
 }
-
 export interface ClassicDeliveryInput {
   action: 'local' | 'push' | 'pr' | 'archive-only';
   targetBranch?: string;
@@ -50,20 +39,17 @@ export interface ClassicDeliveryInput {
   commit?: string;
   prUrl?: string;
 }
-
 export interface ClassicDelivery extends ClassicDeliveryInput {
   schemaVersion: 1;
   changeIdentity: string;
   authorizedRemoteUrl?: string;
   authorizationId: string;
 }
-
 function object(input: unknown): Record<string, unknown> {
   if (!input || typeof input !== 'object' || Array.isArray(input))
     throw new Error('Classic progress requires a JSON object');
   return input as Record<string, unknown>;
 }
-
 function keys(value: Record<string, unknown>, allowed: string[]): void {
   const unknown = Object.keys(value).filter((key) => !allowed.includes(key));
   if (unknown.length)
@@ -71,7 +57,6 @@ function keys(value: Record<string, unknown>, allowed: string[]): void {
       `Unknown Classic progress field(s): ${unknown.join(', ')}; allowed fields: ${allowed.join(', ')}`,
     );
 }
-
 function text(value: unknown, label: string): string {
   if (
     typeof value !== 'string' ||
@@ -82,13 +67,11 @@ function text(value: unknown, label: string): string {
     throw new Error(`Invalid Classic progress ${label}`);
   return value;
 }
-
 function strings(value: unknown, label: string): string[] {
   if (!Array.isArray(value) || value.length > 200)
     throw new Error(`Invalid Classic progress ${label}`);
   return value.map((item) => text(item, label));
 }
-
 function checkpoint(input: unknown): ClassicCheckpoint {
   const value = object(input);
   keys(value, [
@@ -109,8 +92,6 @@ function checkpoint(input: unknown): ClassicCheckpoint {
     taskIds.some((id) => !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/u.test(id))
   )
     throw new Error('Classic checkpoint taskIds must be unique stable IDs');
-  if (typeof value.revision !== 'string' || !/^[a-f0-9]{64}$/u.test(value.revision))
-    throw new Error('Invalid Classic checkpoint revision');
   if (!STAGES.includes(value.stage as ClassicCheckpoint['stage']))
     throw new Error(
       `Invalid Classic checkpoint stage '${String(value.stage)}'; stages: ${STAGES.join('|')}`,
@@ -120,7 +101,7 @@ function checkpoint(input: unknown): ClassicCheckpoint {
   return {
     schemaVersion: 1,
     taskIds,
-    revision: value.revision,
+    ...(typeof value.revision === 'string' ? { revision: value.revision } : {}),
     stage: value.stage as ClassicCheckpoint['stage'],
     sessionId: text(value.sessionId, 'sessionId'),
     evidence: strings(value.evidence, 'evidence'),
@@ -128,7 +109,6 @@ function checkpoint(input: unknown): ClassicCheckpoint {
     reviewRounds: value.reviewRounds as number,
   };
 }
-
 async function readRecord(root: string, changeDir: string, filename: string): Promise<unknown> {
   const target = path.join(changeDir, '.comet', filename);
   if (
@@ -140,12 +120,10 @@ async function readRecord(root: string, changeDir: string, filename: string): Pr
     return undefined;
   return JSON.parse(await readClassicProjectFile(root, target, { label: 'Classic progress' }));
 }
-
 function deliveryReauthorizationFile(root: string, changeIdentity: string): string {
   const key = createHash('sha256').update(changeIdentity).digest('hex');
   return path.join(resolveWorkspaceRuntimeRootSync(root), 'classic-delivery', `${key}.json`);
 }
-
 interface ClassicDeliveryReauthorization {
   schemaVersion: 1;
   changeIdentity: string;
@@ -156,7 +134,6 @@ interface ClassicDeliveryReauthorization {
   remote?: string;
   authorizedRemoteUrl?: string;
 }
-
 async function readClassicDeliveryReauthorization(
   root: string,
   changeIdentity: string,
@@ -212,7 +189,6 @@ async function readClassicDeliveryReauthorization(
       : { authorizedRemoteUrl: text(value.authorizedRemoteUrl, 'authorizedRemoteUrl') }),
   };
 }
-
 export async function readClassicCheckpoint(root: string, changeDir: string, tasksSource: string) {
   const raw = await readRecord(root, changeDir, 'coordination.json');
   if (raw === undefined) return { checkpoint: null, stale: false };
@@ -220,12 +196,9 @@ export async function readClassicCheckpoint(root: string, changeDir: string, tas
   const ids = new Set(parseClassicTasks(tasksSource).map((task) => task.id));
   return {
     checkpoint: record,
-    stale:
-      record.revision !== classicTaskRevision(tasksSource) ||
-      record.taskIds.some((id) => !ids.has(id)),
+    stale: record.taskIds.some((id) => !ids.has(id)),
   };
 }
-
 /** Caller holds the Classic state lock. JSON is authoritative; Markdown is a projection. */
 export async function writeClassicCheckpoint(
   root: string,
@@ -235,8 +208,6 @@ export async function writeClassicCheckpoint(
 ) {
   const record = checkpoint(input);
   const tasks = parseClassicTasks(tasksSource);
-  if (record.revision !== classicTaskRevision(tasksSource))
-    throw new Error('Classic checkpoint revision is stale');
   if (record.taskIds.some((id) => !tasks.some((task) => task.id === id)))
     throw new Error('Unknown Classic checkpoint task ID');
   const previous = (await readClassicCheckpoint(root, changeDir, tasksSource)).checkpoint;
@@ -250,47 +221,58 @@ export async function writeClassicCheckpoint(
     throw new Error('Classic checkpoint reviewRounds cannot decrease for the same work package');
   const dir = path.join(changeDir, '.comet');
   await ensureClassicProjectDirectory(root, dir, 'Classic progress directory');
-  await inspectClassicProjectTarget(root, path.join(dir, 'subagent-progress.md'), {
-    label: 'Classic checkpoint projection',
-    expected: 'file',
-  });
-  await writeClassicProjectText(
+  const projection = await inspectClassicProjectTarget(
     root,
-    path.join(dir, 'coordination.json'),
-    JSON.stringify(record, null, 2) + '\n',
-    { label: 'Classic checkpoint' },
+    path.join(dir, 'subagent-progress.md'),
+    {
+      label: 'Classic checkpoint projection',
+      expected: 'file',
+      migrate: true,
+    },
   );
+  const unchanged = JSON.stringify(previous) === JSON.stringify(record);
+  if (!unchanged)
+    await writeClassicProjectText(
+      root,
+      path.join(dir, 'coordination.json'),
+      JSON.stringify(record, null, 2) + '\n',
+      { label: 'Classic checkpoint' },
+    );
   const display = (value: string) =>
     value.replace(
       /[&<>]/gu,
       (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[character]!,
     );
-  await writeClassicProjectText(
-    root,
-    path.join(dir, 'subagent-progress.md'),
-    [
-      '# Classic Coordination Checkpoint',
-      '',
-      'Generated from coordination.json; tasks.md remains the completion authority.',
-      '',
-      `Stage: ${record.stage}`,
-      `Tasks: ${record.taskIds.join(', ')}`,
-      `Revision: ${record.revision}`,
-      `Session: ${display(record.sessionId)}`,
-      `Review rounds: ${record.reviewRounds}`,
-      '',
-      '## Evidence',
-      ...record.evidence.map((item) => `- ${display(item)}`),
-      '',
-      '## Unresolved',
-      ...record.unresolved.map((item) => `- ${display(item)}`),
-      '',
-    ].join('\n'),
-    { label: 'Classic checkpoint projection' },
-  );
+  const rendered = [
+    '# Classic Coordination Checkpoint',
+    '',
+    'Generated from coordination.json; tasks.md remains the completion authority.',
+    '',
+    `Stage: ${record.stage}`,
+    `Tasks: ${record.taskIds.join(', ')}`,
+    `Revision: ${record.revision}`,
+    `Session: ${display(record.sessionId)}`,
+    `Review rounds: ${record.reviewRounds}`,
+    '',
+    '## Evidence',
+    ...record.evidence.map((item) => `- ${display(item)}`),
+    '',
+    '## Unresolved',
+    ...record.unresolved.map((item) => `- ${display(item)}`),
+    '',
+  ].join('\n');
+  if (
+    !unchanged ||
+    !projection.exists ||
+    (await readClassicProjectFile(root, path.join(dir, 'subagent-progress.md'), {
+      label: 'Classic checkpoint projection',
+    })) !== rendered
+  )
+    await writeClassicProjectText(root, path.join(dir, 'subagent-progress.md'), rendered, {
+      label: 'Classic checkpoint projection',
+    });
   return { checkpoint: record, stale: false };
 }
-
 function deliveryInput(input: unknown, persisted = false): ClassicDeliveryInput {
   const value = object(input);
   keys(value, [
@@ -352,22 +334,15 @@ function deliveryInput(input: unknown, persisted = false): ClassicDeliveryInput 
   }
   return record;
 }
-
 function stateObject(source: string): Record<string, unknown> {
   const document = parseDocument(source, { uniqueKeys: true });
   if (document.errors.length) throw new Error('Invalid Classic delivery change state');
   return object(document.toJS());
 }
-
-const readGitCommonDirectory = memoizedHookReadSync('classicGitCommonDirectory', (root: string) =>
-  verifyingGit(root, ['rev-parse', '--path-format=absolute', '--git-common-dir']),
-);
-
 function identity(state: Record<string, unknown>, changeDir: string, root: string): string {
   if (typeof state.run_id === 'string' && state.run_id) return `run:${state.run_id}`;
   return legacyIdentity(state, changeDir, root);
 }
-
 function legacyIdentity(state: Record<string, unknown>, changeDir: string, root: string): string {
   // Legacy authorization is explicit, and survives the dated archive directory move.
   const name =
@@ -383,7 +358,6 @@ function legacyIdentity(state: Record<string, unknown>, changeDir: string, root:
     .update(JSON.stringify([name, state.created_at, state.base_ref ?? path.resolve(root)]))
     .digest('hex')}`;
 }
-
 function authorizedIdentity(
   sealed: unknown,
   state: Record<string, unknown>,
@@ -397,12 +371,10 @@ function authorizedIdentity(
   }
   throw new Error('Classic delivery change identity mismatch');
 }
-
 const cachedCurrentState = memoizedHookRead(
   'classicCurrentState',
   async (root: string, changeDir: string) => currentStateUncached(root, changeDir),
 );
-
 async function currentStateUncached(root: string, changeDir: string) {
   return stateObject(
     await readClassicProjectFile(root, await resolveClassicStateFile(changeDir), {
@@ -410,17 +382,14 @@ async function currentStateUncached(root: string, changeDir: string) {
     }),
   );
 }
-
 async function currentState(root: string, changeDir: string) {
   return cachedCurrentState(root, changeDir);
 }
-
 class GitCommandTimeoutError extends Error {
   constructor(command: string, args: string[]) {
     super(`Classic delivery git command timed out: ${[command, ...args].join(' ')}`);
   }
 }
-
 function runCommand(
   root: string,
   command: string,
@@ -433,7 +402,6 @@ function runCommand(
     env: nonInteractiveGitEnvironment({ authentication }),
   }).trim();
 }
-
 function readCommand(
   root: string,
   command: string,
@@ -446,7 +414,6 @@ function readCommand(
     return null;
   }
 }
-
 /**
  * Delivery checks that fail hard on `null` must not mistake an unanswered git
  * call for a failed verification. Retry once, then surface the timeout.
@@ -471,15 +438,12 @@ function verifyingCommand(
     }
   }
 }
-
 function localGit(root: string, args: string[]): string | null {
   return readCommand(root, 'git', ['-C', root, ...args]);
 }
-
 function verifyingGit(root: string, args: string[]): string | null {
   return verifyingCommand(root, 'git', ['-C', root, ...args]);
 }
-
 function remoteUrl(root: string, remote: string, push = false): string | null {
   return readCommand(
     root,
@@ -488,7 +452,6 @@ function remoteUrl(root: string, remote: string, push = false): string | null {
     true,
   );
 }
-
 function assertSafeClassicRemoteUrl(value: string): void {
   let parsed: URL | null = null;
   try {
@@ -506,7 +469,6 @@ function assertSafeClassicRemoteUrl(value: string): void {
     throw new Error('Classic delivery remote must not contain credentials');
   }
 }
-
 function archivePathspecs(root: string, changeDir: string): string[] {
   const relative = path.relative(root, changeDir).replaceAll('\\', '/');
   return [
@@ -518,7 +480,6 @@ function archivePathspecs(root: string, changeDir: string): string[] {
     ].map((file) => `:(exclude,literal)${relative}/${file}`),
   ];
 }
-
 function archiveUntrackedFiles(root: string, changeDir: string): string[] {
   const listing = verifyingGit(root, [
     'ls-files',
@@ -529,7 +490,6 @@ function archiveUntrackedFiles(root: string, changeDir: string): string[] {
   ]);
   return (listing ?? '').split(/\r?\n/u).filter(Boolean);
 }
-
 function archiveCommitMatches(
   root: string,
   changeDir: string,
@@ -566,7 +526,6 @@ function archiveCommitMatches(
     return false;
   }
 }
-
 interface DeliveryReceipt {
   schemaVersion: 1;
   changeIdentity: string;
@@ -575,60 +534,8 @@ interface DeliveryReceipt {
   commit?: string;
   prUrl?: string;
   archiveFiles?: Record<string, string>;
+  archiveCompleted?: boolean;
 }
-
-async function archiveFileManifest(
-  root: string,
-  changeDir: string,
-): Promise<Record<string, string>> {
-  const files: Record<string, string> = {};
-  const visit = async (directory: string): Promise<void> => {
-    await inspectClassicProjectTarget(root, directory, {
-      label: 'Classic document archive',
-      expected: 'directory',
-    });
-    const entries = (await fs.readdir(directory, { withFileTypes: true })).sort((left, right) =>
-      left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
-    );
-    for (const entry of entries) {
-      if (['.comet-state.lock', '.comet-state-transaction.json'].includes(entry.name)) continue;
-      if (directory === path.join(changeDir, '.comet') && CLASSIC_LOCAL_RECORDS.has(entry.name))
-        continue;
-      const target = path.join(directory, entry.name);
-      if (entry.isDirectory()) {
-        await visit(target);
-      } else if (entry.isFile()) {
-        const relative = path.relative(root, target).replaceAll('\\', '/');
-        const hashed = await hashProtectedProjectFile(root, relative, {
-          label: 'Classic document archive file',
-        });
-        files[relative] = hashed.digest;
-      } else {
-        throw new Error(`Classic document archive contains unsupported entry: ${target}`);
-      }
-      if (Object.keys(files).length > 10_000)
-        throw new Error('Classic document archive has too many files');
-    }
-  };
-  await visit(changeDir);
-  return files;
-}
-
-function archiveManifestsMatch(
-  left: Record<string, string>,
-  right: Record<string, string>,
-): boolean {
-  const portable = (file: string) => {
-    const match = /\/\.comet\/([^/]+)/u.exec(file);
-    return !match || !CLASSIC_LOCAL_RECORDS.has(match[1]);
-  };
-  const names = Object.keys(left).filter(portable);
-  return (
-    names.length === Object.keys(right).filter(portable).length &&
-    names.every((name) => left[name] === right[name])
-  );
-}
-
 async function preserveMainSpecSnapshot(root: string, changeDir: string): Promise<void> {
   const snapshot = path.join(changeDir, '.comet', 'main-specs.json');
   if (
@@ -640,7 +547,6 @@ async function preserveMainSpecSnapshot(root: string, changeDir: string): Promis
     return;
   const specsDir = path.join(path.dirname(path.dirname(path.dirname(changeDir))), 'specs');
   const files: Record<string, string> = {};
-  let totalBytes = 0;
   const visit = async (directory: string): Promise<void> => {
     await inspectClassicProjectTarget(root, directory, {
       label: 'Classic main specs',
@@ -653,12 +559,11 @@ async function preserveMainSpecSnapshot(root: string, changeDir: string): Promis
         const file = await readProtectedProjectFile(
           root,
           path.relative(root, target).replaceAll('\\', '/'),
-          64 * 1024 * 1024,
+          Number.MAX_SAFE_INTEGER,
           { label: 'Classic main spec snapshot input' },
         );
-        totalBytes += file.bytes.length;
-        if (totalBytes > 64 * 1024 * 1024 || Object.keys(files).length >= 10_000)
-          throw new Error('Classic main spec snapshot exceeds its size limit');
+        if (Object.keys(files).length >= 10000)
+          throw new Error('Classic main spec snapshot exceeds its file count limit');
         files[path.relative(specsDir, target).replaceAll('\\', '/')] =
           file.bytes.toString('base64');
       } else throw new Error(`Classic main specs contain unsupported entry: ${target}`);
@@ -683,7 +588,6 @@ async function preserveMainSpecSnapshot(root: string, changeDir: string): Promis
     { label: 'Classic main spec snapshot', exclusive: true },
   );
 }
-
 export async function recordClassicDocumentArchive(root: string, changeDir: string): Promise<void> {
   const current = await readClassicDelivery(root, changeDir);
   const delivery = current.delivery;
@@ -691,85 +595,67 @@ export async function recordClassicDocumentArchive(root: string, changeDir: stri
   const actual = await currentState(root, changeDir);
   if (actual.archived !== true) throw new Error('Classic document archive must be completed first');
   await preserveMainSpecSnapshot(root, changeDir);
-  const archiveFiles = await archiveFileManifest(root, changeDir);
   const previous = await readReceipt(root, delivery.changeIdentity);
-  if (previous?.archiveFiles !== undefined) {
-    if (!archiveManifestsMatch(previous.archiveFiles, archiveFiles))
-      throw new Error('Classic document archive differs from its sealed receipt');
-    return;
-  }
+  if (previous?.archiveCompleted || previous?.archiveFiles) return;
   await writeReceipt(root, {
     schemaVersion: 1,
     changeIdentity: delivery.changeIdentity,
     authorizationId: delivery.authorizationId,
-    archiveFiles,
+    archiveCompleted: true,
   });
 }
-
-async function receiptLocations(
-  root: string,
+export function classicDeliveryReceiptFilename(changeIdentity: string): string {
+  return createHash('sha256').update(changeIdentity).digest('hex') + '.json';
+}
+async function receiptLocations(root: string, changeIdentity: string) {
+  const filename = classicDeliveryReceiptFilename(changeIdentity);
+  return [
+    {
+      root: path.dirname(resolveWorkspaceRuntimeRootSync(root)),
+      file: path.join(resolveWorkspaceRuntimeRootSync(root), 'classic-delivery-receipts', filename),
+    },
+  ];
+}
+export function parseClassicDeliveryReceipt(
+  input: unknown,
   changeIdentity: string,
-  options: { migrate?: boolean } = {},
-) {
-  const filename = `${createHash('sha256').update(changeIdentity).digest('hex')}.json`;
-  const runtime = options.migrate
-    ? await resolveWorkspaceRuntimeRoot(root)
-    : resolveWorkspaceRuntimeRootSync(root);
-  const file = path.join(runtime, 'classic-delivery-receipts', filename);
-  if (!options.migrate) {
-    const locations = new Map<string, { root: string; file: string }>();
-    const local = await selectClassicLocalReadTarget(
-      root,
-      path.join(root, '.comet', 'classic-deliveries', filename),
-      file,
-    );
-    locations.set(local.target, { root, file: local.target });
-    const common = readGitCommonDirectory(root);
-    if (common) {
-      const sourceRoot = await fs.realpath(common);
-      const source = path.join(sourceRoot, 'comet', 'classic-deliveries', filename);
-      const selected = await selectClassicLocalReadTarget(root, source, file, '', sourceRoot);
-      locations.set(selected.target, {
-        root: selected.target === source ? sourceRoot : root,
-        file: selected.target,
-      });
-    }
-    return [...locations.values()];
-  }
-  await migrateWorkspaceRuntimePath(
-    path.join(root, '.comet', 'classic-deliveries', filename),
-    file,
-    { projectRoot: root },
-  );
-  const common = verifyingGit(root, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
-  const legacy = common ? path.join(common, 'comet', 'classic-deliveries', filename) : null;
-  if (legacy) {
-    const sourceRoot = await fs.realpath(common!);
-    const source = path.join(sourceRoot, 'comet', 'classic-deliveries', filename);
-    const exists = await classicProjectTargetExists(sourceRoot, source, {
-      label: 'Legacy Classic delivery receipt',
-      expected: 'any',
-    });
-    if (exists && !(await isWorkspaceRuntimeMigrationFence(source))) {
-      const receipt = JSON.parse(
-        await readClassicProjectFile(sourceRoot, source, {
-          label: 'Legacy Classic delivery receipt',
+): DeliveryReceipt {
+  const value = object(input);
+  keys(value, [
+    'schemaVersion',
+    'changeIdentity',
+    'authorizationId',
+    'invalidated',
+    'commit',
+    'prUrl',
+    'archiveFiles',
+    'archiveCompleted',
+  ]);
+  if (value.schemaVersion !== 1 || value.changeIdentity !== changeIdentity)
+    throw new Error('Invalid Classic delivery receipt schema or identity');
+  if (value.invalidated !== undefined && typeof value.invalidated !== 'boolean')
+    throw new Error('Invalid Classic delivery receipt invalidation');
+  const evidence = deliveryInput({
+    action: 'local',
+    targetBranch: 'main',
+    ...(value.commit !== undefined ? { commit: value.commit } : {}),
+    ...(value.prUrl !== undefined ? { prUrl: value.prUrl } : {}),
+  });
+  const next: DeliveryReceipt = {
+    schemaVersion: 1,
+    changeIdentity,
+    authorizationId: text(value.authorizationId, 'authorizationId'),
+    ...(value.invalidated === true ? { invalidated: true } : {}),
+    ...(evidence.commit ? { commit: evidence.commit } : {}),
+    ...(evidence.prUrl ? { prUrl: evidence.prUrl } : {}),
+    ...(value.archiveCompleted === true ? { archiveCompleted: true } : {}),
+    ...(value.archiveFiles === undefined
+      ? {}
+      : {
+          archiveFiles: validateArchiveFiles(value.archiveFiles),
         }),
-      );
-      if (
-        receipt?.schemaVersion !== 1 ||
-        receipt.changeIdentity !== changeIdentity ||
-        typeof receipt.authorizationId !== 'string'
-      )
-        throw new Error('Legacy Classic delivery receipt does not belong to this change');
-    }
-    await migrateWorkspaceRuntimePath(source, file, {
-      projectRoot: root,
-      sourceRoot,
-      ignoreForeignWorkspaceFence: true,
-    });
-  }
-  return [{ root, file }];
+  };
+  return next;
 }
 
 async function readReceipt(root: string, changeIdentity: string): Promise<DeliveryReceipt | null> {
@@ -782,59 +668,27 @@ async function readReceipt(root: string, changeIdentity: string): Promise<Delive
       }))
     )
       continue;
-    const value = object(
+    const next = parseClassicDeliveryReceipt(
       JSON.parse(
         await readClassicProjectFile(location.root, location.file, {
           label: 'Classic delivery receipt',
         }),
       ),
-    );
-    keys(value, [
-      'schemaVersion',
-      'changeIdentity',
-      'authorizationId',
-      'invalidated',
-      'commit',
-      'prUrl',
-      'archiveFiles',
-    ]);
-    if (value.schemaVersion !== 1 || value.changeIdentity !== changeIdentity)
-      throw new Error('Invalid Classic delivery receipt schema or identity');
-    if (value.invalidated !== undefined && typeof value.invalidated !== 'boolean')
-      throw new Error('Invalid Classic delivery receipt invalidation');
-    const evidence = deliveryInput({
-      action: 'local',
-      targetBranch: 'main',
-      ...(value.commit !== undefined ? { commit: value.commit } : {}),
-      ...(value.prUrl !== undefined ? { prUrl: value.prUrl } : {}),
-    });
-    const next: DeliveryReceipt = {
-      schemaVersion: 1,
       changeIdentity,
-      authorizationId: text(value.authorizationId, 'authorizationId'),
-      ...(value.invalidated === true ? { invalidated: true } : {}),
-      ...(evidence.commit ? { commit: evidence.commit } : {}),
-      ...(evidence.prUrl ? { prUrl: evidence.prUrl } : {}),
-      ...(value.archiveFiles === undefined
-        ? {}
-        : {
-            archiveFiles: validateArchiveFiles(value.archiveFiles),
-          }),
-    };
+    );
     if (receipt && JSON.stringify(receipt) !== JSON.stringify(next))
       throw new Error('Conflicting Classic delivery receipts');
     receipt = next;
   }
   return receipt;
 }
-
 function validateArchiveFiles(value: unknown): Record<string, string> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error('Invalid Classic document archive receipt');
   const files = value as Record<string, unknown>;
   if (
     Object.keys(files).length === 0 ||
-    Object.keys(files).length > 10_000 ||
+    Object.keys(files).length > 10000 ||
     Object.entries(files).some(
       ([file, digest]) =>
         file.startsWith('/') ||
@@ -847,14 +701,12 @@ function validateArchiveFiles(value: unknown): Record<string, string> {
     throw new Error('Invalid Classic document archive receipt');
   return files as Record<string, string>;
 }
-
 function authorizationId(value: Record<string, unknown>): string {
   // Legacy explicit authorizations get a deterministic generation, not an inferred grant.
   return value.authorizationId === undefined
     ? `legacy:${createHash('sha256').update(JSON.stringify(value)).digest('hex')}`
     : text(value.authorizationId, 'authorizationId');
 }
-
 /** Caller holds the state lock; invalidate before transitioning archive-reopen. */
 export async function invalidateClassicDelivery(root: string, changeDir: string): Promise<void> {
   const raw = await readRecord(root, changeDir, 'delivery.json');
@@ -878,9 +730,8 @@ export async function invalidateClassicDelivery(root: string, changeDir: string)
     invalidated: true,
   });
 }
-
 async function writeReceipt(root: string, receipt: DeliveryReceipt): Promise<void> {
-  const [location] = await receiptLocations(root, receipt.changeIdentity, { migrate: true });
+  const [location] = await receiptLocations(root, receipt.changeIdentity);
   await ensureClassicProjectDirectory(
     root,
     path.dirname(location.file),
@@ -890,11 +741,9 @@ async function writeReceipt(root: string, receipt: DeliveryReceipt): Promise<voi
     label: 'Classic delivery receipt',
   });
 }
-
 function containsCommit(root: string, commit: string, head: string): boolean {
   return commit === head || localGit(root, ['merge-base', '--is-ancestor', commit, head]) !== null;
 }
-
 function repositoryFromRemote(remote: string): string | null {
   const scp = /^git@([^:/]+):([^/]+\/[^/]+)$/u.exec(remote);
   try {
@@ -920,7 +769,6 @@ function repositoryFromRemote(remote: string): string | null {
     return null;
   }
 }
-
 function verifiedPrUrl(value: string, repository: string): string | null {
   try {
     const url = new URL(value);
@@ -941,11 +789,13 @@ function verifiedPrUrl(value: string, repository: string): string | null {
     return null;
   }
 }
-
 export async function readClassicDelivery(
   root: string,
   changeDir: string,
-  options: { verifyRemote?: boolean; evidence?: boolean } = {},
+  options: {
+    verifyRemote?: boolean;
+    evidence?: boolean;
+  } = {},
 ) {
   const evidence = options.evidence !== false;
   const raw = await readRecord(root, changeDir, 'delivery.json');
@@ -999,15 +849,8 @@ export async function readClassicDelivery(
     ...(authorizedRemoteUrl ? { authorizedRemoteUrl } : {}),
   };
   if (effectiveInput.action === 'archive-only') {
-    let archiveVerified = false;
-    if (state.archived === true && receipt?.archiveFiles !== undefined) {
-      const files = await archiveFileManifest(root, changeDir).catch((error: unknown) => {
-        const code = (error as NodeJS.ErrnoException | undefined)?.code;
-        if (code === 'ENOENT' || code === 'ENOTDIR') return null;
-        throw error;
-      });
-      archiveVerified = files !== null && archiveManifestsMatch(receipt.archiveFiles, files);
-    }
+    const archiveVerified =
+      state.archived === true && Boolean(receipt?.archiveCompleted || receipt?.archiveFiles);
     return {
       delivery,
       verification: {
@@ -1221,7 +1064,6 @@ export async function readClassicDelivery(
     },
   };
 }
-
 /** Caller holds the state lock. This records authorization, never performs delivery. */
 export async function writeClassicDelivery(
   root: string,
@@ -1342,7 +1184,6 @@ export async function writeClassicDelivery(
     });
   return readClassicDelivery(root, changeDir);
 }
-
 /**
  * Reauthorize delivery after Archive without mutating the sealed change
  * directory. The override is bound to the previous authorization id and the

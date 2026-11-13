@@ -62,6 +62,15 @@ function safeText(value: string, limit: number): string {
 /** SQLite 中只保存有界的观测副本；同一节点的旧版本不能覆盖较新结果。 */
 export async function recordRuntimeTraceSpans(projectRoot: string, spans: RuntimeTraceSpan[]) {
   if (!spans.length) return;
+  const active = context.getStore();
+  if (active) {
+    const normalize = (root: string) =>
+      process.platform === 'win32' ? path.resolve(root).toLowerCase() : path.resolve(root);
+    if (normalize(projectRoot) === normalize(await active.projectRoot())) {
+      active.spans.push(...spans);
+      return;
+    }
+  }
   const db = openSqliteDatabase(await runtimeObservabilityDatabasePath(projectRoot, true));
   try {
     db.exec(`PRAGMA busy_timeout=25; PRAGMA journal_mode=WAL;

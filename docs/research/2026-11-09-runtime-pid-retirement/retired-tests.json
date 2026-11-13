@@ -1,0 +1,78 @@
+{
+  "authorization": "report:2026-11-09-runtime-pid-removal",
+  "retired": {
+    "test/platform/recoverable-file-lock.test.ts": [
+      "requires exact confirmed cross-host identity and refuses a live local owner",
+      "binds repair to file identity even when a replacement has identical bytes",
+      "preserves a replacement raced immediately before quarantine",
+      "serializes simultaneous stale recovery and live writers",
+      "recovers a transient coordinator read failure without overlapping writers (%s)",
+      "preserves an unreadable coordinator owner and refuses to enter after the deadline (%s)",
+      "diagnoses and confirms abandoned coordinator records %j with no main lock",
+      "rejects a linked coordinator directory without changing the outside directory",
+      "keeps a malformed coordinator ticket when its identifiable owner is still alive"
+    ],
+    "test/domains/comet-native/native-lock.test.ts": [
+      "rechecks a coordinator claim after a slow owner probe (%s)",
+      "publishes complete metadata before exposing an uncontended lock",
+      "keeps the coordinated writer usable when atomic hard links are unsupported",
+      "coordinates release after a competing claim has already disappeared",
+      "retries fresh changing %s observations within the original mutation wait",
+      "bounds continuously changing lock observations without entering the mutation",
+      "does not release a replacement file that reuses the same owner metadata",
+      "takes over a same-host stale root-move lock automatically instead of failing",
+      "requires doctor takeover for a stale transition lock",
+      "diagnoses stale local and unknown remote locks without breaking them",
+      "does not treat a reused live pid with a different process identity as the lock owner",
+      "takes over a stale lock only when the diagnosis still matches",
+      "takes over an unknown lock under explicit repair only once its owner record has aged",
+      "routes a legacy same-host owner without process identity through explicit aged repair",
+      "reports process liveness without turning invalid signals into a false stale result"
+    ],
+    "test/domains/comet-native/native-check-executor-termination.test.ts": [
+      "waits for the POSIX process group to exit after the supervisor closes",
+      "keeps POSIX cleanup unconfirmed when the process group remains %s"
+    ],
+    "test/domains/comet-native/native-check-owner-recovery.test.ts": [
+      "does not treat a reused process PID as the original child instance"
+    ],
+    "test/domains/comet-native/native-sdk-check-termination.test.ts": [
+      "keeps legacy POSIX process-group confirmation compatible",
+      "rejects a termination receipt with another identity",
+      "rejects a termination receipt with another ownerPid"
+    ],
+    "test/domains/comet-native/native-check-registration.test.ts": [
+      "does not invoke registration after cancellation during identity lookup"
+    ]
+  },
+  "legacyFixtureFiles": [
+    "test/domains/comet-classic/classic-agent-command-selection.test.ts",
+    "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+    "test/domains/comet-classic/classic-sdk-handoffs.test.ts",
+    "test/domains/comet-classic/classic-sdk-legacy-check-continuation.test.ts",
+    "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+    "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts"
+  ],
+  "replacements": [
+    {
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "from": "refuses recovery when the old owner belongs to another host",
+      "to": "recovers a stopped migration without host or PID binding"
+    },
+    {
+      "file": "test/domains/comet-native/native-check-executor-termination.test.ts",
+      "from": "cancels a pending identity registration immediately when its supervisor errors",
+      "to": "cancels pending supervisor readiness immediately when its supervisor errors"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+      "from": "persists a proven orphan interruption before allowing an explicit check retry",
+      "to": "persists an Agent-confirmed interruption before allowing an explicit check retry"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+      "from": "recovers an orphaned running check only when process exit can be proven",
+      "to": "recovers an interrupted running check after Agent stop confirmation"
+    }
+  ]
+}

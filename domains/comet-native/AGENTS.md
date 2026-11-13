@@ -7,13 +7,13 @@
 - 依赖从纯模型流向存储与执行，再流向用例协调；父子任务协调位于 Portable 验证与 Supervisor 之上。纯模型不读取文件、获取锁、执行恢复或依赖 CLI。
 - `native-portable-runtime.ts` 和 `native-supervisor.ts` 是兼容门面，只保留显式转发；内部实现直接依赖承担职责的模块，不反向导入兼容门面。
 - `native-portable-delta-rebase.ts` 负责 Delta 重合并及其原输入绑定；`native-portable-requirements.ts` 保留正式材料读取与需求校验，不反向依赖检查执行模块。
-- 检查执行保持“锁内预留 → 锁外执行 → 锁内提交”；名称含 `Locked` 的函数只在已经持有 Native mutation lock 的路径调用，不嵌套获取同一锁。
-- Native 主流程与 Guard 必须由 Comet Runtime 自己执行，不依赖外部 Skill 才能完成状态推进或验证。
-- change 根目录只保留用户可读文档；机器状态、锁、事务和执行记录写入用户级 Comet 数据目录，并按真实 workspace 隔离；Archive 的短命发布 staging 留在目标同卷的忽略目录。
+- 每个 workspace 只有一个写入者；并行 Child 只写自己的 worktree，父 Agent 串行提交结果。普通流程不创建文件锁、协调锁或锁恢复协议。写入前只核对实际未完成的事务及业务状态。
+- Native 状态推进与 Guard 由 Comet Runtime 维护，不依赖外部 Skill。普通开发、测试和命令由 Agent 平台工具执行；禁止恢复受管检查器、PID 绑定、停止握手或内容快照。
+- change 根目录只保留用户可读文档；机器状态、事务和执行记录写入用户级 Comet 数据目录，并按真实 workspace 隔离；Archive 的短命发布 staging 留在目标同卷的忽略目录。
 - Build、Verify、Archive 和 Supervisor 的状态只能通过 Runtime 契约推进，不在测试或实现中手工伪造正常路径。
 - 涉及 portable state、worktree、恢复或验收时，验证主工作区与 linked worktree 的身份、路径和状态隔离。
-- Native Verify 应优先复用与当前候选和执行上下文匹配的 Runtime 检查；“覆盖全部验收项的独立 Verifier”不等于运行仓库全量测试。
-- 修改候选、检查输入或恢复路径前，读取 `docs/architecture/native-incremental-recovery.zh.md`。按正式契约、实现和生成输入的实际变化选择推进步骤，保留仍匹配的 Shape 批准和证据；跨候选复用须由 Runtime 证明完整输入范围并保留原执行来源。
-- 阻塞输出须包含实际原因、冲突路径或持有者、诊断命令、恢复命令及其前提。恢复继续原 Action 和事务；未知锁须绑定精确记录并确认原写入者已停止，存放时间不能单独作为删除依据。通过执行输出的原命令验证恢复与重复调用。
+- Native Verify 由 Agent 判断原检查是否适用于当前候选和环境，只补必要检查并提交实际报告；“覆盖全部验收项的独立 Verifier”不等于运行仓库全量测试。
+- 修改候选、检查输入或恢复路径前，读取 `docs/architecture/native-incremental-recovery.zh.md`。按正式契约、实现和生成输入的实际变化选择推进步骤，保留仍匹配的 Shape 批准和证据；跨候选复用由 Agent 判断原检查是否适用；Runtime 保留原执行来源，不扫描文件或计算内容指纹。
+- 阻塞输出须包含实际原因、冲突路径或持有者、诊断命令、恢复命令及其前提。恢复继续原 Action 和事务；旧锁文件不再是推进依据，不要求锁 token 或停止写入者的确认。通过执行输出的原命令验证恢复与重复调用。
 - 已派发的 Verifier 仍在运行时继续使用同一任务；等待工具超时不等于执行超时，不得仅因没有即时汇总就取消、并行重派或要求 Verifier 停止核查。
 - 只有确认任务失败、宿主报告执行超时、任务丢失或结束后没有可用结果时，才登记 `verifier-execution-error`；重试前保留已完成证据并说明恢复方式发生的变化。

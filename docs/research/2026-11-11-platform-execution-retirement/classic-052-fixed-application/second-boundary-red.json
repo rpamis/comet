@@ -1,0 +1,26 @@
+{
+  "packageFiles": 23,
+  "afterFactoryMapping": {
+    "retiredReady": [
+      {
+        "from": "hotfix.build.execute",
+        "to": "hotfix.verify.run"
+      }
+    ],
+    "expected": "classic.extension.artifact-review",
+    "bypassesOriginalExtension": true
+  },
+  "nonFinalRunningActionValidation": "accepted",
+  "continuation": {
+    "error": "Cannot read properties of undefined (reading 'indexOf')",
+    "stack": [
+      "TypeError: Cannot read properties of undefined (reading 'indexOf')",
+      "    at Object.apply (file:///D:/Project/Comet/dist/domains/comet-classic/classic-application.js:407:42)",
+      "    at file:///D:/Project/Comet/coverage/spec-052-classic-second-boundary-probe.mjs:14:119"
+    ]
+  },
+  "publicOriginalClaimSubmission": {
+    "error": "OUTCOME_PROCESSING_ERROR: Cannot read properties of undefined (reading 'validator')",
+    "code": "OUTCOME_PROCESSING_ERROR"
+  }
+}

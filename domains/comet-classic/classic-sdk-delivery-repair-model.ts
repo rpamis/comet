@@ -7,12 +7,17 @@ import {
 import type { ClassicState } from './classic-state.js';
 
 export interface ClassicDeliveryRepair {
-  checkpointHash: string;
+  checkpointHash?: string;
   archiveActionId: string;
   checkActionId: string;
-  policyHash: string;
-  excludedOutputs: Record<string, string>;
-  command: { argv: string[]; cwd: string; timeoutMs: number; reusable: false };
+  policyHash?: string;
+  excludedOutputs?: Record<string, string>;
+  excludedOutputPaths?: string[];
+  command?: { argv: string[]; cwd: string; timeoutMs: number; reusable: false };
+  reports?: {
+    checks: Array<{ name: string; result: string; note?: string }>;
+    checksReason?: string;
+  };
 }
 
 export function classicDeliveryRepairRecord(value: unknown): Record<string, unknown> {
@@ -33,7 +38,12 @@ export function classicDeliveryRepairOriginals(
   const check = run.actions
     .slice()
     .reverse()
-    .find((a) => a.stepId === `${profile}.verify.check` && a.status === 'succeeded');
+    .find(
+      (a) =>
+        a.stepId ===
+          profile + (run.workflow.version === '2' ? '.archive.preflight' : '.verify.check') &&
+        a.status === 'succeeded',
+    );
   if (
     !archive?.outcome ||
     !check?.outcome ||
@@ -82,14 +92,12 @@ export function classicDeliveryRepairInputs(
   proof: ClassicDeliveryRepair,
 ) {
   const original = classicDeliveryRepairOriginals(run, proof);
-  return Object.fromEntries(
-    Object.entries(
-      classicDeliveryRepairRecord(original.check.outcome!.output).deliveryInputs as Record<
-        string,
-        string
-      >,
-    ).filter(([ref]) => !Object.hasOwn(proof.excludedOutputs, ref)),
-  );
+  const output = classicDeliveryRepairRecord(original.check.outcome!.output);
+  const paths = Array.isArray(output.deliveryPaths)
+    ? (output.deliveryPaths as string[])
+    : Object.keys((output.deliveryInputs as Record<string, string>) ?? {});
+  const excluded = new Set(proof.excludedOutputPaths ?? Object.keys(proof.excludedOutputs ?? {}));
+  return paths.filter((ref) => !excluded.has(ref));
 }
 
 export function canRepairClassicDelivery(run: Readonly<WorkflowRun>): boolean {

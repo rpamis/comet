@@ -5,36 +5,15 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
-import { defineWorkflow, hashRuntimeValue } from '../../../domains/engine/runtime.js';
-import {
-  classicSdkApplicationForRun,
-  classicSdkRevisionApplication,
-} from '../../../domains/comet-classic/classic-sdk-revision-application.js';
-import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
 import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
 
 const roots: string[] = [];
-
-it.each([
-  ['hotfix', 'ebdb8fb3cdffb000a5f63fa58ebecc34c4ba9e147d0ecb916e2f61a8eb796b64'],
-  ['hotfix', 'eaaac8f3ab31fdb9c338f8819d4afa19c95afd16fe66d233319c4b6af40ac078'],
-  ['hotfix', 'bccf5f519340c5a9204711a3b008b4ac1f12b0493570820b0e9f3a134459988f'],
-  ['hotfix', 'f6ea048de7fb4a912c70b0374796dcc23e1babc7eb25c5bf02ac5af7a6ed0415'],
-  ['tweak', '2433e88162fdc02b42691a781694fc16566900d547fd343c9a56e7039f7dad31'],
-  ['tweak', 'f910bb14738f9ead86128931c71a9f1d3627be0792eb3e0f70969a311befbe6a'],
-  ['tweak', 'c79f0014b2af6b662720714f11263de50d0c9740f24ea09e4a22198161140189'],
-  ['tweak', 'fd0963baf2d32bf216347ec6da02ec0bf1acb12d3de10fc20cd127b63c940987'],
-] as const)('recognizes the persisted %s definition %s', (profile, hash) => {
-  const run = { workflow: { hash } } as Parameters<typeof classicSdkApplicationForRun>[1];
-  const selected = classicSdkApplicationForRun(profile, run);
-  expect(hashRuntimeValue(defineWorkflow(selected.workflow))).toBe(hash);
-});
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
-async function fixture(profile: 'hotfix' | 'tweak', legacy = false, completed = true) {
+async function fixture(profile: 'hotfix' | 'tweak', completed = true) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-preset-scope-'));
   roots.push(root);
   await prepareClassicLegacyProject(root);
@@ -53,8 +32,23 @@ async function fixture(profile: 'hotfix' | 'tweak', legacy = false, completed = 
     ],
     { cwd: root, stdio: 'ignore' },
   );
-  const cli = async (...args: string[]) =>
-    JSON.parse(
+  const cli = async (...args: string[]) => {
+    if (args[0] === 'guard' && ['build', 'verify'].includes(args[2]) && args.includes('--apply')) {
+      execFileSync(process.execPath, ['-e', 'process.exit(0)'], { cwd: root, stdio: 'pipe' });
+      await fs.writeFile(
+        path.join(root, 'platform-checks.json'),
+        JSON.stringify({
+          checks: [
+            {
+              name: 'Actual platform Node exit 0',
+              result: 'passed',
+              note: 'Safe deterministic Node command really completed before this submission.',
+            },
+          ],
+        }),
+      );
+    }
+    return JSON.parse(
       (
         await runClassicCli([args[0], '--json', ...args.slice(1)], undefined, {
           projectRoot: root,
@@ -62,28 +56,13 @@ async function fixture(profile: 'hotfix' | 'tweak', legacy = false, completed = 
         })
       ).stdout!,
     );
+  };
   const ok = async (...args: string[]) => {
     const result = await cli(...args);
     expect(result.exitCode, JSON.stringify(result)).toBe(0);
     return result.data;
   };
   await ok('state', 'init', 'example', profile, '--isolation', 'current');
-  if (legacy) {
-    const store = createClassicSdkStateStore(root);
-    const run = (await store.read('example'))!;
-    const workflow = structuredClone(classicSdkRevisionApplication(profile).workflow);
-    const step = workflow.steps[`${profile}.build.execute`];
-    delete (step.outputSchema as { properties: Record<string, unknown> }).properties
-      .requirementsEvidence;
-    delete step.validator;
-    const definition = defineWorkflow(workflow);
-    const hash = hashRuntimeValue(definition);
-    const previous = structuredClone(run);
-    previous.workflow.hash = hash;
-    previous.definitionHashes[JSON.stringify([definition.id, definition.version])] = hash;
-    previous.revision++;
-    expect(await store.compareAndSwap(run.runId, run.revision, previous)).toBe(true);
-  }
   const directory = path.join(root, 'openspec/changes/example');
   const proposal = '# Proposal\nFix the greeting typo without changing behavior.\n';
   await fs.writeFile(path.join(directory, 'proposal.md'), proposal);
@@ -96,45 +75,62 @@ async function fixture(profile: 'hotfix' | 'tweak', legacy = false, completed = 
   await ok('guard', 'example', 'open', '--apply', '--approval-hash', opened.approvalHash);
   if (completed)
     await fs.writeFile(path.join(directory, 'tasks.md'), '- [x] Fix the greeting typo\n');
-  const check = ['--apply', '--', process.execPath, '-e', 'process.exit(0)'];
+  const check = ['--apply', '--checks', 'platform-checks.json'];
   return { root, directory, proposal, cli, ok, check };
 }
 
 describe.each(['hotfix', 'tweak'] as const)('%s approved scope', (profile) => {
   it('allows public task ID assignment and completion without another scope approval', async () => {
-    const { ok, check } = await fixture(profile, false, false);
+    const { ok, check } = await fixture(profile, false);
     const listed = await ok('state', 'tasks', 'example', '--assign-ids');
     await ok('state', 'task-complete', 'example', listed.tasks[0].id, '--expect', listed.revision);
     expect((await ok('guard', 'example', 'build', ...check)).phase).toBe('verify');
   });
 
-  it('blocks changed requirements at Build and Verify while allowing checkbox completion', async () => {
-    const { root, directory, proposal, cli, ok, check } = await fixture(profile);
-    const changed = '# Proposal\nReplace authentication and migrate credentials.\n';
-    await fs.writeFile(path.join(directory, 'proposal.md'), changed);
-    expect((await cli('guard', 'example', 'build', ...check)).exitCode).not.toBe(0);
-    await fs.writeFile(path.join(directory, 'proposal.md'), proposal);
-    await fs.writeFile(path.join(directory, 'tasks.md'), '- [x] Replace authentication instead\n');
-    expect((await cli('guard', 'example', 'build', ...check)).exitCode).not.toBe(0);
-    await fs.writeFile(path.join(directory, 'tasks.md'), '- [x] Fix the greeting typo\n');
+  it('reconfirms actual requirement revisions explicitly in Build and Verify', async () => {
+    const { root, directory, cli, ok, check } = await fixture(profile);
+    const approve = async (reason: string) => {
+      const proposal = await ok('state', 'propose-escalation', 'example', '--reason', reason);
+      const before = (await inspectClassicSdkRun(root, 'example')).run;
+      expect((await cli('guard', 'example', 'build', ...check)).exitCode).not.toBe(0);
+      expect((await inspectClassicSdkRun(root, 'example')).run).toEqual(before);
+      await ok(
+        'state',
+        'decide-escalation',
+        'example',
+        '--proposal-hash',
+        proposal.wait.proposalHash,
+        '--choice',
+        'continue',
+      );
+    };
+    await fs.writeFile(
+      path.join(directory, 'proposal.md'),
+      '# Proposal\nFix the typo and punctuation.\n',
+    );
+    await approve('Fixture user approves adding punctuation.');
+    await fs.writeFile(path.join(directory, 'tasks.md'), '- [x] Fix typo and punctuation\n');
+    expect((await ok('guard', 'example', 'build', ...check)).phase).toBe('verify');
+    const before = (await inspectClassicSdkRun(root, 'example')).run;
+    await ok('state', 'continue-build', 'example', '--expected-revision', String(before.revision));
+    await fs.appendFile(
+      path.join(directory, 'proposal.md'),
+      'Also improve greeting capitalization.\n',
+    );
+    await approve('Fixture user approves the capitalization revision.');
     expect((await ok('guard', 'example', 'build', ...check)).phase).toBe('verify');
     const report = 'docs/superpowers/reports/example.md';
     await fs.mkdir(path.dirname(path.join(root, report)), { recursive: true });
     await fs.writeFile(
       path.join(root, report),
-      '# Verification report\nThe greeting typo is corrected and related checks passed.\n',
+      '# Verification\nThe revised greeting checks passed.\n',
     );
-    await fs.writeFile(path.join(directory, 'proposal.md'), changed);
-    expect(
-      (await cli('guard', 'example', 'verify', '--report', report, ...check)).exitCode,
-    ).not.toBe(0);
-    await fs.writeFile(path.join(directory, 'proposal.md'), proposal);
     expect((await ok('guard', 'example', 'verify', '--report', report, ...check)).phase).toBe(
       'archive',
     );
   });
-  it('upgrades a known previous definition for a fresh scope decision without rewriting completed Actions', async () => {
-    const { root, directory, proposal, cli, ok, check } = await fixture(profile, true);
+  it('adds explicit requirement revision without rewriting completed Actions after neutral edits', async () => {
+    const { root, directory, proposal, cli, ok, check } = await fixture(profile);
     const legacy = await inspectClassicSdkRun(root, 'example');
     const action = legacy.run.actions.find((action) => action.status === 'pending')!;
     await legacy.runtime.claim({
@@ -161,22 +157,10 @@ describe.each(['hotfix', 'tweak'] as const)('%s approved scope', (profile) => {
       },
     });
     const wait = requested.waits.find((wait) => wait.status === 'pending')!;
-    await fs.appendFile(path.join(directory, 'proposal.md'), 'Change authentication as well.\n');
-    expect(
-      (
-        await cli(
-          'state',
-          'decide-escalation',
-          'example',
-          '--proposal-hash',
-          wait.proposalHash,
-          '--choice',
-          'continue',
-        )
-      ).exitCode,
-    ).not.toBe(0);
-    expect((await inspectClassicSdkRun(root, 'example')).run).toEqual(requested);
-    await fs.writeFile(path.join(directory, 'proposal.md'), proposal);
+    await fs.appendFile(
+      path.join(directory, 'proposal.md'),
+      '<!-- Agent clarified the same scope. -->\n',
+    );
     await ok(
       'state',
       'decide-escalation',
@@ -199,7 +183,8 @@ describe.each(['hotfix', 'tweak'] as const)('%s approved scope', (profile) => {
       'Include punctuation.',
     );
     const after = (await inspectClassicSdkRun(root, 'example')).run;
-    expect(after.workflow.hash).not.toBe(before.workflow.hash);
+    expect(after.workflow).toEqual(before.workflow);
+    expect(proposed.wait.proposalHash).not.toBe(wait.proposalHash);
     expect(after.actions.slice(0, before.actions.length - 1)).toEqual(before.actions.slice(0, -1));
     await ok(
       'state',
@@ -212,7 +197,7 @@ describe.each(['hotfix', 'tweak'] as const)('%s approved scope', (profile) => {
     );
     expect((await ok('guard', 'example', 'build', ...check)).phase).toBe('verify');
   });
-  it('binds scope confirmation to the proposed artifacts before continuing the same preset', async () => {
+  it('keeps the original scope decision after neutral edits and rejects a stale SDK proposal', async () => {
     const { directory, cli, ok, check } = await fixture(profile);
     const proposal = '# Proposal\nCorrect greeting punctuation as well as the typo.\n';
     await fs.writeFile(path.join(directory, 'proposal.md'), proposal);
@@ -228,7 +213,10 @@ describe.each(['hotfix', 'tweak'] as const)('%s approved scope', (profile) => {
       'Include greeting punctuation in the same change.',
     );
     const hash = proposed.wait.proposalHash;
-    await fs.appendFile(path.join(directory, 'proposal.md'), 'Also change authentication.\n');
+    await fs.appendFile(
+      path.join(directory, 'proposal.md'),
+      '<!-- Agent clarified the same scope. -->\n',
+    );
     expect(
       (
         await cli(
@@ -236,7 +224,7 @@ describe.each(['hotfix', 'tweak'] as const)('%s approved scope', (profile) => {
           'decide-escalation',
           'example',
           '--proposal-hash',
-          hash,
+          '0'.repeat(64),
           '--choice',
           'continue',
         )

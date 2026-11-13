@@ -1,0 +1,134 @@
+{
+  "currentFiveFileTargets": [
+    {
+      "group": "cases",
+      "id": "codex-plugin-migrate-file-skills",
+      "file": "test/domains/dashboard/mcp-cli-setup.test.ts",
+      "target": {
+        "file": "test/domains/dashboard/mcp-cli-setup.test.ts",
+        "namePattern": "^automatically installs the CLI on MCP activation before any setup tool call$",
+        "requiredNames": [
+          "automatically installs the CLI on MCP activation before any setup tool call"
+        ]
+      },
+      "migrationChainEnds": null
+    }
+  ],
+  "testMigrationAppendForFourChangedFixtures": false,
+  "reason": "The only current effective link is MCP codex-plugin-migrate-file-skills; its exact selector, every original business assertion, and the actual MCP installation/integration behavior remain intact. The other four files have no current links.",
+  "nativeHistorySevenAffectedTargets": [
+    {
+      "group": "cases",
+      "id": "native-orphan-cancelled-checkpoint-history",
+      "file": "test/domains/comet-native/native-sdk-history.test.ts",
+      "target": {
+        "file": "test/domains/comet-native/native-sdk-history.test.ts",
+        "namePattern": "(?:migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through runtime|migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through bundle)$",
+        "requiredNames": [
+          "Native terminal history lifecycle migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through runtime",
+          "Native terminal history lifecycle migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through bundle"
+        ]
+      },
+      "migrationChainEnds": null
+    },
+    {
+      "group": "cases",
+      "id": "native-closed-cancellation-historical-binding",
+      "file": "test/domains/comet-native/native-sdk-history.test.ts",
+      "target": {
+        "file": "test/domains/comet-native/native-sdk-history.test.ts",
+        "namePattern": "(?:migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through runtime|migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through bundle)$",
+        "requiredNames": [
+          "Native terminal history lifecycle migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through runtime",
+          "Native terminal history lifecycle migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through bundle"
+        ]
+      },
+      "migrationChainEnds": null
+    },
+    {
+      "group": "cases",
+      "id": "native-cancelled-history-import-guards",
+      "file": "test/domains/comet-native/native-sdk-history.test.ts",
+      "target": {
+        "file": "test/domains/comet-native/native-sdk-history.test.ts",
+        "namePattern": "(?:rejects portable history import with active without overwriting local evidence|rejects portable history import with missing-stop without overwriting local evidence|rejects portable history import with corrupt-hash without overwriting local evidence|rejects portable history import with unknown-definition without overwriting local evidence|rejects portable history import with archive-obligation without overwriting local evidence|rejects portable history import with child-lineage without overwriting local evidence|rejects portable history import with fixed-application without overwriting local evidence|rejects portable history import with pending-cleanup without overwriting local evidence|rejects portable history import with existing-run without overwriting local evidence|rejects portable history import with existing-projection without overwriting local evidence)$",
+        "requiredNames": [
+          "Native terminal history lifecycle rejects portable history import with active without overwriting local evidence",
+          "Native terminal history lifecycle rejects portable history import with missing-stop without overwriting local evidence",
+          "Native terminal history lifecycle rejects portable history import with corrupt-hash without overwriting local evidence",
+          "Native terminal history lifecycle rejects portable history import with unknown-definition without overwriting local evidence",
+          "Native terminal history lifecycle rejects portable history import with archive-obligation without overwriting local evidence",
+          "Native terminal history lifecycle rejects portable history import with child-lineage without overwriting local evidence",
+          "Native terminal history lifecycle rejects portable history import with fixed-application without overwriting local evidence",
+          "Native terminal history lifecycle rejects portable history import with pending-cleanup without overwriting local evidence",
+          "Native terminal history lifecycle rejects portable history import with existing-run without overwriting local evidence",
+          "Native terminal history lifecycle rejects portable history import with existing-projection without overwriting local evidence"
+        ]
+      },
+      "migrationChainEnds": null
+    },
+    {
+      "group": "cases",
+      "id": "native-cancelled-history-import-resume",
+      "file": "test/domains/comet-native/native-sdk-history.test.ts",
+      "target": {
+        "file": "test/domains/comet-native/native-sdk-history.test.ts",
+        "namePattern": "(?:keeps portable history import safe after interruption at journal|keeps portable history import safe after interruption at run|keeps portable history import safe after interruption at owner|keeps portable history import safe after interruption at projection|keeps portable history import safe after interruption at closure|keeps portable history import safe after interruption at duplicate-owner|keeps portable history import safe after interruption at changed-source|keeps portable history import safe after interruption at newer-local)$",
+        "requiredNames": [
+          "Native terminal history lifecycle keeps portable history import safe after interruption at journal",
+          "Native terminal history lifecycle keeps portable history import safe after interruption at run",
+          "Native terminal history lifecycle keeps portable history import safe after interruption at owner",
+          "Native terminal history lifecycle keeps portable history import safe after interruption at projection",
+          "Native terminal history lifecycle keeps portable history import safe after interruption at closure",
+          "Native terminal history lifecycle keeps portable history import safe after interruption at duplicate-owner",
+          "Native terminal history lifecycle keeps portable history import safe after interruption at changed-source",
+          "Native terminal history lifecycle keeps portable history import safe after interruption at newer-local"
+        ]
+      },
+      "migrationChainEnds": null
+    },
+    {
+      "group": "cases",
+      "id": "native-cancelled-history-preserve-worktree-authority",
+      "file": "test/domains/comet-native/native-sdk-history.test.ts",
+      "target": {
+        "file": "test/domains/comet-native/native-sdk-history.test.ts",
+        "namePattern": "(?:does not shadow the original authority in a registered source worktree|does not shadow the newer authority in a registered source worktree)$",
+        "requiredNames": [
+          "Native terminal history lifecycle does not shadow the original authority in a registered source worktree",
+          "Native terminal history lifecycle does not shadow the newer authority in a registered source worktree"
+        ]
+      },
+      "migrationChainEnds": null
+    },
+    {
+      "group": "cases",
+      "id": "native-cancelled-history-preserve-worktree-authority",
+      "file": "test/domains/comet-native/native-sdk-history.test.ts",
+      "target": {
+        "file": "test/domains/comet-native/native-sdk-history.test.ts",
+        "namePattern": "rejects source authority appearing after the history import journal is published",
+        "requiredNames": [
+          "Native terminal history lifecycle rejects source authority appearing after the history import journal is published"
+        ]
+      },
+      "migrationChainEnds": null
+    },
+    {
+      "group": "cases",
+      "id": "native-513-crlf-history-migration",
+      "file": "test/domains/comet-native/native-sdk-history.test.ts",
+      "target": {
+        "file": "test/domains/comet-native/native-sdk-history.test.ts",
+        "namePattern": "(?:migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through runtime|migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through bundle)$",
+        "requiredNames": [
+          "Native terminal history lifecycle migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through runtime",
+          "Native terminal history lifecycle migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through bundle"
+        ]
+      },
+      "migrationChainEnds": null
+    }
+  ],
+  "nativeHistoryStatus": "pending per-behavior migration; do not replace all old targets with the new two recovery cases",
+  "newProductFixIds": "Parent owns stable report IDs for global history discovery and legacy closure normalization; this subtask allocated none."
+}

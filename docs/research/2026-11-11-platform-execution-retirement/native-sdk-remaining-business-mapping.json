@@ -1,0 +1,1495 @@
+{
+  "schema": "comet.native.test-migration-review.v1",
+  "scope": "50 original test declarations, four files; no whole case retirement",
+  "sourceReview": "C:/Users/BENYM/AppData/Local/Temp/remaining-test-retirement-spec-review-20261111.json",
+  "counts": {
+    "declarations": 50,
+    "wholeCaseFeatureRemoved": 0
+  },
+  "entries": [
+    {
+      "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "index": 0,
+      "line": 720,
+      "title": "recovers a branch rename followed by implementation changes without replaying one-shot checks",
+      "caseIds": ["native-branch-and-archive-repair-combination"],
+      "newFile": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "newTitle": "recovers a branch rename followed by implementation changes without replaying one-shot checks",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "原分支改名+Agent确认实现编辑；同Run明确修订，原检查一次计数不重放。",
+      "retiredMechanism": "内容指纹和Runtime检查执行收据不再作为推进权威。",
+      "reviewRequired": true,
+      "testNamePattern": "recovers a branch rename followed by implementation changes without replaying one-shot checks",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-blocked-recovery.test.ts -t \"recovers a branch rename followed by implementation changes without replaying one-shot checks\"",
+      "actualResults": [
+        {
+          "title": "recovers a branch rename followed by implementation changes without replaying one-shot checks",
+          "actualTitle": "recovers a branch rename followed by implementation changes without replaying one-shot checks",
+          "status": "passed",
+          "evidence": "blocked-all-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "index": 1,
+      "line": 735,
+      "title": "keeps Archive and Doctor read-only after an Agent-accepted edit without content proof",
+      "caseIds": ["native-archive-readonly-candidate-diagnostics"],
+      "newFile": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "newTitle": "keeps Archive and Doctor read-only after an Agent-accepted edit without content proof",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "Archive/Doctor只读，候选和实际文件保留，诊断不写Run。",
+      "retiredMechanism": "历史内容证明/快照扫描入口删除。",
+      "reviewRequired": true,
+      "testNamePattern": "keeps Archive and Doctor read-only after an Agent-accepted edit without content proof",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-blocked-recovery.test.ts -t \"keeps Archive and Doctor read-only after an Agent-accepted edit without content proof\"",
+      "actualResults": [
+        {
+          "title": "keeps Archive and Doctor read-only after an Agent-accepted edit without content proof",
+          "actualTitle": "keeps Archive and Doctor read-only after an Agent-accepted edit without content proof",
+          "status": "passed",
+          "evidence": "blocked-all-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "index": 2,
+      "line": 750,
+      "title": "repairs an implementation edited after Archive approval through explicit revision and original Shape",
+      "caseIds": ["native-archive-implementation-repair-continuation"],
+      "newFile": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "newTitle": "repairs an implementation edited after Archive approval through explicit revision and original Shape",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "原Shape批准保留；Archive后经明确实施修订→新Builder/Verifier/新结果批准→实际Archive。",
+      "retiredMechanism": "归档前自动重验旧检查移除。",
+      "reviewRequired": true,
+      "testNamePattern": "repairs an implementation edited after Archive approval through explicit revision and original Shape",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-blocked-recovery.test.ts -t \"repairs an implementation edited after Archive approval through explicit revision and original Shape\"",
+      "actualResults": [
+        {
+          "title": "repairs an implementation edited after Archive approval through explicit revision and original Shape",
+          "actualTitle": "repairs an implementation edited after Archive approval through explicit revision and original Shape",
+          "status": "passed",
+          "evidence": "blocked-all-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "index": 3,
+      "line": 784,
+      "title": "hands the existing user revision to the successor Builder without requiring a rewrite",
+      "caseIds": ["manual-recovery-native-implementation"],
+      "newFile": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "newTitle": "hands the existing user revision to the successor Builder without requiring a rewrite",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "已有用户修改交给新Builder，真实命令观察原修改，不要求重写。",
+      "retiredMechanism": "仅删除受管检查Action，命令由模拟Agent平台真实运行。",
+      "reviewRequired": true,
+      "testNamePattern": "hands the existing user revision to the successor Builder without requiring a rewrite",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-blocked-recovery.test.ts -t \"hands the existing user revision to the successor Builder without requiring a rewrite\"",
+      "actualResults": [
+        {
+          "title": "hands the existing user revision to the successor Builder without requiring a rewrite",
+          "actualTitle": "hands the existing user revision to the successor Builder without requiring a rewrite",
+          "status": "passed",
+          "evidence": "blocked-all-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "index": 4,
+      "line": 802,
+      "title": "retains business status and candidate details when Archive is rejected before acceptance",
+      "caseIds": ["native-archive-failure-business-state"],
+      "newFile": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "newTitle": "retains business status and candidate details when Archive is rejected before acceptance",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "未批准不能Archive；业务phase/status/candidate完整且无写入。",
+      "retiredMechanism": "删除旧检查运行器诊断字段。",
+      "reviewRequired": true,
+      "testNamePattern": "retains business status and candidate details when Archive is rejected before acceptance",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-blocked-recovery.test.ts -t \"retains business status and candidate details when Archive is rejected before acceptance\"",
+      "actualResults": [
+        {
+          "title": "retains business status and candidate details when Archive is rejected before acceptance",
+          "actualTitle": "retains business status and candidate details when Archive is rejected before acceptance",
+          "status": "passed",
+          "evidence": "blocked-all-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "index": 5,
+      "line": 819,
+      "title": "finishes pending accepted-result revalidation before Archive without consuming another Verify failure",
+      "caseIds": ["native-archive-awaits-accepted-revalidation"],
+      "newFile": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "newTitle": "archives the original approved result without consuming another Verify failure",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "原已批准结果进入Archive，失败iteration计数不增；原批准记录保留。",
+      "retiredMechanism": "verify.revalidate内部Action已退休；用原Wait公开resolve停在archive.prepare。",
+      "reviewRequired": true,
+      "testNamePattern": "archives the original approved result without consuming another Verify failure",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-blocked-recovery.test.ts -t \"archives the original approved result without consuming another Verify failure\"",
+      "actualResults": [
+        {
+          "title": "archives the original approved result without consuming another Verify failure",
+          "actualTitle": "finishes pending accepted-result revalidation before Archive without consuming another Verify failure",
+          "status": "passed",
+          "evidence": "blocked-all-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "index": 6,
+      "line": 833,
+      "title": "ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: %s",
+      "caseIds": ["native-verifier-failure-original-claim"],
+      "newFile": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "newTitle": "ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: %s",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "running/changed-requirements/unknown原误领Verifier，拒绝自验pass/blocked和错claim；原claim真实failed，同请求幂等，新独立Verifier及批准完成Archive，原候选/报告/计数不变。",
+      "retiredMechanism": "不再补受管检查executionStop；raw SDK明确模拟原错误领取，当前Native领域领取入口仍拒绝自验。",
+      "reviewRequired": true,
+      "testNamePattern": "ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: (.+)",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-blocked-recovery.test.ts -t \"ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: (.+)\"",
+      "actualResults": [
+        {
+          "title": "ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: running",
+          "actualTitle": "ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: running",
+          "status": "passed",
+          "evidence": "blocked-all-results.json"
+        },
+        {
+          "title": "ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: changed-requirements",
+          "actualTitle": "ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: changed-requirements",
+          "status": "passed",
+          "evidence": "blocked-all-results.json"
+        },
+        {
+          "title": "ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: unknown",
+          "actualTitle": "ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: unknown",
+          "status": "passed",
+          "evidence": "blocked-all-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "index": 7,
+      "line": 975,
+      "title": "recovers an interrupted Archive through its emitted CLI command after removing an occupied destination without replaying checks or Specs",
+      "caseIds": [
+        "native-interrupted-archive-command-recovery",
+        "native-completed-archive-recovery-idempotency"
+      ],
+      "newFile": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "newTitle": "recovers an interrupted Archive through its emitted CLI command after removing an occupied destination without replaying checks or Specs",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "实际Archive目标占用后返回公开--recover命令；去掉占用后原Run恢复并重复幂等；无Specs/检查重播。",
+      "retiredMechanism": "只删除旧checker收据复核。",
+      "reviewRequired": true,
+      "testNamePattern": "recovers an interrupted Archive through its emitted CLI command after removing an occupied destination without replaying checks or Specs",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-blocked-recovery.test.ts -t \"recovers an interrupted Archive through its emitted CLI command after removing an occupied destination without replaying checks or Specs\"",
+      "actualResults": [
+        {
+          "title": "recovers an interrupted Archive through its emitted CLI command after removing an occupied destination without replaying checks or Specs",
+          "actualTitle": "recovers an interrupted Archive through its emitted CLI command after removing an occupied destination without replaying checks or Specs",
+          "status": "passed",
+          "evidence": "blocked-all-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "index": 8,
+      "line": 1027,
+      "title": "executes the exact advertised %s command from the advertised state",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "newTitle": "executes the exact advertised %s command from the advertised state",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "逐个执行广告的retry/implementation-revise/requirements-revise原命令，原状态前置条件和一次计数保留。",
+      "retiredMechanism": "受管check-stopped元数据不作为授权。",
+      "reviewRequired": true,
+      "testNamePattern": "executes the exact advertised (.+) command from the advertised state",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-blocked-recovery.test.ts -t \"executes the exact advertised (.+) command from the advertised state\"",
+      "actualResults": [
+        {
+          "title": "executes the exact advertised resolve-verifier-blocker command from the advertised state",
+          "actualTitle": "executes the exact advertised resolve-verifier-blocker command from the advertised state",
+          "status": "passed",
+          "evidence": "blocked-all-results.json"
+        },
+        {
+          "title": "executes the exact advertised revise-implementation command from the advertised state",
+          "actualTitle": "executes the exact advertised revise-implementation command from the advertised state",
+          "status": "passed",
+          "evidence": "blocked-all-results.json"
+        },
+        {
+          "title": "executes the exact advertised revise-requirements command from the advertised state",
+          "actualTitle": "executes the exact advertised revise-requirements command from the advertised state",
+          "status": "passed",
+          "evidence": "blocked-all-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "index": 9,
+      "line": 1056,
+      "title": "retains candidate and one-shot check evidence through cold reopen, retry, and independent acceptance",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "newTitle": "retains candidate and one-shot check evidence through cold reopen, retry, and independent acceptance",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "另进程冷重开，原candidate/Action报告保留，原retry决定后独立验收。",
+      "retiredMechanism": "旧可执行检查模块不再加载。",
+      "reviewRequired": true,
+      "testNamePattern": "retains candidate and one-shot check evidence through cold reopen, retry, and independent acceptance",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-blocked-recovery.test.ts -t \"retains candidate and one-shot check evidence through cold reopen, retry, and independent acceptance\"",
+      "actualResults": [
+        {
+          "title": "retains candidate and one-shot check evidence through cold reopen, retry, and independent acceptance",
+          "actualTitle": "retains candidate and one-shot check evidence through cold reopen, retry, and independent acceptance",
+          "status": "passed",
+          "evidence": "blocked-all-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "index": 10,
+      "line": 1142,
+      "title": "offers only executable decisions after recovered one-shot checks pass (%s)",
+      "caseIds": ["native-one-shot-retry-capability"],
+      "newFile": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "newTitle": "offers only executable decisions after recovered one-shot checks pass (%s)",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "原三项批准/实施修订/需求修订逐一真实可执行；陈旧state和不支持choice/forged命令拒绝，原Run不变。",
+      "retiredMechanism": "旧repeatable=false禁止独立Verifier重试已退休；当前明确复核重试允许且不自动执行命令。",
+      "reviewRequired": true,
+      "testNamePattern": "offers only executable decisions after recovered one-shot checks pass \\((.+)\\)",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-blocked-recovery.test.ts -t \"offers only executable decisions after recovered one-shot checks pass \\\\((.+)\\\\)\"",
+      "actualResults": [
+        {
+          "title": "offers only executable decisions after recovered one-shot checks pass (accept-result)",
+          "actualTitle": "offers only executable decisions after recovered one-shot checks pass (accept-result)",
+          "status": "passed",
+          "evidence": "blocked-fix-results.json"
+        },
+        {
+          "title": "offers only executable decisions after recovered one-shot checks pass (revise-implementation)",
+          "actualTitle": "offers only executable decisions after recovered one-shot checks pass (revise-implementation)",
+          "status": "passed",
+          "evidence": "blocked-fix-results.json"
+        },
+        {
+          "title": "offers only executable decisions after recovered one-shot checks pass (revise-requirements)",
+          "actualTitle": "offers only executable decisions after recovered one-shot checks pass (revise-requirements)",
+          "status": "passed",
+          "evidence": "blocked-fix-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "index": 11,
+      "line": 1221,
+      "title": "uses only the current ordinary candidate retry capability after leaving Supervisor (repeatable=%s)",
+      "caseIds": ["native-one-shot-retry-capability"],
+      "newFile": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "newTitle": "uses only the current ordinary candidate retry capability after leaving Supervisor (repeatable=%s)",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "离开Supervisor后使用当前普通候选、真实Agent命令和当前Wait；两种旧repeatable输入均可独立复核且Builder/一次性操作不重跑。",
+      "retiredMechanism": "旧计划repeatable标志控制Runtime verifier retry能力已退休；不存在检查executor。",
+      "reviewRequired": true,
+      "testNamePattern": "uses only the current ordinary candidate retry capability after leaving Supervisor \\(repeatable=(.+)\\)",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-blocked-recovery.test.ts -t \"uses only the current ordinary candidate retry capability after leaving Supervisor \\\\(repeatable=(.+)\\\\)\"",
+      "actualResults": [
+        {
+          "title": "uses only the current ordinary candidate retry capability after leaving Supervisor (repeatable=true)",
+          "actualTitle": "uses only the current ordinary candidate retry capability after leaving Supervisor (repeatable=true)",
+          "status": "passed",
+          "evidence": "blocked-fix-results.json"
+        },
+        {
+          "title": "uses only the current ordinary candidate retry capability after leaving Supervisor (repeatable=false)",
+          "actualTitle": "uses only the current ordinary candidate retry capability after leaving Supervisor (repeatable=false)",
+          "status": "passed",
+          "evidence": "blocked-fix-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "index": 12,
+      "line": 1320,
+      "title": "rejects stale proposal, state, and used outcome identities without dispatching a duplicate",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "newTitle": "rejects stale proposal, state, and used outcome identities without dispatching a duplicate",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "陈旧proposal/state、原已用claim/outcome身份拒绝，无重复Verifier。",
+      "retiredMechanism": "无业务断言退休。",
+      "reviewRequired": true,
+      "testNamePattern": "rejects stale proposal, state, and used outcome identities without dispatching a duplicate",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-blocked-recovery.test.ts -t \"rejects stale proposal, state, and used outcome identities without dispatching a duplicate\"",
+      "actualResults": [
+        {
+          "title": "rejects stale proposal, state, and used outcome identities without dispatching a duplicate",
+          "actualTitle": "rejects stale proposal, state, and used outcome identities without dispatching a duplicate",
+          "status": "passed",
+          "evidence": "blocked-all-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "index": 13,
+      "line": 1359,
+      "title": "upgrades an existing 0.5.0 blocked Run without rebuilding candidates or replaying checks",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "newTitle": "reopens the original blocked Run without rebuilding candidates or replaying platform checks",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "当前原blocked Run只读重开并retry，原全部Action/Wait/候选/一次计数保留。",
+      "retiredMechanism": "preCheckRecoveryApplication合成0.5.0旧hash与旧factory显式升级按钮退休；不冒称本项证明真实0.5.0自动转换。真实发布数据另由published-upgrade矩阵覆盖。",
+      "reviewRequired": true,
+      "testNamePattern": "reopens the original blocked Run without rebuilding candidates or replaying platform checks",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-blocked-recovery.test.ts -t \"reopens the original blocked Run without rebuilding candidates or replaying platform checks\"",
+      "actualResults": [
+        {
+          "title": "reopens the original blocked Run without rebuilding candidates or replaying platform checks",
+          "actualTitle": "reopens the original blocked Run without rebuilding candidates or replaying platform checks",
+          "status": "passed",
+          "evidence": "blocked-all-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "index": 14,
+      "line": 1407,
+      "title": "repairs an upgraded 0.5.0 blocked Run across shell changes without repeating original checks",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "newTitle": "repairs the original blocked Run across shell changes without repeating platform checks",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "当前blocked原Run跨shell实施修订，原Action/候选/一次计数保留。",
+      "retiredMechanism": "合成0.5.0旧检查器恢复机制退休；真实052跨shell/history另有实际样本。",
+      "reviewRequired": true,
+      "testNamePattern": "repairs the original blocked Run across shell changes without repeating platform checks",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-blocked-recovery.test.ts -t \"repairs the original blocked Run across shell changes without repeating platform checks\"",
+      "actualResults": [
+        {
+          "title": "repairs the original blocked Run across shell changes without repeating platform checks",
+          "actualTitle": "repairs the original blocked Run across shell changes without repeating platform checks",
+          "status": "passed",
+          "evidence": "blocked-all-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "index": 15,
+      "line": 1433,
+      "title": "executes the advertised Supervisor parent %s without changing completed Child work",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "newTitle": "executes the advertised Supervisor parent %s without changing completed Child work",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "Supervisor parent retry/implementation修订各自执行，已完成Child全部outcome及原Parent Builder报告不变。",
+      "retiredMechanism": "原父checks Action计数改绑定实际Parent Builder报告；不存在旧checks运行器。",
+      "reviewRequired": true,
+      "testNamePattern": "executes the advertised Supervisor parent (.+) without changing completed Child work",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-blocked-recovery.test.ts -t \"executes the advertised Supervisor parent (.+) without changing completed Child work\"",
+      "actualResults": [
+        {
+          "title": "executes the advertised Supervisor parent resolve-verifier-blocker without changing completed Child work",
+          "actualTitle": "executes the advertised Supervisor parent resolve-verifier-blocker without changing completed Child work",
+          "status": "passed",
+          "evidence": "blocked-fix-results.json"
+        },
+        {
+          "title": "executes the advertised Supervisor parent revise-implementation without changing completed Child work",
+          "actualTitle": "executes the advertised Supervisor parent revise-implementation without changing completed Child work",
+          "status": "passed",
+          "evidence": "blocked-fix-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "index": 16,
+      "line": 1458,
+      "title": "executes the exact advertised Runtime decision with its reason and preserves proposal binding",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "newTitle": "executes the exact advertised Runtime decision with its reason and preserves proposal binding",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "广告的SDK decision保留reason/proposalHash，原Wait结果唯一，新Verifier activation引用原Wait和reason，重复决定拒绝。",
+      "retiredMechanism": "无业务断言退休。",
+      "reviewRequired": true,
+      "testNamePattern": "executes the exact advertised Runtime decision with its reason and preserves proposal binding",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-blocked-recovery.test.ts -t \"executes the exact advertised Runtime decision with its reason and preserves proposal binding\"",
+      "actualResults": [
+        {
+          "title": "executes the exact advertised Runtime decision with its reason and preserves proposal binding",
+          "actualTitle": "executes the exact advertised Runtime decision with its reason and preserves proposal binding",
+          "status": "passed",
+          "evidence": "blocked-all-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "index": 17,
+      "line": 1485,
+      "title": "uses explicit implementation repair after an Agent judges edits without replaying original checks",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "newTitle": "uses explicit implementation repair after an Agent judges edits without replaying original checks",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "Agent确认真实编辑后明确实施修订；读取不暗中推进，原一次操作不重跑。",
+      "retiredMechanism": "内容快照自动判定编辑范围退休。",
+      "reviewRequired": true,
+      "testNamePattern": "uses explicit implementation repair after an Agent judges edits without replaying original checks",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-blocked-recovery.test.ts -t \"uses explicit implementation repair after an Agent judges edits without replaying original checks\"",
+      "actualResults": [
+        {
+          "title": "uses explicit implementation repair after an Agent judges edits without replaying original checks",
+          "actualTitle": "uses explicit implementation repair after an Agent judges edits without replaying original checks",
+          "status": "passed",
+          "evidence": "blocked-all-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "index": 18,
+      "line": 1498,
+      "title": "keeps the current Supervisor Child blocked repair executable without reusing its Verifier",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "newTitle": "keeps the current Supervisor Child blocked repair executable without reusing its Verifier",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "当前Child blocked结果保留，新Builder可领取，重复next不重复Verifier、不复用旧Verifier。",
+      "retiredMechanism": "旧completed分支另行取证，不声称当前v4证明历史恢复。",
+      "reviewRequired": true,
+      "testNamePattern": "keeps the current Supervisor Child blocked repair executable without reusing its Verifier",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-blocked-recovery.test.ts -t \"keeps the current Supervisor Child blocked repair executable without reusing its Verifier\"",
+      "actualResults": [
+        {
+          "title": "keeps the current Supervisor Child blocked repair executable without reusing its Verifier",
+          "actualTitle": "keeps the current Supervisor Child blocked repair executable without reusing its Verifier",
+          "status": "passed",
+          "evidence": "blocked-all-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+      "index": 0,
+      "line": 425,
+      "title": "recovers a completed Supervisor Build after an independent Child reports blocked through the public CLI",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+      "newTitle": "revises the original Supervisor Build after an independent Child reports blocked through the public CLI",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "原Child blocked后明确需求修订，原Run/定义/全部已完成Action保留，返回未批准Shape。",
+      "retiredMechanism": "标题completed并无原硬断言；npm052真实Native1运行结果是running+repair Builder。completed-only历史分支单独未复现，不能当已覆盖。",
+      "reviewRequired": true,
+      "testNamePattern": "revises the original Supervisor Build after an independent Child reports blocked through the public CLI",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-supervisor-revise.test.ts -t \"revises the original Supervisor Build after an independent Child reports blocked through the public CLI\"",
+      "actualResults": [
+        {
+          "title": "revises the original Supervisor Build after an independent Child reports blocked through the public CLI",
+          "actualTitle": "revises the original Supervisor Build after an independent Child reports blocked through the public CLI",
+          "status": "passed",
+          "evidence": "revise-final-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+      "index": 1,
+      "line": 469,
+      "title": "recovers a blocked Child with a successor candidate without replaying an integrated sibling or reusing historical checks as new evidence",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+      "newTitle": "recovers a blocked Child with a successor candidate without replaying an integrated sibling or reusing historical checks as new evidence",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "失败Builder原Wait继续，独立Verifier blocked→新原Child repair Builder；保留已集成Sibling、原failed/blocked Action；真实修复commit与新Agent命令报告绑定新candidate。",
+      "retiredMechanism": "旧completed inspect/recovery端口和基于日志/工作区指纹的恢复提案退休；当前pending Builder正常业务保留。历史completed状态来源单独待证。",
+      "reviewRequired": true,
+      "testNamePattern": "recovers a blocked Child with a successor candidate without replaying an integrated sibling or reusing historical checks as new evidence",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-supervisor-revise.test.ts -t \"recovers a blocked Child with a successor candidate without replaying an integrated sibling or reusing historical checks as new evidence\"",
+      "actualResults": [
+        {
+          "title": "recovers a blocked Child with a successor candidate without replaying an integrated sibling or reusing historical checks as new evidence",
+          "actualTitle": "recovers a blocked Child with a successor candidate without replaying an integrated sibling or reusing historical checks as new evidence",
+          "status": "passed",
+          "evidence": "revise-all-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+      "index": 2,
+      "line": 698,
+      "title": "revises a quiescent Supervisor Build through the candidate public CLI without changing its original definition",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+      "newTitle": "revises a quiescent Supervisor Build through the candidate public CLI without changing its original definition",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "quiescent Build经实际公开CLI需求修订，Run/定义身份原样，原批准不自动重新批准。",
+      "retiredMechanism": "只删除check-stop补证。",
+      "reviewRequired": true,
+      "testNamePattern": "revises a quiescent Supervisor Build through the candidate public CLI without changing its original definition",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-supervisor-revise.test.ts -t \"revises a quiescent Supervisor Build through the candidate public CLI without changing its original definition\"",
+      "actualResults": [
+        {
+          "title": "revises a quiescent Supervisor Build through the candidate public CLI without changing its original definition",
+          "actualTitle": "revises a quiescent Supervisor Build through the candidate public CLI without changing its original definition",
+          "status": "passed",
+          "evidence": "revise-all-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+      "index": 3,
+      "line": 728,
+      "title": "executes the actual returned Shape continuation with summary and guards without implying user confirmation",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+      "newTitle": "executes the actual returned Shape continuation with summary and guards without implying user confirmation",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "实际返回的Shape命令含summary/guards，执行产生待批准提案，未隐含批准。",
+      "retiredMechanism": "无业务断言退休。",
+      "reviewRequired": true,
+      "testNamePattern": "executes the actual returned Shape continuation with summary and guards without implying user confirmation",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-supervisor-revise.test.ts -t \"executes the actual returned Shape continuation with summary and guards without implying user confirmation\"",
+      "actualResults": [
+        {
+          "title": "executes the actual returned Shape continuation with summary and guards without implying user confirmation",
+          "actualTitle": "executes the actual returned Shape continuation with summary and guards without implying user confirmation",
+          "status": "passed",
+          "evidence": "revise-all-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+      "index": 4,
+      "line": 797,
+      "title": "reintegrates an already included Child after public Shape reconfirmation (same)",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+      "newTitle": "reintegrates an already included Child after public Shape reconfirmation (same)",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "同candidate重新确认Shape后真重验、新独立Verifier、原Git integration receipt/base/head不重做合并，随后实际Child Archive。",
+      "retiredMechanism": "停止点改公开runtime execute原integration，避开native next自动Archive；原checks运行步骤改Agent实际命令。",
+      "reviewRequired": true,
+      "testNamePattern": "reintegrates an already included Child after public Shape reconfirmation \\(same\\)",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-supervisor-revise.test.ts -t \"reintegrates an already included Child after public Shape reconfirmation \\\\(same\\\\)\"",
+      "actualResults": [
+        {
+          "title": "reintegrates an already included Child after public Shape reconfirmation (same)",
+          "actualTitle": "reintegrates an already included Child after public Shape reconfirmation (same)",
+          "status": "passed",
+          "evidence": "revise-fix-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+      "index": 5,
+      "line": 1012,
+      "title": "preserves integrated and uncommitted Child work, then rechecks every Child in the new Shape cycle",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+      "newTitle": "preserves integrated and uncommitted Child work, then rechecks every Child in the new Shape cycle",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "保留已集成、dirty Child及原Archive五文件/commit字节；新Shape全Child新Builder/Verifier/集成；Parent独立报告、原结果批准、compact query/status上限、dry-run真实delivery绑定。",
+      "retiredMechanism": "受管检查计数改实际Builder/Verifier/集成各两轮；仅verify.report内部Action/stop proof退休。",
+      "reviewRequired": true,
+      "testNamePattern": "preserves integrated and uncommitted Child work, then rechecks every Child in the new Shape cycle",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-supervisor-revise.test.ts -t \"preserves integrated and uncommitted Child work, then rechecks every Child in the new Shape cycle\"",
+      "actualResults": [
+        {
+          "title": "preserves integrated and uncommitted Child work, then rechecks every Child in the new Shape cycle",
+          "actualTitle": "preserves integrated and uncommitted Child work, then rechecks every Child in the new Shape cycle",
+          "status": "passed",
+          "evidence": "revise-final-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+      "index": 6,
+      "line": 1263,
+      "title": "rejects Build revision while a Child is %s and retains its original claim",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+      "newTitle": "rejects Build revision while a Child is %s and retains its original claim",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "Child running/unknown都拒绝需求修订，原claim/Run/Git现场完全不变。",
+      "retiredMechanism": "不制造或要求历史进程停止回执。",
+      "reviewRequired": true,
+      "testNamePattern": "rejects Build revision while a Child is (.+) and retains its original claim",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-supervisor-revise.test.ts -t \"rejects Build revision while a Child is (.+) and retains its original claim\"",
+      "actualResults": [
+        {
+          "title": "rejects Build revision while a Child is running and retains its original claim",
+          "actualTitle": "rejects Build revision while a Child is running and retains its original claim",
+          "status": "passed",
+          "evidence": "revise-all-results.json"
+        },
+        {
+          "title": "rejects Build revision while a Child is unknown and retains its original claim",
+          "actualTitle": "rejects Build revision while a Child is unknown and retains its original claim",
+          "status": "passed",
+          "evidence": "revise-all-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+      "index": 7,
+      "line": 1289,
+      "title": "blocks a retained integration HEAD change without resetting Git or accepting the old checks",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+      "newTitle": "blocks a retained integration HEAD change without resetting Git or accepting the old checks",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "保留integration HEAD漂移时，公开next/底层execute/claim均拒绝准备，Run/HEAD/worktree/config不变，无新Child Builder。",
+      "retiredMechanism": "以原Shape Wait公开resolve停在prepare，避免CLI确认自动触发执行；旧checks无效化判断移除。",
+      "reviewRequired": true,
+      "testNamePattern": "blocks a retained integration HEAD change without resetting Git or accepting the old checks",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-supervisor-revise.test.ts -t \"blocks a retained integration HEAD change without resetting Git or accepting the old checks\"",
+      "actualResults": [
+        {
+          "title": "blocks a retained integration HEAD change without resetting Git or accepting the old checks",
+          "actualTitle": "blocks a retained integration HEAD change without resetting Git or accepting the old checks",
+          "status": "passed",
+          "evidence": "revise-fix-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+      "index": 8,
+      "line": 1370,
+      "title": "transfers repeated preparation receipts once per actual workspace without losing history or dirty files",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+      "newTitle": "transfers repeated preparation receipts once per actual workspace without losing history or dirty files",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "重复prepare receipt按实际workspace仅物化一次，传输后原历史/dirty文件保留；已有Archive材料回填和冲突反例保留。",
+      "retiredMechanism": "无业务断言退休。",
+      "reviewRequired": true,
+      "testNamePattern": "transfers repeated preparation receipts once per actual workspace without losing history or dirty files",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-supervisor-revise.test.ts -t \"transfers repeated preparation receipts once per actual workspace without losing history or dirty files\"",
+      "actualResults": [
+        {
+          "title": "transfers repeated preparation receipts once per actual workspace without losing history or dirty files",
+          "actualTitle": "transfers repeated preparation receipts once per actual workspace without losing history or dirty files",
+          "status": "passed",
+          "evidence": "revise-all-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+      "index": 9,
+      "line": 1439,
+      "title": "retains a genuine failed Child outcome and resume decision when Build returns to Shape",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+      "newTitle": "retains a genuine failed Child outcome and resume decision when Build returns to Shape",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "原失败Child outcome和resume决定在Build→Shape需求修订时保留，未悄悄继续或改原结果。",
+      "retiredMechanism": "仅历史check停止证明分支删除。",
+      "reviewRequired": true,
+      "testNamePattern": "retains a genuine failed Child outcome and resume decision when Build returns to Shape",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-supervisor-revise.test.ts -t \"retains a genuine failed Child outcome and resume decision when Build returns to Shape\"",
+      "actualResults": [
+        {
+          "title": "retains a genuine failed Child outcome and resume decision when Build returns to Shape",
+          "actualTitle": "retains a genuine failed Child outcome and resume decision when Build returns to Shape",
+          "status": "passed",
+          "evidence": "revise-all-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "index": 0,
+      "line": 132,
+      "title": "preserves a real custom application failure and receipts, advances its sibling, and retries only its review",
+      "caseIds": ["local-native-supervisor-auto-preparation", "issue-389-child-evidence-retry"],
+      "newFile": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "newTitle": "preserves a real custom application failure and receipts, advances its sibling, and retries only its review",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "真正磁盘custom Skill失败、同Sibling继续，原failed Action/claim不可变；用户retry只重做review，原candidate review不重做。",
+      "retiredMechanism": "child.checks执行与收据计数退休，当前候选review一次；当前checks对象报告保留。",
+      "reviewRequired": true,
+      "testNamePattern": "preserves a real custom application failure and receipts, advances its sibling, and retries only its review",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts -t \"preserves a real custom application failure and receipts, advances its sibling, and retries only its review\"",
+      "actualResults": [
+        {
+          "title": "preserves a real custom application failure and receipts, advances its sibling, and retries only its review",
+          "actualTitle": "preserves a real custom application failure and receipts, advances its sibling, and retries only its review",
+          "status": "passed",
+          "evidence": "verifier-results-2.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "index": 1,
+      "line": 214,
+      "title": "uses the same recovery Wait for the built-in Native Supervisor",
+      "caseIds": ["local-native-supervisor-auto-preparation"],
+      "newFile": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "newTitle": "uses the same recovery Wait for the built-in Native Supervisor",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "内置Native同样原failed Verifier→原verifier-retry Wait→新Verifier。",
+      "retiredMechanism": "不依赖checker。",
+      "reviewRequired": true,
+      "testNamePattern": "uses the same recovery Wait for the built-in Native Supervisor",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts -t \"uses the same recovery Wait for the built-in Native Supervisor\"",
+      "actualResults": [
+        {
+          "title": "uses the same recovery Wait for the built-in Native Supervisor",
+          "actualTitle": "uses the same recovery Wait for the built-in Native Supervisor",
+          "status": "passed",
+          "evidence": "verifier-results-2.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "index": 2,
+      "line": 230,
+      "title": "offers a new Builder repair without changing the original execution failure",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "newTitle": "offers a new Builder repair without changing the original execution failure",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "用户repair创建新Child Builder绑定failedVerifierActionId，原failure不变。",
+      "retiredMechanism": "不依赖checker。",
+      "reviewRequired": true,
+      "testNamePattern": "offers a new Builder repair without changing the original execution failure",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts -t \"offers a new Builder repair without changing the original execution failure\"",
+      "actualResults": [
+        {
+          "title": "offers a new Builder repair without changing the original execution failure",
+          "actualTitle": "offers a new Builder repair without changing the original execution failure",
+          "status": "passed",
+          "evidence": "verifier-results-2.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "index": 3,
+      "line": 245,
+      "title": "keeps an unknown verifier bound to its original task and creates no retry Wait",
+      "caseIds": ["issue-389-child-evidence-retry"],
+      "newFile": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "newTitle": "keeps an unknown verifier bound to its original task and creates no retry Wait",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "unknown原任务不可retry、Doctor不可重放或改unknown；原claim报告实际failed后才出现一个恢复Wait。",
+      "retiredMechanism": "不要求旧worker/PID/停止证明；不伪造停止。",
+      "reviewRequired": true,
+      "testNamePattern": "keeps an unknown verifier bound to its original task and creates no retry Wait",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts -t \"keeps an unknown verifier bound to its original task and creates no retry Wait\"",
+      "actualResults": [
+        {
+          "title": "keeps an unknown verifier bound to its original task and creates no retry Wait",
+          "actualTitle": "keeps an unknown verifier bound to its original task and creates no retry Wait",
+          "status": "passed",
+          "evidence": "verifier-results-2.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "index": 4,
+      "line": 347,
+      "title": "never advertises a pending claim for a failed or completed Run",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "newTitle": "never advertises a pending claim for a failed or completed Run",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "failed/completed Run只读投影不广告pending claim。",
+      "retiredMechanism": "纯模型反例，不伪造persisted progression。",
+      "reviewRequired": true,
+      "testNamePattern": "never advertises a pending claim for a failed or completed Run",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts -t \"never advertises a pending claim for a failed or completed Run\"",
+      "actualResults": [
+        {
+          "title": "never advertises a pending claim for a failed or completed Run",
+          "actualTitle": "never advertises a pending claim for a failed or completed Run",
+          "status": "passed",
+          "evidence": "verifier-results-2.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "index": 5,
+      "line": 425,
+      "title": "transfers an old fixed custom definition without changing its hash or losing dirty Child work",
+      "caseIds": ["local-native-supervisor-auto-preparation"],
+      "newFile": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "newTitle": "transfers a fixed custom definition without changing its hash or losing dirty Child work",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "真实当前fixed app导出/导入，definition identity/hash、dirty Child原字节和历史保留。",
+      "retiredMechanism": "合成pre-verifier-recovery旧工厂与旧内置v2加载机制退休；本项不冒称旧固定包自动兼容。",
+      "reviewRequired": true,
+      "testNamePattern": "transfers a fixed custom definition without changing its hash or losing dirty Child work",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts -t \"transfers a fixed custom definition without changing its hash or losing dirty Child work\"",
+      "actualResults": [
+        {
+          "title": "transfers a fixed custom definition without changing its hash or losing dirty Child work",
+          "actualTitle": "transfers a fixed custom definition without changing its hash or losing dirty Child work",
+          "status": "passed",
+          "evidence": "verifier-results-2.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "index": 6,
+      "line": 480,
+      "title": "diagnoses without writing and explicitly migrates the known failed definition while retaining identity and sibling work",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "newTitle": "reloads the current fixed failed review without changing identity, sibling work or its original decision",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "当前fixed失败review只读重载/Doctor不写，原identity/Sibling/Wait保留；用户批准原Wait后可继续。",
+      "retiredMechanism": "特定旧hash显式migrate/旧factory修图机制退休。",
+      "reviewRequired": true,
+      "testNamePattern": "reloads the current fixed failed review without changing identity, sibling work or its original decision",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts -t \"reloads the current fixed failed review without changing identity, sibling work or its original decision\"",
+      "actualResults": [
+        {
+          "title": "reloads the current fixed failed review without changing identity, sibling work or its original decision",
+          "actualTitle": "reloads the current fixed failed review without changing identity, sibling work or its original decision",
+          "status": "passed",
+          "evidence": "verifier-results-2.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "index": 7,
+      "line": 559,
+      "title": "preserves a sibling ready token after the original running Builder truthfully reports failure",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "newTitle": "preserves both original user decisions after the running sibling reports a real Builder failure",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "并行running sibling原claim如实failed后，两条原用户Wait同时保留，各自业务可恢复。",
+      "retiredMechanism": "旧deferred-ready-token特定内部实现退休；不把失败Sibling丢弃。",
+      "reviewRequired": true,
+      "testNamePattern": "preserves both original user decisions after the running sibling reports a real Builder failure",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts -t \"preserves both original user decisions after the running sibling reports a real Builder failure\"",
+      "actualResults": [
+        {
+          "title": "preserves both original user decisions after the running sibling reports a real Builder failure",
+          "actualTitle": "preserves both original user decisions after the running sibling reports a real Builder failure",
+          "status": "passed",
+          "evidence": "verifier-results-2.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "index": 8,
+      "line": 599,
+      "title": "creates one recovery Wait per original failed Verifier when both independent children failed",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "newTitle": "creates one recovery Wait per original failed Verifier when both independent children failed",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "两个独立Verifier都真实failed，每个原failure仅一Wait，重复next无重复Wait。",
+      "retiredMechanism": "旧修图migrator删除，失败业务不删。",
+      "reviewRequired": true,
+      "testNamePattern": "creates one recovery Wait per original failed Verifier when both independent children failed",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts -t \"creates one recovery Wait per original failed Verifier when both independent children failed\"",
+      "actualResults": [
+        {
+          "title": "creates one recovery Wait per original failed Verifier when both independent children failed",
+          "actualTitle": "creates one recovery Wait per original failed Verifier when both independent children failed",
+          "status": "passed",
+          "evidence": "verifier-results-2.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "index": 9,
+      "line": 628,
+      "title": "restores a checkpoint-only old fixed application on the first writable load while read-only inspection stays unchanged",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "newTitle": "restores a checkpoint-only fixed application on writable load while read-only inspection remains unchanged",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "checkpoint-only fixed app只读拒绝且无写，首次writable恢复同Run/Action/Wait，不丢失败。",
+      "retiredMechanism": "合成旧factory读取机制退休，当前checkpoint业务保留。",
+      "reviewRequired": true,
+      "testNamePattern": "restores a checkpoint-only fixed application on writable load while read-only inspection remains unchanged",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts -t \"restores a checkpoint-only fixed application on writable load while read-only inspection remains unchanged\"",
+      "actualResults": [
+        {
+          "title": "restores a checkpoint-only fixed application on writable load while read-only inspection remains unchanged",
+          "actualTitle": "restores a checkpoint-only fixed application on writable load while read-only inspection remains unchanged",
+          "status": "passed",
+          "evidence": "verifier-results-2.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "index": 10,
+      "line": 652,
+      "title": "refuses unsafe old-run migration with %s and preserves its Run",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "newTitle": "preserves fixed application business identity and original records at the %s boundary",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "fixed-package内容被改拒绝且Run原样；running-sibling边界保留原claim/Wait且不重放。",
+      "retiredMechanism": "旧一律禁止claimed迁移策略退休；当前有任务时不切换旧factory、不补check停止收据。",
+      "reviewRequired": true,
+      "testNamePattern": "preserves fixed application business identity and original records at the (.+) boundary",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts -t \"preserves fixed application business identity and original records at the (.+) boundary\"",
+      "actualResults": [
+        {
+          "title": "preserves fixed application business identity and original records at the fixed-package boundary",
+          "actualTitle": "preserves fixed application business identity and original records at the fixed-package boundary",
+          "status": "passed",
+          "evidence": "verifier-results-2.json"
+        },
+        {
+          "title": "preserves fixed application business identity and original records at the running-sibling boundary",
+          "actualTitle": "preserves fixed application business identity and original records at the running-sibling boundary",
+          "status": "passed",
+          "evidence": "verifier-results-2.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+      "index": 0,
+      "line": 455,
+      "title": "reports the exact invalid Builder field without misleading claim diagnostics: %s",
+      "caseIds": [
+        "native-builder-submitted-at-diagnostic",
+        "native-builder-check-result-diagnostic",
+        "native-builder-review-evidence-diagnostic",
+        "native-builder-review-note-diagnostic"
+      ],
+      "newFile": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+      "newTitle": "reports the exact invalid Builder field without misleading claim diagnostics: %s",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "三参数精确字段诊断原正则保留：checks.result / review.evidence / review.note；拒绝值且不误称claim错误。",
+      "retiredMechanism": "Builder submittedAt旧必填生成字段此前已退役，原本参数数组不再含该项；对应case不可整case featureRemoved。",
+      "reviewRequired": true,
+      "testNamePattern": "reports the exact invalid Builder field without misleading claim diagnostics: (.+)",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-verification-inputs.test.ts -t \"reports the exact invalid Builder field without misleading claim diagnostics: (.+)\"",
+      "actualResults": [
+        {
+          "title": "reports the exact invalid Builder field without misleading claim diagnostics: checks.result",
+          "actualTitle": "reports the exact invalid Builder field without misleading claim diagnostics: checks.result",
+          "status": "passed",
+          "evidence": "inputs-strong-results.json"
+        },
+        {
+          "title": "reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview.evidence",
+          "actualTitle": "reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview.evidence",
+          "status": "passed",
+          "evidence": "inputs-strong-results.json"
+        },
+        {
+          "title": "reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview.note",
+          "actualTitle": "reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview.note",
+          "status": "passed",
+          "evidence": "inputs-strong-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+      "index": 1,
+      "line": 488,
+      "title": "retains only the Agent-selected arbitrary check across a repaired candidate without language detection",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+      "newTitle": "retains only the Agent-selected arbitrary check across a repaired candidate without language detection",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "真实任意后缀文件分别计数；修复只跑选中left、沿用right报告，原候选报告/批准不可变。",
+      "retiredMechanism": "logRef/reusedFrom/check fingerprint运行器元数据退休；不按语言探测命令。",
+      "reviewRequired": true,
+      "testNamePattern": "retains only the Agent-selected arbitrary check across a repaired candidate without language detection",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-verification-inputs.test.ts -t \"retains only the Agent-selected arbitrary check across a repaired candidate without language detection\"",
+      "actualResults": [
+        {
+          "title": "retains only the Agent-selected arbitrary check across a repaired candidate without language detection",
+          "actualTitle": "retains only the Agent-selected arbitrary check across a repaired candidate without language detection",
+          "status": "passed",
+          "evidence": "inputs-strong-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+      "index": 2,
+      "line": 551,
+      "title": "completes Archive after the Builder, Runtime checks and Verifier finish normally",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+      "newTitle": "completes Archive after the Builder, platform checks and Verifier finish normally",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "真实Node检查、Builder/独立Verifier/结果批准和实际Archive，目录/正式Specs/change移除完整断言。",
+      "retiredMechanism": "verify.report/revalidate内部步骤退休。",
+      "reviewRequired": true,
+      "testNamePattern": "completes Archive after the Builder, platform checks and Verifier finish normally",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-verification-inputs.test.ts -t \"completes Archive after the Builder, platform checks and Verifier finish normally\"",
+      "actualResults": [
+        {
+          "title": "completes Archive after the Builder, platform checks and Verifier finish normally",
+          "actualTitle": "completes Archive after the Builder, platform checks and Verifier finish normally",
+          "status": "passed",
+          "evidence": "inputs-strong-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+      "index": 3,
+      "line": 557,
+      "title": "accepts a final result from another shell with a different %s and unchanged inputs",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+      "newTitle": "accepts a final result from another shell with a different %s and unchanged inputs",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "HTTP_PROXY/PATH/TEMP三个实际shell环境变化都接受原独立验收并完成真实Archive。",
+      "retiredMechanism": "shell变量不再形成内容指纹拒绝。",
+      "reviewRequired": true,
+      "testNamePattern": "accepts a final result from another shell with a different (.+) and unchanged inputs",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-verification-inputs.test.ts -t \"accepts a final result from another shell with a different (.+) and unchanged inputs\"",
+      "actualResults": [
+        {
+          "title": "accepts a final result from another shell with a different HTTP_PROXY and unchanged inputs",
+          "actualTitle": "accepts a final result from another shell with a different HTTP_PROXY and unchanged inputs",
+          "status": "passed",
+          "evidence": "inputs-strong-results.json"
+        },
+        {
+          "title": "accepts a final result from another shell with a different PATH and unchanged inputs",
+          "actualTitle": "accepts a final result from another shell with a different PATH and unchanged inputs",
+          "status": "passed",
+          "evidence": "inputs-strong-results.json"
+        },
+        {
+          "title": "accepts a final result from another shell with a different TEMP and unchanged inputs",
+          "actualTitle": "accepts a final result from another shell with a different TEMP and unchanged inputs",
+          "status": "passed",
+          "evidence": "inputs-strong-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+      "index": 4,
+      "line": 579,
+      "title": "records a nonzero check that changes source as failed and returns to Build",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+      "newTitle": "records an actual nonzero source-changing platform check as failed and returns to Build",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "真实Node改源且exit7；独立Verifier失败报告原实际失败，返回原Build修复，不得归档。",
+      "retiredMechanism": "失败checker Action改当前业务Verifier fail，无新执行器。",
+      "reviewRequired": true,
+      "testNamePattern": "records an actual nonzero source-changing platform check as failed and returns to Build",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-verification-inputs.test.ts -t \"records an actual nonzero source-changing platform check as failed and returns to Build\"",
+      "actualResults": [
+        {
+          "title": "records an actual nonzero source-changing platform check as failed and returns to Build",
+          "actualTitle": "records an actual nonzero source-changing platform check as failed and returns to Build",
+          "status": "passed",
+          "evidence": "inputs-strong-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+      "index": 5,
+      "line": 600,
+      "title": "does not replay a one-shot SDK command after the Verifier changes its ID and repeatable flag",
+      "caseIds": ["native-check-no-alias-replay"],
+      "newFile": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+      "newTitle": "rejects a retired checker alias request without replaying a one-shot platform operation",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "退役request-checks别名请求早期拒绝，真实一次操作只一次、原candidate/Builder不变；同原Verifier claim纠正后合法完成Archive。",
+      "retiredMechanism": "请求检查/ID别名/repeatable绕过checker机制退休。",
+      "reviewRequired": true,
+      "testNamePattern": "rejects a retired checker alias request without replaying a one-shot platform operation",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-verification-inputs.test.ts -t \"rejects a retired checker alias request without replaying a one-shot platform operation\"",
+      "actualResults": [
+        {
+          "title": "rejects a retired checker alias request without replaying a one-shot platform operation",
+          "actualTitle": "rejects a retired checker alias request without replaying a one-shot platform operation",
+          "status": "passed",
+          "evidence": "inputs-strong-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+      "index": 6,
+      "line": 652,
+      "title": "accepts a persisted 0.5.0 check receipt in its original execution environment",
+      "caseIds": [],
+      "newFile": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+      "newTitle": "keeps a persisted published check result as read-only history after business adaptation",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "真正npm052冻结Run的原check outcome/input/claim只读保留，批准原样；实际已批准Archive续行由既有published Archive四阶段CLI测试覆盖。",
+      "retiredMechanism": "合成0.5.0 receipt/inputBefore,inputAfter校验器不再作为执行权威；不声称052样本具有更老缺字段。",
+      "reviewRequired": true,
+      "testNamePattern": "keeps a persisted published check result as read-only history after business adaptation",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-verification-inputs.test.ts -t \"keeps a persisted published check result as read-only history after business adaptation\"",
+      "actualResults": [
+        {
+          "title": "keeps a persisted published check result as read-only history after business adaptation",
+          "actualTitle": "keeps a persisted published check result as read-only history after business adaptation",
+          "status": "passed",
+          "evidence": "inputs-strong-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+      "index": 7,
+      "line": 664,
+      "title": "accepts original Runtime checks across shells while reading legacy content-proof fields as history",
+      "caseIds": ["issue-500-cross-shell"],
+      "newFile": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+      "newTitle": "keeps original published check history across shells without re-execution or content-proof authority",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "真正052原检查历史跨shell保留不重放，原Run/Wait不变；与真正四阶段published Archive CLI完成矩阵共同覆盖。",
+      "retiredMechanism": "legacy content-proof仅历史，旧检查器不恢复。",
+      "reviewRequired": true,
+      "testNamePattern": "keeps original published check history across shells without re-execution or content-proof authority",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-verification-inputs.test.ts -t \"keeps original published check history across shells without re-execution or content-proof authority\"",
+      "actualResults": [
+        {
+          "title": "keeps original published check history across shells without re-execution or content-proof authority",
+          "actualTitle": "keeps original published check history across shells without re-execution or content-proof authority",
+          "status": "passed",
+          "evidence": "inputs-strong-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+      "index": 8,
+      "line": 678,
+      "title": "A4 continues an Agent-reviewed behavior change from %s and retains only the unaffected one-shot check",
+      "caseIds": ["native-sdk-authorized-implementation-continuation"],
+      "newFile": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+      "newTitle": "A4 continues an Agent-reviewed behavior change from %s and retains only the unaffected one-shot check",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "Verify/Archive两入口真实行为1→2明确修订；Shape原批准/verification.md/原Builder与Verifier保留；新candidate/新独立Verifier/新结果Wait批准；只跑A两次而B一次，Archive一次完成，running continuation不误广告review-edit。",
+      "retiredMechanism": "原check log/reusedFrom、verify.report Action及stop补证退休；业务结果记录保留。",
+      "reviewRequired": true,
+      "testNamePattern": "A4 continues an Agent-reviewed behavior change from (.+) and retains only the unaffected one-shot check",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-verification-inputs.test.ts -t \"A4 continues an Agent-reviewed behavior change from (.+) and retains only the unaffected one-shot check\"",
+      "actualResults": [
+        {
+          "title": "A4 continues an Agent-reviewed behavior change from verify and retains only the unaffected one-shot check",
+          "actualTitle": "A4 continues an Agent-reviewed behavior change from verify and retains only the unaffected one-shot check",
+          "status": "passed",
+          "evidence": "inputs-strong-results.json"
+        },
+        {
+          "title": "A4 continues an Agent-reviewed behavior change from archive and retains only the unaffected one-shot check",
+          "actualTitle": "A4 continues an Agent-reviewed behavior change from archive and retains only the unaffected one-shot check",
+          "status": "passed",
+          "evidence": "inputs-strong-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+      "index": 9,
+      "line": 923,
+      "title": "refreshes an explicitly selected Git check after byte-identical staging and preserves one-time evidence and approval",
+      "caseIds": [
+        "native-sdk-explicit-git-dependent-refresh",
+        "native-sdk-refresh-failed-preflight-recovery"
+      ],
+      "newFile": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+      "newTitle": "observes a selected Git-index failure after byte-identical staging and preserves one-time history through explicit repair",
+      "wholeCaseFeatureRemoved": false,
+      "decision": "split-mechanism-and-business",
+      "businessPreserved": "真实git index byte-identical staging后exit1；bytes/HEAD不变、一次B不重做；明确实施修订→新失败Verifier阻止Archive，修复index只重跑Git→新独立Verifier与批准→实际Archive一次；原批准留历史。",
+      "retiredMechanism": "旧refresh-checks补充端口和无需新结果批准的latest-check-preflight机制退休；当前明确修订/验收触发与旧步骤不同，不能宣称完全相同步骤。",
+      "reviewRequired": true,
+      "testNamePattern": "observes a selected Git-index failure after byte-identical staging and preserves one-time history through explicit repair",
+      "command": "npx vitest run test/domains/comet-native/native-sdk-verification-inputs.test.ts -t \"observes a selected Git-index failure after byte-identical staging and preserves one-time history through explicit repair\"",
+      "actualResults": [
+        {
+          "title": "observes a selected Git-index failure after byte-identical staging and preserves one-time history through explicit repair",
+          "actualTitle": "observes a selected Git-index failure after byte-identical staging and preserves one-time history through explicit repair",
+          "status": "passed",
+          "evidence": "inputs-strong-results.json"
+        }
+      ],
+      "currentBusinessVerified": true
+    }
+  ],
+  "limits": [
+    "completed+blocked original conditional recovery was not reproduced with true npm052 Native1; real original running+repair Builder is frozen separately. Current4 cannot prove that historical completed-only edge.",
+    "Synthetic preCheckRecovery/pre-verifier-recovery factories are not used or restored. Genuine published data and current fixed application tests have distinct evidence boundaries.",
+    "No Eval/models/hooks/package installation or root build by this research worker."
+  ],
+  "fileRegistry": [
+    {
+      "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "fileRegistryCaseIds": [
+        "native-509-environment-archive",
+        "native-successor-scoped-check-reuse",
+        "native-interrupted-archive-command-recovery",
+        "native-completed-archive-recovery-idempotency",
+        "native-verifier-failure-original-claim",
+        "native-dirty-gitlink-archive",
+        "native-sdk-request-transport-inputs",
+        "native-archive-awaits-accepted-revalidation",
+        "native-archive-readonly-candidate-diagnostics",
+        "native-archive-failure-business-state",
+        "native-gitlink-generated-input-binding",
+        "native-archive-implementation-repair-continuation",
+        "native-branch-and-archive-repair-combination",
+        "manual-recovery-native-implementation",
+        "ci-python-loader-environment-isolation",
+        "native-runner-request-parent-alias",
+        "native-517-utf8-bom-check-receipt",
+        "native-one-shot-retry-capability"
+      ],
+      "unmatchedRegistryCaseIds": [
+        "native-509-environment-archive",
+        "native-successor-scoped-check-reuse",
+        "native-dirty-gitlink-archive",
+        "native-sdk-request-transport-inputs",
+        "native-gitlink-generated-input-binding",
+        "ci-python-loader-environment-isolation",
+        "native-runner-request-parent-alias",
+        "native-517-utf8-bom-check-receipt"
+      ],
+      "unmatchedDisposition": "Not covered or retired by these 50 declarations; parent Review must keep other selectors or separately map each original behavior. No whole case featureRemoved."
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+      "fileRegistryCaseIds": [],
+      "unmatchedRegistryCaseIds": [],
+      "unmatchedDisposition": "Not covered or retired by these 50 declarations; parent Review must keep other selectors or separately map each original behavior. No whole case featureRemoved."
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "fileRegistryCaseIds": [
+        "local-native-supervisor-auto-preparation",
+        "issue-389-child-evidence-retry"
+      ],
+      "unmatchedRegistryCaseIds": [],
+      "unmatchedDisposition": "Not covered or retired by these 50 declarations; parent Review must keep other selectors or separately map each original behavior. No whole case featureRemoved."
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+      "fileRegistryCaseIds": [
+        "native-509-capture-failure-diagnostics",
+        "native-user-input-filename-hashing",
+        "native-successor-scoped-check-reuse",
+        "native-successor-reuse-evidence-guards",
+        "native-dirty-gitlink-archive",
+        "native-builder-submitted-at-diagnostic",
+        "native-builder-check-result-diagnostic",
+        "native-builder-review-evidence-diagnostic",
+        "native-builder-review-note-diagnostic",
+        "native-gitlink-generated-input-binding",
+        "native-ignored-parent-generated-input-binding",
+        "native-ignored-cache-link-boundary",
+        "ci-python-loader-environment-isolation",
+        "native-sdk-approved-selective-check-refresh",
+        "native-check-no-alias-replay",
+        "native-sdk-authorized-implementation-continuation",
+        "native-sdk-explicit-git-dependent-refresh",
+        "native-sdk-refresh-failed-preflight-recovery",
+        "native-successive-refresh-original-execution",
+        "native-refresh-selected-check-scope",
+        "native-528-legacy-archive-recovery",
+        "native-ci539-executed-input-binding",
+        "issue-500-cross-shell"
+      ],
+      "unmatchedRegistryCaseIds": [
+        "native-509-capture-failure-diagnostics",
+        "native-user-input-filename-hashing",
+        "native-successor-scoped-check-reuse",
+        "native-successor-reuse-evidence-guards",
+        "native-dirty-gitlink-archive",
+        "native-gitlink-generated-input-binding",
+        "native-ignored-parent-generated-input-binding",
+        "native-ignored-cache-link-boundary",
+        "ci-python-loader-environment-isolation",
+        "native-sdk-approved-selective-check-refresh",
+        "native-successive-refresh-original-execution",
+        "native-refresh-selected-check-scope",
+        "native-528-legacy-archive-recovery",
+        "native-ci539-executed-input-binding"
+      ],
+      "unmatchedDisposition": "Not covered or retired by these 50 declarations; parent Review must keep other selectors or separately map each original behavior. No whole case featureRemoved."
+    }
+  ],
+  "evidence": {
+    "uniqueCurrentBusinessExpandedTests": 65,
+    "all50DeclarationsVerified": true,
+    "proofFiles": {
+      "native-sdk-blocked-recovery.test.ts": [
+        "blocked-all-results.json",
+        "blocked-fix-results.json"
+      ],
+      "native-sdk-supervisor-revise.test.ts": [
+        "revise-all-results.json",
+        "revise-fix-results.json",
+        "revise-final-results.json",
+        "revise-no-retired-plan-results.json"
+      ],
+      "native-sdk-supervisor-verifier-recovery.test.ts": ["verifier-results-2.json"],
+      "native-sdk-verification-inputs.test.ts": ["inputs-strong-results.json"]
+    },
+    "collectionOnly": "repo-ready-collection-results.json: relative imports collected 65, 65 skipped intentionally, no business execution claimed",
+    "genuineLegacyAttempt": "historical-results.json: expected completed failed because true npm052 original status was already running; retained as non-reproduction, not a migration failure",
+    "finalCleanup": {
+      "proof": "revise-no-retired-plan-results.json",
+      "passed": 1,
+      "failed": 0,
+      "behavior": "Removed unused old integrationChecks executable plan field from current Child Verifier report; same-candidate current integration and Child Archive still pass."
+    },
+    "selectorNote": "Patterns match the complete declaration title inside Vitest fullName including describe ancestors; no leading title-only anchor."
+  },
+  "relatedPublishedCompletion": {
+    "file": "test/domains/comet-native/native-published-archive-upgrade.test.ts",
+    "testNamePattern": "continues published 0.5.2 Archive without replaying accepted work",
+    "relationship": "Real four-stage old-Run CLI completion supplements only history preservation replacements; it does not cover old omitted digest fields or every other failure boundary."
+  }
+}

@@ -6,7 +6,7 @@ import { TextDecoder } from 'node:util';
 import { nativeSensitiveRelativePathReason } from './native-sensitive-paths.js';
 import { sameNativeFileObject } from './native-file-identity.js';
 
-export const DEFAULT_NATIVE_ARTIFACT_MAX_BYTES = 1024 * 1024;
+export const DEFAULT_NATIVE_ARTIFACT_MAX_BYTES = Number.MAX_SAFE_INTEGER;
 
 export interface NativeBoundedFileReadHooks {
   afterParentChainCaptured?: () => void | Promise<void>;

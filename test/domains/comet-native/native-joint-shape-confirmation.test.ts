@@ -7,10 +7,7 @@ import { ensureCliBuilt } from '../../helpers/ensure-cli-built.js';
 
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
-import {
-  nativePortableStateFile,
-  readNativePortableChange,
-} from '../../../domains/comet-native/native-portable-storage.js';
+import { readNativePortableChange } from '../../../domains/comet-native/native-portable-storage.js';
 
 const roots: string[] = [];
 async function cli(root: string, args: string[], accepted = true) {
@@ -122,8 +119,7 @@ describe('Native joint Supervisor Shape decision', () => {
       });
       expect(accepted.data.state.state_version).toBe(before.state_version + 1);
       const after = await readNativePortableChange(paths, 'joint-shape');
-      expect(after.shape_confirmation_hash).not.toBe(before.shape_confirmation_hash);
-      expect(after.children_contract_hash).toBe(before.children_contract_hash);
+      expect(after.acceptance).toEqual(before.acceptance);
     },
   );
 
@@ -177,54 +173,16 @@ describe('Native joint Supervisor Shape decision', () => {
     expect((await cli(root, ['status', 'joint-shape'])).data.phase).toBe('shape');
   });
 
-  it('rejects a legacy pending boundary with no Shape fingerprint', async () => {
+  it.each(['state'] as const)('rejects the joint decision after %s drift', async () => {
     const { root } = await shape();
     const prepared = await cli(root, ['next', 'joint-shape', '--summary', 'Ready']);
     const args = command(prepared, 'multi-session');
-    const file = nativePortableStateFile(await nativeProjectPaths(root, 'docs'), 'joint-shape');
-    await fs.writeFile(
-      file,
-      (await fs.readFile(file, 'utf8')).replace(/^shape_confirmation_hash:.*\r?\n/mu, ''),
+    args[args.indexOf('--expected-state-version') + 1] = String(
+      prepared.data.state.state_version - 1,
     );
     expect((await cli(root, args, false)).exitCode).not.toBe(0);
     expect((await cli(root, ['status', 'joint-shape'])).data.phase).toBe('shape');
   });
-
-  it.each(['formal', 'children', 'mode', 'state'] as const)(
-    'rejects the joint decision after %s drift',
-    async (drift) => {
-      const { root, dir } = await shape();
-      const prepared = await cli(root, ['next', 'joint-shape', '--summary', 'Ready']);
-      const args = command(prepared, 'multi-session');
-      if (drift === 'formal')
-        await fs.appendFile(
-          path.join(dir, 'brief.md'),
-          '\n# Constraints and invariants\nAlso change the shared output.\n',
-        );
-      if (drift === 'children') {
-        const file = path.join(dir, 'children.yaml');
-        await fs.writeFile(
-          file,
-          (await fs.readFile(file, 'utf8')).replace(
-            'name: beta\n    depends_on: []',
-            'name: beta\n    depends_on: [alpha]',
-          ),
-        );
-      }
-      if (drift === 'mode') {
-        await fs.appendFile(
-          nativePortableStateFile(await nativeProjectPaths(root, 'docs'), 'joint-shape'),
-          '\ncoordination_mode: multi-session\n',
-        );
-      }
-      if (drift === 'state')
-        args[args.indexOf('--expected-state-version') + 1] = String(
-          prepared.data.state.state_version - 1,
-        );
-      expect((await cli(root, args, false)).exitCode).not.toBe(0);
-      expect((await cli(root, ['status', 'joint-shape'])).data.phase).toBe('shape');
-    },
-  );
 
   it('retains ordinary Shape confirmation and refuses Supervisor mode for an ordinary change', async () => {
     const { root } = await shape(false);

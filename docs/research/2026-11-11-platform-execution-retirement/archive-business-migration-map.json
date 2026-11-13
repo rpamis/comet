@@ -1,0 +1,1167 @@
+{
+  "baseline": "630ce380787f446e803f94b4b90cbbdbf8663364",
+  "scope": [
+    "test/domains/comet-native/native-archive-inspection.test.ts",
+    "test/domains/comet-native/native-archive-preflight.test.ts",
+    "test/domains/comet-native/native-conflict-inspection.test.ts",
+    "test/domains/comet-native/native-spec-rebase.test.ts"
+  ],
+  "reviewAxis": "Spec",
+  "productAndRepoTestsEdited": false,
+  "wholeFilePureMechanismApproved": [],
+  "mixedFileRetirementApprovedOnlyAfterCurrentBusinessReplacementApplied": [
+    "test/domains/comet-native/native-archive-inspection.test.ts",
+    "test/domains/comet-native/native-archive-preflight.test.ts",
+    "test/domains/comet-native/native-conflict-inspection.test.ts",
+    "test/domains/comet-native/native-spec-rebase.test.ts"
+  ],
+  "originalDeclarationCount": 17,
+  "currentEvidence": [
+    {
+      "name": "repo-ready-complete-result.json",
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0,
+      "assertions": [
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration previews the same current Archive operations without writing business files"
+        },
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration refuses Archive before Shape approval and completed acceptance without writing business files"
+        },
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration refuses an existing archive target without overwriting it"
+        },
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration rejects escaping capabilities and mismatched acceptance IDs at the current boundary"
+        },
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration refuses skipped acceptance in a passing Verifier outcome without mutating the candidate"
+        },
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration refuses missing acceptance in a passing Verifier outcome without mutating the candidate"
+        },
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration revises an accepted modify intent after canonical drift and requires fresh Shape and acceptance"
+        },
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration revises an accepted remove intent after canonical drift and requires fresh Shape and acceptance"
+        },
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration diagnoses legacy business state with explicit Doctor guidance without scanning content-proof peers or rewriting state"
+        },
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration rejects unsafe Archive transaction refs and malformed operation payloads without changing a legal transaction"
+        },
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-sdk-archive-target-migration.test.ts",
+          "fullName": "rejects an occupied Archive target before applying current SDK Specs or accepting done state"
+        }
+      ]
+    },
+    {
+      "name": "reused-current-result.json",
+      "passed": 9,
+      "failed": 0,
+      "skipped": 171,
+      "assertions": [
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive.test.ts",
+          "fullName": "Native portable Archive applies complete create, modify, and remove Spec operations"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive.test.ts",
+          "fullName": "Native portable Archive allows current workspace finishes to preserve unrelated files while committing change-owned files"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-application.test.ts",
+          "fullName": "Native SDK v2 Archive simplification archives a current Spec while another active SDK change declares the same capability"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-application.test.ts",
+          "fullName": "Native SDK v2 Archive simplification refuses an actual canonical Spec conflict after preflight without overwriting it"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-application.test.ts",
+          "fullName": "Native SDK Workflow Application returns an unclaimed Build change to Shape when removing an existing capability"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-application.test.ts",
+          "fullName": "Native SDK Workflow Application returns Verify to Shape through a persisted requirements revision command"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-application.test.ts",
+          "fullName": "Native SDK Workflow Application allows requirements revision before Archive applies Specs but rejects it afterwards"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-application.test.ts",
+          "fullName": "Native SDK Workflow Application requires user confirmation before Archiving an independently verified Skill-coordinated pass (memory)"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-application.test.ts",
+          "fullName": "Native SDK Workflow Application requires user confirmation before Archiving an independently verified Skill-coordinated pass (sdk)"
+        }
+      ]
+    },
+    {
+      "name": "original-finalize-recovery-result.json",
+      "passed": 7,
+      "failed": 0,
+      "skipped": 5,
+      "assertions": [
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "fullName": "resumes the original finalize after interruption at report without replaying applied side effects"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "fullName": "resumes the original finalize after interruption at report-journal without replaying applied side effects"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "fullName": "resumes the original finalize after interruption at move without replaying applied side effects"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "fullName": "resumes the original finalize after interruption at move-journal without replaying applied side effects"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "fullName": "resumes the original finalize after interruption at portable-receipt without replaying applied side effects"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "fullName": "resumes the original finalize after interruption at runtime-receipt without replaying applied side effects"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "fullName": "resumes the original finalize after interruption at cleanup without replaying applied side effects"
+        }
+      ]
+    },
+    {
+      "name": "pending-transition-reuse-result.json",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 35,
+      "assertions": [
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-transition-recovery.test.ts",
+          "fullName": "does not archive through a pending unaccepted Verify transition or consume its WAL"
+        }
+      ]
+    },
+    {
+      "name": "unsafe-original-input-reuse-result.json",
+      "passed": 3,
+      "failed": 0,
+      "skipped": 5,
+      "assertions": [
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-input-boundaries.test.ts",
+          "fullName": "rejects escaping-ref in original materials of an actual published Archive WAL"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-input-boundaries.test.ts",
+          "fullName": "rejects foreign-ref in original materials of an actual published Archive WAL"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-input-boundaries.test.ts",
+          "fullName": "rejects invented-original in original materials of an actual published Archive WAL"
+        }
+      ]
+    },
+    {
+      "name": "real-wal-boundaries-reuse-result.json",
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "assertions": [
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable remove journal: resumes without deleting an externally recreated Spec"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable applied Spec edit: retains the same transaction and never overwrites later canonical content"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable project-wide Doctor: exposes a genuine prepared Archive transaction without mutating it"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable public recovery: explicit Doctor continues a genuine prepared Archive transaction"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable mutation boundary: a real pending WAL blocks both Shape return and new SDK change"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable lost transaction: never fabricates successful recovery (after-write)"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable lost transaction: never fabricates successful recovery (after-move)"
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable moved archive Doctor: diagnoses by original name without active directory and continues only the explicit transaction"
+        }
+      ]
+    }
+  ],
+  "originals": [
+    {
+      "file": "test/domains/comet-native/native-archive-inspection.test.ts",
+      "bytesBase64": "aW1wb3J0IHsgcHJvbWlzZXMgYXMgZnMgfSBmcm9tICdub2RlOmZzJzsKaW1wb3J0IHsgZXhlY0ZpbGVTeW5jIH0gZnJvbSAnbm9kZTpjaGlsZF9wcm9jZXNzJzsKaW1wb3J0IG9zIGZyb20gJ25vZGU6b3MnOwppbXBvcnQgcGF0aCBmcm9tICdub2RlOnBhdGgnOwppbXBvcnQgeyBhZnRlckVhY2gsIGJlZm9yZUVhY2gsIGRlc2NyaWJlLCBleHBlY3QsIGl0IH0gZnJvbSAndml0ZXN0JzsKCmltcG9ydCB7IGluc3BlY3ROYXRpdmVBcmNoaXZlUHJlZmxpZ2h0IH0gZnJvbSAnLi4vLi4vLi4vZG9tYWlucy9jb21ldC1uYXRpdmUvbmF0aXZlLWFyY2hpdmUtaW5zcGVjdGlvbi5qcyc7CmltcG9ydCB7IHByZXBhcmVOYXRpdmVCdWlsZEV2aWRlbmNlIH0gZnJvbSAnLi4vLi4vLi4vZG9tYWlucy9jb21ldC1uYXRpdmUvbmF0aXZlLWJ1aWxkLWV2aWRlbmNlLmpzJzsKaW1wb3J0IHsKICBjb21wYXJlQW5kU3dhcE5hdGl2ZUNoYW5nZUZpbGUsCiAgY3JlYXRlTmF0aXZlQ2hhbmdlLAogIG5hdGl2ZUNoYW5nZURpciwKICB3cml0ZU5hdGl2ZUNoYW5nZSwKfSBmcm9tICcuLi8uLi8uLi9kb21haW5zL2NvbWV0LW5hdGl2ZS9uYXRpdmUtY2hhbmdlLmpzJzsKaW1wb3J0IHsgY29sbGVjdE5hdGl2ZUNvbnRyYWN0RmlsZXMgfSBmcm9tICcuLi8uLi8uLi9kb21haW5zL2NvbWV0LW5hdGl2ZS9uYXRpdmUtY29udHJhY3QtZmlsZXMuanMnOwppbXBvcnQgewogIG5hdGl2ZUNoYW5nZVJ1bnRpbWVEaXIsCiAgbmF0aXZlUHJvamVjdFBhdGhzLAp9IGZyb20gJy4uLy4uLy4uL2RvbWFpbnMvY29tZXQtbmF0aXZlL25hdGl2ZS1wYXRocy5qcyc7CmltcG9ydCB7IG5hdGl2ZVRyYW5zaXRpb25Kb3VybmFsRmlsZSB9IGZyb20gJy4uLy4uLy4uL2RvbWFpbnMvY29tZXQtbmF0aXZlL25hdGl2ZS10cmFuc2l0aW9uLWpvdXJuYWwuanMnOwppbXBvcnQgeyB3cml0ZU5hdGl2ZVdvcmtzcGFjZUlkZW50aXR5IH0gZnJvbSAnLi4vLi4vLi4vZG9tYWlucy9jb21ldC1uYXRpdmUvbmF0aXZlLXdvcmtzcGFjZS5qcyc7CmltcG9ydCB0eXBlIHsKICBOYXRpdmVDaGFuZ2VTdGF0ZSwKICBOYXRpdmVQcm9qZWN0UGF0aHMsCn0gZnJvbSAnLi4vLi4vLi4vZG9tYWlucy9jb21ldC1uYXRpdmUvbmF0aXZlLXR5cGVzLmpzJzsKaW1wb3J0IHsgcHJlcGFyZU5hdGl2ZVZlcmlmaWNhdGlvbkV2aWRlbmNlIH0gZnJvbSAnLi4vLi4vLi4vZG9tYWlucy9jb21ldC1uYXRpdmUvbmF0aXZlLXZlcmlmaWNhdGlvbi1ydW50aW1lLmpzJzsKaW1wb3J0IHsKICBpc3N1ZU5hdGl2ZUF1dG9tYXRlZENoZWNrUmVjZWlwdCwKICBmaW5kTmF0aXZlUmV1c2FibGVSZXF1aXJlZENoZWNrUmVjZWlwdCwKICBpc3N1ZU5hdGl2ZU1hbnVhbEV2aWRlbmNlUmVjZWlwdCwKICB2YWxpZGF0ZU5hdGl2ZVN0YXRpY1JlY2VpcHREZXBlbmRlbmN5LAp9IGZyb20gJy4uLy4uLy4uL2RvbWFpbnMvY29tZXQtbmF0aXZlL25hdGl2ZS12ZXJpZmljYXRpb24tcmVjZWlwdC1ydW50aW1lLmpzJzsKaW1wb3J0IHsKICBuYXRpdmVWZXJpZmljYXRpb25GaXh0dXJlUmVjZWlwdCwKICBuYXRpdmVWZXJpZmljYXRpb25GaXh0dXJlUmVwb3J0LAp9IGZyb20gJy4uLy4uL2hlbHBlcnMvbmF0aXZlLXZlcmlmaWNhdGlvbi5qcyc7Cgpjb25zdCBicmllZiA9IGAjIE91dGNvbWUKU2hpcCBvbmUgZm9jdXNlZCBiZWhhdmlvci4KIyBTY29wZQpVcGRhdGUgdGhlIGZvY3VzZWQgZmlsZS4KIyBOb24tZ29hbHMKTm8gdW5yZWxhdGVkIGNoYW5nZXMuCiMgQWNjZXB0YW5jZSBleGFtcGxlcwotIFRoZSBmb2N1c2VkIGJlaGF2aW9yIHdvcmtzLgojIENvbnN0cmFpbnRzIGFuZCBpbnZhcmlhbnRzCktlZXAgY2FsbGVycyBzdGFibGUuCiMgRGVjaXNpb25zClVzZSB0aGUgY3VycmVudCBtb2R1bGUuCiMgT3BlbiBxdWVzdGlvbnMKTm9uZS4KIyBWZXJpZmljYXRpb24gZXhwZWN0YXRpb25zClJ1biB0aGUgZm9jdXNlZCBjaGVjay4KYDsKCml0KCdpc3N1ZXMgYXV0b21hdGVkIEdpdC1ib3VuZCB2ZXJpZmljYXRpb24gcmVjZWlwdHMgdGhyb3VnaCBhIHByb2plY3QgcGFyZW50IGFsaWFzJywgYXN5bmMgKCkgPT4gewogIGNvbnN0IHJvb3QgPSBhd2FpdCBmcy5yZWFscGF0aChhd2FpdCBmcy5ta2R0ZW1wKHBhdGguam9pbihvcy50bXBkaXIoKSwgJ2NvbWV0LXJlY2VpcHQtYWxpYXMtJykpKTsKICB0cnkgewogICAgY29uc3QgcGh5c2ljYWwgPSBwYXRoLmpvaW4ocm9vdCwgJ3BoeXNpY2FsJyk7CiAgICBjb25zdCBhbGlhcyA9IHBhdGguam9pbihyb290LCAnYWxpYXMnKTsKICAgIGF3YWl0IGZzLm1rZGlyKHBoeXNpY2FsKTsKICAgIGF3YWl0IGZzLnN5bWxpbmsocGh5c2ljYWwsIGFsaWFzLCBwcm9jZXNzLnBsYXRmb3JtID09PSAnd2luMzInID8gJ2p1bmN0aW9uJyA6ICdkaXInKTsKICAgIGNvbnN0IHByb2plY3RSb290ID0gcGF0aC5qb2luKGFsaWFzLCAncHJvamVjdCcpOwogICAgYXdhaXQgZnMubWtkaXIocHJvamVjdFJvb3QpOwogICAgY29uc3QgZ2l0ID0gKC4uLmFyZ3M6IHN0cmluZ1tdKSA9PgogICAgICBleGVjRmlsZVN5bmMoJ2dpdCcsIGFyZ3MsIHsgY3dkOiBwcm9qZWN0Um9vdCwgZW5jb2Rpbmc6ICd1dGY4JyB9KS50cmltKCk7CiAgICBnaXQoJ2luaXQnLCAnLXEnKTsKICAgIGF3YWl0IGZzLndyaXRlRmlsZShwYXRoLmpvaW4ocHJvamVjdFJvb3QsICdmZWF0dXJlLnR4dCcpLCAnYmVmb3JlXG4nKTsKICAgIGdpdCgnYWRkJywgJy4nKTsKICAgIGdpdCgKICAgICAgJy1jJywKICAgICAgJ3VzZXIubmFtZT1GaXh0dXJlJywKICAgICAgJy1jJywKICAgICAgJ3VzZXIuZW1haWw9Zml4dHVyZUBleGFtcGxlLmludmFsaWQnLAogICAgICAnY29tbWl0JywKICAgICAgJy1xbScsCiAgICAgICdmaXh0dXJlJywKICAgICk7CiAgICBjb25zdCBjb21taXQgPSBnaXQoJ3Jldi1wYXJzZScsICdIRUFEJyk7CiAgICBjb25zdCBwYXRocyA9IGF3YWl0IG5hdGl2ZVByb2plY3RQYXRocyhwcm9qZWN0Um9vdCwgJy4nKTsKICAgIGNvbnN0IGNyZWF0ZWQgPSBhd2FpdCBjcmVhdGVOYXRpdmVDaGFuZ2UoewogICAgICBwYXRocywKICAgICAgdmVyaWZpY2F0aW9uUHJvdG9jb2w6ICdsZWdhY3ktdjEnLAogICAgICBuYW1lOiAncmVjZWlwdC1hbGlhcycsCiAgICAgIGxhbmd1YWdlOiAnZW4nLAogICAgfSk7CiAgICBhd2FpdCBmcy53cml0ZUZpbGUocGF0aC5qb2luKG5hdGl2ZUNoYW5nZURpcihwYXRocywgY3JlYXRlZC5uYW1lKSwgJ2JyaWVmLm1kJyksIGJyaWVmKTsKICAgIGF3YWl0IGZzLndyaXRlRmlsZShwYXRoLmpvaW4ocHJvamVjdFJvb3QsICdmZWF0dXJlLnR4dCcpLCAnYWZ0ZXJcbicpOwogICAgY29uc3QgYnVpbGRTdGF0ZTogTmF0aXZlQ2hhbmdlU3RhdGUgPSB7IC4uLmNyZWF0ZWQsIHBoYXNlOiAnYnVpbGQnLCBhcHByb3ZhbDogJ2ltcGxpY2l0JyB9OwogICAgY29uc3QgYnVpbGQgPSBhd2FpdCBwcmVwYXJlTmF0aXZlQnVpbGRFdmlkZW5jZSh7CiAgICAgIHBhdGhzLAogICAgICBzdGF0ZTogYnVpbGRTdGF0ZSwKICAgICAgYXJ0aWZhY3RSZWZzOiBbJ2ZlYXR1cmUudHh0J10sCiAgICB9KTsKICAgIGNvbnN0IHN0YXRlOiBOYXRpdmVDaGFuZ2VTdGF0ZSA9IHsKICAgICAgLi4uYnVpbGRTdGF0ZSwKICAgICAgcGhhc2U6ICd2ZXJpZnknLAogICAgICBpbXBsZW1lbnRhdGlvbl9zY29wZTogYnVpbGQuc2NvcGVSZWYsCiAgICB9OwogICAgYXdhaXQgd3JpdGVOYXRpdmVDaGFuZ2UocGF0aHMsIHN0YXRlKTsKICAgIGNvbnN0IGNvbnRyYWN0ID0gYXdhaXQgY29sbGVjdE5hdGl2ZUNvbnRyYWN0RmlsZXMoewogICAgICBjaGFuZ2VEaXI6IG5hdGl2ZUNoYW5nZURpcihwYXRocywgc3RhdGUubmFtZSksCiAgICAgIGJyaWVmUmVmOiBzdGF0ZS5icmllZiwKICAgICAgc3BlY0NoYW5nZXM6IHN0YXRlLnNwZWNfY2hhbmdlcywKICAgIH0pOwogICAgY29uc3QgcmVzdWx0ID0gYXdhaXQgaXNzdWVOYXRpdmVBdXRvbWF0ZWRDaGVja1JlY2VpcHQoewogICAgICBwYXRocywKICAgICAgbmFtZTogc3RhdGUubmFtZSwKICAgICAgYWNjZXB0YW5jZUlkczogY29udHJhY3QuY29udHJhY3QuYWNjZXB0YW5jZS5tYXAoKHsgaWQgfSkgPT4gaWQpLAogICAgICBjb21tYW5kOiBwcm9jZXNzLmV4ZWNQYXRoLAogICAgICBhcmdzOiBbJy1lJywgJ3Byb2Nlc3MuZXhpdCgwKSddLAogICAgfSk7CiAgICBleHBlY3QocmVzdWx0LnJlY2VpcHQuc3RhdHVzKS50b0JlKCdwYXNzZWQnKTsKICAgIGV4cGVjdChyZXN1bHQucmVjZWlwdC5ldmlkZW5jZSkudG9NYXRjaE9iamVjdCh7CiAgICAgIHdvcmt0cmVlOiB7IHByb3ZpZGVyOiAnZ2l0Jywgcm9vdDogJy4nLCBiZWZvcmVDb21taXQ6IGNvbW1pdCwgYWZ0ZXJDb21taXQ6IGNvbW1pdCB9LAogICAgfSk7CiAgICBjb25zdCBjaGFuZ2VkID0gYXdhaXQgaXNzdWVOYXRpdmVBdXRvbWF0ZWRDaGVja1JlY2VpcHQoewogICAgICBwYXRocywKICAgICAgbmFtZTogc3RhdGUubmFtZSwKICAgICAgYWNjZXB0YW5jZUlkczogY29udHJhY3QuY29udHJhY3QuYWNjZXB0YW5jZS5tYXAoKHsgaWQgfSkgPT4gaWQpLAogICAgICBjb21tYW5kOiBwcm9jZXNzLmV4ZWNQYXRoLAogICAgICBhcmdzOiBbCiAgICAgICAgJy1lJywKICAgICAgICBgcmVxdWlyZSgnbm9kZTpjaGlsZF9wcm9jZXNzJykuZXhlY0ZpbGVTeW5jKCdnaXQnLCAke0pTT04uc3RyaW5naWZ5KFsnLWMnLCAndXNlci5uYW1lPUZpeHR1cmUnLCAnLWMnLCAndXNlci5lbWFpbD1maXh0dXJlQGV4YW1wbGUuaW52YWxpZCcsICdjb21taXQnLCAnLS1hbGxvdy1lbXB0eScsICctcW0nLCAnY2hhbmdlZCBpZGVudGl0eSddKX0pYCwKICAgICAgXSwKICAgIH0pOwogICAgZXhwZWN0KGdpdCgncmV2LXBhcnNlJywgJ0hFQUQnKSkubm90LnRvQmUoY29tbWl0KTsKICAgIGV4cGVjdChjaGFuZ2VkLnJlY2VpcHQuc3RhdHVzKS50b0JlKCdibG9ja2VkJyk7CiAgICBleHBlY3QoY2hhbmdlZC5yZWNlaXB0LmV2aWRlbmNlKS50b01hdGNoT2JqZWN0KHsKICAgICAgd29ya3RyZWU6IHsKICAgICAgICBwcm92aWRlcjogJ2dpdCcsCiAgICAgICAgcm9vdDogJy4nLAogICAgICAgIGJlZm9yZUNvbW1pdDogY29tbWl0LAogICAgICAgIGFmdGVyQ29tbWl0OiBnaXQoJ3Jldi1wYXJzZScsICdIRUFEJyksCiAgICAgIH0sCiAgICB9KTsKICB9IGZpbmFsbHkgewogICAgYXdhaXQgZnMucm0ocm9vdCwgeyByZWN1cnNpdmU6IHRydWUsIGZvcmNlOiB0cnVlIH0pOwogIH0KfSk7CgpkZXNjcmliZSgnTmF0aXZlIEFyY2hpdmUgaW5zcGVjdGlvbicsICgpID0+IHsKICBsZXQgcHJvamVjdFJvb3Q6IHN0cmluZzsKICBsZXQgcGF0aHM6IE5hdGl2ZVByb2plY3RQYXRoczsKICBsZXQgc3RhdGU6IE5hdGl2ZUNoYW5nZVN0YXRlOwoKICBiZWZvcmVFYWNoKGFzeW5jICgpID0+IHsKICAgIHByb2plY3RSb290ID0gYXdhaXQgZnMubWtkdGVtcChwYXRoLmpvaW4ob3MudG1wZGlyKCksICdjb21ldC1uYXRpdmUtYXJjaGl2ZS1pbnNwZWN0aW9uLScpKTsKICAgIGF3YWl0IGZzLm1rZGlyKHBhdGguam9pbihwcm9qZWN0Um9vdCwgJ3NyYycpLCB7IHJlY3Vyc2l2ZTogdHJ1ZSB9KTsKICAgIGF3YWl0IGZzLndyaXRlRmlsZShwYXRoLmpvaW4ocHJvamVjdFJvb3QsICdzcmMnLCAnZmVhdHVyZS50cycpLCAnZXhwb3J0IGNvbnN0IHZhbHVlID0gMTtcbicpOwogICAgcGF0aHMgPSBhd2FpdCBuYXRpdmVQcm9qZWN0UGF0aHMocHJvamVjdFJvb3QsICcuJyk7CiAgICBjb25zdCBjcmVhdGVkID0gYXdhaXQgY3JlYXRlTmF0aXZlQ2hhbmdlKHsKICAgICAgcGF0aHMsCiAgICAgIHZlcmlmaWNhdGlvblByb3RvY29sOiAnbGVnYWN5LXYxJywKICAgICAgbmFtZTogJ2FyY2hpdmUtcHJldmlldycsCiAgICAgIGxhbmd1YWdlOiAnZW4nLAogICAgICBub3c6IG5ldyBEYXRlKCcyMDI2LTA3LTE3VDAwOjAwOjAwLjAwMFonKSwKICAgIH0pOwogICAgY29uc3QgY2hhbmdlRGlyID0gbmF0aXZlQ2hhbmdlRGlyKHBhdGhzLCBjcmVhdGVkLm5hbWUpOwogICAgYXdhaXQgZnMud3JpdGVGaWxlKHBhdGguam9pbihjaGFuZ2VEaXIsICdicmllZi5tZCcpLCBicmllZik7CiAgICBjb25zdCBidWlsZFN0YXRlOiBOYXRpdmVDaGFuZ2VTdGF0ZSA9IHsKICAgICAgLi4uY3JlYXRlZCwKICAgICAgcGhhc2U6ICdidWlsZCcsCiAgICAgIGFwcHJvdmFsOiAnaW1wbGljaXQnLAogICAgfTsKICAgIGF3YWl0IGZzLndyaXRlRmlsZShwYXRoLmpvaW4ocHJvamVjdFJvb3QsICdzcmMnLCAnZmVhdHVyZS50cycpLCAnZXhwb3J0IGNvbnN0IHZhbHVlID0gMjtcbicpOwogICAgY29uc3QgYnVpbGQgPSBhd2FpdCBwcmVwYXJlTmF0aXZlQnVpbGRFdmlkZW5jZSh7CiAgICAgIHBhdGhzLAogICAgICBzdGF0ZTogYnVpbGRTdGF0ZSwKICAgICAgYXJ0aWZhY3RSZWZzOiBbJ3NyYy9mZWF0dXJlLnRzJ10sCiAgICAgIG5vdzogbmV3IERhdGUoJzIwMjYtMDctMTdUMDE6MDA6MDAuMDAwWicpLAogICAgfSk7CiAgICBjb25zdCB2ZXJpZnlDYW5kaWRhdGU6IE5hdGl2ZUNoYW5nZVN0YXRlID0gewogICAgICAuLi5idWlsZFN0YXRlLAogICAgICBwaGFzZTogJ3ZlcmlmeScsCiAgICAgIGltcGxlbWVudGF0aW9uX3Njb3BlOiBidWlsZC5zY29wZVJlZiBhcyBOYXRpdmVDaGFuZ2VTdGF0ZVsnaW1wbGVtZW50YXRpb25fc2NvcGUnXSwKICAgIH07CiAgICBjb25zdCBzdGF0ZUZpbGUgPSBwYXRoLmpvaW4oY2hhbmdlRGlyLCAnY29tZXQtc3RhdGUueWFtbCcpOwogICAgY29uc3QgdmVyaWZ5U3RhdGUgPSBhd2FpdCBjb21wYXJlQW5kU3dhcE5hdGl2ZUNoYW5nZUZpbGUoc3RhdGVGaWxlLCB2ZXJpZnlDYW5kaWRhdGUsIDEpOwogICAgY29uc3QgY29udHJhY3QgPSBhd2FpdCBjb2xsZWN0TmF0aXZlQ29udHJhY3RGaWxlcyh7CiAgICAgIGNoYW5nZURpciwKICAgICAgYnJpZWZSZWY6IHZlcmlmeVN0YXRlLmJyaWVmLAogICAgICBzcGVjQ2hhbmdlczogdmVyaWZ5U3RhdGUuc3BlY19jaGFuZ2VzLAogICAgfSk7CiAgICBjb25zdCByZWNlaXB0UmVmID0gKAogICAgICBhd2FpdCBpc3N1ZU5hdGl2ZU1hbnVhbEV2aWRlbmNlUmVjZWlwdCh7CiAgICAgICAgcGF0aHMsCiAgICAgICAgbmFtZTogdmVyaWZ5U3RhdGUubmFtZSwKICAgICAgICBhY2NlcHRhbmNlSWRzOiBjb250cmFjdC5jb250cmFjdC5hY2NlcHRhbmNlLm1hcCgoY3JpdGVyaW9uKSA9PiBjcml0ZXJpb24uaWQpLAogICAgICAgIHN0ZXBzOiBbJ1J1biB0aGUgZm9jdXNlZCBhcmNoaXZlIGluc3BlY3Rpb24gZml4dHVyZS4nXSwKICAgICAgICBvYnNlcnZhdGlvbnM6IFsnVGhlIGZvY3VzZWQgYmVoYXZpb3IgbWF0Y2hlZCB0aGUgYWNjZXB0YW5jZSBjb250cmFjdC4nXSwKICAgICAgICBjb25maXJtZWQ6IHRydWUsCiAgICAgICAgbm93OiBuZXcgRGF0ZSgnMjAyNi0wNy0xN1QwMTozMDowMC4wMDBaJyksCiAgICAgIH0pCiAgICApLnJlZjsKICAgIGF3YWl0IGZzLndyaXRlRmlsZSgKICAgICAgcGF0aC5qb2luKGNoYW5nZURpciwgJ3ZlcmlmaWNhdGlvbi5tZCcpLAogICAgICBhd2FpdCBuYXRpdmVWZXJpZmljYXRpb25GaXh0dXJlUmVwb3J0KHsKICAgICAgICBwYXRocywKICAgICAgICBuYW1lOiB2ZXJpZnlTdGF0ZS5uYW1lLAogICAgICAgIGV2aWRlbmNlUmVmczogW3JlY2VpcHRSZWZdLAogICAgICB9KSwKICAgICk7CiAgICBjb25zdCByZXF1aXJlZFJlY2VpcHRSZWYgPSBhd2FpdCBuYXRpdmVWZXJpZmljYXRpb25GaXh0dXJlUmVjZWlwdCh7CiAgICAgIHBhdGhzLAogICAgICBuYW1lOiB2ZXJpZnlTdGF0ZS5uYW1lLAogICAgICBub3c6IG5ldyBEYXRlKCcyMDI2LTA3LTE3VDAxOjQ1OjAwLjAwMFonKSwKICAgIH0pOwogICAgY29uc3QgdmVyaWZpY2F0aW9uID0gYXdhaXQgcHJlcGFyZU5hdGl2ZVZlcmlmaWNhdGlvbkV2aWRlbmNlKHsKICAgICAgcGF0aHMsCiAgICAgIHN0YXRlOiB2ZXJpZnlTdGF0ZSwKICAgICAgcmVzdWx0OiAncGFzcycsCiAgICAgIHJlcG9ydFJlZjogJ3ZlcmlmaWNhdGlvbi5tZCcsCiAgICAgIHJlY2VpcHRSZWY6IHJlcXVpcmVkUmVjZWlwdFJlZiwKICAgICAgbm93OiBuZXcgRGF0ZSgnMjAyNi0wNy0xN1QwMjowMDowMC4wMDBaJyksCiAgICB9KTsKICAgIGNvbnN0IGFyY2hpdmVDYW5kaWRhdGU6IE5hdGl2ZUNoYW5nZVN0YXRlID0gewogICAgICAuLi52ZXJpZnlTdGF0ZSwKICAgICAgcGhhc2U6ICdhcmNoaXZlJywKICAgICAgdmVyaWZpY2F0aW9uX3Jlc3VsdDogJ3Bhc3MnLAogICAgICB2ZXJpZmljYXRpb25fcmVwb3J0OiAndmVyaWZpY2F0aW9uLm1kJywKICAgICAgdmVyaWZpY2F0aW9uX2V2aWRlbmNlOiB2ZXJpZmljYXRpb24uZXZpZGVuY2VSZWYgYXMgTmF0aXZlQ2hhbmdlU3RhdGVbJ3ZlcmlmaWNhdGlvbl9ldmlkZW5jZSddLAogICAgfTsKICAgIHN0YXRlID0gYXdhaXQgY29tcGFyZUFuZFN3YXBOYXRpdmVDaGFuZ2VGaWxlKHN0YXRlRmlsZSwgYXJjaGl2ZUNhbmRpZGF0ZSwgMik7CiAgfSk7CgogIGFmdGVyRWFjaChhc3luYyAoKSA9PiB7CiAgICBhd2FpdCBmcy5ybShwcm9qZWN0Um9vdCwgeyByZWN1cnNpdmU6IHRydWUsIGZvcmNlOiB0cnVlIH0pOwogIH0pOwoKICBpdCgncmV0dXJucyBhIHN0YWJsZSByZWFkeSBwcmV2aWV3IHdpdGhvdXQgd3JpdGluZyBwcm9qZWN0IHN0YXRlJywgYXN5bmMgKCkgPT4gewogICAgY29uc3QgY2hhbmdlRmlsZSA9IHBhdGguam9pbihuYXRpdmVDaGFuZ2VEaXIocGF0aHMsIHN0YXRlLm5hbWUpLCAnY29tZXQtc3RhdGUueWFtbCcpOwogICAgY29uc3QgYmVmb3JlID0gYXdhaXQgZnMucmVhZEZpbGUoY2hhbmdlRmlsZSwgJ3V0ZjgnKTsKCiAgICBjb25zdCBmaXJzdCA9IGF3YWl0IGluc3BlY3ROYXRpdmVBcmNoaXZlUHJlZmxpZ2h0KHsKICAgICAgcGF0aHMsCiAgICAgIG5hbWU6IHN0YXRlLm5hbWUsCiAgICAgIG5vdzogbmV3IERhdGUoJzIwMjYtMDctMTdUMDM6MDA6MDAuMDAwWicpLAogICAgfSk7CiAgICBjb25zdCBzZWNvbmQgPSBhd2FpdCBpbnNwZWN0TmF0aXZlQXJjaGl2ZVByZWZsaWdodCh7CiAgICAgIHBhdGhzLAogICAgICBuYW1lOiBzdGF0ZS5uYW1lLAogICAgICBub3c6IG5ldyBEYXRlKCcyMDI2LTA3LTE3VDAzOjAwOjAwLjAwMFonKSwKICAgIH0pOwoKICAgIGV4cGVjdChmaXJzdCkudG9FcXVhbChzZWNvbmQpOwogICAgZXhwZWN0KGZpcnN0KS50b01hdGNoT2JqZWN0KHsKICAgICAgcmVhZHk6IHRydWUsCiAgICAgIHJldmlzaW9uOiAzLAogICAgICB0YXJnZXRSZWY6ICdhcmNoaXZlLzIwMjYtMDctMTctYXJjaGl2ZS1wcmV2aWV3JywKICAgICAgZXZpZGVuY2VGcmVzaG5lc3M6ICdjb21wbGV0ZScsCiAgICAgIGZpbmRpbmdDb2RlczogW10sCiAgICB9KTsKICAgIGV4cGVjdChhd2FpdCBmcy5yZWFkRmlsZShjaGFuZ2VGaWxlLCAndXRmOCcpKS50b0JlKGJlZm9yZSk7CiAgfSk7CgogIGl0KCd2YWxpZGF0ZXMgbWFudWFsIGFjY2VwdGFuY2UgSURzIGFuZCBhdXRvbWF0ZWQgY29tbWFuZCB0aW1lb3V0cyBiZWZvcmUgZXhlY3V0aW9uJywgYXN5bmMgKCkgPT4gewogICAgY29uc3QgdmVyaWZ5U3RhdGUgPSB7CiAgICAgIC4uLnN0YXRlLAogICAgICBwaGFzZTogJ3ZlcmlmeScgYXMgY29uc3QsCiAgICAgIHZlcmlmaWNhdGlvbl9yZXN1bHQ6ICdwZW5kaW5nJyBhcyBjb25zdCwKICAgICAgdmVyaWZpY2F0aW9uX3JlcG9ydDogbnVsbCwKICAgICAgdmVyaWZpY2F0aW9uX2V2aWRlbmNlOiBudWxsLAogICAgICByZXZpc2lvbjogc3RhdGUucmV2aXNpb24sCiAgICB9OwogICAgYXdhaXQgd3JpdGVOYXRpdmVDaGFuZ2UocGF0aHMsIHZlcmlmeVN0YXRlKTsKICAgIGF3YWl0IGV4cGVjdCgKICAgICAgZmluZE5hdGl2ZVJldXNhYmxlUmVxdWlyZWRDaGVja1JlY2VpcHQoeyBwYXRocywgc3RhdGU6IHZlcmlmeVN0YXRlIH0pLAogICAgKS5yZXNvbHZlcy50b0JlTnVsbCgpOwogICAgYXdhaXQgZXhwZWN0KAogICAgICB2YWxpZGF0ZU5hdGl2ZVN0YXRpY1JlY2VpcHREZXBlbmRlbmN5KHsKICAgICAgICBwYXRocywKICAgICAgICBzdGF0ZTogdmVyaWZ5U3RhdGUsCiAgICAgICAgcmVjZWlwdDogeyBraW5kOiAnbWFudWFsLWV2aWRlbmNlJyB9IGFzIG5ldmVyLAogICAgICB9KSwKICAgICkucmVzb2x2ZXMudG9CZU51bGwoKTsKICAgIGF3YWl0IGV4cGVjdCgKICAgICAgaXNzdWVOYXRpdmVNYW51YWxFdmlkZW5jZVJlY2VpcHQoewogICAgICAgIHBhdGhzLAogICAgICAgIG5hbWU6IHZlcmlmeVN0YXRlLm5hbWUsCiAgICAgICAgYWNjZXB0YW5jZUlkczogW10sCiAgICAgICAgc3RlcHM6IFsnc3RlcCddLAogICAgICAgIG9ic2VydmF0aW9uczogWydvYnNlcnZhdGlvbiddLAogICAgICAgIG5vdzogbmV3IERhdGUoJzIwMjYtMDctMTdUMDM6MDA6MDAuMDAwWicpLAogICAgICB9KSwKICAgICkucmVqZWN0cy50b1Rocm93KCdhY2NlcHRhbmNlIElEcyBkbyBub3QgbWF0Y2gnKTsKICAgIGF3YWl0IGV4cGVjdCgKICAgICAgaXNzdWVOYXRpdmVBdXRvbWF0ZWRDaGVja1JlY2VpcHQoewogICAgICAgIHBhdGhzLAogICAgICAgIG5hbWU6IHZlcmlmeVN0YXRlLm5hbWUsCiAgICAgICAgYWNjZXB0YW5jZUlkczogW10sCiAgICAgICAgY29tbWFuZDogcHJvY2Vzcy5leGVjUGF0aCwKICAgICAgICBhcmdzOiBbJy1lJywgJ3Byb2Nlc3MuZXhpdCgwKSddLAogICAgICAgIHRpbWVvdXRNczogMCwKICAgICAgfSksCiAgICApLnJlamVjdHMudG9UaHJvdygndGltZW91dCBtdXN0IGJlIGFuIGludGVnZXInKTsKICAgIGF3YWl0IGV4cGVjdCgKICAgICAgaXNzdWVOYXRpdmVBdXRvbWF0ZWRDaGVja1JlY2VpcHQoewogICAgICAgIHBhdGhzLAogICAgICAgIG5hbWU6IHZlcmlmeVN0YXRlLm5hbWUsCiAgICAgICAgYWNjZXB0YW5jZUlkczogW10sCiAgICAgICAgY29tbWFuZDogcHJvY2Vzcy5leGVjUGF0aCwKICAgICAgICBhcmdzOiBbJy1lJywgJ3Byb2Nlc3MuZXhpdCgwKSddLAogICAgICAgIHRpbWVvdXRNczogNjAgKiA2MCAqIDFfMDAwICsgMSwKICAgICAgfSksCiAgICApLnJlamVjdHMudG9UaHJvdygndGltZW91dCBtdXN0IGJlIGFuIGludGVnZXInKTsKICAgIGNvbnN0IGNvbnRyYWN0ID0gYXdhaXQgY29sbGVjdE5hdGl2ZUNvbnRyYWN0RmlsZXMoewogICAgICBjaGFuZ2VEaXI6IG5hdGl2ZUNoYW5nZURpcihwYXRocywgdmVyaWZ5U3RhdGUubmFtZSksCiAgICAgIGJyaWVmUmVmOiB2ZXJpZnlTdGF0ZS5icmllZiwKICAgICAgc3BlY0NoYW5nZXM6IHZlcmlmeVN0YXRlLnNwZWNfY2hhbmdlcywKICAgIH0pOwogICAgY29uc3QgYWNjZXB0YW5jZUlkcyA9IGNvbnRyYWN0LmNvbnRyYWN0LmFjY2VwdGFuY2UubWFwKChjcml0ZXJpb24pID0+IGNyaXRlcmlvbi5pZCk7CiAgICBjb25zdCBwYXNzZWQgPSBhd2FpdCBpc3N1ZU5hdGl2ZUF1dG9tYXRlZENoZWNrUmVjZWlwdCh7CiAgICAgIHBhdGhzLAogICAgICBuYW1lOiB2ZXJpZnlTdGF0ZS5uYW1lLAogICAgICBhY2NlcHRhbmNlSWRzLAogICAgICBjb21tYW5kOiBwcm9jZXNzLmV4ZWNQYXRoLAogICAgICBhcmdzOiBbJy1lJywgInByb2Nlc3Muc3Rkb3V0LndyaXRlKCdhdXRvbWF0ZWQgb3V0cHV0JykiXSwKICAgICAgdGltZW91dE1zOiAxMF8wMDAsCiAgICAgIG5vdzogKCkgPT4gbmV3IERhdGUoJzIwMjYtMDctMTdUMDM6MDE6MDAuMDAwWicpLAogICAgfSk7CiAgICBleHBlY3QocGFzc2VkLnJlY2VpcHQuc3RhdHVzKS50b0JlKCdwYXNzZWQnKTsKICAgIGV4cGVjdChwYXNzZWQucmVjZWlwdC5ldmlkZW5jZSkudG9NYXRjaE9iamVjdCh7CiAgICAgIGV4aXRDb2RlOiAwLAogICAgICBzaWduYWw6IG51bGwsCiAgICAgIHRpbWVkT3V0OiBmYWxzZSwKICAgICAgb3V0cHV0U3VtbWFyeTogJ2F1dG9tYXRlZCBvdXRwdXQnLAogICAgICBvdXRwdXRUcnVuY2F0ZWQ6IGZhbHNlLAogICAgfSk7CiAgICBjb25zdCBmYWlsZWQgPSBhd2FpdCBpc3N1ZU5hdGl2ZUF1dG9tYXRlZENoZWNrUmVjZWlwdCh7CiAgICAgIHBhdGhzLAogICAgICBuYW1lOiB2ZXJpZnlTdGF0ZS5uYW1lLAogICAgICBhY2NlcHRhbmNlSWRzLAogICAgICBjb21tYW5kOiBwcm9jZXNzLmV4ZWNQYXRoLAogICAgICBhcmdzOiBbJy1lJywgJ3Byb2Nlc3MuZXhpdCgzKSddLAogICAgICB0aW1lb3V0TXM6IDEwXzAwMCwKICAgICAgbm93OiAoKSA9PiBuZXcgRGF0ZSgnMjAyNi0wNy0xN1QwMzowMjowMC4wMDBaJyksCiAgICB9KTsKICAgIGV4cGVjdChmYWlsZWQucmVjZWlwdC5zdGF0dXMpLnRvQmUoJ2ZhaWxlZCcpOwogICAgZXhwZWN0KGZhaWxlZC5yZWNlaXB0LmV2aWRlbmNlKS50b01hdGNoT2JqZWN0KHsKICAgICAgZXhpdENvZGU6IDMsCiAgICAgIHNpZ25hbDogbnVsbCwKICAgICAgb3V0cHV0U3VtbWFyeTogJyhleGl0IDMpJywKICAgIH0pOwogIH0pOwoKICBpdCgnYmluZHMgYW4gZXhpc3RpbmcgYXJjaGl2ZSB0YXJnZXQgYW5kIHBlbmRpbmcgam91cm5hbCBpbnRvIHJlYWRpbmVzcycsIGFzeW5jICgpID0+IHsKICAgIGF3YWl0IGZzLm1rZGlyKHBhdGguam9pbihwYXRocy5hcmNoaXZlRGlyLCAnMjAyNi0wNy0xNy1hcmNoaXZlLXByZXZpZXcnKSwgewogICAgICByZWN1cnNpdmU6IHRydWUsCiAgICB9KTsKICAgIGF3YWl0IGZzLndyaXRlRmlsZShuYXRpdmVUcmFuc2l0aW9uSm91cm5hbEZpbGUocGF0aHMsIHN0YXRlLm5hbWUpLCAne31cbicpOwoKICAgIGNvbnN0IHByZXZpZXcgPSBhd2FpdCBpbnNwZWN0TmF0aXZlQXJjaGl2ZVByZWZsaWdodCh7CiAgICAgIHBhdGhzLAogICAgICBuYW1lOiBzdGF0ZS5uYW1lLAogICAgICBub3c6IG5ldyBEYXRlKCcyMDI2LTA3LTE3VDAzOjAwOjAwLjAwMFonKSwKICAgIH0pOwoKICAgIGV4cGVjdChwcmV2aWV3LnJlYWR5KS50b0JlKGZhbHNlKTsKICAgIGV4cGVjdChwcmV2aWV3LmZpbmRpbmdDb2RlcykudG9FcXVhbCgKICAgICAgZXhwZWN0LmFycmF5Q29udGFpbmluZyhbJ2FyY2hpdmUtdGFyZ2V0LWV4aXN0cycsICdwZW5kaW5nLWpvdXJuYWwnXSksCiAgICApOwogIH0pOwoKICBpdCgnYmxvY2tzIHdoZW4gYW5vdGhlciB2aXNpYmxlIGNoYW5nZSBjbGFpbXMgdGhlIHNhbWUgaW1wbGVtZW50YXRpb24gYXJ0aWZhY3QnLCBhc3luYyAoKSA9PiB7CiAgICBjb25zdCBjb21wZXRpbmcgPSBhd2FpdCBjcmVhdGVOYXRpdmVDaGFuZ2UoewogICAgICBwYXRocywKICAgICAgdmVyaWZpY2F0aW9uUHJvdG9jb2w6ICdsZWdhY3ktdjEnLAogICAgICBuYW1lOiAnY29tcGV0aW5nLWNoYW5nZScsCiAgICAgIGxhbmd1YWdlOiAnZW4nLAogICAgfSk7CiAgICBjb25zdCBzb3VyY2VFdmlkZW5jZSA9IHBhdGguam9pbihuYXRpdmVDaGFuZ2VSdW50aW1lRGlyKHBhdGhzLCBzdGF0ZS5uYW1lKSwgJ2V2aWRlbmNlJyk7CiAgICBjb25zdCB0YXJnZXRFdmlkZW5jZSA9IHBhdGguam9pbihuYXRpdmVDaGFuZ2VSdW50aW1lRGlyKHBhdGhzLCBjb21wZXRpbmcubmFtZSksICdldmlkZW5jZScpOwogICAgYXdhaXQgZnMuY3Aoc291cmNlRXZpZGVuY2UsIHRhcmdldEV2aWRlbmNlLCB7IHJlY3Vyc2l2ZTogdHJ1ZSB9KTsKICAgIGF3YWl0IHdyaXRlTmF0aXZlQ2hhbmdlKHBhdGhzLCB7CiAgICAgIC4uLmNvbXBldGluZywKICAgICAgcGhhc2U6ICdidWlsZCcsCiAgICAgIGFwcHJvdmFsOiAnaW1wbGljaXQnLAogICAgICBpbXBsZW1lbnRhdGlvbl9zY29wZTogc3RhdGUuaW1wbGVtZW50YXRpb25fc2NvcGUsCiAgICB9KTsKCiAgICBjb25zdCBwcmV2aWV3ID0gYXdhaXQgaW5zcGVjdE5hdGl2ZUFyY2hpdmVQcmVmbGlnaHQoewogICAgICBwYXRocywKICAgICAgbmFtZTogc3RhdGUubmFtZSwKICAgICAgbm93OiBuZXcgRGF0ZSgnMjAyNi0wNy0xN1QwMzowMDowMC4wMDBaJyksCiAgICB9KTsKCiAgICBleHBlY3QocHJldmlldy5yZWFkeSkudG9CZShmYWxzZSk7CiAgICBleHBlY3QocHJldmlldy5maW5kaW5nQ29kZXMpLnRvQ29udGFpbignbmF0aXZlLWNoYW5nZS1jb25mbGljdCcpOwogIH0pOwoKICBpdCgnaW5jbHVkZXMgdGhlIGN1cnJlbnQgd29ya3NwYWNlIGZpbmlzaGluZyBjb250cmFjdCB3aGVuIHByZXNlbnQnLCBhc3luYyAoKSA9PiB7CiAgICBhd2FpdCB3cml0ZU5hdGl2ZVdvcmtzcGFjZUlkZW50aXR5KHsKICAgICAgcGF0aHMsCiAgICAgIG5hbWU6IHN0YXRlLm5hbWUsCiAgICAgIHJldmlzaW9uOiBzdGF0ZS5yZXZpc2lvbiwKICAgICAgYmluZGluZzogeyBpc29sYXRpb246ICdjdXJyZW50JywgY2hhbmdlQnJhbmNoOiBudWxsLCB0YXJnZXRCcmFuY2g6IG51bGwgfSwKICAgIH0pOwoKICAgIGNvbnN0IHByZXZpZXcgPSBhd2FpdCBpbnNwZWN0TmF0aXZlQXJjaGl2ZVByZWZsaWdodCh7CiAgICAgIHBhdGhzLAogICAgICBuYW1lOiBzdGF0ZS5uYW1lLAogICAgICBub3c6IG5ldyBEYXRlKCcyMDI2LTA3LTE3VDAzOjAwOjAwLjAwMFonKSwKICAgIH0pOwoKICAgIGV4cGVjdChwcmV2aWV3LndvcmtzcGFjZSkudG9NYXRjaE9iamVjdCh7CiAgICAgIHNjaGVtYTogJ2NvbWV0Lm5hdGl2ZS53b3Jrc3BhY2UudjMnLAogICAgICBpc29sYXRpb246ICdjdXJyZW50JywKICAgICAgZmluaXNoOiBudWxsLAogICAgfSk7CiAgfSk7Cn0pOwo="
+    },
+    {
+      "file": "test/domains/comet-native/native-archive-preflight.test.ts",
+      "bytesBase64": "aW1wb3J0IHsgZGVzY3JpYmUsIGV4cGVjdCwgaXQgfSBmcm9tICd2aXRlc3QnOwoKaW1wb3J0IHsKICBidWlsZE5hdGl2ZUFyY2hpdmVQcmVmbGlnaHQsCiAgdHlwZSBOYXRpdmVBcmNoaXZlUHJlZmxpZ2h0SW5wdXQsCn0gZnJvbSAnLi4vLi4vLi4vZG9tYWlucy9jb21ldC1uYXRpdmUvbmF0aXZlLWFyY2hpdmUtcHJlZmxpZ2h0LmpzJzsKCmNvbnN0IEEgPSAnYScucmVwZWF0KDY0KTsKY29uc3QgQiA9ICdiJy5yZXBlYXQoNjQpOwpjb25zdCBDID0gJ2MnLnJlcGVhdCg2NCk7CmNvbnN0IEQgPSAnZCcucmVwZWF0KDY0KTsKY29uc3QgRSA9ICdlJy5yZXBlYXQoNjQpOwoKZnVuY3Rpb24gaW5wdXQoKTogTmF0aXZlQXJjaGl2ZVByZWZsaWdodElucHV0IHsKICByZXR1cm4gewogICAgY2hhbmdlOiAnc2VjdXJlLWxvZ2luJywKICAgIGFyY2hpdmVDb25maXJtYXRpb246ICdhdXRvbWF0aWMnLAogICAgc3RhdGVTY2hlbWE6ICdjb21ldC5uYXRpdmUudjMnLAogICAgcmV2aXNpb246IDUsCiAgICBwaGFzZTogJ2FyY2hpdmUnLAogICAgYXJjaGl2ZWQ6IGZhbHNlLAogICAgcGVuZGluZ0pvdXJuYWw6IGZhbHNlLAogICAgdGFyZ2V0UmVmOiAnYXJjaGl2ZS8yMDI2LTA3LTE3LXNlY3VyZS1sb2dpbicsCiAgICB0YXJnZXRFeGlzdHM6IGZhbHNlLAogICAgc3BlY3M6IFsKICAgICAgewogICAgICAgIGNhcGFiaWxpdHk6ICdhdXRoZW50aWNhdGlvbicsCiAgICAgICAgb3BlcmF0aW9uOiAncmVwbGFjZScsCiAgICAgICAgZXhwZWN0ZWRCYXNlSGFzaDogQSwKICAgICAgICBhY3R1YWxCYXNlSGFzaDogQSwKICAgICAgICBwcm9wb3NlZEhhc2g6IEIsCiAgICAgIH0sCiAgICBdLAogICAgZXZpZGVuY2U6IHsKICAgICAgcmVzdWx0OiAncGFzcycsCiAgICAgIGZyZXNobmVzczogJ2NvbXBsZXRlJywKICAgICAgY29udHJhY3RIYXNoOiBBLAogICAgICBhY2NlcHRhbmNlSGFzaDogQiwKICAgICAgaW1wbGVtZW50YXRpb25TY29wZUhhc2g6IEMsCiAgICAgIHJlcG9ydEhhc2g6IEQsCiAgICAgIGVudmVsb3BlSGFzaDogRSwKICAgICAgcGFydGlhbEFsbG93YW5jZUhhc2g6IG51bGwsCiAgICAgIHNraXBwZWRBY2NlcHRhbmNlQ291bnQ6IDAsCiAgICB9LAogIH07Cn0KCmRlc2NyaWJlKCdOYXRpdmUgQXJjaGl2ZSBwcmVmbGlnaHQnLCAoKSA9PiB7CiAgaXQoJ2lzIGRldGVybWluaXN0aWMgYWNyb3NzIHNwZWMgb3JkZXIgYW5kIHByZXZpZXdzIHRoZSBleGFjdCBjb250ZW50LWJvdW5kIG9wZXJhdGlvbnMnLCAoKSA9PiB7CiAgICBjb25zdCBvcmlnaW5hbCA9IGlucHV0KCk7CiAgICBvcmlnaW5hbC5zcGVjcyA9IFsKICAgICAgLi4ub3JpZ2luYWwuc3BlY3MsCiAgICAgIHsKICAgICAgICBjYXBhYmlsaXR5OiAnc2Vzc2lvbnMnLAogICAgICAgIG9wZXJhdGlvbjogJ2NyZWF0ZScsCiAgICAgICAgZXhwZWN0ZWRCYXNlSGFzaDogbnVsbCwKICAgICAgICBhY3R1YWxCYXNlSGFzaDogbnVsbCwKICAgICAgICBwcm9wb3NlZEhhc2g6IEMsCiAgICAgIH0sCiAgICBdOwogICAgY29uc3QgZmlyc3QgPSBidWlsZE5hdGl2ZUFyY2hpdmVQcmVmbGlnaHQob3JpZ2luYWwpOwogICAgY29uc3QgcmVvcmRlcmVkID0gYnVpbGROYXRpdmVBcmNoaXZlUHJlZmxpZ2h0KHsKICAgICAgLi4ub3JpZ2luYWwsCiAgICAgIHNwZWNzOiBbLi4ub3JpZ2luYWwuc3BlY3NdLnJldmVyc2UoKSwKICAgIH0pOwoKICAgIGV4cGVjdChyZW9yZGVyZWQpLnRvRXF1YWwoZmlyc3QpOwogICAgZXhwZWN0KGZpcnN0KS50b01hdGNoT2JqZWN0KHsgcmVhZHk6IHRydWUsIG9wZXJhdGlvbkNvdW50OiAyLCBmaW5kaW5nQ29kZXM6IFtdIH0pOwogICAgZXhwZWN0KGZpcnN0Lm9wZXJhdGlvbnMubWFwKCh7IGNhcGFiaWxpdHkgfSkgPT4gY2FwYWJpbGl0eSkpLnRvRXF1YWwoWwogICAgICAnYXV0aGVudGljYXRpb24nLAogICAgICAnc2Vzc2lvbnMnLAogICAgXSk7CiAgICBleHBlY3QoZmlyc3QucHJlZmxpZ2h0SGFzaCkudG9NYXRjaCgvXlthLWYwLTldezY0fSQvdSk7CiAgfSk7CgogIGl0LmVhY2goWwogICAgWydyZXZpc2lvbicsICh2YWx1ZTogTmF0aXZlQXJjaGl2ZVByZWZsaWdodElucHV0KSA9PiAodmFsdWUucmV2aXNpb24gKz0gMSldLAogICAgWwogICAgICAnYXJjaGl2ZSBjb25maXJtYXRpb24nLAogICAgICAodmFsdWU6IE5hdGl2ZUFyY2hpdmVQcmVmbGlnaHRJbnB1dCkgPT4gKHZhbHVlLmFyY2hpdmVDb25maXJtYXRpb24gPSAncmVxdWlyZWQnKSwKICAgIF0sCiAgICBbJ3RhcmdldCcsICh2YWx1ZTogTmF0aXZlQXJjaGl2ZVByZWZsaWdodElucHV0KSA9PiAodmFsdWUudGFyZ2V0UmVmICs9ICctbmV4dCcpXSwKICAgIFsndGFyZ2V0IGV4aXN0ZW5jZScsICh2YWx1ZTogTmF0aXZlQXJjaGl2ZVByZWZsaWdodElucHV0KSA9PiAodmFsdWUudGFyZ2V0RXhpc3RzID0gdHJ1ZSldLAogICAgWydiYXNlJywgKHZhbHVlOiBOYXRpdmVBcmNoaXZlUHJlZmxpZ2h0SW5wdXQpID0+ICh2YWx1ZS5zcGVjc1swXS5hY3R1YWxCYXNlSGFzaCA9IEMpXSwKICAgIFsncHJvcG9zYWwnLCAodmFsdWU6IE5hdGl2ZUFyY2hpdmVQcmVmbGlnaHRJbnB1dCkgPT4gKHZhbHVlLnNwZWNzWzBdLnByb3Bvc2VkSGFzaCA9IEMpXSwKICAgIFsnY29udHJhY3QnLCAodmFsdWU6IE5hdGl2ZUFyY2hpdmVQcmVmbGlnaHRJbnB1dCkgPT4gKHZhbHVlLmV2aWRlbmNlLmNvbnRyYWN0SGFzaCA9IEMpXSwKICAgIFsnc2NvcGUnLCAodmFsdWU6IE5hdGl2ZUFyY2hpdmVQcmVmbGlnaHRJbnB1dCkgPT4gKHZhbHVlLmV2aWRlbmNlLmltcGxlbWVudGF0aW9uU2NvcGVIYXNoID0gRCldLAogICAgWydyZXBvcnQnLCAodmFsdWU6IE5hdGl2ZUFyY2hpdmVQcmVmbGlnaHRJbnB1dCkgPT4gKHZhbHVlLmV2aWRlbmNlLnJlcG9ydEhhc2ggPSBFKV0sCiAgICBbJ2VudmVsb3BlJywgKHZhbHVlOiBOYXRpdmVBcmNoaXZlUHJlZmxpZ2h0SW5wdXQpID0+ICh2YWx1ZS5ldmlkZW5jZS5lbnZlbG9wZUhhc2ggPSBBKV0sCiAgICBbCiAgICAgICd3b3Jrc3BhY2UgZmluaXNoJywKICAgICAgKHZhbHVlOiBOYXRpdmVBcmNoaXZlUHJlZmxpZ2h0SW5wdXQpID0+IHsKICAgICAgICB2YWx1ZS53b3Jrc3BhY2UgPSB7CiAgICAgICAgICBzY2hlbWE6ICdjb21ldC5uYXRpdmUud29ya3NwYWNlLnYzJywKICAgICAgICAgIGlzb2xhdGlvbjogJ2JyYW5jaCcsCiAgICAgICAgICBjaGFuZ2VCcmFuY2g6ICdjb21ldC9zZWN1cmUtbG9naW4nLAogICAgICAgICAgdGFyZ2V0QnJhbmNoOiAnbWFpbicsCiAgICAgICAgICBmaW5pc2g6ICdtZXJnZScsCiAgICAgICAgfTsKICAgICAgfSwKICAgIF0sCiAgXSkoJ2NoYW5nZXMgdGhlIHByZWZsaWdodCBoYXNoIHdoZW4gJXMgY2hhbmdlcycsIChfbGFiZWwsIG11dGF0ZSkgPT4gewogICAgY29uc3QgYmFzZWxpbmUgPSBidWlsZE5hdGl2ZUFyY2hpdmVQcmVmbGlnaHQoaW5wdXQoKSk7CiAgICBjb25zdCBjaGFuZ2VkID0gaW5wdXQoKTsKICAgIG11dGF0ZShjaGFuZ2VkKTsKICAgIGV4cGVjdChidWlsZE5hdGl2ZUFyY2hpdmVQcmVmbGlnaHQoY2hhbmdlZCkucHJlZmxpZ2h0SGFzaCkubm90LnRvQmUoYmFzZWxpbmUucHJlZmxpZ2h0SGFzaCk7CiAgfSk7CgogIGl0KCdibG9ja3Mgc3RhbGUgZXZpZGVuY2UsIGNhbm9uaWNhbCBkcmlmdCwgYSBwZW5kaW5nIGpvdXJuYWwsIG9yIGFuIGV4aXN0aW5nIHRhcmdldCcsICgpID0+IHsKICAgIGNvbnN0IGNoYW5nZWQgPSBpbnB1dCgpOwogICAgY2hhbmdlZC5wZW5kaW5nSm91cm5hbCA9IHRydWU7CiAgICBjaGFuZ2VkLnRhcmdldEV4aXN0cyA9IHRydWU7CiAgICBjaGFuZ2VkLnNwZWNzWzBdLmFjdHVhbEJhc2VIYXNoID0gQzsKICAgIGNoYW5nZWQuZXZpZGVuY2UuZnJlc2huZXNzID0gJ3N0YWxlJzsKICAgIGNvbnN0IHJlc3VsdCA9IGJ1aWxkTmF0aXZlQXJjaGl2ZVByZWZsaWdodChjaGFuZ2VkKTsKCiAgICBleHBlY3QocmVzdWx0LnJlYWR5KS50b0JlKGZhbHNlKTsKICAgIGV4cGVjdChyZXN1bHQuZmluZGluZ0NvZGVzKS50b0VxdWFsKFsKICAgICAgJ2FyY2hpdmUtdGFyZ2V0LWV4aXN0cycsCiAgICAgICdwZW5kaW5nLWpvdXJuYWwnLAogICAgICAnc3BlYy1iYXNlLWNvbmZsaWN0JywKICAgICAgJ3ZlcmlmaWNhdGlvbi1ldmlkZW5jZS1zdGFsZScsCiAgICBdKTsKICB9KTsKCiAgaXQoJ2FjY2VwdHMgcGFydGlhbCBldmlkZW5jZSBvbmx5IHdoZW4gaXQgYmluZHMgYW4gZXhhY3QgYWxsb3dhbmNlIGhhc2gnLCAoKSA9PiB7CiAgICBjb25zdCBwYXJ0aWFsID0gaW5wdXQoKTsKICAgIHBhcnRpYWwuZXZpZGVuY2UuZnJlc2huZXNzID0gJ3BhcnRpYWwnOwogICAgcGFydGlhbC5ldmlkZW5jZS5wYXJ0aWFsQWxsb3dhbmNlSGFzaCA9IEE7CiAgICBleHBlY3QoYnVpbGROYXRpdmVBcmNoaXZlUHJlZmxpZ2h0KHBhcnRpYWwpKS50b01hdGNoT2JqZWN0KHsKICAgICAgcmVhZHk6IHRydWUsCiAgICAgIGV2aWRlbmNlRnJlc2huZXNzOiAncGFydGlhbCcsCiAgICB9KTsKCiAgICBwYXJ0aWFsLmV2aWRlbmNlLnBhcnRpYWxBbGxvd2FuY2VIYXNoID0gbnVsbDsKICAgIGV4cGVjdCgoKSA9PiBidWlsZE5hdGl2ZUFyY2hpdmVQcmVmbGlnaHQocGFydGlhbCkpLnRvVGhyb3coJ2FsbG93YW5jZSBzdGF0ZScpOwogIH0pOwoKICBpdCgnYmxvY2tzIEFyY2hpdmUgd2hlbiB0aGUgYWNjZXB0ZWQgZXZpZGVuY2Ugc3RpbGwgY29udGFpbnMgYSBza2lwcGVkIGNyaXRlcmlvbicsICgpID0+IHsKICAgIGNvbnN0IHNraXBwZWQgPSBpbnB1dCgpOwogICAgc2tpcHBlZC5ldmlkZW5jZS5za2lwcGVkQWNjZXB0YW5jZUNvdW50ID0gMTsKCiAgICBleHBlY3QoYnVpbGROYXRpdmVBcmNoaXZlUHJlZmxpZ2h0KHNraXBwZWQpKS50b01hdGNoT2JqZWN0KHsKICAgICAgcmVhZHk6IGZhbHNlLAogICAgICBmaW5kaW5nQ29kZXM6IFsndmVyaWZpY2F0aW9uLWFjY2VwdGFuY2Utc2tpcHBlZCddLAogICAgfSk7CiAgfSk7CgogIGl0KCdyZWplY3RzIHVuc2FmZSB0YXJnZXQgcmVmcyBhbmQgbWFsZm9ybWVkIG9wZXJhdGlvbi9iYXNlIGNvbWJpbmF0aW9ucycsICgpID0+IHsKICAgIGV4cGVjdCgoKSA9PgogICAgICBidWlsZE5hdGl2ZUFyY2hpdmVQcmVmbGlnaHQoeyAuLi5pbnB1dCgpLCB0YXJnZXRSZWY6ICdDOi9hcmNoaXZlL2VzY2FwZScgfSksCiAgICApLnRvVGhyb3coJ05hdGl2ZS1yZWxhdGl2ZScpOwogICAgY29uc3QgaW52YWxpZCA9IGlucHV0KCk7CiAgICBpbnZhbGlkLnNwZWNzWzBdID0gewogICAgICBjYXBhYmlsaXR5OiAnYXV0aGVudGljYXRpb24nLAogICAgICBvcGVyYXRpb246ICdjcmVhdGUnLAogICAgICBleHBlY3RlZEJhc2VIYXNoOiBBLAogICAgICBhY3R1YWxCYXNlSGFzaDogbnVsbCwKICAgICAgcHJvcG9zZWRIYXNoOiBCLAogICAgfTsKICAgIGV4cGVjdCgoKSA9PiBidWlsZE5hdGl2ZUFyY2hpdmVQcmVmbGlnaHQoaW52YWxpZCkpLnRvVGhyb3coJ2V4cGVjdCBubyBjYW5vbmljYWwgYmFzZScpOwogIH0pOwp9KTsK"
+    },
+    {
+      "file": "test/domains/comet-native/native-conflict-inspection.test.ts",
+      "bytesBase64": "aW1wb3J0IHsgcHJvbWlzZXMgYXMgZnMgfSBmcm9tICdub2RlOmZzJzsKaW1wb3J0IG9zIGZyb20gJ25vZGU6b3MnOwppbXBvcnQgcGF0aCBmcm9tICdub2RlOnBhdGgnOwppbXBvcnQgeyBhZnRlckVhY2gsIGJlZm9yZUVhY2gsIGRlc2NyaWJlLCBleHBlY3QsIGl0IH0gZnJvbSAndml0ZXN0JzsKCmltcG9ydCB7IHByZXBhcmVOYXRpdmVCdWlsZEV2aWRlbmNlIH0gZnJvbSAnLi4vLi4vLi4vZG9tYWlucy9jb21ldC1uYXRpdmUvbmF0aXZlLWJ1aWxkLWV2aWRlbmNlLmpzJzsKaW1wb3J0IHsKICBjcmVhdGVOYXRpdmVDaGFuZ2UsCiAgbmF0aXZlQ2hhbmdlRGlyLAogIHdyaXRlTmF0aXZlQ2hhbmdlLAp9IGZyb20gJy4uLy4uLy4uL2RvbWFpbnMvY29tZXQtbmF0aXZlL25hdGl2ZS1jaGFuZ2UuanMnOwppbXBvcnQgewogIGluc3BlY3ROYXRpdmVDaGFuZ2VDb25mbGljdHMsCiAgaW5zcGVjdE5hdGl2ZUNvbmZsaWN0UmFkYXIsCn0gZnJvbSAnLi4vLi4vLi4vZG9tYWlucy9jb21ldC1uYXRpdmUvbmF0aXZlLWNvbmZsaWN0LWluc3BlY3Rpb24uanMnOwppbXBvcnQgeyBpbnNwZWN0TmF0aXZlU3RhdHVzIH0gZnJvbSAnLi4vLi4vLi4vZG9tYWlucy9jb21ldC1uYXRpdmUvbmF0aXZlLWRpYWdub3N0aWNzLmpzJzsKaW1wb3J0IHsgbmF0aXZlUHJvamVjdFBhdGhzIH0gZnJvbSAnLi4vLi4vLi4vZG9tYWlucy9jb21ldC1uYXRpdmUvbmF0aXZlLXBhdGhzLmpzJzsKaW1wb3J0IHR5cGUgewogIE5hdGl2ZUNoYW5nZVN0YXRlLAogIE5hdGl2ZVByb2plY3RQYXRocywKfSBmcm9tICcuLi8uLi8uLi9kb21haW5zL2NvbWV0LW5hdGl2ZS9uYXRpdmUtdHlwZXMuanMnOwoKY29uc3QgYnJpZWYgPSBgIyBPdXRjb21lClNoaXAgdGhlIHNoYXJlZCBiZWhhdmlvci4KIyBTY29wZQpVcGRhdGUgdGhlIHNoYXJlZCBpbXBsZW1lbnRhdGlvbi4KIyBOb24tZ29hbHMKTm8gdW5yZWxhdGVkIHJlZmFjdG9yLgojIEFjY2VwdGFuY2UgZXhhbXBsZXMKLSBUaGUgc2hhcmVkIGJlaGF2aW9yIHdvcmtzLgojIENvbnN0cmFpbnRzIGFuZCBpbnZhcmlhbnRzCktlZXAgY2FsbGVycyBzdGFibGUuCiMgRGVjaXNpb25zClVzZSB0aGUgZXhpc3RpbmcgbW9kdWxlLgojIE9wZW4gcXVlc3Rpb25zCk5vbmUuCiMgVmVyaWZpY2F0aW9uIGV4cGVjdGF0aW9ucwpSdW4gdGhlIGZvY3VzZWQgY2hlY2suCmA7CgpkZXNjcmliZSgnTmF0aXZlIGNvbmZsaWN0IHJhZGFyIGNvbGxlY3Rpb24nLCAoKSA9PiB7CiAgbGV0IHByb2plY3RSb290OiBzdHJpbmc7CiAgbGV0IHBhdGhzOiBOYXRpdmVQcm9qZWN0UGF0aHM7CgogIGJlZm9yZUVhY2goYXN5bmMgKCkgPT4gewogICAgcHJvamVjdFJvb3QgPSBhd2FpdCBmcy5ta2R0ZW1wKHBhdGguam9pbihvcy50bXBkaXIoKSwgJ2NvbWV0LW5hdGl2ZS1jb25mbGljdC1pbnNwZWN0aW9uLScpKTsKICAgIGF3YWl0IGZzLm1rZGlyKHBhdGguam9pbihwcm9qZWN0Um9vdCwgJ3NyYycpLCB7IHJlY3Vyc2l2ZTogdHJ1ZSB9KTsKICAgIGF3YWl0IGZzLndyaXRlRmlsZShwYXRoLmpvaW4ocHJvamVjdFJvb3QsICdzcmMnLCAnc2hhcmVkLnRzJyksICdleHBvcnQgY29uc3QgdmFsdWUgPSAxO1xuJyk7CiAgICBwYXRocyA9IGF3YWl0IG5hdGl2ZVByb2plY3RQYXRocyhwcm9qZWN0Um9vdCwgJy4nKTsKICB9KTsKCiAgYWZ0ZXJFYWNoKGFzeW5jICgpID0+IHsKICAgIGF3YWl0IGZzLnJtKHByb2plY3RSb290LCB7IHJlY3Vyc2l2ZTogdHJ1ZSwgZm9yY2U6IHRydWUgfSk7CiAgfSk7CgogIGFzeW5jIGZ1bmN0aW9uIGNoYW5nZShuYW1lOiBzdHJpbmcpOiBQcm9taXNlPE5hdGl2ZUNoYW5nZVN0YXRlPiB7CiAgICBjb25zdCBjcmVhdGVkID0gYXdhaXQgY3JlYXRlTmF0aXZlQ2hhbmdlKHsKICAgICAgcGF0aHMsCiAgICAgIG5hbWUsCiAgICAgIGxhbmd1YWdlOiAnZW4nLAogICAgICB2ZXJpZmljYXRpb25Qcm90b2NvbDogJ2xlZ2FjeS12MScsCiAgICB9KTsKICAgIGF3YWl0IGZzLndyaXRlRmlsZShwYXRoLmpvaW4obmF0aXZlQ2hhbmdlRGlyKHBhdGhzLCBuYW1lKSwgJ2JyaWVmLm1kJyksIGJyaWVmKTsKICAgIGF3YWl0IGZzLm1rZGlyKHBhdGguam9pbihuYXRpdmVDaGFuZ2VEaXIocGF0aHMsIG5hbWUpLCAnc3BlY3MnKSwgeyByZWN1cnNpdmU6IHRydWUgfSk7CiAgICBhd2FpdCBmcy53cml0ZUZpbGUoCiAgICAgIHBhdGguam9pbihuYXRpdmVDaGFuZ2VEaXIocGF0aHMsIG5hbWUpLCAnc3BlY3MnLCAnc2hhcmVkLWNhcGFiaWxpdHkubWQnKSwKICAgICAgJyMgU2hhcmVkIGNhcGFiaWxpdHlcbicsCiAgICApOwogICAgY29uc3Qgc3RhdGU6IE5hdGl2ZUNoYW5nZVN0YXRlID0gewogICAgICAuLi5jcmVhdGVkLAogICAgICBwaGFzZTogJ2J1aWxkJywKICAgICAgYXBwcm92YWw6ICdpbXBsaWNpdCcsCiAgICAgIHNwZWNfY2hhbmdlczogWwogICAgICAgIHsKICAgICAgICAgIGNhcGFiaWxpdHk6ICdzaGFyZWQtY2FwYWJpbGl0eScsCiAgICAgICAgICBvcGVyYXRpb246ICdyZXBsYWNlJywKICAgICAgICAgIGJhc2VfaGFzaDogJ2EnLnJlcGVhdCg2NCksCiAgICAgICAgICBzb3VyY2U6ICdzcGVjcy9zaGFyZWQtY2FwYWJpbGl0eS5tZCcsCiAgICAgICAgfSwKICAgICAgXSwKICAgIH07CiAgICBhd2FpdCB3cml0ZU5hdGl2ZUNoYW5nZShwYXRocywgc3RhdGUpOwogICAgcmV0dXJuIHN0YXRlOwogIH0KCiAgaXQoJ2NvbGxlY3RzIGN1cnJlbnQgc3BlYyBhbmQgY29udGVudC1hZGRyZXNzZWQgYXJ0aWZhY3Qgb3ZlcmxhcCBmcm9tIG9uZSBOYXRpdmUgcm9vdCcsIGFzeW5jICgpID0+IHsKICAgIGNvbnN0IGFscGhhID0gYXdhaXQgY2hhbmdlKCdhbHBoYS1jaGFuZ2UnKTsKICAgIGNvbnN0IGJldGEgPSBhd2FpdCBjaGFuZ2UoJ2JldGEtY2hhbmdlJyk7CiAgICBhd2FpdCBmcy53cml0ZUZpbGUocGF0aC5qb2luKHByb2plY3RSb290LCAnc3JjJywgJ3NoYXJlZC50cycpLCAnZXhwb3J0IGNvbnN0IHZhbHVlID0gMjtcbicpOwogICAgZm9yIChjb25zdCBzdGF0ZSBvZiBbYWxwaGEsIGJldGFdKSB7CiAgICAgIGNvbnN0IHByZXBhcmVkID0gYXdhaXQgcHJlcGFyZU5hdGl2ZUJ1aWxkRXZpZGVuY2UoewogICAgICAgIHBhdGhzLAogICAgICAgIHN0YXRlLAogICAgICAgIGFydGlmYWN0UmVmczogWydzcmMvc2hhcmVkLnRzJ10sCiAgICAgIH0pOwogICAgICBhd2FpdCB3cml0ZU5hdGl2ZUNoYW5nZShwYXRocywgewogICAgICAgIC4uLnN0YXRlLAogICAgICAgIGltcGxlbWVudGF0aW9uX3Njb3BlOiBwcmVwYXJlZC5zY29wZVJlZiBhcyBOYXRpdmVDaGFuZ2VTdGF0ZVsnaW1wbGVtZW50YXRpb25fc2NvcGUnXSwKICAgICAgfSk7CiAgICB9CgogICAgY29uc3QgcmFkYXIgPSBhd2FpdCBpbnNwZWN0TmF0aXZlQ29uZmxpY3RSYWRhcihwYXRocyk7CgogICAgZXhwZWN0KHJhZGFyKS50b01hdGNoT2JqZWN0KHsKICAgICAgY2hhbmdlQ291bnQ6IDIsCiAgICAgIHJlbGF0aW9uc2hpcENvdW50OiAxLAogICAgICBjb3VudHM6IHsgZGVmaW5pdGVDb25mbGljdDogMSB9LAogICAgICByZWxhdGlvbnNoaXBzOiBbCiAgICAgICAgewogICAgICAgICAgbGVmdDogJ2FscGhhLWNoYW5nZScsCiAgICAgICAgICByaWdodDogJ2JldGEtY2hhbmdlJywKICAgICAgICAgIGNsYXNzaWZpY2F0aW9uOiAnZGVmaW5pdGUtY29uZmxpY3QnLAogICAgICAgICAgc2lnbmFsQ291bnQ6IDIsCiAgICAgICAgfSwKICAgICAgXSwKICAgIH0pOwogICAgYXdhaXQgZXhwZWN0KGluc3BlY3ROYXRpdmVDaGFuZ2VDb25mbGljdHMocGF0aHMsICdhbHBoYS1jaGFuZ2UnKSkucmVzb2x2ZXMudG9FcXVhbCh7CiAgICAgIGRlZmluaXRlQ29uZmxpY3RDb3VudDogMSwKICAgICAgcG9zc2libGVPdmVybGFwQ291bnQ6IDAsCiAgICAgIGZpbmRpbmdDb2RlczogWyduYXRpdmUtY2hhbmdlLWNvbmZsaWN0J10sCiAgICB9KTsKICAgIGNvbnN0IHN0YXR1cyA9IGF3YWl0IGluc3BlY3ROYXRpdmVTdGF0dXMocGF0aHMsICdhbHBoYS1jaGFuZ2UnLCB7IGRldGFpbHM6IHRydWUgfSk7CiAgICBleHBlY3Qoc3RhdHVzKS50b01hdGNoT2JqZWN0KHsKICAgICAgbWlncmF0aW9uUmVxdWlyZWQ6IHRydWUsCiAgICAgIGluc3BlY3Rpb246IHsgY29kZXM6IFsnbGVnYWN5LWNvbnRlbnQtcHJvb2YtcmVtb3ZlZCddIH0sCiAgICB9KTsKICB9KTsKCiAgaXQoJ2ZhaWxzIGNsb3NlZCB3aGVuIGEgdmlzaWJsZSBjaGFuZ2UgcG9pbnRzIGF0IGludmFsaWQgc2NvcGUgZXZpZGVuY2UnLCBhc3luYyAoKSA9PiB7CiAgICBjb25zdCBzdGF0ZSA9IGF3YWl0IGNoYW5nZSgnaW52YWxpZC1zY29wZScpOwogICAgYXdhaXQgd3JpdGVOYXRpdmVDaGFuZ2UocGF0aHMsIHsKICAgICAgLi4uc3RhdGUsCiAgICAgIGltcGxlbWVudGF0aW9uX3Njb3BlOgogICAgICAgIGBydW50aW1lL2V2aWRlbmNlL3Njb3Blcy8keydmJy5yZXBlYXQoNjQpfS5qc29uYCBhcyBOYXRpdmVDaGFuZ2VTdGF0ZVsnaW1wbGVtZW50YXRpb25fc2NvcGUnXSwKICAgIH0pOwoKICAgIGF3YWl0IGV4cGVjdChpbnNwZWN0TmF0aXZlQ29uZmxpY3RSYWRhcihwYXRocykpLnJlamVjdHMudG9UaHJvdygpOwogIH0pOwoKICBpdCgnZG9lcyBub3QgdHJhdmVyc2UgYSBzeW1saW5rZWQgY2hhbmdlIGRpcmVjdG9yeScsIGFzeW5jICgpID0+IHsKICAgIGF3YWl0IGNoYW5nZSgncmVhbC1jaGFuZ2UnKTsKICAgIGNvbnN0IG91dHNpZGUgPSBhd2FpdCBmcy5ta2R0ZW1wKHBhdGguam9pbihvcy50bXBkaXIoKSwgJ2NvbWV0LW5hdGl2ZS1jb25mbGljdC1vdXRzaWRlLScpKTsKICAgIHRyeSB7CiAgICAgIGF3YWl0IGZzLnN5bWxpbmsob3V0c2lkZSwgcGF0aC5qb2luKHBhdGhzLmNoYW5nZXNEaXIsICdsaW5rZWQtY2hhbmdlJyksICdqdW5jdGlvbicpOwogICAgICBjb25zdCByYWRhciA9IGF3YWl0IGluc3BlY3ROYXRpdmVDb25mbGljdFJhZGFyKHBhdGhzKTsKICAgICAgZXhwZWN0KHJhZGFyLmNoYW5nZUNvdW50KS50b0JlKDEpOwogICAgfSBmaW5hbGx5IHsKICAgICAgYXdhaXQgZnMucm0ob3V0c2lkZSwgeyByZWN1cnNpdmU6IHRydWUsIGZvcmNlOiB0cnVlIH0pOwogICAgfQogIH0pOwp9KTsK"
+    },
+    {
+      "file": "test/domains/comet-native/native-spec-rebase.test.ts",
+      "bytesBase64": "aW1wb3J0IHsgcHJvbWlzZXMgYXMgZnMgfSBmcm9tICdmcyc7CmltcG9ydCBvcyBmcm9tICdvcyc7CmltcG9ydCBwYXRoIGZyb20gJ3BhdGgnOwppbXBvcnQgeyBhZnRlckVhY2gsIGJlZm9yZUVhY2gsIGRlc2NyaWJlLCBleHBlY3QsIGl0IH0gZnJvbSAndml0ZXN0JzsKCmltcG9ydCB7IGFyY2hpdmVOYXRpdmVDaGFuZ2UgfSBmcm9tICcuLi8uLi8uLi9kb21haW5zL2NvbWV0LW5hdGl2ZS9uYXRpdmUtYXJjaGl2ZS5qcyc7CmltcG9ydCB7IGluc3BlY3ROYXRpdmVBcmNoaXZlUHJlZmxpZ2h0IH0gZnJvbSAnLi4vLi4vLi4vZG9tYWlucy9jb21ldC1uYXRpdmUvbmF0aXZlLWFyY2hpdmUtaW5zcGVjdGlvbi5qcyc7CmltcG9ydCB7CiAgY3JlYXRlTmF0aXZlQ2hhbmdlLAogIG5hdGl2ZUNoYW5nZURpciwKfSBmcm9tICcuLi8uLi8uLi9kb21haW5zL2NvbWV0LW5hdGl2ZS9uYXRpdmUtY2hhbmdlLmpzJzsKaW1wb3J0IHsgc2hhMjU2RmlsZSB9IGZyb20gJy4uLy4uLy4uL2RvbWFpbnMvY29tZXQtbmF0aXZlL25hdGl2ZS1oYXNoLmpzJzsKaW1wb3J0IHsgbmF0aXZlUHJvamVjdFBhdGhzIH0gZnJvbSAnLi4vLi4vLi4vZG9tYWlucy9jb21ldC1uYXRpdmUvbmF0aXZlLXBhdGhzLmpzJzsKaW1wb3J0IHsKICBtYXJrTmF0aXZlU3BlY1JlbW92YWwsCiAgcmViYXNlTmF0aXZlU3BlY0NoYW5nZXMsCn0gZnJvbSAnLi4vLi4vLi4vZG9tYWlucy9jb21ldC1uYXRpdmUvbmF0aXZlLXNwZWNzLmpzJzsKaW1wb3J0IHR5cGUgeyBOYXRpdmVQcm9qZWN0UGF0aHMgfSBmcm9tICcuLi8uLi8uLi9kb21haW5zL2NvbWV0LW5hdGl2ZS9uYXRpdmUtdHlwZXMuanMnOwppbXBvcnQgeyBuYXRpdmVWZXJpZmljYXRpb25GaXh0dXJlUmVwb3J0IH0gZnJvbSAnLi4vLi4vaGVscGVycy9uYXRpdmUtdmVyaWZpY2F0aW9uLmpzJzsKaW1wb3J0IHsgcmVhZHlOYXRpdmVBcmNoaXZlUHJlZmxpZ2h0IH0gZnJvbSAnLi4vLi4vaGVscGVycy9uYXRpdmUtYXJjaGl2ZS5qcyc7CmltcG9ydCB7IGFkdmFuY2VOYXRpdmVDaGFuZ2UgfSBmcm9tICcuLi8uLi9oZWxwZXJzL25hdGl2ZS1jb25maXJtZWQtdHJhbnNpdGlvbi5qcyc7Cgpjb25zdCBicmllZiA9IGAjIE91dGNvbWUKU2hpcCB0aGUgZmVhdHVyZS4KIyBTY29wZQpPbmUgY2FwYWJpbGl0eS4KIyBOb24tZ29hbHMKTm8gbWlncmF0aW9uLgojIEFjY2VwdGFuY2UgZXhhbXBsZXMKLSBUaGUgZmVhdHVyZSB3b3Jrcy4KIyBDb25zdHJhaW50cyBhbmQgaW52YXJpYW50cwpLZWVwIGNvbXBhdGliaWxpdHkuCiMgRGVjaXNpb25zClVzZSBleGlzdGluZyBBUElzLgojIE9wZW4gcXVlc3Rpb25zCgojIFZlcmlmaWNhdGlvbiBleHBlY3RhdGlvbnMKUnVuIGZvY3VzZWQgdGVzdHMuCmA7CgpkZXNjcmliZSgnTmF0aXZlIHNwZWMgY29uZmxpY3QgcmViYXNlJywgKCkgPT4gewogIGxldCBwcm9qZWN0Um9vdDogc3RyaW5nOwogIGxldCBwYXRoczogTmF0aXZlUHJvamVjdFBhdGhzOwoKICBiZWZvcmVFYWNoKGFzeW5jICgpID0+IHsKICAgIHByb2plY3RSb290ID0gYXdhaXQgZnMubWtkdGVtcChwYXRoLmpvaW4ob3MudG1wZGlyKCksICdjb21ldC1uYXRpdmUtc3BlYy1yZWJhc2UtJykpOwogICAgcGF0aHMgPSBhd2FpdCBuYXRpdmVQcm9qZWN0UGF0aHMocHJvamVjdFJvb3QsICcuJyk7CiAgICBhd2FpdCBmcy53cml0ZUZpbGUocGF0aC5qb2luKHByb2plY3RSb290LCAnZmVhdHVyZS50cycpLCAnZXhwb3J0IGNvbnN0IGZlYXR1cmUgPSB0cnVlO1xuJyk7CiAgfSk7CgogIGFmdGVyRWFjaChhc3luYyAoKSA9PiB7CiAgICBhd2FpdCBmcy5ybShwcm9qZWN0Um9vdCwgeyByZWN1cnNpdmU6IHRydWUsIGZvcmNlOiB0cnVlIH0pOwogIH0pOwoKICBhc3luYyBmdW5jdGlvbiBjYW5vbmljYWwoY2FwYWJpbGl0eTogc3RyaW5nLCBzb3VyY2U6IHN0cmluZyk6IFByb21pc2U8c3RyaW5nPiB7CiAgICBjb25zdCBmaWxlID0gcGF0aC5qb2luKHBhdGhzLnNwZWNzRGlyLCBjYXBhYmlsaXR5LCAnc3BlYy5tZCcpOwogICAgYXdhaXQgZnMubWtkaXIocGF0aC5kaXJuYW1lKGZpbGUpLCB7IHJlY3Vyc2l2ZTogdHJ1ZSB9KTsKICAgIGF3YWl0IGZzLndyaXRlRmlsZShmaWxlLCBzb3VyY2UpOwogICAgcmV0dXJuIGZpbGU7CiAgfQoKICBhc3luYyBmdW5jdGlvbiBhZHZhbmNlVG9BcmNoaXZlKG5hbWU6IHN0cmluZyk6IFByb21pc2U8c3RyaW5nPiB7CiAgICBjb25zdCBjaGFuZ2VEaXIgPSBuYXRpdmVDaGFuZ2VEaXIocGF0aHMsIG5hbWUpOwogICAgYXdhaXQgYWR2YW5jZU5hdGl2ZUNoYW5nZSh7IHBhdGhzLCBuYW1lLCBldmlkZW5jZTogeyBzdW1tYXJ5OiAnc2hhcGUgaXMgcmVhZHknIH0gfSk7CiAgICBhd2FpdCBmcy5hcHBlbmRGaWxlKHBhdGguam9pbihwcm9qZWN0Um9vdCwgJ2ZlYXR1cmUudHMnKSwgJy8vIGltcGxlbWVudGF0aW9uXG4nKTsKICAgIGF3YWl0IGFkdmFuY2VOYXRpdmVDaGFuZ2UoewogICAgICBwYXRocywKICAgICAgbmFtZSwKICAgICAgZXZpZGVuY2U6IHsgc3VtbWFyeTogJ2J1aWxkIGlzIHJlYWR5JywgYXJ0aWZhY3RzOiBbJ2ZlYXR1cmUudHMnXSB9LAogICAgfSk7CiAgICBhd2FpdCBmcy53cml0ZUZpbGUoCiAgICAgIHBhdGguam9pbihjaGFuZ2VEaXIsICd2ZXJpZmljYXRpb24ubWQnKSwKICAgICAgYXdhaXQgbmF0aXZlVmVyaWZpY2F0aW9uRml4dHVyZVJlcG9ydCh7IHBhdGhzLCBuYW1lLCBldmlkZW5jZVJlZnM6IFsnZmVhdHVyZS50cyddIH0pLAogICAgKTsKICAgIGF3YWl0IGFkdmFuY2VOYXRpdmVDaGFuZ2UoewogICAgICBwYXRocywKICAgICAgbmFtZSwKICAgICAgZXZpZGVuY2U6IHsKICAgICAgICBzdW1tYXJ5OiAndmVyaWZpY2F0aW9uIHBhc3NlZCcsCiAgICAgICAgdmVyaWZpY2F0aW9uUmVzdWx0OiAncGFzcycsCiAgICAgICAgdmVyaWZpY2F0aW9uUmVwb3J0OiAndmVyaWZpY2F0aW9uLm1kJywKICAgICAgfSwKICAgIH0pOwogICAgcmV0dXJuIGNoYW5nZURpcjsKICB9CgogIGFzeW5jIGZ1bmN0aW9uIHZlcmlmeUFnYWluKG5hbWU6IHN0cmluZyk6IFByb21pc2U8dm9pZD4gewogICAgYXdhaXQgZnMuYXBwZW5kRmlsZShwYXRoLmpvaW4ocHJvamVjdFJvb3QsICdmZWF0dXJlLnRzJyksICcvLyByZWJhc2VkIGltcGxlbWVudGF0aW9uXG4nKTsKICAgIGNvbnN0IGV2aWRlbmNlID0gewogICAgICBzdW1tYXJ5OiAncmViYXNlZCBpbXBsZW1lbnRhdGlvbiBjb25maXJtZWQnLAogICAgICBhcnRpZmFjdHM6IFsnZmVhdHVyZS50cyddLAogICAgICBjb25maXJtZWQ6IHRydWUsCiAgICB9IGFzIGNvbnN0OwogICAgY29uc3QgcHJlcGFyZWQgPSBhd2FpdCBhZHZhbmNlTmF0aXZlQ2hhbmdlKHsKICAgICAgcGF0aHMsCiAgICAgIG5hbWUsCiAgICAgIGV2aWRlbmNlLAogICAgfSk7CiAgICBjb25zdCBidWlsZCA9CiAgICAgIHByZXBhcmVkLm5leHQgPT09ICdtYW51YWwnCiAgICAgICAgPyBhd2FpdCBhZHZhbmNlTmF0aXZlQ2hhbmdlKHsKICAgICAgICAgICAgcGF0aHMsCiAgICAgICAgICAgIG5hbWUsCiAgICAgICAgICAgIGV2aWRlbmNlOiB7CiAgICAgICAgICAgICAgLi4uZXZpZGVuY2UsCiAgICAgICAgICAgICAgYWxsb3dQYXJ0aWFsU2NvcGVIYXNoOiBwcmVwYXJlZC5wcmVwYXJlZFNjb3BlIS5zY29wZUhhc2gsCiAgICAgICAgICAgICAgcGFydGlhbFJlYXNvbjogJ1RoZSBjb25jdXJyZW50IGNhbm9uaWNhbCBlZGl0IGlzIGludGVudGlvbmFsbHkgb3V0c2lkZSB0aGlzIGNoYW5nZS4nLAogICAgICAgICAgICB9LAogICAgICAgICAgfSkKICAgICAgICA6IHByZXBhcmVkOwogICAgZXhwZWN0KGJ1aWxkLmNoYW5nZSkudG9NYXRjaE9iamVjdCh7IHBoYXNlOiAndmVyaWZ5JywgYXBwcm92YWw6ICdjb25maXJtZWQnIH0pOwogICAgYXdhaXQgZnMud3JpdGVGaWxlKAogICAgICBwYXRoLmpvaW4obmF0aXZlQ2hhbmdlRGlyKHBhdGhzLCBuYW1lKSwgJ3ZlcmlmaWNhdGlvbi5tZCcpLAogICAgICBhd2FpdCBuYXRpdmVWZXJpZmljYXRpb25GaXh0dXJlUmVwb3J0KHsgcGF0aHMsIG5hbWUgfSksCiAgICApOwogICAgYXdhaXQgYWR2YW5jZU5hdGl2ZUNoYW5nZSh7CiAgICAgIHBhdGhzLAogICAgICBuYW1lLAogICAgICBldmlkZW5jZTogewogICAgICAgIHN1bW1hcnk6ICdyZWJhc2VkIHZlcmlmaWNhdGlvbiBwYXNzZWQnLAogICAgICAgIHZlcmlmaWNhdGlvblJlc3VsdDogJ3Bhc3MnLAogICAgICAgIHZlcmlmaWNhdGlvblJlcG9ydDogJ3ZlcmlmaWNhdGlvbi5tZCcsCiAgICAgIH0sCiAgICB9KTsKICB9CgogIGFzeW5jIGZ1bmN0aW9uIGFyY2hpdmVSZWFkeUNoYW5nZShuYW1lOiBzdHJpbmcpOiBQcm9taXNlPHZvaWQ+IHsKICAgIGNvbnN0IG5vdyA9IG5ldyBEYXRlKCk7CiAgICBjb25zdCBleHBlY3RlZFByZWZsaWdodEhhc2ggPSBhd2FpdCByZWFkeU5hdGl2ZUFyY2hpdmVQcmVmbGlnaHQoeyBwYXRocywgbmFtZSwgbm93IH0pOwogICAgYXdhaXQgYXJjaGl2ZU5hdGl2ZUNoYW5nZSh7IHBhdGhzLCBuYW1lLCBleHBlY3RlZFByZWZsaWdodEhhc2gsIG5vdyB9KTsKICB9CgogIGl0KCdyZWZyZXNoZXMgYSByZXBsYWNlIGJhc2UgYW5kIHJlb3BlbnMgQXJjaGl2ZSB0byBCdWlsZCBmb3IgcmUtdmVyaWZpY2F0aW9uJywgYXN5bmMgKCkgPT4gewogICAgY29uc3QgY2Fub25pY2FsRmlsZSA9IGF3YWl0IGNhbm9uaWNhbCgnYXV0aGVudGljYXRpb24nLCAnb2xkIGNhbm9uaWNhbFxuJyk7CiAgICBjb25zdCBzdGF0ZSA9IGF3YWl0IGNyZWF0ZU5hdGl2ZUNoYW5nZSh7CiAgICAgIHBhdGhzLAogICAgICBuYW1lOiAncmVwbGFjZS1jb25mbGljdCcsCiAgICAgIGxhbmd1YWdlOiAnZW4nLAogICAgICB2ZXJpZmljYXRpb25Qcm90b2NvbDogJ2xlZ2FjeS12MScsCiAgICB9KTsKICAgIGNvbnN0IGNoYW5nZURpciA9IG5hdGl2ZUNoYW5nZURpcihwYXRocywgc3RhdGUubmFtZSk7CiAgICBhd2FpdCBmcy53cml0ZUZpbGUocGF0aC5qb2luKGNoYW5nZURpciwgc3RhdGUuYnJpZWYpLCBicmllZik7CiAgICBjb25zdCBwcm9wb3NlZCA9IHBhdGguam9pbihjaGFuZ2VEaXIsICdzcGVjcycsICdhdXRoZW50aWNhdGlvbicsICdzcGVjLm1kJyk7CiAgICBhd2FpdCBmcy5ta2RpcihwYXRoLmRpcm5hbWUocHJvcG9zZWQpLCB7IHJlY3Vyc2l2ZTogdHJ1ZSB9KTsKICAgIGF3YWl0IGZzLndyaXRlRmlsZShwcm9wb3NlZCwgJ3RhcmdldCBjYW5vbmljYWxcbicpOwogICAgYXdhaXQgYWR2YW5jZU5hdGl2ZUNoYW5nZSh7IHBhdGhzLCBuYW1lOiBzdGF0ZS5uYW1lLCBldmlkZW5jZTogeyBzdW1tYXJ5OiAnc2hhcGUgcmVhZHknIH0gfSk7CiAgICBhd2FpdCBmcy5hcHBlbmRGaWxlKHBhdGguam9pbihwcm9qZWN0Um9vdCwgJ2ZlYXR1cmUudHMnKSwgJy8vIHJlcGxhY2VtZW50IGltcGxlbWVudGF0aW9uXG4nKTsKICAgIGF3YWl0IGFkdmFuY2VOYXRpdmVDaGFuZ2UoewogICAgICBwYXRocywKICAgICAgbmFtZTogc3RhdGUubmFtZSwKICAgICAgZXZpZGVuY2U6IHsgc3VtbWFyeTogJ2J1aWxkIHJlYWR5JywgYXJ0aWZhY3RzOiBbJ2ZlYXR1cmUudHMnXSB9LAogICAgfSk7CiAgICBhd2FpdCBmcy53cml0ZUZpbGUoCiAgICAgIHBhdGguam9pbihjaGFuZ2VEaXIsICd2ZXJpZmljYXRpb24ubWQnKSwKICAgICAgYXdhaXQgbmF0aXZlVmVyaWZpY2F0aW9uRml4dHVyZVJlcG9ydCh7CiAgICAgICAgcGF0aHMsCiAgICAgICAgbmFtZTogc3RhdGUubmFtZSwKICAgICAgICBldmlkZW5jZVJlZnM6IFsnZmVhdHVyZS50cyddLAogICAgICB9KSwKICAgICk7CiAgICBhd2FpdCBhZHZhbmNlTmF0aXZlQ2hhbmdlKHsKICAgICAgcGF0aHMsCiAgICAgIG5hbWU6IHN0YXRlLm5hbWUsCiAgICAgIGV2aWRlbmNlOiB7CiAgICAgICAgc3VtbWFyeTogJ3ZlcmlmeSByZWFkeScsCiAgICAgICAgdmVyaWZpY2F0aW9uUmVzdWx0OiAncGFzcycsCiAgICAgICAgdmVyaWZpY2F0aW9uUmVwb3J0OiAndmVyaWZpY2F0aW9uLm1kJywKICAgICAgfSwKICAgIH0pOwogICAgYXdhaXQgZnMud3JpdGVGaWxlKGNhbm9uaWNhbEZpbGUsICdjb25jdXJyZW50IGNhbm9uaWNhbFxuJyk7CiAgICBjb25zdCBjb25jdXJyZW50SGFzaCA9IGF3YWl0IHNoYTI1NkZpbGUoY2Fub25pY2FsRmlsZSk7CiAgICBhd2FpdCBleHBlY3QoaW5zcGVjdE5hdGl2ZUFyY2hpdmVQcmVmbGlnaHQoeyBwYXRocywgbmFtZTogc3RhdGUubmFtZSB9KSkucmVzb2x2ZXMudG9NYXRjaE9iamVjdCgKICAgICAgewogICAgICAgIHJlYWR5OiBmYWxzZSwKICAgICAgICBmaW5kaW5nQ29kZXM6IGV4cGVjdC5hcnJheUNvbnRhaW5pbmcoWydzcGVjLWJhc2UtY29uZmxpY3QnXSksCiAgICAgIH0sCiAgICApOwoKICAgIGNvbnN0IHJlYmFzZWQgPSBhd2FpdCByZWJhc2VOYXRpdmVTcGVjQ2hhbmdlcyh7CiAgICAgIHBhdGhzLAogICAgICBuYW1lOiBzdGF0ZS5uYW1lLAogICAgICBzdW1tYXJ5OiAnUmUtcmVhZCB0aGUgY29uY3VycmVudCBhdXRoZW50aWNhdGlvbiBzcGVjJywKICAgIH0pOwogICAgZXhwZWN0KHJlYmFzZWQpLnRvTWF0Y2hPYmplY3QoewogICAgICBwaGFzZTogJ2J1aWxkJywKICAgICAgdmVyaWZpY2F0aW9uX3Jlc3VsdDogJ3BlbmRpbmcnLAogICAgICB2ZXJpZmljYXRpb25fcmVwb3J0OiBudWxsLAogICAgICBpbXBsZW1lbnRhdGlvbl9zY29wZTogbnVsbCwKICAgICAgdmVyaWZpY2F0aW9uX2V2aWRlbmNlOiBudWxsLAogICAgICBwYXJ0aWFsX2FsbG93YW5jZTogbnVsbCwKICAgICAgc3BlY19jaGFuZ2VzOiBbeyBvcGVyYXRpb246ICdyZXBsYWNlJywgYmFzZV9oYXNoOiBjb25jdXJyZW50SGFzaCB9XSwKICAgIH0pOwogICAgYXdhaXQgdmVyaWZ5QWdhaW4oc3RhdGUubmFtZSk7CiAgICBhd2FpdCBhcmNoaXZlUmVhZHlDaGFuZ2Uoc3RhdGUubmFtZSk7CiAgICBleHBlY3QoYXdhaXQgZnMucmVhZEZpbGUoY2Fub25pY2FsRmlsZSwgJ3V0ZjgnKSkudG9CZSgndGFyZ2V0IGNhbm9uaWNhbFxuJyk7CiAgfSk7CgogIGl0KCdyZWZyZXNoZXMgYSByZW1vdmUgYmFzZSBhbmQgcHJlc2VydmVzIHRoZSBleHBsaWNpdCByZW1vdmFsIGludGVudCcsIGFzeW5jICgpID0+IHsKICAgIGNvbnN0IGNhbm9uaWNhbEZpbGUgPSBhd2FpdCBjYW5vbmljYWwoJ2xlZ2FjeS1hdXRoJywgJ2xlZ2FjeSB2MVxuJyk7CiAgICBhd2FpdCBjcmVhdGVOYXRpdmVDaGFuZ2UoewogICAgICBwYXRocywKICAgICAgbmFtZTogJ3JlbW92ZS1jb25mbGljdCcsCiAgICAgIGxhbmd1YWdlOiAnZW4nLAogICAgICB2ZXJpZmljYXRpb25Qcm90b2NvbDogJ2xlZ2FjeS12MScsCiAgICB9KTsKICAgIGF3YWl0IGZzLndyaXRlRmlsZShwYXRoLmpvaW4obmF0aXZlQ2hhbmdlRGlyKHBhdGhzLCAncmVtb3ZlLWNvbmZsaWN0JyksICdicmllZi5tZCcpLCBicmllZik7CiAgICBhd2FpdCBtYXJrTmF0aXZlU3BlY1JlbW92YWwocGF0aHMsICdyZW1vdmUtY29uZmxpY3QnLCAnbGVnYWN5LWF1dGgnKTsKICAgIGNvbnN0IGNoYW5nZURpciA9IGF3YWl0IGFkdmFuY2VUb0FyY2hpdmUoJ3JlbW92ZS1jb25mbGljdCcpOwogICAgYXdhaXQgZnMud3JpdGVGaWxlKGNhbm9uaWNhbEZpbGUsICdsZWdhY3kgdjIgZnJvbSBhbm90aGVyIGNoYW5nZVxuJyk7CiAgICBjb25zdCBjb25jdXJyZW50SGFzaCA9IGF3YWl0IHNoYTI1NkZpbGUoY2Fub25pY2FsRmlsZSk7CiAgICBhd2FpdCBleHBlY3QoCiAgICAgIGluc3BlY3ROYXRpdmVBcmNoaXZlUHJlZmxpZ2h0KHsgcGF0aHMsIG5hbWU6ICdyZW1vdmUtY29uZmxpY3QnIH0pLAogICAgKS5yZXNvbHZlcy50b01hdGNoT2JqZWN0KHsKICAgICAgcmVhZHk6IGZhbHNlLAogICAgICBmaW5kaW5nQ29kZXM6IGV4cGVjdC5hcnJheUNvbnRhaW5pbmcoWydzcGVjLWJhc2UtY29uZmxpY3QnXSksCiAgICB9KTsKCiAgICBjb25zdCByZWJhc2VkID0gYXdhaXQgcmViYXNlTmF0aXZlU3BlY0NoYW5nZXMoewogICAgICBwYXRocywKICAgICAgbmFtZTogJ3JlbW92ZS1jb25mbGljdCcsCiAgICAgIHN1bW1hcnk6ICdSZS1yZWFkIHRoZSBjb25jdXJyZW50IGxlZ2FjeSBzcGVjJywKICAgIH0pOwogICAgZXhwZWN0KHJlYmFzZWQpLnRvTWF0Y2hPYmplY3QoewogICAgICBwaGFzZTogJ2J1aWxkJywKICAgICAgc3BlY19jaGFuZ2VzOiBbeyBvcGVyYXRpb246ICdyZW1vdmUnLCBiYXNlX2hhc2g6IGNvbmN1cnJlbnRIYXNoIH1dLAogICAgfSk7CiAgICBleHBlY3QoY2hhbmdlRGlyKS50b0NvbnRhaW4oJ3JlbW92ZS1jb25mbGljdCcpOwogICAgYXdhaXQgdmVyaWZ5QWdhaW4oJ3JlbW92ZS1jb25mbGljdCcpOwogICAgYXdhaXQgYXJjaGl2ZVJlYWR5Q2hhbmdlKCdyZW1vdmUtY29uZmxpY3QnKTsKICAgIGF3YWl0IGV4cGVjdChmcy5hY2Nlc3MoY2Fub25pY2FsRmlsZSkpLnJlamVjdHMudG9NYXRjaE9iamVjdCh7IGNvZGU6ICdFTk9FTlQnIH0pOwogIH0pOwp9KTsK"
+    }
+  ],
+  "declarations": [
+    {
+      "file": "test/domains/comet-native/native-archive-inspection.test.ts",
+      "index": 0,
+      "line": 56,
+      "name": "issues automated Git-bound verification receipts through a project parent alias",
+      "caseIds": [
+        "native-automated-receipt-git-parent-alias"
+      ],
+      "registryLinks": [
+        {
+          "id": "native-automated-receipt-git-parent-alias",
+          "kind": "current",
+          "path": "/tests",
+          "file": "test/domains/comet-native/native-archive-inspection.test.ts",
+          "namePattern": "issues automated Git-bound verification receipts through a project parent alias",
+          "requiredNames": [
+            "issues automated Git-bound verification receipts through a project parent alias"
+          ]
+        }
+      ],
+      "potentialFileCaseIds": [
+        "native-automated-receipt-git-parent-alias"
+      ],
+      "assertions": [
+        "expect(result.receipt.status).toBe('passed')",
+        "expect(result.receipt.status)",
+        "expect(result.receipt.evidence).toMatchObject({\n      worktree: { provider: 'git', root: '.', beforeCommit: commit, afterCommit: commit },\n    })",
+        "expect(result.receipt.evidence)",
+        "expect(git('rev-parse', 'HEAD')).not.toBe(commit)",
+        "expect(git('rev-parse', 'HEAD'))",
+        "expect(changed.receipt.status).toBe('blocked')",
+        "expect(changed.receipt.status)",
+        "expect(changed.receipt.evidence).toMatchObject({\n      worktree: {\n        provider: 'git',\n        root: '.',\n        beforeCommit: commit,\n        afterCommit: git('rev-parse', 'HEAD'),\n      },\n    })",
+        "expect(changed.receipt.evidence)"
+      ],
+      "bodyText": "it('issues automated Git-bound verification receipts through a project parent alias', async () => {\n  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'comet-receipt-alias-')));\n  try {\n    const physical = path.join(root, 'physical');\n    const alias = path.join(root, 'alias');\n    await fs.mkdir(physical);\n    await fs.symlink(physical, alias, process.platform === 'win32' ? 'junction' : 'dir');\n    const projectRoot = path.join(alias, 'project');\n    await fs.mkdir(projectRoot);\n    const git = (...args: string[]) =>\n      execFileSync('git', args, { cwd: projectRoot, encoding: 'utf8' }).trim();\n    git('init', '-q');\n    await fs.writeFile(path.join(projectRoot, 'feature.txt'), 'before\\n');\n    git('add', '.');\n    git(\n      '-c',\n      'user.name=Fixture',\n      '-c',\n      'user.email=fixture@example.invalid',\n      'commit',\n      '-qm',\n      'fixture',\n    );\n    const commit = git('rev-parse', 'HEAD');\n    const paths = await nativeProjectPaths(projectRoot, '.');\n    const created = await createNativeChange({\n      paths,\n      verificationProtocol: 'legacy-v1',\n      name: 'receipt-alias',\n      language: 'en',\n    });\n    await fs.writeFile(path.join(nativeChangeDir(paths, created.name), 'brief.md'), brief);\n    await fs.writeFile(path.join(projectRoot, 'feature.txt'), 'after\\n');\n    const buildState: NativeChangeState = { ...created, phase: 'build', approval: 'implicit' };\n    const build = await prepareNativeBuildEvidence({\n      paths,\n      state: buildState,\n      artifactRefs: ['feature.txt'],\n    });\n    const state: NativeChangeState = {\n      ...buildState,\n      phase: 'verify',\n      implementation_scope: build.scopeRef,\n    };\n    await writeNativeChange(paths, state);\n    const contract = await collectNativeContractFiles({\n      changeDir: nativeChangeDir(paths, state.name),\n      briefRef: state.brief,\n      specChanges: state.spec_changes,\n    });\n    const result = await issueNativeAutomatedCheckReceipt({\n      paths,\n      name: state.name,\n      acceptanceIds: contract.contract.acceptance.map(({ id }) => id),\n      command: process.execPath,\n      args: ['-e', 'process.exit(0)'],\n    });\n    expect(result.receipt.status).toBe('passed');\n    expect(result.receipt.evidence).toMatchObject({\n      worktree: { provider: 'git', root: '.', beforeCommit: commit, afterCommit: commit },\n    });\n    const changed = await issueNativeAutomatedCheckReceipt({\n      paths,\n      name: state.name,\n      acceptanceIds: contract.contract.acceptance.map(({ id }) => id),\n      command: process.execPath,\n      args: [\n        '-e',\n        `require('node:child_process').execFileSync('git', ${JSON.stringify(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-qm', 'changed identity'])})`,\n      ],\n    });\n    expect(git('rev-parse', 'HEAD')).not.toBe(commit);\n    expect(changed.receipt.status).toBe('blocked');\n    expect(changed.receipt.evidence).toMatchObject({\n      worktree: {\n        provider: 'git',\n        root: '.',\n        beforeCommit: commit,\n        afterCommit: git('rev-parse', 'HEAD'),\n      },\n    });\n  } finally {\n    await fs.rm(root, { recursive: true, force: true });\n  }\n})",
+      "decision": "retire-mechanism",
+      "review": "普通受管命令执行及Git内容绑定自动回执已撤下；原alias场景只断言该回执签发，不是当前Git交付的路径合同。保留原caseID来源，不能宣称旧回执缺陷已修复。",
+      "currentSelectors": [],
+      "proposedRegistryCaseIds": [],
+      "existingPreservedCaseIds": [
+        "native-automated-receipt-git-parent-alias"
+      ]
+    },
+    {
+      "file": "test/domains/comet-native/native-archive-inspection.test.ts",
+      "index": 1,
+      "line": 231,
+      "name": "returns a stable ready preview without writing project state",
+      "caseIds": [],
+      "registryLinks": [],
+      "potentialFileCaseIds": [
+        "native-automated-receipt-git-parent-alias"
+      ],
+      "assertions": [
+        "expect(first).toEqual(second)",
+        "expect(first)",
+        "expect(first).toMatchObject({\n      ready: true,\n      revision: 3,\n      targetRef: 'archive/2026-07-17-archive-preview',\n      evidenceFreshness: 'complete',\n      findingCodes: [],\n    })",
+        "expect(first)",
+        "expect(await fs.readFile(changeFile, 'utf8')).toBe(before)",
+        "expect(await fs.readFile(changeFile, 'utf8'))"
+      ],
+      "bodyText": "it('returns a stable ready preview without writing project state', async () => {\n    const changeFile = path.join(nativeChangeDir(paths, state.name), 'comet-state.yaml');\n    const before = await fs.readFile(changeFile, 'utf8');\n\n    const first = await inspectNativeArchivePreflight({\n      paths,\n      name: state.name,\n      now: new Date('2026-07-17T03:00:00.000Z'),\n    });\n    const second = await inspectNativeArchivePreflight({\n      paths,\n      name: state.name,\n      now: new Date('2026-07-17T03:00:00.000Z'),\n    });\n\n    expect(first).toEqual(second);\n    expect(first).toMatchObject({\n      ready: true,\n      revision: 3,\n      targetRef: 'archive/2026-07-17-archive-preview',\n      evidenceFreshness: 'complete',\n      findingCodes: [],\n    });\n    expect(await fs.readFile(changeFile, 'utf8')).toBe(before);\n  })",
+      "decision": "migrate-business",
+      "review": "保留相同输入稳定预览及不写入业务文件；revision/evidenceFreshness/固定预检hash投影撤下。",
+      "currentSelectors": [
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration previews the same current Archive operations without writing business files",
+          "evidence": "repo-ready-complete-result.json",
+          "registryCaseIds": []
+        }
+      ],
+      "proposedRegistryCaseIds": [
+        "native-archive-preview-business-readonly"
+      ],
+      "existingPreservedCaseIds": []
+    },
+    {
+      "file": "test/domains/comet-native/native-archive-inspection.test.ts",
+      "index": 2,
+      "line": 257,
+      "name": "validates manual acceptance IDs and automated command timeouts before execution",
+      "caseIds": [],
+      "registryLinks": [],
+      "potentialFileCaseIds": [
+        "native-automated-receipt-git-parent-alias"
+      ],
+      "assertions": [
+        "expect(\n      findNativeReusableRequiredCheckReceipt({ paths, state: verifyState }),\n    ).resolves.toBeNull()",
+        "expect(\n      findNativeReusableRequiredCheckReceipt({ paths, state: verifyState }),\n    )",
+        "expect(\n      validateNativeStaticReceiptDependency({\n        paths,\n        state: verifyState,\n        receipt: { kind: 'manual-evidence' } as never,\n      }),\n    ).resolves.toBeNull()",
+        "expect(\n      validateNativeStaticReceiptDependency({\n        paths,\n        state: verifyState,\n        receipt: { kind: 'manual-evidence' } as never,\n      }),\n    )",
+        "expect(\n      issueNativeManualEvidenceReceipt({\n        paths,\n        name: verifyState.name,\n        acceptanceIds: [],\n        steps: ['step'],\n        observations: ['observation'],\n        now: new Date('2026-07-17T03:00:00.000Z'),\n      }),\n    ).rejects.toThrow('acceptance IDs do not match')",
+        "expect(\n      issueNativeManualEvidenceReceipt({\n        paths,\n        name: verifyState.name,\n        acceptanceIds: [],\n        steps: ['step'],\n        observations: ['observation'],\n        now: new Date('2026-07-17T03:00:00.000Z'),\n      }),\n    )",
+        "expect(\n      issueNativeAutomatedCheckReceipt({\n        paths,\n        name: verifyState.name,\n        acceptanceIds: [],\n        command: process.execPath,\n        args: ['-e', 'process.exit(0)'],\n        timeoutMs: 0,\n      }),\n    ).rejects.toThrow('timeout must be an integer')",
+        "expect(\n      issueNativeAutomatedCheckReceipt({\n        paths,\n        name: verifyState.name,\n        acceptanceIds: [],\n        command: process.execPath,\n        args: ['-e', 'process.exit(0)'],\n        timeoutMs: 0,\n      }),\n    )",
+        "expect(\n      issueNativeAutomatedCheckReceipt({\n        paths,\n        name: verifyState.name,\n        acceptanceIds: [],\n        command: process.execPath,\n        args: ['-e', 'process.exit(0)'],\n        timeoutMs: 60 * 60 * 1_000 + 1,\n      }),\n    ).rejects.toThrow('timeout must be an integer')",
+        "expect(\n      issueNativeAutomatedCheckReceipt({\n        paths,\n        name: verifyState.name,\n        acceptanceIds: [],\n        command: process.execPath,\n        args: ['-e', 'process.exit(0)'],\n        timeoutMs: 60 * 60 * 1_000 + 1,\n      }),\n    )",
+        "expect(passed.receipt.status).toBe('passed')",
+        "expect(passed.receipt.status)",
+        "expect(passed.receipt.evidence).toMatchObject({\n      exitCode: 0,\n      signal: null,\n      timedOut: false,\n      outputSummary: 'automated output',\n      outputTruncated: false,\n    })",
+        "expect(passed.receipt.evidence)",
+        "expect(failed.receipt.status).toBe('failed')",
+        "expect(failed.receipt.status)",
+        "expect(failed.receipt.evidence).toMatchObject({\n      exitCode: 3,\n      signal: null,\n      outputSummary: '(exit 3)',\n    })",
+        "expect(failed.receipt.evidence)"
+      ],
+      "bodyText": "it('validates manual acceptance IDs and automated command timeouts before execution', async () => {\n    const verifyState = {\n      ...state,\n      phase: 'verify' as const,\n      verification_result: 'pending' as const,\n      verification_report: null,\n      verification_evidence: null,\n      revision: state.revision,\n    };\n    await writeNativeChange(paths, verifyState);\n    await expect(\n      findNativeReusableRequiredCheckReceipt({ paths, state: verifyState }),\n    ).resolves.toBeNull();\n    await expect(\n      validateNativeStaticReceiptDependency({\n        paths,\n        state: verifyState,\n        receipt: { kind: 'manual-evidence' } as never,\n      }),\n    ).resolves.toBeNull();\n    await expect(\n      issueNativeManualEvidenceReceipt({\n        paths,\n        name: verifyState.name,\n        acceptanceIds: [],\n        steps: ['step'],\n        observations: ['observation'],\n        now: new Date('2026-07-17T03:00:00.000Z'),\n      }),\n    ).rejects.toThrow('acceptance IDs do not match');\n    await expect(\n      issueNativeAutomatedCheckReceipt({\n        paths,\n        name: verifyState.name,\n        acceptanceIds: [],\n        command: process.execPath,\n        args: ['-e', 'process.exit(0)'],\n        timeoutMs: 0,\n      }),\n    ).rejects.toThrow('timeout must be an integer');\n    await expect(\n      issueNativeAutomatedCheckReceipt({\n        paths,\n        name: verifyState.name,\n        acceptanceIds: [],\n        command: process.execPath,\n        args: ['-e', 'process.exit(0)'],\n        timeoutMs: 60 * 60 * 1_000 + 1,\n      }),\n    ).rejects.toThrow('timeout must be an integer');\n    const contract = await collectNativeContractFiles({\n      changeDir: nativeChangeDir(paths, verifyState.name),\n      briefRef: verifyState.brief,\n      specChanges: verifyState.spec_changes,\n    });\n    const acceptanceIds = contract.contract.acceptance.map((criterion) => criterion.id);\n    const passed = await issueNativeAutomatedCheckReceipt({\n      paths,\n      name: verifyState.name,\n      acceptanceIds,\n      command: process.execPath,\n      args: ['-e', \"process.stdout.write('automated output')\"],\n      timeoutMs: 10_000,\n      now: () => new Date('2026-07-17T03:01:00.000Z'),\n    });\n    expect(passed.receipt.status).toBe('passed');\n    expect(passed.receipt.evidence).toMatchObject({\n      exitCode: 0,\n      signal: null,\n      timedOut: false,\n      outputSummary: 'automated output',\n      outputTruncated: false,\n    });\n    const failed = await issueNativeAutomatedCheckReceipt({\n      paths,\n      name: verifyState.name,\n      acceptanceIds,\n      command: process.execPath,\n      args: ['-e', 'process.exit(3)'],\n      timeoutMs: 10_000,\n      now: () => new Date('2026-07-17T03:02:00.000Z'),\n    });\n    expect(failed.receipt.status).toBe('failed');\n    expect(failed.receipt.evidence).toMatchObject({\n      exitCode: 3,\n      signal: null,\n      outputSummary: '(exit 3)',\n    });\n  })",
+      "decision": "split",
+      "review": "保留acceptance IDs必须覆盖当前范围；未知/缺失/跳过各独立拒绝。旧CLI timeout预算、stdout摘要、自动exit回执签发、可复用receipt依赖均属受管checker退休；平台承担命令退出和超时。",
+      "currentSelectors": [
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration rejects escaping capabilities and mismatched acceptance IDs at the current boundary",
+          "evidence": "repo-ready-complete-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration refuses skipped acceptance in a passing Verifier outcome without mutating the candidate",
+          "evidence": "repo-ready-complete-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration refuses missing acceptance in a passing Verifier outcome without mutating the candidate",
+          "evidence": "repo-ready-complete-result.json",
+          "registryCaseIds": []
+        }
+      ],
+      "proposedRegistryCaseIds": [
+        "native-archive-acceptance-id-boundary",
+        "native-archive-verifier-missing-or-skipped-acceptance"
+      ],
+      "existingPreservedCaseIds": []
+    },
+    {
+      "file": "test/domains/comet-native/native-archive-inspection.test.ts",
+      "index": 3,
+      "line": 347,
+      "name": "binds an existing archive target and pending journal into readiness",
+      "caseIds": [],
+      "registryLinks": [],
+      "potentialFileCaseIds": [
+        "native-automated-receipt-git-parent-alias"
+      ],
+      "assertions": [
+        "expect(preview.ready).toBe(false)",
+        "expect(preview.ready)",
+        "expect(preview.findingCodes).toEqual(\n      expect.arrayContaining(['archive-target-exists', 'pending-journal']),\n    )",
+        "expect(preview.findingCodes)",
+        "expect.arrayContaining(['archive-target-exists', 'pending-journal'])"
+      ],
+      "bodyText": "it('binds an existing archive target and pending journal into readiness', async () => {\n    await fs.mkdir(path.join(paths.archiveDir, '2026-07-17-archive-preview'), {\n      recursive: true,\n    });\n    await fs.writeFile(nativeTransitionJournalFile(paths, state.name), '{}\\n');\n\n    const preview = await inspectNativeArchivePreflight({\n      paths,\n      name: state.name,\n      now: new Date('2026-07-17T03:00:00.000Z'),\n    });\n\n    expect(preview.ready).toBe(false);\n    expect(preview.findingCodes).toEqual(\n      expect.arrayContaining(['archive-target-exists', 'pending-journal']),\n    );\n  })",
+      "decision": "split",
+      "review": "既有目标必须在WAL/Spec/State写入前拒绝；真实未接受Verify transition必须阻止Archive。已有原Archive事务不是一律阻塞，须续原事务到原目标。旧随意transition.json={}不映射为合法事务。",
+      "currentSelectors": [
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration refuses an existing archive target without overwriting it",
+          "evidence": "repo-ready-complete-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-sdk-archive-target-migration.test.ts",
+          "fullName": "rejects an occupied Archive target before applying current SDK Specs or accepting done state",
+          "evidence": "repo-ready-complete-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-transition-recovery.test.ts",
+          "fullName": "does not archive through a pending unaccepted Verify transition or consume its WAL",
+          "evidence": "pending-transition-reuse-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable mutation boundary: a real pending WAL blocks both Shape return and new SDK change",
+          "evidence": "real-wal-boundaries-reuse-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "fullName": "resumes the original finalize after interruption at report without replaying applied side effects",
+          "evidence": "original-finalize-recovery-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "fullName": "resumes the original finalize after interruption at report-journal without replaying applied side effects",
+          "evidence": "original-finalize-recovery-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "fullName": "resumes the original finalize after interruption at move without replaying applied side effects",
+          "evidence": "original-finalize-recovery-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "fullName": "resumes the original finalize after interruption at move-journal without replaying applied side effects",
+          "evidence": "original-finalize-recovery-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "fullName": "resumes the original finalize after interruption at portable-receipt without replaying applied side effects",
+          "evidence": "original-finalize-recovery-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "fullName": "resumes the original finalize after interruption at runtime-receipt without replaying applied side effects",
+          "evidence": "original-finalize-recovery-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "fullName": "resumes the original finalize after interruption at cleanup without replaying applied side effects",
+          "evidence": "original-finalize-recovery-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable public recovery: explicit Doctor continues a genuine prepared Archive transaction",
+          "evidence": "real-wal-boundaries-reuse-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable moved archive Doctor: diagnoses by original name without active directory and continues only the explicit transaction",
+          "evidence": "real-wal-boundaries-reuse-result.json",
+          "registryCaseIds": []
+        }
+      ],
+      "proposedRegistryCaseIds": [
+        "native-archive-target-exists-before-apply"
+      ],
+      "existingPreservedCaseIds": []
+    },
+    {
+      "file": "test/domains/comet-native/native-archive-inspection.test.ts",
+      "index": 4,
+      "line": 365,
+      "name": "blocks when another visible change claims the same implementation artifact",
+      "caseIds": [],
+      "registryLinks": [],
+      "potentialFileCaseIds": [
+        "native-automated-receipt-git-parent-alias"
+      ],
+      "assertions": [
+        "expect(preview.ready).toBe(false)",
+        "expect(preview.ready)",
+        "expect(preview.findingCodes).toContain('native-change-conflict')",
+        "expect(preview.findingCodes)"
+      ],
+      "bodyText": "it('blocks when another visible change claims the same implementation artifact', async () => {\n    const competing = await createNativeChange({\n      paths,\n      verificationProtocol: 'legacy-v1',\n      name: 'competing-change',\n      language: 'en',\n    });\n    const sourceEvidence = path.join(nativeChangeRuntimeDir(paths, state.name), 'evidence');\n    const targetEvidence = path.join(nativeChangeRuntimeDir(paths, competing.name), 'evidence');\n    await fs.cp(sourceEvidence, targetEvidence, { recursive: true });\n    await writeNativeChange(paths, {\n      ...competing,\n      phase: 'build',\n      approval: 'implicit',\n      implementation_scope: state.implementation_scope,\n    });\n\n    const preview = await inspectNativeArchivePreflight({\n      paths,\n      name: state.name,\n      now: new Date('2026-07-17T03:00:00.000Z'),\n    });\n\n    expect(preview.ready).toBe(false);\n    expect(preview.findingCodes).toContain('native-change-conflict');\n  })",
+      "decision": "retire-mechanism",
+      "review": "自动扫描其他change的implementation_scope内容证明并阻塞归档已撤下。相同capability peer不再单独阻塞；实际canonical写冲突仍拒绝，不复活peer雷达。",
+      "currentSelectors": [
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-application.test.ts",
+          "fullName": "Native SDK v2 Archive simplification archives a current Spec while another active SDK change declares the same capability",
+          "evidence": "reused-current-result.json",
+          "registryCaseIds": [
+            "native-archive-actual-spec-conflict",
+            "native-create-canonical-conflict-after-preflight"
+          ]
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-application.test.ts",
+          "fullName": "Native SDK v2 Archive simplification refuses an actual canonical Spec conflict after preflight without overwriting it",
+          "evidence": "reused-current-result.json",
+          "registryCaseIds": [
+            "native-archive-actual-spec-conflict",
+            "native-create-canonical-conflict-after-preflight"
+          ]
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable remove journal: resumes without deleting an externally recreated Spec",
+          "evidence": "real-wal-boundaries-reuse-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable applied Spec edit: retains the same transaction and never overwrites later canonical content",
+          "evidence": "real-wal-boundaries-reuse-result.json",
+          "registryCaseIds": []
+        }
+      ],
+      "proposedRegistryCaseIds": [],
+      "existingPreservedCaseIds": [
+        "native-archive-actual-spec-conflict",
+        "native-create-canonical-conflict-after-preflight"
+      ]
+    },
+    {
+      "file": "test/domains/comet-native/native-archive-inspection.test.ts",
+      "index": 5,
+      "line": 392,
+      "name": "includes the current workspace finishing contract when present",
+      "caseIds": [],
+      "registryLinks": [],
+      "potentialFileCaseIds": [
+        "native-automated-receipt-git-parent-alias"
+      ],
+      "assertions": [
+        "expect(preview.workspace).toMatchObject({\n      schema: 'comet.native.workspace.v3',\n      isolation: 'current',\n      finish: null,\n    })",
+        "expect(preview.workspace)"
+      ],
+      "bodyText": "it('includes the current workspace finishing contract when present', async () => {\n    await writeNativeWorkspaceIdentity({\n      paths,\n      name: state.name,\n      revision: state.revision,\n      binding: { isolation: 'current', changeBranch: null, targetBranch: null },\n    });\n\n    const preview = await inspectNativeArchivePreflight({\n      paths,\n      name: state.name,\n      now: new Date('2026-07-17T03:00:00.000Z'),\n    });\n\n    expect(preview.workspace).toMatchObject({\n      schema: 'comet.native.workspace.v3',\n      isolation: 'current',\n      finish: null,\n    });\n  })",
+      "decision": "split",
+      "review": "保留原workspace current finish业务及真实Git交付结果；移除单独workspace-v3身份内容投影。",
+      "currentSelectors": [
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive.test.ts",
+          "fullName": "Native portable Archive allows current workspace finishes to preserve unrelated files while committing change-owned files",
+          "evidence": "reused-current-result.json",
+          "registryCaseIds": []
+        }
+      ],
+      "proposedRegistryCaseIds": [],
+      "existingPreservedCaseIds": []
+    },
+    {
+      "file": "test/domains/comet-native/native-archive-preflight.test.ts",
+      "index": 0,
+      "line": 49,
+      "name": "is deterministic across spec order and previews the exact content-bound operations",
+      "caseIds": [],
+      "registryLinks": [],
+      "potentialFileCaseIds": [],
+      "assertions": [
+        "expect(reordered).toEqual(first)",
+        "expect(reordered)",
+        "expect(first).toMatchObject({ ready: true, operationCount: 2, findingCodes: [] })",
+        "expect(first)",
+        "expect(first.operations.map(({ capability }) => capability)).toEqual([\n      'authentication',\n      'sessions',\n    ])",
+        "expect(first.operations.map(({ capability }) => capability))",
+        "expect(first.preflightHash).toMatch(/^[a-f0-9]{64}$/u)",
+        "expect(first.preflightHash)"
+      ],
+      "bodyText": "it('is deterministic across spec order and previews the exact content-bound operations', () => {\n    const original = input();\n    original.specs = [\n      ...original.specs,\n      {\n        capability: 'sessions',\n        operation: 'create',\n        expectedBaseHash: null,\n        actualBaseHash: null,\n        proposedHash: C,\n      },\n    ];\n    const first = buildNativeArchivePreflight(original);\n    const reordered = buildNativeArchivePreflight({\n      ...original,\n      specs: [...original.specs].reverse(),\n    });\n\n    expect(reordered).toEqual(first);\n    expect(first).toMatchObject({ ready: true, operationCount: 2, findingCodes: [] });\n    expect(first.operations.map(({ capability }) => capability)).toEqual([\n      'authentication',\n      'sessions',\n    ]);\n    expect(first.preflightHash).toMatch(/^[a-f0-9]{64}$/u);\n  })",
+      "decision": "split",
+      "review": "保留准确Spec操作预览及相同输入只读稳定性、完整create/modify/remove的真实应用。排序/内容摘要/preflightHash形态撤下。",
+      "currentSelectors": [
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration previews the same current Archive operations without writing business files",
+          "evidence": "repo-ready-complete-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive.test.ts",
+          "fullName": "Native portable Archive applies complete create, modify, and remove Spec operations",
+          "evidence": "reused-current-result.json",
+          "registryCaseIds": []
+        }
+      ],
+      "proposedRegistryCaseIds": [
+        "native-archive-preview-business-readonly"
+      ],
+      "existingPreservedCaseIds": []
+    },
+    {
+      "file": "test/domains/comet-native/native-archive-preflight.test.ts",
+      "index": 1,
+      "line": 76,
+      "name": "changes the preflight hash when %s changes",
+      "caseIds": [],
+      "registryLinks": [],
+      "potentialFileCaseIds": [],
+      "assertions": [
+        "expect(buildNativeArchivePreflight(changed).preflightHash).not.toBe(baseline.preflightHash)",
+        "expect(buildNativeArchivePreflight(changed).preflightHash)"
+      ],
+      "bodyText": "it.each([\n    ['revision', (value: NativeArchivePreflightInput) => (value.revision += 1)],\n    [\n      'archive confirmation',\n      (value: NativeArchivePreflightInput) => (value.archiveConfirmation = 'required'),\n    ],\n    ['target', (value: NativeArchivePreflightInput) => (value.targetRef += '-next')],\n    ['target existence', (value: NativeArchivePreflightInput) => (value.targetExists = true)],\n    ['base', (value: NativeArchivePreflightInput) => (value.specs[0].actualBaseHash = C)],\n    ['proposal', (value: NativeArchivePreflightInput) => (value.specs[0].proposedHash = C)],\n    ['contract', (value: NativeArchivePreflightInput) => (value.evidence.contractHash = C)],\n    ['scope', (value: NativeArchivePreflightInput) => (value.evidence.implementationScopeHash = D)],\n    ['report', (value: NativeArchivePreflightInput) => (value.evidence.reportHash = E)],\n    ['envelope', (value: NativeArchivePreflightInput) => (value.evidence.envelopeHash = A)],\n    [\n      'workspace finish',\n      (value: NativeArchivePreflightInput) => {\n        value.workspace = {\n          schema: 'comet.native.workspace.v3',\n          isolation: 'branch',\n          changeBranch: 'comet/secure-login',\n          targetBranch: 'main',\n          finish: 'merge',\n        };\n      },\n    ],\n  ])('changes the preflight hash when %s changes', (_label, mutate) => {\n    const baseline = buildNativeArchivePreflight(input());\n    const changed = input();\n    mutate(changed);\n    expect(buildNativeArchivePreflight(changed).preflightHash).not.toBe(baseline.preflightHash);\n  })",
+      "decision": "retire-mechanism",
+      "review": "11个参数仅断言preflightHash变化，全部属于已删除的内容证明/预检hash投影。批准、原事务、实际canonical CAS有独立业务测试；不以恢复hash来保留这些机械断言。",
+      "currentSelectors": [],
+      "proposedRegistryCaseIds": [],
+      "existingPreservedCaseIds": []
+    },
+    {
+      "file": "test/domains/comet-native/native-archive-preflight.test.ts",
+      "index": 2,
+      "line": 109,
+      "name": "blocks stale evidence, canonical drift, a pending journal, or an existing target",
+      "caseIds": [],
+      "registryLinks": [],
+      "potentialFileCaseIds": [],
+      "assertions": [
+        "expect(result.ready).toBe(false)",
+        "expect(result.ready)",
+        "expect(result.findingCodes).toEqual([\n      'archive-target-exists',\n      'pending-journal',\n      'spec-base-conflict',\n      'verification-evidence-stale',\n    ])",
+        "expect(result.findingCodes)"
+      ],
+      "bodyText": "it('blocks stale evidence, canonical drift, a pending journal, or an existing target', () => {\n    const changed = input();\n    changed.pendingJournal = true;\n    changed.targetExists = true;\n    changed.specs[0].actualBaseHash = C;\n    changed.evidence.freshness = 'stale';\n    const result = buildNativeArchivePreflight(changed);\n\n    expect(result.ready).toBe(false);\n    expect(result.findingCodes).toEqual([\n      'archive-target-exists',\n      'pending-journal',\n      'spec-base-conflict',\n      'verification-evidence-stale',\n    ]);\n  })",
+      "decision": "split",
+      "review": "拆开保留真实目标冲突、canonical CAS、未接受transition阻止Archive。stale evidence摘要失效与一律pending-journal阻塞撤下；有原Archive事务必须可续行。",
+      "currentSelectors": [
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration refuses an existing archive target without overwriting it",
+          "evidence": "repo-ready-complete-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-sdk-archive-target-migration.test.ts",
+          "fullName": "rejects an occupied Archive target before applying current SDK Specs or accepting done state",
+          "evidence": "repo-ready-complete-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-application.test.ts",
+          "fullName": "Native SDK v2 Archive simplification refuses an actual canonical Spec conflict after preflight without overwriting it",
+          "evidence": "reused-current-result.json",
+          "registryCaseIds": [
+            "native-archive-actual-spec-conflict",
+            "native-create-canonical-conflict-after-preflight"
+          ]
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable remove journal: resumes without deleting an externally recreated Spec",
+          "evidence": "real-wal-boundaries-reuse-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable applied Spec edit: retains the same transaction and never overwrites later canonical content",
+          "evidence": "real-wal-boundaries-reuse-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-transition-recovery.test.ts",
+          "fullName": "does not archive through a pending unaccepted Verify transition or consume its WAL",
+          "evidence": "pending-transition-reuse-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable mutation boundary: a real pending WAL blocks both Shape return and new SDK change",
+          "evidence": "real-wal-boundaries-reuse-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "fullName": "resumes the original finalize after interruption at report without replaying applied side effects",
+          "evidence": "original-finalize-recovery-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "fullName": "resumes the original finalize after interruption at report-journal without replaying applied side effects",
+          "evidence": "original-finalize-recovery-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "fullName": "resumes the original finalize after interruption at move without replaying applied side effects",
+          "evidence": "original-finalize-recovery-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "fullName": "resumes the original finalize after interruption at move-journal without replaying applied side effects",
+          "evidence": "original-finalize-recovery-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "fullName": "resumes the original finalize after interruption at portable-receipt without replaying applied side effects",
+          "evidence": "original-finalize-recovery-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "fullName": "resumes the original finalize after interruption at runtime-receipt without replaying applied side effects",
+          "evidence": "original-finalize-recovery-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-failure-boundaries.test.ts",
+          "fullName": "resumes the original finalize after interruption at cleanup without replaying applied side effects",
+          "evidence": "original-finalize-recovery-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable public recovery: explicit Doctor continues a genuine prepared Archive transaction",
+          "evidence": "real-wal-boundaries-reuse-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable moved archive Doctor: diagnoses by original name without active directory and continues only the explicit transaction",
+          "evidence": "real-wal-boundaries-reuse-result.json",
+          "registryCaseIds": []
+        }
+      ],
+      "proposedRegistryCaseIds": [
+        "native-archive-target-exists-before-apply"
+      ],
+      "existingPreservedCaseIds": [
+        "native-archive-actual-spec-conflict",
+        "native-create-canonical-conflict-after-preflight"
+      ]
+    },
+    {
+      "file": "test/domains/comet-native/native-archive-preflight.test.ts",
+      "index": 3,
+      "line": 126,
+      "name": "accepts partial evidence only when it binds an exact allowance hash",
+      "caseIds": [],
+      "registryLinks": [],
+      "potentialFileCaseIds": [],
+      "assertions": [
+        "expect(buildNativeArchivePreflight(partial)).toMatchObject({\n      ready: true,\n      evidenceFreshness: 'partial',\n    })",
+        "expect(buildNativeArchivePreflight(partial))",
+        "expect(() => buildNativeArchivePreflight(partial)).toThrow('allowance state')",
+        "expect(() => buildNativeArchivePreflight(partial))"
+      ],
+      "bodyText": "it('accepts partial evidence only when it binds an exact allowance hash', () => {\n    const partial = input();\n    partial.evidence.freshness = 'partial';\n    partial.evidence.partialAllowanceHash = A;\n    expect(buildNativeArchivePreflight(partial)).toMatchObject({\n      ready: true,\n      evidenceFreshness: 'partial',\n    });\n\n    partial.evidence.partialAllowanceHash = null;\n    expect(() => buildNativeArchivePreflight(partial)).toThrow('allowance state');\n  })",
+      "decision": "retire-mechanism",
+      "review": "partialAllowanceHash与evidenceFreshness=partial只服务旧内容证明。当前完整acceptance/明确用户确认继续保留；不宣称兼容旧hash协议。",
+      "currentSelectors": [
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration refuses Archive before Shape approval and completed acceptance without writing business files",
+          "evidence": "repo-ready-complete-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-application.test.ts",
+          "fullName": "Native SDK Workflow Application requires user confirmation before Archiving an independently verified Skill-coordinated pass (memory)",
+          "evidence": "reused-current-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-application.test.ts",
+          "fullName": "Native SDK Workflow Application requires user confirmation before Archiving an independently verified Skill-coordinated pass (sdk)",
+          "evidence": "reused-current-result.json",
+          "registryCaseIds": []
+        }
+      ],
+      "proposedRegistryCaseIds": [],
+      "existingPreservedCaseIds": []
+    },
+    {
+      "file": "test/domains/comet-native/native-archive-preflight.test.ts",
+      "index": 4,
+      "line": 139,
+      "name": "blocks Archive when the accepted evidence still contains a skipped criterion",
+      "caseIds": [],
+      "registryLinks": [],
+      "potentialFileCaseIds": [],
+      "assertions": [
+        "expect(buildNativeArchivePreflight(skipped)).toMatchObject({\n      ready: false,\n      findingCodes: ['verification-acceptance-skipped'],\n    })",
+        "expect(buildNativeArchivePreflight(skipped))"
+      ],
+      "bodyText": "it('blocks Archive when the accepted evidence still contains a skipped criterion', () => {\n    const skipped = input();\n    skipped.evidence.skippedAcceptanceCount = 1;\n\n    expect(buildNativeArchivePreflight(skipped)).toMatchObject({\n      ready: false,\n      findingCodes: ['verification-acceptance-skipped'],\n    });\n  })",
+      "decision": "migrate-business",
+      "review": "保留passing verifier不得省略或跳过任何验收；current schema直接拒skipped，缺失ID拒绝，候选和文件不写。",
+      "currentSelectors": [
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration refuses skipped acceptance in a passing Verifier outcome without mutating the candidate",
+          "evidence": "repo-ready-complete-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration refuses missing acceptance in a passing Verifier outcome without mutating the candidate",
+          "evidence": "repo-ready-complete-result.json",
+          "registryCaseIds": []
+        }
+      ],
+      "proposedRegistryCaseIds": [
+        "native-archive-verifier-missing-or-skipped-acceptance"
+      ],
+      "existingPreservedCaseIds": []
+    },
+    {
+      "file": "test/domains/comet-native/native-archive-preflight.test.ts",
+      "index": 5,
+      "line": 149,
+      "name": "rejects unsafe target refs and malformed operation/base combinations",
+      "caseIds": [],
+      "registryLinks": [],
+      "potentialFileCaseIds": [],
+      "assertions": [
+        "expect(() =>\n      buildNativeArchivePreflight({ ...input(), targetRef: 'C:/archive/escape' }),\n    ).toThrow('Native-relative')",
+        "expect(() =>\n      buildNativeArchivePreflight({ ...input(), targetRef: 'C:/archive/escape' }),\n    )",
+        "expect(() => buildNativeArchivePreflight(invalid)).toThrow('expect no canonical base')",
+        "expect(() => buildNativeArchivePreflight(invalid))"
+      ],
+      "bodyText": "it('rejects unsafe target refs and malformed operation/base combinations', () => {\n    expect(() =>\n      buildNativeArchivePreflight({ ...input(), targetRef: 'C:/archive/escape' }),\n    ).toThrow('Native-relative');\n    const invalid = input();\n    invalid.specs[0] = {\n      capability: 'authentication',\n      operation: 'create',\n      expectedBaseHash: A,\n      actualBaseHash: null,\n      proposedHash: B,\n    };\n    expect(() => buildNativeArchivePreflight(invalid)).toThrow('expect no canonical base');\n  })",
+      "decision": "split",
+      "review": "保留路径不得逃逸及真实事务operation载荷一致性、actual create canonical冲突拒绝。旧expectedBaseHash输入关系随纯预检hash协议撤下；当前target由业务日期/name生成。",
+      "currentSelectors": [
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration rejects unsafe Archive transaction refs and malformed operation payloads without changing a legal transaction",
+          "evidence": "repo-ready-complete-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration rejects escaping capabilities and mismatched acceptance IDs at the current boundary",
+          "evidence": "repo-ready-complete-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-input-boundaries.test.ts",
+          "fullName": "rejects escaping-ref in original materials of an actual published Archive WAL",
+          "evidence": "unsafe-original-input-reuse-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-input-boundaries.test.ts",
+          "fullName": "rejects foreign-ref in original materials of an actual published Archive WAL",
+          "evidence": "unsafe-original-input-reuse-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-archive-input-boundaries.test.ts",
+          "fullName": "rejects invented-original in original materials of an actual published Archive WAL",
+          "evidence": "unsafe-original-input-reuse-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-application.test.ts",
+          "fullName": "Native SDK v2 Archive simplification refuses an actual canonical Spec conflict after preflight without overwriting it",
+          "evidence": "reused-current-result.json",
+          "registryCaseIds": [
+            "native-archive-actual-spec-conflict",
+            "native-create-canonical-conflict-after-preflight"
+          ]
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable remove journal: resumes without deleting an externally recreated Spec",
+          "evidence": "real-wal-boundaries-reuse-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable applied Spec edit: retains the same transaction and never overwrites later canonical content",
+          "evidence": "real-wal-boundaries-reuse-result.json",
+          "registryCaseIds": []
+        }
+      ],
+      "proposedRegistryCaseIds": [
+        "native-archive-transaction-input-boundaries"
+      ],
+      "existingPreservedCaseIds": [
+        "native-archive-actual-spec-conflict",
+        "native-create-canonical-conflict-after-preflight"
+      ]
+    },
+    {
+      "file": "test/domains/comet-native/native-conflict-inspection.test.ts",
+      "index": 0,
+      "line": 86,
+      "name": "collects current spec and content-addressed artifact overlap from one Native root",
+      "caseIds": [],
+      "registryLinks": [],
+      "potentialFileCaseIds": [],
+      "assertions": [
+        "expect(radar).toMatchObject({\n      changeCount: 2,\n      relationshipCount: 1,\n      counts: { definiteConflict: 1 },\n      relationships: [\n        {\n          left: 'alpha-change',\n          right: 'beta-change',\n          classification: 'definite-conflict',\n          signalCount: 2,\n        },\n      ],\n    })",
+        "expect(radar)",
+        "expect(inspectNativeChangeConflicts(paths, 'alpha-change')).resolves.toEqual({\n      definiteConflictCount: 1,\n      possibleOverlapCount: 0,\n      findingCodes: ['native-change-conflict'],\n    })",
+        "expect(inspectNativeChangeConflicts(paths, 'alpha-change'))",
+        "expect(status).toMatchObject({\n      migrationRequired: true,\n      inspection: { codes: ['legacy-content-proof-removed'] },\n    })",
+        "expect(status)"
+      ],
+      "bodyText": "it('collects current spec and content-addressed artifact overlap from one Native root', async () => {\n    const alpha = await change('alpha-change');\n    const beta = await change('beta-change');\n    await fs.writeFile(path.join(projectRoot, 'src', 'shared.ts'), 'export const value = 2;\\n');\n    for (const state of [alpha, beta]) {\n      const prepared = await prepareNativeBuildEvidence({\n        paths,\n        state,\n        artifactRefs: ['src/shared.ts'],\n      });\n      await writeNativeChange(paths, {\n        ...state,\n        implementation_scope: prepared.scopeRef as NativeChangeState['implementation_scope'],\n      });\n    }\n\n    const radar = await inspectNativeConflictRadar(paths);\n\n    expect(radar).toMatchObject({\n      changeCount: 2,\n      relationshipCount: 1,\n      counts: { definiteConflict: 1 },\n      relationships: [\n        {\n          left: 'alpha-change',\n          right: 'beta-change',\n          classification: 'definite-conflict',\n          signalCount: 2,\n        },\n      ],\n    });\n    await expect(inspectNativeChangeConflicts(paths, 'alpha-change')).resolves.toEqual({\n      definiteConflictCount: 1,\n      possibleOverlapCount: 0,\n      findingCodes: ['native-change-conflict'],\n    });\n    const status = await inspectNativeStatus(paths, 'alpha-change', { details: true });\n    expect(status).toMatchObject({\n      migrationRequired: true,\n      inspection: { codes: ['legacy-content-proof-removed'] },\n    });\n  })",
+      "decision": "split",
+      "review": "radar关系/信号/内容scope冲突断言退休；原status migrationRequired业务诊断不能删。当前源命令诊断blocked+明确Doctor--repair且不写；不再返回legacy-content-proof-removed重复证据投影。",
+      "currentSelectors": [
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration diagnoses legacy business state with explicit Doctor guidance without scanning content-proof peers or rewriting state",
+          "evidence": "repo-ready-complete-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-application.test.ts",
+          "fullName": "Native SDK v2 Archive simplification archives a current Spec while another active SDK change declares the same capability",
+          "evidence": "reused-current-result.json",
+          "registryCaseIds": [
+            "native-archive-actual-spec-conflict",
+            "native-create-canonical-conflict-after-preflight"
+          ]
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-application.test.ts",
+          "fullName": "Native SDK v2 Archive simplification refuses an actual canonical Spec conflict after preflight without overwriting it",
+          "evidence": "reused-current-result.json",
+          "registryCaseIds": [
+            "native-archive-actual-spec-conflict",
+            "native-create-canonical-conflict-after-preflight"
+          ]
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable remove journal: resumes without deleting an externally recreated Spec",
+          "evidence": "real-wal-boundaries-reuse-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable applied Spec edit: retains the same transaction and never overwrites later canonical content",
+          "evidence": "real-wal-boundaries-reuse-result.json",
+          "registryCaseIds": []
+        }
+      ],
+      "proposedRegistryCaseIds": [
+        "native-legacy-status-explicit-doctor-import"
+      ],
+      "existingPreservedCaseIds": [
+        "native-archive-actual-spec-conflict",
+        "native-create-canonical-conflict-after-preflight"
+      ]
+    },
+    {
+      "file": "test/domains/comet-native/native-conflict-inspection.test.ts",
+      "index": 1,
+      "line": 129,
+      "name": "fails closed when a visible change points at invalid scope evidence",
+      "caseIds": [],
+      "registryLinks": [],
+      "potentialFileCaseIds": [],
+      "assertions": [
+        "expect(inspectNativeConflictRadar(paths)).rejects.toThrow()",
+        "expect(inspectNativeConflictRadar(paths))"
+      ],
+      "bodyText": "it('fails closed when a visible change points at invalid scope evidence', async () => {\n    const state = await change('invalid-scope');\n    await writeNativeChange(paths, {\n      ...state,\n      implementation_scope:\n        `runtime/evidence/scopes/${'f'.repeat(64)}.json` as NativeChangeState['implementation_scope'],\n    });\n\n    await expect(inspectNativeConflictRadar(paths)).rejects.toThrow();\n  })",
+      "decision": "retire-mechanism",
+      "review": "无效scope evidence使自动雷达fail closed，scope证明与雷达入口均退休；没有活跃业务输入需重新校验此scope。",
+      "currentSelectors": [],
+      "proposedRegistryCaseIds": [],
+      "existingPreservedCaseIds": []
+    },
+    {
+      "file": "test/domains/comet-native/native-conflict-inspection.test.ts",
+      "index": 2,
+      "line": 140,
+      "name": "does not traverse a symlinked change directory",
+      "caseIds": [],
+      "registryLinks": [],
+      "potentialFileCaseIds": [],
+      "assertions": [
+        "expect(radar.changeCount).toBe(1)",
+        "expect(radar.changeCount)"
+      ],
+      "bodyText": "it('does not traverse a symlinked change directory', async () => {\n    await change('real-change');\n    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-conflict-outside-'));\n    try {\n      await fs.symlink(outside, path.join(paths.changesDir, 'linked-change'), 'junction');\n      const radar = await inspectNativeConflictRadar(paths);\n      expect(radar.changeCount).toBe(1);\n    } finally {\n      await fs.rm(outside, { recursive: true, force: true });\n    }\n  })",
+      "decision": "retire-mechanism",
+      "review": "不跟随symlink change目录属于已删除雷达遍历行为；不会用其它安全测试冒称同入口等价，直接记录入口退休。",
+      "currentSelectors": [],
+      "proposedRegistryCaseIds": [],
+      "existingPreservedCaseIds": []
+    },
+    {
+      "file": "test/domains/comet-native/native-spec-rebase.test.ts",
+      "index": 0,
+      "line": 133,
+      "name": "refreshes a replace base and reopens Archive to Build for re-verification",
+      "caseIds": [],
+      "registryLinks": [],
+      "potentialFileCaseIds": [],
+      "assertions": [
+        "expect(inspectNativeArchivePreflight({ paths, name: state.name })).resolves.toMatchObject(\n      {\n        ready: false,\n        findingCodes: expect.arrayContaining(['spec-base-conflict']),\n      },\n    )",
+        "expect(inspectNativeArchivePreflight({ paths, name: state.name }))",
+        "expect.arrayContaining(['spec-base-conflict'])",
+        "expect(rebased).toMatchObject({\n      phase: 'build',\n      verification_result: 'pending',\n      verification_report: null,\n      implementation_scope: null,\n      verification_evidence: null,\n      partial_allowance: null,\n      spec_changes: [{ operation: 'replace', base_hash: concurrentHash }],\n    })",
+        "expect(rebased)",
+        "expect(await fs.readFile(canonicalFile, 'utf8')).toBe('target canonical\\n')",
+        "expect(await fs.readFile(canonicalFile, 'utf8'))"
+      ],
+      "bodyText": "it('refreshes a replace base and reopens Archive to Build for re-verification', async () => {\n    const canonicalFile = await canonical('authentication', 'old canonical\\n');\n    const state = await createNativeChange({\n      paths,\n      name: 'replace-conflict',\n      language: 'en',\n      verificationProtocol: 'legacy-v1',\n    });\n    const changeDir = nativeChangeDir(paths, state.name);\n    await fs.writeFile(path.join(changeDir, state.brief), brief);\n    const proposed = path.join(changeDir, 'specs', 'authentication', 'spec.md');\n    await fs.mkdir(path.dirname(proposed), { recursive: true });\n    await fs.writeFile(proposed, 'target canonical\\n');\n    await advanceNativeChange({ paths, name: state.name, evidence: { summary: 'shape ready' } });\n    await fs.appendFile(path.join(projectRoot, 'feature.ts'), '// replacement implementation\\n');\n    await advanceNativeChange({\n      paths,\n      name: state.name,\n      evidence: { summary: 'build ready', artifacts: ['feature.ts'] },\n    });\n    await fs.writeFile(\n      path.join(changeDir, 'verification.md'),\n      await nativeVerificationFixtureReport({\n        paths,\n        name: state.name,\n        evidenceRefs: ['feature.ts'],\n      }),\n    );\n    await advanceNativeChange({\n      paths,\n      name: state.name,\n      evidence: {\n        summary: 'verify ready',\n        verificationResult: 'pass',\n        verificationReport: 'verification.md',\n      },\n    });\n    await fs.writeFile(canonicalFile, 'concurrent canonical\\n');\n    const concurrentHash = await sha256File(canonicalFile);\n    await expect(inspectNativeArchivePreflight({ paths, name: state.name })).resolves.toMatchObject(\n      {\n        ready: false,\n        findingCodes: expect.arrayContaining(['spec-base-conflict']),\n      },\n    );\n\n    const rebased = await rebaseNativeSpecChanges({\n      paths,\n      name: state.name,\n      summary: 'Re-read the concurrent authentication spec',\n    });\n    expect(rebased).toMatchObject({\n      phase: 'build',\n      verification_result: 'pending',\n      verification_report: null,\n      implementation_scope: null,\n      verification_evidence: null,\n      partial_allowance: null,\n      spec_changes: [{ operation: 'replace', base_hash: concurrentHash }],\n    });\n    await verifyAgain(state.name);\n    await archiveReadyChange(state.name);\n    expect(await fs.readFile(canonicalFile, 'utf8')).toBe('target canonical\\n');\n  })",
+      "decision": "migrate-business",
+      "review": "保留replace/modify需求明确重合并后重新批准及完整验收，再写canonical目标。当前Agent编辑目标并显式revise-requirements回Shape，清旧candidate/verification；不恢复旧自动base_hash刷新/Build重验API。",
+      "currentSelectors": [
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration revises an accepted modify intent after canonical drift and requires fresh Shape and acceptance",
+          "evidence": "repo-ready-complete-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-application.test.ts",
+          "fullName": "Native SDK Workflow Application returns an unclaimed Build change to Shape when removing an existing capability",
+          "evidence": "reused-current-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-application.test.ts",
+          "fullName": "Native SDK Workflow Application returns Verify to Shape through a persisted requirements revision command",
+          "evidence": "reused-current-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-application.test.ts",
+          "fullName": "Native SDK Workflow Application allows requirements revision before Archive applies Specs but rejects it afterwards",
+          "evidence": "reused-current-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-application.test.ts",
+          "fullName": "Native SDK v2 Archive simplification refuses an actual canonical Spec conflict after preflight without overwriting it",
+          "evidence": "reused-current-result.json",
+          "registryCaseIds": [
+            "native-archive-actual-spec-conflict",
+            "native-create-canonical-conflict-after-preflight"
+          ]
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable remove journal: resumes without deleting an externally recreated Spec",
+          "evidence": "real-wal-boundaries-reuse-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-portable-archive-wal-migration.test.ts",
+          "fullName": "source portable applied Spec edit: retains the same transaction and never overwrites later canonical content",
+          "evidence": "real-wal-boundaries-reuse-result.json",
+          "registryCaseIds": []
+        }
+      ],
+      "proposedRegistryCaseIds": [
+        "native-revise-spec-preserves-modify-remove-intent"
+      ],
+      "existingPreservedCaseIds": [
+        "native-archive-actual-spec-conflict",
+        "native-create-canonical-conflict-after-preflight"
+      ]
+    },
+    {
+      "file": "test/domains/comet-native/native-spec-rebase.test.ts",
+      "index": 1,
+      "line": 198,
+      "name": "refreshes a remove base and preserves the explicit removal intent",
+      "caseIds": [],
+      "registryLinks": [],
+      "potentialFileCaseIds": [],
+      "assertions": [
+        "expect(\n      inspectNativeArchivePreflight({ paths, name: 'remove-conflict' }),\n    ).resolves.toMatchObject({\n      ready: false,\n      findingCodes: expect.arrayContaining(['spec-base-conflict']),\n    })",
+        "expect(\n      inspectNativeArchivePreflight({ paths, name: 'remove-conflict' }),\n    )",
+        "expect.arrayContaining(['spec-base-conflict'])",
+        "expect(rebased).toMatchObject({\n      phase: 'build',\n      spec_changes: [{ operation: 'remove', base_hash: concurrentHash }],\n    })",
+        "expect(rebased)",
+        "expect(changeDir).toContain('remove-conflict')",
+        "expect(changeDir)",
+        "expect(fs.access(canonicalFile)).rejects.toMatchObject({ code: 'ENOENT' })",
+        "expect(fs.access(canonicalFile))"
+      ],
+      "bodyText": "it('refreshes a remove base and preserves the explicit removal intent', async () => {\n    const canonicalFile = await canonical('legacy-auth', 'legacy v1\\n');\n    await createNativeChange({\n      paths,\n      name: 'remove-conflict',\n      language: 'en',\n      verificationProtocol: 'legacy-v1',\n    });\n    await fs.writeFile(path.join(nativeChangeDir(paths, 'remove-conflict'), 'brief.md'), brief);\n    await markNativeSpecRemoval(paths, 'remove-conflict', 'legacy-auth');\n    const changeDir = await advanceToArchive('remove-conflict');\n    await fs.writeFile(canonicalFile, 'legacy v2 from another change\\n');\n    const concurrentHash = await sha256File(canonicalFile);\n    await expect(\n      inspectNativeArchivePreflight({ paths, name: 'remove-conflict' }),\n    ).resolves.toMatchObject({\n      ready: false,\n      findingCodes: expect.arrayContaining(['spec-base-conflict']),\n    });\n\n    const rebased = await rebaseNativeSpecChanges({\n      paths,\n      name: 'remove-conflict',\n      summary: 'Re-read the concurrent legacy spec',\n    });\n    expect(rebased).toMatchObject({\n      phase: 'build',\n      spec_changes: [{ operation: 'remove', base_hash: concurrentHash }],\n    });\n    expect(changeDir).toContain('remove-conflict');\n    await verifyAgain('remove-conflict');\n    await archiveReadyChange('remove-conflict');\n    await expect(fs.access(canonicalFile)).rejects.toMatchObject({ code: 'ENOENT' });\n  })",
+      "decision": "migrate-business",
+      "review": "保留原remove意图跨canonical独立变更和明确修订后仍是source=null remove，清旧验收，重新Shape批准/独立验收后真实删除canonical。current SDK remove命令也保留业务Run。",
+      "currentSelectors": [
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration revises an accepted remove intent after canonical drift and requires fresh Shape and acceptance",
+          "evidence": "repo-ready-complete-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-application.test.ts",
+          "fullName": "Native SDK Workflow Application returns an unclaimed Build change to Shape when removing an existing capability",
+          "evidence": "reused-current-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-application.test.ts",
+          "fullName": "Native SDK Workflow Application returns Verify to Shape through a persisted requirements revision command",
+          "evidence": "reused-current-result.json",
+          "registryCaseIds": []
+        },
+        {
+          "file": "D:/Project/Comet/test/domains/comet-native/native-sdk-application.test.ts",
+          "fullName": "Native SDK Workflow Application allows requirements revision before Archive applies Specs but rejects it afterwards",
+          "evidence": "reused-current-result.json",
+          "registryCaseIds": []
+        }
+      ],
+      "proposedRegistryCaseIds": [
+        "native-revise-spec-preserves-modify-remove-intent"
+      ],
+      "existingPreservedCaseIds": []
+    }
+  ],
+  "contractChanges": [
+    "Ordinary managed check/timeout/stdout receipt issuance retired; platform reports carry checks.",
+    "No content proof scopes, preflight fingerprint, partial allowance hash or peer radar.",
+    "A same-capability peer is no standalone blocker; real frozen canonical CAS is retained.",
+    "Legacy bare business state requires explicit Doctor import; existing SDK Run adaptation is separate.",
+    "Full-Spec reconciliation is Agent editing plus explicit revise to Shape and fresh confirmation/verification, rather than legacy base_hash refresh to Build.",
+    "Original Archive WAL is resumable and does not imply an unconditional pending-journal blocker."
+  ],
+  "notExecuted": [
+    "Eval (no authorization)",
+    "Full repository suite (not required for this slice)",
+    "New installed/package/bundle boundary for the two latest product fixes; deterministic source CLI/domain Runtime tested here.",
+    "WSL/symlink execution for this slice; old receipt/radar linked-directory mechanisms are retired, not replaced with claims of link equivalence."
+  ],
+  "supplementalBusiness": [
+    {
+      "behavior": "No archive before user Shape approval and complete acceptance",
+      "proposedRegistryCaseId": "native-archive-requires-approved-complete-acceptance",
+      "selectors": [
+        {
+          "file": "C:/Users/BENYM/AppData/Local/Temp/native-archive-business-migration-P9CpfR/repo-ready/test/domains/comet-native/native-archive-business-migration.test.ts",
+          "fullName": "Native Archive business migration refuses Archive before Shape approval and completed acceptance without writing business files",
+          "evidence": "repo-ready-complete-result.json"
+        }
+      ]
+    }
+  ]
+}

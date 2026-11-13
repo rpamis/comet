@@ -5,22 +5,15 @@ import {
 } from './classic-state-file.js';
 import { randomUUID } from 'node:crypto';
 import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
-import {
-  resolveWorkspaceRuntimeRoot,
-  isWorkspaceRuntimeMigrationFence,
-} from '../workflow-contract/workspace-runtime.js';
+import { ensureWorkspaceRuntimeRoot } from '../workflow-contract/workspace-runtime.js';
 import { ensureProtectedProjectDirectory } from '../workflow-contract/protected-project-path.js';
 import { discoverClassicProject } from './classic-layout.js';
 import {
-  protectClassicLegacyStateWriter,
   resolveClassicRunDirectory,
   resolveClassicRunDirectoryForRead,
 } from './classic-runtime-paths.js';
 import path from 'path';
-import { promises as fs } from 'node:fs';
-import type { BigIntStats } from 'node:fs';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { withRecoverableFileLock } from '../../platform/fs/plugin-store.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import { Document, parseDocument } from 'yaml';
 import {
@@ -43,60 +36,22 @@ import {
   writeRunState,
   removeRunState,
   runStateFromDocument,
-  RUN_STATE_FILE,
   type StateDocument,
 } from '../../domains/engine/state.js';
 
-const stateLock = new AsyncLocalStorage<{ key: string; version: string; active: boolean }>();
+const stateMutation = new AsyncLocalStorage<string>();
 const STATE_TRANSACTION = '.comet-state-transaction.json';
 
-async function stateLockVersion(key: string): Promise<string> {
-  const { bytes, stat } = await readProtectedProjectFile(key, '.comet-state.lock', 16 * 1024, {
-    label: 'Classic state lock owner',
-    bigint: true,
-  });
-  const exact = stat as BigIntStats;
-  return [
-    exact.dev,
-    exact.ino,
-    exact.birthtimeNs,
-    exact.ctimeNs,
-    exact.mtimeNs,
-    exact.size,
-    bytes.toString('utf8'),
-  ].join(':');
-}
-
-async function holdsClassicStateLock(key: string): Promise<boolean> {
-  const held = stateLock.getStore();
-  if (!held?.active || held.key !== key) return false;
-  if ((await stateLockVersion(key)) !== held.version)
-    throw new Error(
-      'Classic state lock changed during this operation; retry after the writer finishes',
-    );
-  return true;
-}
-
-export async function withClassicStateLock<T>(
+/** 同一 controller 串行提交；嵌套业务操作复用当前事务恢复边界。 */
+export async function withClassicStateMutation<T>(
   changeDir: string,
   operation: () => Promise<T>,
 ): Promise<T> {
   const key = await resolveClassicRunDirectory(changeDir);
-  if (await holdsClassicStateLock(key)) return operation();
-  await inspectProtectedProjectPath(key, '.comet-state.lock', {
-    label: 'Classic state lock',
-    expected: 'file',
-  });
-  return withRecoverableFileLock(path.join(key, '.comet-state.lock'), async () => {
-    const held = { key, version: await stateLockVersion(key), active: true };
-    return stateLock.run(held, async () => {
-      try {
-        await recoverStateTransaction(changeDir);
-        return await operation();
-      } finally {
-        held.active = false;
-      }
-    });
+  if (stateMutation.getStore() === key) return operation();
+  return stateMutation.run(key, async () => {
+    await recoverStateTransaction(changeDir);
+    return operation();
   });
 }
 
@@ -297,124 +252,35 @@ export async function readClassicState(
   options: ReadClassicStateOptions = {},
 ): Promise<ClassicStateProjection> {
   if (options.migrate === false) return cachedReadClassicStateWithoutMigration(changeDir);
-  if (!(await holdsClassicStateLock(await resolveClassicRunDirectory(changeDir)))) {
-    const stable = await readStableClassicState(changeDir);
-    if (stable !== null) return stable;
-  }
-  return withClassicStateLock(changeDir, () => readClassicStateLocked(changeDir, options));
-}
-
-async function stateFileVersion(changeDir: string, file: string, existingRuntime?: string) {
-  const root = [RUN_STATE_FILE, STATE_TRANSACTION, '.comet-state.lock'].includes(file)
-    ? (existingRuntime ?? (await resolveClassicRunDirectory(changeDir)))
-    : changeDir;
-  // 只忽略本次仍持有且文件身份、nonce 均匹配的锁；过期上下文或替换锁不能豁免。
-  if (file === '.comet-state.lock' && (await holdsClassicStateLock(root))) {
-    return { stamp: 'missing', comparable: true };
-  }
-  if (
-    existingRuntime === changeDir &&
-    file === '.comet-state.lock' &&
-    (await isWorkspaceRuntimeMigrationFence(path.join(changeDir, file)))
-  ) {
-    return { stamp: 'missing', comparable: true };
-  }
-  const target = await inspectProtectedProjectPath(root, file, {
-    label: 'Classic state snapshot',
-    expected: 'file',
-  });
-  if (!target.exists) return { stamp: 'missing', comparable: true };
-  const stat = await fs.lstat(target.target, { bigint: true });
-  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Classic state file changed');
-  return {
-    stamp: [stat.dev, stat.ino, stat.birthtimeNs, stat.ctimeNs, stat.mtimeNs, stat.size].join(':'),
-    comparable: stat.dev !== 0n && stat.ino !== 0n && stat.ctimeNs > 0n,
-  };
-}
-
-async function stateReadVersions(changeDir: string, existingRuntime?: string) {
-  // Check the writer lock around the file observations. A complete writer that
-  // starts and finishes between these probes still changes a file's identity.
-  const lock = await stateFileVersion(changeDir, '.comet-state.lock', existingRuntime);
-  if (lock.stamp !== 'missing') return null;
-  const transaction = await stateFileVersion(changeDir, STATE_TRANSACTION, existingRuntime);
-  if (transaction.stamp !== 'missing') return null;
-  const yaml = await stateFileVersion(
-    changeDir,
-    path.basename(await resolveClassicStateFile(changeDir)),
-    existingRuntime,
-  );
-  const run = await stateFileVersion(changeDir, RUN_STATE_FILE, existingRuntime);
-  if (!yaml.comparable || !run.comparable) return null;
-  return { yaml: yaml.stamp, run: run.stamp };
+  return withClassicStateMutation(changeDir, () => readClassicStateForUpdate(changeDir, options));
 }
 
 async function readClassicStateWithoutMigration(
   changeDir: string,
 ): Promise<ClassicStateProjection> {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const runtime = await resolveClassicRunDirectoryForRead(changeDir);
-    if (runtime === null) return parseClassicStateDocument({});
-    const before = await stateReadVersions(changeDir, runtime);
-    if (!before)
-      throw new Error('Classic state is being updated; retry the read after the writer finishes');
-    try {
-      const document = await readDocument(await resolveClassicStateFile(changeDir));
-      // 兼容字段仅从内存投影移除，原 YAML 和旧 Run 文件保持逐字节不变。
-      stripLegacyCommandFields(document);
-      const doc = documentRecord(document);
-      let run = await readRunState(runtime);
-      if (!run && doc.run_id && doc.skill) run = runStateFromDocument(doc);
-      assertRunIdentity(doc, run);
-      const projection = parseClassicStateDocument(doc, run);
-      const after = await stateReadVersions(changeDir, runtime);
-      if (
-        after &&
-        before.yaml === after.yaml &&
-        before.run === after.run &&
-        (await stateFileVersion(changeDir, STATE_TRANSACTION, runtime)).stamp === 'missing' &&
-        (await stateFileVersion(changeDir, '.comet-state.lock', runtime)).stamp === 'missing'
-      )
-        return projection;
-    } catch (error) {
-      const after = await stateReadVersions(changeDir, runtime);
-      if (after && before.yaml === after.yaml && before.run === after.run) throw error;
-    }
-  }
-  throw new Error('Classic state changed while reading; retry without modifying the state');
+  const runtime = await resolveClassicRunDirectoryForRead(changeDir);
+  if (runtime === null) return parseClassicStateDocument({});
+  if (
+    (
+      await inspectProtectedProjectPath(runtime, STATE_TRANSACTION, {
+        label: 'Classic state transaction',
+        expected: 'file',
+      })
+    ).exists
+  )
+    throw new Error(
+      'Classic state transaction is incomplete; use an explicit state operation to recover it',
+    );
+  const document = await readDocument(await resolveClassicStateFile(changeDir));
+  stripLegacyCommandFields(document);
+  const doc = documentRecord(document);
+  let run = await readRunState(runtime);
+  if (!run && doc.run_id && doc.skill) run = runStateFromDocument(doc);
+  assertRunIdentity(doc, run);
+  return parseClassicStateDocument(doc, run);
 }
 
-async function readStableClassicState(changeDir: string): Promise<ClassicStateProjection | null> {
-  try {
-    const before = await stateReadVersions(changeDir);
-    if (before === null) return null;
-    const document = await readDocument(await resolveClassicStateFile(changeDir));
-    const doc = documentRecord(document);
-    if (document.has('build_command') || document.has('verify_command')) return null;
-    const run = await readRunState(await resolveClassicRunDirectory(changeDir));
-    assertRunIdentity(doc, run);
-    if (!run && doc.run_id && doc.skill) return null;
-    const projection = parseClassicStateDocument(doc, run);
-    const after = await stateReadVersions(changeDir);
-    // Finish with the lock and journal probes: neither may appear after the
-    // final file observations. No snapshot is retained for a later request.
-    if (
-      after === null ||
-      before.yaml !== after.yaml ||
-      before.run !== after.run ||
-      (await stateFileVersion(changeDir, STATE_TRANSACTION)).stamp !== 'missing' ||
-      (await stateFileVersion(changeDir, '.comet-state.lock')).stamp !== 'missing'
-    )
-      return null;
-    return projection;
-  } catch {
-    // A race, recovery or migration must use the existing serialized reader.
-    // It also preserves the original diagnostics for invalid/unsafe files.
-    return null;
-  }
-}
-
-async function readClassicStateLocked(
+async function readClassicStateForUpdate(
   changeDir: string,
   options: ReadClassicStateOptions,
 ): Promise<ClassicStateProjection> {
@@ -465,8 +331,7 @@ export async function writeClassicState(
     applyProjection(document, { ...projection, unknownKeys: projection.unknownKeys ?? [] });
     parseClassicStateDocument(documentRecord(document), projection.run ?? null);
     const projectRoot = await discoverClassicProject(changeDir);
-    const root = await resolveWorkspaceRuntimeRoot(projectRoot);
-    await protectClassicLegacyStateWriter(changeDir, projectRoot, root);
+    const root = await ensureWorkspaceRuntimeRoot(projectRoot);
     const directory = await ensureProtectedProjectDirectory(
       root,
       `classic-changes/${document.get('change_id')}`,
@@ -480,12 +345,12 @@ export async function writeClassicState(
     });
     return;
   }
-  return withClassicStateLock(changeDir, () =>
-    writeClassicStateLocked(changeDir, projection, options),
+  return withClassicStateMutation(changeDir, () =>
+    writeClassicStateUpdate(changeDir, projection, options),
   );
 }
 
-async function writeClassicStateLocked(
+async function writeClassicStateUpdate(
   changeDir: string,
   projection: Omit<ClassicStateProjection, 'unknownKeys'> & { unknownKeys?: string[] },
   options: { beforeCommit?: () => void | Promise<void> },

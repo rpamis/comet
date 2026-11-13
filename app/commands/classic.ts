@@ -42,7 +42,9 @@ export async function runClassicGroupFacade(args: readonly string[]): Promise<nu
         '',
         'Commands:',
         '  state current | state next <name>    Inspect the current change or next workflow action',
-        '  check run <name> <build|verify> ...  Execute a check and record evidence',
+        '  state complete-build <name> --checks <file>  Submit platform check reports for a new Run',
+        '  guard <name> verify --report <ref> --apply --checks <file>  Submit acceptance and check reports',
+        '  check run <name> <build|verify> ...  Execute a managed check for a legacy Run',
         '',
         'Advanced workflow operations (may write state or execute checks):',
         '  state <command>                     Read or update workflow state',
@@ -108,7 +110,7 @@ function shouldRecordClassicResult(
 function isReadOnlyClassicStateQuery(command: string, args: readonly string[]): boolean {
   if (command !== 'state') return false;
   const subcommand = args[0];
-  return subcommand === 'current' || subcommand === 'next';
+  return subcommand === 'current' || subcommand === 'next' || subcommand === 'get';
 }
 
 async function recordClassicResult(

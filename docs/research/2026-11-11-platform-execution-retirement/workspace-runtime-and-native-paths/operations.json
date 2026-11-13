@@ -1,0 +1,149 @@
+{
+  "scope": [
+    "workflow-simplification-t07-named-migration",
+    "runtime-legacy-migration-meta-lock-confirmation"
+  ],
+  "operations": [
+    {
+      "location": "current",
+      "id": "workflow-simplification-t07-named-migration",
+      "expectedEntry": {
+        "id": "workflow-simplification-t07-named-migration",
+        "sources": [
+          "report:2026-11-08-native-classic-overdesign-audit"
+        ],
+        "behavior": "A named current-format access must preserve transparent legacy migration without scanning unrelated changes.",
+        "coverageLevel": "unit",
+        "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+        "expected": "A named current-format access must preserve transparent legacy migration without scanning unrelated changes.",
+        "forbidden": "Scanning unrelated named changes on the steady path, hiding an unsettled journal, trusting a wrong fence or reusing an unstable observation.",
+        "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-paths.test.ts",
+            "namePattern": "migrates only the named legacy runtime without enumerating unrelated changes",
+            "requiredNames": [
+              "Native artifact root safety migrates only the named legacy runtime without enumerating unrelated changes"
+            ]
+          },
+          {
+            "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+            "namePattern": "retries a transient fence publication observation with a bounded fresh read",
+            "requiredNames": [
+              "workspace runtime resolution and migration retries a transient fence publication observation with a bounded fresh read"
+            ]
+          },
+          {
+            "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+            "namePattern": "does not reuse an unstable fence after its bounded publication retries",
+            "requiredNames": [
+              "workspace runtime resolution and migration does not reuse an unstable fence after its bounded publication retries"
+            ]
+          }
+        ]
+      },
+      "migration": {
+        "kind": "feature-removed",
+        "reason": "Retire automatic workspace/change-local layout migration, fence publication/retry and old-writer sealing from ordinary named path resolution. Keep the original case fields/source and full old assertions; current named resolution never enumerates unrelated changes, preserves source bytes/directories and creates no fence or authoritative target. Existing markers are inert and their foreign targets are never followed. Business Run/history/checkpoint and true Archive WAL/receipt imports use explicit import/Doctor and original business approvals; this is not a claim that the removed implicit-migration protocol still works.",
+        "authorization": "report:2026-11-10-agent-platform-execution",
+        "record": "docs/research/2026-11-11-platform-execution-retirement/workspace-runtime-and-native-paths/README.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-paths.test.ts",
+            "namePattern": "^(?:Native artifact root safety resolves only the named Runtime without migrating or enumerating legacy changes)$",
+            "requiredNames": [
+              "Native artifact root safety resolves only the named Runtime without migrating or enumerating legacy changes"
+            ]
+          },
+          {
+            "file": "test/domains/workflow-contract/workspace-runtime-current-business.test.ts",
+            "namePattern": "^(?:creates one explicit current Runtime without fencing or importing old storage|recognizes an old fence without reading its foreign target or changing it|explicitly imports a legacy physical checkpoint at slot 1 without changing source history|explicitly imports a legacy physical checkpoint at slot 2 without changing source history)$",
+            "requiredNames": [
+              "creates one explicit current Runtime without fencing or importing old storage",
+              "recognizes an old fence without reading its foreign target or changing it",
+              "explicitly imports a legacy physical checkpoint at slot 1 without changing source history",
+              "explicitly imports a legacy physical checkpoint at slot 2 without changing source history"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/workspace-runtime-and-native-paths/registry.json",
+            "sha256": "fbf074474b5f0ddf1db8b05a32c49fafcf90e6926cef5384cab0b913047479e8"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/workspace-runtime-and-native-paths/tests.json",
+            "sha256": "eae15960ef6a6f1c7a56bf1a2943748295ad1ef56c792d1ef15761c366920ba1"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/workspace-runtime-and-native-paths/mapping.json",
+            "sha256": "8a9c13436fd9888e79e093f45d9de355b3c486da58cf44e08efca2566e07f767"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/workspace-runtime-and-native-paths/tests.patch",
+            "sha256": "c901c3d242e30c5f02185a22073cc9140d988192ba5d06b3f018eee6b2bd0e57"
+          }
+        }
+      }
+    },
+    {
+      "location": "current",
+      "id": "runtime-legacy-migration-meta-lock-confirmation",
+      "expectedEntry": {
+        "id": "runtime-legacy-migration-meta-lock-confirmation",
+        "sources": [
+          "report:2026-11-09-runtime-core-commit-review"
+        ],
+        "behavior": "A confirmed stopped legacy migration can retire its recovery meta-lock without probing a PID.",
+        "coverageLevel": "runtime",
+        "reproduction": "Place an old nonce/createdAt record at .runtime-migration-recovery.lock and resolve the Runtime root with and without confirmedOwnerStopped.",
+        "expected": "Unconfirmed recovery preserves the record; confirmed recovery completes; an active transaction still blocks.",
+        "forbidden": "Permanent legacy-lock failure after confirmation, or takeover of an active transaction.",
+        "rootCause": "The outer migration recovery lock did not receive the existing stop confirmation.",
+        "tests": [
+          {
+            "file": "test/domains/workflow-contract/workspace-runtime-legacy-lock.test.ts",
+            "namePattern": "^(?:recovers a legacy migration recovery lock only after the original operation is confirmed stopped|preserves an active migration recovery transaction even when recovery is confirmed)$",
+            "requiredNames": [
+              "recovers a legacy migration recovery lock only after the original operation is confirmed stopped",
+              "preserves an active migration recovery transaction even when recovery is confirmed"
+            ]
+          }
+        ]
+      },
+      "migration": {
+        "kind": "feature-removed",
+        "reason": "Remove the retired workspace-migration recovery coordinator/meta-lock and its confirmedOwnerStopped handshake. The current explicit writer ignores and preserves the old exact .runtime-migration-recovery.lock bytes, creates one current physical Runtime and never migrates/fences old storage. This does not retire SDK/transition/Archive business write locks or claim that a process was stopped. Complete original old assertions are archived; ordinary process cleanup remains the Agent platform responsibility.",
+        "authorization": "report:2026-11-10-agent-platform-execution",
+        "record": "docs/research/2026-11-11-platform-execution-retirement/workspace-runtime-and-native-paths/README.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/workflow-contract/workspace-runtime-current-business.test.ts",
+            "namePattern": "^(?:creates one explicit current Runtime without fencing or importing old storage)$",
+            "requiredNames": [
+              "creates one explicit current Runtime without fencing or importing old storage"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/workspace-runtime-and-native-paths/registry.json",
+            "sha256": "fbf074474b5f0ddf1db8b05a32c49fafcf90e6926cef5384cab0b913047479e8"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/workspace-runtime-and-native-paths/tests.json",
+            "sha256": "eae15960ef6a6f1c7a56bf1a2943748295ad1ef56c792d1ef15761c366920ba1"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/workspace-runtime-and-native-paths/mapping.json",
+            "sha256": "8a9c13436fd9888e79e093f45d9de355b3c486da58cf44e08efca2566e07f767"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/workspace-runtime-and-native-paths/tests.patch",
+            "sha256": "c901c3d242e30c5f02185a22073cc9140d988192ba5d06b3f018eee6b2bd0e57"
+          }
+        }
+      }
+    }
+  ]
+}

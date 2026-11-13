@@ -32,7 +32,7 @@ export interface ApplicationStorageIndex {
   stamps: string | null;
 }
 
-/** 调用者持有应用 scope 锁；索引仅保存占用身份，正文仍以 Store 为准。 */
+/** 调用者串行提交应用写入；索引仅保存占用身份，正文仍以 Store 为准。 */
 export function createApplicationStorageIndex<T extends RuntimeRecord>(options: {
   rootDir: string;
   read(runId: string): Promise<T | null>;

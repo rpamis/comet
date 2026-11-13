@@ -1,3 +1,5 @@
+import { promises as fs } from 'node:fs';
+import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import path from 'node:path';
 import {
   runWithHookReadCache,
@@ -18,6 +20,7 @@ export async function listNativeSdkHistoryPartitions(
 ): Promise<{ active: string[]; history: string[] }> {
   const partitions = await listSdkChangePartitions(projectRoot, 'native', { readOnly: true });
   const store = createFileRuntimeStore<WorkflowRun>({
+    singleWriter: true,
     rootDir: path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'sdk-runs', 'native'),
   });
   // 每次重新观察封存元数据，仅在本批内部共享路径校验。owner 的已验证结果仍
@@ -57,6 +60,7 @@ export function inspectNativeSdkClosedHistory(
       return false;
     // 根解析与 Store 构造只做一次；各条记录仍在 owner 的稳定代次内独立校验。
     store ??= createFileRuntimeStore<WorkflowRun>({
+      singleWriter: true,
       rootDir: path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'sdk-runs', 'native'),
     });
     const disposition = await store.readPartitionMetadata(owner.runId);
@@ -66,4 +70,28 @@ export function inspectNativeSdkClosedHistory(
       );
     return true;
   });
+}
+
+/** 当前工作区的历史名字；只观察 Store 元数据，正文和 owner 错误交给逐项状态检查。 */
+export async function listNativeSdkHistoryNames(projectRoot: string): Promise<string[]> {
+  const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
+  const volume = path.parse(runtimeRoot).root;
+  const directory = await inspectProtectedProjectPath(
+    volume,
+    path.relative(volume, path.join(runtimeRoot, 'change-owner-history/native')),
+    { label: 'Native history owners', expected: 'directory' },
+  );
+  if (!directory.exists) return [];
+  const names = (await fs.readdir(directory.target, { withFileTypes: true }))
+    .filter((entry) => entry.name.endsWith('.json'))
+    .map((entry) => entry.name.slice(0, -5))
+    .filter((name) => /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u.test(name));
+  const store = createFileRuntimeStore<WorkflowRun>({
+    singleWriter: true,
+    rootDir: path.join(runtimeRoot, 'sdk-runs/native'),
+  });
+  const partitions = await mapWithConcurrency(names, 4, (name) =>
+    store.readPartitionMetadata(name).catch(() => 'invalid' as const),
+  );
+  return names.filter((_, index) => partitions[index] !== 'missing').sort();
 }

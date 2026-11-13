@@ -6,21 +6,23 @@ import {
   type RuntimeValidator,
   type WorkflowRun,
 } from '../engine/runtime.js';
+import { isDeepStrictEqual } from 'node:util';
 import type { ClassicWorkflowApplication } from './classic-sdk-application.js';
-import { createClassicSdkCheckExecutor } from './classic-sdk-check.js';
-import { assertClassicSdkCheckReceipt } from './classic-sdk-check-record.js';
 import {
-  captureClassicDeliveryRepair,
-  assertClassicDeliveryRepairCurrent,
-} from './classic-sdk-delivery-repair.js';
-import {
-  classicDeliveryRepairRecord as record,
   classicDeliveryRepairForAction,
+  classicDeliveryRepairInputs,
+  type ClassicDeliveryRepair,
   isClassicDeliveryRepairCheck,
+  classicDeliveryRepairRecord as record,
 } from './classic-sdk-delivery-repair-model.js';
-
+import {
+  assertClassicDeliveryRepairCurrent,
+  captureClassicDeliveryRepair,
+} from './classic-sdk-delivery-repair.js';
 export function withClassicDeliveryRepair<
-  T extends ClassicWorkflowApplication & { commandValidators: RuntimeCommandValidator[] },
+  T extends ClassicWorkflowApplication & {
+    commandValidators: RuntimeCommandValidator[];
+  },
 >(base: T, profile: string, sourceRun?: Readonly<WorkflowRun>) {
   const checkStep = `${profile}.delivery.check`,
     confirmStep = `${profile}.delivery.confirm`;
@@ -51,7 +53,11 @@ export function withClassicDeliveryRepair<
             reason: 'Classic delivery repair no longer matches its authoritative source Run',
           };
       }
-      const actual = await captureClassicDeliveryRepair(context.projectRoot, sourceRun ?? run);
+      const actual = await captureClassicDeliveryRepair(
+        context.projectRoot,
+        sourceRun ?? run,
+        (request.deliveryRepair as unknown as ClassicDeliveryRepair).reports,
+      );
       const accepted = hashRuntimeValue(actual) === hashRuntimeValue(request.deliveryRepair);
       return {
         accepted,
@@ -73,26 +79,21 @@ export function withClassicDeliveryRepair<
           accepted: false,
           reason: 'Classic delivery repair check has the wrong execution owner',
         };
-      await assertClassicSdkCheckReceipt(context.projectRoot, run, action, {
-        status: outcome.status,
-        output: outcome.output,
-      });
-      if (outcome.status === 'succeeded') {
-        const generated = record(record(outcome.output).regeneratedOutputs);
-        const proof = classicDeliveryRepairForAction(action);
+      {
+        const repair = classicDeliveryRepairForAction(action);
         if (
-          hashRuntimeValue(Object.keys(generated).sort()) !==
-            hashRuntimeValue(Object.keys(proof.excludedOutputs).sort()) ||
-          Object.values(generated).some(
-            (hash) =>
-              typeof hash !== 'string' ||
-              !/^(?:git:[a-f0-9]{40}(?:[a-f0-9]{24})?|[a-f0-9]{64})$/u.test(hash),
-          )
+          outcome.status !== 'succeeded' ||
+          !isDeepStrictEqual(outcome.output, {
+            ...repair.reports,
+            deliveryPaths: classicDeliveryRepairInputs(run, repair),
+          })
         )
           return {
             accepted: false,
-            reason: 'Classic delivery repair lacks Runtime-bound output generation evidence',
+            reason: 'Classic delivery repair reports differ from the submitted reports',
           };
+      }
+      if (outcome.status === 'succeeded') {
         await assertClassicDeliveryRepairCurrent(
           context.projectRoot,
           run,
@@ -117,12 +118,20 @@ export function withClassicDeliveryRepair<
         classicDeliveryRepairForAction(action),
         'prepare',
       );
-      await createClassicSdkCheckExecutor(context.projectRoot).preflight!(action, context, run);
     },
     async execute(action, context, run) {
       if (!context?.projectRoot || !run)
         throw new Error('Classic delivery repair requires its project');
-      return createClassicSdkCheckExecutor(context.projectRoot).execute(action, context, run);
+      {
+        const repair = classicDeliveryRepairForAction(action);
+        return {
+          status: 'succeeded' as const,
+          output: {
+            ...repair.reports,
+            deliveryPaths: classicDeliveryRepairInputs(run, repair),
+          },
+        };
+      }
     },
   };
   return {

@@ -5,7 +5,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { collectClassicEvidence, type ClassicEvidence } from './classic-evidence.js';
 import { resolveClassicStepId } from './classic-resolver.js';
-import { readClassicState, writeClassicState, withClassicStateLock } from './classic-store.js';
+import { readClassicState, writeClassicState, withClassicStateMutation } from './classic-store.js';
 import {
   CLASSIC_MIGRATION_VERSION,
   type ClassicProfile,
@@ -134,7 +134,7 @@ export async function ensureClassicRun(
   changeDir: string,
   options: EnsureClassicRunOptions,
 ): Promise<ClassicRunContext> {
-  return withClassicStateLock(changeDir, () => ensureClassicRunLocked(changeDir, options));
+  return withClassicStateMutation(changeDir, () => ensureClassicRunLocked(changeDir, options));
 }
 
 async function ensureClassicRunLocked(

@@ -26,17 +26,19 @@ Tweak 为 Comet 五阶段流程提供一组预设配置。它通过 OpenSpec 完
 
 ## SDK Run 路径
 
+先读取并执行[普通命令与检查](../comet/reference/platform-execution.md)。新旧 Run 均使用平台工具执行普通命令，在原 Run 提交实际检查报告；自动升级不恢复旧检查执行器。阶段准备、用户选择、任务完成和验收要求继续有效。
+
 首次进入当前 SDK 阶段、换 Agent 或恢复上下文时，读取[阶段入口与恢复](../comet-classic/reference/sdk-methods.md#阶段入口与恢复)及该参考的当前阶段章节；本会话已有且仍有效时直接复用。下文按当前阶段执行；`nextAction.kind` 的恢复路由只适用于没有 continuation mode 的旧响应。
 
 开始或恢复时，优先复用当前有效结果中的 `agent.continuation` / `data.nextAction` 及已绑定的 change、工作区、phase 和 Run revision，按已知的 `data.runtimeFormat` 路由。只有冷恢复、外部状态变化或缺少这些信息时，才运行 `comet state next <change-name> --json`。`sdk` 只按本节推进；SDK 方法参考的适用条件、OpenSpec apply 方法、升级判定和文件数授权规则仍适用，状态与证据通过本节命令提交。若 `nextAction.kind` 为 `reconcile`，运行 `comet state check <change-name> <phase> --recover --json` 核对原 Action；结果未明时不重做实现、检查或归档。
 
 1. 新建时先按 [工作区选择](../comet-classic/reference/workspace.md) 确定隔离方式，运行 `comet classic workspace prepare <name> --isolation <selected-isolation> --json`，进入返回的 `projectRoot`，先按 [开始与产物](../comet-classic/reference/sdk-methods.md#开始与产物) 创建 OpenSpec 基础目录，再运行 `comet state init <name> tweak --isolation <selected-isolation>`，随后运行 `comet state select <name>` 绑定 Hook 路由。按 SDK 方法参考的开始与产物章节创建 OpenSpec 产物，包括本次确需的 delta spec；运行 `comet guard <change-name> open --json` 预览确认内容，保存返回的 `data.approvalHash`。向用户展示本次 Open 产物与范围，获得明确批准后，运行 `comet guard <change-name> open --apply --approval-hash <approvalHash>`。产物变化后必须重新预览并确认，不复用旧哈希。只有 Run 进入 Build，Open 才完成。
 2. `tweak.build.execute` 待执行时，沿用本次 change、工作区和 Run，直接恢复 Build，不重新初始化或重跑 Open。按 SDK 方法参考的预设范围复核章节的 OpenSpec apply 方法读取指令与上下文，逐项实施并勾选同一 tasks.md。出现实质升级信号或文件数超限且无有效授权时，先运行 `comet state propose-escalation <change-name> --reason "<reason>"`；向用户展示当前原因和继续 tweak / 升级 full 的影响，并保存返回的 `data.wait.proposalHash`。用户明确选择后运行 `comet state decide-escalation <change-name> --proposal-hash <proposalHash> --choice <continue|upgrade>`。`continue` 仍须满足 SDK 方法参考的范围、风险与 ruling 要求；`upgrade` 在同一个 Run 和工作区进入 full Design，立即按入口加载 comet-design。恢复待决定 Wait 时复用原提案，不重新提案或替用户选。
-3. 所有任务完成且仍适合 tweak 时，以完整构建或验收命令运行 `comet guard <change-name> build --apply -- <program> [args...]`。此处没有新的用户决定，`--apply` 会重新校验当前任务、配置、工作区和证据，再执行真实检查并提交收据；只有成功且证据有效时进入 Verify。仅在需要诊断时运行 `comet guard <change-name> build` 只读预检。失败后使用返回的当前状态；结果未提供 continuation 时再读 `state next --json`，不重播结果未明的 Action。
+3. 所有任务完成、必要检查与审查完成且仍适合当前预设时，运行 `comet state complete-build <change-name> --session <builder-execution-ref> --checks <checks-json-file>` 提交实际结果。此处没有新的用户决定；Runtime 核对当前任务、配置、工作区和报告后进入 Verify。失败或结果未明时按返回的当前 Action 核对原任务，不重复执行。
 4. Run 进入 Verify 时，**立即执行：** 使用 Skill 工具加载 comet-verify 技能。禁止跳过此步骤。若有 delta spec，按 SDK 方法参考的完整验证方法覆盖其一致性，不调用旧 `state set verify_mode`。Run 进入 Archive 时，**立即执行：** 使用 Skill 工具加载 comet-archive 技能。禁止跳过此步骤。归档和交付仍须获得用户当前授权；当前成功结果显示 Run 完成后才能宣告完成；缺少完成状态时再读 `state next --json`。
 
 每次推进后，优先使用同次结果的 `agent.continuation` / `data.nextAction`；状态仍有效且信息完整时，不重复 next、select 或 check。仅在冷恢复、外部状态变化或缺少必要信息时补读。`decision`、`evidence`、`reconcile` 先处理当前 Run 的等待或恢复；`action` 才执行对应步骤。
-确定性的本地检查按 SDK 方法参考在 `--` 前加 `--local`，Runtime 核对完整输入和日志后才复用；外部检查保持真实执行。SDK Build 使用稳定的 `--session <builder-execution-ref>` 关联执行；full 的 complete-build 已携带时无需再次传入。
+SDK Build 使用真实的 `--session <builder-execution-ref>` 关联执行；已经携带时无需再次传入。
 
 ## Compat 路径
 

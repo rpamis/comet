@@ -1,3 +1,4 @@
+import { requireFileSymlink } from '../../helpers/file-symlink.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -114,9 +115,10 @@ const danglingCases = (
   (['absolute', 'relative', 'chain'] as const).map((link) => ({ destination, link })),
 );
 
-it.each(danglingCases)(
+it.for(danglingCases)(
   'resolves a dangling $link file link to $destination before deciding the Hook allowance',
-  async ({ destination, link }) => {
+  async ({ destination, link }, context) => {
+    await requireFileSymlink(context);
     const root = await fs.realpath(
       await fs.mkdtemp(path.join(os.tmpdir(), 'comet-hook-dangling-')),
     );
@@ -201,9 +203,10 @@ it.each(danglingCases)(
   },
 );
 
-it.each(['cycle', 'over-depth'] as const)(
+it.for(['cycle', 'over-depth'] as const)(
   'fails closed for an allowlisted %s link chain without hanging',
-  async (mode) => {
+  async (mode, context) => {
+    await requireFileSymlink(context);
     const root = await fs.realpath(
       await fs.mkdtemp(path.join(os.tmpdir(), 'comet-hook-link-bound-')),
     );
@@ -250,7 +253,8 @@ it.each(['target', 'cwd'] as const)(
     await fs.mkdir(projectRoot);
     await writeProjectConfig(projectRoot, config);
     const runtimeRoot = await resolveWorkspaceRuntimeRoot(projectRoot);
-    await fs.mkdir(path.join(runtimeRoot, 'subdir'));
+    // SIMULATED protected target: resolving a path no longer creates its parents.
+    await fs.mkdir(path.join(runtimeRoot, 'subdir'), { recursive: true });
     const alias = path.join(projectRoot, 'team-rules', 'link');
     await fs.mkdir(path.dirname(alias));
     await fs.symlink(

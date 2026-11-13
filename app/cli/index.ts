@@ -87,7 +87,7 @@ program
 program
   .command('edit-review <operation> <workflow> <change>')
   .description(
-    'Review edits with observe, prepare, prepare-applied, judge, record, refresh-checks or show; claim retains the legacy independent review path',
+    'Report the removal of Native/Classic content-proof commands; continue through the original workflow',
   )
   .option('--project-root <path>', '当前工作区路径')
   .option('--file <path>', '完整编辑请求、record 判断结果或 refresh-checks 检查输入 JSON')
@@ -553,6 +553,13 @@ program
     '--repair',
     'Repair managed Hook, Rule, and selection state; back up and replace a corrupt project registry',
   )
+  .option('--lock-file <file>', 'Inspect one Runtime lock without loading project integrations')
+  .option('--lock-token <token>', 'Repair only the inspected lock record')
+  .option(
+    '--import-legacy-runtime',
+    'Import business records from this project’s old Runtime layout; preserve source files',
+  )
+  .option('--confirmed', 'Confirm the original locked operation and its descendants have stopped')
   .option('--yes', 'Authorize repairable project integrations such as CodeGraph indexing')
   .addOption(
     new Option('--strategy <strategy>', 'Classic root move recovery strategy').choices([
@@ -1212,7 +1219,8 @@ async function runCli(): Promise<void> {
       return;
     }
 
-    await program.parseAsync();
+    // CLI 的入口始终是 Node 参数布局，包括 Electron 以 Node 模式启动的场景。
+    await program.parseAsync(process.argv, { from: 'node' });
   } catch (error) {
     if (error instanceof Error && 'exitCode' in error && error.exitCode === 0) return;
     if (runtimeCommandRequested) {

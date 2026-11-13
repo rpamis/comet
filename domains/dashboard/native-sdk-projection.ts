@@ -2,6 +2,7 @@ import type {
   NativeChildrenContract,
   NativeChildStatusProjection,
 } from '../comet-native/native-children.js';
+import { nativeSupervisorContractRef } from '../comet-native/native-children-contract.js';
 import { parseNativePortableState } from '../comet-native/native-portable-state.js';
 import { readNativeSdkRunRecord } from '../comet-native/native-sdk-state-store.js';
 import { currentNativeSdkSupervisorActions } from '../comet-native/native-sdk-supervisor-plan.js';
@@ -33,7 +34,7 @@ function failed(action: Action): boolean {
     output?.verdict === 'fail' ||
     output?.verdict === 'blocked' ||
     (Array.isArray(output?.checks) &&
-      output.checks.some((check) => record(check)?.status !== 'passed'))
+      output.checks.some((check) => (record(check)?.result ?? record(check)?.status) === 'failed'))
   );
 }
 
@@ -42,14 +43,15 @@ function childProgress(
   { run, state }: SdkInspection,
   projectRoot: string,
 ): NativeChildStatusProjection[] {
-  const confirmed = record(run.outputs['shape.revalidate']?.value);
+  const confirmed = record(run.outputs['shape.prepare']?.value);
   const children = record(confirmed?.children);
-  if (!children?.contract || state.phase === 'shape') return [];
-  const contract = children.contract as NativeChildrenContract;
+  const contract = (state.children_contract ?? children?.contract) as
+    NativeChildrenContract | undefined;
+  if (!contract || state.phase === 'shape' || !state.children_contract_ref) return [];
   const actions = currentNativeSdkSupervisorActions(run).filter(
     (action) =>
       action.stepId.startsWith('supervisor.child.') &&
-      activation(action)?.contractHash === state.children_contract_hash &&
+      nativeSupervisorContractRef(activation(action), run) === state.children_contract_ref &&
       action.status !== 'cancelled',
   );
   const latest = new Map<string, Action>();
@@ -111,20 +113,20 @@ function childProgress(
 }
 
 function executionProgress({ run, state }: SdkInspection): NativeDashboardLocalExecutionSummary {
-  const current = currentNativeSdkSupervisorActions(run);
+  const current = currentNativeSdkSupervisorActions(run).filter(
+    (action) => !/(?:checks|requested-checks)(?:-stop)?$/u.test(action.stepId),
+  );
   const action =
     current.find((action) => action.status === 'running') ??
     current.find((action) => action.status === 'unknown');
   const step = action?.stepId ?? '';
-  const stage = step.includes('checks')
-    ? 'checking'
-    : step.includes('verifier')
-      ? 'verifying'
-      : step.includes('archive')
-        ? 'archiving'
-        : action
-          ? 'building'
-          : null;
+  const stage = step.includes('verifier')
+    ? 'verifying'
+    : step.includes('archive')
+      ? 'archiving'
+      : action
+        ? 'building'
+        : null;
   return {
     status: action?.status === 'running' ? 'running' : action ? 'interrupted' : 'absent',
     reason: state.archived ? 'archived' : action ? 'current' : 'idle',
@@ -136,10 +138,6 @@ function executionProgress({ run, state }: SdkInspection): NativeDashboardLocalE
           ? 'verifier'
           : 'runtime'
       : null,
-    startedAt: null,
-    requestCheckRounds: 0,
-    checks: [],
-    recoverableFromStage: action?.status === 'unknown' ? state.loop.stage : null,
   };
 }
 

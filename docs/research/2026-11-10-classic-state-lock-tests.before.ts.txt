@@ -1,0 +1,523 @@
+import { resolveClassicRunDirectory } from '../../../domains/comet-classic/classic-runtime-paths.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as engineState from '../../../domains/engine/state.js';
+import { healBoundBranch } from '../../../domains/comet-classic/classic-branch-binding.js';
+import { promises as fs } from 'fs';
+import os from 'os';
+import path from 'path';
+import {
+  readClassicState,
+  writeClassicState,
+} from '../../../domains/comet-classic/classic-store.js';
+import type { ClassicState } from '../../../domains/comet-classic/classic-state.js';
+import type { RunState } from '../../../domains/engine/types.js';
+import { applyClassicTransition } from '../../../domains/comet-classic/classic-transitions.js';
+
+function classicState(): ClassicState {
+  return {
+    workflow: 'full',
+    language: 'zh-CN',
+    phase: 'build',
+    contextCompression: 'beta',
+    buildMode: 'executing-plans',
+    buildPause: 'plan-ready',
+    subagentDispatch: 'confirmed',
+    tddMode: 'tdd',
+    reviewMode: null,
+    isolation: 'worktree',
+    boundBranch: null,
+    verifyMode: 'full',
+    autoTransition: false,
+    baseRef: 'abc123',
+    designDoc: 'docs/superpowers/specs/design.md',
+    plan: 'docs/superpowers/plans/plan.md',
+    verifyResult: 'fail',
+    verifyFailures: 2,
+    verificationReport: 'docs/verification.md',
+    branchStatus: 'handled',
+    createdAt: '2026-06-01',
+    verifiedAt: '2026-06-02',
+    archiveConfirmation: null,
+    archived: false,
+    directOverride: true,
+    handoffContext: '.comet/handoff/context.json',
+    handoffHash: 'b'.repeat(64),
+    classicProfile: 'full',
+    classicMigration: 1,
+  };
+}
+
+function runState(): RunState {
+  return {
+    runId: 'run-classic-1',
+    skill: 'comet-classic',
+    skillVersion: '1',
+    skillHash: 'a'.repeat(64),
+    orchestration: 'deterministic',
+    currentStep: 'full.build.execute',
+    iteration: 3,
+    pending: null,
+    pendingRef: '.comet/pending-action.json',
+    trajectoryRef: '.comet/trajectory.jsonl',
+    contextRef: '.comet/context.md',
+    artifactsRef: '.comet/artifacts.json',
+    checkpointRef: '.comet/checkpoint.json',
+    status: 'running',
+    retries: { action: 1 },
+  };
+}
+
+describe('Classic state projection', () => {
+  let changeDir: string;
+  let stateFile: string;
+
+  beforeEach(async () => {
+    changeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-state-'));
+    await fs.mkdir(path.join(changeDir, '.git'));
+    stateFile = path.join(changeDir, '.comet.yaml');
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await fs.rm(changeDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  });
+
+  it('round-trips explicitly selected autonomous mode without a direct override', async () => {
+    const classic = { ...classicState(), buildMode: 'autonomous' as const, directOverride: null };
+    await writeClassicState(changeDir, { classic, run: runState() });
+    expect((await readClassicState(changeDir)).classic).toMatchObject({
+      buildMode: 'autonomous',
+      directOverride: null,
+    });
+    const completed = applyClassicTransition(classic, 'build-complete').classic;
+    expect(completed).toMatchObject({
+      phase: 'verify',
+      buildMode: 'autonomous',
+      directOverride: null,
+    });
+    expect(applyClassicTransition(completed, 'verify-fail').classic).toMatchObject({
+      phase: 'build',
+      buildMode: 'autonomous',
+    });
+  });
+
+  it('rolls back a Run write failure without advancing phase or consuming the check epoch', async () => {
+    const before = { classic: { ...classicState(), checkEpoch: 0 }, run: runState() };
+    await writeClassicState(changeDir, before);
+    const originalWrite = engineState.writeRunState;
+    vi.spyOn(engineState, 'writeRunState').mockImplementationOnce(async (...args) => {
+      await originalWrite(...args);
+      throw new Error('simulated I/O failure after Run write');
+    });
+    await expect(
+      writeClassicState(changeDir, {
+        classic: { ...before.classic, phase: 'verify', checkEpoch: 1 },
+        run: { ...before.run, currentStep: 'full.verify.run', iteration: 4 },
+      }),
+    ).rejects.toThrow('simulated I/O failure');
+    expect(await readClassicState(changeDir)).toMatchObject(before);
+    expect(
+      await fs
+        .stat(
+          path.join(await resolveClassicRunDirectory(changeDir), '.comet-state-transaction.json'),
+        )
+        .catch(() => null),
+    ).toBeNull();
+  });
+
+  it('recovers an interrupted rollback from its journal before returning state', async () => {
+    const before = { classic: { ...classicState(), checkEpoch: 0 }, run: runState() };
+    await writeClassicState(changeDir, before);
+    const originalWrite = engineState.writeRunState;
+    const spy = vi
+      .spyOn(engineState, 'writeRunState')
+      .mockImplementationOnce(async (...args) => {
+        await originalWrite(...args);
+        throw new Error('first failure');
+      })
+      .mockRejectedValueOnce(new Error('rollback unavailable'));
+    await expect(
+      writeClassicState(changeDir, {
+        classic: { ...before.classic, phase: 'verify', checkEpoch: 1 },
+        run: { ...before.run, currentStep: 'full.verify.run', iteration: 4 },
+      }),
+    ).rejects.toThrow('first failure');
+    expect(
+      await fs.stat(
+        path.join(await resolveClassicRunDirectory(changeDir), '.comet-state-transaction.json'),
+      ),
+    ).toBeTruthy();
+    spy.mockRestore();
+    await healBoundBranch(changeDir, 'main');
+    before.classic.boundBranch = 'main';
+    expect(await readClassicState(changeDir)).toMatchObject(before);
+    expect(
+      await fs
+        .stat(
+          path.join(await resolveClassicRunDirectory(changeDir), '.comet-state-transaction.json'),
+        )
+        .catch(() => null),
+    ).toBeNull();
+  });
+
+  it('keeps an old transaction bound to its original filename', async () => {
+    await writeClassicState(changeDir, { classic: classicState(), run: runState() });
+    const runtime = await resolveClassicRunDirectory(changeDir);
+    const source = await fs.readFile(stateFile, 'utf8');
+    const journal = path.join(runtime, '.comet-state-transaction.json');
+    const beforeRun = await engineState.readRunState(runtime);
+    await fs.writeFile(
+      journal,
+      JSON.stringify({
+        schema: 'comet.classic.state-transaction.v1',
+        beforeYaml: source,
+        afterYaml: source,
+        beforeRun,
+        afterRun: { ...beforeRun, iteration: 99 },
+      }),
+    );
+    await fs.rename(stateFile, path.join(changeDir, 'comet-state.yaml'));
+    await expect(readClassicState(changeDir)).rejects.toThrow(/different state filename/u);
+    expect(await engineState.readRunState(runtime)).toEqual(beforeRun);
+    expect(await fs.readFile(journal, 'utf8')).toContain('state-transaction.v1');
+  });
+
+  it('round-trips every Classic field and Run projection', async () => {
+    await writeClassicState(changeDir, {
+      classic: classicState(),
+      run: runState(),
+    });
+
+    expect(await readClassicState(changeDir)).toEqual({
+      classic: classicState(),
+      run: runState(),
+      unknownKeys: [],
+    });
+  });
+
+  it('reads stable state without creating a writer lock and observes the next update', async () => {
+    const before = { classic: classicState(), run: runState() };
+    await writeClassicState(changeDir, before);
+    const open = vi.spyOn(fs, 'open');
+
+    expect(await readClassicState(changeDir)).toMatchObject(before);
+    expect(
+      open.mock.calls.filter(
+        ([file, flags]) => String(file).endsWith('.comet-state.lock') && flags === 'wx',
+      ),
+    ).toHaveLength(0);
+
+    await writeClassicState(changeDir, {
+      classic: { ...before.classic, phase: 'verify' },
+      run: { ...before.run, currentStep: 'full.verify.run' },
+    });
+    expect(await readClassicState(changeDir, { migrate: false })).toMatchObject({
+      classic: { phase: 'verify' },
+      run: { currentStep: 'full.verify.run' },
+    });
+  });
+
+  it('falls back to a coherent state when a complete writer crosses the read window', async () => {
+    const before = { classic: classicState(), run: runState() };
+    const after = {
+      classic: { ...before.classic, phase: 'verify' as const },
+      run: { ...before.run, currentStep: 'full.verify.run', iteration: 4 },
+    };
+    await writeClassicState(changeDir, before);
+    const originalRead = engineState.readRunState;
+    vi.spyOn(engineState, 'readRunState').mockImplementationOnce(async (...args) => {
+      await writeClassicState(changeDir, after);
+      return originalRead(...args);
+    });
+
+    expect(await readClassicState(changeDir)).toMatchObject(after);
+  });
+
+  it('observes a same-size manual edit even when the original mtime is restored', async () => {
+    await writeClassicState(changeDir, { classic: classicState(), run: runState() });
+    const original = await fs.stat(stateFile);
+    const source = await fs.readFile(stateFile, 'utf8');
+    const read = engineState.readRunState;
+    vi.spyOn(engineState, 'readRunState').mockImplementationOnce(async (...args) => {
+      await fs.writeFile(stateFile, source.replace('phase: build', 'phase: open '));
+      await fs.utimes(stateFile, original.atime, original.mtime);
+      return read(...args);
+    });
+    expect((await readClassicState(changeDir)).classic?.phase).toBe('open');
+  });
+
+  it('uses the serialized reader when file identities are unavailable', async () => {
+    const projection = { classic: classicState(), run: runState() };
+    await writeClassicState(changeDir, projection);
+    const lstat = fs.lstat;
+    vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {
+      const stat = await lstat(...args);
+      if (String(args[0]) === stateFile && typeof stat.ino === 'bigint') {
+        return Object.assign(Object.create(Object.getPrototypeOf(stat)), stat, { ino: 0n });
+      }
+      return stat;
+    });
+    const open = vi.spyOn(fs, 'open');
+    expect(await readClassicState(changeDir)).toMatchObject(projection);
+    expect(
+      open.mock.calls.filter(
+        ([file, flags]) => String(file).endsWith('.comet-state.lock') && flags === 'wx',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('waits for a writer that has updated Run but not committed YAML', async () => {
+    const before = { classic: classicState(), run: runState() };
+    const after = {
+      classic: { ...before.classic, phase: 'verify' as const },
+      run: { ...before.run, currentStep: 'full.verify.run', iteration: 4 },
+    };
+    await writeClassicState(changeDir, before);
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered!: () => void;
+    const committing = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const writer = writeClassicState(changeDir, after, {
+      beforeCommit: async () => {
+        entered();
+        await blocked;
+      },
+    });
+    await committing;
+    let attempted!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      attempted = resolve;
+    });
+    const originalOpen = fs.open;
+    vi.spyOn(fs, 'open').mockImplementation((...args) => {
+      if (String(args[0]).endsWith('.comet-state.lock') && args[1] === 'wx') attempted();
+      return originalOpen(...args);
+    });
+    let settled = false;
+    const reader = readClassicState(changeDir).then((value) => {
+      settled = true;
+      return value;
+    });
+    try {
+      await waiting;
+      expect(settled).toBe(false);
+    } finally {
+      release();
+      await writer;
+    }
+    expect(await reader).toMatchObject(after);
+  });
+
+  it('commits the check epoch with the phase and rejects stale writers', async () => {
+    const original = { ...classicState(), checkEpoch: 0 };
+    await writeClassicState(changeDir, { classic: original, run: runState() });
+    await expect(
+      writeClassicState(
+        changeDir,
+        {
+          classic: { ...original, phase: 'verify', checkEpoch: 1 },
+          run: runState(),
+        },
+        {
+          beforeCommit: () => {
+            throw new Error('simulated interruption');
+          },
+        },
+      ),
+    ).rejects.toThrow('simulated interruption');
+    expect((await readClassicState(changeDir)).classic).toMatchObject({
+      phase: 'build',
+      checkEpoch: 0,
+    });
+    await writeClassicState(changeDir, {
+      classic: { ...original, phase: 'verify', checkEpoch: 1 },
+      run: runState(),
+    });
+    await expect(
+      writeClassicState(changeDir, { classic: original, run: runState() }),
+    ).rejects.toThrow('state changed');
+    expect((await readClassicState(changeDir)).classic).toMatchObject({
+      phase: 'verify',
+      checkEpoch: 1,
+    });
+  });
+
+  it('does not commit Classic state through a change directory replaced before commit', async () => {
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-state-outside-'));
+    const held = `${changeDir}-held`;
+    const writeWithHook = writeClassicState as unknown as (
+      changeDir: string,
+      projection: Parameters<typeof writeClassicState>[1],
+      options: { beforeCommit: () => void | Promise<void> },
+    ) => Promise<void>;
+    const linkProbe = `${changeDir}-link-probe`;
+    try {
+      try {
+        await fs.symlink(outsideRoot, linkProbe, process.platform === 'win32' ? 'junction' : 'dir');
+        if (process.platform === 'win32') await fs.rmdir(linkProbe);
+        else await fs.unlink(linkProbe);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+        throw error;
+      }
+
+      await expect(
+        writeWithHook(
+          changeDir,
+          {
+            classic: classicState(),
+            run: null,
+          },
+          {
+            beforeCommit: async () => {
+              const temporaryName = (await fs.readdir(changeDir)).find(
+                (entry) => entry.includes('.comet.yaml.') && entry.endsWith('.tmp'),
+              );
+              expect(temporaryName).toBeDefined();
+              await fs.rename(changeDir, held);
+              await fs.writeFile(path.join(outsideRoot, '.comet.yaml'), 'keep: true\n', 'utf8');
+              await fs.writeFile(path.join(outsideRoot, temporaryName!), 'outside-temp\n', 'utf8');
+              await fs.symlink(
+                outsideRoot,
+                changeDir,
+                process.platform === 'win32' ? 'junction' : 'dir',
+              );
+            },
+          },
+        ),
+      ).rejects.toThrow(/changed|junction|outside|managed parent/iu);
+      await expect(fs.readFile(path.join(outsideRoot, '.comet.yaml'), 'utf8')).resolves.toBe(
+        'keep: true\n',
+      );
+    } finally {
+      try {
+        if ((await fs.lstat(changeDir)).isSymbolicLink()) {
+          if (process.platform === 'win32') await fs.rmdir(changeDir);
+          else await fs.unlink(changeDir);
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      if (
+        await fs.stat(held).then(
+          () => true,
+          () => false,
+        )
+      ) {
+        await fs.rename(held, changeDir);
+      }
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('reads a legacy-only state without inventing a Run', async () => {
+    await writeClassicState(changeDir, { classic: classicState(), run: null });
+
+    const projection = await readClassicState(changeDir);
+
+    expect(projection.classic).toEqual(classicState());
+    expect(projection.run).toBeNull();
+  });
+
+  it('reads a Run-only state without inventing Classic fields', async () => {
+    await writeClassicState(changeDir, { classic: null, run: runState() });
+
+    const projection = await readClassicState(changeDir);
+
+    expect(projection.classic).toBeNull();
+    expect(projection.run).toEqual(runState());
+  });
+
+  it('preserves comments and unknown top-level fields across atomic writes', async () => {
+    await fs.writeFile(
+      stateFile,
+      [
+        '# user heading',
+        'workflow: full # selected workflow',
+        'phase: build',
+        'design_doc: null',
+        'plan: null',
+        'build_mode: direct',
+        'isolation: branch',
+        'verify_mode: light',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        'custom_user_field: keep-me',
+        '',
+      ].join('\n'),
+    );
+
+    const projection = await readClassicState(changeDir);
+    expect(projection.unknownKeys).toEqual(['custom_user_field']);
+    projection.classic!.phase = 'verify';
+    await writeClassicState(changeDir, projection);
+
+    const raw = await fs.readFile(stateFile, 'utf8');
+    expect(raw).toContain('# user heading');
+    expect(raw).toContain('workflow: full # selected workflow');
+    expect(raw).toContain('custom_user_field: keep-me');
+    expect(raw).toContain('phase: verify');
+  });
+
+  it.each([
+    ['workflow', 'ancient'],
+    ['phase', 'planning'],
+    ['context_compression', 'on'],
+    ['build_mode', 'agent'],
+    ['build_pause', 'paused'],
+    ['subagent_dispatch', 'yes'],
+    ['tdd_mode', 'sometimes'],
+    ['isolation', 'folder'],
+    ['verify_mode', 'medium'],
+    ['verify_result', 'maybe'],
+    ['branch_status', 'open'],
+    ['archive_confirmation', 'yes'],
+    ['classic_profile', 'other'],
+  ])('rejects invalid %s values', async (field, value) => {
+    await writeClassicState(changeDir, { classic: classicState(), run: runState() });
+    const raw = await fs.readFile(stateFile, 'utf8');
+    await fs.writeFile(
+      stateFile,
+      raw.replace(new RegExp(`^${field}:.*$`, 'm'), `${field}: ${value}`),
+    );
+
+    await expect(readClassicState(changeDir)).rejects.toThrow(`Invalid Classic state: ${field}`);
+  });
+
+  it('rejects malformed YAML without replacing the original file', async () => {
+    const malformed = 'workflow: [full\nphase: build\n';
+    await fs.writeFile(stateFile, malformed);
+
+    await expect(readClassicState(changeDir)).rejects.toThrow('Invalid Classic state document');
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(malformed);
+  });
+
+  // The engine-persist refactor reads state leniently: an incomplete legacy
+  // projection degrades to a null Classic state (so callers can fall back to
+  // the legacy summary and migrate) instead of throwing. Strict rejection is
+  // enforced by the `validate` command, not the reader.
+  it('degrades incomplete legacy projections to a null Classic state', async () => {
+    await fs.writeFile(stateFile, 'workflow: full\nphase: build\n');
+
+    const projection = await readClassicState(changeDir);
+    expect(projection.classic).toBeNull();
+    expect(projection.run).toBeNull();
+  });
+
+  it('validates a complete projection before replacing the existing file', async () => {
+    await writeClassicState(changeDir, { classic: classicState(), run: runState() });
+    const original = await fs.readFile(stateFile, 'utf8');
+    const invalid = classicState();
+    invalid.handoffHash = 'not-a-hash';
+
+    await expect(
+      writeClassicState(changeDir, { classic: invalid, run: runState() }),
+    ).rejects.toThrow('Invalid Classic state: handoff_hash');
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(original);
+  });
+});

@@ -1,0 +1,195 @@
+diff --git a/test/domains/comet-native/native-sdk-application.test.ts b/test/domains/comet-native/native-sdk-application.test.ts
+index de52e31c..8a99656a 100644
+--- a/test/domains/comet-native/native-sdk-application.test.ts
++++ b/test/domains/comet-native/native-sdk-application.test.ts
+@@ -4828,60 +4828,13 @@ it('retains the user-edited verification report when the successor report is gen
+   expect(JSON.parse(after.stdout!).data.preservedReportsDirectory.path).toBe(directory);
+ });
+ 
+-it('preserves completed one-shot checks while revising edited Archive-ready code', async () => {
+-  const counterRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-archive-revision-check-'));
+-  roots.push(counterRoot);
+-  const counter = path.join(counterRoot, 'count');
+-  const checks = [
+-    {
+-      id: 'once',
+-      name: 'one-shot',
+-      executable: process.execPath,
+-      argv: ['-e', 'require("fs").appendFileSync(process.argv[1],"once\\n")', counter],
+-      cwdRef: '.',
+-      timeoutMs: 5000,
+-      repeatable: false,
+-    },
+-    {
+-      id: 'regular',
+-      name: 'repeatable',
+-      executable: process.execPath,
+-      argv: ['-e', 'process.stdout.write("checked")'],
+-      cwdRef: '.',
+-      timeoutMs: 5000,
+-      repeatable: true,
+-    },
+-  ];
+-  const { root, runtime, run } = await awaitingArchiveApplication(
+-    'sdk',
+-    undefined,
+-    false,
+-    initializeArchiveGit,
+-    nativeApplication(),
+-    undefined,
+-    checks,
+-  );
+-  await runNativeCli(['doctor', run.runId, '--repair', '--project-root', root, '--json']);
+-  const code = path.join(root, 'implementation.js');
+-  await fs.writeFile(code, 'export const result = "user edit";');
+-  const status = await runNativeCli(['status', run.runId, '--project-root', root, '--json']);
+-  const data = JSON.parse(status.stdout!).data;
+-  expect(data.recovery?.code).not.toBe('candidate-drift');
+-  const args = implementationRevisionArgs(
+-    root,
+-    await runtime.inspect(run.runId),
+-    'Continue the user edit.',
+-  );
+-  const resumed = await runNativeCli(args);
+-  expect(resumed.exitCode, resumed.stdout).toBe(0);
+-  const after = await runtime.inspect(run.runId);
+-  expect(after.state).toMatchObject({ phase: 'build', archived: false });
+-  expect(await fs.readFile(counter, 'utf8')).toBe('once\n');
+-  expect(after.actions.filter((action) => action.stepId === 'verify.checks')).toHaveLength(1);
+-  expect(after.actions.find((action) => action.stepId === 'verify.checks')?.outcome).toEqual(
+-    run.actions.find((action) => action.stepId === 'verify.checks')?.outcome,
+-  );
+-  expect(await fs.readFile(code, 'utf8')).toBe('export const result = "user edit";');
++it('preserves an Agent-selected one-shot report while explicitly revising Archive-ready code without replay',async()=>{
++ const f=await dispatchedVerifier([],'sdk',nativeApplication(),true,undefined,initializeArchiveGit);const {root,runtime}=f;
++ const once=await migratedActualCheck(root,'agent-one-shot',"require('node:fs').appendFileSync('one-shot-count','once\\n');process.stdout.write('one-shot completed')");expect(once.actual.status).toBe(0);const regular=await migratedActualCheck(root,'agent-repeatable',"process.stdout.write('checked')");expect(regular.actual.status).toBe(0);const checks=[once.report,regular.report];
++ let run=await migratedVerdict(runtime,f.run,root,'pass',checks,'SIMULATED-first-independent-verifier');run=await migratedAccept(runtime,run,root,'SIMULATED-initial-result-approval');run=await runtime.execute({runId:run.runId,actionId:run.actions.at(-1)!.id,executorId:'comet-native-archive-preflight',context:{requestId:'SIMULATED-archive-ready',projectRoot:root}});const originalReport=run.actions.find(a=>a.stepId==='verify.verifier')!,originalCandidate=(run.state as NativePortableState).builder_handoff!.candidate_id,approved=run.waits.findLast(w=>w.stepId==='verify.confirm')!;
++ const code=path.join(root,'implementation.js');await fs.writeFile(code,'export const result = "user edit";');const status=await runNativeCli(['status',run.runId,'--project-root',root,'--json']);expect(JSON.parse(status.stdout!).data.recovery?.code).not.toBe('candidate-drift');const args=implementationRevisionArgs(root,run,'SIMULATED USER requests continuing this edited implementation.');const wrong=[...args];wrong[wrong.indexOf('--proposal-hash')+1]='0'.repeat(64);expect((await runNativeCli(wrong)).exitCode).not.toBe(0);expect(await runtime.inspect(run.runId)).toEqual(run);expect((await runNativeCli(args)).exitCode).toBe(0);run=await runtime.inspect(run.runId);expect(run.state).toMatchObject({phase:'build',archived:false});expect(run.actions.find(a=>a.id===originalReport.id)).toEqual(originalReport);expect(run.waits.find(w=>w.id===approved.id)).toEqual(approved);expect(await fs.readFile(code,'utf8')).toBe('export const result = "user edit";');
++ run=await succeedLatestAction(runtime,run,{summary:'SIMULATED Agent judges its original ordinary command reports still apply to this explanation-only repair.',addressedAcceptanceIds:['A1'],acceptanceReview:fixtureAcceptanceReview(['A1']),checks,knownLimits:[]},root,'SIMULATED-revised-one-shot-candidate','SIMULATED-revised-builder');expect((run.state as NativePortableState).builder_handoff!.candidate_id).not.toBe(originalCandidate);expect(run.actions.at(-1)).toMatchObject({stepId:'verify.verifier',status:'pending'});expect(run.waits.some(w=>w.stepId==='verify.confirm'&&w.status==='pending')).toBe(false);
++ run=await migratedVerdict(runtime,run,root,'pass',checks,'SIMULATED-full-revised-independent-verifier');run=await migratedAccept(runtime,run,root,'SIMULATED-new-explicit-result-approval');run=await migratedArchive(runtime,run,root);expect(await fs.readFile(path.join(root,'one-shot-count'),'utf8')).toBe('once\n');expect(await fs.readFile(path.join(root,'agent-one-shot.log'))).toEqual(once.log);expect(run.actions.find(a=>a.id===originalReport.id)).toEqual(originalReport);expect(run.actions.filter(a=>a.stepId==='verify.verifier')).toHaveLength(2);expect(run.actions.some(a=>a.stepId==='verify.checks')).toBe(false);
+ });
+ 
+ it('continues a read-only revision after its claiming process exits without reporting an outcome', async () => {
+@@ -6955,3 +6908,122 @@ it.each([false, true])(
+   },
+   120_000,
+ );
++
++async function migratedActualCheck(root: string, name: string, code: string) {
++  const actual = spawnSync(process.execPath, ['-e', code], {
++    cwd: root,
++    encoding: 'utf8',
++    windowsHide: true,
++  });
++  const log = Buffer.from((actual.stdout ?? '') + (actual.stderr ?? ''));
++  await fs.writeFile(path.join(root, name + '.log'), log);
++  return {
++    actual,
++    log,
++    report: {
++      name,
++      result: actual.status === 0 ? 'passed' : 'failed',
++      note:
++        'Actual ordinary Node exit=' +
++        actual.status +
++        '; Agent-owned report at ' +
++        name +
++        '.log. SIMULATED Agent protocol, no Comet executor.',
++    },
++  };
++}
++async function migratedVerdict(
++  runtime: ReturnType<typeof createRuntime>,
++  run: WorkflowRun,
++  root: string,
++  verdict: 'pass' | 'fail',
++  checks: unknown[],
++  session: string,
++) {
++  const state = run.state as NativePortableState;
++  return succeedLatestAction(
++    runtime,
++    run,
++    {
++      candidateId: state.builder_handoff!.candidate_id,
++      verifierExecutionRef: session,
++      checks,
++      response: {
++        kind: 'final-result',
++        result: {
++          iteration: state.loop.iteration,
++          attempt: state.loop.attempt,
++          verdict,
++          acceptance: state.acceptance.map((a) => ({
++            id: a.id,
++            result: verdict === 'pass' ? 'passed' : 'failed',
++            reason:
++              verdict === 'pass'
++                ? 'SIMULATED independent Agent verified every current acceptance item.'
++                : 'Actual ordinary Node failed; implementation must be repaired.',
++          })),
++          risks: [],
++          summary:
++            verdict === 'pass'
++              ? 'SIMULATED full independent acceptance passed.'
++              : 'Actual ordinary Node failure preserved; controlled-check-failure.',
++        },
++      },
++    },
++    root,
++    session + '-outcome',
++    session,
++  );
++}
++async function migratedAccept(
++  runtime: ReturnType<typeof createRuntime>,
++  run: WorkflowRun,
++  root: string,
++  id: string,
++) {
++  await refreshNativeSdkVerificationReport(root, run);
++  const wait = run.waits.at(-1)!;
++  expect(wait).toMatchObject({ stepId: 'verify.confirm', status: 'pending' });
++  const before = await runtime.inspect(run.runId);
++  await expect(
++    runtime.resolveWait({
++      runId: run.runId,
++      waitId: wait.id,
++      proposalHash: '0'.repeat(64),
++      decisionId: id + '-wrong',
++      choice: 'approved',
++    }),
++  ).rejects.toThrow();
++  expect(await runtime.inspect(run.runId)).toEqual(before);
++  expect(
++    run.actions.some(
++      (a) => ['archive.execute', 'archive.finalize'].includes(a.stepId) && a.status === 'succeeded',
++    ),
++  ).toBe(false);
++  return runtime.resolveWait({
++    runId: run.runId,
++    waitId: wait.id,
++    proposalHash: wait.proposalHash,
++    decisionId: id,
++    choice: 'approved',
++  });
++}
++async function migratedArchive(
++  runtime: ReturnType<typeof createRuntime>,
++  run: WorkflowRun,
++  root: string,
++) {
++  for (const executorId of [
++    'comet-native-archive-preflight',
++    'comet-native-archive-apply',
++    'comet-native-archive-finalize',
++  ])
++    run = await runtime.execute({
++      runId: run.runId,
++      actionId: run.actions.at(-1)!.id,
++      executorId,
++      context: { requestId: 'SIMULATED-' + executorId, projectRoot: root },
++    });
++  expect(run).toMatchObject({ status: 'completed', state: { archived: true, status: 'done' } });
++  return run;
++}

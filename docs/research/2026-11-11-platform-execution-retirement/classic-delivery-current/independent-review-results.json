@@ -1,0 +1,56 @@
+{
+  "review": "approved for the documented mechanism retirement and retained business boundaries",
+  "threeFiles": {
+    "pass": 58,
+    "fail": 0,
+    "skip": 3,
+    "collectionErrors": 0
+  },
+  "renamedExactSelector": {
+    "pass": 1,
+    "fail": 0,
+    "unselected": 35
+  },
+  "originalPlatformSkips": [
+    {
+      "file": "D:/Project/Comet/test/domains/comet-classic/classic-sdk-archive-preflight.test.ts",
+      "name": "Classic SDK Archive dependency preflight leaves a non-executable dependency pending until permissions are repaired"
+    },
+    {
+      "file": "D:/Project/Comet/test/domains/comet-classic/classic-sdk-archive-preflight.test.ts",
+      "name": "Classic SDK Archive dependency preflight records an operating-system launch failure as known not started"
+    },
+    {
+      "file": "D:/Project/Comet/test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+      "name": "rejects a replaced archive manifest symlink and keeps the same Run pending"
+    }
+  ],
+  "sourceAndTemporaryCliBundle": true,
+  "repositoryBuildExecuted": false,
+  "evalExecuted": false,
+  "configEdited": false,
+  "validation": {
+    "scope": [
+      "classic-527-archived-worktree-routing",
+      "classic-527-archived-copy-integrity",
+      "classic-527-missing-original-history",
+      "classic-preexisting-workspace-delivery-scope"
+    ],
+    "cas": "passed",
+    "schema": "passed",
+    "allPriorAndNewEvidence": "passed",
+    "reversePatch": {
+      "status": 0,
+      "error": ""
+    },
+    "preservedOriginalFiles": [
+      "test/domains/comet-classic/classic-sdk-archive-preflight.test.ts",
+      "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+      "test/domains/comet-classic/classic-sdk-delivery-inputs.test.ts"
+    ],
+    "forwardOriginalPatch": {
+      "status": 0,
+      "error": ""
+    }
+  }
+}

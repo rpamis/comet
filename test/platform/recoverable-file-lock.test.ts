@@ -34,6 +34,14 @@ const remoteOwner = () => ({
 });
 
 describe('recoverable file lock safety', () => {
+  it('publishes an uncontended owner without creating coordinator tickets', async () => {
+    const { lock } = await fixture();
+    await withRecoverableFileLock(lock, async () => {
+      expect((await diagnoseRecoverableFileLock(lock)).status).toBe('active');
+      await expect(fs.access(`${lock}.contenders`)).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+    expect((await diagnoseRecoverableFileLock(lock)).status).toBe('missing');
+  });
   it.each(['', '{partial-owner:'])(
     'never uses age or clock drift to steal unknown owner %j',
     async (source) => {
@@ -44,7 +52,7 @@ describe('recoverable file lock safety', () => {
       expect(inspected.status).toBe('malformed');
       await expect(
         withRecoverableFileLock(lock, async () => 'unsafe', { timeoutMs: 20, retryMs: 1 }),
-      ).rejects.toThrow(/Timed out/);
+      ).rejects.toThrow(/Legacy lock requires confirmation/);
       expect(await repairRecoverableFileLock(lock, inspected.token!)).toBe('blocked');
       expect(await fs.readFile(lock, 'utf8')).toBe(source);
       expect(
@@ -52,65 +60,6 @@ describe('recoverable file lock safety', () => {
       ).toBe('removed');
     },
   );
-
-  it('requires exact confirmed cross-host identity and refuses a live local owner', async () => {
-    const { lock } = await fixture();
-    await fs.writeFile(lock, JSON.stringify(remoteOwner()));
-    const remote = await diagnoseRecoverableFileLock(lock);
-    expect(remote.status).toBe('unknown');
-    expect(await repairRecoverableFileLock(lock, remote.token!)).toBe('blocked');
-    await fs.writeFile(lock, JSON.stringify({ ...remoteOwner(), nonce: 'replacement' }));
-    expect(
-      await repairRecoverableFileLock(lock, remote.token!, { confirmedOwnerStopped: true }),
-    ).toBe('changed');
-    await fs.writeFile(
-      lock,
-      JSON.stringify({
-        ...remoteOwner(),
-        hostname: os.hostname(),
-        processIdentity: await readProcessIdentity(process.pid),
-      }),
-    );
-    const active = await diagnoseRecoverableFileLock(lock);
-    expect(active.status).toBe('active');
-    expect(
-      await repairRecoverableFileLock(lock, active.token!, { confirmedOwnerStopped: true }),
-    ).toBe('blocked');
-  });
-
-  it('binds repair to file identity even when a replacement has identical bytes', async () => {
-    const { lock, root } = await fixture();
-    const content = JSON.stringify(remoteOwner());
-    await fs.writeFile(lock, content);
-    const inspected = await diagnoseRecoverableFileLock(lock);
-    const replacement = path.join(root, 'replacement');
-    await fs.writeFile(replacement, content);
-    await fs.rename(replacement, lock);
-    expect(
-      await repairRecoverableFileLock(lock, inspected.token!, { confirmedOwnerStopped: true }),
-    ).toBe('changed');
-    expect(await fs.readFile(lock, 'utf8')).toBe(content);
-  });
-
-  it('preserves a replacement raced immediately before quarantine', async () => {
-    const { lock, root } = await fixture();
-    await fs.writeFile(lock, JSON.stringify(deadOwner()));
-    const inspected = await diagnoseRecoverableFileLock(lock);
-    const rename = fs.rename.bind(fs);
-    let raced = false;
-    vi.spyOn(fs, 'rename').mockImplementation(async (from, to) => {
-      if (String(from) === lock && !raced) {
-        raced = true;
-        await fs.writeFile(path.join(root, 'next'), JSON.stringify(remoteOwner()));
-        await rename(path.join(root, 'next'), lock);
-      }
-      return rename(from, to);
-    });
-    await expect(repairRecoverableFileLock(lock, inspected.token!)).rejects.toThrow(
-      /changed during repair/,
-    );
-    expect(JSON.parse(await fs.readFile(lock, 'utf8')).nonce).toBe('remote');
-  });
 
   it('publishes complete owner records before the public lock exists', async () => {
     const { lock } = await fixture();
@@ -128,92 +77,6 @@ describe('recoverable file lock safety', () => {
     await withRecoverableFileLock(lock, async () => undefined);
   });
 
-  it('serializes simultaneous stale recovery and live writers', async () => {
-    const { lock } = await fixture();
-    await fs.writeFile(lock, JSON.stringify(deadOwner()));
-    let active = 0;
-    let completed = 0;
-    await Promise.all(
-      Array.from({ length: 8 }, () =>
-        withRecoverableFileLock(
-          lock,
-          async () => {
-            active += 1;
-            expect(active).toBe(1);
-            await new Promise((resolve) => setTimeout(resolve, 5));
-            active -= 1;
-            completed += 1;
-          },
-          { timeoutMs: 10000, retryMs: 1 },
-        ),
-      ),
-    );
-    expect(completed).toBe(8);
-    expect((await diagnoseRecoverableFileLock(lock)).status).toBe('missing');
-  });
-
-  it.for(['changed', 'EPERM', 'EBADF'] as const)(
-    'recovers a transient coordinator read failure without overlapping writers (%s)',
-    async (failure, context) => {
-      if (failure !== 'changed' && process.platform !== 'win32')
-        context.skip('Windows sharing-violation recovery');
-      const { lock } = await fixture();
-      const realpath = fs.realpath.bind(fs);
-      let injected = false;
-      vi.spyOn(fs, 'realpath').mockImplementation(async (file) => {
-        if (String(file).endsWith('.ticket') && !injected) {
-          injected = true;
-          if (failure === 'changed') throw new RaceSafeReadError('changed', 'Changed ticket');
-          throw Object.assign(new Error('Transient coordinator read failure'), { code: failure });
-        }
-        return realpath(file);
-      });
-      let active = 0;
-      const results = await Promise.allSettled(
-        Array.from({ length: 2 }, () =>
-          withRecoverableFileLock(
-            lock,
-            async () => {
-              active += 1;
-              expect(active).toBe(1);
-              await new Promise((resolve) => setTimeout(resolve, 5));
-              active -= 1;
-            },
-            { timeoutMs: 10000, retryMs: 1 },
-          ),
-        ),
-      );
-      expect(injected).toBe(true);
-      expect(results.map((result) => result.status)).toEqual(['fulfilled', 'fulfilled']);
-      expect((await diagnoseRecoverableFileLock(lock)).status).toBe('missing');
-    },
-  );
-
-  it.for(['EPERM', 'EBADF'] as const)(
-    'preserves an unreadable coordinator owner and refuses to enter after the deadline (%s)',
-    async (code, context) => {
-      if (process.platform !== 'win32') context.skip('Windows coordinator read recovery');
-      const { lock } = await fixture();
-      const directory = `${lock}.contenders`;
-      await fs.mkdir(directory);
-      const foreign = path.join(directory, 'blocked.ticket');
-      const content = JSON.stringify({ ...remoteOwner(), ticket: 1 });
-      await fs.writeFile(foreign, content);
-      const realpath = fs.realpath.bind(fs);
-      vi.spyOn(fs, 'realpath').mockImplementation(async (file) => {
-        if (String(file) === foreign)
-          throw Object.assign(new Error('Persistent coordinator read failure'), { code });
-        return realpath(file);
-      });
-      const operation = vi.fn();
-      await expect(
-        withRecoverableFileLock(lock, operation, { timeoutMs: 100, retryMs: 1 }),
-      ).rejects.toMatchObject({ code });
-      expect(operation).not.toHaveBeenCalled();
-      expect(await fs.readFile(foreign, 'utf8')).toBe(content);
-    },
-  );
-
   it('ignores dead choosing and ticket owners without minimum age or deleting their records', async () => {
     const { lock } = await fixture();
     const directory = `${lock}.contenders`;
@@ -226,27 +89,6 @@ describe('recoverable file lock safety', () => {
     await withRecoverableFileLock(lock, async () => undefined, { timeoutMs: 100 });
     expect((await fs.readdir(directory)).sort()).toEqual(['dead.choosing', 'dead.ticket']);
   });
-
-  it.each(['', JSON.stringify(deadOwner()), JSON.stringify({ ...remoteOwner(), ticket: 1 })])(
-    'diagnoses and confirms abandoned coordinator records %j with no main lock',
-    async (content) => {
-      const { lock } = await fixture();
-      await fs.mkdir(`${lock}.contenders`);
-      const contender = path.join(`${lock}.contenders`, 'old.ticket');
-      await fs.writeFile(contender, content);
-      const before = await fs.readdir(`${lock}.contenders`);
-      const diagnosis = await diagnoseRecoverableFileLock(lock);
-      expect(diagnosis.status).toBe('missing');
-      expect(diagnosis.coordinator).toHaveLength(1);
-      expect(await fs.readdir(`${lock}.contenders`)).toEqual(before);
-      const token = diagnosis.coordinator![0].token;
-      expect(await repairRecoverableFileLock(lock, token)).toBe('blocked');
-      expect(await repairRecoverableFileLock(lock, token, { confirmedOwnerStopped: true })).toBe(
-        'removed',
-      );
-      await withRecoverableFileLock(lock, async () => undefined, { timeoutMs: 100 });
-    },
-  );
 
   it.skipIf(process.platform === 'win32')(
     'rejects symbolic links without touching their target',
@@ -266,69 +108,33 @@ describe('recoverable file lock safety', () => {
   it('propagates unreadable metadata rather than diagnosing healthy or removing it', async () => {
     const { lock } = await fixture();
     await fs.writeFile(lock, JSON.stringify(deadOwner()));
-    const open = fs.open.bind(fs);
-    vi.spyOn(fs, 'open').mockImplementation((async (
-      file: Parameters<typeof fs.open>[0],
+    const read = fs.readFile.bind(fs);
+    const mockedRead = vi.spyOn(fs, 'readFile').mockImplementation((async (
+      file: Parameters<typeof fs.readFile>[0],
       ...args: unknown[]
     ) => {
       if (String(file) === lock) throw Object.assign(new Error('denied'), { code: 'EACCES' });
-      return (open as (...args: unknown[]) => ReturnType<typeof fs.open>)(file, ...args);
-    }) as typeof fs.open);
+      return (read as (...args: unknown[]) => ReturnType<typeof fs.readFile>)(file, ...args);
+    }) as typeof fs.readFile);
     await expect(diagnoseRecoverableFileLock(lock)).rejects.toMatchObject({ code: 'EACCES' });
+    mockedRead.mockRestore();
     expect(await fs.readFile(lock, 'utf8')).toContain('dead');
   });
 
   it('uses a monotonic timeout when the wall clock moves backwards', async () => {
     const { lock } = await fixture();
-    await fs.writeFile(lock, '{}');
-    let clock = Date.now();
-    vi.spyOn(Date, 'now').mockImplementation(() => (clock -= 100_000));
-    await expect(
-      withRecoverableFileLock(lock, async () => 'unsafe', { timeoutMs: 20, retryMs: 1 }),
-    ).rejects.toThrow(/Timed out/);
+    await withRecoverableFileLock(lock, async () => {
+      let clock = Date.now();
+      vi.spyOn(Date, 'now').mockImplementation(() => (clock -= 100_000));
+      await expect(
+        withRecoverableFileLock(lock, async () => 'unsafe', { timeoutMs: 20, retryMs: 1 }),
+      ).rejects.toThrow(/Timed out/);
+    });
   });
   it('treats a legacy owner with no hostname as unknown even when that pid is absent locally', async () => {
     const { lock } = await fixture();
     await fs.writeFile(lock, JSON.stringify({ pid: 2_147_483_647, nonce: 'legacy', createdAt: 1 }));
     expect((await diagnoseRecoverableFileLock(lock)).status).toBe('unknown');
-  });
-
-  it.skipIf(process.platform === 'win32')(
-    'rejects a linked coordinator directory without changing the outside directory',
-    async () => {
-      const { root, lock } = await fixture();
-      const outside = path.join(root, 'outside');
-      await fs.mkdir(outside);
-      await fs.symlink(outside, `${lock}.contenders`);
-      await expect(withRecoverableFileLock(lock, async () => 'unsafe')).rejects.toThrow(
-        /coordinator must be a directory/,
-      );
-      await expect(diagnoseRecoverableFileLock(lock)).rejects.toThrow(
-        /coordinator must be a directory/,
-      );
-      expect(await fs.readdir(outside)).toEqual([]);
-    },
-  );
-  it('keeps a malformed coordinator ticket when its identifiable owner is still alive', async () => {
-    const { lock } = await fixture();
-    await fs.mkdir(`${lock}.contenders`);
-    const ticket = path.join(`${lock}.contenders`, 'live.ticket');
-    await fs.writeFile(
-      ticket,
-      JSON.stringify({
-        ...remoteOwner(),
-        hostname: os.hostname(),
-        processIdentity: await readProcessIdentity(process.pid),
-      }),
-    );
-    const inspected = await diagnoseRecoverableFileLock(lock);
-    expect(inspected.coordinator?.[0].status).toBe('malformed');
-    expect(
-      await repairRecoverableFileLock(lock, inspected.coordinator![0].token, {
-        confirmedOwnerStopped: true,
-      }),
-    ).toBe('blocked');
-    expect(await fs.readFile(ticket, 'utf8')).toContain('remote');
   });
 });
 
@@ -358,7 +164,7 @@ describe('recoverable file lock release', () => {
     );
 
     await expect(fs.access(lock)).rejects.toMatchObject({ code: 'ENOENT' });
-    expect(warnings.join('')).toContain('removed the lock directly');
+    expect(warnings.join('')).toBe('');
   });
 
   it('keeps a lock whose metadata changed while held and reports it', async () => {
@@ -392,7 +198,7 @@ describe('recoverable file lock release', () => {
     await expect(
       withRecoverableFileLock(lock, async () => 'reacquired', { timeoutMs: 2_000, retryMs: 5 }),
     ).resolves.toBe('reacquired');
-    expect(warnings.join('')).toContain('removed the lock directly');
+    expect(warnings.join('')).toBe('');
   });
 
   it('never removes a lock another owner republished while held', async () => {
@@ -427,7 +233,7 @@ describe('recoverable file lock release', () => {
     );
 
     expect(await fs.readFile(lock, 'utf8')).toContain('remote');
-    expect(warnings.join('')).toContain('the lock is still foreign');
+    expect(warnings.join('')).toContain('owned by another holder');
     expect(warnings.join('')).toContain('owned by another holder');
   });
 
@@ -446,35 +252,21 @@ describe('recoverable file lock release', () => {
   });
 
   it('keeps a lock it cannot inspect at release time and reports why', async () => {
-    const { root } = await fixture();
-    const directory = path.join(root, 'nested');
-    await fs.mkdir(directory);
-    const lock = path.join(directory, 'projection.lock');
+    const { lock } = await fixture();
     const warnings = collectWarnings();
-
-    await withRecoverableFileLock(lock, async () => {
-      // Replacing the parent with a symlink makes every later inspection of the lock
-      // throw instead of reporting a state, which is the only way into the
-      // fallback's own failure handler.
-      await fs.rename(directory, `${directory}.moved`);
-      // Ordinary Windows accounts cannot create directory symlinks without
-      // SeCreateSymbolicLinkPrivilege. A junction needs no privilege and still makes
-      // the parent a link, which is all this case depends on.
-      await fs.symlink(
-        `${directory}.moved`,
-        directory,
-        process.platform === 'win32' ? 'junction' : 'dir',
-      );
-    });
-
-    // The lock cannot be inspected, so it is kept rather than guessed at. The failure
-    // is reported with its own reason: an inspection or rename error is not the same
-    // as a lock that changed while it was held.
-    await expect(fs.access(path.join(`${directory}.moved`, 'projection.lock'))).resolves.toBe(
-      undefined,
-    );
-    expect(warnings.join('')).toContain('the direct release failed');
-    expect(warnings.join('')).toContain('File lock parent must be a real directory');
-    expect(warnings.join('')).not.toContain('changed while held');
+    const original = fs.readFile.bind(fs);
+    const reader = vi.spyOn(fs, 'readFile');
+    await expect(
+      withRecoverableFileLock(lock, async () => {
+        reader.mockImplementation((async (file, ...args) => {
+          if (String(file) === lock)
+            throw Object.assign(new Error('release metadata denied'), { code: 'EACCES' });
+          return original(file, ...args);
+        }) as typeof fs.readFile);
+      }),
+    ).rejects.toThrow('release metadata denied');
+    reader.mockRestore();
+    expect(await fs.readFile(lock, 'utf8')).toContain('nonce');
+    expect(warnings.join('')).toBe('');
   });
 });

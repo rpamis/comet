@@ -1,26 +1,27 @@
+import type { WorkflowRun } from '../engine/runtime.js';
+import type { NativePortableState } from './native-portable-types.js';
+import path from 'node:path';
 import { withGitWorktreeReadScope } from '../../platform/paths/git-worktree.js';
+import { applicationSkillWork } from '../workflow-application/skill-work.js';
+import { resolveWorkspaceRuntimeRootSync } from '../workflow-contract/workspace-runtime.js';
+import { projectNativePortableWorkspace } from './native-portable-status.js';
+import { nativePortableStateSummary } from './native-portable-summary.js';
+import { inspectNativeSdkRun } from './native-runtime-ownership.js';
 import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
-import { nativeSdkArchivedReportWarning } from './native-sdk-report.js';
+import { projectNativeSdkContinuation } from './native-sdk-continuation.js';
 import { inspectNativeSdkRunDiagnostics } from './native-sdk-diagnostics.js';
 import {
-  inspectNativeSdkCheckExecutions,
-  type NativeSdkCheckExecutionInspection,
-} from './native-sdk-check-execution.js';
-import { inspectNativeSdkRun } from './native-runtime-ownership.js';
-import { applicationSkillWork } from '../workflow-application/index.js';
-import { nativeProjectPaths } from './native-paths.js';
-import { projectNativePortableWorkspace } from './native-portable-status.js';
-import { projectNativeSdkContinuation } from './native-sdk-continuation.js';
-import { nativePortableStateSummary } from './native-portable-summary.js';
-import path from 'node:path';
-import { resolveWorkspaceRuntimeRootSync } from '../workflow-contract/workspace-runtime.js';
-
+  nativeSdkArchivedReportWarning,
+  nativeSdkPreservedReportsRef,
+} from './native-sdk-report.js';
 export { isNativeSdkCancellationComplete } from './native-sdk-cancellation.js';
-
 const SDK_STATUS_SETTLED_LIMIT = 12;
-
 /** 保留全部未完成工作和最近的终态记录，历史不影响当前任务可见性。 */
-function statusRecords<T extends { status: string }>(records: readonly T[], details?: boolean) {
+function statusRecords<
+  T extends {
+    status: string;
+  },
+>(records: readonly T[], details?: boolean) {
   if (details) return { items: records, omitted: 0 };
   const live = new Set(['pending', 'running', 'unknown']);
   let settled = 0;
@@ -36,7 +37,6 @@ function statusRecords<T extends { status: string }>(records: readonly T[], deta
   items.reverse();
   return { items, omitted: records.length - items.length };
 }
-
 export async function inspectNativeSdkStatus(options: {
   projectRoot: string;
   name: string;
@@ -48,39 +48,64 @@ export async function inspectNativeSdkStatus(options: {
   });
   return projectNativeSdkStatus(options, inspection);
 }
-
+/** Business continuation without serializing the full diagnostic/history status packet. */
+async function projectNativeSdkTaskStatusOnce(
+  options: {
+    projectRoot: string;
+    name: string;
+  },
+  run: WorkflowRun,
+  state: NativePortableState,
+) {
+  const cancellation = await inspectNativeSdkCancellation({
+    projectRoot: options.projectRoot,
+    run,
+  });
+  const warning = await nativeSdkArchivedReportWarning(options.projectRoot, run);
+  return {
+    blockers: nativePortableStateSummary(state).blockers,
+    ...(warning ? { warning } : {}),
+    ...(await projectNativeSdkContinuation({
+      run,
+      state,
+      projectRoot: options.projectRoot,
+      cancellationObservation: cancellation,
+    })),
+  };
+}
+export const projectNativeSdkTaskStatus: typeof projectNativeSdkTaskStatusOnce = (...args) =>
+  withGitWorktreeReadScope(() => projectNativeSdkTaskStatusOnce(...args));
 /** Project one inspected or committed Run without synchronizing its state file again. */
 export const projectNativeSdkStatus: typeof projectNativeSdkStatusOnce = (...args) =>
   withGitWorktreeReadScope(() => projectNativeSdkStatusOnce(...args));
-
 async function projectNativeSdkStatusOnce(
   options: {
     projectRoot: string;
     name: string;
     details?: boolean;
-    checkExecutionObservation?: readonly NativeSdkCheckExecutionInspection[];
   },
-  { run, state, artifactRootRef, application }: Awaited<ReturnType<typeof inspectNativeSdkRun>>,
+  {
+    run,
+    state,
+    artifactRootRef: _artifactRootRef,
+    application,
+  }: Awaited<ReturnType<typeof inspectNativeSdkRun>>,
 ) {
   const summary = nativePortableStateSummary(state);
-  const checkExecutionObservation =
-    options.checkExecutionObservation ??
-    (await inspectNativeSdkCheckExecutions({
-      projectRoot: options.projectRoot,
-      run,
-      includeSettled: run.workflow.version !== '3' || options.details === true,
-    }));
   const cancellation = await inspectNativeSdkCancellation({
     projectRoot: options.projectRoot,
     run,
-    checkExecutionObservation,
   });
   const actions = statusRecords(run.actions, options.details);
   const waits = statusRecords(run.waits, options.details);
   const evidenceWaits = statusRecords(run.evidenceWaits ?? [], options.details);
   const preservedReports = run.actions.flatMap((action) => {
     const output = action.outcome?.output as
-      { preservedReportRef?: unknown; preservedReportSha256?: unknown } | undefined;
+      | {
+          preservedReportRef?: unknown;
+          preservedReportSha256?: unknown;
+        }
+      | undefined;
     if (
       action.stepId !== 'verify.report' ||
       action.status !== 'succeeded' ||
@@ -102,27 +127,22 @@ async function projectNativeSdkStatusOnce(
       },
     ];
   });
-  const editReviews =
-    !state.archived &&
-    state.shape_confirmation_hash &&
-    ['build', 'verify', 'archive'].includes(state.phase)
-      ? await inspectNativeEditReviews(
-          await nativeProjectPaths(options.projectRoot, artifactRootRef, { readOnly: true }),
-          state,
-        )
-      : [];
   const reportWarning = await nativeSdkArchivedReportWarning(options.projectRoot, run);
   return {
     schema: 'comet.native.sdk-status.v1' as const,
-    diagnostics: await inspectNativeSdkRunDiagnostics(options.projectRoot, run, {
-      checkExecutionObservation,
-    }),
+    diagnostics: await inspectNativeSdkRunDiagnostics(options.projectRoot, run, {}),
     runtimeFormat: 'sdk' as const,
     ...(application
       ? { application: application.identity, skillWork: applicationSkillWork(application, run) }
       : {}),
     name: options.name,
-    ...(editReviews.length ? { editReviews } : {}),
+    preservedReportsDirectory: {
+      ref: nativeSdkPreservedReportsRef(run.runId),
+      path: path.join(
+        resolveWorkspaceRuntimeRootSync(options.projectRoot),
+        nativeSdkPreservedReportsRef(run.runId),
+      ),
+    },
     ...(preservedReports.length ? { preservedReports } : {}),
     ...(reportWarning ? { warning: reportWarning } : {}),
     language: state.language,
@@ -133,7 +153,6 @@ async function projectNativeSdkStatusOnce(
     unresolvedAcceptanceIds: summary.unresolved_acceptance_ids,
     verificationResult: state.verification_result,
     candidateId: state.builder_handoff?.candidate_id ?? null,
-    shapeConfirmationHash: state.shape_confirmation_hash ?? null,
     blockers: summary.blockers,
     workspace: projectNativePortableWorkspace({ projectRoot: options.projectRoot }, state),
     run: {
@@ -172,8 +191,23 @@ async function projectNativeSdkStatusOnce(
         status,
         attempt,
         inputHash,
-        ...((reason ?? (outcome?.output as { message?: string } | undefined)?.message)
-          ? { reason: reason ?? (outcome?.output as { message?: string }).message }
+        ...((reason ??
+        (
+          outcome?.output as
+            | {
+                message?: string;
+              }
+            | undefined
+        )?.message)
+          ? {
+              reason:
+                reason ??
+                (
+                  outcome?.output as {
+                    message?: string;
+                  }
+                ).message,
+            }
           : {}),
       })),
       waits: waits.items.map(({ id, stepId, status, proposalHash, choices }) => ({
@@ -202,13 +236,9 @@ async function projectNativeSdkStatusOnce(
             workflow.id === 'comet-native' && Boolean(workflow.commands?.['revise-implementation']),
         ),
       skillExecutors: application?.implementation.executors,
-      editReviews,
       cancellationObservation: cancellation,
-      checkExecutionObservation,
     })),
     ...(options.details ? { details: { state } } : {}),
   };
 }
-
 export type NativeSdkStatusProjection = Awaited<ReturnType<typeof inspectNativeSdkStatus>>;
-import { inspectNativeEditReviews } from './native-edit-review.js';

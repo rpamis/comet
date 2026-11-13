@@ -1,0 +1,32 @@
+{
+  "artifacts": [
+    {
+      "file": "docs/research/2026-11-11-platform-execution-retirement/native-status-select-migration/registry.json",
+      "sha256": "b07b4a0e4469399a484b6ec16ad1e9375330feaa73bfccc761c89787e4e75829"
+    },
+    {
+      "file": "docs/research/2026-11-11-platform-execution-retirement/native-status-select-migration/tests.json",
+      "sha256": "afd4f1704434dd3dc1415382514098b25798f6427667ff919688a8767249dad6"
+    },
+    {
+      "file": "docs/research/2026-11-11-platform-execution-retirement/native-status-select-migration/mapping.json",
+      "sha256": "ef91c4f7ea60d0240889adec08243370d8a62c364f21147b9f0842feb04cce08"
+    },
+    {
+      "file": "docs/research/2026-11-11-platform-execution-retirement/native-status-select-migration/patch.patch",
+      "sha256": "236e4225a0ba9de67381a897b5b27e7a77339cdb88e5222e7204aeccf0656288"
+    }
+  ],
+  "affectedEffectiveCaseIds": [],
+  "results": {
+    "original": {
+      "passed": 0,
+      "failed": 3
+    },
+    "final": {
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    }
+  }
+}

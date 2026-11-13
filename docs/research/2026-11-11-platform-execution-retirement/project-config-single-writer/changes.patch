@@ -1,0 +1,205 @@
+diff --git a/domains/workflow-contract/project-config-transaction.ts b/domains/workflow-contract/project-config-transaction.ts
+index b6dd871e..e21e3065 100644
+--- a/domains/workflow-contract/project-config-transaction.ts
++++ b/domains/workflow-contract/project-config-transaction.ts
+@@ -17,7 +17,6 @@ const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+ interface ProjectConfigWriteTransactionJournal {
+   schema: typeof CONFIG_TRANSACTION_SCHEMA;
+   id: string;
+-  owner_pid: number;
+   expected_sha256: string;
+   output_sha256: string;
+   candidate: string;
+@@ -84,14 +83,15 @@ async function readTransaction(
+   if (!value || typeof value !== 'object' || Array.isArray(value)) {
+     throw new Error('Invalid project config write transaction: expected an object');
+   }
+-  const record = value as Record<string, unknown>;
++  const record = { ...(value as Record<string, unknown>) };
++  // 旧 PID 仅为已退休的写入者元数据，不参与业务事务恢复。
++  delete record.owner_pid;
+   const keys = Object.keys(record).sort();
+   const expectedKeys = [
+     'candidate',
+     'expected_sha256',
+     'id',
+     'output_sha256',
+-    'owner_pid',
+     'quarantine',
+     'schema',
+   ].sort();
+@@ -104,13 +104,6 @@ async function readTransaction(
+   if (typeof record.id !== 'string' || !UUID_PATTERN.test(record.id)) {
+     throw new Error('Invalid project config write transaction: invalid id');
+   }
+-  if (
+-    typeof record.owner_pid !== 'number' ||
+-    !Number.isSafeInteger(record.owner_pid) ||
+-    record.owner_pid <= 0
+-  ) {
+-    throw new Error('Invalid project config write transaction: invalid owner pid');
+-  }
+   if (
+     typeof record.expected_sha256 !== 'string' ||
+     !SHA256_PATTERN.test(record.expected_sha256) ||
+@@ -188,16 +181,6 @@ async function removeOwnedFile(
+   return true;
+ }
+ 
+-function processIsAlive(pid: number): boolean {
+-  if (pid === process.pid) return true;
+-  try {
+-    process.kill(pid, 0);
+-    return true;
+-  } catch (error) {
+-    return (error as NodeJS.ErrnoException).code !== 'ESRCH';
+-  }
+-}
+-
+ async function removeTransactionJournal(
+   projectRoot: string,
+   transaction: { journal: ProjectConfigWriteTransactionJournal; source: string },
+@@ -257,7 +240,6 @@ export async function beginWorkflowProjectConfigTransaction(
+   const journal: ProjectConfigWriteTransactionJournal = {
+     schema: CONFIG_TRANSACTION_SCHEMA,
+     id,
+-    owner_pid: process.pid,
+     expected_sha256: expectedSha256,
+     output_sha256: outputSha256,
+     candidate: transactionCandidate(id),
+@@ -331,7 +313,6 @@ export async function inspectWorkflowProjectConfigTransaction(
+ export async function repairWorkflowProjectConfigTransaction(
+   projectRoot: string,
+   options: {
+-    ownerId?: string;
+     testHooks?: {
+       afterOwnedFileQuarantine?: (
+         relativePath: string,
+@@ -343,11 +324,6 @@ export async function repairWorkflowProjectConfigTransaction(
+   const transaction = await readTransaction(projectRoot);
+   if (!transaction) return false;
+   const { journal } = transaction;
+-  if (options.ownerId !== journal.id && processIsAlive(journal.owner_pid)) {
+-    throw new Error(
+-      `Project config write transaction ${journal.id} is still active in process ${journal.owner_pid}`,
+-    );
+-  }
+   const inspection = await inspectWorkflowProjectConfigTransaction(projectRoot);
+   if (!inspection) return false;
+ 
+
+diff --git a/domains/workflow-contract/project-config-writer.ts b/domains/workflow-contract/project-config-writer.ts
+index d503d875..dd12b2f2 100644
+--- a/domains/workflow-contract/project-config-writer.ts
++++ b/domains/workflow-contract/project-config-writer.ts
+@@ -140,13 +140,13 @@ export async function writeWorkflowProjectConfigSource(
+       throw new Error('Project config changed during final publish; successor was preserved');
+     }
+     if (transactionOpen) {
+-      await repairWorkflowProjectConfigTransaction(root, { ownerId: transactionId });
++      await repairWorkflowProjectConfigTransaction(root);
+       transactionOpen = false;
+     }
+   } catch (error) {
+     if (transactionOpen) {
+       try {
+-        if (await repairWorkflowProjectConfigTransaction(root, { ownerId: transactionId })) {
++        if (await repairWorkflowProjectConfigTransaction(root)) {
+           transactionOpen = false;
+         }
+       } catch {
+
+diff --git a/test/app/doctor.test.ts b/test/app/doctor.test.ts
+index 9a5a1c84..d5cc4c9c 100644
+--- a/test/app/doctor.test.ts
++++ b/test/app/doctor.test.ts
+@@ -854,51 +854,48 @@ describe('doctor command', () => {
+     ).toBeUndefined();
+   });
+ 
+-  it('does not repair a project config transaction while its writer is still active', async () => {
+-    await writeProjectConfig(tmpDir, defaultProjectConfig('before-live-write'));
+-    let enterPublish!: () => void;
+-    const publishEntered = new Promise<void>((resolve) => {
+-      enterPublish = resolve;
+-    });
+-    let releasePublish!: () => void;
+-    const publishRelease = new Promise<void>((resolve) => {
+-      releasePublish = resolve;
+-    });
+-    const writer = writeWorkflowProjectConfig(tmpDir, defaultProjectConfig('after-live-write'), {
+-      beforePublish: async () => {
+-        enterPublish();
+-        await publishRelease;
+-      },
+-    });
+-    await publishEntered;
+-
+-    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+-    try {
+-      await expect(
+-        doctorCommand(tmpDir, {
++  it('repairs a real interrupted config transaction while ignoring legacy owner PID metadata', async () => {
++    for (const legacyOwner of [process.pid, 'retired-owner-metadata']) {
++      await writeProjectConfig(tmpDir, defaultProjectConfig('before-legacy-pid-recovery'));
++      const configPath = path.join(tmpDir, '.comet', 'config.yaml');
++      const previous = await fs.readFile(configPath, 'utf8');
++      const crashed = spawnSync(
++        process.execPath,
++        [path.resolve('test/helpers/project-config-crash-worker.mjs'), tmpDir],
++        { cwd: path.resolve('.'), encoding: 'utf8', timeout: 30000, windowsHide: true },
++      );
++      expect(crashed.status, crashed.stderr).toBe(73);
++      const journalFile = path.join(tmpDir, '.comet', 'config-write-transaction.json');
++      const fresh = JSON.parse(await fs.readFile(journalFile, 'utf8'));
++      // SIMULATED obsolete owner field on a real prepared/quarantined config WAL; business bytes are unchanged.
++      await fs.writeFile(journalFile, JSON.stringify({ ...fresh, owner_pid: legacyOwner }));
++      const originalJournal = await fs.readFile(journalFile, 'utf8');
++      await collectDoctorPayload(tmpDir);
++      expect(await fs.readFile(journalFile, 'utf8')).toBe(originalJournal);
++      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
++      try {
++        await doctorCommand(tmpDir, {
+           json: true,
+           repair: true,
+           scope: 'project',
+           homeDir: tmpDir,
+-        }),
+-      ).rejects.toThrow(/transaction .* still active/iu);
+-    } finally {
+-      log.mockRestore();
+-      releasePublish();
++        });
++        const repaired=JSON.parse(log.mock.calls.map(call=>call.join(' ')).join('\n')) as DoctorPayload;
++        expect(repaired.repaired).toContain('project config write transaction');
++      } finally {
++        log.mockRestore();
++      }
++      expect(await fs.readFile(configPath, 'utf8')).toBe(previous);
++      expect(fresh).not.toHaveProperty('owner_pid');
++      expect(
++        (await fs.readdir(path.join(tmpDir, '.comet'))).filter(
++          (entry) =>
++            entry.includes('config-write-transaction') ||
++            entry.endsWith('.next') ||
++            entry.endsWith('.quarantine'),
++        ),
++      ).toEqual([]);
+     }
+-    await writer;
+-
+-    await expect(
+-      fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8'),
+-    ).resolves.toContain('artifact_root: after-live-write');
+-    expect(
+-      (await fs.readdir(path.join(tmpDir, '.comet'))).filter(
+-        (entry) =>
+-          entry.includes('config-write-transaction') ||
+-          entry.endsWith('.next') ||
+-          entry.endsWith('.quarantine'),
+-      ),
+-    ).toEqual([]);
+   });
+ 
+   it('reports an owned Classic initialization and atomically quarantines it on rollback', async () => {
+

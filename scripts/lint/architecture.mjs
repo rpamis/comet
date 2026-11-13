@@ -113,6 +113,7 @@ assertArrayEquals('repository-layout.sourceRoots', layout.sourceRoots, [
   'app',
   'domains',
   'platform',
+  'plugin',
 ]);
 assertArrayEquals('repository-layout.testRoots', layout.testRoots, ['test']);
 
@@ -157,6 +158,13 @@ if (exists('test/ts')) {
 assertArrayEquals('app modules', directoryNames('app'), layout.appModules);
 assertArrayEquals('domain modules', directoryNames('domains'), layout.domainModules);
 assertArrayEquals('platform modules', directoryNames('platform'), layout.platformModules);
+assertArrayEquals('plugin modules', directoryNames('plugin'), layout.pluginModules);
+for (const definition of [layout.codexPlugin, layout.dshPlugin].filter(Boolean)) {
+  for (const file of definition.files ?? []) {
+    if (!isFile(`${definition.templateRoot}/${file}`))
+      fail(`plugin template ${definition.templateRoot}/${file} is missing`);
+  }
+}
 
 for (const scriptModule of directoryNames('scripts')) {
   if (!layout.scriptModules.includes(scriptModule)) {
@@ -253,6 +261,7 @@ for (const file of walkFiles('.', ignoredGeneratedTrees, ignoredGeneratedRelativ
     normalized.startsWith('app/') ||
     normalized.startsWith('domains/') ||
     normalized.startsWith('platform/') ||
+    normalized.startsWith('plugin/') ||
     normalized.startsWith('scripts/') ||
     normalized.startsWith('test/') ||
     normalized.startsWith('assets/skills/comet/scripts/') ||
@@ -645,7 +654,10 @@ function checkSourceDependencies() {
       }
       if (
         (sourceLayer(file) === 'platform' && ['app', 'domains'].includes(sourceLayer(target))) ||
-        (sourceLayer(file) === 'domains' && sourceLayer(target) === 'app')
+        (sourceLayer(file) === 'domains' && sourceLayer(target) === 'app') ||
+        (['app', 'domains', 'platform'].includes(sourceLayer(file)) &&
+          sourceLayer(target) === 'plugin') ||
+        (sourceLayer(file) === 'plugin' && sourceLayer(target) === 'app')
       ) {
         fail(`${file} must not depend on ${target}`);
       }

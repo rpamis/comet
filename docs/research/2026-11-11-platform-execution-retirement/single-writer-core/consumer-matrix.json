@@ -1,0 +1,12 @@
+[
+ {"consumer":"domains/workflow-creation/creator.ts","storage":"creator","writer":"Creator CLI-owned async creator.evaluate and public creator cancel","singleWriter":false,"reason":"真实同Run异步完成/cancel，默认SDK提交锁保留；未启动真实Eval"},
+ {"consumer":"app/commands/runtime.ts","storage":"explicit raw SDK rootDir","writer":"任意公开SDK调用者","singleWriter":false,"reason":"通用默认SDK合同不全局削弱"},
+ {"consumer":"domains/workflow-application/application.ts","storage":"applications/<id>","writer":"manifest.base native/classic-* 父controller","singleWriter":true,"reason":"已有manifest.base边界一次分类传persistent/coordinated与本应用maintenance"},
+ {"consumer":"domains/workflow-application/application.ts","storage":"applications/<id>","writer":"standalone通用应用可能CLI-owned call_tool异步","singleWriter":false,"reason":"默认SDK原子提交保留，普通外层workspace/application scope锁物理删除"},
+ {"consumer":"domains/comet-native/native-sdk-state-store.ts and domain restoration/history stores","storage":"sdk-runs/native","writer":"Native父controller","singleWriter":true,"reason":"NativeAgent在其闭包显式传入；Child只返回父Agent串行提交"},
+ {"consumer":"domains/comet-classic/classic-sdk-state-store.ts","storage":"sdk-runs/classic","writer":"Classic父controller","singleWriter":true,"reason":"普通Run/恢复/取消保业务状态，跳过SDK写锁与外围projection锁"},
+ {"consumer":"domains/comet-classic/classic-sdk-archive-manifest.ts and classic-sdk-delivery-inputs.ts","storage":"archive receipts/preparations/workspace baseline","writer":"Classic同controller真实业务证据","singleWriter":true,"reason":"保真实Archive/Git义务，不保普通外围锁"},
+ {"consumer":"domains/workflow-contract/change-runtime-owner.ts","storage":"owner active/history/canonical hardlinks","writer":"workspace同controller","singleWriter":true,"reason":"删除partition lock+writing/stable token+代次重试；保原硬链接/事务/精确归属"},
+ {"consumer":"domains/workflow-contract/legacy-runtime-import.ts","storage":"explicit legacy Native/Classic import target","writer":"明确数据升级入口","singleWriter":true,"reason":"旧业务Run导入保原来源，不恢复旧锁执行器"},
+ {"consumer":"workflow-application/run-observation, run-trace, workflow-creation/run-observation, domain diagnostics","storage":"readonly authoritative stores","writer":"none","singleWriter":null,"reason":"只读不调用withWriter，不生成锁；不需要为读路径增加模式/配置"}
+]

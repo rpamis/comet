@@ -1,0 +1,23 @@
+diff --git a/test/domains/comet-classic/classic-sdk-readonly.test.ts b/test/domains/comet-classic/classic-sdk-readonly.test.ts
+index b28d0b9e..5fae3245 100644
+--- a/test/domains/comet-classic/classic-sdk-readonly.test.ts
++++ b/test/domains/comet-classic/classic-sdk-readonly.test.ts
+@@ -144,10 +144,17 @@ describe('Classic SDK read-only diagnostics', () => {
+   it('validates a matching state in memory without recreating the absent marker directory', async () => {
+     const { root, store, markerFile, backing } = await fixture();
+     const expected = await backing.read('demo');
+-    await fs.rm(path.dirname(markerFile), { recursive: true });
++    const markerDirectory = path.dirname(markerFile);
++    await expect(fs.access(markerDirectory)).rejects.toMatchObject({ code: 'ENOENT' });
++    const runtimeRoot = resolveWorkspaceRuntimeRootSync(root);
+     const before = await snapshot(root);
++    const beforeRuntime = await snapshot(runtimeRoot);
++    const writes = watchWrites();
+     expect(await store.read('demo')).toEqual(expected);
++    for (const write of writes) expect(write).not.toHaveBeenCalled();
+     expect(await snapshot(root)).toEqual(before);
++    expect(await snapshot(runtimeRoot)).toEqual(beforeRuntime);
++    await expect(fs.access(markerDirectory)).rejects.toMatchObject({ code: 'ENOENT' });
+   });
+ 
+   it.each(['run', 'state', 'settings', 'checkpoint'] as const)(

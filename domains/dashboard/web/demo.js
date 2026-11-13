@@ -116,7 +116,7 @@ const CLASSIC_DEMO_SCENARIOS = {
     decisions: [
       '分页游标绑定 snapshot，状态变化时返回明确的 stale cursor。',
       '所有产物路径在读取前验证仍位于项目目录内。',
-      '预览正文使用固定字节预算并报告 truncated 状态。',
+      '选中产物后加载完整正文，不截断文件内容。',
     ],
     checks: ['npx vitest run test/domains/dashboard/collector.test.ts', 'pnpm lint'],
   },
@@ -2916,6 +2916,7 @@ export const DEMO_PROJECT_CONFIG = {
   defaultWorkflow: 'classic',
   workflows: ['classic', 'native'],
   ambientResume: true,
+  changeWalkthrough: true,
   hookAllowPaths: ['docs/generated', 'reports'],
   knowledge: {
     provider: 'local',
@@ -2929,6 +2930,7 @@ export const DEMO_PROJECT_CONFIG = {
     clarificationMode: 'sequential',
     archiveConfirmation: 'required',
     maxVerifyFailures: 3,
+    maxParallelChildren: 2,
   },
   classic: {
     artifactLayout: 'docs',

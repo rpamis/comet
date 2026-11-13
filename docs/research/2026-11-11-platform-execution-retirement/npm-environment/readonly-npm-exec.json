@@ -1,0 +1,176 @@
+{
+  "root": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\npm-prefix-readonly-CYZXwo",
+  "prefix": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\npm-prefix-readonly-CYZXwo\\prefix",
+  "inherited": {
+    "NPM_COMMAND": "exec",
+    "NPM_CONFIG_CACHE": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/npm-prefix-audit/npm-cache",
+    "NPM_CONFIG_GLOBALCONFIG": "D:\\nodejs\\etc\\npmrc",
+    "NPM_CONFIG_GLOBAL_PREFIX": "D:\\nodejs",
+    "NPM_CONFIG_PREFIX": "D:\\nodejs",
+    "NPM_CONFIG_USERCONFIG": "C:\\Users\\BENYM\\.npmrc",
+    "NPM_CONFIG_USER_AGENT": "npm/10.9.3 node/v22.20.0 win32 x64 workspaces/false",
+    "NPM_EXECPATH": "D:\\nvm\\v22.20.0\\node_modules\\npm\\bin\\npm-cli.js",
+    "NPM_LIFECYCLE_EVENT": "npx",
+    "NPM_NODE_EXECPATH": "D:\\nodejs\\node.exe"
+  },
+  "observations": [
+    {
+      "name": "optionsEnvOnly",
+      "env": {
+        "NPM_COMMAND": "exec",
+        "NPM_CONFIG_CACHE": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/npm-prefix-audit/npm-cache",
+        "NPM_CONFIG_GLOBALCONFIG": "D:\\nodejs\\etc\\npmrc",
+        "NPM_CONFIG_GLOBAL_PREFIX": "D:\\nodejs",
+        "NPM_CONFIG_USERCONFIG": "C:\\Users\\BENYM\\.npmrc",
+        "NPM_CONFIG_USER_AGENT": "npm/10.9.3 node/v22.20.0 win32 x64 workspaces/false",
+        "NPM_EXECPATH": "D:\\nvm\\v22.20.0\\node_modules\\npm\\bin\\npm-cli.js",
+        "NPM_LIFECYCLE_EVENT": "npx",
+        "NPM_NODE_EXECPATH": "D:\\nodejs\\node.exe",
+        "npm_config_prefix": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\npm-prefix-readonly-CYZXwo\\prefix"
+      },
+      "launch": {
+        "command": "D:\\nodejs\\node.exe",
+        "args": [
+          "D:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+          "root",
+          "--global"
+        ],
+        "hasEnvOverride": false
+      },
+      "result": {
+        "status": 0,
+        "stdout": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\npm-prefix-readonly-CYZXwo\\prefix\\node_modules",
+        "stderr": ""
+      },
+      "configured": {
+        "status": 0,
+        "stdout": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\npm-prefix-readonly-CYZXwo\\prefix",
+        "stderr": ""
+      },
+      "childEnv": {
+        "NPM_CONFIG_GLOBAL_PREFIX": "D:\\nodejs",
+        "NPM_CONFIG_LOCAL_PREFIX": "D:\\Project\\Comet",
+        "npm_config_prefix": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\npm-prefix-readonly-CYZXwo\\prefix"
+      }
+    },
+    {
+      "name": "actualEnsureMerged",
+      "env": {
+        "NPM_COMMAND": "exec",
+        "NPM_CONFIG_CACHE": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/npm-prefix-audit/npm-cache",
+        "NPM_CONFIG_GLOBALCONFIG": "D:\\nodejs\\etc\\npmrc",
+        "NPM_CONFIG_GLOBAL_PREFIX": "D:\\nodejs",
+        "NPM_CONFIG_PREFIX": "D:\\nodejs",
+        "NPM_CONFIG_USERCONFIG": "C:\\Users\\BENYM\\.npmrc",
+        "NPM_CONFIG_USER_AGENT": "npm/10.9.3 node/v22.20.0 win32 x64 workspaces/false",
+        "NPM_EXECPATH": "D:\\nvm\\v22.20.0\\node_modules\\npm\\bin\\npm-cli.js",
+        "NPM_LIFECYCLE_EVENT": "npx",
+        "NPM_NODE_EXECPATH": "D:\\nodejs\\node.exe",
+        "npm_config_prefix": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\npm-prefix-readonly-CYZXwo\\prefix"
+      },
+      "launch": {
+        "command": "D:\\nodejs\\node.exe",
+        "args": [
+          "D:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+          "root",
+          "--global"
+        ],
+        "hasEnvOverride": false
+      },
+      "result": {
+        "status": 0,
+        "stdout": "D:\\nodejs\\node_modules",
+        "stderr": ""
+      },
+      "configured": {
+        "status": 0,
+        "stdout": "D:\\nodejs",
+        "stderr": ""
+      },
+      "childEnv": {
+        "NPM_CONFIG_GLOBAL_PREFIX": "D:\\nodejs",
+        "NPM_CONFIG_LOCAL_PREFIX": "D:\\Project\\Comet",
+        "NPM_CONFIG_PREFIX": "D:\\nodejs"
+      }
+    },
+    {
+      "name": "canonicalMerged",
+      "env": {
+        "NPM_COMMAND": "exec",
+        "NPM_CONFIG_CACHE": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/npm-prefix-audit/npm-cache",
+        "NPM_CONFIG_GLOBALCONFIG": "D:\\nodejs\\etc\\npmrc",
+        "NPM_CONFIG_GLOBAL_PREFIX": "D:\\nodejs",
+        "NPM_CONFIG_USERCONFIG": "C:\\Users\\BENYM\\.npmrc",
+        "NPM_CONFIG_USER_AGENT": "npm/10.9.3 node/v22.20.0 win32 x64 workspaces/false",
+        "NPM_EXECPATH": "D:\\nvm\\v22.20.0\\node_modules\\npm\\bin\\npm-cli.js",
+        "NPM_LIFECYCLE_EVENT": "npx",
+        "NPM_NODE_EXECPATH": "D:\\nodejs\\node.exe",
+        "npm_config_prefix": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\npm-prefix-readonly-CYZXwo\\prefix"
+      },
+      "launch": {
+        "command": "D:\\nodejs\\node.exe",
+        "args": [
+          "D:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+          "root",
+          "--global"
+        ],
+        "hasEnvOverride": false
+      },
+      "result": {
+        "status": 0,
+        "stdout": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\npm-prefix-readonly-CYZXwo\\prefix\\node_modules",
+        "stderr": ""
+      },
+      "configured": {
+        "status": 0,
+        "stdout": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\npm-prefix-readonly-CYZXwo\\prefix",
+        "stderr": ""
+      },
+      "childEnv": {
+        "NPM_CONFIG_GLOBAL_PREFIX": "D:\\nodejs",
+        "NPM_CONFIG_LOCAL_PREFIX": "D:\\Project\\Comet",
+        "npm_config_prefix": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\npm-prefix-readonly-CYZXwo\\prefix"
+      }
+    },
+    {
+      "name": "simulatedInheritedUppercaseThenMerge",
+      "env": {
+        "NPM_COMMAND": "exec",
+        "NPM_CONFIG_CACHE": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/npm-prefix-audit/npm-cache",
+        "NPM_CONFIG_GLOBALCONFIG": "D:\\nodejs\\etc\\npmrc",
+        "NPM_CONFIG_GLOBAL_PREFIX": "D:\\nodejs",
+        "NPM_CONFIG_PREFIX": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\npm-prefix-readonly-CYZXwo\\other-prefix",
+        "NPM_CONFIG_USERCONFIG": "C:\\Users\\BENYM\\.npmrc",
+        "NPM_CONFIG_USER_AGENT": "npm/10.9.3 node/v22.20.0 win32 x64 workspaces/false",
+        "NPM_EXECPATH": "D:\\nvm\\v22.20.0\\node_modules\\npm\\bin\\npm-cli.js",
+        "NPM_LIFECYCLE_EVENT": "npx",
+        "NPM_NODE_EXECPATH": "D:\\nodejs\\node.exe",
+        "npm_config_prefix": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\npm-prefix-readonly-CYZXwo\\prefix"
+      },
+      "launch": {
+        "command": "D:\\nodejs\\node.exe",
+        "args": [
+          "D:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+          "root",
+          "--global"
+        ],
+        "hasEnvOverride": false
+      },
+      "result": {
+        "status": 0,
+        "stdout": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\npm-prefix-readonly-CYZXwo\\other-prefix\\node_modules",
+        "stderr": ""
+      },
+      "configured": {
+        "status": 0,
+        "stdout": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\npm-prefix-readonly-CYZXwo\\other-prefix",
+        "stderr": ""
+      },
+      "childEnv": {
+        "NPM_CONFIG_GLOBAL_PREFIX": "D:\\nodejs",
+        "NPM_CONFIG_LOCAL_PREFIX": "D:\\Project\\Comet",
+        "NPM_CONFIG_PREFIX": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\npm-prefix-readonly-CYZXwo\\other-prefix"
+      }
+    }
+  ]
+}

@@ -24,16 +24,6 @@ export interface WorkflowNativePendingRootMove {
   cleanup?: WorkflowNativeRootMoveCleanup;
 }
 
-export interface WorkflowNativeSnapshotConfig {
-  include: string[];
-  exclude: string[];
-  max_files: number;
-  max_total_bytes: number;
-  max_duration_ms: number;
-  /** Bounds Git selection records and physical enumeration nodes per snapshot. */
-  max_selection_records: number;
-}
-
 export interface WorkflowNativePullRequestFinishConfig {
   provider: 'repository-command';
   command: string[];
@@ -80,8 +70,8 @@ export interface WorkflowNativeProjectConfig {
   clarification_mode: WorkflowNativeClarificationMode;
   archive_confirmation: WorkflowNativeArchiveConfirmation;
   max_verify_failures: number;
+  max_parallel_children?: number;
   document_writes?: WorkflowNativeDocumentWrites;
-  snapshot: WorkflowNativeSnapshotConfig;
   finish?: WorkflowNativeFinishConfig;
   pending_root_move?: WorkflowNativePendingRootMove;
 }

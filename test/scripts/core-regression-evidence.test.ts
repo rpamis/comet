@@ -4,7 +4,11 @@ import { promises as fs, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { coreRegressionArgs } from '../../scripts/lint/core-regressions.mjs';
+import {
+  coreRegressionArgs,
+  CORE_REGRESSIONS,
+  selectCoreRegressions,
+} from '../../scripts/lint/core-regressions.mjs';
 import {
   assertCoreRegressionEvidence,
   combineCoreRegressionPlatforms,
@@ -17,6 +21,17 @@ import {
 } from '../../scripts/lint/core-regression-evidence.mjs';
 
 const sampling = vi.hoisted(() => ({ onRead: undefined as (() => void) | undefined }));
+it('preserves the Windows-specific registered group after shared test migrations', () => {
+  const id = 'registered-classic-short-timeout-supervisor-startup';
+  const selected = selectCoreRegressions([id]);
+  expect(selected.length).toBeGreaterThan(0);
+  expect(
+    selected.every((entry) => entry.caseIds?.includes('classic-short-timeout-supervisor-startup')),
+  ).toBe(true);
+  const groups = createCoreRegressionExecutionPlan(CORE_REGRESSIONS).groups;
+  for (const entry of selected)
+    expect(groups.find((group) => group.id === entry.id)?.platform).toBe('win32');
+});
 vi.mock('node:fs', async (importOriginal) => {
   const original = await importOriginal<typeof import('node:fs')>();
   return {

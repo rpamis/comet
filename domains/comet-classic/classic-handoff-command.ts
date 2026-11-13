@@ -1,9 +1,13 @@
 import type { ClassicCommandHandler } from './classic-cli.js';
 import { classicCommandProjectRoot, withProjectContext } from './classic-command-context.js';
-import { compatHandoffCommand, validateClassicSdkDesignContext } from './classic-handoff.js';
+import {
+  compatHandoffCommand,
+  validateClassicSdkDesignContext,
+  writeClassicDesignHandoffView,
+} from './classic-handoff.js';
 import { assertClassicLayoutWritable } from './classic-layout.js';
-import { inspectClassicActiveChangeDirectory, openSpecChangeNameError } from './classic-paths.js';
 import { classicHandoffEnvelope, classicLocale } from './classic-output-language.js';
+import { inspectClassicActiveChangeDirectory, openSpecChangeNameError } from './classic-paths.js';
 import { resolveClassicChangeRuntimeOwner } from './classic-runtime-ownership.js';
 import { inspectClassicSdkRun } from './classic-sdk-status.js';
 
@@ -27,7 +31,7 @@ export const classicHandoffCommand: ClassicCommandHandler = withProjectContext(
     const { run, state } = await inspectClassicSdkRun(layout.projectRoot, change);
     if (!['design', 'build'].includes(state.phase))
       return { exitCode: 1, stderr: 'ERROR: design handoff requires phase: design or build\n' };
-    if (!state.handoffContext || !state.handoffHash)
+    if (!state.handoffContext)
       return {
         exitCode: 1,
         stderr:
@@ -48,17 +52,24 @@ export const classicHandoffCommand: ClassicCommandHandler = withProjectContext(
       return {
         exitCode: 1,
         stderr:
-          'ERROR: SDK handoff sources changed or its context is missing. ' +
-          'Restore the approved sources and context before continuing; this command cannot replace an SDK approval.\n',
+          'ERROR: SDK handoff does not reference this change. Continue from its original Run and formal source files.\n',
       };
     const envelope = classicHandoffEnvelope({
       name: change,
       locale: classicLocale(state.language),
     });
+    const view =
+      fullFlag === '--full'
+        ? await writeClassicDesignHandoffView({
+            projectRoot: layout.projectRoot,
+            changeDir: active.directory,
+            change,
+          })
+        : null;
     return {
       exitCode: 0,
       envelope,
-      stderr: `${envelope.summary}\n[HANDOFF] reused ${state.handoffContext}\n[HANDOFF] handoff_hash=${state.handoffHash}\n`,
+      stderr: `${envelope.summary}\n[HANDOFF] source ${state.handoffContext}${view ? '\n[HANDOFF] view ' + view : ''}\n`,
     };
   },
 );

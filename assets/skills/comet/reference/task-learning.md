@@ -1,6 +1,8 @@
 # Task learning completion
 
-Before finishing a task, the Agent checks personal preferences and project experience separately and prepares a temporary UTF-8 JSON file. The user does not write this JSON. Keep the file out of change artifacts and commits.
+Before finishing a task, the Agent checks personal preferences and project experience separately. When there is no qualifying observation, reusable lesson, known pending review, or actual-use feedback to submit, do not create an empty learning file or call review just to confirm an empty queue. Keep the current session and task arguments and complete with `--complete --learning-check no-observation --project-learning-check no-observation`. Use `not-run` for checks that were not performed; do not claim they occurred. If completion reports pending work for this change, follow its returned instructions.
+
+When there is actual content to submit, prepare a temporary UTF-8 JSON file. The user does not write this JSON. Keep the file out of change artifacts and commits.
 
 ```json
 {

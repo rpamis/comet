@@ -1,0 +1,166 @@
+{
+  "passedGroups": 9,
+  "failedGroups": 0,
+  "passedExecutions": 19,
+  "groups": [
+    {
+      "id": "registered-runtime-legacy-migration-meta-lock-confirmation",
+      "status": "passed",
+      "passed": 2,
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/workspace-runtime-legacy-lock.test.ts",
+          "name": "recovers a legacy migration recovery lock only after the original operation is confirmed stopped",
+          "status": "passed"
+        },
+        {
+          "file": "test/domains/workflow-contract/workspace-runtime-legacy-lock.test.ts",
+          "name": "preserves an active migration recovery transaction even when recovery is confirmed",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "id": "registered-native-legacy-recovery-meta-lock-doctor",
+      "status": "passed",
+      "passed": 4,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-lock-without-pid.test.ts",
+          "name": "recovers the legacy meta-lock through public source doctor before creating a change",
+          "status": "passed"
+        },
+        {
+          "file": "test/domains/comet-native/native-lock-without-pid.test.ts",
+          "name": "recovers the legacy meta-lock through public bundle doctor before creating a change",
+          "status": "passed"
+        },
+        {
+          "file": "test/domains/comet-native/native-lock-without-pid.test.ts",
+          "name": "diagnoses and explicitly retires an interrupted legacy recovery lock",
+          "status": "passed"
+        },
+        {
+          "file": "test/domains/comet-native/native-lock-without-pid.test.ts",
+          "name": "does not retire a recovery lock while its original transaction is active",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "id": "registered-native-incomplete-trajectory-status-recovery",
+      "status": "passed",
+      "passed": 1,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+          "name": "Native transition recovery doctor atomically removes only an incomplete final trajectory line before continuing",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "id": "registered-native-invalid-middle-trajectory-doctor",
+      "status": "passed",
+      "passed": 1,
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+          "name": "Native transition recovery never truncates a malformed middle trajectory line",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "id": "registered-classic-archived-repair-checkpoint-continuation",
+      "status": "passed",
+      "passed": 1,
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "name": "Classic archived checkpoint continuation continues repair delivery on its original immutable checkpoint through the public CLI (interrupted: false)",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "id": "registered-classic-stopped-delivery-checkpoint-continuation",
+      "status": "passed",
+      "passed": 1,
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "name": "Classic archived checkpoint continuation continues repair delivery on its original immutable checkpoint through the public CLI (interrupted: true)",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "id": "registered-classic-tracked-runtime-marker-move-delivery",
+      "status": "passed",
+      "passed": 4,
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "name": "delivers a tracked migration fence in .comet-state.lock that the archive moves with the change",
+          "status": "passed"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "name": "delivers a tracked migration fence in .comet-state-transaction.json that the archive moves with the change",
+          "status": "passed"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "name": "rejects an archive commit that drops a tracked migration fence in .comet-state.lock instead of moving it",
+          "status": "passed"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "name": "rejects an archive commit that drops a tracked migration fence in .comet-state-transaction.json instead of moving it",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "id": "registered-classic-legacy-delivery-input-foreign-drafts",
+      "status": "passed",
+      "passed": 1,
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "name": "keeps foreign drafts out of legacy deliveryInputs without changing the original Run",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "id": "registered-classic-absent-runtime-optional-delivery-read",
+      "status": "passed",
+      "passed": 4,
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-progress.test.ts",
+          "name": "reads an absent optional Runtime record without creating its root",
+          "status": "passed"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-progress.test.ts",
+          "name": "Classic structured progress preserves immutable authorization and treats submitted remote evidence as unverified",
+          "status": "passed"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-progress.test.ts",
+          "name": "Classic structured progress binds delivery to change identity and rejects corrupt schemas",
+          "status": "passed"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-progress.test.ts",
+          "name": "Classic structured progress verifies an actual local archive commit after directory movement, never before",
+          "status": "passed"
+        }
+      ]
+    }
+  ],
+  "additionalAcceptance": "The legacy0.5.0 original package upgrade remains pending; these executions do not prove model or platform Hook behavior."
+}

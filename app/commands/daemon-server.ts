@@ -74,6 +74,11 @@ export async function runCometDaemonServer(argv: readonly string[]): Promise<voi
               ),
               () => handleRequest(request),
               request.cwd,
+              {
+                localOnly:
+                  (command === 'status' || command === 'show') &&
+                  Boolean(request.argv?.[1] && !request.argv[1].startsWith('--')),
+              },
             )
           : handleRequest(request);
       },

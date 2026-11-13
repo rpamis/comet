@@ -1,0 +1,140 @@
+{
+  "note": "Separate executions overlap and must not be summed as one full-candidate pass.",
+  "rechecks": [
+    {
+      "report": "legacy-lock-public-final",
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "files": [
+        {
+          "file": "test/domains/comet-native/native-lock-without-pid.test.ts",
+          "status": "passed"
+        },
+        {
+          "file": "test/domains/workflow-contract/workspace-runtime-legacy-lock.test.ts",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "report": "transition-final",
+      "passed": 42,
+      "failed": 0,
+      "skipped": 0,
+      "files": [
+        {
+          "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "report": "progress-final",
+      "passed": 65,
+      "failed": 0,
+      "skipped": 0,
+      "files": [
+        {
+          "file": "test/domains/comet-classic/classic-progress.test.ts",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "report": "handoffs-final",
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0,
+      "files": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-handoffs.test.ts",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "report": "cli-version-final",
+      "passed": 3,
+      "failed": 0,
+      "skipped": 56,
+      "files": [
+        {
+          "file": "test/domains/comet-classic/classic-cli-arguments.test.ts",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "report": "contracts-audit-final",
+      "passed": 23,
+      "failed": 0,
+      "skipped": 0,
+      "files": [
+        {
+          "file": "test/scripts/badcase-registration.test.ts",
+          "status": "passed"
+        },
+        {
+          "file": "test/domains/workflow-application/artifact-contract.test.ts",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "report": "python-static-final",
+      "passed": 94,
+      "failed": 0,
+      "skipped": 0,
+      "files": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "report": "daemon-doc-final",
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "files": [
+        {
+          "file": "test/app/daemon-read-cache.test.ts",
+          "status": "passed"
+        },
+        {
+          "file": "test/repository/contributor-instructions.test.ts",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "report": "agent-cli-contract-final-verified",
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "files": [
+        {
+          "file": "test/domains/comet-classic/classic-agent-cli-contract.test.ts",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "report": "agent-current-final (only unchanged platform-report suites; CLI contract was rechecked separately)",
+      "files": [
+        {
+          "file": "test/domains/comet-classic/classic-agent-checks.test.ts",
+          "passed": 4,
+          "failed": 0
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "passed": 10,
+          "failed": 0
+        }
+      ]
+    }
+  ]
+}

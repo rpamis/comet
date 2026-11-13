@@ -12,9 +12,9 @@
 
 ## 故障恢复
 
-若 SDK change 的本机 Run 记录丢失，先用 `comet native doctor <change-name> --json` 检查。`comet-state.yaml` 含 `run_checkpoint` 时，具名 `native status` 或 `native next` 会在新设备恢复已保存的阶段、Action 和确认；继续外部工作前确认原设备的执行进程已停止，结果未明的 Action 先核对，不重放。只有旧状态文件没有检查点时，才向用户说明显式恢复会回到 Shape、旧确认与检查需要重做；获得明确同意后运行 `comet native doctor <change-name> --repair --confirmed`。
+若 SDK change 的本机 Run 记录丢失，先用 `comet native doctor <change-name> --json` 只读检查，再按返回的明确恢复或导入动作继续。原 `comet-state.yaml` 中的 `run_checkpoint` 或已知旧业务来源用于恢复已保存的阶段、Action、领取和有效批准；`status` 不写入或恢复记录。缺少可信来源时保留现场，不自行回到 Shape 或重做批准。继续外部工作前，通过原平台核对尚未结束或结果未知的任务，不能重放可能已发生的副作用。
 
-命令已返回具体错误、当前状态和恢复动作时，先按该响应处理。Runner 输入校验失败按[填写命令输入](commands.md#填写命令输入)修正，归档提交或合并失败按[Archive 收尾](workspace.md#archive-收尾)继续，仍在运行的任务保持原标识。没有当前状态、调用中断或现场与响应不一致时，先停止依赖该状态的修改，运行一次 `status --details --json`；状态或恢复记录仍无法解释问题时，再运行只读 `doctor`。只执行 `continuation` 或 `doctor` 明确返回的恢复动作。跨设备状态、本机执行状态、锁和事务始终由 Runtime 管理；无法确定自动恢复是否安全时，保留现场并等待用户决定。
+命令已返回具体错误、当前状态和恢复动作时，先按该响应处理。Runner 输入校验失败按[填写命令输入](commands.md#填写命令输入)修正，归档提交或合并失败按[Archive 收尾](workspace.md#archive-收尾)继续，仍在运行的任务保持原标识。没有当前状态、调用中断或现场与响应不一致时，先停止依赖该状态的修改，运行一次 `status --details --json`；状态或恢复记录仍无法解释问题时，再运行只读 `doctor`。只执行 `continuation` 或 `doctor` 明确返回的恢复动作。业务状态和真实归档事务由 Runtime 管理，平台任务由 Agent 通过原平台核对与清理；无法确定自动恢复是否安全时，保留现场并等待用户决定。
 
 仅等待外部输入时，按[等待外部输入与监控](#等待外部输入与监控)处理，独立工作继续。恢复后重新分配 Supervisor 任务前，必须读取[Supervisor 协作](commands.md#supervisor-协作)；重新启动 Verifier 前，必须读取[Verify 协议](commands.md#verify-协议)，核对当前任务标识、待验收的实现版本和执行状态。
 
@@ -22,27 +22,15 @@ SDK 恢复时只读取 commands.md 的 SDK Run 与 SDK Verify 协议；以下 Co
 
 ### 工作区
 
-`status` 会在已登记的 worktree 中查找与当前项目和分支关联的 change，并返回实际工作目录 `workspace.projectRoot`。进入该目录并重新执行 `select`。恢复时沿用找到的 change 和工作目录，不复制 change，也不在其他目录重建同名 change。
+在当前工作区使用已知 change 或 Run 继续。目标位于其他 worktree 时，进入其已知目录再执行 `select`；普通状态命令不自动搜索所有 worktree。恢复时沿用找到的 change 和工作目录，不复制 change，也不在其他目录重建同名 change。
 
 如果项目根目录、分支、工作区类型或 Git 状态与 `comet-state.yaml` 中的记录不一致，Runtime 会阻止写入。Runtime 能安全找到或创建已声明的 worktree 时，按返回动作继续；否则进入阻塞等待用户决定（`disposition: blocked`，recovery action 为 `await-user`）。原目录或分支确实丢失时，由用户决定使用哪个恢复目录、是否从可信备份重建，或是否放弃 change。
 
-### 旧 Runtime 的工作流记录与本机执行状态
+### 旧版本业务记录
 
-SDK Run 从 `comet-state.yaml` 的 `run_checkpoint` 恢复；本节以下的 `state.json` 重建规则只适用于旧 Runtime。旧 Runtime 的 `comet-state.yaml` 记录最后一个可以安全恢复的工作流状态。本机 `state.json` 只说明这台机器正在执行什么；如果它缺失、版本落后或属于旧任务，Runtime 会根据 YAML、brief 和目标 Spec 重建。本机状态不能覆盖版本更新的 YAML。
+在原 change 和原 Run 继续。入口自动适配旧业务数据，保留已接受的 Shape、用户决定、任务与候选；使用新版返回的任务模板。旧检查执行器、PID、停止握手和内容快照不再恢复。尚未结束或结果未知的任务先通过原平台核对，不把取消业务调度解释为进程已经停止，不盲目重跑可能产生副作用的命令。
 
-- Shape：保持 Shape，继续澄清或确认。
-- Build：如果 Runtime 显示 `repairing`，表示 Verify 未通过后已返回 Build。普通 change 保持当前验收轮次并继续修改；Supervisor Change 按 `repair-child` 添加新的修复子任务，处理尚未通过的验收项（编辑 `children.yaml` 后运行 `comet native next <parent> --summary "<说明>"`，契约变化会让 Runtime 退回 Shape 重新确认），不重新打开已经归档的子任务。
-- Verify（`verify-ready`）：重新运行当前实现所需的检查，并启动新的 Verifier；不沿用旧设备上的通过结果。
-- Archive（`archive-ready`）：先安全返回 Verify，把验收结果重置为待检查（`pending`），再验收已经同步到新设备的实现。
-- 等待用户或阻塞（`await-user` / `blocked`）：恢复原来的阻塞原因、负责处理的人和允许动作，等待对应条件满足后再继续。
-- active 目录中的 `done`：只按 Runtime 返回的动作完成目录移动与清理；尚有 Git 收尾时，按[Archive 收尾](workspace.md#archive-收尾)继续。
-- archive 目录中的 `done`：先核对公开状态中的工作区收尾结果。所选收尾已完成或保留时只读展示；仍报告未完成或 `blocked` 时，按[Archive 收尾](workspace.md#archive-收尾)继续。
-
-旧任务的进程、日志连接和 Agent 会话都视为已经丢失，不能根据残留文件猜测它们是否成功。检查已经结束、但 YAML 尚未记录结果时，只能重跑可以安全重复的检查；可能重复产生外部影响的操作，需要等待用户决定。
-
-`verification.md` 缺失、写入中断或 `generated_from_state_version` 落后时，只根据 YAML 重建报告。YAML 仍是恢复依据；报告版本与状态版本一致后，才能进入 Archive。
-
-旧版本的 active change 会以只读状态显示 `migration-required`。使用 `doctor --repair` 或 Runtime 明确返回的迁移命令处理。迁移失败时保留旧文件，等待 Runtime 给出下一步。
+SDK Run 缺失时使用原 `run_checkpoint` 或已知旧数据源恢复业务记录；缺少可信来源时保留现场，按 `doctor` 返回的明确导入或恢复入口处理，不搜索其他工作区猜测进度。报告是业务状态的阅读视图，不能代替原批准或真实检查结果。
 
 ### 没有聊天记录时跨设备恢复
 
@@ -50,21 +38,21 @@ SDK Run 从 `comet-state.yaml` 的 `run_checkpoint` 恢复；本节以下的 `st
 
 先停止旧设备上的推进并完成同步。发现 Git 冲突，或同一状态版本出现两份不同内容时，进入阻塞状态并交给用户处理。
 
-旧设备上尚未同步的代码，不能仅靠工作流状态恢复；同一个 subagent 任务也不能跨设备继续。旧 Runtime 根据 YAML 中的工作目录、验收轮次、验收结果、阻塞原因、Builder handoff 和下一步，创建新的本机执行任务。如果同步后的实现不完整，新的 Verifier 会指出缺失内容，并返回 Build。
+旧设备上尚未同步的代码不能仅靠业务状态恢复。先通过原平台核对任务和副作用，再判断同步后的实现、环境和已有结果是否仍适用，只补缺失或失效的验收证据。
 
-旧 Runtime 处于 Verify 或待归档状态的 change，在新设备上重新验收属于恢复操作，不增加验收轮次、失败轮次或无进展次数。只有实际启动新的 Verifier 时，Verifier 尝试次数才增加。已经完成的 Shape 和 Build 不会重做，Runtime 也不会扫描整个项目来猜测进度。
+恢复沿用原任务和轮次；只有实际重新提交候选、启动验收或收到失败结论时才按相应业务规则更新计数。已经接受的 Shape 和 Build 不因机器变化自动重做。
 
-### Verify 未通过与持续无进展
+### Verify 未通过与执行失败
 
-Verify 未通过后，读取未通过、暂时无法验证的验收项以及失败检查。完成实际修改后，再提交新的 Builder handoff。只有未解决的问题变少才算有进展；只改说明文字、重复相同检查或再次报告同一原因，不算解决问题。
+读取实际失败或无法验证的条目和检查结果，由 Agent 判断修复方向与进展，完成必要修改后提交新的 Builder handoff。验收编号重复、交替或集合未缩小不触发额外暂停。
 
-连续多轮没有进展，或 Verifier 任务多次执行出错时，按 Runtime 返回的阻塞处理动作继续。失败轮次达到 `native.max_verify_failures` 时进入等待用户，让用户选择继续当前目标、修改已经确认的需求或停止。用户确认新的验收清单并开始一轮新目标后，验收失败计数清零。
+真实失败达到 `native.max_verify_failures`，或 Verifier 多次执行出错时，按当前响应处理预算或恢复原执行。不能将未知或失败结果记为通过；沿用原 Run、有效批准和已有结果。用户确认新的目标周期时按原协议记录需求变化。
 
 ### 规格与 Archive 冲突
 
 如果项目中已经归档的正式 Spec 在当前 change 期间发生变化，重读最新正式 Spec、brief 和当前 change 的完整目标规格，按用户意图改写后执行 Runtime 冲突信息中给出的重新对齐（rebase）动作，再重新实现和验收。并发产生的新内容应保留。
 
-两个 active change 同时修改同一功能区域（capability）时，Archive 会进入等待用户。用户决定先归档哪一个，另一个 change 随后重新对齐最新 Spec。
+多个工作区的 active change 可以修改同一功能区域（capability）。Archive 只处理当前正式 Spec 的实际冲突；按返回的冲突与重新对齐动作保留双方内容。原 Run 已有待决定的提案时，仍保留该提案并等待原用户决定。
 
 Archive 或 change 目录移动中断时，以 `doctor` 返回的事务状态和允许动作作为恢复依据。路径、工作流状态和实际文件互相对不上时，保留两侧现场并等待明确的恢复动作。
 
@@ -72,6 +60,5 @@ Archive 或 change 目录移动中断时，以 `doctor` 返回的事务状态和
 
 ### 损坏状态
 
-- 锁由 Runtime 管理；只有 `doctor` 明确给出命令时才修复。
 - config、change、brief、规格或 verification 损坏时，保留原文件并等待 `doctor` 或用户给出恢复来源。
 - 同一个 change 同时出现在 active 和 archive、无法确定文件归属，或无法判断事务进行到哪一步时，保留现场并停止写入。

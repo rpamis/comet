@@ -1303,13 +1303,13 @@ describe('uninstall', () => {
     });
 
     it.each(['empty', 'durable'])(
-      'keeps the Runtime fence and %s user-level state while removing project config and empty artifacts',
+      'preserves %s user-level state while removing project config and empty artifacts without a legacy fence',
       async (state) => {
         const configPath = await writeNativeProjectConfig('docs');
         const nativeRoot = await createNativeWorkingTree('docs');
         const runtimeRoot = await resolveWorkspaceRuntimeRoot(tmpDir);
         const fencePath = path.join(tmpDir, '.comet/runtime');
-        const fence = await fs.readFile(fencePath, 'utf8');
+        await expect(fs.stat(fencePath)).rejects.toMatchObject({ code: 'ENOENT' });
         const checkpoint = path.join(runtimeRoot, 'native/checkpoint.json');
         if (state === 'durable') {
           await fs.mkdir(path.dirname(checkpoint), { recursive: true });
@@ -1319,20 +1319,16 @@ describe('uninstall', () => {
         await expect(removeWorkingDirs(tmpDir)).resolves.toEqual({
           removed: 1,
           failed: 0,
-          preserved: [fencePath],
         });
         expect(await fileExists(configPath)).toBe(false);
         expect(await fileExists(nativeRoot)).toBe(false);
-        expect(await fileExists(runtimeRoot)).toBe(true);
-        await expect(fs.readFile(fencePath, 'utf8')).resolves.toBe(fence);
+        expect(await fileExists(runtimeRoot)).toBe(state === 'durable');
+        await expect(fs.stat(fencePath)).rejects.toMatchObject({ code: 'ENOENT' });
         if (state === 'durable') {
           await expect(fs.readFile(checkpoint, 'utf8')).resolves.toBe(
             '{"activeAction":"keep-me","revision":7}',
           );
         }
-        await expect(
-          fs.mkdir(path.join(fencePath, 'native'), { recursive: true }),
-        ).rejects.toThrow();
       },
     );
 
@@ -1344,7 +1340,7 @@ describe('uninstall', () => {
       await fs.mkdir(path.dirname(checkpoint), { recursive: true });
       await fs.writeFile(checkpoint, '{"revision":2}');
       const fencePath = path.join(tmpDir, '.comet/runtime');
-      const fence = await fs.readFile(fencePath, 'utf8');
+      await expect(fs.stat(fencePath)).rejects.toMatchObject({ code: 'ENOENT' });
 
       await expect(removeWorkingDirs(tmpDir, { workflows: ['native'] })).resolves.toEqual({
         removed: 0,
@@ -1352,7 +1348,7 @@ describe('uninstall', () => {
       });
       expect(await fileExists(configPath)).toBe(true);
       expect(await fileExists(nativeRoot)).toBe(false);
-      await expect(fs.readFile(fencePath, 'utf8')).resolves.toBe(fence);
+      await expect(fs.stat(fencePath)).rejects.toMatchObject({ code: 'ENOENT' });
       await expect(fs.readFile(checkpoint, 'utf8')).resolves.toBe('{"revision":2}');
     });
 

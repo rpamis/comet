@@ -687,7 +687,7 @@ describe('dashboard web source contracts', () => {
     const source = await readDashboardSource();
 
     expect(source).toMatch(/useDashboardModalState\(\s*Boolean\(artifact\),?\s*\)/u);
-    expect(source).not.toContain('dashboard-artifact-preview-expand');
+    expect(source).toContain('dashboard-artifact-preview-expand');
     expect(source).toContain("aria-label={t('关闭产物预览')}");
     expect(source).toContain('{fullscreen && toc.length > 0 && (');
     expect(source).not.toContain('{toc.length > 0 && (');

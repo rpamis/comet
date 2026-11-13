@@ -1,0 +1,171 @@
+{
+  "schema": "comet.workflow.migration-map.v1",
+  "cases": [
+    {
+      "id": "native-supervisor-referenced-acceptance",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-agent-managed-workflow-simplification",
+      "record": "docs/research/2026-11-09-agent-managed-workflow-simplification.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "derives referenced v2 acceptance from the current catalog without copying its text|accepts a readable v2 acceptance index while retaining the v1 contract",
+          "requiredNames": [
+            "derives referenced v2 acceptance from the current catalog without copying its text",
+            "accepts a readable v2 acceptance index while retaining the v1 contract"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "confirms a Supervisor child plan and coordination mode in the same SDK Run",
+          "requiredNames": [
+            "confirms a Supervisor child plan and coordination mode in the same SDK Run",
+            "confirms a Supervisor child plan and coordination mode in the same SDK Run with referenced acceptance"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-task-decomposition.test.ts",
+          "namePattern": "^(?:lets the Agent delegate specification acceptance before any failure while retaining parent-only criteria|reads delegated acceptance from the original parent catalog instead of requiring copied prose|retains unknown-ID and dependency-cycle checks for Agent-selected task decomposition)$",
+          "requiredNames": [
+            "lets the Agent delegate specification acceptance before any failure while retaining parent-only criteria",
+            "reads delegated acceptance from the original parent catalog instead of requiring copied prose",
+            "retains unknown-ID and dependency-cycle checks for Agent-selected task decomposition"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-supervisor-business.test.ts",
+          "namePattern": "^(?:completes Agent-selected Supervisor work through the Native business entry via source|completes Agent-selected Supervisor work through the Native business entry via generated)$",
+          "requiredNames": [
+            "completes Agent-selected Supervisor work through the Native business entry via source",
+            "completes Agent-selected Supervisor work through the Native business entry via generated"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-299-dag-contract",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-agent-managed-workflow-simplification",
+      "record": "docs/research/2026-11-09-agent-managed-workflow-simplification.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "validates declared dependency structure while allowing parent-only acceptance|accepts a readable v2 acceptance index while retaining the v1 contract",
+          "requiredNames": [
+            "validates declared dependency structure while allowing parent-only acceptance",
+            "accepts a readable v2 acceptance index while retaining the v1 contract"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-plan.test.ts",
+          "namePattern": "dispatches independent children first and waits for both integrations before their dependent child|rejects child facts that do not match the confirmed plan",
+          "requiredNames": [
+            "dispatches independent children first and waits for both integrations before their dependent child",
+            "rejects child facts that do not match the confirmed plan"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-task-decomposition.test.ts",
+          "namePattern": "^(?:lets the Agent delegate specification acceptance before any failure while retaining parent-only criteria|reads delegated acceptance from the original parent catalog instead of requiring copied prose|retains unknown-ID and dependency-cycle checks for Agent-selected task decomposition)$",
+          "requiredNames": [
+            "lets the Agent delegate specification acceptance before any failure while retaining parent-only criteria",
+            "reads delegated acceptance from the original parent catalog instead of requiring copied prose",
+            "retains unknown-ID and dependency-cycle checks for Agent-selected task decomposition"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-439-child-dependency",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-agent-managed-workflow-simplification",
+      "record": "docs/research/2026-11-09-agent-managed-workflow-simplification.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "derives contract-changed child states through the dependency gate \\(issue #439\\)|finds and repairs a self-locked supervisor overlay through doctor \\(issue #439\\)",
+          "requiredNames": [
+            "derives contract-changed child states through the dependency gate (issue #439)",
+            "finds and repairs a self-locked supervisor overlay through doctor (issue #439)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-plan.test.ts",
+          "namePattern": "dispatches independent children first and waits for both integrations before their dependent child",
+          "requiredNames": [
+            "dispatches independent children first and waits for both integrations before their dependent child"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-299-real-integration-parent-verify",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-agent-managed-workflow-simplification",
+      "record": "docs/research/2026-11-09-agent-managed-workflow-simplification.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "gates the parent on real child merges and starts dependents from the integrated HEAD",
+          "requiredNames": [
+            "gates the parent on real child merges and starts dependents from the integrated HEAD"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "repairs failed Supervisor Children and serializes integration after a definition upgrade|handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(",
+          "requiredNames": [
+            "repairs failed Supervisor Children and serializes integration after a definition upgrade",
+            "handles parent repair, delivery, and cleanup after Supervisor DAG restart ("
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-supervisor-business.test.ts",
+          "namePattern": "^(?:completes Agent-selected Supervisor work through the Native business entry via source|completes Agent-selected Supervisor work through the Native business entry via generated)$",
+          "requiredNames": [
+            "completes Agent-selected Supervisor work through the Native business entry via source",
+            "completes Agent-selected Supervisor work through the Native business entry via generated"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-308-bounded-guidance",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-agent-managed-workflow-simplification",
+      "record": "docs/research/2026-11-09-agent-managed-workflow-simplification.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/skill/workflow-optimization-contract.test.ts",
+          "namePattern": "uses compact local entry summaries and requests full recovery details only when needed|bounds implementer reuse while preserving per-task acceptance and independent review",
+          "requiredNames": [
+            "uses compact local entry summaries and requests full recovery details only when needed",
+            "bounds implementer reuse while preserving per-task acceptance and independent review"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-421-classic-context",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-agent-managed-workflow-simplification",
+      "record": "docs/research/2026-11-09-agent-managed-workflow-simplification.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-output.test.ts",
+          "namePattern": "keeps current Skill scope, activation, approved delivery and manual completion without cumulative receipts",
+          "requiredNames": [
+            "keeps current Skill scope, activation, approved delivery and manual completion without cumulative receipts"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-optimization-contract.test.ts",
+          "namePattern": "uses compact local entry summaries and requests full recovery details only when needed",
+          "requiredNames": [
+            "uses compact local entry summaries and requests full recovery details only when needed"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "authorization": "report:2026-11-11-single-writer-workspaces",
+  "cases": [],
+  "behaviorMappings": [
+    {
+      "name": "falls back to a coherent state when a complete writer crosses the read window",
+      "body": "it('falls back to a coherent state when a complete writer crosses the read window', async () => {\n    const before = { classic: classicState(), run: runState() };\n    const after = {\n      classic: { ...before.classic, phase: 'verify' as const },\n      run: { ...before.run, currentStep: 'full.verify.run', iteration: 4 },\n    };\n    await writeClassicState(changeDir, before);\n    const originalRead = engineState.readRunState;\n    vi.spyOn(engineState, 'readRunState').mockImplementationOnce(async (...args) => {\n      await writeClassicState(changeDir, after);\n      return originalRead(...args);\n    });\n\n    expect(await readClassicState(changeDir)).toMatchObject(after);\n  })",
+      "file": "test/domains/comet-classic/classic-state.test.ts",
+      "classification": "split-retired-reader-lock-mechanism-and-preserved-state-business",
+      "retired": "Overlapping writer completes between YAML and Run read; inode/mtime window retry or serialized fallback.",
+      "preserved": "One controller reads initial before, awaits complete serial write, then both normal and readonly reads see coherent after phase/Run/currentStep/iteration; committed YAML bytes are not rewritten.",
+      "target": {
+        "file": "test/domains/comet-classic/classic-state.test.ts",
+        "fullName": "Classic state projection reads coherent YAML and Run state after a complete serial writer commits",
+        "body": "it('reads coherent YAML and Run state after a complete serial writer commits', async () => {\n    const before = { classic: classicState(), run: runState() };\n    const after = {\n      classic: { ...before.classic, phase: 'verify' as const },\n      run: { ...before.run, currentStep: 'full.verify.run', iteration: 4 },\n    };\n    await writeClassicState(changeDir, before);\n    expect(await readClassicState(changeDir)).toMatchObject(before);\n    await writeClassicState(changeDir, after);\n    const committed = await fs.readFile(stateFile, 'utf8');\n    expect(await readClassicState(changeDir)).toMatchObject(after);\n    expect(await readClassicState(changeDir, { migrate: false })).toMatchObject(after);\n    expect(await fs.readFile(stateFile, 'utf8')).toBe(committed);\n  })"
+      },
+      "expected": "One controller reads initial before, awaits complete serial write, then both normal and readonly reads see coherent after phase/Run/currentStep/iteration; committed YAML bytes are not rewritten.",
+      "forbidden": "Restore a serialized reader, inode/hash/mtime cache or writer lock; silently lose committed/manual state changes; return a partly written transaction as successful; overwrite original data while diagnosing incomplete WAL.",
+      "status": "passed",
+      "evidence": "coverage/classic-state-reader-four-current-business-results.json"
+    },
+    {
+      "name": "observes a same-size manual edit even when the original mtime is restored",
+      "body": "it('observes a same-size manual edit even when the original mtime is restored', async () => {\n    await writeClassicState(changeDir, { classic: classicState(), run: runState() });\n    const original = await fs.stat(stateFile);\n    const source = await fs.readFile(stateFile, 'utf8');\n    const read = engineState.readRunState;\n    vi.spyOn(engineState, 'readRunState').mockImplementationOnce(async (...args) => {\n      await fs.writeFile(stateFile, source.replace('phase: build', 'phase: open '));\n      await fs.utimes(stateFile, original.atime, original.mtime);\n      return read(...args);\n    });\n    expect((await readClassicState(changeDir)).classic?.phase).toBe('open');\n  })",
+      "file": "test/domains/comet-classic/classic-state.test.ts",
+      "classification": "preserved-manual-edit-business-with-serial-fixture",
+      "retired": "Injecting a manual edit after YAML was already read by mocking readRunState; concurrent read-window retry.",
+      "preserved": "Manual edit occurs between two actual reads in one async controller sequence. Actual UTF8 byte length stays equal and old mtime is restored (<1ms difference); next read sees new phase, retains Run and exact edited bytes.",
+      "target": {
+        "file": "test/domains/comet-classic/classic-state.test.ts",
+        "fullName": "Classic state projection observes a same-size manual edit even when the original mtime is restored",
+        "body": "it('observes a same-size manual edit even when the original mtime is restored', async () => {\n    const projection = { classic: classicState(), run: runState() };\n    await writeClassicState(changeDir, projection);\n    expect(await readClassicState(changeDir)).toMatchObject(projection);\n    const original = await fs.stat(stateFile);\n    const source = await fs.readFile(stateFile, 'utf8');\n    const edited = source.replace('phase: build', 'phase: open ');\n    expect(edited).not.toBe(source);\n    expect(Buffer.byteLength(edited)).toBe(Buffer.byteLength(source));\n    await fs.writeFile(stateFile, edited);\n    await fs.utimes(stateFile, original.atimeMs / 1000, original.mtimeMs / 1000);\n    expect(Math.abs((await fs.stat(stateFile)).mtimeMs - original.mtimeMs)).toBeLessThan(1);\n    expect((await readClassicState(changeDir)).classic?.phase).toBe('open');\n    expect((await readClassicState(changeDir)).run).toEqual(projection.run);\n    expect(await fs.readFile(stateFile, 'utf8')).toBe(edited);\n  })"
+      },
+      "expected": "Manual edit occurs between two actual reads in one async controller sequence. Actual UTF8 byte length stays equal and old mtime is restored (<1ms difference); next read sees new phase, retains Run and exact edited bytes.",
+      "forbidden": "Restore a serialized reader, inode/hash/mtime cache or writer lock; silently lose committed/manual state changes; return a partly written transaction as successful; overwrite original data while diagnosing incomplete WAL.",
+      "status": "passed",
+      "evidence": "coverage/classic-state-reader-four-current-business-results.json"
+    },
+    {
+      "name": "uses the serialized reader when file identities are unavailable",
+      "body": "it('uses the serialized reader when file identities are unavailable', async () => {\n    const projection = { classic: classicState(), run: runState() };\n    await writeClassicState(changeDir, projection);\n    const lstat = fs.lstat;\n    vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {\n      const stat = await lstat(...args);\n      if (String(args[0]) === stateFile && typeof stat.ino === 'bigint') {\n        return Object.assign(Object.create(Object.getPrototypeOf(stat)), stat, { ino: 0n });\n      }\n      return stat;\n    });\n    const database = vi.spyOn(sqlite, 'openSqliteDatabase');\n    expect(await readClassicState(changeDir)).toMatchObject(projection);\n    expect(\n      database.mock.calls.filter(([file]) => String(file).endsWith('.comet-state.lock.sqlite')),\n    ).toHaveLength(1);\n  })",
+      "file": "test/domains/comet-classic/classic-state.test.ts",
+      "classification": "split-retired-reader-lock-mechanism-and-preserved-state-business",
+      "retired": "ino0 requires opening .comet-state.lock.sqlite serialized-reader fallback.",
+      "preserved": "Original ino0 legacy-probe mock and correct state read remain; no writer database is opened and original YAML bytes remain unchanged.",
+      "target": {
+        "file": "test/domains/comet-classic/classic-state.test.ts",
+        "fullName": "Classic state projection reads the current state without a serialized writer database when legacy identity probes are unavailable",
+        "body": "it('reads the current state without a serialized writer database when legacy identity probes are unavailable', async () => {\n    const projection = { classic: classicState(), run: runState() };\n    await writeClassicState(changeDir, projection);\n    const lstat = fs.lstat;\n    vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {\n      const stat = await lstat(...args);\n      if (String(args[0]) === stateFile && typeof stat.ino === 'bigint') {\n        return Object.assign(Object.create(Object.getPrototypeOf(stat)), stat, { ino: 0n });\n      }\n      return stat;\n    });\n    const source = await fs.readFile(stateFile, 'utf8');\n    const database = vi.spyOn(sqlite, 'openSqliteDatabase');\n    expect(await readClassicState(changeDir)).toMatchObject(projection);\n    expect(\n      database.mock.calls.filter(([file]) => String(file).endsWith('.comet-state.lock.sqlite')),\n    ).toHaveLength(0);\n    expect(await fs.readFile(stateFile, 'utf8')).toBe(source);\n  })"
+      },
+      "expected": "Original ino0 legacy-probe mock and correct state read remain; no writer database is opened and original YAML bytes remain unchanged.",
+      "forbidden": "Restore a serialized reader, inode/hash/mtime cache or writer lock; silently lose committed/manual state changes; return a partly written transaction as successful; overwrite original data while diagnosing incomplete WAL.",
+      "status": "passed",
+      "evidence": "coverage/classic-state-reader-four-current-business-results.json"
+    },
+    {
+      "name": "waits for a writer that has updated Run but not committed YAML",
+      "body": "it('waits for a writer that has updated Run but not committed YAML', async () => {\n    const before = { classic: classicState(), run: runState() };\n    const after = {\n      classic: { ...before.classic, phase: 'verify' as const },\n      run: { ...before.run, currentStep: 'full.verify.run', iteration: 4 },\n    };\n    await writeClassicState(changeDir, before);\n    let release!: () => void;\n    const blocked = new Promise<void>((resolve) => {\n      release = resolve;\n    });\n    let entered!: () => void;\n    const committing = new Promise<void>((resolve) => {\n      entered = resolve;\n    });\n    const writer = writeClassicState(changeDir, after, {\n      beforeCommit: async () => {\n        entered();\n        await blocked;\n      },\n    });\n    await committing;\n    let attempted!: () => void;\n    const waiting = new Promise<void>((resolve) => {\n      attempted = resolve;\n    });\n    const originalOpen = sqlite.openSqliteDatabase;\n    vi.spyOn(sqlite, 'openSqliteDatabase').mockImplementation((...args) => {\n      if (String(args[0]).endsWith('.comet-state.lock.sqlite')) attempted();\n      return originalOpen(...args);\n    });\n    let settled = false;\n    const reader = readClassicState(changeDir).then((value) => {\n      settled = true;\n      return value;\n    });\n    try {\n      await waiting;\n      expect(settled).toBe(false);\n    } finally {\n      release();\n      await writer;\n    }\n    expect(await reader).toMatchObject(after);\n  })",
+      "file": "test/domains/comet-classic/classic-state.test.ts",
+      "classification": "split-retired-reader-lock-mechanism-and-preserved-state-business",
+      "retired": "Active writer and independent reader synchronize through a newly opened SQLite lock; await on that deleted lock acquisition.",
+      "preserved": "Real beforeCommit checks actual after-Run/before-YAML/WAL values. Readonly observation refuses incomplete transaction without changing journal or Run. Real thrown interruption rolls back Run/YAML and cleans journal; later completed serial write yields coherent after state.",
+      "target": {
+        "file": "test/domains/comet-classic/classic-state.test.ts",
+        "fullName": "Classic state projection rolls back an interrupted Run and YAML transaction before the next serial writer commits",
+        "body": "it('rolls back an interrupted Run and YAML transaction before the next serial writer commits', async () => {\n    const before = { classic: classicState(), run: runState() };\n    const after = {\n      classic: { ...before.classic, phase: 'verify' as const },\n      run: { ...before.run, currentStep: 'full.verify.run', iteration: 4 },\n    };\n    await writeClassicState(changeDir, before);\n    const runtime = await resolveClassicRunDirectory(changeDir);\n    const journal = path.join(runtime, '.comet-state-transaction.json');\n    const beforeYaml = await fs.readFile(stateFile, 'utf8');\n    let inspected = false;\n    await expect(\n      writeClassicState(changeDir, after, {\n        beforeCommit: async () => {\n          inspected = true;\n          expect(await engineState.readRunState(runtime)).toEqual(after.run);\n          expect(await fs.readFile(stateFile, 'utf8')).toBe(beforeYaml);\n          const bytes = await fs.readFile(journal, 'utf8');\n          expect(JSON.parse(bytes)).toMatchObject({\n            schema: 'comet.classic.state-transaction.v1',\n            beforeRun: before.run,\n            afterRun: after.run,\n            beforeYaml,\n          });\n          await expect(readClassicState(changeDir, { migrate: false })).rejects.toThrow(\n            'transaction is incomplete',\n          );\n          expect(await fs.readFile(journal, 'utf8')).toBe(bytes);\n          expect(await engineState.readRunState(runtime)).toEqual(after.run);\n          throw new Error('SIMULATED interruption before YAML commit');\n        },\n      }),\n    ).rejects.toThrow('SIMULATED interruption before YAML commit');\n    expect(inspected).toBe(true);\n    expect(await engineState.readRunState(runtime)).toEqual(before.run);\n    expect(await fs.readFile(stateFile, 'utf8')).toBe(beforeYaml);\n    expect(await readClassicState(changeDir, { migrate: false })).toMatchObject(before);\n    await expect(fs.access(journal)).rejects.toMatchObject({ code: 'ENOENT' });\n    await writeClassicState(changeDir, after);\n    expect(await readClassicState(changeDir)).toMatchObject(after);\n    await expect(fs.access(journal)).rejects.toMatchObject({ code: 'ENOENT' });\n  })"
+      },
+      "expected": "Real beforeCommit checks actual after-Run/before-YAML/WAL values. Readonly observation refuses incomplete transaction without changing journal or Run. Real thrown interruption rolls back Run/YAML and cleans journal; later completed serial write yields coherent after state.",
+      "forbidden": "Restore a serialized reader, inode/hash/mtime cache or writer lock; silently lose committed/manual state changes; return a partly written transaction as successful; overwrite original data while diagnosing incomplete WAL.",
+      "status": "passed",
+      "evidence": "coverage/classic-state-reader-four-current-business-results.json"
+    }
+  ]
+}

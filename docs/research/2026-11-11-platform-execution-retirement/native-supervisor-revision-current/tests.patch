@@ -1,0 +1,63 @@
+diff --git a/test/domains/comet-native/native-sdk-supervisor-revise.test.ts b/test/domains/comet-native/native-sdk-supervisor-revise.test.ts
+index 447a77e1..5b0f1c22 100644
+--- a/test/domains/comet-native/native-sdk-supervisor-revise.test.ts
++++ b/test/domains/comet-native/native-sdk-supervisor-revise.test.ts
+@@ -1193,6 +1193,25 @@ it('preserves integrated and uncommitted Child work, then rechecks every Child i
+     revision: revised.revision,
+   });
+   expect(status.stdoutBytes).toBeLessThan(128 * 1024);
++  const draft = path.join(rightRoot, 'draft.txt');
++  const draftBytes = await fs.readFile(draft);
++  const cleanupHeads = [left, rightRoot, integration].map((root) =>
++    f.git(root, ['rev-parse', 'HEAD']),
++  );
++  const dirtyArchive = f.cli(['native', 'archive', f.name, '--dry-run', '--json']);
++  expect(dirtyArchive.exitCode).not.toBe(0);
++  expect(dirtyArchive.response.error.message).toContain('cleanup found a changed worktree');
++  expect(await fs.readFile(draft)).toEqual(draftBytes);
++  expect(await f.inspect()).toEqual(revised);
++  expect(f.git(f.project, ['rev-parse', 'HEAD'])).toBe(f.targetCommit);
++  expect([left, rightRoot, integration].map((root) => f.git(root, ['rev-parse', 'HEAD']))).toEqual(
++    cleanupHeads,
++  );
++  // The Agent explicitly preserves its unfinished draft before temporary worktree cleanup.
++  const preservedDraft = path.join(f.root, 'preserved-right-draft.txt');
++  await fs.copyFile(draft, preservedDraft);
++  expect(await fs.readFile(preservedDraft)).toEqual(draftBytes);
++  await fs.unlink(draft);
+   const dryRun = f.cli(['native', 'archive', f.name, '--dry-run', '--json']);
+   expect(dryRun.response, JSON.stringify(dryRun)).not.toHaveProperty('error');
+   expect(dryRun.response.data).toMatchObject({
+@@ -1211,6 +1230,7 @@ it('preserves integrated and uncommitted Child work, then rechecks every Child i
+   expect(rejectedDelivery.response.error.message).toContain('target branch changed');
+   expect(f.git(f.project, ['rev-parse', 'HEAD'])).toBe(changedTarget);
+   expect(await f.inspect()).toEqual(revised);
++  expect(await fs.readFile(preservedDraft)).toEqual(draftBytes);
+ }, 420000);
+ 
+ it.each(['running', 'unknown'] as const)(
+diff --git a/test/domains/comet-native/native-supervisor.test.ts b/test/domains/comet-native/native-supervisor.test.ts
+index 9aafbe36..f6dd7663 100644
+--- a/test/domains/comet-native/native-supervisor.test.ts
++++ b/test/domains/comet-native/native-supervisor.test.ts
+@@ -2084,14 +2084,12 @@ children:
+         exitCode: 0,
+         data: {
+           state: { phase: 'build' },
+-          supervisor: {
+-            tasks: [
+-              expect.objectContaining({
+-                child: 'parent-integration-repair',
+-                role: 'builder',
+-              }),
+-            ],
+-          },
++          supervisorTasks: [
++            expect.objectContaining({
++              child: 'parent-integration-repair',
++              role: 'builder',
++            }),
++          ],
+         },
+       });
+       await expect(readNativeSupervisorState(paths, 'parent')).resolves.toMatchObject({

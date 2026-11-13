@@ -1,0 +1,163 @@
+{
+  "cases": [
+    {
+      "id": "issue-192-checks",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/classic-worker-targets/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+          "namePattern": "executes literal argv, preserves child JSON/help flags, and records runtime provenance",
+          "requiredNames": [
+            "executes literal argv, preserves child JSON/help flags, and records runtime provenance"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-guard.test.ts",
+          "namePattern": "(?:preserves an explicit failed build instead of replacing it with an inferred command)",
+          "requiredNames": [
+            "preserves an explicit failed build instead of replacing it with an inferred command"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-agent-delivery-repair.test.ts",
+          "requiredNames": [
+            "repairs archived Classic v2 delivery with platform reports without replaying commands or Archive"
+          ],
+          "namePattern": "^(?:repairs archived Classic v2 delivery with platform reports without replaying commands or Archive)$"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+          "namePattern": "^(?:Classic executed check evidence does not fall back to an older success when the latest SDK Action is damaged|Classic executed check evidence preserves child flags through the public bin/comet\\.js entry|Classic executed check evidence preserves child flags through the public dist/app/cli/index\\.js entry|Classic executed check evidence does not rerun an interrupted check with a corrupted SDK Action binding)$",
+          "requiredNames": [
+            "Classic executed check evidence does not fall back to an older success when the latest SDK Action is damaged",
+            "Classic executed check evidence preserves child flags through the public bin/comet.js entry",
+            "Classic executed check evidence preserves child flags through the public dist/app/cli/index.js entry",
+            "Classic executed check evidence does not rerun an interrupted check with a corrupted SDK Action binding"
+          ]
+        }
+      ]
+    }
+  ],
+  "retiredBehaviors": [
+    {
+      "id": "issue-192-checks",
+      "title": "persists a bound SDK Action across check start and completion",
+      "body": "it('persists a bound SDK Action across check start and completion', async () => {\n    const result = await cli(\n      'check',\n      'run',\n      'demo',\n      'verify',\n      '--json',\n      '--',\n      process.execPath,\n      '-e',\n      'process.exit(0)',\n    );\n    expect(result.exitCode, result.stderr).toBe(0);\n    const record = JSON.parse(result.stdout!).data;\n    expect(record.action).toMatchObject({\n      protocolVersion: 1,\n      runId: record.runId,\n      type: 'call_tool',\n      ref: 'classic-check',\n      status: 'succeeded',\n      input: { scope: 'verify', argv: [process.execPath, '-e', 'process.exit(0)'] },\n      outcome: { status: 'succeeded', output: { exitCode: 0 } },\n    });\n    expect(record.action.receipts).toHaveLength(1);\n    const changeDir = path.join(root, 'openspec', 'changes', 'demo');\n    const run = await ensureClassicRuntimeRun(changeDir);\n    const events = await readTrajectory(changeDir, run.run.trajectoryRef);\n    const started = events.find((event) => event.type === 'command_check_started');\n    const executed = events.find((event) => event.type === 'command_check_executed');\n    expect(started?.data.action).toMatchObject({\n      id: record.action.id,\n      status: 'running',\n      inputHash: record.action.inputHash,\n    });\n    expect(executed?.data.action).toMatchObject({\n      id: record.action.id,\n      status: 'succeeded',\n      inputHash: record.action.inputHash,\n    });\n  });",
+      "actualPreviousFile": "docs/research/2026-11-09-runtime-core-review/final-retirements/tests.json",
+      "actualPreviousSnapshotHash": "9daef700fcc1040ca5625dac3d34e52f078f118f6fdd9ca7490a922d29fc1cb4",
+      "scope": "Managed check runtime Action/receipts/trajectory start-completion binding only."
+    }
+  ],
+  "retainedTargets": [
+    {
+      "file": "test/domains/comet-classic/classic-guard.test.ts",
+      "namePattern": "(?:preserves an explicit failed build instead of replacing it with an inferred command)",
+      "requiredNames": [
+        "preserves an explicit failed build instead of replacing it with an inferred command"
+      ]
+    },
+    {
+      "file": "test/domains/comet-classic/classic-agent-delivery-repair.test.ts",
+      "requiredNames": [
+        "repairs archived Classic v2 delivery with platform reports without replaying commands or Archive"
+      ],
+      "namePattern": "^(?:repairs archived Classic v2 delivery with platform reports without replaying commands or Archive)$"
+    }
+  ],
+  "snapshotOrigins": [
+    {
+      "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+      "origin": "previous-tail evidence.tests",
+      "artifact": "docs/research/2026-11-09-runtime-core-review/final-retirements/tests.json",
+      "sha256": "9daef700fcc1040ca5625dac3d34e52f078f118f6fdd9ca7490a922d29fc1cb4"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-guard.test.ts",
+      "origin": "previous-tail evidence.tests",
+      "artifact": "docs/research/2026-11-09-runtime-core-review/final-retirements/tests.json",
+      "sha256": "54b675c8ee7be2ca28931db9fb5a521a4e579993211d822e1837cfdf8c0b7e0c"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-agent-delivery-repair.test.ts",
+      "origin": "current unmodified endpoint before append",
+      "reason": "This endpoint was introduced by the previous migration and was not in its pre-migration tests artifact. It remains unchanged in this append.",
+      "sha256": "1c161195768b61b02baf892dffaf7ab634215861a32f0c40fde951bb322f353c"
+    }
+  ],
+  "retainedAssertions": [
+    "Literal argv and child flags; actual failed build is not inferred successful",
+    "Archived delivery repair uses original approval and platform reports without command/Archive replay",
+    "Original SDK claim/input binding is not forged or replaced"
+  ],
+  "currentExecution": {
+    "file": "C:/Users/BENYM/AppData/Local/Temp/classic-worker-target-metadata-20261111/current-precise-selectors-results.json",
+    "passed": 8,
+    "failed": 0,
+    "notSelected": 29,
+    "targets": [
+      {
+        "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+        "fullName": "Classic executed check evidence executes literal argv, preserves child JSON/help flags, and records runtime provenance",
+        "title": "executes literal argv, preserves child JSON/help flags, and records runtime provenance"
+      },
+      {
+        "file": "test/domains/comet-classic/classic-guard.test.ts",
+        "fullName": "Classic guard command preserves an explicit failed build instead of replacing it with an inferred command",
+        "title": "preserves an explicit failed build instead of replacing it with an inferred command"
+      },
+      {
+        "file": "test/domains/comet-classic/classic-agent-delivery-repair.test.ts",
+        "fullName": "repairs archived Classic v2 delivery with platform reports without replaying commands or Archive",
+        "title": "repairs archived Classic v2 delivery with platform reports without replaying commands or Archive"
+      },
+      {
+        "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+        "fullName": "Classic executed check evidence does not fall back to an older success when the latest SDK Action is damaged",
+        "title": "does not fall back to an older success when the latest SDK Action is damaged"
+      },
+      {
+        "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+        "fullName": "Classic executed check evidence preserves child flags through the public bin/comet.js entry",
+        "title": "preserves child flags through the public bin/comet.js entry"
+      },
+      {
+        "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+        "fullName": "Classic executed check evidence preserves child flags through the public dist/app/cli/index.js entry",
+        "title": "preserves child flags through the public dist/app/cli/index.js entry"
+      },
+      {
+        "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+        "fullName": "Classic executed check evidence does not rerun an interrupted check with a corrupted SDK Action binding",
+        "title": "does not rerun an interrupted check with a corrupted SDK Action binding"
+      }
+    ]
+  },
+  "currentWholeFiles": [
+    {
+      "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+      "sha256": "ab8b0df4b40923715cb26cea452010acfacc0e2161a2183e53c302a8d3f86a01"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-guard.test.ts",
+      "sha256": "41ef0a1ce3a7114be22ff0af3825ff80367df550903be5c14e64b62bd15254f8"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-agent-delivery-repair.test.ts",
+      "sha256": "1c161195768b61b02baf892dffaf7ab634215861a32f0c40fde951bb322f353c"
+    }
+  ],
+  "noEdits": [
+    "Product source",
+    "Test source",
+    "Current registry",
+    "Frozen historical registry"
+  ],
+  "notExecuted": [
+    "Repository full suite",
+    "Build",
+    "Model Eval",
+    "Real platform Hook/install release"
+  ]
+}

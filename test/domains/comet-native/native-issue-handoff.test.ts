@@ -49,20 +49,36 @@ describe('Native issue handoff regressions', () => {
       known_limits: [],
     };
   }
-  function plan(failOnce = false) {
+  async function platformCheck(failOnce = false) {
     const counter = path.join(resolveWorkspaceRuntimeRootSync(root), 'check-count.txt');
-    return {
-      id: 'fixture-check',
-      name: 'Fixture check',
-      executable: process.execPath,
-      argv: [
-        '-e',
-        `const fs=require('fs');const f=${JSON.stringify(counter)};fs.appendFileSync(f,'run\\n');${failOnce ? "if(fs.readFileSync(f,'utf8')==='run\\n')process.exit(1);" : ''}`,
-      ],
-      cwdRef: '.',
-      timeoutMs: 10000,
-      repeatable: true,
-    };
+    await fs.mkdir(path.dirname(counter), { recursive: true });
+    const script = `const fs=require('fs');const f=${JSON.stringify(counter)};fs.appendFileSync(f,String.fromCharCode(114,117,110,10));${failOnce ? 'if(fs.readFileSync(f,"utf8").split("\\n").length===2)process.exit(1);' : ''}`;
+    let result: 'passed' | 'failed' = 'passed';
+    try {
+      execFileSync(process.execPath, ['-e', script], { cwd: root });
+    } catch {
+      result = 'failed';
+    }
+    return { name: `node fixture check in ${root}`, result, note: counter };
+  }
+  async function dispatch(inside = false) {
+    const dispatched = await cli(['next', name], { kind: 'dispatch-verifier' }, inside);
+    expect(dispatched.exitCode, JSON.stringify(dispatched)).toBe(0);
+    const task = dispatched.data.verifierDispatch;
+    expect(
+      (
+        await cli(
+          ['next', name],
+          {
+            kind: 'verifier-started',
+            candidateId: task.candidateId,
+            verifierExecutionRef: task.verifierExecutionRef,
+          },
+          inside,
+        )
+      ).exitCode,
+    ).toBe(0);
+    return task;
   }
   function response(dispatch: any, result: any) {
     return {
@@ -152,30 +168,17 @@ describe('Native issue handoff regressions', () => {
     await fs.rm(inputs, { recursive: true, force: true });
   });
 
-  it('reuses checks when validated untracked runner input files are replaced inside the repository', async () => {
-    const check = plan();
-    const handedOff = await cli(
-      ['next', name],
-      { ...handoff(), verification_checks: [check] },
-      true,
-    );
+  it('preserves platform check results when validated transport files are replaced inside the repository', async () => {
+    const check = await platformCheck();
+    const handedOff = await cli(['next', name], { ...handoff(), checks: [check] }, true);
     expect(handedOff.exitCode).toBe(0);
-    const d = handedOff.data.verifierDispatch;
-    const dispatched = await cli(
-      ['next', name],
-      response(d, {
-        kind: 'request-checks',
-        iteration: d.iteration,
-        attempt: d.attempt,
-        checks: [check],
-      }),
-      true,
-    );
-    expect(dispatched).toMatchObject({
+    const d = await dispatch(true);
+    const dispatched = await cli(['next', name], response(d, final(d)), true);
+    expect(dispatched, JSON.stringify(dispatched)).toMatchObject({
       exitCode: 0,
       data: {
-        requestChecks: { reusedCheckIds: [check.id], executedCheckIds: [] },
-        continuation: { action: 'await-verifier' },
+        state: { verification_result: 'pass' },
+        continuation: { action: 'confirm-skill-coordinated-pass', requiresUserDecision: true },
       },
     });
     expect(
@@ -195,32 +198,30 @@ describe('Native issue handoff regressions', () => {
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it('keeps a rejected pass submission on the same active Verifier so checks can be repaired', async () => {
+  it('keeps a rejected incomplete pass on the same active Verifier while platform checks are repaired', async () => {
     expect((await cli(['next', name], handoff())).exitCode).toBe(0);
-    const check = plan(true);
-    const dispatched = await cli(['next', name], { kind: 'dispatch-verifier', checks: [check] });
-    expect(dispatched.exitCode, JSON.stringify(dispatched)).toBe(0);
-    const d = dispatched.data.verifierDispatch;
+    expect((await platformCheck(true)).result).toBe('failed');
+    const d = await dispatch();
     const before = (await cli(['show', name])).data.state;
-    const rejected = await cli(['next', name], response(d, final(d)));
+    const incomplete = final(d);
+    incomplete.result.acceptance.pop();
+    const rejected = await cli(['next', name], response(d, incomplete));
     expect(rejected.exitCode).toBe(65);
-    expect(rejected.data.continuation).toMatchObject({ action: 'await-verifier' });
-    expect(rejected.data.continuation.inputOptions[0].template).toMatchObject({
+    const retained = (await cli(['next', name])).data.continuation;
+    expect(retained).toMatchObject({ action: 'await-verifier' });
+    expect(retained.inputOptions[0].template).toMatchObject({
       candidateId: d.candidateId,
       verifierExecutionRef: d.verifierExecutionRef,
     });
     expect((await cli(['show', name])).data.state).toEqual(before);
-    const checked = await cli(
-      ['next', name],
-      response(d, {
-        kind: 'request-checks',
-        iteration: d.iteration,
-        attempt: d.attempt,
-        checks: [check],
-      }),
-    );
-    expect(checked.exitCode).toBe(0);
+    expect((await platformCheck(true)).result).toBe('passed');
     expect((await cli(['next', name], response(d, final(d)))).exitCode).toBe(0);
+    expect(
+      await fs.readFile(
+        path.join(resolveWorkspaceRuntimeRootSync(root), 'check-count.txt'),
+        'utf8',
+      ),
+    ).toBe('run\nrun\n');
   });
 
   it('keeps retained, rejected transport input out of a later completed candidate', async () => {
@@ -232,28 +233,15 @@ describe('Native issue handoff regressions', () => {
     );
     expect(rejected.exitCode).toBe(65);
     const retained = path.join(root, `input-${sequence}.json`);
-    const check = plan();
-    const handedOff = await cli(
-      ['next', name],
-      { ...handoff(), verification_checks: [check] },
-      true,
-    );
+    const check = await platformCheck();
+    const handedOff = await cli(['next', name], { ...handoff(), checks: [check] }, true);
     expect(handedOff.exitCode).toBe(0);
-    const d = handedOff.data.verifierDispatch;
+    const d = await dispatch(true);
     await fs.rm(retained);
-    const dispatched = await cli(
-      ['next', name],
-      response(d, {
-        kind: 'request-checks',
-        iteration: d.iteration,
-        attempt: d.attempt,
-        checks: [check],
-      }),
-      true,
-    );
+    const dispatched = await cli(['next', name], response(d, final(d)), true);
     expect(dispatched).toMatchObject({
       exitCode: 0,
-      data: { requestChecks: { reusedCheckIds: [check.id], executedCheckIds: [] } },
+      data: { state: { verification_result: 'pass' } },
     });
     expect(
       await fs.readFile(
@@ -280,22 +268,10 @@ describe('Native issue handoff regressions', () => {
     if (mode === 'no-evidence') input.acceptance_review[1].evidence = [];
     const before = (await cli(['show', name])).data.state;
     const rejected = await cli(['next', name], input);
-    expect(rejected).toMatchObject({
+    expect(rejected, JSON.stringify(rejected)).toMatchObject({
       exitCode: 65,
       data: { builderReadiness: { ready: false }, continuation: { action: 'builder-handoff' } },
     });
     expect((await cli(['show', name])).data.state).toEqual(before);
-  });
-
-  it('still rejects source drift after an otherwise complete handoff', async () => {
-    const check = plan();
-    expect(
-      (await cli(['next', name], { ...handoff(), verification_checks: [check] }, true)).exitCode,
-    ).toBe(0);
-    await fs.writeFile(path.join(root, 'source.txt'), 'Changed implementation.\n');
-    expect(
-      (await cli(['next', name], { kind: 'dispatch-verifier', checks: [check] }, true)).exitCode,
-    ).toBe(65);
-    expect((await cli(['show', name])).data.state.phase).toBe('build');
   });
 });

@@ -1,0 +1,245 @@
+{
+  "file": "test/domains/comet-entry/project-sdk-status.test.ts",
+  "authorization": "User explicitly retired ordinary workflow locking/token/generation coordination under workspace single-writer execution. Preserve owner/Run identity, approvals and business state.",
+  "originalDeclarations": 13,
+  "currentDeclarations": 14,
+  "originalExpanded": 25,
+  "currentExpanded": 25,
+  "rows": [
+    {
+      "index": 0,
+      "originalName": "excludes only closed discovered history, preserves domain defaults, and defers body corruption",
+      "originalLine": 70,
+      "disposition": "unchanged",
+      "targets": [
+        {
+          "file": "test/domains/comet-entry/project-sdk-status.test.ts",
+          "name": "excludes only closed discovered history, preserves domain defaults, and defers body corruption",
+          "fullName": "SDK ownership in shared project status excludes only closed discovered history, preserves domain defaults, and defers body corruption"
+        }
+      ],
+      "bodyUnchanged": true
+    },
+    {
+      "index": 1,
+      "originalName": "retains a per-change error for %s without hiding other changes",
+      "originalLine": 108,
+      "disposition": "split-retired-mechanism-retained-business",
+      "targets": [
+        {
+          "file": "test/domains/comet-entry/project-sdk-status.test.ts",
+          "name": "retains a per-change error for %s without hiding other changes",
+          "fullName": "SDK ownership in shared project status retains a per-change error for %s without hiding other changes"
+        },
+        {
+          "file": "test/domains/comet-entry/project-sdk-status.test.ts",
+          "name": "ignores retired partition tokens while preserving Native active and closed history selection",
+          "fullName": "SDK ownership in shared project status ignores retired partition tokens while preserving Native active and closed history selection"
+        }
+      ],
+      "bodyUnchanged": false,
+      "details": {
+        "retired": [
+          "bad-partition-token poisoning all changes",
+          "partition generation coordination"
+        ],
+        "retained": [
+          "dual-owner",
+          "bad-owner",
+          "active-checkpoint",
+          "bad-marker",
+          "pending-marker",
+          "missing-checkpoint",
+          "symlink-checkpoint"
+        ],
+        "replacement": "Only token row moves; seven genuine damaged-owner/checkpoint rows retain original setup and error assertions; token debris must not affect active/default/history selection and must remain byte-identical."
+      }
+    },
+    {
+      "index": 2,
+      "originalName": "never filters a closed checkpoint with %s",
+      "originalLine": 159,
+      "disposition": "unchanged",
+      "targets": [
+        {
+          "file": "test/domains/comet-entry/project-sdk-status.test.ts",
+          "name": "never filters a closed checkpoint with %s",
+          "fullName": "SDK ownership in shared project status never filters a closed checkpoint with %s"
+        }
+      ],
+      "bodyUnchanged": true
+    },
+    {
+      "index": 3,
+      "originalName": "keeps unmigrated cancelled runs visible without migrating on status",
+      "originalLine": 182,
+      "disposition": "unchanged",
+      "targets": [
+        {
+          "file": "test/domains/comet-entry/project-sdk-status.test.ts",
+          "name": "keeps unmigrated cancelled runs visible without migrating on status",
+          "fullName": "SDK ownership in shared project status keeps unmigrated cancelled runs visible without migrating on status"
+        }
+      ],
+      "bodyUnchanged": true
+    },
+    {
+      "index": 4,
+      "originalName": "retries closed-history metadata when a writer changes the owner generation",
+      "originalLine": 203,
+      "disposition": "split-retired-mechanism-retained-business",
+      "targets": [
+        {
+          "file": "test/domains/comet-entry/project-sdk-status.test.ts",
+          "name": "reads closed-history metadata afresh after serial owner changes without importing unrelated owners",
+          "fullName": "SDK ownership in shared project status reads closed-history metadata afresh after serial owner changes without importing unrelated owners"
+        }
+      ],
+      "bodyUnchanged": false,
+      "details": {
+        "retired": "Concurrent writer injected in protected read callback plus generation-driven second read",
+        "retained": "Strict closed-history exclusion; fresh actual owner errors on next request; unrequested owner never imported; no token or Classic owner read; project/runtime bytes unchanged",
+        "serialSteps": [
+          "Read closed history once and hide it",
+          "Register unrelated owner only after first request",
+          "Corrupt the actual closed owner between requests",
+          "Next request reads it once and surfaces exactly that owner error"
+        ]
+      }
+    },
+    {
+      "index": 5,
+      "originalName": "batches only actual global Native change names and isolates a corrupt owner",
+      "originalLine": 229,
+      "disposition": "split-retired-mechanism-retained-business",
+      "targets": [
+        {
+          "file": "test/domains/comet-entry/project-sdk-status.test.ts",
+          "name": "batches only actual global Native change names and isolates a corrupt owner",
+          "fullName": "SDK ownership in shared project status batches only actual global Native change names and isolates a corrupt owner"
+        }
+      ],
+      "bodyUnchanged": false,
+      "details": {
+        "retired": "Two token reads and malformed token globally fencing all changes",
+        "retained": "Each actual Native canonical body read exactly once; two healthy histories visible; corrupt first owner does not hide healthy second; unrequested malformed orphan never read; garbage token ignored but real owner corruption still reported; readonly snapshots"
+      }
+    },
+    {
+      "index": 6,
+      "originalName": "retries the real global owner batch when a writer completes during prefetch",
+      "originalLine": 286,
+      "disposition": "split-retired-mechanism-retained-business",
+      "targets": [
+        {
+          "file": "test/domains/comet-entry/project-sdk-status.test.ts",
+          "name": "refreshes the real global owner batch after serial changes without importing unrelated owners",
+          "fullName": "SDK ownership in shared project status refreshes the real global owner batch after serial changes without importing unrelated owners"
+        }
+      ],
+      "bodyUnchanged": false,
+      "details": {
+        "retired": "Concurrent registration in prefetch plus generation retry",
+        "retained": "First active Run displayed; real public cancel then new after cancellation; next request shows current and closed Run with original cancelled status; actual Native owner bodies once each; orphan and Classic namespaces not read; readonly snapshots",
+        "fixtureBoundary": "Public CLI prohibits new while an inconsistent artificial orphan active owner is registered; the deliberate orphan is therefore registered after the real cancel/new sequence, immediately before the read under test. No lifecycle guard is bypassed."
+      }
+    },
+    {
+      "index": 7,
+      "originalName": "batches current Classic names and isolates corrupt owners (includeHistory=%s)",
+      "originalLine": 318,
+      "disposition": "split-retired-mechanism-retained-business",
+      "targets": [
+        {
+          "file": "test/domains/comet-entry/project-sdk-status.test.ts",
+          "name": "batches current Classic names and isolates corrupt owners (includeHistory=%s)",
+          "fullName": "SDK ownership in shared project status batches current Classic names and isolates corrupt owners (includeHistory=%s)"
+        }
+      ],
+      "bodyUnchanged": false,
+      "details": {
+        "retired": "Two token reads",
+        "retained": "Both includeHistory choices still show the two actual current Classic changes; exact Classic namespace canonical body set; malformed requested owner isolated, healthy owner keeps SDK mode; malformed orphan not read; project/runtime bytes unchanged"
+      }
+    },
+    {
+      "index": 8,
+      "originalName": "shares Git worktree reads within each global status request, never across requests",
+      "originalLine": 371,
+      "disposition": "unchanged",
+      "targets": [
+        {
+          "file": "test/domains/comet-entry/project-sdk-status.test.ts",
+          "name": "shares Git worktree reads within each global status request, never across requests",
+          "fullName": "SDK ownership in shared project status shares Git worktree reads within each global status request, never across requests"
+        }
+      ],
+      "bodyUnchanged": true
+    },
+    {
+      "index": 9,
+      "originalName": "uses the same SDK validation as named Native status and preserves other changes",
+      "originalLine": 386,
+      "disposition": "unchanged",
+      "targets": [
+        {
+          "file": "test/domains/comet-entry/project-sdk-status.test.ts",
+          "name": "uses the same SDK validation as named Native status and preserves other changes",
+          "fullName": "SDK ownership in shared project status uses the same SDK validation as named Native status and preserves other changes"
+        }
+      ],
+      "bodyUnchanged": true
+    },
+    {
+      "index": 10,
+      "originalName": "keeps shared diagnostics and Hook owner inspection read-only without repeating SDK reads",
+      "originalLine": 429,
+      "disposition": "unchanged",
+      "targets": [
+        {
+          "file": "test/domains/comet-entry/project-sdk-status.test.ts",
+          "name": "keeps shared diagnostics and Hook owner inspection read-only without repeating SDK reads",
+          "fullName": "SDK ownership in shared project status keeps shared diagnostics and Hook owner inspection read-only without repeating SDK reads"
+        }
+      ],
+      "bodyUnchanged": true
+    },
+    {
+      "index": 11,
+      "originalName": "discovers standalone Run and pinned package drift (includeHistory=%s)",
+      "originalLine": 473,
+      "disposition": "unchanged",
+      "targets": [
+        {
+          "file": "test/domains/comet-entry/project-sdk-status.test.ts",
+          "name": "discovers standalone Run and pinned package drift (includeHistory=%s)",
+          "fullName": "SDK ownership in shared project status discovers standalone Run and pinned package drift (includeHistory=%s)"
+        }
+      ],
+      "bodyUnchanged": true
+    },
+    {
+      "index": 12,
+      "originalName": "discovers real closed SDK history %s read-only when its derived active document directory is absent",
+      "originalLine": 525,
+      "disposition": "unchanged",
+      "targets": [
+        {
+          "file": "test/domains/comet-entry/project-sdk-status.test.ts",
+          "name": "discovers real closed SDK history %s read-only when its derived active document directory is absent",
+          "fullName": "SDK ownership in shared project status discovers real closed SDK history %s read-only when its derived active document directory is absent"
+        }
+      ],
+      "bodyUnchanged": true
+    }
+  ],
+  "evidence": {
+    "originalSix": "six-before.json",
+    "finalWholeFile": "file-after.json"
+  },
+  "limitations": [
+    "No product source changed",
+    "No build, real Hook, package installation, model or container Eval",
+    "Generation retry and concurrent read/write consistency are intentionally not preserved; requests observe serially committed data."
+  ]
+}

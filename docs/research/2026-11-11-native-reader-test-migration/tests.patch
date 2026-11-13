@@ -1,0 +1,1322 @@
+diff --git a/test/domains/comet-native/native-artifacts.test.ts b/test/domains/comet-native/native-artifacts.test.ts
+index 2cc3d9f9..faaebac4 100644
+--- a/test/domains/comet-native/native-artifacts.test.ts
++++ b/test/domains/comet-native/native-artifacts.test.ts
+@@ -1,3 +1,6 @@
++import '../../helpers/isolated-agent-home.js';
++// SIMULATED historical document fixture for pure artifact/diagnostic readers; no old workflow creation.
++import { storedNativeChangeFixture } from '../../helpers/native-change-document.js';
+ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+ import { promises as fs } from 'fs';
+ import os from 'os';
+@@ -12,10 +15,7 @@ import {
+   validateNativeSpecChanges,
+   validateNativeVerification,
+ } from '../../../domains/comet-native/native-artifacts.js';
+-import {
+-  createNativeChange,
+-  nativeChangeDir,
+-} from '../../../domains/comet-native/native-change.js';
++import { nativeChangeDir } from '../../../domains/comet-native/native-change.js';
+ import { sha256Text } from '../../../domains/comet-native/native-hash.js';
+ import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+ import type {
+@@ -64,7 +64,7 @@ describe('Native artifact validation', () => {
+   beforeEach(async () => {
+     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-artifacts-'));
+     paths = await nativeProjectPaths(projectRoot, '.');
+-    state = await createNativeChange({
++    state = await storedNativeChangeFixture({
+       paths,
+       name: 'auth-change',
+       language: 'en',
+diff --git a/test/domains/comet-native/native-diagnostics.test.ts b/test/domains/comet-native/native-diagnostics.test.ts
+index 3c9f9892..e30e7f82 100644
+--- a/test/domains/comet-native/native-diagnostics.test.ts
++++ b/test/domains/comet-native/native-diagnostics.test.ts
+@@ -1,12 +1,10 @@
++import '../../helpers/isolated-agent-home.js';
+ import { promises as fs } from 'fs';
+ import os from 'os';
+ import path from 'path';
+ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+ 
+-import {
+-  createNativeChange,
+-  nativeChangeDir,
+-} from '../../../domains/comet-native/native-change.js';
++import { writeNativeChange, nativeChangeDir } from '../../../domains/comet-native/native-change.js';
+ import {
+   inspectNativeStatus,
+   listNativeStatus,
+@@ -25,8 +23,12 @@ import type {
+   NativeChangeState,
+   NativeProjectPaths,
+ } from '../../../domains/comet-native/native-types.js';
+-import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
+-import { advanceNativeChange } from '../../helpers/native-confirmed-transition.js';
++// SIMULATED stored documents exercise only the legacy parser/status view; actual pending WAL comes from the frozen published package.
++import {
++  storedNativeChangeFixture,
++  loadPreparedNativeTransition,
++} from '../../helpers/native-change-document.js';
++import { continueNativeTransition } from '../../../domains/comet-native/native-transition-journal.js';
+ 
+ const brief = `# Outcome
+ Ship a focused outcome.
+@@ -127,12 +129,13 @@ describe('Native status diagnostics', () => {
+   });
+ 
+   it('exposes an invalid workspace binding without treating legacy status as an approval', async () => {
+-    const state = await createNativeChange({
++    const state = await storedNativeChangeFixture({
+       paths,
+       name: 'invalid-workspace',
+       language: 'en',
+       workspaceBinding: { isolation: 'current', changeBranch: null, targetBranch: null },
+     });
++    await fs.mkdir(nativeChangeRuntimeDir(paths, state.name), { recursive: true });
+     await fs.writeFile(
+       path.join(nativeChangeRuntimeDir(paths, state.name), 'workspace.json'),
+       '{"schema":"comet.native.workspace.v3","isolation":"invalid"}\n',
+@@ -306,14 +309,15 @@ describe('Native status diagnostics', () => {
+     await fs.rm(projectRoot, { recursive: true, force: true });
+   });
+ 
+-  async function validChange(name: string): Promise<void> {
+-    const state = await createNativeChange({
++  async function validChange(name: string): Promise<NativeChangeState> {
++    const state = await storedNativeChangeFixture({
+       paths,
+       name,
+       language: 'en',
+       verificationProtocol: 'legacy-v1',
+     });
+     await fs.writeFile(path.join(nativeChangeDir(paths, name), state.brief), brief);
++    return state;
+   }
+ 
+   it('returns an empty projection for an empty Native root', async () => {
+@@ -330,7 +334,7 @@ describe('Native status diagnostics', () => {
+     expect(statuses[0]).toMatchObject({
+       phase: 'shape',
+       selected: false,
+-      nextCommand: 'comet native next alpha-change --summary <migration-summary>',
++      nextCommand: 'comet native doctor alpha-change --repair',
+       migrationRequired: true,
+     });
+     expect(statuses[1]).toMatchObject({ selected: true });
+@@ -409,48 +413,29 @@ describe('Native status diagnostics', () => {
+   });
+ 
+   it('requires legacy migration before Archive despite a prior verification report', async () => {
+-    await validChange('ready-change');
+-    const changeDir = nativeChangeDir(paths, 'ready-change');
+-    await advanceNativeChange({
+-      paths,
+-      name: 'ready-change',
+-      evidence: { summary: 'shape is ready' },
+-    });
+-    await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const feature = true;\n');
+-    await advanceNativeChange({
+-      paths,
+-      name: 'ready-change',
+-      evidence: { summary: 'build is ready', artifacts: ['feature.ts'] },
++    const raw = await validChange('ready-change');
++    const dir = nativeChangeDir(paths, raw.name);
++    // SIMULATED raw historical document claims pass; this is not an approval or a real old Run.
++    await writeNativeChange(paths, {
++      ...raw,
++      phase: 'archive',
++      approval: 'confirmed',
++      verification_result: 'pass',
++      verification_report: 'verification.md',
+     });
+     await fs.writeFile(
+-      path.join(changeDir, 'verification.md'),
+-      await nativeVerificationFixtureReport({
+-        paths,
+-        name: 'ready-change',
+-        evidenceRefs: ['feature.ts'],
+-      }),
++      path.join(dir, 'verification.md'),
++      '# SIMULATED historical report\nThe raw document claims prior verification.\n',
+     );
+-    await advanceNativeChange({
+-      paths,
+-      name: 'ready-change',
+-      evidence: {
+-        summary: 'verification passed',
+-        verificationResult: 'pass',
+-        verificationReport: 'verification.md',
+-      },
+-    });
+-
+-    const readyStatus = await inspectNativeStatus(paths, 'ready-change');
+-    expect(readyStatus).toMatchObject({
++    expect(await inspectNativeStatus(paths, raw.name)).toMatchObject({
+       archiveReady: false,
+       migrationRequired: true,
+-      nextCommand: 'comet native next ready-change --summary <migration-summary>',
++      nextCommand: 'comet native doctor ' + raw.name + ' --repair',
+     });
+-    expect(readyStatus).not.toHaveProperty('error');
+-    await fs.rm(path.join(changeDir, 'verification.md'));
+-    expect(await inspectNativeStatus(paths, 'ready-change')).toMatchObject({
++    await fs.rm(path.join(dir, 'verification.md'));
++    expect(await inspectNativeStatus(paths, raw.name)).toMatchObject({
+       archiveReady: false,
+-      nextCommand: 'comet native next ready-change --summary <migration-summary>',
++      nextCommand: 'comet native doctor ' + raw.name + ' --repair',
+     });
+   });
+ 
+@@ -467,60 +452,40 @@ describe('Native status diagnostics', () => {
+   });
+ 
+   it('requires legacy migration without changing a pending ordinary transition', async () => {
+-    await validChange('pending-transition');
+-    await expect(
+-      advanceNativeChange({
+-        paths,
+-        name: 'pending-transition',
+-        evidence: { summary: 'shape is ready' },
+-        hooks: {
+-          afterPrepared: () => {
+-            throw new Error('interrupt transition');
+-          },
+-        },
+-      }),
+-    ).rejects.toThrow('interrupt transition');
+-
+-    const journalFile = nativeTransitionJournalFile(paths, 'pending-transition');
+-    const pendingJournal = await fs.readFile(journalFile, 'utf8');
+-    expect(await inspectNativeStatus(paths, 'pending-transition')).toMatchObject({
++    const frozen = await loadPreparedNativeTransition(paths),
++      name = frozen.name;
++    const journal = nativeTransitionJournalFile(paths, name),
++      bytes = await fs.readFile(journal);
++    expect(await inspectNativeStatus(paths, name)).toMatchObject({
+       phase: 'shape',
+       migrationRequired: true,
+-      nextCommand: 'comet native next pending-transition --summary <migration-summary>',
++      nextCommand: 'comet native doctor ' + name + ' --repair',
+     });
+-    expect(await fs.readFile(journalFile, 'utf8')).toBe(pendingJournal);
++    expect(await fs.readFile(journal)).toEqual(bytes);
+   });
+ 
+   it('keeps legacy migration guidance when an old Run state is missing', async () => {
+-    await validChange('missing-run');
+-    await advanceNativeChange({
+-      paths,
+-      name: 'missing-run',
+-      evidence: { summary: 'shape is ready' },
+-    });
+-    await fs.rm(path.join(nativeChangeRuntimeDir(paths, 'missing-run'), 'run-state.json'));
+-
+-    expect(await inspectNativeStatus(paths, 'missing-run')).toMatchObject({
++    const frozen = await loadPreparedNativeTransition(paths),
++      name = frozen.name;
++    await continueNativeTransition(paths, name);
++    await fs.rm(path.join(nativeChangeRuntimeDir(paths, name), 'run-state.json'));
++    expect(await inspectNativeStatus(paths, name)).toMatchObject({
+       phase: 'build',
+       migrationRequired: true,
+-      nextCommand: 'comet native next missing-run --summary <migration-summary>',
++      nextCommand: 'comet native doctor ' + name + ' --repair',
+     });
+   });
+ 
+   it('keeps a change discoverable when its whole local Runtime is missing', async () => {
+-    await validChange('missing-runtime');
+-    await advanceNativeChange({
+-      paths,
+-      name: 'missing-runtime',
+-      evidence: { summary: 'shape is ready' },
+-    });
+-    await fs.rm(nativeChangeRuntimeDir(paths, 'missing-runtime'), { recursive: true });
+-
+-    expect(await inspectNativeStatus(paths, 'missing-runtime', { details: true })).toMatchObject({
+-      name: 'missing-runtime',
++    const frozen = await loadPreparedNativeTransition(paths),
++      name = frozen.name;
++    await continueNativeTransition(paths, name);
++    await fs.rm(nativeChangeRuntimeDir(paths, name), { recursive: true });
++    expect(await inspectNativeStatus(paths, name, { details: true })).toMatchObject({
++      name,
+       phase: 'build',
+       runtime: { status: 'missing', layout: 'missing' },
+-      nextCommand: 'comet native next missing-runtime --summary <migration-summary>',
++      nextCommand: 'comet native doctor ' + name + ' --repair',
+       migrationRequired: true,
+     });
+   });
+diff --git a/test/domains/comet-native/native-findings.test.ts b/test/domains/comet-native/native-findings.test.ts
+index 13e50709..0d45ca4b 100644
+--- a/test/domains/comet-native/native-findings.test.ts
++++ b/test/domains/comet-native/native-findings.test.ts
+@@ -1,9 +1,11 @@
++import '../../helpers/isolated-agent-home.js';
++// SIMULATED historical document fixture for pure artifact/diagnostic readers; no old workflow creation.
++import { storedNativeChangeFixture } from '../../helpers/native-change-document.js';
+ import { promises as fs } from 'fs';
+ import os from 'os';
+ import path from 'path';
+ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+ 
+-import { createNativeChange } from '../../../domains/comet-native/native-change.js';
+ import {
+   structureNativeFindings,
+   summarizeNativeFindings,
+@@ -22,7 +24,7 @@ describe('Native structured findings', () => {
+   beforeEach(async () => {
+     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-findings-'));
+     paths = await nativeProjectPaths(projectRoot, '.');
+-    state = await createNativeChange({
++    state = await storedNativeChangeFixture({
+       paths,
+       name: 'finding-shape',
+       language: 'en',
+diff --git a/test/domains/comet-native/native-hook-guard.test.ts b/test/domains/comet-native/native-hook-guard.test.ts
+index 93b9480a..9c3ba279 100644
+--- a/test/domains/comet-native/native-hook-guard.test.ts
++++ b/test/domains/comet-native/native-hook-guard.test.ts
+@@ -1,3 +1,6 @@
++// SIMULATED historical phase documents exercise the retained read-only Guard; current flows below use Portable APIs.
++import { storedNativeChangeFixture } from '../../helpers/native-change-document.js';
++import '../../helpers/isolated-agent-home.js';
+ import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+ import { execFileSync } from 'node:child_process';
+@@ -5,10 +8,7 @@ import { promises as fs } from 'fs';
+ import os from 'os';
+ import path from 'path';
+ 
+-import {
+-  createNativeChange,
+-  writeNativeChange,
+-} from '../../../domains/comet-native/native-change.js';
++import { writeNativeChange } from '../../../domains/comet-native/native-change.js';
+ import {
+   inspectNativeHookGuard,
+   listActiveNativeHookChanges,
+@@ -80,7 +80,7 @@ describe('Native phase Hook guard', () => {
+   ) {
+     const paths = await nativeProjectPaths(projectRoot, artifactRoot);
+     await ensureNativeDirectories(paths);
+-    const state = await createNativeChange({
++    const state = await storedNativeChangeFixture({
+       paths,
+       name,
+       language: 'en',
+@@ -989,7 +989,7 @@ describe('Native phase Hook guard', () => {
+     await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
+     const paths = await nativeProjectPaths(projectRoot, 'docs');
+     await ensureNativeDirectories(paths);
+-    await createNativeChange({
++    await storedNativeChangeFixture({
+       paths,
+       name: 'guard-control',
+       language: 'en',
+@@ -1070,13 +1070,13 @@ describe('Native phase Hook guard', () => {
+     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+     const paths = await nativeProjectPaths(projectRoot, '.');
+     await ensureNativeDirectories(paths);
+-    await createNativeChange({
++    await storedNativeChangeFixture({
+       paths,
+       name: 'shape-change',
+       language: 'en',
+       verificationProtocol: 'legacy-v1',
+     });
+-    const buildChange = await createNativeChange({
++    const buildChange = await storedNativeChangeFixture({
+       paths,
+       verificationProtocol: 'legacy-v1',
+       name: 'build-change',
+diff --git a/test/domains/comet-native/native-phase1-matrix.test.ts b/test/domains/comet-native/native-phase1-matrix.test.ts
+index 8f2ef9ba..13b46c55 100644
+--- a/test/domains/comet-native/native-phase1-matrix.test.ts
++++ b/test/domains/comet-native/native-phase1-matrix.test.ts
+@@ -8,7 +8,7 @@ import { nativeChangeDir } from '../../../domains/comet-native/native-change.js'
+ import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+ import { readProjectConfig } from '../../../domains/comet-native/native-config.js';
+ import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
+-import { storedNativeChangeFixture as createNativeChange } from '../../helpers/native-change-document.js';
++import { storedNativeChangeFixture } from '../../helpers/native-change-document.js';
+ import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+ import {
+   moveNativeRoot,
+@@ -132,7 +132,7 @@ describe('Comet Native Phase 1 behavior matrix', () => {
+       path.join(projectRoot, 'openspec', 'changes', 'should-not-read', 'secret.md'),
+       'not Native state\n',
+     );
+-    await createNativeChange({
++    await storedNativeChangeFixture({
+       paths,
+       name: 'malformed-state',
+       language: 'en',
+diff --git a/test/domains/comet-native/native-root-move.test.ts b/test/domains/comet-native/native-root-move.test.ts
+index 598e3798..8c92c9ca 100644
+--- a/test/domains/comet-native/native-root-move.test.ts
++++ b/test/domains/comet-native/native-root-move.test.ts
+@@ -1,3 +1,4 @@
++import '../../helpers/isolated-agent-home.js';
+ import { promises as fs } from 'fs';
+ import { execFileSync } from 'node:child_process';
+ import os from 'os';
+@@ -5,12 +6,12 @@ import path from 'path';
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+ 
+ import {
+-  DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+   defaultProjectConfig,
+   readProjectConfig,
+   writeProjectConfig,
+ } from '../../../domains/comet-native/native-config.js';
+-import { createNativeChange } from '../../../domains/comet-native/native-change.js';
++import { createNativePortableChange } from '../../../domains/comet-native/native-portable-runtime.js';
++import { writeNativeWorkspaceIdentity } from '../../../domains/comet-native/native-workspace.js';
+ import { createNativeSdkChange } from '../../../domains/comet-native/native-sdk-create.js';
+ import { sha256File } from '../../../domains/comet-native/native-hash.js';
+ import { acquireNativeLock, releaseNativeLock } from '../../../domains/comet-native/native-lock.js';
+@@ -28,7 +29,32 @@ import {
+   readNativeWorkspaceIdentity,
+   setNativeWorkspaceFinish,
+ } from '../../../domains/comet-native/native-workspace.js';
+-import { seedNativeRoot } from '../../helpers/native-root.js';
++import { seedNativeRoot as seedNativeRootData } from '../../helpers/native-root.js';
++
++// Use current Portable creation; the retained sidecar API records actual Git identity for root-move compatibility.
++async function createPortableWithWorkspace(
++  options: Parameters<typeof createNativePortableChange>[0],
++) {
++  const state = await createNativePortableChange(options);
++  await writeNativeWorkspaceIdentity({
++    paths: options.paths,
++    name: options.name,
++    revision: state.state_version,
++    ...(options.workspaceBinding ? { binding: options.workspaceBinding } : {}),
++  });
++  return state;
++}
++
++// The binary root-move sentinel is ordinary payload, not a malformed active change.
++async function seedNativeRoot(project: string, artifactRoot: string) {
++  const root = await seedNativeRootData(project, artifactRoot);
++  await fs.mkdir(path.join(root, 'payloads'), { recursive: true });
++  await fs.rename(
++    path.join(root, 'changes', 'active-change'),
++    path.join(root, 'payloads', 'active-change'),
++  );
++  return root;
++}
+ 
+ describe('Native artifact root moves', () => {
+   let projectRoot: string;
+@@ -66,7 +92,13 @@ describe('Native artifact root moves', () => {
+     expect((await fs.readdir(paths.locksDir)).some((name) => name.endsWith('.lock.sqlite'))).toBe(
+       true,
+     );
+-    expect(command('doctor').data).toMatchObject({ healthy: true, findings: [] });
++    expect(command('doctor').data).toMatchObject({
++      healthy: true,
++      transactions: [],
++      workspaceFinishes: [],
++      changes: [],
++      locks: [],
++    });
+   });
+ 
+   it('audits historical transactions even when the active transaction directory is absent', async () => {
+@@ -130,7 +162,7 @@ describe('Native artifact root moves', () => {
+ 
+   it('rechecks the branch after CLI root resolution before writing a root-move transaction', async () => {
+     await seedNativeRoot(projectRoot, 'docs');
+-    await fs.rm(path.join(projectRoot, 'docs/comet/changes/active-change'), {
++    await fs.rm(path.join(projectRoot, 'docs/comet/payloads/active-change'), {
+       recursive: true,
+       force: true,
+     });
+@@ -145,7 +177,7 @@ describe('Native artifact root moves', () => {
+       encoding: 'utf8',
+     }).trim();
+     const paths = await nativeProjectPaths(projectRoot, 'docs');
+-    await createNativeChange({
++    await createPortableWithWorkspace({
+       paths,
+       name: 'branch-fence',
+       language: 'en',
+@@ -190,14 +222,13 @@ describe('Native artifact root moves', () => {
+     config!.native.archive_confirmation = 'required';
+     await writeProjectConfig(projectRoot, config!);
+     const sourcePaths = await nativeProjectPaths(projectRoot, from);
+-    await createNativeChange({
++    await createPortableWithWorkspace({
+       paths: sourcePaths,
+       name: 'identity-change',
+       language: 'en',
+-      verificationProtocol: 'legacy-v1',
+     });
+     const sourceSpec = path.join(source, 'specs', 'word-count', 'spec.md');
+-    const sourceBinary = path.join(source, 'changes', 'active-change', 'payload.bin');
++    const sourceBinary = path.join(source, 'payloads', 'active-change', 'payload.bin');
+     const expected = [await sha256File(sourceSpec), await sha256File(sourceBinary)];
+ 
+     const result = await moveNativeRoot({
+@@ -230,7 +261,6 @@ describe('Native artifact root moves', () => {
+         clarification_mode: 'batch',
+         archive_confirmation: 'required',
+         max_verify_failures: 5,
+-        snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+       },
+     });
+     const workspace = await readNativeWorkspaceIdentity(destinationPaths, 'identity-change');
+@@ -240,7 +270,9 @@ describe('Native artifact root moves', () => {
+     ).resolves.toEqual({ state: 'aligned', findingCodes: [], driftComponents: [] });
+     expect([
+       await sha256File(path.join(destinationPaths.specsDir, 'word-count', 'spec.md')),
+-      await sha256File(path.join(destinationPaths.changesDir, 'active-change', 'payload.bin')),
++      await sha256File(
++        path.join(destinationPaths.nativeRoot, 'payloads', 'active-change', 'payload.bin'),
++      ),
+     ]).toEqual(expected);
+     await expect(fs.access(source)).rejects.toMatchObject({ code: 'ENOENT' });
+     expect(await readNativeTransaction(destinationPaths, result.transactionId)).toMatchObject({
+@@ -251,7 +283,7 @@ describe('Native artifact root moves', () => {
+ 
+   it('preserves v3 branch and finishing bindings while refreshing moved root identities', async () => {
+     await seedNativeRoot(projectRoot, 'docs');
+-    await fs.rm(path.join(projectRoot, 'docs/comet/changes/active-change'), {
++    await fs.rm(path.join(projectRoot, 'docs/comet/payloads/active-change'), {
+       recursive: true,
+       force: true,
+     });
+@@ -268,7 +300,7 @@ describe('Native artifact root moves', () => {
+       encoding: 'utf8',
+     }).trim();
+     const sourcePaths = await nativeProjectPaths(projectRoot, 'docs');
+-    await createNativeChange({
++    await createPortableWithWorkspace({
+       paths: sourcePaths,
+       name: 'bound-change',
+       language: 'en',
+@@ -300,7 +332,7 @@ describe('Native artifact root moves', () => {
+ 
+   it('stops before moving a root that contains an invalid workspace binding', async () => {
+     await seedNativeRoot(projectRoot, 'docs');
+-    await fs.rm(path.join(projectRoot, 'docs/comet/changes/active-change'), {
++    await fs.rm(path.join(projectRoot, 'docs/comet/payloads/active-change'), {
+       recursive: true,
+       force: true,
+     });
+@@ -317,7 +349,7 @@ describe('Native artifact root moves', () => {
+       encoding: 'utf8',
+     }).trim();
+     const paths = await nativeProjectPaths(projectRoot, 'docs');
+-    await createNativeChange({
++    await createPortableWithWorkspace({
+       paths,
+       name: 'invalid-binding',
+       language: 'en',
+@@ -352,7 +384,7 @@ describe('Native artifact root moves', () => {
+ 
+   it('refreshes a valid v3 binding even when the change schema needs a newer runtime', async () => {
+     await seedNativeRoot(projectRoot, 'docs');
+-    await fs.rm(path.join(projectRoot, 'docs/comet/changes/active-change'), {
++    await fs.rm(path.join(projectRoot, 'docs/comet/payloads/active-change'), {
+       recursive: true,
+       force: true,
+     });
+@@ -369,7 +401,7 @@ describe('Native artifact root moves', () => {
+       encoding: 'utf8',
+     }).trim();
+     const sourcePaths = await nativeProjectPaths(projectRoot, 'docs');
+-    await createNativeChange({
++    await createPortableWithWorkspace({
+       paths: sourcePaths,
+       name: 'future-bound-change',
+       language: 'en',
+@@ -385,8 +417,8 @@ describe('Native artifact root moves', () => {
+     await fs.writeFile(
+       stateFile,
+       state
+-        .replace('schema: comet.native.v3', 'schema: comet.native.v4')
+-        .replace('minimum_runtime_version: 3', 'minimum_runtime_version: 4'),
++        .replace('schema: comet.native.v4', 'schema: comet.native.v999')
++        .replace('minimum_runtime_version: 4', 'minimum_runtime_version: 999'),
+     );
+ 
+     await moveNativeRoot({ projectRoot, toArtifactRoot: 'artifacts/native' });
+@@ -410,7 +442,7 @@ describe('Native artifact root moves', () => {
+     ['legacy workspace v2', true],
+   ])('moves documents without requiring another worktree Runtime (%s)', async (_label, legacy) => {
+     await seedNativeRoot(projectRoot, 'docs');
+-    await fs.rm(path.join(projectRoot, 'docs/comet/changes/active-change'), {
++    await fs.rm(path.join(projectRoot, 'docs/comet/payloads/active-change'), {
+       recursive: true,
+       force: true,
+     });
+@@ -427,7 +459,7 @@ describe('Native artifact root moves', () => {
+       encoding: 'utf8',
+     }).trim();
+     const paths = await nativeProjectPaths(projectRoot, 'docs');
+-    await createNativeChange({
++    await createPortableWithWorkspace({
+       paths,
+       name: 'foreign-change',
+       language: 'en',
+@@ -640,7 +672,6 @@ describe('Native artifact root moves', () => {
+         clarification_mode: 'batch',
+         archive_confirmation: 'automatic',
+         max_verify_failures: 5,
+-        snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+       });
+       await expect(fs.access(path.join(projectRoot, 'docs', 'comet'))).rejects.toMatchObject({
+         code: 'ENOENT',
+diff --git a/test/domains/comet-native/native-root-recovery.test.ts b/test/domains/comet-native/native-root-recovery.test.ts
+index 2580ed6c..863c4e31 100644
+--- a/test/domains/comet-native/native-root-recovery.test.ts
++++ b/test/domains/comet-native/native-root-recovery.test.ts
+@@ -1,3 +1,4 @@
++import '../../helpers/isolated-agent-home.js';
+ import { promises as fs } from 'fs';
+ import { execFileSync } from 'node:child_process';
+ import os from 'os';
+@@ -5,12 +6,12 @@ import path from 'path';
+ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+ 
+ import {
+-  DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+   readProjectConfig,
+   resolveNativeProject,
+   writeProjectConfig,
+ } from '../../../domains/comet-native/native-config.js';
+-import { createNativeChange } from '../../../domains/comet-native/native-change.js';
++import { createNativePortableChange } from '../../../domains/comet-native/native-portable-runtime.js';
++import { writeNativeWorkspaceIdentity } from '../../../domains/comet-native/native-workspace.js';
+ import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+ import {
+   moveNativeRoot,
+@@ -21,7 +22,32 @@ import {
+   inspectNativeWorkspaceAdvisory,
+   readNativeWorkspaceIdentity,
+ } from '../../../domains/comet-native/native-workspace.js';
+-import { seedNativeRoot } from '../../helpers/native-root.js';
++import { seedNativeRoot as seedNativeRootData } from '../../helpers/native-root.js';
++
++// Use current Portable creation; the retained sidecar API records actual Git identity for root-move compatibility.
++async function createPortableWithWorkspace(
++  options: Parameters<typeof createNativePortableChange>[0],
++) {
++  const state = await createNativePortableChange(options);
++  await writeNativeWorkspaceIdentity({
++    paths: options.paths,
++    name: options.name,
++    revision: state.state_version,
++    ...(options.workspaceBinding ? { binding: options.workspaceBinding } : {}),
++  });
++  return state;
++}
++
++// The binary root-move sentinel is ordinary payload, not a malformed active change.
++async function seedNativeRoot(project: string, artifactRoot: string) {
++  const root = await seedNativeRootData(project, artifactRoot);
++  await fs.mkdir(path.join(root, 'payloads'), { recursive: true });
++  await fs.rename(
++    path.join(root, 'changes', 'active-change'),
++    path.join(root, 'payloads', 'active-change'),
++  );
++  return root;
++}
+ 
+ describe('Native artifact root recovery', () => {
+   let projectRoot: string;
+@@ -45,9 +71,8 @@ describe('Native artifact root recovery', () => {
+   it('continues an interruption in the copying stage and blocks normal discovery meanwhile', async () => {
+     const source = await seedNativeRoot(projectRoot, '.');
+     await enableBatchClarification();
+-    await createNativeChange({
++    await createPortableWithWorkspace({
+       paths: await nativeProjectPaths(projectRoot, '.'),
+-      verificationProtocol: 'legacy-v1',
+       name: 'identity-change',
+       language: 'en',
+     });
+@@ -67,9 +92,8 @@ describe('Native artifact root recovery', () => {
+       /root move .* incomplete/u,
+     );
+     await expect(
+-      createNativeChange({
++      createPortableWithWorkspace({
+         paths: await nativeProjectPaths(projectRoot, '.'),
+-        verificationProtocol: 'legacy-v1',
+         name: 'must-not-start',
+         language: 'en',
+       }),
+@@ -83,7 +107,6 @@ describe('Native artifact root recovery', () => {
+       clarification_mode: 'batch',
+       archive_confirmation: 'automatic',
+       max_verify_failures: 5,
+-      snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+     });
+     await expect(fs.access(source)).rejects.toMatchObject({ code: 'ENOENT' });
+     const destinationPaths = await nativeProjectPaths(projectRoot, 'docs');
+@@ -97,11 +120,10 @@ describe('Native artifact root recovery', () => {
+     const source = await seedNativeRoot(projectRoot, '.');
+     await enableBatchClarification();
+     const sourcePaths = await nativeProjectPaths(projectRoot, '.');
+-    await createNativeChange({
++    await createPortableWithWorkspace({
+       paths: sourcePaths,
+       name: 'identity-change',
+       language: 'en',
+-      verificationProtocol: 'legacy-v1',
+     });
+     let transactionId = '';
+     await expect(
+@@ -125,7 +147,6 @@ describe('Native artifact root recovery', () => {
+       clarification_mode: 'batch',
+       archive_confirmation: 'automatic',
+       max_verify_failures: 5,
+-      snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+     });
+     expect(
+       (await readNativeTransaction(await nativeProjectPaths(projectRoot, '.'), transactionId))
+@@ -142,9 +163,8 @@ describe('Native artifact root recovery', () => {
+ 
+   it('continues an interruption after the config switched', async () => {
+     await seedNativeRoot(projectRoot, '.');
+-    await createNativeChange({
++    await createPortableWithWorkspace({
+       paths: await nativeProjectPaths(projectRoot, '.'),
+-      verificationProtocol: 'legacy-v1',
+       name: 'identity-change',
+       language: 'en',
+     });
+@@ -209,7 +229,6 @@ describe('Native artifact root recovery', () => {
+       clarification_mode: 'batch',
+       archive_confirmation: 'automatic',
+       max_verify_failures: 5,
+-      snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+     });
+   });
+ 
+@@ -242,7 +261,6 @@ describe('Native artifact root recovery', () => {
+       clarification_mode: 'batch',
+       archive_confirmation: 'automatic',
+       max_verify_failures: 5,
+-      snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+     });
+     await expect(fs.access(quarantine)).rejects.toMatchObject({ code: 'ENOENT' });
+   });
+@@ -332,7 +350,6 @@ describe('Native artifact root recovery', () => {
+       clarification_mode: 'batch',
+       archive_confirmation: 'automatic',
+       max_verify_failures: 5,
+-      snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+     });
+     await expect(fs.access(quarantine)).rejects.toMatchObject({ code: 'ENOENT' });
+   });
+diff --git a/test/domains/comet-native/native-sdk-cancellation.test.ts b/test/domains/comet-native/native-sdk-cancellation.test.ts
+index 5d34925c..5709fb0c 100644
+--- a/test/domains/comet-native/native-sdk-cancellation.test.ts
++++ b/test/domains/comet-native/native-sdk-cancellation.test.ts
+@@ -1,3 +1,4 @@
++import '../../helpers/isolated-agent-home.js';
+ import { nativeSdkApplicationForRun } from '../../../domains/comet-native/native-sdk-application.js';
+ import { createRuntime, createFileRuntimeStore } from '../../../domains/engine/runtime.js';
+ import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
+@@ -6,10 +7,7 @@ import {
+   inspectNativeHookGuard,
+   parseNativeHookRequest,
+ } from '../../../domains/comet-native/native-hook-guard.js';
+-import {
+-  createNativeChange,
+-  listActiveNativeChangesOwnedByWorkspace,
+-} from '../../../domains/comet-native/native-change.js';
++import { listActiveNativeChangesOwnedByWorkspace } from '../../../domains/comet-native/native-change.js';
+ import { createNativePortableChange } from '../../../domains/comet-native/native-portable-requirements.js';
+ import { createNativeSdkChange } from '../../../domains/comet-native/native-sdk-create.js';
+ import { isNativeSdkChangeCancellationComplete } from '../../../domains/comet-native/native-sdk-cancellation.js';
+@@ -29,7 +27,6 @@ import {
+ } from '../../../domains/comet-native/native-runtime-ownership.js';
+ import { settleNativeSdkCancellation } from '../../../domains/comet-native/native-sdk-cancellation-cleanup.js';
+ import { readCometCurrentSelection } from '../../../domains/workflow-contract/current-selection.js';
+-import type { RuntimeStoppedAction } from '../../../domains/engine/runtime.js';
+ 
+ const roots: string[] = [];
+ afterEach(async () => {
+@@ -83,10 +80,10 @@ async function fixture(stage: 'unstarted' | 'approval' | 'builder' = 'unstarted'
+ }
+ 
+ describe('Native cancellation lifecycle', () => {
+-  it('keeps a cancelled claimed execution active until the original host proves it stopped', async () => {
++  it('cancels claimed Builder scheduling while retaining its original claim without process-stop receipts', async () => {
+     const f = await fixture('builder');
+-    const before = await f.runtime.inspect(f.name);
+-    const action = before.actions.at(-1)!;
++    const before = await f.runtime.inspect(f.name),
++      action = before.actions.at(-1)!;
+     const claimed = await f.runtime.claim({
+       runId: f.name,
+       actionId: action.id,
+@@ -95,53 +92,45 @@ describe('Native cancellation lifecycle', () => {
+       executorId: 'original-host',
+       claimToken: 'retained-host-claim',
+     });
+-    await f.runtime.cancel({ runId: f.name, reason: 'Stop scheduling' });
+-    expect(await isNativeSdkChangeCancellationComplete(f.root, f.name)).toBe(false);
++    const cancelled = await f.runtime.cancel({ runId: f.name, reason: 'Stop scheduling' });
++    expect(await isNativeSdkChangeCancellationComplete(f.root, f.name)).toBe(true);
+     const store = createFileRuntimeStore({
+       rootDir: path.join(resolveWorkspaceRuntimeRootSync(f.root), 'sdk-runs', 'native'),
+     });
+-    expect(await store.readDisposition(f.name)).toBe('active');
++    expect(await store.readDisposition(f.name)).toBe('closed');
++    const original = cancelled.actions.find((a) => a.id === action.id)!;
++    expect(original).toMatchObject({ status: 'cancelled', claim: claimed.actions.at(-1)!.claim });
++    expect(original.executionStop).toBeUndefined();
++    expect(original.cancellation?.evidence).toBeUndefined();
++    const status = await f.cli(['status', f.name]);
++    expect(status.data).toMatchObject({
++      status: 'cancelled',
++      cancellation: { quiescent: true, outstandingActions: [] },
++    });
++    expect(status.data.continuation.userCommunication.agentInstruction).toContain(
++      'does not certify process termination',
++    );
+     for (const command of [
+-      `comet native doctor ${f.name} --repair --json`,
+-      'comet runtime dispatch --application native --request stop-confirmation.json',
+-    ]) {
+-      const request = parseNativeHookRequest(
+-        JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
+-      );
+-      expect(await inspectNativeHookGuard(f.root, request, f.name)).toMatchObject({
+-        allowed: true,
+-      });
+-    }
+-
++      'comet native doctor ' + f.name + ' --repair --json',
++      'comet runtime dispatch --application native --request original-result.json',
++    ])
++      expect(
++        await inspectNativeHookGuard(
++          f.root,
++          parseNativeHookRequest(JSON.stringify({ tool_name: 'Bash', tool_input: { command } })),
++          f.name,
++        ),
++      ).toMatchObject({ allowed: true });
+     expect(
+       await inspectNativeHookGuard(f.root, { intent: 'write', targets: ['src/replacement.ts'] }),
+-    ).toMatchObject({ allowed: false, reason: expect.stringContaining('cancelling') });
++    ).toMatchObject({ allowed: true });
+     expect(
+       await inspectNativeHookGuard(
+         f.root,
+         { intent: 'write', targets: ['src/replacement.ts'] },
+         f.name,
+       ),
+-    ).toMatchObject({ allowed: false, reason: expect.stringContaining('cancelling') });
+-
+-    expect(await listActiveNativeHookChanges(f.root)).toEqual([
+-      expect.objectContaining({ name: f.name }),
+-    ]);
+-    await f.runtime.cancel({
+-      runId: f.name,
+-      reason: 'Original host stopped',
+-      stoppedActions: [
+-        {
+-          actionId: action.id,
+-          attempt: action.attempt,
+-          inputHash: action.inputHash,
+-          claimToken: claimed.actions.at(-1)!.claim!.token,
+-          evidence: 'The original execution and all of its child tasks stopped.',
+-        },
+-      ],
+-    });
+-    expect(await isNativeSdkChangeCancellationComplete(f.root, f.name)).toBe(true);
+-    expect(await store.readDisposition(f.name)).toBe('closed');
++    ).toMatchObject({ allowed: true });
+     expect(await listActiveNativeHookChanges(f.root)).toEqual([]);
+   });
+ 
+@@ -166,7 +155,7 @@ describe('Native cancellation lifecycle', () => {
+       f.runtime.cancel({ runId: f.name, reason: 'Cancel while root cleanup is blocked' }),
+     ).rejects.toThrow(/Legacy lock requires confirmation/);
+     expect(await f.runtime.inspect(f.name)).toEqual(before);
+-    // 旧版本可能已经提交取消；保留该故障恢复覆盖，而不是绕过新的提交前保护。
++    // SIMULATED committed cancellation through the base SDK; this is not a genuine published old Run.
+     const application = nativeSdkApplicationForRun(before);
+     const legacy = createRuntime({
+       store: createFileRuntimeStore({
+@@ -236,7 +225,7 @@ describe('Native cancellation lifecycle', () => {
+     const doctor = await f.cli(['doctor', f.name]);
+     expect(doctor.data.healthy).toBe(false);
+     expect(
+-      doctor.data.findings.some(
++      doctor.data.diagnostics.issues.some(
+         (finding: { code: string }) => finding.code === 'sdk-cancellation-cleanup-pending',
+       ),
+       JSON.stringify(doctor.data),
+@@ -252,7 +241,7 @@ describe('Native cancellation lifecycle', () => {
+       language: 'en' as const,
+       workspaceBinding: { isolation: 'current' as const, changeBranch: null, targetBranch: null },
+     };
+-    for (const create of [createNativeSdkChange, createNativePortableChange, createNativeChange]) {
++    for (const create of [createNativeSdkChange, createNativePortableChange]) {
+       await expect(create(creation)).rejects.toThrow(/active|workspace|isolation/i);
+     }
+     expect(await readCometCurrentSelection(f.root)).toMatchObject({
+@@ -304,14 +293,21 @@ describe('Native cancellation lifecycle', () => {
+         cancellation: { status: string };
+         continuation: { disposition: string };
+       };
+-      expect(cli.data).toMatchObject(
+-        result.response.status === 'succeeded' ? result.response.data : null,
+-      );
++      if (result.response.status !== 'succeeded') throw Error('Expected successful cancellation');
++      expect(result.response.data).toEqual(await f.runtime.inspect(f.name));
+       expect(cli.data).toMatchObject({
+-        continuation: { mode: stage === 'unstarted' ? 'done' : 'reconcile' },
++        runId: result.response.data.runId,
++        revision: result.response.data.revision,
++        status: result.response.data.status,
++        state: result.response.data.state,
+       });
+-      expect(cli.cancellation.status).toBe(stage === 'unstarted' ? 'cancelled' : 'cancelling');
+-      expect(cli.continuation.disposition).toBe(stage === 'unstarted' ? 'done' : 'blocked');
++      for (const field of ['actions', 'history', 'outputs', 'commands'])
++        expect(cli.data).not.toHaveProperty(field);
++      expect(cli.data).toMatchObject({
++        continuation: { mode: 'done' },
++      });
++      expect(cli.cancellation.status).toBe('cancelled');
++      expect(cli.continuation.disposition).toBe('done');
+     },
+   );
+ 
+@@ -323,36 +319,23 @@ describe('Native cancellation lifecycle', () => {
+     const claimed = await f.claim(builder, 'custom-builder');
+     const action = claimed.actions.find(({ id }) => id === builder.id)!;
+     await f.dispatch({ operation: 'cancel', runId: f.name, reason: 'Stop this custom task' });
+-    const cancelling = await f.native(['status', f.name]);
+-    expect(cancelling).toMatchObject({
+-      status: 'cancelling',
+-      application: { id: 'native-candidate-review' },
+-    });
+-    await f.dispatch({
+-      operation: 'cancel',
+-      runId: f.name,
+-      reason: 'Original host stopped',
+-      stoppedActions: [
+-        {
+-          actionId: action.id,
+-          attempt: action.attempt,
+-          inputHash: action.inputHash,
+-          claimToken: action.claim!.token,
+-          evidence: 'Original custom Builder and all its children stopped; candidate.txt retained.',
+-        },
+-      ],
+-    });
+     const status = await f.native(['status', f.name]);
+     expect(status).toMatchObject({
+       status: 'cancelled',
++      application: { id: 'native-candidate-review' },
+       cancellation: { quiescent: true },
+       continuation: { disposition: 'done' },
+     });
+     expect((await f.native(['new', 'replacement'])).name).toBe('replacement');
+     const cancelled = await f.dispatch({ operation: 'inspect', runId: f.name });
+     expect(cancelled.status).toBe('cancelled');
+-    expect(cancelled.actions.find(({ id }) => id === action.id)?.cancellation?.evidence).toContain(
+-      'retained',
++    const original = cancelled.actions.find(({ id }) => id === action.id)!;
++    expect(original.claim).toEqual(action.claim);
++    expect(original.status).toBe('cancelled');
++    expect(original.executionStop).toBeUndefined();
++    expect(original.cancellation?.evidence).toBeUndefined();
++    expect(await fs.readFile(path.join(f.projectRoot, 'candidate.txt'), 'utf8')).toBe(
++      'unreviewed\n',
+     );
+   });
+   it.each(['unstarted', 'approval', 'builder'] as const)(
+@@ -405,7 +388,7 @@ describe('Native cancellation lifecycle', () => {
+       expect(next.data.continuation).toEqual(status.data.continuation);
+       expect((await f.cli(['doctor', f.name, '--repair'])).data).toMatchObject({
+         healthy: true,
+-        findings: [],
++        diagnostics: { issues: [] },
+         status: 'cancelled',
+       });
+       expect(await isNativeSdkChangeCancellationComplete(f.root, f.name)).toBe(true);
+@@ -428,15 +411,15 @@ describe('Native cancellation lifecycle', () => {
+   );
+ 
+   it.each([false, true])(
+-    'retains a claimed Builder until its original host proves it stopped (unknown=%s)',
++    'retains a cancelled Builder claim and partial work without a stop receipt (unknown=%s)',
+     async (unknown) => {
+       const f = await fixture('builder');
+-      const before = await f.runtime.inspect(f.name);
+-      const builder = before.actions.find(
+-        ({ stepId, status }) => stepId === 'build.builder' && status === 'pending',
+-      )!;
++      const before = await f.runtime.inspect(f.name),
++        builder = before.actions.find(
++          (a) => a.stepId === 'build.builder' && a.status === 'pending',
++        )!;
+       expect(builder).toBeDefined();
+-      await f.runtime.claim({
++      const claimed = await f.runtime.claim({
+         runId: f.name,
+         actionId: builder.id,
+         attempt: builder.attempt,
+@@ -462,51 +445,19 @@ describe('Native cancellation lifecycle', () => {
+       });
+       const status = await f.cli(['status', f.name]);
+       expect(status.data).toMatchObject({
+-        status: 'cancelling',
+-        continuation: {
+-          disposition: 'blocked',
+-          action: 'none',
+-          requiredInputs: ['original-execution-stop-evidence'],
+-        },
++        status: 'cancelled',
++        cancellation: { quiescent: true, outstandingActions: [] },
++        continuation: { disposition: 'done', action: 'none', requiredInputs: [] },
+       });
+       expect(status.data.pendingActions).toBeUndefined();
+       expect(status.data.continuation.commandAlternatives).toEqual([]);
+       expect(status.data.continuation.requiresUserDecision).toBe(false);
+       expect(status.data.continuation.runnerAction.kind).toBe('none');
+-      expect((await f.cli(['new', 'blocked-replacement'])).exitCode).toBe(73);
+-      expect((await f.cli(['doctor', f.name, '--repair'])).data).toMatchObject({
+-        healthy: false,
+-        findings: [{ code: 'sdk-cancellation-execution-unresolved' }],
+-      });
+-      const request = status.data.cancellation.outstandingActions[0].acknowledgementRequest;
+-      expect(request).toMatchObject({
+-        operation: 'cancel',
+-        runId: f.name,
+-        expectedRevision: cancelled.revision,
+-        stoppedActions: [
+-          {
+-            actionId: builder.id,
+-            attempt: builder.attempt,
+-            inputHash: builder.inputHash,
+-            claimToken: 'original-claim',
+-          },
+-        ],
+-      });
+-      const evidence =
+-        'Original Builder and all its child tasks are stopped; partial-work.txt is retained.';
+-      const stopped: RuntimeStoppedAction = { ...request.stoppedActions[0], evidence };
+-      const requestFile = path.join(f.root, 'stopped-request.json');
+-      await fs.writeFile(requestFile, JSON.stringify({ ...request, stoppedActions: [stopped] }));
+-      const response = await runtimeDispatchCommand({
+-        request: requestFile,
+-        application: 'native',
+-        projectRoot: f.root,
+-      });
+-      expect(response.response.status, JSON.stringify(response.response)).toBe('succeeded');
+-      expect((await f.cli(['status', f.name])).data).toMatchObject({
+-        status: 'cancelled',
+-        cancellation: { quiescent: true },
+-      });
++      expect(status.data.continuation.userCommunication.agentInstruction).toContain(
++        'does not certify process termination',
++      );
++      const doctor = await f.cli(['doctor', f.name, '--repair']);
++      expect(doctor.data).toMatchObject({ healthy: true, diagnostics: { issues: [] } });
+       expect((await f.cli(['new', 'replacement'])).exitCode).toBe(0);
+       await expect(
+         f.runtime.recordOutcome({
+@@ -525,10 +476,12 @@ describe('Native cancellation lifecycle', () => {
+       expect(await fs.readFile(path.join(f.root, 'partial-work.txt'), 'utf8')).toBe(
+         'Preserve my unfinished implementation\n',
+       );
+-      expect(
+-        (await f.runtime.inspect(f.name)).actions.find(({ id }) => id === builder.id)?.cancellation
+-          ?.evidence,
+-      ).toBe(evidence);
++      const original = (await f.runtime.inspect(f.name)).actions.find((a) => a.id === builder.id)!;
++      expect(original.claim).toEqual(claimed.actions.find((a) => a.id === builder.id)!.claim);
++      expect(original.status).toBe('cancelled');
++      expect(original.executionStop).toBeUndefined();
++      expect(original.cancellation?.evidence).toBeUndefined();
++      expect((await f.runtime.inspect(f.name)).revision).toBe(cancelled.revision);
+     },
+   );
+ });
+diff --git a/test/domains/comet-native/native-selection.test.ts b/test/domains/comet-native/native-selection.test.ts
+index daf23775..3e3d5906 100644
+--- a/test/domains/comet-native/native-selection.test.ts
++++ b/test/domains/comet-native/native-selection.test.ts
+@@ -1,9 +1,10 @@
++import '../../helpers/isolated-agent-home.js';
+ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+ import { promises as fs } from 'fs';
+ import os from 'os';
+ import path from 'path';
+ 
+-import { createNativeChange } from '../../../domains/comet-native/native-change.js';
++import { createNativePortableChange } from '../../../domains/comet-native/native-portable-runtime.js';
+ import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+ import {
+   clearNativeSelection,
+@@ -30,11 +31,10 @@ describe('Native current change selection', () => {
+   });
+ 
+   it('stores the Native owner in the shared project selection', async () => {
+-    await createNativeChange({
++    await createNativePortableChange({
+       paths,
+       name: 'selected-change',
+       language: 'en',
+-      verificationProtocol: 'legacy-v1',
+     });
+     await selectNativeChange(paths, 'selected-change');
+ 
+@@ -60,11 +60,10 @@ describe('Native current change selection', () => {
+   });
+ 
+   it('refuses a runtime junction before writing the shared selection', async () => {
+-    await createNativeChange({
++    await createNativePortableChange({
+       paths,
+       name: 'selected-change',
+       language: 'en',
+-      verificationProtocol: 'legacy-v1',
+     });
+     await fs.rm(paths.runtimeDir, { recursive: true, force: true });
+     await fs.symlink(outside, paths.runtimeDir, process.platform === 'win32' ? 'junction' : 'dir');
+diff --git a/test/domains/comet-native/native-status-discovery.test.ts b/test/domains/comet-native/native-status-discovery.test.ts
+index e29552f8..35cdbfc3 100644
+--- a/test/domains/comet-native/native-status-discovery.test.ts
++++ b/test/domains/comet-native/native-status-discovery.test.ts
+@@ -1,3 +1,4 @@
++import '../../helpers/isolated-agent-home.js';
+ import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
+ import { promises as fs } from 'node:fs';
+ import { execFileSync } from 'node:child_process';
+@@ -7,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+ 
+ import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
+ import { createFileRuntimeStore, type WorkflowRun } from '../../../domains/engine/runtime.js';
+-import { createNativeChange } from '../../../domains/comet-native/native-change.js';
++// SIMULATED historical document corpus for pagination/readonly discovery, not executable Runs.
++import { storedNativeChangeFixture } from '../../helpers/native-change-document.js';
+ import {
+   defaultProjectConfig,
+   writeProjectConfig,
+@@ -32,7 +34,7 @@ describe('Native status discovery pagination', () => {
+     const paths = await nativeProjectPaths(projectRoot, '.');
+     await ensureNativeDirectories(paths);
+     for (let index = 0; index < 25; index += 1) {
+-      await createNativeChange({
++      await storedNativeChangeFixture({
+         paths,
+         name: `change-${String(index).padStart(2, '0')}`,
+         language: 'en',
+@@ -62,7 +64,7 @@ describe('Native status discovery pagination', () => {
+       JSON.stringify({
+         operation: 'start',
+         runId: 'sdk-change',
+-        workflow: { id: 'comet-native', version: '1' },
++        workflow: { id: 'comet-native', version: '4' },
+         input: { name: 'sdk-change', artifactRootRef: '.' },
+         initialState: createNativePortableState({
+           name: 'sdk-change',
+diff --git a/test/domains/comet-native/native-status-v4-discovery.test.ts b/test/domains/comet-native/native-status-v4-discovery.test.ts
+index d48dabee..2fb897e3 100644
+--- a/test/domains/comet-native/native-status-v4-discovery.test.ts
++++ b/test/domains/comet-native/native-status-v4-discovery.test.ts
+@@ -1,3 +1,4 @@
++import '../../helpers/isolated-agent-home.js';
+ import { createHash } from 'node:crypto';
+ import { createFileRuntimeStore, type WorkflowRun } from '../../../domains/engine/runtime.js';
+ import { recoverSdkChangeOwnerToActive } from '../../../domains/workflow-contract/change-runtime-owner.js';
+@@ -11,7 +12,8 @@ import * as gitWorktree from '../../../platform/paths/git-worktree.js';
+ 
+ import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
+ import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+-import { createNativeChange } from '../../../domains/comet-native/native-change.js';
++// SIMULATED historical document, only for the mixed legacy/current read-only discovery case.
++import { storedNativeChangeFixture } from '../../helpers/native-change-document.js';
+ import {
+   defaultProjectConfig,
+   writeProjectConfig,
+@@ -126,48 +128,36 @@ describe('Native v4 registered-worktree status discovery', () => {
+     expect(await fs.readFile(checkpoint, 'utf8')).toBe('{invalid');
+   });
+ 
+-  it('filters named discovery before inspecting unrelated Runtime and shares worktree observations', async () => {
++  it('filters named discovery before inspecting unrelated documents without searching worktrees', async () => {
+     const repository = await createRepository();
+     roots.push(repository.root);
+-    const { runNativeCli } = await import('../../../domains/comet-native/native-cli.js');
+-    for (const name of ['target', 'unrelated']) {
+-      const root = addWorktree(repository, name, `comet/${name}`);
+-      const result = await runNativeCli([
+-        'new',
+-        name,
+-        '--runtime',
+-        'compat',
+-        '--project-root',
+-        root,
+-        '--json',
+-      ]);
+-      expect(result.exitCode).toBe(0);
+-    }
+-    const archiveDir = path.join(repository.root, 'docs/comet/archive/2026-09-10-unrelated');
++    const targetRoot = addWorktree(repository, 'target', 'comet/target');
++    const paths = await nativeProjectPaths(targetRoot, 'docs');
++    await ensureNativeDirectories(paths);
++    await createNativePortableChange({ paths, name: 'target', language: 'en' });
++    await storedNativeChangeFixture({ paths, name: 'unrelated', language: 'en' });
++    const archiveDir = path.join(targetRoot, 'docs/comet/archive/2026-09-10-unrelated');
+     await fs.mkdir(archiveDir, { recursive: true });
+     await fs.writeFile(path.join(archiveDir, 'comet-state.yaml'), 'corrupt: [');
+-    const read = vi.spyOn(fs, 'readFile');
+-    const list = vi.spyOn(gitWorktree, 'listGitWorktrees');
+-    const inspect = vi.spyOn(gitWorktree, 'inspectGitWorktree');
++    const read = vi.spyOn(fs, 'readFile'),
++      list = vi.spyOn(gitWorktree, 'listGitWorktrees'),
++      inspect = vi.spyOn(gitWorktree, 'inspectGitWorktree');
+     const { inspectDiscoveredNativeStatus } =
+       await import('../../../domains/comet-native/native-status-discovery.js');
+-    const status = await inspectDiscoveredNativeStatus({
+-      projectRoot: repository.root,
+-      name: 'target',
+-    });
++    const status = await inspectDiscoveredNativeStatus({ projectRoot: targetRoot, name: 'target' });
+     expect(status).toMatchObject({
+       name: 'target',
+       phase: 'shape',
+       workspace: { bindingState: 'aligned' },
+     });
+-    expect(list).toHaveBeenCalledTimes(1);
+-    expect(inspect).not.toHaveBeenCalled();
++    expect(list).not.toHaveBeenCalled();
++    expect(inspect).toHaveBeenCalledTimes(1);
+     const files = read.mock.calls.map(([file]) => String(file).replaceAll('\\', '/'));
+     expect(files.filter((file) => file.includes('/changes/unrelated/'))).toEqual([]);
+     expect(files.filter((file) => file.includes('/2026-09-10-unrelated/'))).toEqual([]);
+   });
+ 
+-  it('uses the portable adapter for named and list status from another registered worktree', async () => {
++  it('uses the portable adapter for named and list status with an explicit linked worktree', async () => {
+     const repository = await createRepository();
+     roots.push(repository.root);
+     const worktreeRoot = addWorktree(repository, 'portable-side', 'comet/portable-side');
+@@ -191,7 +181,7 @@ describe('Native v4 registered-worktree status discovery', () => {
+         '--details',
+         '--json',
+         '--project-root',
+-        repository.root,
++        worktreeRoot,
+       ]),
+     );
+     const namedData = named.data as {
+@@ -211,7 +201,7 @@ describe('Native v4 registered-worktree status discovery', () => {
+     expect(gitWorktree.samePath(namedData.workspace?.projectRoot ?? '', worktreeRoot)).toBe(true);
+ 
+     const shown = json(
+-      await runNativeCli(['show', 'portable-side', '--json', '--project-root', repository.root]),
++      await runNativeCli(['show', 'portable-side', '--json', '--project-root', worktreeRoot]),
+     );
+     const shownData = shown.data as {
+       state?: { name?: string };
+@@ -228,9 +218,7 @@ describe('Native v4 registered-worktree status discovery', () => {
+       ),
+     ).toBe(true);
+ 
+-    const listed = json(
+-      await runNativeCli(['status', '--json', '--project-root', repository.root]),
+-    );
++    const listed = json(await runNativeCli(['status', '--json', '--project-root', worktreeRoot]));
+     const listedData = listed.data as {
+       schema?: string;
+       total?: number;
+@@ -254,7 +242,7 @@ describe('Native v4 registered-worktree status discovery', () => {
+     ).toBe(true);
+   });
+ 
+-  it('finds an SDK-owned Native change in its linked worktree from the primary checkout', async () => {
++  it('finds an SDK-owned Native change with its explicit linked-worktree project root', async () => {
+     const repository = await createRepository();
+     roots.push(repository.root);
+     const worktreeRoot = addWorktree(repository, 'sdk-side', 'comet/sdk-side');
+@@ -264,7 +252,7 @@ describe('Native v4 registered-worktree status discovery', () => {
+       JSON.stringify({
+         operation: 'start',
+         runId: 'sdk-side',
+-        workflow: { id: 'comet-native', version: '1' },
++        workflow: { id: 'comet-native', version: '4' },
+         input: { name: 'sdk-side', artifactRootRef: 'docs' },
+         initialState: createNativePortableState({
+           name: 'sdk-side',
+@@ -287,7 +275,7 @@ describe('Native v4 registered-worktree status discovery', () => {
+     expect(started.response.status).toBe('succeeded');
+ 
+     const status = json(
+-      await runNativeCli(['status', 'sdk-side', '--json', '--project-root', repository.root]),
++      await runNativeCli(['status', 'sdk-side', '--json', '--project-root', worktreeRoot]),
+     );
+     const data = status.data as { workspace?: { projectRoot?: string; bindingState?: string } };
+     expect(data).toMatchObject({
+@@ -299,22 +287,13 @@ describe('Native v4 registered-worktree status discovery', () => {
+     expect(gitWorktree.samePath(data.workspace?.projectRoot ?? '', worktreeRoot)).toBe(true);
+   });
+ 
+-  it('merges portable and legacy changes instead of returning early on the current v4', async () => {
++  it('merges local portable and SIMULATED historical documents instead of returning early on current v4', async () => {
+     const repository = await createRepository();
+     roots.push(repository.root);
+-    const legacyRoot = addWorktree(repository, 'legacy-side', 'comet/legacy-side');
+-    const legacyPaths = await nativeProjectPaths(legacyRoot, 'docs');
+-    await ensureNativeDirectories(legacyPaths);
+-    await createNativeChange({ paths: legacyPaths, name: 'legacy-side', language: 'en' });
+-
+-    const portablePaths = await nativeProjectPaths(repository.root, 'docs');
+-    await ensureNativeDirectories(portablePaths);
+-    await createNativePortableChange({
+-      paths: portablePaths,
+-      name: 'portable-main',
+-      language: 'en',
+-    });
+-
++    const paths = await nativeProjectPaths(repository.root, 'docs');
++    await ensureNativeDirectories(paths);
++    await createNativePortableChange({ paths, name: 'portable-main', language: 'en' });
++    await storedNativeChangeFixture({ paths, name: 'legacy-side', language: 'en' });
+     const page = await listDiscoveredNativeStatusPage({ projectRoot: repository.root });
+     expect(page).toMatchObject({
+       schema: 'comet.native.status-page.v2',
+@@ -325,17 +304,15 @@ describe('Native v4 registered-worktree status discovery', () => {
+     expect(page.items.map(({ name }) => name)).toEqual(['legacy-side', 'portable-main']);
+     const legacyItem = page.items.find(({ name }) => name === 'legacy-side') as
+       { migrationRequired?: boolean; workspace?: { projectRoot?: string } } | undefined;
+-    expect(legacyItem).toMatchObject({
+-      migrationRequired: true,
+-    });
+-    expect(gitWorktree.samePath(legacyItem?.workspace?.projectRoot ?? '', legacyRoot)).toBe(true);
++    expect(legacyItem).toMatchObject({ migrationRequired: true });
++    expect(gitWorktree.samePath(legacyItem?.workspace?.projectRoot ?? '', repository.root)).toBe(
++      true,
++    );
+     const portableItem = page.items.find(({ name }) => name === 'portable-main') as
+-      { schema?: string; workspace?: { projectRoot?: string; bindingState?: string } } | undefined;
++      { workspace?: { projectRoot?: string } } | undefined;
+     expect(portableItem).toMatchObject({
+       schema: 'comet.native.status.v2',
+-      workspace: {
+-        bindingState: 'aligned',
+-      },
++      workspace: { bindingState: 'aligned' },
+       continuation: { action: 'prepare-shape-confirmation' },
+     });
+     expect(gitWorktree.samePath(portableItem?.workspace?.projectRoot ?? '', repository.root)).toBe(

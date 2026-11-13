@@ -451,6 +451,10 @@ for (const width of [1600, 1280, 390]) {
     if (width === 390)
       await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: /Comet settings/iu })).toHaveCSS(
+      'transform',
+      'none',
+    );
     await page
       .locator('.dashboard-settings-navigation')
       .getByRole('menuitem', { name: /Eval/ })

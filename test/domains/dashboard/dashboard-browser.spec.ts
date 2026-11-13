@@ -1551,6 +1551,7 @@ test('filters observability metrics and traces with one shared time range', asyn
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/?demo');
   await page.getByRole('menuitem', { name: '可观测' }).click();
+  await expect(page.getByRole('button', { name: '时间范围：所有', exact: true })).toBeVisible();
   await page.getByRole('tab', { name: '运行性能', exact: true }).click();
   const calls = page.locator('.runtime-performance-metrics > div').first().locator('dd');
   const allCalls = await calls.innerText();
@@ -1568,11 +1569,17 @@ test('filters observability metrics and traces with one shared time range', asyn
   );
   await choose('最近 7 天');
   await expect(page.locator('.change-trace-list > button')).toHaveCount(3);
+  await choose('所有');
+  await expect(page.getByRole('button', { name: '时间范围：所有', exact: true })).toBeVisible();
+  await expect(page.locator('.change-trace-list > button')).toHaveCount(3);
   await page.getByRole('tab', { name: '个人记忆', exact: true }).click();
   const hitDetail = page.locator('.usage-summary-stat-0 > small');
   await expect(hitDetail).toContainText('/24');
   await choose('最近 1 小时');
   await expect(hitDetail).toContainText('1/1');
+  await choose('所有');
+  await expect(hitDetail).toContainText('/24');
+  await choose('最近 1 小时');
   await page.getByRole('tab', { name: '项目知识', exact: true }).click();
   await expect(hitDetail).toContainText('1/1');
   await page.getByRole('button', { name: /^时间范围：/ }).click();
@@ -1590,6 +1597,20 @@ test('filters observability metrics and traces with one shared time range', asyn
     .locator('.ant-picker-input input')
     .nth(1)
     .fill(format(new Date(Date.now() - 300000)));
+  await custom.locator('.ant-picker-input input').nth(1).press('Tab');
+  await custom.getByRole('button', { name: '应用时间范围', exact: true }).click();
+  await expect(hitDetail).toContainText('0/0');
+  await page.getByRole('button', { name: /^时间范围：/ }).click();
+  await page.getByRole('menuitem', { name: '自定义时间范围', exact: true }).click();
+  await custom
+    .locator('.ant-picker-input input')
+    .nth(0)
+    .fill(format(new Date(Date.now() - 14 * 86400000)));
+  await custom.locator('.ant-picker-input input').nth(0).press('Tab');
+  await custom
+    .locator('.ant-picker-input input')
+    .nth(1)
+    .fill(format(new Date(Date.now() - 13 * 86400000)));
   await custom.locator('.ant-picker-input input').nth(1).press('Tab');
   await custom.getByRole('button', { name: '应用时间范围', exact: true }).click();
   await expect(hitDetail).toContainText('0/0');
@@ -4313,7 +4334,7 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '检查结果' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '阻塞项' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '执行历史' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '恢复状态' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '任务状态' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Git 摘要' })).toBeVisible();
   await expect(page.getByRole('tab', { name: '活跃', exact: true })).toBeVisible();
   await expect(page.getByRole('tab', { name: '已归档', exact: true })).toBeVisible();
@@ -4412,11 +4433,7 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
     }),
   ).toBeVisible();
   await expect(nativeArtifactPreview).toContainText('验收标准');
-  await expect(
-    page.locator('.dashboard-artifact-preview-panel > header > .dashboard-artifact-preview-close'),
-  ).toBeVisible();
-  await expect(page.getByRole('button', { name: '关闭产物预览' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '全屏展示' })).toHaveCount(0);
+  await expect(nativeArtifactPreview.getByRole('button', { name: '全屏展示' })).toBeVisible();
   await page.locator('.dashboard-artifact-preview-backdrop').click();
   await expect(page.getByRole('heading', { name: '需求简报' })).toBeHidden();
 
@@ -4466,7 +4483,7 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
     }),
   ).toBeVisible();
   await expect(classicArtifactPreview).toContainText('登录和令牌刷新接口在活动流量峰值期间');
-  await expect(page.getByRole('button', { name: '全屏展示' })).toHaveCount(0);
+  await expect(classicArtifactPreview.getByRole('button', { name: '全屏展示' })).toBeVisible();
   await page.locator('.dashboard-artifact-preview-backdrop').click();
   await expect(page.getByRole('heading', { name: '提案', level: 2 })).toBeHidden();
 
@@ -6799,12 +6816,12 @@ test('keeps Classic and Native side panels within the center panel height', asyn
       const nativeProgress = selectedNativeRow.getByRole('progressbar');
       await expect(nativeProgress).toHaveCount(1);
       await expect(nativeProgress).toHaveAttribute('aria-valuenow', '33');
-      const recoverySection = rightPanel
-        .getByRole('heading', { name: '恢复状态' })
+      const taskSection = rightPanel
+        .getByRole('heading', { name: '任务状态' })
         .locator('..')
         .locator('..');
-      await expect(recoverySection).toContainText('与当前 YAML 一致');
-      await expect(recoverySection).toContainText('Builder');
+      await expect(taskSection).toContainText('已领取任务');
+      await expect(taskSection).toContainText('Builder');
     }
 
     const metrics = await workspace.evaluate((element) => {
@@ -7646,7 +7663,7 @@ test('opens the Any proposal on the first frame without a height transition', as
     .toBe(0);
 });
 
-test('animates artifact previews and exposes only the close control', async ({ page }) => {
+test('animates artifact previews and exposes the fullscreen control', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/?demo');
   await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
@@ -7654,10 +7671,9 @@ test('animates artifact previews and exposes only the close control', async ({ p
   await open.click();
   const panel = page.locator('.dashboard-artifact-preview-panel');
   await expect(panel).toHaveCSS('animation-name', 'dashboard-artifact-enter');
-  const close = page.getByRole('button', { name: '关闭产物预览' });
-  await expect(close.locator('.anticon-close')).toBeVisible();
-  await expect(panel.getByRole('button', { name: '全屏展示' })).toHaveCount(0);
-  await close.click();
+  const expand = panel.getByRole('button', { name: '全屏展示' });
+  await expect(expand.locator('.anticon-expand')).toBeVisible();
+  await page.locator('.dashboard-artifact-preview-backdrop').click();
   await expect(panel).toHaveCount(0);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await open.click();
@@ -7665,6 +7681,146 @@ test('animates artifact previews and exposes only the close control', async ({ p
   await page.keyboard.press('Escape');
   await expect(panel).toHaveCount(0);
 });
+
+for (const workflow of ['Native', 'Classic']) {
+  test(`shows the complete ${workflow} artifact without a truncation notice`, async ({ page }) => {
+    const { DEMO_SNAPSHOT } = await import('../../../domains/dashboard/web/demo.js');
+    const snapshot = structuredClone(DEMO_SNAPSHOT);
+    const content =
+      '# Complete artifact\n\n' +
+      'Full preview content. '.repeat(16000) +
+      '\n\n## 完整产物末尾🙂\n';
+    const native = snapshot.native.changes[0];
+    const classic = {
+      ...snapshot.changes.active[0],
+      artifactPreviews: [
+        {
+          key: 'proposal',
+          label: '提案',
+          path: 'proposal.md',
+          exists: true,
+          content: '',
+          size: 0,
+          truncated: false,
+        },
+      ],
+    };
+    const preview =
+      workflow === 'Native'
+        ? native.artifacts.find((item) => item.key === 'brief')!
+        : classic.artifactPreviews.find((item) => item.key === 'proposal')!;
+    preview.content = content;
+    preview.size = Buffer.byteLength(content);
+    // Legacy flags must not append a synthetic truncation paragraph to complete content.
+    preview.truncated = true;
+    await page.route('**/api/dashboard/**', async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname === '/api/dashboard/projects')
+        return route.fulfill({
+          json: {
+            currentProjectId: 'full-preview',
+            projects: [
+              {
+                id: 'full-preview',
+                name: 'Full preview',
+                path: '/fixture',
+                availability: 'available',
+                isCurrent: true,
+                defaultWorkflow: workflow.toLowerCase(),
+                workflowSource: 'configured',
+              },
+            ],
+          },
+        });
+      if (pathname.endsWith('/overview'))
+        return route.fulfill({
+          json: {
+            ...snapshot,
+            initialChanges: { status: 'active', items: [classic], total: 1, nextCursor: null },
+          },
+        });
+      if (pathname.endsWith('/change-summary'))
+        return route.fulfill({ json: { items: [classic], total: 1 } });
+      if (pathname.endsWith('/native-changes'))
+        return route.fulfill({ json: { items: [native], total: 1, nextCursor: null } });
+      if (pathname.endsWith('/changes'))
+        return route.fulfill({ json: { items: [classic], total: 1, nextCursor: null } });
+      if (pathname.endsWith('/native-change')) return route.fulfill({ json: native });
+      if (pathname.endsWith('/change')) return route.fulfill({ json: classic });
+      return route.fulfill({ json: { pages: [] } });
+    });
+    await page.goto('/');
+    await page.getByRole('menuitem', { name: `${workflow} 工作流` }).click();
+    const open =
+      workflow === 'Native'
+        ? page.getByRole('button', { name: '需求简报' })
+        : page.getByRole('button').filter({ hasText: 'proposal' }).first();
+    await open.click();
+    const panel = page.locator('.dashboard-artifact-preview-panel');
+    await expect(panel.getByRole('heading', { name: '完整产物末尾🙂' })).toBeAttached();
+    await expect(panel.getByText('内容过长，已截取前 256KB。', { exact: true })).toHaveCount(0);
+    await panel.getByRole('button', { name: '全屏展示' }).click();
+    await panel
+      .getByRole('navigation', { name: '文档目录' })
+      .getByRole('link', { name: '完整产物末尾🙂' })
+      .click();
+    await expect(panel.getByRole('heading', { name: '完整产物末尾🙂' })).toBeInViewport();
+  });
+
+  test(`expands ${workflow} artifact previews and restores them without closing`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/?demo');
+    await page.getByRole('menuitem', { name: `${workflow} 工作流` }).click();
+    const open =
+      workflow === 'Native'
+        ? page.getByRole('button', { name: '需求简报' })
+        : page.getByRole('button').filter({ hasText: 'proposal' }).first();
+    await open.click();
+    const panel = page.locator('.dashboard-artifact-preview-panel');
+    const article = panel.locator('article');
+    await expect(article).toBeVisible();
+    const content = await article.innerText();
+    const expand = panel.getByRole('button', { name: '全屏展示' });
+    await expect(panel.getByRole('button', { name: '关闭产物预览' })).toHaveCount(0);
+    await expand.click();
+    await expect(panel).toHaveClass(/is-fullscreen/);
+    await expect(panel.getByRole('navigation', { name: '文档目录' })).toBeVisible();
+    await expect(panel).toHaveJSProperty('clientWidth', 1440);
+    await page.screenshot({
+      path: test.info().outputPath(`${workflow.toLowerCase()}-artifact-fullscreen.png`),
+    });
+    const tocLink = panel.getByRole('navigation', { name: '文档目录' }).getByRole('link').last();
+    await tocLink.click();
+    const targetId = (await tocLink.getAttribute('href'))!.slice(1);
+    await expect(article.locator(`[id="${targetId}"]`)).toBeInViewport();
+    await expect
+      .poll(() => article.evaluate((element) => element.parentElement!.scrollTop))
+      .toBeGreaterThan(0);
+    await expect(article).toHaveText(content, { useInnerText: true });
+    await panel.getByRole('button', { name: '退出全屏' }).click();
+    await expect(panel).not.toHaveClass(/is-fullscreen/);
+    await expect(article).toHaveText(content, { useInnerText: true });
+    await expand.click();
+    await page.keyboard.press('Escape');
+    await expect(panel).not.toHaveClass(/is-fullscreen/);
+    await expect(panel).toBeVisible();
+    await page.locator('.dashboard-artifact-preview-backdrop').click();
+    await expect(panel).toHaveCount(0);
+    await open.click();
+    await expect(panel).not.toHaveClass(/is-fullscreen/);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expand.click();
+    await expect(panel).toHaveClass(/is-fullscreen/);
+    await expect(panel).toHaveJSProperty('clientWidth', 390);
+    await expect(panel.getByRole('button', { name: '退出全屏' })).toBeInViewport();
+    await page.keyboard.press('Escape');
+    await expect(panel).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+  });
+}
 
 test('explains external memory and knowledge service fields before saving', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });

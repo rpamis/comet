@@ -1,27 +1,12 @@
-import { createHash } from 'node:crypto';
-import path from 'node:path';
-import {
-  hashRuntimeValue,
-  portableClaimToken,
-  type RuntimeAction,
-  type WorkflowRun,
-} from '../engine/runtime.js';
-import { annotatedMarkdown, archivedClassicDocumentRef } from './classic-archive-annotation.js';
-import { readClassicProjectFile } from './classic-protected-path.js';
-import { classicTaskRevision } from './classic-tasks.js';
+import type { RuntimeAction, WorkflowRun } from '../engine/runtime.js';
 import { classicDeliveryActionContext } from './classic-sdk-delivery-repair-model.js';
 
-interface DocumentReceipt {
-  ref: string;
-  contentHash: string;
-}
 interface ArchiveDocumentOutputs {
   outputs: Record<string, unknown>;
   recovered: boolean;
-  evidence?: { design: DocumentReceipt; plan: DocumentReceipt };
 }
 
-/** 显式续行不继承旧执行结果；仍有效的 Design 与 Plan 使用原接受来源。 */
+/** 重开验收沿用原已接受 Build 的 Design/Plan，不借用已删除的检查执行证据。 */
 export function classicArchiveDocumentOutputs(
   run: Readonly<WorkflowRun>,
   action: Readonly<RuntimeAction>,
@@ -34,183 +19,53 @@ export function classicArchiveDocumentOutputs(
   }
   const outputs = (action.input as { outputs?: Record<string, unknown> }).outputs ?? {};
   if (outputs['full.build.plan'] !== undefined) return { outputs, recovered: false };
-  const actionSequence = run.actionContexts[action.id]?.sequence;
-  if (actionSequence === undefined) return { outputs, recovered: false };
-  const command =
-    run.commands?.find(
-      (entry) => entry.name === 'refresh-checks' && entry.actionId === action.id,
-    ) ??
-    run.commands
-      ?.slice()
-      .reverse()
-      .find((entry) => (run.actionContexts[entry.actionId]?.sequence ?? Infinity) < actionSequence);
-  if (command?.name === 'refresh-checks') {
-    const refresh = run.actions.find((entry) => entry.id === command.actionId);
-    const sourceActionId = (
-      refresh?.input as { activation?: { sourceActionId?: unknown } } | undefined
-    )?.activation?.sourceActionId;
-    const source = run.actions.find((entry) => entry.id === sourceActionId);
-    if (
-      refresh?.ref !== 'classic-check' ||
-      !source ||
-      source.ref !== 'classic-check' ||
-      !(
-        source.status === 'succeeded' ||
-        (source.status === 'failed' &&
-          run.commands?.some(
-            (entry) => entry.name === 'refresh-checks' && entry.actionId === source.id,
-          ))
-      ) ||
-      !source.outcome ||
-      (run.actionContexts[source.id]?.sequence ?? Infinity) >=
-        (run.actionContexts[refresh.id]?.sequence ?? -Infinity)
-    )
-      return { outputs, recovered: false };
-    return classicArchiveDocumentOutputs(run, source);
-  }
+  const sequence = run.actionContexts[action.id]?.sequence;
+  if (sequence === undefined) return { outputs, recovered: false };
+  const command = [...(run.commands ?? [])]
+    .reverse()
+    .find(
+      (entry) =>
+        entry.actionId === action.id ||
+        (run.actionContexts[entry.actionId]?.sequence ?? Infinity) < sequence,
+    );
   if (!command || !['reopen-verification', 'continue-build'].includes(command.name))
     return { outputs, recovered: false };
   const reopenedAt = run.actionContexts[command.actionId].sequence;
-  // 先找最近一轮，再检查结果；失效或未验收的新轮次不能回退到更老的成功。
-  const accepted = run.evidenceWaits
-    ?.slice()
+  const builders = [...run.actions]
     .reverse()
-    .find((wait) => wait.stepId === 'full.build.check.evidence' && wait.sequence < reopenedAt);
-  const result = accepted?.results['full.build.check'];
-  const checked = run.actions.find(
-    (entry) =>
-      entry.stepId === 'full.build.check' &&
-      run.actionContexts[entry.id]?.sequence === result?.sequence,
-  );
-  const receipt = checked?.outcome?.output as
-    { receiptRef?: string; contentHash?: string } | undefined;
+    .filter(
+      (entry) =>
+        entry.stepId === 'full.build.execute' &&
+        (run.actionContexts[entry.id]?.sequence ?? Infinity) < reopenedAt,
+    );
+  const accepted = builders[0];
   if (
-    accepted?.status !== 'resolved' ||
-    !accepted.receipt ||
-    !result ||
-    checked?.status !== 'succeeded' ||
-    checked.outcome?.status !== 'succeeded' ||
-    hashRuntimeValue(checked.outcome.output) !== hashRuntimeValue(result.value) ||
-    accepted.receipt.ref !== receipt?.receiptRef ||
-    accepted.receipt.contentHash !== receipt?.contentHash ||
-    run.commands?.some((entry) => {
-      const sequence = run.actionContexts[entry.actionId]?.sequence;
-      return (
-        ['revise-design', 'revise-plan'].includes(entry.name) &&
-        sequence !== undefined &&
-        sequence > accepted.sequence &&
-        sequence < reopenedAt
-      );
-    })
+    accepted?.status !== 'succeeded' ||
+    accepted.outcome?.status !== 'succeeded' ||
+    (accepted.outcome.output as { event?: unknown }).event !== 'build-complete'
   )
     return { outputs, recovered: false };
-  const inherited: ArchiveDocumentOutputs = accepted.results['full.build.plan']
-    ? {
-        recovered: false,
-        outputs: Object.fromEntries(
-          Object.entries(accepted.results).map(([step, value]) => [step, value.value]),
-        ),
-      }
-    : classicArchiveDocumentOutputs(run, checked);
-  return recoveredArchiveDocuments(inherited);
-}
-
-function recoveredArchiveDocuments(inherited: ArchiveDocumentOutputs): ArchiveDocumentOutputs {
-  const source = inherited.outputs;
-  return {
-    outputs: Object.fromEntries(
-      Object.entries(source).filter(([step]) =>
-        ['full.design.document', 'full.build.plan'].includes(step),
-      ),
-    ),
-    recovered: true,
-    evidence: inherited.evidence ?? {
-      design: (source['full.design.evidence'] ??
-        (source['full.build.plan'] as { designEvidence?: unknown })
-          ?.designEvidence) as DocumentReceipt,
-      plan: source['full.build.plan.evidence'] as DocumentReceipt,
-    },
-  };
-}
-
-/** 旧版已归档 Run 也必须携带原验收正文，只允许确定性的归档注记。 */
-export async function assertClassicRecoveredArchiveDocuments(options: {
-  projectRoot: string;
-  run: Readonly<WorkflowRun>;
-  archiveRef: string;
-  activeRef: string;
-  designRef: string;
-  planRef: string;
-  committedDesign: string;
-  committedPlan: string;
-  evidence: ArchiveDocumentOutputs['evidence'];
-}): Promise<void> {
-  const { projectRoot, run, archiveRef, activeRef, designRef, planRef, evidence } = options;
-  const archiveAction = run.actions
-    .slice()
-    .reverse()
-    .find(
-      (action) =>
-        action.stepId === 'full.archive.execute' &&
-        action.status === 'succeeded' &&
-        (action.outcome?.output as { archiveDirectory?: string } | undefined)?.archiveDirectory ===
-          archiveRef,
-    );
-  const receipt = JSON.parse(
-    await readClassicProjectFile(projectRoot, `${archiveRef}/.comet/archive-documents.json`, {
-      label: 'Classic Archive document receipt',
-    }),
-  );
-  if (
-    !archiveAction?.claim ||
-    receipt.runId !== run.runId ||
-    receipt.actionId !== archiveAction.id ||
-    receipt.attempt !== archiveAction.attempt ||
-    receipt.inputHash !== archiveAction.inputHash ||
-    receipt.claimToken !== portableClaimToken(archiveAction.claim.token) ||
-    evidence?.design?.ref !== designRef ||
-    evidence.plan?.ref !== planRef
-  )
-    throw new Error('Classic recovered Archive document evidence is missing or changed');
-  const design = receipt.documents?.[designRef];
-  const plan = receipt.documents?.[planRef];
-  if (
-    typeof design?.original !== 'string' ||
-    design.extraFields !== 'status: final' ||
-    typeof plan?.original !== 'string' ||
-    plan.extraFields !== ''
-  )
-    throw new Error('Classic recovered Archive document receipt is invalid');
-  const digest = (source: string) => createHash('sha256').update(source).digest('hex');
-  const tasks = await readClassicProjectFile(projectRoot, `${archiveRef}/tasks.md`, {
-    label: 'Classic archived task requirements',
-  });
-  // Plan evidence binds both the original plan bytes and the canonical task scope.
-  const planHash = digest(
-    JSON.stringify([
-      [planRef, digest(plan.original)],
-      [`${activeRef}/tasks.md`, classicTaskRevision(tasks)],
-    ]),
-  );
-  if (
-    digest(design.original) !== evidence.design.contentHash ||
-    planHash !== evidence.plan.contentHash
-  )
-    throw new Error('Classic recovered Archive document receipt does not match accepted evidence');
-  const name = path.posix.basename(archiveRef);
-  for (const [ref, original, extraFields, committed] of [
-    [designRef, design.original, 'status: final', options.committedDesign],
-    [planRef, plan.original, '', options.committedPlan],
-  ]) {
-    const expected = annotatedMarkdown(original, name, extraFields);
-    const current = await readClassicProjectFile(
-      projectRoot,
-      archivedClassicDocumentRef(ref, activeRef, archiveRef)!,
-      {
-        label: 'Classic recovered Archive document',
+  for (const builder of builders) {
+    const builtAt = run.actionContexts[builder.id].sequence;
+    if (
+      run.commands?.some(
+        (entry) =>
+          ['revise-design', 'revise-plan'].includes(entry.name) &&
+          run.actionContexts[entry.actionId]?.sequence > builtAt &&
+          run.actionContexts[entry.actionId].sequence < reopenedAt,
+      )
+    )
+      break;
+    const source = (builder.input as { outputs?: Record<string, unknown> }).outputs;
+    if (source?.['full.build.plan'] === undefined || source['full.design.document'] === undefined)
+      continue;
+    return {
+      recovered: true,
+      outputs: {
+        'full.design.document': source['full.design.document'],
+        'full.build.plan': source['full.build.plan'],
       },
-    );
-    if (current !== expected || committed !== expected)
-      throw new Error(`Classic recovered Archive document changed after accepted evidence: ${ref}`);
+    };
   }
+  return { outputs, recovered: false };
 }

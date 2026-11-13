@@ -1,5 +1,16 @@
 import path from 'path';
-import { stringify, parseDocument, isAlias, isMap, isScalar } from 'yaml';
+import { isDeepStrictEqual } from 'node:util';
+import {
+  stringify,
+  parseDocument,
+  isAlias,
+  isMap,
+  isSeq,
+  isScalar,
+  isNode,
+  type Document,
+  type YAMLMap,
+} from 'yaml';
 
 import type {
   ClassicArtifactLayout,
@@ -14,18 +25,16 @@ import type {
   WorkflowNativeEnabledProjectConfig,
   WorkflowNativePendingRootMove,
   WorkflowNativeProjectConfig,
-  WorkflowNativeSnapshotConfig,
   WorkflowProjectConfig,
 } from './types.js';
 
 export type ProjectConfigCommentLanguage = 'en' | 'zh-CN';
 
 export const WORKFLOW_PROJECT_CONFIG_MAX_BYTES = Number.MAX_SAFE_INTEGER;
-export const MAX_WORKFLOW_SNAPSHOT_PATTERN_LENGTH = 1024;
-export const MAX_WORKFLOW_SNAPSHOT_PATTERN_WILDCARDS = 64;
 export const MAX_WORKFLOW_KNOWLEDGE_INCLUDE_PATTERN_LENGTH = 1024;
 export const MAX_WORKFLOW_KNOWLEDGE_INCLUDE_PATTERN_WILDCARDS = 64;
 export const DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES = 5;
+export const DEFAULT_WORKFLOW_NATIVE_MAX_PARALLEL_CHILDREN = 2;
 export const DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG: WorkflowMemoryProjectConfig = {
   learning: true,
   retrieval: true,
@@ -43,126 +52,6 @@ export const MAX_WORKFLOW_CLASSIC_CHECK_TIMEOUT_MS = 3_600_000;
 
 export const DEFAULT_WORKFLOW_NATIVE_PULL_REQUEST_FINISH_TIMEOUT_MS = 120_000;
 export const MAX_WORKFLOW_NATIVE_PULL_REQUEST_FINISH_TIMEOUT_MS = 600_000;
-
-// `comet init` installs the built-in Skills into every supported platform's
-// project-local Skill directory. A Native baseline describes the project being
-// changed, not these replicated, tool-managed copies. Keeping them outside the
-// default scope also keeps a newly initialized, non-Git project within the
-// bounded physical snapshot budget.
-const DEFAULT_WORKFLOW_NATIVE_MANAGED_SKILL_EXCLUDES = [
-  '.agents/skills/**',
-  '.amazonq/skills/**',
-  '.augment/skills/**',
-  '.bob/skills/**',
-  '.claude/skills/**',
-  '.cline/skills/**',
-  '.codebuddy/skills/**',
-  '.workbuddy/skills/**',
-  '.continue/skills/**',
-  '.cospec/skills/**',
-  '.crush/skills/**',
-  '.cursor/skills/**',
-  '.devin/skills/**',
-  '.dsh/skills/**',
-  '.factory/skills/**',
-  '.forge/skills/**',
-  '.gemini/skills/**',
-  '.github/skills/**',
-  '.grok/skills/**',
-  '.iflow/skills/**',
-  '.junie/skills/**',
-  '.kilocode/skills/**',
-  '.kimi-code/skills/**',
-  '.kiro/skills/**',
-  '.lingma/skills/**',
-  '.mimocode/skills/**',
-  '.minimax/skills/**',
-  '.opencode/skills/**',
-  '.omp/skills/**',
-  '.pi/skills/**',
-  '.prime/agent/skills/**',
-  '.qoder/skills/**',
-  '.qwen/skills/**',
-  '.roo/skills/**',
-  '.trae-cn/skills/**',
-  '.trae/skills/**',
-  '.windsurf/skills/**',
-  '.zcode/skills/**',
-] as const;
-
-// Native snapshots describe source and project intent, not dependency trees,
-// IDE metadata, caches, test output, or compiler output. The generated-path
-// defaults below apply at every directory depth so monorepos do not pull
-// generated folders into a baseline just because they are nested below the
-// project root.
-const DEFAULT_WORKFLOW_NATIVE_GENERATED_EXCLUDES = [
-  '**/.idea/**',
-  '**/.vscode/**',
-  '.codex/skills/**',
-  '**/node_modules/**',
-  '**/.next/**',
-  '**/.nuxt/**',
-  '**/.output/**',
-  '**/.svelte-kit/**',
-  '**/.vite/**',
-  '**/.parcel-cache/**',
-  '**/.turbo/**',
-  '**/.nx/cache/**',
-  '**/dist/**',
-  '**/build/**',
-  '**/out/**',
-  '**/coverage/**',
-  '**/.nyc_output/**',
-  '**/target/**',
-  '**/.gradle/**',
-  '**/.cxx/**',
-  '**/.externalNativeBuild/**',
-  '**/captures/**',
-  '**/__pycache__/**',
-  '**/.pytest_cache/**',
-  '**/.mypy_cache/**',
-  '**/.ruff_cache/**',
-  '**/.tox/**',
-  '**/.nox/**',
-  '**/.venv/**',
-  '**/venv/**',
-  '**/obj/**',
-  '**/CMakeFiles/**',
-  '**/cmake-build-*/**',
-  '**/.cache/**',
-  '**/tmp/**',
-  '**/temp/**',
-  '**/logs/**',
-  '**/*.tsbuildinfo',
-  '**/*.log',
-  '**/.DS_Store',
-  '**/Thumbs.db',
-] as const;
-
-export const DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_EXCLUDES = [
-  ...DEFAULT_WORKFLOW_NATIVE_MANAGED_SKILL_EXCLUDES,
-  ...DEFAULT_WORKFLOW_NATIVE_GENERATED_EXCLUDES,
-].sort((left, right) => left.localeCompare(right, 'en'));
-
-export function mergeWorkflowNativeSnapshotExcludes(exclude: readonly string[]): string[] {
-  const merged = [...exclude];
-  const seen = new Set(exclude);
-  for (const pattern of DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_EXCLUDES) {
-    if (seen.has(pattern)) continue;
-    seen.add(pattern);
-    merged.push(pattern);
-  }
-  return merged;
-}
-
-export const DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG: WorkflowNativeSnapshotConfig = {
-  include: ['**/*'],
-  exclude: [...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_EXCLUDES],
-  max_files: 10_000,
-  max_total_bytes: 1024 * 1024 * 1024,
-  max_duration_ms: 60_000,
-  max_selection_records: 20_000,
-};
 
 type ProjectConfigCommentKey =
   | 'schema'
@@ -192,15 +81,9 @@ type ProjectConfigCommentKey =
   | 'native.clarification_mode'
   | 'native.archive_confirmation'
   | 'native.max_verify_failures'
+  | 'native.max_parallel_children'
   | 'native.document_writes'
   | 'native.finish'
-  | 'native.snapshot'
-  | 'native.snapshot.include'
-  | 'native.snapshot.exclude'
-  | 'native.snapshot.max_files'
-  | 'native.snapshot.max_total_bytes'
-  | 'native.snapshot.max_duration_ms'
-  | 'native.snapshot.max_selection_records'
   | 'classic'
   | 'classic.artifact_layout'
   | 'classic.language'
@@ -252,24 +135,12 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
       '# Controls whether Native archives automatically after a successful preview or waits for explicit user confirmation.\n# archive_confirmation: automatic | required',
     'native.max_verify_failures':
       '# Maximum failed Verify outcomes allowed for one confirmed acceptance target before Native stops the completion loop.',
+    'native.max_parallel_children':
+      '# Maximum dispatched Supervisor children awaiting integration and archive. Defaults to 2; single-session always uses 1. Changes apply at the next dispatch.',
     'native.document_writes':
       '# Controls documentation file writes during Shape, Verify, and Archive: allow treats them as neutral instead of returning the change to Build, revert restores the strict behavior.\n# document_writes: allow | revert',
     'native.finish':
       '# Optional repository-owned finish providers. Native keeps commit, push, generic remote verification, and recovery ownership.',
-    'native.snapshot':
-      '# Controls the auditable project scope and bounded work used by Native content snapshots.',
-    'native.snapshot.include':
-      '# Selects the project-relative paths included in Native snapshots. Patterns use / and support *, **, and ?.',
-    'native.snapshot.exclude':
-      '# Removes paths from the included scope. Exclusions are bound into each new change baseline.',
-    'native.snapshot.max_files':
-      '# Bounds the number of files captured by one snapshot. Increase it for large monorepos.',
-    'native.snapshot.max_total_bytes':
-      '# Bounds the total file content hashed by one snapshot. Content is streamed and does not depend on Git hashes.',
-    'native.snapshot.max_duration_ms':
-      '# Bounds snapshot capture time in milliseconds. Increase it together with the byte budget on slower or larger repositories.',
-    'native.snapshot.max_selection_records':
-      '# Bounds Git selection records and physical enumeration nodes per snapshot. Raise it for monorepos whose tracked plus untracked file list exceeds the default.',
     classic: '# Classic workflow settings. They do not change Native state or behavior.',
     'classic.artifact_layout':
       '# Selects the Classic artifact layout. The default is docs; update preserves detected root-level legacy artifacts.\n# artifact_layout: legacy | docs',
@@ -322,20 +193,12 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
       '# Native 归档检查成功后自动归档，或等待用户明确确认。\n# 可选值：automatic | required',
     'native.max_verify_failures':
       '# 同一个已确认验收目标最多允许的 Verify 失败次数；达到上限后停止完成循环。',
+    'native.max_parallel_children':
+      '# Supervisor 已派发且尚未完成集成归档的子任务上限；默认 2，single-session 固定为 1；调整从下一轮派发生效。',
     'native.document_writes':
       '# Shape、Verify 和 Archive 阶段的文档类写入处理方式：allow 视为中性写入、不再把 change 打回 Build，revert 恢复严格行为。\n# 可选值：allow | revert',
     'native.finish':
       '# 可选的仓库自有收尾 provider；提交、推送、通用远端核验和恢复仍由 Native 负责。',
-    'native.snapshot': '# Native 内容快照使用的可审计项目范围与有界工作预算。',
-    'native.snapshot.include': '# Native 快照纳入的项目相对路径；模式使用 /，支持 *、** 和 ?。',
-    'native.snapshot.exclude': '# 从纳入范围中排除路径；新 change 会把排除策略绑定到 baseline。',
-    'native.snapshot.max_files': '# 单次快照最多捕获的文件数；大型 monorepo 可按需提高。',
-    'native.snapshot.max_total_bytes':
-      '# 单次快照最多哈希的文件内容总字节数；内容采用流式读取，不依赖 Git hash。',
-    'native.snapshot.max_duration_ms':
-      '# 单次快照的最长执行时间（毫秒）；较慢或更大的仓库应与字节预算一并提高。',
-    'native.snapshot.max_selection_records':
-      '# 单次快照的 Git 选择记录数与物理枚举节点数上限；tracked 加 untracked 清单超过默认值的大型 monorepo 可按需提高。',
     classic: '# Classic 工作流配置，不会改变 Native 的状态或行为。',
     'classic.artifact_layout':
       '# Classic 产物布局；默认使用 docs，update 检测到根目录 legacy 产物时予以保留。\n# 可选值：legacy | docs',
@@ -362,7 +225,6 @@ export function projectConfigComment(
 function commentKey(
   line: string,
   block: 'native' | 'classic' | 'hook' | 'memory' | 'knowledge' | null,
-  nativeNested: 'snapshot' | null,
   knowledgeNested: 'local' | 'remote' | null,
 ): ProjectConfigCommentKey | null {
   const match = /^(\s*)([a-z_]+):/u.exec(line);
@@ -386,23 +248,20 @@ function commentKey(
   if (indent === 2 && block === 'hook' && key === 'allow_paths') {
     return 'hook.allow_paths';
   }
-  if (indent === 4 && block === 'native' && nativeNested === 'snapshot') {
-    const nestedKey = `native.snapshot.${key}` as ProjectConfigCommentKey;
-    if (nestedKey in COMMENTS.en) return nestedKey;
-  }
+
   return null;
 }
 
 export function renderStructuredProjectConfig(
   value: Record<string, unknown>,
   language: ProjectConfigCommentLanguage,
+  source?: string | null,
 ): string {
   const output: string[] = [];
   let block: 'native' | 'classic' | 'hook' | 'memory' | 'knowledge' | null = null;
-  let nativeNested: 'snapshot' | null = null;
   let knowledgeNested: 'local' | 'remote' | null = null;
   for (const line of stringify(value).trimEnd().split('\n')) {
-    const key = commentKey(line, block, nativeNested, knowledgeNested);
+    const key = commentKey(line, block, knowledgeNested);
     if (key) {
       const indent = line.match(/^\s*/u)?.[0] ?? '';
       for (const comment of projectConfigComment(key, language).split('\n')) {
@@ -417,10 +276,8 @@ export function renderStructuredProjectConfig(
       else if (line.startsWith('memory:')) block = 'memory';
       else if (line.startsWith('knowledge:')) block = 'knowledge';
       else block = null;
-      nativeNested = null;
       knowledgeNested = null;
     } else if (/^ {2}[a-z_]+:/u.test(line)) {
-      if (block === 'native') nativeNested = line.startsWith('  snapshot:') ? 'snapshot' : null;
       if (block === 'knowledge') {
         knowledgeNested = line.startsWith('  local:')
           ? 'local'
@@ -431,7 +288,149 @@ export function renderStructuredProjectConfig(
     }
   }
   output.push('');
-  return output.join('\n');
+  const rendered = output.join('\n');
+  if (!source) return rendered;
+  const original: Document = parseDocument(source, { uniqueKeys: true });
+  if (original.errors.length > 0) throw new Error(original.errors[0].message);
+  const template = parseDocument(rendered);
+  if (!isMap(original.contents) || !isMap(template.contents)) return rendered;
+  // YAML 将映射首项前的注释放在映射节点上；统一到键，避免键序变化时丢失或重复说明。
+  const attachLeadingComments = (node: unknown) => {
+    if (!isMap(node)) return;
+    const first = node.items[0];
+    if (node.commentBefore && first && isScalar(first.key)) {
+      first.key.commentBefore = [node.commentBefore, first.key.commentBefore]
+        .filter(Boolean)
+        .join('\n');
+      node.commentBefore = undefined;
+    }
+    for (const pair of node.items) attachLeadingComments(pair.value);
+  };
+  attachLeadingComments(original.contents);
+  attachLeadingComments(template.contents);
+  const previousValues = original.toJS() as Record<string, unknown>;
+  const targetClassic = template.get('classic', true);
+  if (isMap(targetClassic)) {
+    for (const pair of [...original.contents.items]) {
+      if (!isScalar(pair.key) || template.has(pair.key)) continue;
+      const key = String(pair.key.value);
+      if (!Object.hasOwn(COMMENTS.en, `classic.${key}`) || !targetClassic.has(key)) continue;
+      let classic = original.get('classic', true);
+      if (!isMap(classic)) {
+        const added = original.createPair('classic', {});
+        original.contents.items.push(added);
+        classic = added.value;
+      }
+      if (!isMap(classic)) continue;
+      const existing = classic.items.find((item) => isScalar(item.key) && item.key.value === key);
+      if (!existing) {
+        classic.items.push(pair);
+        previousValues.classic = {
+          ...(previousValues.classic as Record<string, unknown>),
+          [key]: previousValues[key],
+        };
+      } else {
+        if (isScalar(existing.key))
+          existing.key.commentBefore =
+            [pair.key.commentBefore, existing.key.commentBefore].filter(Boolean).join('\n') ||
+            undefined;
+        if (isNode(existing.value) && isNode(pair.value))
+          existing.value.comment =
+            [pair.value.comment, existing.value.comment].filter(Boolean).join('\n') || undefined;
+      }
+    }
+  }
+  const managedComments = new Set(
+    Object.values(COMMENTS).flatMap((comments) =>
+      Object.values(comments).flatMap((comment) =>
+        comment.split('\n').map((line) => line.replace(/^#\s?/u, '').trim()),
+      ),
+    ),
+  );
+  const merge = (
+    current: YAMLMap,
+    next: YAMLMap,
+    previous: Record<string, unknown>,
+    target: Record<string, unknown>,
+  ) => {
+    for (const pair of [...current.items]) {
+      if (!next.has(pair.key)) current.delete(pair.key);
+    }
+    for (const pair of next.items) {
+      const key = String(isScalar(pair.key) ? pair.key.value : pair.key);
+      const existing = current.items.find((item) =>
+        isScalar(item.key) && isScalar(pair.key) ? item.key.value === pair.key.value : false,
+      );
+      if (!existing) {
+        const added = original.createPair(key, target[key]);
+        if (isScalar(added.key) && isScalar(pair.key))
+          added.key.commentBefore = pair.key.commentBefore;
+        current.items.push(added);
+        if (isMap(added.value) && isMap(pair.value))
+          merge(
+            added.value,
+            pair.value,
+            target[key] as Record<string, unknown>,
+            target[key] as Record<string, unknown>,
+          );
+        continue;
+      }
+      if (isScalar(existing.key) && isScalar(pair.key)) {
+        const userComments = existing.key.commentBefore
+          ?.split('\n')
+          .filter((line) => !managedComments.has(line.trim()))
+          .join('\n');
+        existing.key.commentBefore =
+          [pair.key.commentBefore, userComments].filter(Boolean).join('\n') || undefined;
+      }
+      if (isMap(existing.value) && isMap(pair.value))
+        merge(
+          existing.value,
+          pair.value,
+          (previous[key] ?? {}) as Record<string, unknown>,
+          target[key] as Record<string, unknown>,
+        );
+      else if (!isDeepStrictEqual(previous[key], target[key])) {
+        const previous = existing.value;
+        existing.value = original.createNode(target[key]);
+        if (isNode(previous) && isNode(existing.value)) {
+          existing.value.comment = previous.comment;
+          existing.value.commentBefore = previous.commentBefore;
+          existing.value.spaceBefore = previous.spaceBefore;
+        }
+      }
+    }
+  };
+  merge(original.contents, template.contents, previousValues, value);
+  // anchor 被迁移或修改后，别名不能改变扩展字段的原值；只展开受影响的引用。
+  const stabilizeAliases = (node: unknown, target: unknown): unknown => {
+    if (isAlias(node)) {
+      let matches = false;
+      try {
+        matches = isDeepStrictEqual(node.toJS(original), target);
+      } catch {
+        /* 原 anchor 可能已迁到引用后方。 */
+      }
+      if (matches) return node;
+      const replacement = original.createNode(target);
+      replacement.comment = node.comment;
+      replacement.commentBefore = node.commentBefore;
+      replacement.spaceBefore = node.spaceBefore;
+      return replacement;
+    }
+    if (isMap(node)) {
+      for (const pair of node.items) {
+        const key = String(isScalar(pair.key) ? pair.key.value : pair.key);
+        pair.value = stabilizeAliases(pair.value, (target as Record<string, unknown>)[key]);
+      }
+    } else if (isSeq(node) && Array.isArray(target)) {
+      node.items = node.items.map((item, index) => stabilizeAliases(item, target[index]));
+    }
+    return node;
+  };
+  stabilizeAliases(original.contents, value);
+  const result = original.toString();
+  return source.includes('\r\n') ? result.replaceAll('\n', '\r\n') : result;
 }
 
 function projectRelativeSegments(value: unknown, label: string): string[] {
@@ -528,46 +527,7 @@ function projectConfigLanguage(
   return resolved;
 }
 
-export function normalizeWorkflowSnapshotPattern(value: unknown, label: string): string {
-  if (
-    typeof value !== 'string' ||
-    value.length === 0 ||
-    value.includes('\\') ||
-    value.includes('\0') ||
-    value.startsWith('/') ||
-    value.split('/').includes('..')
-  ) {
-    throw new Error(`${label} contains an unsafe pattern`);
-  }
-  if (value.length > MAX_WORKFLOW_SNAPSHOT_PATTERN_LENGTH) {
-    throw new Error(`${label} exceeds ${MAX_WORKFLOW_SNAPSHOT_PATTERN_LENGTH} characters`);
-  }
-  let wildcardTokens = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    if (value[index] === '?') {
-      wildcardTokens += 1;
-    } else if (value[index] === '*') {
-      wildcardTokens += 1;
-      if (value[index + 1] === '*') index += 1;
-    }
-  }
-  if (wildcardTokens > MAX_WORKFLOW_SNAPSHOT_PATTERN_WILDCARDS) {
-    throw new Error(
-      `${label} contains more than ${MAX_WORKFLOW_SNAPSHOT_PATTERN_WILDCARDS} wildcard tokens`,
-    );
-  }
-  return value;
-}
-
-function workflowSnapshotPatterns(value: unknown, label: string, fallback: string[]): string[] {
-  if (value === undefined) return [...fallback];
-  if (!Array.isArray(value)) throw new Error(`${label} contains an unsafe pattern`);
-  return [
-    ...new Set(value.map((pattern) => normalizeWorkflowSnapshotPattern(pattern, label))),
-  ].sort((left, right) => left.localeCompare(right, 'en'));
-}
-
-function positiveWorkflowSnapshotInteger(value: unknown, fallback: number, label: string): number {
+function positiveWorkflowInteger(value: unknown, fallback: number, label: string): number {
   const resolved = value ?? fallback;
   if (!Number.isSafeInteger(resolved) || (resolved as number) < 1) {
     throw new Error(`${label} must be a positive integer`);
@@ -576,54 +536,11 @@ function positiveWorkflowSnapshotInteger(value: unknown, fallback: number, label
 }
 
 function workflowKnowledgeLimitMb(value: unknown, fallback: number, label: string): number {
-  const resolved = positiveWorkflowSnapshotInteger(value, fallback, label);
+  const resolved = positiveWorkflowInteger(value, fallback, label);
   if (resolved > Math.floor(Number.MAX_SAFE_INTEGER / (1024 * 1024))) {
     throw new Error(`${label} is too large to convert to bytes safely`);
   }
   return resolved;
-}
-
-function normalizeWorkflowSnapshot(value: unknown): WorkflowNativeSnapshotConfig {
-  if (value === undefined) {
-    return {
-      ...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG,
-      include: [...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.include],
-      exclude: [...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.exclude],
-    };
-  }
-  const snapshot = projectConfigRecord(value, 'native.snapshot');
-  return {
-    include: workflowSnapshotPatterns(
-      snapshot.include,
-      'native.snapshot.include',
-      DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.include,
-    ),
-    exclude: workflowSnapshotPatterns(
-      snapshot.exclude,
-      'native.snapshot.exclude',
-      DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.exclude,
-    ),
-    max_files: positiveWorkflowSnapshotInteger(
-      snapshot.max_files,
-      DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.max_files,
-      'native.snapshot.max_files',
-    ),
-    max_total_bytes: positiveWorkflowSnapshotInteger(
-      snapshot.max_total_bytes,
-      DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.max_total_bytes,
-      'native.snapshot.max_total_bytes',
-    ),
-    max_duration_ms: positiveWorkflowSnapshotInteger(
-      snapshot.max_duration_ms,
-      DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.max_duration_ms,
-      'native.snapshot.max_duration_ms',
-    ),
-    max_selection_records: positiveWorkflowSnapshotInteger(
-      snapshot.max_selection_records,
-      DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.max_selection_records,
-      'native.snapshot.max_selection_records',
-    ),
-  };
 }
 
 function normalizeWorkflowPendingRootMove(
@@ -752,6 +669,13 @@ function normalizeWorkflowNativeProjectConfig(
   if (!Number.isSafeInteger(maxVerifyFailures) || (maxVerifyFailures as number) < 1) {
     throw new Error('native.max_verify_failures must be a positive integer');
   }
+  const maxParallelChildren =
+    native.max_parallel_children === undefined
+      ? DEFAULT_WORKFLOW_NATIVE_MAX_PARALLEL_CHILDREN
+      : native.max_parallel_children;
+  if (!Number.isSafeInteger(maxParallelChildren) || (maxParallelChildren as number) < 1) {
+    throw new Error('native.max_parallel_children must be a positive integer');
+  }
   const documentWrites = native.document_writes ?? 'allow';
   if (documentWrites !== 'allow' && documentWrites !== 'revert') {
     throw new Error('native.document_writes must be allow or revert');
@@ -764,8 +688,8 @@ function normalizeWorkflowNativeProjectConfig(
     clarification_mode: clarificationMode,
     archive_confirmation: archiveConfirmation,
     max_verify_failures: maxVerifyFailures as number,
+    max_parallel_children: maxParallelChildren as number,
     ...(documentWrites === 'revert' ? { document_writes: documentWrites } : {}),
-    snapshot: normalizeWorkflowSnapshot(native.snapshot),
     ...(finish ? { finish } : {}),
     ...(pending ? { pending_root_move: pending } : {}),
   };
@@ -1207,6 +1131,8 @@ export function workflowProjectConfigManagedValue(
             clarification_mode: config.native.clarification_mode,
             archive_confirmation: config.native.archive_confirmation,
             max_verify_failures: config.native.max_verify_failures,
+            max_parallel_children:
+              config.native.max_parallel_children ?? DEFAULT_WORKFLOW_NATIVE_MAX_PARALLEL_CHILDREN,
             ...(config.native.document_writes
               ? { document_writes: config.native.document_writes }
               : {}),
@@ -1334,6 +1260,7 @@ export function mergeWorkflowProjectConfigDocument(
       clarification_mode: validated.native.clarification_mode,
       archive_confirmation: validated.native.archive_confirmation,
       max_verify_failures: validated.native.max_verify_failures,
+      max_parallel_children: validated.native.max_parallel_children,
       ...(validated.native.document_writes
         ? { document_writes: validated.native.document_writes }
         : {}),
@@ -1356,8 +1283,7 @@ export function mergeWorkflowProjectConfigDocument(
       if (Object.keys(remainingFinish).length > 0) native.finish = remainingFinish;
       else delete native.finish;
     }
-    // Snapshot settings are retained by the parser as a legacy v1-v3 runtime
-    // default, but Native v4 no longer persists them in user configuration.
+    // 旧快照设置不参与当前流程；升级写回时移除。
     delete native.snapshot;
     if (validated.native.pending_root_move) {
       const existingPending = optionalRecord(existingNative.pending_root_move);
@@ -1410,11 +1336,7 @@ export function defaultWorkflowProjectConfig(
       clarification_mode: 'batch',
       archive_confirmation: 'automatic',
       max_verify_failures: DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES,
-      snapshot: {
-        ...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG,
-        include: [...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.include],
-        exclude: [...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.exclude],
-      },
+      max_parallel_children: DEFAULT_WORKFLOW_NATIVE_MAX_PARALLEL_CHILDREN,
     },
   };
 }
@@ -2308,54 +2230,6 @@ function workflowConfigLanguage(value, fallback, label) {
   return resolved;
 }
 
-function workflowSnapshotPattern(value, label) {
-  if (
-    typeof value !== 'string' ||
-    value.length === 0 ||
-    value.includes('\\') ||
-    value.includes('\0') ||
-    value.startsWith('/') ||
-    value.split('/').includes('..')
-  ) {
-    throw new Error(label + ' contains an unsafe pattern');
-  }
-  if (value.length > 1024) throw new Error(label + ' exceeds 1024 characters');
-  let wildcardTokens = 0;
-  for (let index = 0; index < value.length; index++) {
-    if (value[index] === '?') {
-      wildcardTokens++;
-    } else if (value[index] === '*') {
-      wildcardTokens++;
-      if (value[index + 1] === '*') index++;
-    }
-  }
-  if (wildcardTokens > 64) {
-    throw new Error(label + ' contains more than 64 wildcard tokens');
-  }
-}
-
-function validateWorkflowSnapshot(value) {
-  if (value === undefined) return;
-  const snapshot = workflowConfigRecord(value, 'native.snapshot');
-  for (const key of ['include', 'exclude']) {
-    if (snapshot[key] === undefined) continue;
-    if (!Array.isArray(snapshot[key])) {
-      throw new Error('native.snapshot.' + key + ' contains an unsafe pattern');
-    }
-    for (const pattern of snapshot[key]) {
-      workflowSnapshotPattern(pattern, 'native.snapshot.' + key);
-    }
-  }
-  for (const key of ['max_files', 'max_total_bytes', 'max_duration_ms']) {
-    if (
-      snapshot[key] !== undefined &&
-      (!Number.isSafeInteger(snapshot[key]) || snapshot[key] < 1)
-    ) {
-      throw new Error('native.snapshot.' + key + ' must be a positive integer');
-    }
-  }
-}
-
 function validateWorkflowPendingRootMove(value) {
   if (value === undefined) return;
   const pending = workflowConfigRecord(value, 'native.pending_root_move');
@@ -2463,6 +2337,10 @@ function managedWorkflowConfigFields(source) {
     if (!Number.isSafeInteger(maxVerifyFailures) || maxVerifyFailures < 1) {
       throw new Error('native.max_verify_failures must be a positive integer');
     }
+    const maxParallelChildren = native.max_parallel_children === undefined ? 2 : native.max_parallel_children;
+    if (!Number.isSafeInteger(maxParallelChildren) || maxParallelChildren < 1) {
+      throw new Error('native.max_parallel_children must be a positive integer');
+    }
     const documentWrites = native.document_writes ?? 'allow';
     if (documentWrites !== 'allow' && documentWrites !== 'revert') {
       throw new Error('native.document_writes must be allow or revert');
@@ -2519,7 +2397,6 @@ function managedWorkflowConfigFields(source) {
         }
       }
     }
-    validateWorkflowSnapshot(native.snapshot);
     validateWorkflowPendingRootMove(native.pending_root_move);
   }
 

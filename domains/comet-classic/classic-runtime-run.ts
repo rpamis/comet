@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import { collectClassicEvidence } from './classic-evidence.js';
 import { ensureClassicRun, type ClassicRunContext } from './classic-migrate.js';
 import { resolveClassicStepId } from './classic-resolver.js';
-import { readClassicState, writeClassicState, withClassicStateLock } from './classic-store.js';
+import { readClassicState, writeClassicState, withClassicStateMutation } from './classic-store.js';
 import {
   CLASSIC_MIGRATION_VERSION,
   type ClassicState,
@@ -398,7 +398,7 @@ export async function reconcileClassicRuntimeRun(
   changeDir: string,
   existingProjection?: ClassicStateProjection,
 ): Promise<ClassicRuntimeReconciliation> {
-  return withClassicStateLock(changeDir, () =>
+  return withClassicStateMutation(changeDir, () =>
     reconcileClassicRuntimeRunLocked(changeDir, existingProjection),
   );
 }
@@ -459,7 +459,7 @@ export async function transitionClassicRuntimeRun(
   run: RunState,
   data: Record<string, unknown>,
 ): Promise<RunState> {
-  return withClassicStateLock(changeDir, () =>
+  return withClassicStateMutation(changeDir, () =>
     transitionClassicRuntimeRunLocked(changeDir, classic, run, data),
   );
 }

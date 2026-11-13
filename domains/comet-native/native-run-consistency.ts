@@ -19,6 +19,12 @@ export async function inspectNativeRunConsistency(
   try {
     run = await readNativeRunState(runtimeDir);
   } catch (error) {
+    if (
+      (error as NodeJS.ErrnoException).code === 'ENOENT' &&
+      state.run_id === null &&
+      state.phase === 'shape'
+    )
+      return findings;
     return [
       {
         code: 'run-state-invalid',

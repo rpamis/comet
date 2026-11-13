@@ -1,0 +1,40 @@
+{
+  "originalDeclarations": 60,
+  "originalExpandedCases": 102,
+  "currentExpandedCases": 80,
+  "fiveSourceResults": {
+    "pass": 52,
+    "fail": 2,
+    "evidence": "five-current-source-results.json"
+  },
+  "remainingTwo": {
+    "pass": 2,
+    "fail": 0,
+    "tempMutationGuardProxy": true,
+    "evidence": "remaining-state-two-proxy-green.json"
+  },
+  "realSdkFileCas": {
+    "pass": 1,
+    "fail": 0,
+    "evidence": "current-history-real-cas-final-results.json"
+  },
+  "exactRenamedBoundReads": {
+    "pass": 2,
+    "fail": 0,
+    "evidence": "bound-read-final-name-results.json"
+  },
+  "composedCurrentSource": {
+    "pass": 25,
+    "fail": 0,
+    "notExecuted": 1,
+    "tempTwoSourceFixesProxy": true,
+    "evidence": "application-all-source-proxy-final.json"
+  },
+  "publicCliPending": [],
+  "notClaimed": "These are separate runs/proposed-source evidence, not one all80 green run, model Eval or package install.",
+  "finalPublicCliEvidence": "final-public-cli-evidence.json",
+  "pendingRootProductIntegration": [
+    "Apply two current-composition source fixes",
+    "Apply test-only patch/metadata CAS then run current exact selectors"
+  ]
+}

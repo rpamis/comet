@@ -21,6 +21,16 @@ describe('global workflow configuration', () => {
     await fs.rm(homeDir, { recursive: true, force: true });
   });
 
+  it('preserves a Supervisor concurrency default in the global project template', async () => {
+    const project = defaultProjectConfig('docs', 'en');
+    project.native.max_parallel_children = 4;
+    await writeWorkflowGlobalConfig(homeDir, { ...project, schema: 'comet.global.v1' });
+    expect((await readWorkflowGlobalConfig(homeDir))?.native?.max_parallel_children).toBe(4);
+    expect(await fs.readFile(path.join(homeDir, '.comet/config.yaml'), 'utf8')).toContain(
+      'max_parallel_children: 4',
+    );
+  });
+
   it('stores a complete global template with project-relative artifact paths', async () => {
     const project = defaultProjectConfig('docs', 'zh-CN');
 

@@ -1,0 +1,18 @@
+{
+  "registry": {
+    "file": "docs/research/2026-11-11-platform-execution-retirement/classic-state-reader-migration/registry.json",
+    "sha256": "3ac92d6f46f27b35b2f8ad9b2b8c8d76842ffc74622b182122dc7eec722a8d2a"
+  },
+  "tests": {
+    "file": "docs/research/2026-11-11-platform-execution-retirement/classic-state-reader-migration/tests.json",
+    "sha256": "604bc1fbb696a964b93aefa2e97998623243cd470f659038cf2fa5fcd19ef9fb"
+  },
+  "mapping": {
+    "file": "docs/research/2026-11-11-platform-execution-retirement/classic-state-reader-migration/mapping.json",
+    "sha256": "44a5f7ccf13acbe3a118705f92104ea0a7079ad245f000d0e336485ea63d1f9e"
+  },
+  "patch": {
+    "file": "docs/research/2026-11-11-platform-execution-retirement/classic-state-reader-migration/patch.patch",
+    "sha256": "0e90aadf41e83df87ff28e0e89c3a50676086b6527807f90282aa8b7f1ea4e6a"
+  }
+}

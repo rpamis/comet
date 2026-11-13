@@ -1,13 +1,5 @@
-import { nativeTaskContextRequest } from './native-task-context.js';
-import { nativeRecoveryForContinuation, type NativeRecovery } from './native-recovery.js';
 import type { CliContinuationMode } from '../workflow-contract/output-envelope.js';
 import type { NativeChildrenInspection } from './native-children.js';
-import type { NativePortableExpectedContinuationAction } from './native-portable-runtime.js';
-import {
-  NATIVE_SUPERVISOR_COORDINATION_MODES,
-  type NativePortableState,
-} from './native-portable-types.js';
-import { NATIVE_MAX_SUPERVISOR_BUILDER_FAILURES } from './native-supervisor-model.js';
 import {
   NATIVE_ACCEPTANCE_REVIEW_STATUSES,
   NATIVE_BUILDER_CHECK_RESULTS,
@@ -15,6 +7,15 @@ import {
   NATIVE_VERIFIER_VERDICTS,
   nativeEnumPlaceholder,
 } from './native-input-enum.js';
+import type { NativePortableExpectedContinuationAction } from './native-portable-runtime.js';
+import {
+  NATIVE_SUPERVISOR_COORDINATION_MODES,
+  type NativePortableState,
+} from './native-portable-types.js';
+import { nativeRecoveryForContinuation, type NativeRecovery } from './native-recovery.js';
+import { NATIVE_MAX_SUPERVISOR_BUILDER_FAILURES } from './native-supervisor-model.js';
+import { nativeTaskContextRequest } from './native-task-context.js';
+import { nativeVerifierActionExecutionRef } from './native-verifier-action.js';
 
 type NativePortableContinuationInputOption = {
   name: string;
@@ -97,22 +98,9 @@ export interface NativePortableContinuation {
 
 export type NativePortableArchiveContinuationMode = 'archive-ready' | 'preview' | 'blocked';
 
-export interface NativePortableCheckPlanTemplate {
-  id: string;
-  name: string;
-  executable: string;
-  argv: readonly string[];
-  cwdRef: string;
-  timeoutMs: number;
-  repeatable: boolean;
-}
-
 export interface NativePortableContinuationOptions {
   verifierExecutionRef?: string;
-  verifierStartup?: 'unconfirmed' | 'confirmed';
-  retryCheckIds?: readonly string[];
-  verificationCheckPlans?: readonly NativePortableCheckPlanTemplate[];
-  supervisorIntegrationRetryIds?: readonly string[];
+
   archiveMode?: NativePortableArchiveContinuationMode;
   archiveBlockers?: readonly string[];
 }
@@ -125,7 +113,6 @@ function nativePortableUserCommunication(
   state: NativePortableState,
   coordinationChoiceRequired: boolean,
   children?: NativeChildrenInspection | null,
-  verifierStartup?: NativePortableContinuationOptions['verifierStartup'],
 ): NativePortableUserCommunication {
   const noUserUpdate = (agentInstruction: string): NativePortableUserCommunication => ({
     required: false,
@@ -204,23 +191,11 @@ function nativePortableUserCommunication(
     state.status === 'active' &&
     state.loop.next_action === 'await-verifier-result'
   ) {
-    const startupInstruction =
-      verifierStartup === 'confirmed'
-        ? localized(
-            state,
-            'The Verifier has confirmed startup. Continue waiting on the same host task and use its actual progress.',
-            'Verifier 已确认启动。继续等待同一个宿主任务，并使用该任务的实际进度。',
-          )
-        : localized(
-            state,
-            'Check whether the host accepted the startup call and locate the task for the current verifierExecutionRef. If the call has not been made, start the dispatched task once; if the host accepted it, check that same task and let the Verifier submit its startup receipt. A missing receipt alone does not prove failure. If local startup state is unavailable, recover the host task context before deciding whether startup is needed.',
-            '先核实宿主是否接受了启动调用，并找到当前 verifierExecutionRef 对应的任务。尚未调用时启动已派发的任务一次；宿主已接受时检查同一个任务，由 Verifier 提交启动回执。仅缺少回执不能证明执行失败。本地启动记录不可用时，先恢复宿主任务上下文，再判断是否需要启动。',
-          );
     return noUserUpdate(
-      `${startupInstruction} ${localized(
+      `${localized(
         state,
-        'Keep the same dispatched Verifier while it is active. A wait-tool timeout is not an execution timeout: check task progress and continue waiting; do not cancel, interrupt, or spawn a replacement just because a wait returned without a result. Request progress without telling the Verifier to stop inspecting. Only after confirmed task failure, a host-reported execution timeout, loss, or termination without a usable result, immediately submit verifier-execution-error. Preserve completed evidence and explain the failure and changed recovery approach before retrying. Submit verifier-unavailable only when the current platform truly has no usable subagent capability. Forward the actual report, including risks and incomplete checks; never turn an uninspected candidate into pass. Do not ask the user to recover files or processes, and do not expose attempt or requestCheckRounds.',
-        '已派发的验收任务仍在运行时，继续使用同一个 Verifier。等待工具超时不等于执行超时：检查任务进度并继续等待，不得仅因一次等待没有结果就取消、中断或重新派发。询问进度时不要要求停止核查。仅在确认任务失败、宿主报告执行超时、任务丢失或结束后没有可用结果时，立即提交 verifier-execution-error；保留已完成证据，重试前说明失败原因及恢复方式的变化。只有当前平台确实没有可用的 subagent 能力时才提交 verifier-unavailable。忠实传递原始报告，包括风险和未完成检查；没有核查当前候选不能判定通过。不要让用户恢复文件或进程，也不要向用户展示 attempt、requestCheckRounds 等机器状态。',
+        'Keep the same dispatched Verifier while it is active. A wait-tool timeout is not an execution timeout: check task progress and continue waiting; do not cancel, interrupt, or spawn a replacement just because a wait returned without a result. Request progress without telling the Verifier to stop inspecting. Only after confirmed task failure, a platform-reported execution timeout, loss, or termination without a usable result, immediately submit verifier-execution-error. Preserve completed evidence and explain the failure and changed recovery approach before retrying. Submit verifier-unavailable only when the current platform truly has no usable subagent capability. Forward the actual report, including risks and incomplete checks; never turn an uninspected candidate into pass. Do not ask the user to recover files or processes, and do not expose attempt or requestCheckRounds.',
+        '已派发的验收任务仍在运行时，继续使用同一个 Verifier。等待工具超时不等于执行超时：检查任务进度并继续等待，不得仅因一次等待没有结果就取消、中断或重新派发。询问进度时不要要求停止核查。仅在确认任务失败、Agent 平台报告执行超时、任务丢失或结束后没有可用结果时，立即提交 verifier-execution-error；保留已完成证据，重试前说明失败原因及恢复方式的变化。只有当前平台确实没有可用的 subagent 能力时才提交 verifier-unavailable。忠实传递原始报告，包括风险和未完成检查；没有核查当前候选不能判定通过。不要让用户恢复文件或进程，也不要向用户展示 attempt、requestCheckRounds 等机器状态。',
       )}`,
     );
   }
@@ -558,20 +533,14 @@ function textInput(name: string, flag: string): NativePortableContinuationInputO
   return { name, flag, valueKind: 'text', required: true, template: null };
 }
 
-function nativeCheckPlanTemplate(): NativePortableCheckPlanTemplate {
-  return {
-    id: '<check-id>',
-    name: '<check-name>',
-    executable: '<executable>',
-    argv: [],
-    cwdRef: '.',
-    timeoutMs: 120000,
-    repeatable: true,
-  };
-}
-
 function confirmationInput(name: string, flag: string): NativePortableContinuationInputOption {
-  return { name, flag, valueKind: 'confirmation', required: true, template: null };
+  return {
+    name,
+    flag,
+    valueKind: 'confirmation',
+    required: true,
+    template: null,
+  };
 }
 
 function choiceInput(
@@ -579,7 +548,14 @@ function choiceInput(
   flag: string,
   choices: readonly string[],
 ): NativePortableContinuationInputOption {
-  return { name, flag, valueKind: 'choice', required: true, template: null, choices: [...choices] };
+  return {
+    name,
+    flag,
+    valueKind: 'choice',
+    required: true,
+    template: null,
+    choices: [...choices],
+  };
 }
 
 function supervisorCoordinationRequired(children?: NativeChildrenInspection | null): boolean {
@@ -690,7 +666,6 @@ function individualRunnerInputs(
   options: NativePortableContinuationInputOption[],
 ): NativePortableContinuationInputOption[] {
   const descriptions: Record<string, string> = {
-    'request-checks': 'Choose when the Verifier needs additional Runtime checks.',
     'final-result': 'Choose when the Verifier has a result for every current scope ID.',
     'verifier-execution-error':
       'Choose when a dispatched Verifier failed, was lost, or ended without a result.',
@@ -718,7 +693,17 @@ export function nativePortableContinuation(
   children?: NativeChildrenInspection | null,
   options: NativePortableContinuationOptions = {},
 ): NativePortableContinuation {
-  const continuation = nativePortableContinuationValue(state, children, options);
+  const continuation = nativePortableContinuationValue(
+    state,
+    children,
+    state.verifier_action
+      ? {
+          ...options,
+          verifierExecutionRef:
+            nativeVerifierActionExecutionRef(state.verifier_action) ?? options.verifierExecutionRef,
+        }
+      : options,
+  );
   const recovery = nativeRecoveryForContinuation({
     state,
     continuation,
@@ -734,12 +719,7 @@ function nativePortableContinuationValue(
 ): NativePortableContinuation {
   const coordinationRequired =
     supervisorCoordinationRequired(children) && state.coordination_mode === undefined;
-  const userCommunication = nativePortableUserCommunication(
-    state,
-    coordinationRequired,
-    children,
-    options.verifierStartup,
-  );
+  const userCommunication = nativePortableUserCommunication(state, coordinationRequired, children);
   const base = {
     schema: 'comet.native.continuation.v2' as const,
     skill: 'comet-native' as const,
@@ -1035,43 +1015,18 @@ function nativePortableContinuationValue(
       if (!children.confirmed) {
         return {
           ...base,
-          disposition: 'continue',
-          action: 'advance-children',
-          commandArgs: ['comet', 'native', 'next', state.name, '--summary', '<summary>'],
-          requiredInputs: ['summary'],
-          inputOptions: [
-            {
-              name: 'summary',
-              flag: '--summary',
-              valueKind: 'text',
-              required: true,
-              template: null,
-            },
-          ],
-          runnerAction: runner('none'),
-        };
-      }
-      if (state.loop.stage === 'repairing' && state.verification_result === 'fail') {
-        return {
-          ...base,
-          disposition: 'continue',
+          disposition: 'blocked',
+          mode: 'reconcile',
           action: 'repair',
-          // The repair loop continues by editing children.yaml and running
-          // `next`; the children-contract drift detection then returns the
-          // change to Shape for confirmation (issue: an actionless repair
-          // continuation left agents with no executable step).
-          commandArgs: ['comet', 'native', 'next', state.name, '--summary', '<summary>'],
-          requiredInputs: ['repair-child'],
-          inputOptions: [
-            {
-              name: 'summary',
-              flag: '--summary',
-              valueKind: 'text' as const,
-              required: true,
-              template: null,
-            },
-          ],
+          commandArgs: null,
+          requiredInputs: [],
+          inputOptions: [],
           runnerAction: runner('none'),
+          userCommunication: {
+            ...userCommunication,
+            agentInstruction:
+              'restore children.yaml and retry next; preserve the original Child tasks and approved scope. Do not dispatch or accept results while the scope is unavailable.',
+          },
         };
       }
       if (children.allDone) {
@@ -1087,6 +1042,20 @@ function nativePortableContinuationValue(
             '--runner-input',
             '<temporary-json-file>',
           ],
+          ...(state.loop.stage === 'repairing' && state.verification_result === 'fail'
+            ? {
+                commandAlternatives: [
+                  nativeNextDecisionAlternative({
+                    name: 'revise-requirements',
+                    change: state.name,
+                    stateVersion: state.state_version,
+                    expectedAction: 'revise-requirements',
+                    flag: '--revise-requirements',
+                    confirmationInput: 'user-decision',
+                  }),
+                ],
+              }
+            : {}),
           requiredInputs: ['builder-handoff-json-file'],
           inputOptions: [
             {
@@ -1111,7 +1080,7 @@ function nativePortableContinuationValue(
                     note: null,
                   },
                 ],
-                verification_checks: [nativeCheckPlanTemplate()],
+
                 known_limits: [],
               },
             },
@@ -1121,7 +1090,6 @@ function nativePortableContinuationValue(
       }
       const verified = children.children.find(({ status }) => status === 'verified');
       if (verified) {
-        const retryCheckIds = options.supervisorIntegrationRetryIds;
         return {
           ...base,
           disposition: 'continue',
@@ -1134,7 +1102,7 @@ function nativePortableContinuationValue(
             '--runner-input',
             '<temporary-json-file>',
           ],
-          requiredInputs: ['supervisor-integration-checks'],
+          requiredInputs: ['supervisor-integration-result'],
           inputOptions: [
             {
               name: 'runner-input',
@@ -1144,20 +1112,14 @@ function nativePortableContinuationValue(
               template: {
                 kind: 'supervisor-integrate',
                 child: verified.name,
+                integrationCommit: '<actual-integration-commit>',
                 checks: [
                   {
-                    id: '<check-id>',
                     name: '<check-name>',
-                    executable: '<executable>',
-                    argv: [],
-                    cwdRef: '.',
-                    timeoutMs: 120000,
-                    repeatable: true,
+                    status: '<passed|failed|incomplete>',
+                    reason: '<actual-result>',
                   },
                 ],
-                ...(retryCheckIds && retryCheckIds.length > 0
-                  ? { retry_check_ids: [...retryCheckIds] }
-                  : {}),
               },
             },
           ],
@@ -1284,7 +1246,7 @@ function nativePortableContinuationValue(
                 note: null,
               },
             ],
-            verification_checks: [],
+
             known_limits: [],
           },
         },
@@ -1294,37 +1256,8 @@ function nativePortableContinuationValue(
   }
   if (state.phase === 'verify') {
     const awaiting = state.loop.next_action === 'await-verifier-result';
-    const supervisor = Boolean(state.children_contract_hash);
-    const checkTemplate = nativeCheckPlanTemplate();
-    if (!awaiting && options.retryCheckIds && options.retryCheckIds.length > 0) {
-      return {
-        ...base,
-        disposition: 'continue',
-        action: 'retry-checks',
-        commandArgs: [
-          'comet',
-          'native',
-          'next',
-          state.name,
-          '--runner-input',
-          '<temporary-json-file>',
-        ],
-        requiredInputs: ['retry-checks-json-file'],
-        inputOptions: [
-          {
-            name: 'runner-input',
-            flag: '--runner-input',
-            valueKind: 'json-file',
-            required: true,
-            template: {
-              kind: 'retry-checks',
-              check_ids: [...options.retryCheckIds],
-            },
-          },
-        ],
-        runnerAction: runner('retry-checks'),
-      };
-    }
+    const supervisor = Boolean(state.children_contract_ref);
+
     return {
       ...base,
       userCommunication:
@@ -1333,8 +1266,8 @@ function nativePortableContinuationValue(
               ...base.userCommunication,
               agentInstruction: `${base.userCommunication.agentInstruction} ${localized(
                 state,
-                'Resolve at least one integration check for the Supervisor parent; cwdRef is relative to the integration worktree.',
-                '为 Supervisor 父级解析至少一项集成检查；cwdRef 相对于集成工作区。',
+                'Run necessary integration checks with platform tools and reuse applicable Child reports. Parent acceptance must cover every confirmed criterion.',
+                '使用平台工具执行必要的集成检查，复用适用的子任务报告。父级验收仍须覆盖全部已确认条目。',
               )}`,
             }
           : base.userCommunication,
@@ -1350,7 +1283,7 @@ function nativePortableContinuationValue(
         '<temporary-json-file>',
       ],
       requiredInputs: [
-        awaiting ? 'verifier-response-or-error-json-file' : 'resolved-check-plan-json-file',
+        awaiting ? 'verifier-response-or-error-json-file' : 'verifier-dispatch-json-file',
       ],
       inputOptions: individualRunnerInputs([
         {
@@ -1360,17 +1293,6 @@ function nativePortableContinuationValue(
           required: true,
           template: awaiting
             ? [
-                {
-                  kind: 'verifier-response',
-                  candidateId: state.builder_handoff?.candidate_id ?? '<candidate-id>',
-                  verifierExecutionRef: options.verifierExecutionRef ?? '<from verifierDispatch>',
-                  response: {
-                    kind: 'request-checks',
-                    iteration: state.loop.iteration,
-                    attempt: state.loop.attempt,
-                    checks: [checkTemplate],
-                  },
-                },
                 {
                   kind: 'verifier-response',
                   candidateId: state.builder_handoff?.candidate_id ?? '<candidate-id>',
@@ -1412,14 +1334,6 @@ function nativePortableContinuationValue(
               ]
             : {
                 kind: 'dispatch-verifier',
-                checks: options.verificationCheckPlans
-                  ? options.verificationCheckPlans.map((plan) => ({
-                      ...plan,
-                      argv: [...plan.argv],
-                    }))
-                  : supervisor
-                    ? [checkTemplate]
-                    : [],
               },
         },
       ]),

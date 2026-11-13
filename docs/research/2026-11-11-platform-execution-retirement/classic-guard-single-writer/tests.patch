@@ -1,0 +1,32 @@
+diff --git a/test/domains/comet-classic/classic-executed-checks.test.ts b/test/domains/comet-classic/classic-executed-checks.test.ts
+index af056e96..d17e63a0 100644
+--- a/test/domains/comet-classic/classic-executed-checks.test.ts
++++ b/test/domains/comet-classic/classic-executed-checks.test.ts
+@@ -353,7 +353,7 @@ describe('Classic executed check evidence', () => {
+   });
+ 
+   it.each(['source', 'generated'] as const)(
+-    'allows only one of two concurrent guarded phase transitions to succeed via %s',
++    'allows only the first of two serial guarded phase transitions to succeed via %s',
+     async (mode) => {
+       await readyVerify();
+       const check = await cli(
+@@ -367,10 +367,14 @@ describe('Classic executed check evidence', () => {
+       );
+       expect(check.exitCode, check.stderr).toBe(0);
+       const guard = mode === 'generated' ? generatedCli : cli;
+-      const results = await Promise.all([
+-        guard('guard', 'demo', 'verify', '--apply'),
+-        guard('guard', 'demo', 'verify', '--apply'),
+-      ]);
++      const first = await guard('guard', 'demo', 'verify', '--apply');
++      expect(first.exitCode, JSON.stringify(first)).toBe(0);
++      const stateFile = path.join(root, 'openspec/changes/demo/.comet.yaml');
++      const committed = await fs.readFile(stateFile, 'utf8');
++      const second = await guard('guard', 'demo', 'verify', '--apply');
++      expect(second.exitCode, JSON.stringify(second)).not.toBe(0);
++      expect(await fs.readFile(stateFile, 'utf8')).toBe(committed);
++      const results = [first, second];
+       const winners = results.filter((result) => result.exitCode === 0);
+       expect(winners, JSON.stringify(results)).toHaveLength(1);
+       expect(winners[0].data).toMatchObject({

@@ -1,3 +1,4 @@
+import '../../helpers/isolated-agent-home.js';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -171,7 +172,7 @@ describe('Classic workspace preparation and routing', () => {
     }
   });
 
-  it('selects an SDK-owned Classic change in its linked worktree from the primary worktree', async () => {
+  it('selects an SDK-owned Classic change in its linked worktree with its explicit linked-worktree root', async () => {
     const prepared = await prepareClassicWorkspace({
       projectRoot: root,
       name: 'sdk-linked',
@@ -187,18 +188,21 @@ describe('Classic workspace preparation and routing', () => {
       fs.access(path.join(prepared.projectRoot, 'openspec/changes/sdk-linked/comet-state.yaml')),
     ).resolves.toBeUndefined();
 
-    const resolved = await resolveClassicWorkspace({ projectRoot: root, name: 'sdk-linked' });
+    const resolved = await resolveClassicWorkspace({
+      projectRoot: prepared.projectRoot,
+      name: 'sdk-linked',
+    });
     expect(resolved).toMatchObject({
       projectRoot: prepared.projectRoot,
       branch: 'comet/sdk-linked',
       isolation: 'worktree',
-      routed: true,
+      routed: false,
     });
 
     const selected = await classicStateCommand(['select', 'sdk-linked'], {
       json: true,
-      invocationCwd: root,
-      projectRoot: root,
+      invocationCwd: prepared.projectRoot,
+      projectRoot: prepared.projectRoot,
     });
     expect(selected.exitCode, selected.stderr).toBe(0);
     expect(selected.data).toMatchObject({
@@ -215,15 +219,15 @@ describe('Classic workspace preparation and routing', () => {
 
     const phase = await classicStateCommand(['get', 'sdk-linked', 'phase'], {
       json: false,
-      invocationCwd: root,
-      projectRoot: root,
+      invocationCwd: prepared.projectRoot,
+      projectRoot: prepared.projectRoot,
     });
     expect(phase.exitCode, phase.stderr).toBe(0);
     expect(phase.stdout).toBe('open\n');
     const next = await classicStateCommand(['next', 'sdk-linked'], {
       json: true,
-      invocationCwd: root,
-      projectRoot: root,
+      invocationCwd: prepared.projectRoot,
+      projectRoot: prepared.projectRoot,
     });
     expect(next.exitCode, next.stderr).toBe(0);
     expect(next.data).toMatchObject({
@@ -232,8 +236,8 @@ describe('Classic workspace preparation and routing', () => {
     });
     const entry = await classicStateCommand(['check', 'sdk-linked', 'open'], {
       json: true,
-      invocationCwd: root,
-      projectRoot: root,
+      invocationCwd: prepared.projectRoot,
+      projectRoot: prepared.projectRoot,
     });
     expect(entry.exitCode, entry.stderr).toBe(0);
     expect(entry.data).toMatchObject({
@@ -242,7 +246,7 @@ describe('Classic workspace preparation and routing', () => {
     });
   });
 
-  it('recovers an SDK-owned Classic change in a linked worktree from the primary worktree', async () => {
+  it('recovers an SDK-owned Classic change in a linked worktree with its explicit linked-worktree root', async () => {
     const prepared = await prepareClassicWorkspace({
       projectRoot: root,
       name: 'sdk-recovery',
@@ -257,8 +261,8 @@ describe('Classic workspace preparation and routing', () => {
 
     const recovered = await classicStateCommand(['check', 'sdk-recovery', 'open', '--recover'], {
       json: true,
-      invocationCwd: root,
-      projectRoot: root,
+      invocationCwd: prepared.projectRoot,
+      projectRoot: prepared.projectRoot,
     });
     expect(recovered.exitCode, recovered.stderr).toBe(0);
     expect(recovered.data).toMatchObject({
@@ -268,7 +272,7 @@ describe('Classic workspace preparation and routing', () => {
     });
   });
 
-  it('checks SDK-owned Classic artifacts in the linked worktree from the primary worktree', async () => {
+  it('checks SDK-owned Classic artifacts in the linked worktree with its explicit linked-worktree root', async () => {
     const prepared = await prepareClassicWorkspace({
       projectRoot: root,
       name: 'sdk-artifacts',
@@ -287,8 +291,8 @@ describe('Classic workspace preparation and routing', () => {
 
     const result = await classicStateCommand(['artifacts', 'sdk-artifacts'], {
       json: true,
-      invocationCwd: root,
-      projectRoot: root,
+      invocationCwd: prepared.projectRoot,
+      projectRoot: prepared.projectRoot,
     });
     expect(result.exitCode, result.stderr).toBe(0);
     expect(result.data).toMatchObject({
@@ -301,7 +305,7 @@ describe('Classic workspace preparation and routing', () => {
     );
   });
 
-  it('runs an inferred SDK Build check in the linked worktree when invoked from the primary worktree', async () => {
+  it('submits a platform SDK Build check from the linked worktree when invoked with its explicit linked-worktree root', async () => {
     const name = 'sdk-linked-build';
     const prepared = await prepareClassicWorkspace({
       projectRoot: root,
@@ -314,7 +318,11 @@ describe('Classic workspace preparation and routing', () => {
       invocationCwd: prepared.projectRoot,
       projectRoot: prepared.projectRoot,
     };
-    const primaryOptions = { json: false, invocationCwd: root, projectRoot: root };
+    const primaryOptions = {
+      json: false,
+      invocationCwd: prepared.projectRoot,
+      projectRoot: prepared.projectRoot,
+    };
     expect(
       (
         await classicStateCommand(
@@ -341,12 +349,25 @@ describe('Classic workspace preparation and routing', () => {
     );
     expect(opened.exitCode, opened.stderr).toBe(0);
     await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] Implement the change\n');
-    await fs.writeFile(
-      path.join(prepared.projectRoot, 'package.json'),
-      JSON.stringify({ scripts: { build: 'node -e "console.log(\'linked-build-ok\')"' } }),
+    execFileSync(
+      process.execPath,
+      ['-e', "require('node:fs').writeFileSync('platform-check-cwd.txt', process.cwd())"],
+      { cwd: prepared.projectRoot },
     );
-
-    const built = await classicGuardCommand([name, 'build', '--apply'], primaryOptions);
+    expect(
+      await fs.readFile(path.join(prepared.projectRoot, 'platform-check-cwd.txt'), 'utf8'),
+    ).toBe(prepared.projectRoot);
+    const checks = path.join(prepared.projectRoot, 'platform-checks.json');
+    await fs.writeFile(
+      checks,
+      JSON.stringify({
+        checks: [{ name: 'Actual linked-worktree command exited 0', result: 'passed' }],
+      }),
+    );
+    const built = await classicGuardCommand(
+      [name, 'build', '--apply', '--checks', checks],
+      primaryOptions,
+    );
     expect(built.exitCode, built.stderr).toBe(0);
     expect(built.data).toMatchObject({ change: name, phase: 'verify' });
     expect((await classicStateCommand(['get', name, 'phase'], primaryOptions)).stdout).toBe(

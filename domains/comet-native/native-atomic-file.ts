@@ -147,7 +147,7 @@ async function prepareContainedDirectoryChain(
   return chain;
 }
 
-async function syncDirectory(directory: string): Promise<void> {
+export async function syncNativeDirectory(directory: string): Promise<void> {
   let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
   try {
     handle = await fs.open(directory, 'r');
@@ -228,7 +228,7 @@ async function atomicWrite(
     } else {
       await renameWithRetry(temporary, file);
     }
-    await syncDirectory(directory);
+    await syncNativeDirectory(directory);
   } catch (error) {
     await handle?.close();
     if (!directoryChain) {

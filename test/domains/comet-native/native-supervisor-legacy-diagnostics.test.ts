@@ -1,3 +1,7 @@
+import {
+  readNativePortableState,
+  writeNativePortableState,
+} from '../../../domains/comet-native/native-portable-state.js';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -34,7 +38,11 @@ async function legacySupervisor() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-legacy-diagnostics-'));
   roots.push(root);
   const git = (...args: string[]) =>
-    execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: 'pipe' }).trim();
+    execFileSync('git', args, {
+      cwd: root,
+      encoding: 'utf8',
+      stdio: 'pipe',
+    }).trim();
   git('init', '-b', 'main');
   git('config', 'user.email', 'native@example.test');
   git('config', 'user.name', 'Native Test');
@@ -51,7 +59,11 @@ async function legacySupervisor() {
     paths,
     name: 'parent',
     language: 'en',
-    workspaceBinding: { isolation: 'current', changeBranch: 'main', targetBranch: 'main' },
+    workspaceBinding: {
+      isolation: 'current',
+      changeBranch: 'main',
+      targetBranch: 'main',
+    },
   });
   const changeDir = nativePortableChangeDir(paths, 'parent');
   await fs.writeFile(
@@ -64,7 +76,17 @@ async function legacySupervisor() {
     'schema: comet.native.children.v2\nchildren:\n  - name: core\n    summary: Core behavior.\n    depends_on: []\n',
   );
   await confirmNativePortableShape({ paths, name: 'parent' });
-  await dispatchNativeSupervisorReadyTasks({ paths, parent: 'parent', maxParallel: 1 });
+  await dispatchNativeSupervisorReadyTasks({
+    paths,
+    parent: 'parent',
+    maxParallel: 1,
+  });
+  // This old overlay predates the persisted children contract. Current approved contracts remain authoritative.
+  const portableFile = path.join(changeDir, 'comet-state.yaml');
+  const portable = await readNativePortableState(portableFile);
+  delete portable.children_contract;
+  await writeNativePortableState(portableFile, portable);
+
   const stateFile = nativeSupervisorStateFile(paths, 'parent');
   const legacy = JSON.parse(await fs.readFile(stateFile, 'utf8'));
   // Model a persisted pre-upgrade overlay, after the real Runtime confirmed Shape.
@@ -88,12 +110,12 @@ describe('legacy Supervisor diagnostic recovery', () => {
       if (problem === 'missing') await fs.unlink(childrenFile);
       else await fs.writeFile(childrenFile, 'schema: [');
       const before = await fs.readFile(stateFile, 'utf8');
+      const portableFile = path.join(nativePortableChangeDir(paths, 'parent'), 'comet-state.yaml');
+      const portableBefore = await fs.readFile(portableFile, 'utf8');
       for (const command of ['status', 'show', 'doctor']) {
         const result = await runNativeCli([command, 'parent', '--json', '--project-root', root]);
         if (command === 'doctor') {
-          expect(JSON.parse(result.stdout!), result.stdout!).toHaveProperty(
-            'data.result.continuation',
-          );
+          expect(JSON.parse(result.stdout!), result.stdout!).toHaveProperty('data.continuation');
         } else {
           expect(JSON.parse(result.stdout!)).not.toHaveProperty('error');
           expect(result.exitCode).toBe(0);
@@ -101,13 +123,20 @@ describe('legacy Supervisor diagnostic recovery', () => {
       }
       expect(await fs.readFile(stateFile, 'utf8')).toBe(before);
       await expect(readNativeSupervisorState(paths, 'parent')).rejects.toThrow();
-      const diagnostics = await readNativeSupervisorState(paths, 'parent', { diagnostics: true });
+      const diagnostics = await readNativeSupervisorState(paths, 'parent', {
+        diagnostics: true,
+      });
       expect(diagnostics?.children[0].task?.runId).toBe(JSON.parse(before).children[0].task.runId);
       expect(projectNativeSupervisorChildren(diagnostics!)).toMatchObject({
         confirmed: false,
         readyChildren: [],
         allDone: false,
-        children: [{ covers: [], message: expect.stringContaining('restore children.yaml') }],
+        children: [
+          {
+            covers: [],
+            message: expect.stringContaining('restore children.yaml'),
+          },
+        ],
       });
       const next = await runNativeCli([
         'next',
@@ -119,10 +148,15 @@ describe('legacy Supervisor diagnostic recovery', () => {
         root,
       ]);
       expect(next.exitCode, next.stdout).toBe(0);
-      expect(JSON.parse(next.stdout!)).not.toHaveProperty('error');
-      if (problem === 'missing') expect(JSON.parse(next.stdout!).data.state.phase).toBe('shape');
-      else expect(next.stdout).toContain('restore children.yaml and retry next');
+      expect(JSON.parse(next.stdout!).data.continuation).toMatchObject({
+        disposition: 'blocked',
+        action: 'repair',
+        commandArgs: null,
+        requiredInputs: [],
+      });
+      expect(next.stdout).toContain('restore children.yaml and retry next');
       expect(await fs.readFile(stateFile, 'utf8')).toBe(before);
+      expect(await fs.readFile(portableFile, 'utf8')).toBe(portableBefore);
       await fs.writeFile(
         childrenFile,
         'schema: comet.native.children.v2\nchildren:\n  - name: core\n    summary: Core behavior.\n    depends_on: []\n',

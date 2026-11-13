@@ -1,3 +1,4 @@
+import { requireFileSymlink } from '../../helpers/file-symlink.js';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -78,7 +79,7 @@ it('accepts complete fixed evidence and revalidates historical distribution evid
     'stale',
   );
 });
-it.each([
+it.for([
   'missing',
   'duplicate',
   'extra',
@@ -95,7 +96,8 @@ it.each([
   'metadata',
   'receipt',
   'manifest-symlink',
-])('rejects incomplete or inconsistent historical evidence: %s', async (kind) => {
+])('rejects incomplete or inconsistent historical evidence: %s', async (kind, context) => {
+  if (kind === 'symlink' || kind === 'manifest-symlink') await requireFileSymlink(context);
   const { file, result, prepared } = await fixture();
   const directory = path.dirname(file);
   const report = path.join(directory, 'reports/recovery_report.json');

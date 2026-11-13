@@ -1,0 +1,652 @@
+{
+  "cases": [
+    {
+      "id": "classic-short-timeout-supervisor-startup",
+      "behavior": "Classic SDK 极短检查超时保留真实整树停止证明并返回 timeout，不因监管器启动竞争进入 unknown。",
+      "sources": [
+        "report:2026-10-25-native-classic-core-review"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "8deff743 中项目 timeout=25ms、Node 等待 200ms 的公开 SDK check 返回 70/stop-unconfirmed，而 1000ms 对照返回正常 124。",
+      "expected": "25ms 检查返回 124；登记期限独立于执行期限，调用方在监管器就绪后处理超时，仍核对整树终止。",
+      "forbidden": "把不明终止当作成功、仅凭组长退出批准写入，或通过延长测试 timeout 掩盖失败。",
+      "rootCause": "监管器登记期限沿用命令期限，且调用方可在监管器就绪之前开始 taskkill，形成自清理竞争。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-check-defaults.test.ts",
+          "namePattern": "applies project timeout to the public sdk check run",
+          "requiredNames": [
+            "applies project timeout to the public sdk check run"
+          ]
+        },
+        {
+          "file": "test/platform/process/owned-command-termination.test.ts",
+          "namePattern": "受管命令的整树终止证明 短命令时限不让尚未启动命令的监管器抢先自清理",
+          "requiredNames": [
+            "受管命令的整树终止证明 短命令时限不让尚未启动命令的监管器抢先自清理"
+          ]
+        },
+        {
+          "file": "test/platform/process/owned-command-termination.test.ts",
+          "namePattern": "受管命令的整树终止证明 Windows 等待调用方核对整树终止时保留原监管器身份",
+          "requiredNames": [
+            "受管命令的整树终止证明 Windows 等待调用方核对整树终止时保留原监管器身份"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-supervisor-startup-errors",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/531"
+      ],
+      "behavior": "监管器进程或IPC已报错时立即停止并取消未完成的登记，不等待完整检查时限或伪装为命令超时。",
+      "coverageLevel": "unit",
+      "reproduction": "注入监管器error且没有close，旧代码等到检查超时才结束；身份登记未返回时原IPC错误被超时覆盖。",
+      "expected": "保存实际监管器错误，停止确认后结束；登记未完成时取消后续命令放行。",
+      "forbidden": "吞掉IPC错误、误标命令超时、绕过整树停止证明或在登记取消后启动命令。",
+      "rootCause": "error监听只写日志，不触发停止，也不取消正在等待身份探测的登记。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-executor-termination.test.ts",
+          "namePattern": "stops immediately on a supervisor error instead of converting it into a command timeout|cancels a pending identity registration immediately when its supervisor errors",
+          "requiredNames": [
+            "stops immediately on a supervisor error instead of converting it into a command timeout",
+            "cancels a pending identity registration immediately when its supervisor errors"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "Preserve the original business behavior while adapting check reports, lifecycle fixtures and assertions to PID-free execution; archive every original assertion.",
+        "authorization": "report:2026-11-09-runtime-pid-removal",
+        "record": "docs/research/2026-11-09-runtime-pid-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-check-executor-termination.test.ts",
+            "namePattern": "stops immediately on a supervisor error instead of converting it into a command timeout|cancels pending supervisor readiness immediately when its supervisor errors",
+            "requiredNames": [
+              "stops immediately on a supervisor error instead of converting it into a command timeout",
+              "cancels pending supervisor readiness immediately when its supervisor errors"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/registry.json",
+            "sha256": "cd525ad933feaca15abaebbaa79527d0f7db2b6561855d55744a6523b481c68b"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/tests.patch",
+            "sha256": "729be0c5e84760f5f030667e5936e059fb713adfa29e39b2671550dc308d95df"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/mapping.json",
+            "sha256": "2b263e7005367fcb2b73a57afd96bf1723dacc7039ca0e8f1daa5af4b8c1109b"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/tests.json",
+            "sha256": "6f6f8ef360c9ed4feb44be79e2eaf98ec04fe068887e53e3df92b19d0837d63b"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-531-supervisor-ready-handshake",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/531"
+      ],
+      "behavior": "等待监管器ready握手后才放行受管检查，登记已取消时拒绝迟到的ready启动命令。",
+      "coverageLevel": "unit",
+      "reproduction": "延迟ready、快速返回身份登记，旧调用方在监管器尚未ready前已调用start。",
+      "expected": "就绪后按原登记启动一次，超过登记时限则停止并保留原事实，迟到ready不产生副作用。",
+      "forbidden": "跳过就绪握手、超时后补启动或重派原单次操作。",
+      "rootCause": "平台已提供ready Promise，但检查调用方没有等待它。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-executor-termination.test.ts",
+          "namePattern": "waits for supervisor readiness before releasing the registered command|never releases a late-ready command after its registration deadline has cancelled it",
+          "requiredNames": [
+            "waits for supervisor readiness before releasing the registered command",
+            "never releases a late-ready command after its registration deadline has cancelled it"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-check-failure-facts",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/531"
+      ],
+      "behavior": "停止未确认错误保留计划时限、是否超时及命令完成回报，区别命令已完成后的收尾失败。",
+      "coverageLevel": "unit",
+      "reproduction": "现场三条失败均只剩相同停止未确认文本；旧错误丢失已收到completed与真正超时的区别。",
+      "expected": "两类失败均保留原执行归属，并分别呈现真实完成回报和超时事实。",
+      "forbidden": "把收尾失败误称Python超时、丢失原错误或把停止未确认当作检查通过。",
+      "rootCause": "统一异常不带执行事实与底层终止错误原因，最终Action reason无法区分失败阶段。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-executor-termination.test.ts",
+          "namePattern": "preserves command completion and timeout facts when (completed|timeout) cleanup is unconfirmed",
+          "requiredNames": [
+            "preserves command completion and timeout facts when completed cleanup is unconfirmed",
+            "preserves command completion and timeout facts when timeout cleanup is unconfirmed"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-check-pipe-settlement",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/531"
+      ],
+      "behavior": "Windows 已确认检查整树停止但继承管道没有 close 事件时，有限收尾并保留中断结果。",
+      "coverageLevel": "unit",
+      "reproduction": "基线07bd301b注入已确认整树停止且管道不关闭的边界，同一检查在3秒测试期限内不返回。此案例不证明原报告中任意Python子进程挂起的原因。",
+      "expected": "确认停止后有限等待管道，未收齐日志的检查记为 interrupted，不丢失停止收据。",
+      "forbidden": "无限等待 close、将不完整日志记为通过、在停止未确认时释放执行归属。",
+      "rootCause": "执行器只在 close 回调中结算结果，整树停止确认没有独立的管道收尾期限。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-executor-termination.test.ts",
+          "namePattern": "settles an interrupted check when confirmed Windows cleanup never closes inherited pipes",
+          "requiredNames": [
+            "settles an interrupted check when confirmed Windows cleanup never closes inherited pipes"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ci-native-process-regression-worker-isolation",
+      "sources": [
+        "https://github.com/rpamis/comet/actions/runs/42036004685/job/127274561826",
+        "report:2026-11-05-pr539-ci-failures"
+      ],
+      "behavior": "真实 Native 进程回归使用单一测试 worker，避免相互争用 Windows 进程探测资源，并保留原命令时限。",
+      "coverageLevel": "runtime",
+      "reproduction": "23a56237 的 Windows Runtime smoke 98 项通过、Windows shim 单项在原 10000ms 内超时。本机原并发命令 99 项通过；受限两 CPU 的相同 shim 探针中并行 8 项均耗尽原时限，串行 8 项均通过。未把受限探针等同于原 CI 机器的完整复现。",
+      "expected": "CI 串行执行原有真实进程测试；参数传递、退出状态和超时停止的原断言保持。",
+      "forbidden": "提高 shim 的 10000ms 时限、跳过原测试、忽略终止证明或把超时写成通过。",
+      "rootCause": "真实进程测试默认使用多个 worker，Windows PowerShell 启动和进程探测相互争用；并发与串行对照显示原时限下的环境敏感性，CI 改为单 worker 限制测试间干扰。",
+      "tests": [
+        {
+          "file": "test/repository/ci-workflows.test.ts",
+          "namePattern": "runs real Native process regressions without competing test workers",
+          "requiredNames": [
+            "CI workflows runs real Native process regressions without competing test workers"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-check-executor.test.ts",
+          "namePattern": "derives failed and interrupted states from exit and timeout",
+          "requiredNames": [
+            "Native check executor derives failed and interrupted states from exit and timeout"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-all-reused-checks-without-child",
+      "behavior": "全部检查均复用原成功收据且没有创建子进程时可完成；未登记的真实启动与终止不明确仍阻塞",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-owner-recovery.test.ts",
+          "namePattern": "^Native check owner recovery recognizes completed receipt reuse without a child but keeps an unregistered launch unknown$",
+          "requiredNames": [
+            "Native check owner recovery recognizes completed receipt reuse without a child but keeps an unregistered launch unknown"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check$",
+          "requiredNames": [
+            "preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check"
+          ]
+        }
+      ],
+      "reproduction": "原Verifier后加一次性检查通过后选择重新独立验收，新检查全部复用、没有child；Windows旧判定把非空checks当成可能启动过进程并拒绝提交。",
+      "expected": "完整复用登记可确认quiescent，原执行收据及结果保留，一次性命令计数始终为1；新输入不可复用。",
+      "forbidden": "将terminationUnconfirmed或有真实执行但没有child登记的情况当成停止，或重复执行一次性命令。",
+      "rootCause": "无child完成分支只接受空checks，没有区分全部引用原收据与新进程执行。",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "coverageLevel": "runtime",
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "Preserve the original business behavior while adapting check reports, lifecycle fixtures and assertions to PID-free execution; archive every original assertion.",
+        "authorization": "report:2026-11-09-runtime-pid-removal",
+        "record": "docs/research/2026-11-09-runtime-pid-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-check-owner-recovery.test.ts",
+            "namePattern": "^Native check owner recovery recognizes completed receipt reuse without a child but keeps an unregistered launch unknown$",
+            "requiredNames": [
+              "Native check owner recovery recognizes completed receipt reuse without a child but keeps an unregistered launch unknown"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "^preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check$",
+            "requiredNames": [
+              "preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/registry.json",
+            "sha256": "cd525ad933feaca15abaebbaa79527d0f7db2b6561855d55744a6523b481c68b"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/tests.patch",
+            "sha256": "729be0c5e84760f5f030667e5936e059fb713adfa29e39b2671550dc308d95df"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/mapping.json",
+            "sha256": "2b263e7005367fcb2b73a57afd96bf1723dacc7039ca0e8f1daa5af4b8c1109b"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/tests.json",
+            "sha256": "6f6f8ef360c9ed4feb44be79e2eaf98ec04fe068887e53e3df92b19d0837d63b"
+          }
+        },
+        "supersededBy": {
+          "kind": "feature-removed",
+          "reason": "用户要求清理不必要测试；保留原登记与完整旧测试，撤下内容字节自动失效、补充证明和PID推断策略。替代覆盖保留原Run/Action/批准、真实失败、一次性检查不重放、未知执行不重试及实际事务恢复。",
+          "authorization": "report:2026-11-10-runtime-remaining-failures",
+          "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+          "tests": [
+            {
+              "file": "test/domains/comet-native/native-check-owner-recovery.test.ts",
+              "namePattern": "Native check owner recovery recognizes completed receipt reuse without a child but keeps an unregistered launch unknown",
+              "requiredNames": [
+                "Native check owner recovery recognizes completed receipt reuse without a child but keeps an unregistered launch unknown"
+              ]
+            },
+            {
+              "file": "test/domains/comet-native/native-sdk-application.test.ts",
+              "namePattern": "reuses a completed non-repeatable Runtime check requested by the Verifier|preserves completed one-shot checks while revising edited Archive-ready code",
+              "requiredNames": [
+                "Native SDK Workflow Application reuses a completed non-repeatable Runtime check requested by the Verifier",
+                "preserves completed one-shot checks while revising edited Archive-ready code"
+              ]
+            }
+          ],
+          "evidence": {
+            "registry": {
+              "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/registry.json",
+              "sha256": "e6d702047aec141307700160678ed08b49244c8bc35c2f5f128018648206ed06"
+            },
+            "tests": {
+              "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/tests.json",
+              "sha256": "a3efabe9ea2def260224301a176b44f5948a4d9f9910c1a7ea2be0fc49ee087d"
+            },
+            "mapping": {
+              "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/mapping.json",
+              "sha256": "3a5e285a24256e181f3bda43825826fb6010cbf77491f723bbdf081910793df2"
+            },
+            "patch": {
+              "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/patch.patch",
+              "sha256": "238e8ab4e60fa6cadae98a3e3a041574eb70bc5a10f01de7d578625d87ececcf"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "owned-command-timeout-independent-deadline",
+      "behavior": "原调用方事件循环堵塞时，自有监管器仍在时限后停止命令。",
+      "sources": [
+        "report:2026-11-10-runtime-cost-cleanup"
+      ],
+      "coverageLevel": "runtime",
+      "reproduction": "真实子进程执行5秒时限检查，原调用方堵塞6秒，检查计划在5.5秒写入late；基线Windows等待原调用方而留下late文件。",
+      "expected": "监管器独立守住截止时间，不产生late文件，原调用方恢复后仍可完成停止。",
+      "forbidden": "只延长等待、修改时限或把原调用方堵塞视为允许检查继续执行。",
+      "rootCause": "Windows监管器只保留身份等待原调用方确认，未独立停止已到期命令。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-owner-recovery.test.ts",
+          "namePattern": "keeps its deadline when the owner event loop cannot run its timeout timer",
+          "requiredNames": [
+            "Native check owner recovery keeps its deadline when the owner event loop cannot run its timeout timer"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-pid-free-check-stop-and-legacy-receipt",
+      "behavior": "The current Native executor stops its owned command on a stop request and preserves original confirmed legacy receipts without historical PID queries.",
+      "coverageLevel": "runtime",
+      "reproduction": "Run a real long command, submit its original stop request, and separately load a completed original-format execution and termination receipt.",
+      "expected": "Report interrupted only after actual cleanup; retain the original successful result and confirmed receipt without querying historical PID identity.",
+      "forbidden": "Let the command continue until natural success after cancellation, or turn an already-confirmed legacy stop into an unknown result.",
+      "rootCause": "Process discovery and historical tree termination had been used as the recovery authority instead of the current execution and original confirmed result.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-without-pid.test.ts",
+          "namePattern": "^(?:cancels the current managed check through its stop request without persisting or probing PID|accepts the original legacy stop receipt without querying its historical PID)$",
+          "requiredNames": [
+            "cancels the current managed check through its stop request without persisting or probing PID",
+            "accepts the original legacy stop receipt without querying its historical PID"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-11-09-runtime-pid-removal"
+      ]
+    },
+    {
+      "id": "native-portable-explicit-empty-check-plan",
+      "sources": [
+        "report:2026-11-05-pr539-empty-native-check-plan"
+      ],
+      "behavior": "Compat Native records an explicitly empty check plan before Verifier dispatch and preserves existing execution evidence on reuse.",
+      "coverageLevel": "public-cli",
+      "reproduction": "At 0e5b1903 the two existing portable termination cases failed before dispatch. A focused first-resolution test and the generated Native next bundle also failed because an explicit empty plan returned reused without recording completion.",
+      "expected": "Only a first empty plan with no execution and no check records takes the normal zero-command completion path. Subsequent calls reuse the original record, and the generated next command can dispatch verification.",
+      "forbidden": "Dispatch without explicit plan resolution, erase an active Verifier or unconfirmed check process, replace completed check receipts, or execute a command to resolve an empty plan.",
+      "rootCause": "The raw-input check reservation returned reuse whenever no commands required execution, including an empty plan that had never been resolved.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+          "namePattern": "^Native portable unconfirmed check termination (?:resolves an explicit empty check plan once before dispatching the Verifier|preserves completed check receipts when an empty plan is requested|dispatches an explicit empty check plan through the generated Native next bundle|preserves the registered process and blocks retries for (?:runtime|verifier|legacy-verifier) checks)$",
+          "requiredNames": [
+            "Native portable unconfirmed check termination resolves an explicit empty check plan once before dispatching the Verifier",
+            "Native portable unconfirmed check termination preserves completed check receipts when an empty plan is requested",
+            "Native portable unconfirmed check termination dispatches an explicit empty check plan through the generated Native next bundle",
+            "Native portable unconfirmed check termination preserves the registered process and blocks retries for runtime checks",
+            "Native portable unconfirmed check termination preserves the registered process and blocks retries for verifier checks",
+            "Native portable unconfirmed check termination preserves the registered process and blocks retries for legacy-verifier checks"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-portable-orphan-interruption-persistence",
+      "sources": [
+        "report:2026-11-05-pr539-ci-native-portable-orphan-interruption",
+        "https://github.com/rpamis/comet/actions/runs/42006054083/job/127173621956"
+      ],
+      "behavior": "Persist a proven orphaned Portable check as interrupted before returning its resumable status to the caller.",
+      "coverageLevel": "runtime",
+      "reproduction": "The Linux CI orphan-process case failed at ffadb8c1 because the explicit retry still read a running check. A cross-platform test on the same code reproduces the missing disk transition with controlled liveness observations, then verifies real explicit retry execution after the fix. Windows covers conservative unknown-process rejection; the full POSIX process branch requires Linux execution.",
+      "expected": "After both the owner and check tree are proven stopped, persist interrupted status while retaining original operation identity, input evidence and execution count. Repeated ordinary execution reads that state without replay, and explicit retry executes the same repeatable command once.",
+      "forbidden": "Return interrupted only in memory, replay a command during ordinary continuation, clear an alive or unknown process registration, or change the original execution identity during recovery.",
+      "rootCause": "The raw-input reservation path converted the orphaned operation to interrupted in memory and returned its reuse summary without writing the recovered local execution record.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+          "namePattern": "^(?:Native portable unconfirmed check termination persists a proven orphan interruption before allowing an explicit check retry)$",
+          "requiredNames": [
+            "Native portable unconfirmed check termination persists a proven orphan interruption before allowing an explicit check retry"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path recovers an orphaned running check only when process exit can be proven)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path recovers an orphaned running check only when process exit can be proven"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "撤下本案例中依赖文件/日志内容摘要、编辑证明或自动漂移的策略。保留原来源和完整旧正文；显式修订、真实失败/超时、原用户决定、检查来源及无重复副作用继续由逐项选择器执行。具体差异与保留行为见记录。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+            "namePattern": "^(?:Native portable unconfirmed check termination persists a proven orphan interruption before allowing an explicit check retry)$",
+            "requiredNames": [
+              "Native portable unconfirmed check termination persists a proven orphan interruption before allowing an explicit check retry"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+            "namePattern": "^(?:Native portable Runtime vertical path recovers an orphaned running check only when process exit can be proven)$",
+            "requiredNames": [
+              "Native portable Runtime vertical path recovers an orphaned running check only when process exit can be proven"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        },
+        "supersededBy": {
+          "kind": "feature-removed",
+          "reason": "Retire explicitly removed PID/orphan/coordinator policies; preserve exclusion, actual stop evidence, original outcomes and explicit retry without historical process inference.",
+          "authorization": "report:2026-11-09-runtime-pid-removal",
+          "record": "docs/research/2026-11-09-runtime-pid-retirement.zh.md",
+          "tests": [
+            {
+              "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+              "namePattern": "^(?:Native portable unconfirmed check termination persists an Agent-confirmed interruption before allowing an explicit check retry)$",
+              "requiredNames": [
+                "Native portable unconfirmed check termination persists an Agent-confirmed interruption before allowing an explicit check retry"
+              ]
+            },
+            {
+              "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+              "namePattern": "^(?:Native portable Runtime vertical path recovers an interrupted running check after Agent stop confirmation)$",
+              "requiredNames": [
+                "Native portable Runtime vertical path recovers an interrupted running check after Agent stop confirmation"
+              ]
+            }
+          ],
+          "evidence": {
+            "registry": {
+              "file": "docs/research/2026-11-09-runtime-pid-retirement/registry.json",
+              "sha256": "cd525ad933feaca15abaebbaa79527d0f7db2b6561855d55744a6523b481c68b"
+            },
+            "patch": {
+              "file": "docs/research/2026-11-09-runtime-pid-retirement/tests.patch",
+              "sha256": "729be0c5e84760f5f030667e5936e059fb713adfa29e39b2671550dc308d95df"
+            },
+            "mapping": {
+              "file": "docs/research/2026-11-09-runtime-pid-retirement/mapping.json",
+              "sha256": "2b263e7005367fcb2b73a57afd96bf1723dacc7039ca0e8f1daa5af4b8c1109b"
+            },
+            "tests": {
+              "file": "docs/research/2026-11-09-runtime-pid-retirement/tests.json",
+              "sha256": "6f6f8ef360c9ed4feb44be79e2eaf98ec04fe068887e53e3df92b19d0837d63b"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "native-proven-orphan-check-explicit-retry",
+      "sources": [
+        "report:2026-11-09-latest-commit-review-fixes"
+      ],
+      "behavior": "Native 原检查和进程树已确认退出后保存中断事实，沿原命令显式重试；存活/未知执行、外部Verifier和一次性检查不得自动重放。",
+      "coverageLevel": "runtime",
+      "reproduction": "将原回归错误文案对齐当前响应后，未修改的Native源代码在owner与child都dead时仍拒绝普通查询/续行，orphan-red.json记录214行失败。",
+      "expected": "原operationId/命令/执行次数保留，已停止process登记清除；未显式retry返回原中断结果，retry后真实执行一次；相关活跃/未知/外部Verifier反例继续阻塞。",
+      "forbidden": "已经停止的执行永远卡在running，或未证明停止就接管、推断外部Verifier结束、隐式重跑或绕过retry预算。",
+      "rootCause": "简化后的reserve无条件拒绝running，遗漏原进程停止核对与中断持久化；恢复转中断后又遗留activeProcess。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+          "namePattern": "^(?:Native portable unconfirmed check termination persists a proven orphan interruption before allowing an explicit check retry|Native portable unconfirmed check termination preserves the registered process and blocks retries for runtime checks|Native portable unconfirmed check termination preserves the registered process and blocks retries for verifier checks|Native portable unconfirmed check termination preserves the registered process and blocks retries for legacy-verifier checks)$",
+          "requiredNames": [
+            "Native portable unconfirmed check termination persists a proven orphan interruption before allowing an explicit check retry",
+            "Native portable unconfirmed check termination preserves the registered process and blocks retries for runtime checks",
+            "Native portable unconfirmed check termination preserves the registered process and blocks retries for verifier checks",
+            "Native portable unconfirmed check termination preserves the registered process and blocks retries for legacy-verifier checks"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path returns a retry action for an interrupted check and reruns it explicitly|Native portable Runtime vertical path recovers an orphaned running check only when process exit can be proven|Native portable Runtime vertical path does not infer that an external Verifier ended when its dispatch process exits|Native portable Runtime vertical path returns an interrupted non-repeatable check to Build before exposing retry)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path returns a retry action for an interrupted check and reruns it explicitly",
+            "Native portable Runtime vertical path recovers an orphaned running check only when process exit can be proven",
+            "Native portable Runtime vertical path does not infer that an external Verifier ended when its dispatch process exits",
+            "Native portable Runtime vertical path returns an interrupted non-repeatable check to Build before exposing retry"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "Retire explicitly removed PID/orphan/coordinator policies; preserve exclusion, actual stop evidence, original outcomes and explicit retry without historical process inference.",
+        "authorization": "report:2026-11-09-runtime-pid-removal",
+        "record": "docs/research/2026-11-09-runtime-pid-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+            "namePattern": "^(?:Native portable unconfirmed check termination persists an Agent-confirmed interruption before allowing an explicit check retry|Native portable unconfirmed check termination preserves the registered process and blocks retries for runtime checks|Native portable unconfirmed check termination preserves the registered process and blocks retries for verifier checks|Native portable unconfirmed check termination preserves the registered process and blocks retries for legacy-verifier checks)$",
+            "requiredNames": [
+              "Native portable unconfirmed check termination persists an Agent-confirmed interruption before allowing an explicit check retry",
+              "Native portable unconfirmed check termination preserves the registered process and blocks retries for runtime checks",
+              "Native portable unconfirmed check termination preserves the registered process and blocks retries for verifier checks",
+              "Native portable unconfirmed check termination preserves the registered process and blocks retries for legacy-verifier checks"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+            "namePattern": "^(?:Native portable Runtime vertical path returns a retry action for an interrupted check and reruns it explicitly|Native portable Runtime vertical path recovers an interrupted running check after Agent stop confirmation|Native portable Runtime vertical path does not infer that an external Verifier ended when its dispatch process exits|Native portable Runtime vertical path returns an interrupted non-repeatable check to Build before exposing retry)$",
+            "requiredNames": [
+              "Native portable Runtime vertical path returns a retry action for an interrupted check and reruns it explicitly",
+              "Native portable Runtime vertical path recovers an interrupted running check after Agent stop confirmation",
+              "Native portable Runtime vertical path does not infer that an external Verifier ended when its dispatch process exits",
+              "Native portable Runtime vertical path returns an interrupted non-repeatable check to Build before exposing retry"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/registry.json",
+            "sha256": "cd525ad933feaca15abaebbaa79527d0f7db2b6561855d55744a6523b481c68b"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/tests.patch",
+            "sha256": "729be0c5e84760f5f030667e5936e059fb713adfa29e39b2671550dc308d95df"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/mapping.json",
+            "sha256": "2b263e7005367fcb2b73a57afd96bf1723dacc7039ca0e8f1daa5af4b8c1109b"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/tests.json",
+            "sha256": "6f6f8ef360c9ed4feb44be79e2eaf98ec04fe068887e53e3df92b19d0837d63b"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-confirmed-stop-probe-reuse",
+      "sources": [
+        "report:2026-11-05-native-verify-archive-overhead"
+      ],
+      "behavior": "Reuse confirmed termination evidence without probing processes again when the execution record is unchanged.",
+      "coverageLevel": "unit",
+      "reproduction": "A completed execution with a matching Runtime stop-record digest previously entered process liveness probes on every inspection. The new focused regression covers the inspection boundary with controlled process observations; public CLI timing has not been measured.",
+      "expected": "Matching complete execution evidence avoids process probes; changing the execution record invokes fresh probes.",
+      "forbidden": "Reusing termination evidence after its execution record changes.",
+      "rootCause": "Inspection probed settled executions before consulting their persisted stop evidence.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-check-termination.test.ts",
+          "namePattern": "^reuses a confirmed stop only while the complete execution record still matches$",
+          "requiredNames": [
+            "reuses a confirmed stop only while the complete execution record still matches"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "Preserve the original business behavior while adapting check reports, lifecycle fixtures and assertions to PID-free execution; archive every original assertion.",
+        "authorization": "report:2026-11-09-runtime-pid-removal",
+        "record": "docs/research/2026-11-09-runtime-pid-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-check-termination.test.ts",
+            "namePattern": "^reuses a confirmed stop only while the complete execution record still matches$",
+            "requiredNames": [
+              "reuses a confirmed stop only while the complete execution record still matches"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/registry.json",
+            "sha256": "cd525ad933feaca15abaebbaa79527d0f7db2b6561855d55744a6523b481c68b"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/tests.patch",
+            "sha256": "729be0c5e84760f5f030667e5936e059fb713adfa29e39b2671550dc308d95df"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/mapping.json",
+            "sha256": "2b263e7005367fcb2b73a57afd96bf1723dacc7039ca0e8f1daa5af4b8c1109b"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/tests.json",
+            "sha256": "6f6f8ef360c9ed4feb44be79e2eaf98ec04fe068887e53e3df92b19d0837d63b"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-lightweight-settled-check-inspection",
+      "sources": [
+        "report:2026-11-05-native-verify-archive-cost"
+      ],
+      "behavior": "Lightweight inspection skips settled execution files but inspects missing stop evidence.",
+      "coverageLevel": "unit",
+      "reproduction": "Create actual execution registration and bound stopping evidence, inspect with includeSettled false, then remove the stop evidence.",
+      "expected": "Skip settled execution reads and inspect executions whose stop evidence is missing.",
+      "forbidden": "Hide unconfirmed executions from status diagnostics.",
+      "rootCause": "Status loaded every historical execution record.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-check-termination.test.ts",
+          "namePattern": "^(?:omits settled execution reads in lightweight inspection but diagnoses missing stop evidence)$",
+          "requiredNames": [
+            "omits settled execution reads in lightweight inspection but diagnoses missing stop evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-normal-stop-reconciliation",
+      "sources": [
+        "report:2026-11-05-native-verify-archive-cost"
+      ],
+      "behavior": "Normal advancement skips execution records that already have bound stop evidence.",
+      "coverageLevel": "unit",
+      "reproduction": "The same registered execution test opened a settled record before the change and opens none after the change.",
+      "expected": "Reconcile only executions missing stopping evidence; preserve the current Run when nothing needs recording.",
+      "forbidden": "Open every settled historical execution record on each internal advancement.",
+      "rootCause": "Reconciliation requested includeSettled even when the Run already contained stop evidence.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-check-termination.test.ts",
+          "namePattern": "^does not reopen settled execution records when reconciling existing stop proof$",
+          "requiredNames": [
+            "does not reopen settled execution records when reconciling existing stop proof"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,12 +1,11 @@
-import { readClassicProjectFile } from '../../../domains/comet-classic/classic-protected-path.js';
+import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { withClassicCommandContext } from '../../../domains/comet-classic/classic-command-context.js';
-import { classicTaskRevision } from '../../../domains/comet-classic/classic-tasks.js';
+import { readClassicProjectFile } from '../../../domains/comet-classic/classic-protected-path.js';
 import { ensureClassicRuntimeRun } from '../../../domains/comet-classic/classic-runtime-run.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
@@ -87,7 +86,7 @@ describe('Classic compact recovery and task reconciliation', () => {
       const files = [statePath, path.join(change, 'tasks.md'), path.join(root, 'plan.md')];
       const before = await Promise.all(files.map((file) => fs.readFile(file, 'utf8')));
       for (const args of [
-        ['task-complete', 'demo', 'a', '--expect', classicTaskRevision(tasks)],
+        ['task-complete', 'demo', 'a'],
         ['tasks', 'demo', '--assign-ids'],
         ['sync-plan', 'demo'],
       ]) {
@@ -113,7 +112,7 @@ describe('Classic compact recovery and task reconciliation', () => {
       const files = [statePath, path.join(change, 'tasks.md'), path.join(root, 'plan.md')];
       const before = await Promise.all(files.map((file) => fs.readFile(file, 'utf8')));
       for (const args of [
-        ['task-complete', 'demo', 'a', '--expect', classicTaskRevision(tasks)],
+        ['task-complete', 'demo', 'a'],
         ['tasks', 'demo', '--assign-ids'],
         ['sync-plan', 'demo'],
       ]) {
@@ -136,7 +135,6 @@ describe('Classic compact recovery and task reconciliation', () => {
         JSON.stringify({
           schemaVersion: 1,
           taskIds: ['a'],
-          revision: classicTaskRevision(tasks),
           stage,
           sessionId: 'worker',
           evidence: [],
@@ -157,15 +155,7 @@ describe('Classic compact recovery and task reconciliation', () => {
     },
   );
   it('records accepted completion and synchronizes a mapped plan without executing implementation', async () => {
-    const result = await cli(
-      'state',
-      'task-complete',
-      'demo',
-      'a',
-      '--expect',
-      classicTaskRevision(tasks),
-      '--json',
-    );
+    const result = await cli('state', 'task-complete', 'demo', 'a', '--json');
     expect(result.exitCode, result.stdout).toBe(0);
     expect(await fs.readFile(path.join(root, 'plan.md'), 'utf8')).toContain('- [x] implementation');
     const recovered = await cli('state', 'check', 'demo', 'build', '--recover', '--json');
@@ -191,7 +181,6 @@ describe('Classic compact recovery and task reconciliation', () => {
     const checkpoint = {
       schemaVersion: 1,
       taskIds: ['a'],
-      revision: classicTaskRevision(tasks),
       stage: 'task-review',
       sessionId: 'implementer-a',
       evidence: ['commit:abc'],
@@ -229,8 +218,8 @@ describe('Classic compact recovery and task reconciliation', () => {
     const stale = JSON.parse(
       (await cli('state', 'check', 'demo', 'build', '--recover', '--json')).stdout!,
     ).data;
-    expect(stale.coordination.stale).toBe(true);
-    expect(stale.nextAction.kind).toBe('reconcile-task');
+    expect(stale.coordination.stale).toBe(false);
+    expect(stale.nextAction.kind).toBe('review');
   });
   it('repairs stale mapped plan projections explicitly without changing task acceptance', async () => {
     await fs.writeFile(path.join(change, 'tasks.md'), tasks.replace('[ ]', '[x]'));

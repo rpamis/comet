@@ -110,12 +110,12 @@ describe('application continuation state matrix', () => {
   );
 });
 
-it('publishes pending stop confirmation instead of a done continuation after logical cancellation', () => {
+it('publishes pending cleanup confirmation for a cancelled Runtime tool', () => {
   const run = childRun('running');
   run.children = [];
   run.status = 'cancelled';
   const action = run.actions[0];
-  action.type = 'invoke_skill';
+  action.type = 'call_tool';
   action.status = 'cancelled';
   action.claim = { executorId: 'host', token: 'original-token' };
   const view = projectWorkflowApplicationRun(application, run);

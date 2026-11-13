@@ -1,0 +1,23 @@
+{
+  "root": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\mcp-npm-readonly-XO8Zvx",
+  "prefix": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\mcp-npm-readonly-XO8Zvx\\prefix",
+  "inheritedPrefixKeys": [
+    "NPM_CONFIG_PREFIX"
+  ],
+  "results": [
+    {
+      "mode": "original",
+      "prefixEntries": {
+        "NPM_CONFIG_PREFIX": "D:\\nodejs"
+      },
+      "root": "D:\\nodejs\\node_modules"
+    },
+    {
+      "mode": "normalized",
+      "prefixEntries": {
+        "npm_config_prefix": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\mcp-npm-readonly-XO8Zvx\\prefix"
+      },
+      "root": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\mcp-npm-readonly-XO8Zvx\\prefix\\node_modules"
+    }
+  ]
+}

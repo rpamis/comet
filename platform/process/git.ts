@@ -19,7 +19,11 @@ export class GitCommandError extends Error {
   }
 }
 
-function executeGitCommand(cwd: string, args: readonly string[]): string {
+function executeGitCommand(
+  cwd: string,
+  args: readonly string[],
+  maxBuffer = GIT_MAX_BUFFER,
+): string {
   try {
     return measureCometGitCommand(() =>
       execFileSync('git', ['-C', cwd, ...args], {
@@ -27,7 +31,7 @@ function executeGitCommand(cwd: string, args: readonly string[]): string {
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: GIT_TIMEOUT_MS,
         killSignal: 'SIGKILL',
-        maxBuffer: GIT_MAX_BUFFER,
+        maxBuffer,
         windowsHide: true,
       }),
     );
@@ -44,6 +48,66 @@ function executeGitCommand(cwd: string, args: readonly string[]): string {
 
 export function runGitCommand(cwd: string, args: readonly string[]): string {
   return executeGitCommand(cwd, args).trim();
+}
+
+/** 一次读取逐提交路径；NUL 分隔保留空格、换行及类似 hash 的文件名。 */
+export function readGitCommitPaths(cwd: string, commits: readonly string[]): Map<string, string[]> {
+  if (commits.some((commit) => !/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u.test(commit)))
+    throw new Error('Git commit paths require complete commit IDs');
+  if (!commits.length) return new Map();
+  let output: string;
+  try {
+    output = measureCometGitCommand(() =>
+      execFileSync(
+        'git',
+        ['diff-tree', '--stdin', '--always', '--no-renames', '--name-status', '-r', '-z'],
+        {
+          cwd,
+          input: commits.join('\n') + '\n',
+          encoding: 'utf8',
+          timeout: GIT_TIMEOUT_MS,
+          maxBuffer: GIT_MAX_BUFFER,
+          windowsHide: true,
+        },
+      ),
+    );
+  } catch (error) {
+    if (!['ENOBUFS', 'ETIMEDOUT'].includes((error as NodeJS.ErrnoException).code ?? ''))
+      throw error;
+    // 批量总量或时限不能缩窄旧版逐提交检查；只读失败后沿用原参数完整重读。
+    return new Map(
+      commits.map((commit) => [
+        commit,
+        measureCometGitCommand(() =>
+          execFileSync(
+            'git',
+            ['diff-tree', '--no-commit-id', '--no-renames', '--name-only', '-r', '-z', commit],
+            { cwd, encoding: 'utf8', windowsHide: true },
+          ),
+        )
+          .split('\0')
+          .filter(Boolean),
+      ]),
+    );
+  }
+  const tokens = output.split('\0');
+  const result = new Map<string, string[]>();
+  let index = 0;
+  for (const commit of commits) {
+    if (tokens[index++] !== commit)
+      throw new Error(`Git commit path response does not match ${commit}`);
+    const paths: string[] = [];
+    while (/^[ACDMTUXB]$/u.test(tokens[index] ?? '')) {
+      index += 1;
+      const file = tokens[index++];
+      if (!file) throw new Error('Git commit path response is incomplete');
+      paths.push(file);
+    }
+    result.set(commit, paths);
+  }
+  if (tokens.slice(index).some(Boolean))
+    throw new Error('Git commit path response has unexpected records');
+  return result;
 }
 
 async function executeGitCommandAsync(cwd: string, args: readonly string[]): Promise<string> {
@@ -124,29 +188,28 @@ export function fetchGitlinkCommitsForMerge(
 /** 源文件比较保留前后空白和换行，不能使用会 trim 的命令输出。 */
 export function readGitBlob(cwd: string, objectId: string): string {
   if (!/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u.test(objectId)) throw new Error('Invalid Git blob id');
-  return executeGitCommand(cwd, ['cat-file', 'blob', objectId]);
+  return executeGitCommand(cwd, ['cat-file', 'blob', objectId], Number.MAX_SAFE_INTEGER);
 }
 
-/** 按内容对象批量读取原文；限制单个对象和每批输出，避免批量比较耗尽内存。 */
+/** 按内容对象批量读取原文；每批缓冲随实际对象大小分配，默认完整读取。 */
 export function readGitBlobs(
   cwd: string,
   objectIds: readonly string[],
-  maxBlobBytes = 1024 * 1024,
+  maxBlobBytes = Number.MAX_SAFE_INTEGER,
 ): Map<string, string> {
-  if (!Number.isSafeInteger(maxBlobBytes) || maxBlobBytes < 1 || maxBlobBytes > GIT_MAX_BUFFER / 2)
+  if (!Number.isSafeInteger(maxBlobBytes) || maxBlobBytes < 1)
     throw new Error('Invalid Git blob size limit');
   const ids = [...new Set(objectIds)];
   if (ids.some((id) => !/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u.test(id)))
     throw new Error('Invalid Git blob id');
   const blobs = new Map<string, string>();
-  let totalBytes = 0;
-  const execute = (args: string[], input: readonly string[]) =>
+  const execute = (args: string[], input: readonly string[], maxBuffer = GIT_MAX_BUFFER) =>
     measureCometGitCommand(() =>
       execFileSync('git', ['-C', cwd, 'cat-file', ...args], {
         input: input.join('\n') + '\n',
         timeout: GIT_TIMEOUT_MS,
         killSignal: 'SIGKILL',
-        maxBuffer: GIT_MAX_BUFFER,
+        maxBuffer,
         windowsHide: true,
         stdio: ['pipe', 'pipe', 'pipe'],
       }),
@@ -159,9 +222,6 @@ export function readGitBlobs(
       if (!match) continue;
       const size = Number(match[2]);
       if (Number.isSafeInteger(size) && size <= maxBlobBytes) {
-        totalBytes += size;
-        if (totalBytes > 64 * 1024 * 1024)
-          throw new Error('Git blob batch exceeds its total size limit');
         sizes.set(match[1], size);
       }
     }
@@ -169,7 +229,7 @@ export function readGitBlobs(
     let bytes = 0;
     const flush = () => {
       if (!batch.length) return;
-      const output = execute(['--batch'], batch);
+      const output = execute(['--batch'], batch, Math.max(GIT_MAX_BUFFER, bytes));
       let cursor = 0;
       for (const id of batch) {
         const newline = output.indexOf(10, cursor);

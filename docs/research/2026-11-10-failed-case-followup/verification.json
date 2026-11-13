@@ -1,0 +1,390 @@
+{
+  "source": "report:2026-11-10-failed-case-followup",
+  "base": "47d07e03fb01ba796c31bae996575f82fef3a39c",
+  "caseId": "native-interrupted-check-owner-confirmation",
+  "baselineSampling": {
+    "runs": 32,
+    "passed": 32,
+    "interpretation": "Ordinary sampling did not reproduce the intermittent failure; these passes are not the repair proof."
+  },
+  "deterministicBefore": {
+    "failed": 2,
+    "passed": 0,
+    "cli": {
+      "exitCode": 65,
+      "phase": "verify",
+      "stage": "verify-ready",
+      "continuation": "dispatch-verifier",
+      "error": {
+        "code": "invalid-data",
+        "message": "检查进程树的停止尚未确认；保留原执行登记，不能验收或重试；计划时限=10000ms，命令超时=是，命令完成回报=未收到"
+      },
+      "stopCalls": 4,
+      "checks": [
+        {
+          "id": "runtime-pass",
+          "status": "passed",
+          "executionCount": 1,
+          "activeProcess": null
+        },
+        {
+          "id": "runtime-timeout",
+          "status": "running",
+          "executionCount": 3,
+          "activeProcess": {
+            "status": "running",
+            "instanceId": "48df60cf-6884-4139-9a30-774c94159526"
+          }
+        }
+      ]
+    }
+  },
+  "historicalLimit": "The original full run omitted the error body. Controlled owner delay reproduces the same observable third-retry CLI65/Verify symptom; its exact internal error is now captured, but the historical single occurrence cannot be attributed word for word.",
+  "after": [
+    {
+      "report": "owner-retry-green.json",
+      "platform": "win32",
+      "passed": 2,
+      "failed": 0,
+      "unselectedOrSkipped": 80
+    },
+    {
+      "report": "termination-neighbors.json",
+      "platform": "win32",
+      "passed": 66,
+      "failed": 0,
+      "unselectedOrSkipped": 0
+    },
+    {
+      "report": "prior-repairs.json",
+      "platform": "win32",
+      "passed": 2,
+      "failed": 0,
+      "unselectedOrSkipped": 196
+    },
+    {
+      "report": "linux-links-final.json",
+      "platform": "linux",
+      "passed": 35,
+      "failed": 0,
+      "unselectedOrSkipped": 277
+    },
+    {
+      "report": "posix-owner.json",
+      "platform": "linux",
+      "passed": 1,
+      "failed": 0,
+      "unselectedOrSkipped": 19
+    },
+    {
+      "report": "generated-cli-final.json",
+      "platform": "win32",
+      "passed": 1,
+      "failed": 0,
+      "unselectedOrSkipped": 61
+    },
+    {
+      "report": "classic-timeouts.json",
+      "platform": "win32",
+      "passed": 9,
+      "failed": 0,
+      "unselectedOrSkipped": 0
+    },
+    {
+      "report": "classic-composed-timeouts.json",
+      "platform": "win32",
+      "passed": 3,
+      "failed": 0,
+      "unselectedOrSkipped": 31
+    },
+    {
+      "report": "runtime-assets.json",
+      "platform": "win32",
+      "passed": 25,
+      "failed": 0,
+      "unselectedOrSkipped": 0
+    }
+  ],
+  "priorFailures": {
+    "count": 37,
+    "allSelectorsPassed": true,
+    "windows": 2,
+    "linux": 35,
+    "mapping": [
+      {
+        "file": "test/domains/comet-entry/project-sdk-status.test.ts",
+        "name": "SDK ownership in shared project status retains a per-change error for symlink-checkpoint without hiding other changes",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+        "name": "Native v4 public CLI surface offers retry-checks when a repeatable handoff verification check is interrupted",
+        "report": "owner-retry-green.json",
+        "platform": "win32"
+      },
+      {
+        "file": "test/domains/eval/eval-run-store.test.ts",
+        "name": "Eval run history and baselines checks every path component once and never reuses a previous symlink check",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/eval/eval-run-store.test.ts",
+        "name": "Eval run history and baselines rejects cross-run evidence through a report-file symlink",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'absolute' file link to 'project-local' before deciding the Hook allowance",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'relative' file link to 'project-local' before deciding the Hook allowance",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'chain' file link to 'project-local' before deciding the Hook allowance",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'absolute' file link to 'external' before deciding the Hook allowance",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'relative' file link to 'external' before deciding the Hook allowance",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'chain' file link to 'external' before deciding the Hook allowance",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'absolute' file link to 'native-owned' before deciding the Hook allowance",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'relative' file link to 'native-owned' before deciding the Hook allowance",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'chain' file link to 'native-owned' before deciding the Hook allowance",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'absolute' file link to 'classic-owned' before deciding the Hook allowance",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'relative' file link to 'classic-owned' before deciding the Hook allowance",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'chain' file link to 'classic-owned' before deciding the Hook allowance",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'absolute' file link to 'runtime' before deciding the Hook allowance",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'relative' file link to 'runtime' before deciding the Hook allowance",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'chain' file link to 'runtime' before deciding the Hook allowance",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'absolute' file link to 'git' before deciding the Hook allowance",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'relative' file link to 'git' before deciding the Hook allowance",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'chain' file link to 'git' before deciding the Hook allowance",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'absolute' file link to 'control' before deciding the Hook allowance",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'relative' file link to 'control' before deciding the Hook allowance",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "resolves a dangling 'chain' file link to 'control' before deciding the Hook allowance",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "fails closed for an allowlisted cycle link chain without hanging",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+        "name": "fails closed for an allowlisted over-depth link chain without hanging",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+        "name": "rejects a replaced archive manifest symlink and keeps the same Run pending",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/comet-classic/classic-layout.test.ts",
+        "name": "Classic project discovery boundaries rejects a dangling .comet/config.yaml link instead of selecting a parent project",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/scripts/core-regressions.test.ts",
+        "name": "core regression entrypoint keeps every reported issue linked to an executable case and invariant",
+        "report": "prior-repairs.json",
+        "platform": "win32"
+      },
+      {
+        "file": "test/platform/process/runtime-dependency-permissions.test.ts",
+        "name": "rejects a dependency manifest redirected outside its package",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/engine/runtime-store-history.test.ts",
+        "name": "rejects symlink history and absent checkpoint without reopening authority",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/engine/runtime-store-discovery.test.ts",
+        "name": "read-only RuntimeStore discovery fails closed on link history metadata instead of hiding a possible owner",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/workflow-application/evaluation-evidence.test.ts",
+        "name": "rejects incomplete or inconsistent historical evidence: symlink",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/workflow-application/evaluation-evidence.test.ts",
+        "name": "rejects incomplete or inconsistent historical evidence: manifest-symlink",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+        "name": "rejects symlink history entries and directories instead of hiding an active identity",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      },
+      {
+        "file": "test/domains/eval/eval-run-sources.test.ts",
+        "name": "Eval source discovery rejects cached report files replaced by symlinks and recovers after repair",
+        "report": "linux-links-final.json",
+        "platform": "linux"
+      }
+    ]
+  },
+  "priorSuiteCleanup": {
+    "report": "prior-repairs.json",
+    "case": "Native SDK Workflow Application rejects legacy interruption reconciliation if a late process registration appears before commit",
+    "result": "passed including suite cleanup"
+  },
+  "nativeWindowsFileLinks": {
+    "result": "EPERM",
+    "reason": "The current token lacks SeCreateSymbolicLinkPrivilege and Developer Mode is not enabled.",
+    "systemSettingsChanged": false,
+    "coverage": "The 35 cases really executed in WSL; this is not native Windows file-link evidence."
+  },
+  "compiledOwner": {
+    "exitedBeforeOwner": false,
+    "confirmed": true,
+    "ownerDelayMs": 904,
+    "exitCode": null,
+    "signalCode": null
+  },
+  "checks": {
+    "build": "passed",
+    "types": "passed",
+    "lint": "passed with 9 pre-existing warnings",
+    "architecture": "passed",
+    "generated": "passed",
+    "sdkApi": "passed",
+    "badcaseRegistration": "passed"
+  },
+  "probePreparation": {
+    "reports": ["compiled-runtime.json", "compiled-runtime-final.json"],
+    "classification": "Temporary probe preparation errors: wrong relative import depth, then assuming a non-public runNativeCli export. Preserved as failures; the final probe invokes node and the real self-contained CLI entry. They are not counted as product regressions or passing evidence."
+  },
+  "newCaseActualReportValidation": {
+    "groups": 1
+  },
+  "reviews": {
+    "standards": "No blocking findings",
+    "spec": "No blocking findings; retain historical-log attribution limit"
+  },
+  "release": {
+    "version": "0.5.3",
+    "master": "0.5.2",
+    "previousTag": "0.5.2",
+    "reason": "Windows already used 30s on master; f6776924 introduced the unreleased 250ms regression. No new version or development-only changelog entry."
+  },
+  "notExecuted": [
+    "Full repository rerun, per user request",
+    "Real model or container Eval",
+    "Real Agent platform Hook",
+    "Native Windows file-link execution without the missing privilege",
+    "Full package release installation"
+  ],
+  "rawReportRoot": "coverage/repair-all-47d07e03/"
+}

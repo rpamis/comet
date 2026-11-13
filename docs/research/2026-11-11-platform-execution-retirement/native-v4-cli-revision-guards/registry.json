@@ -1,0 +1,85 @@
+{
+  "effectiveCases": [
+    {
+      "id": "native-323-verify-to-shape",
+      "record": {
+        "id": "native-323-verify-to-shape",
+        "behavior": "用户要求改目标时在同一Run回Shape，清除旧候选/验收/审批，保留change与workspace",
+        "status": "covered",
+        "reason": "SDK正式requirements revision命令和Compat公开CLI已有覆盖。",
+        "coverageLayer": "SDK and Compat",
+        "evidence": [
+          "https://github.com/rpamis/comet/issues/323"
+        ],
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "returns Verify to Shape through a persisted requirements revision command",
+            "requiredNames": [
+              "returns Verify to Shape through a persisted requirements revision command"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+            "namePattern": "revises requirements from Archive-ready and invalidates the accepted result",
+            "requiredNames": [
+              "revises requirements from Archive-ready and invalidates the accepted result"
+            ]
+          }
+        ]
+      },
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+          "namePattern": "revises requirements from Archive-ready and invalidates the accepted result",
+          "requiredNames": [
+            "revises requirements from Archive-ready and invalidates the accepted result"
+          ]
+        }
+      ],
+      "unchanged": true
+    },
+    {
+      "id": "issue-360-archive-revise",
+      "record": {
+        "id": "issue-360-archive-revise",
+        "behavior": "archive-ready未执行Specs写入前可经受控入口返回Shape，并作废旧批准/候选。",
+        "status": "covered",
+        "reason": "0.5.0 保留此行为；所列确定性测试直接断言该契约。covered 表示已映射，不表示本次清单审计已执行。",
+        "coverageLayer": "sdk",
+        "evidence": [
+          "test/domains/comet-native/native-sdk-application.test.ts",
+          "test/domains/comet-native/native-cli-v4-surface.test.ts"
+        ],
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "allows requirements revision before Archive applies Specs but rejects it afterwards",
+            "requiredNames": [
+              "allows requirements revision before Archive applies Specs but rejects it afterwards"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+            "namePattern": "revises requirements from Archive-ready and invalidates the accepted result",
+            "requiredNames": [
+              "revises requirements from Archive-ready and invalidates the accepted result"
+            ]
+          }
+        ]
+      },
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+          "namePattern": "revises requirements from Archive-ready and invalidates the accepted result",
+          "requiredNames": [
+            "revises requirements from Archive-ready and invalidates the accepted result"
+          ]
+        }
+      ],
+      "unchanged": true
+    }
+  ],
+  "selectorsUnchanged": true,
+  "appendNeeded": false
+}

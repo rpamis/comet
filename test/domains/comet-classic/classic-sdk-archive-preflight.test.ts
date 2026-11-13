@@ -1,20 +1,20 @@
-import { createHash } from 'node:crypto';
+import { writeClassicPlatformChecks } from '../../helpers/classic-platform-checks.js';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as artifactRequirements from '../../../domains/comet-classic/classic-artifact-requirements.js';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
-import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
+import { defineClassicWorkflowApplication } from '../../../domains/comet-classic/classic-sdk-application.js';
+import { executeClassicSdkArchivePreflight } from '../../../domains/comet-classic/classic-sdk-archive-preflight.js';
 import {
   createClassicSdkArchiveExecutor,
   executeClassicSdkArchive,
 } from '../../../domains/comet-classic/classic-sdk-archive.js';
-import { executeClassicSdkArchivePreflight } from '../../../domains/comet-classic/classic-sdk-archive-preflight.js';
-import { createRuntime } from '../../../domains/engine/runtime.js';
-import { defineClassicWorkflowApplication } from '../../../domains/comet-classic/classic-sdk-application.js';
 import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
-import * as artifactRequirements from '../../../domains/comet-classic/classic-artifact-requirements.js';
+import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
+import { createRuntime } from '../../../domains/engine/runtime.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -96,23 +96,12 @@ async function fixture(
   }
   const preview = await cli('guard', 'example', 'open');
   await cli('guard', 'example', 'open', '--apply', '--approval-hash', preview.approvalHash);
-  // 命令分隔符后的参数属于被检查进程；直接调用避免追加 --json。
-  const checked = await runClassicCli(
-    [
-      'guard',
-      'example',
-      'build',
-      '--apply',
-      '--json',
-      '--',
-      process.execPath,
-      '-e',
-      'process.exit(0)',
-    ],
-    undefined,
-    { invocationCwd: projectRoot },
-  );
-  expect(checked.exitCode, checked.stderr).toBe(0);
+  const checks = await writeClassicPlatformChecks(projectRoot, [
+    process.execPath,
+    '-e',
+    'process.exit(0)',
+  ]);
+  await cli('guard', 'example', 'build', '--apply', '--checks', checks);
   const report = 'docs/superpowers/reports/verify.md';
   await fs.mkdir(path.dirname(path.join(projectRoot, report)), { recursive: true });
   await fs.writeFile(path.join(projectRoot, report), '# Verification\nPASS\n');
@@ -128,24 +117,8 @@ async function fixture(
       cli,
       active,
     };
-  const verified = await runClassicCli(
-    [
-      'guard',
-      'example',
-      'verify',
-      '--report',
-      report,
-      '--apply',
-      '--json',
-      '--',
-      process.execPath,
-      '-e',
-      'process.exit(0)',
-    ],
-    undefined,
-    { invocationCwd: projectRoot },
-  );
-  expect(verified.exitCode, verified.stderr).toBe(0);
+  await writeClassicPlatformChecks(projectRoot, [process.execPath, '-e', 'process.exit(0)']);
+  await cli('guard', 'example', 'verify', '--report', report, '--apply', '--checks', checks);
   const proposed = await cli(
     'state',
     'propose-archive',
@@ -174,63 +147,6 @@ async function fixture(
 }
 
 describe('Classic SDK Archive dependency preflight', () => {
-  it.each(['hotfix', 'tweak'] as const)(
-    'blocks %s requirement drift before Archive side effects',
-    async (profile) => {
-      const f = await fixture({ profile, preflight: false });
-      await f.install();
-      vi.stubEnv('COMET_OPENSPEC', f.executable);
-      await fs.appendFile(path.join(f.active, 'proposal.md'), 'Also replace authentication.\n');
-      const response = await runClassicCli(
-        ['guard', 'example', 'archive', '--apply', '--json'],
-        undefined,
-        { invocationCwd: f.projectRoot },
-      );
-      expect(JSON.parse(response.stdout!).exitCode).not.toBe(0);
-      expect(await f.runtime.inspect(f.run.runId)).toEqual(f.run);
-      await expect(fs.access(f.count)).rejects.toMatchObject({ code: 'ENOENT' });
-      expect(await fs.readFile(path.join(f.active, 'proposal.md'), 'utf8')).toContain(
-        'replace authentication',
-      );
-    },
-  );
-
-  it.each([false, true])(
-    'blocks the same approved Archive Action after report drift (apply=%s)',
-    async (apply) => {
-      const f = await fixture({ preflight: false });
-      const pending = f.run.actions.find((action) => action.status === 'pending')!;
-      expect(pending.stepId).toBe('tweak.archive.preflight');
-      await fs.appendFile(
-        path.join(f.projectRoot, 'docs/superpowers/reports/verify.md'),
-        'Changed after approval.\n',
-      );
-      const response = await runClassicCli(
-        ['guard', 'example', 'archive', ...(apply ? ['--apply'] : []), '--json'],
-        undefined,
-        { invocationCwd: f.projectRoot },
-      );
-      const result = JSON.parse(response.stdout!);
-      expect(result.exitCode).not.toBe(0);
-      expect(result.agent.continuation).toMatchObject({
-        mode: 'execute',
-        commandArgs: [
-          'comet',
-          'state',
-          'reopen-verification',
-          'example',
-          '--expected-revision',
-          String(f.run.revision),
-          '--json',
-        ],
-      });
-      expect(result.agent.continuation.completion).toBeUndefined();
-      expect(result.next.command).toContain('reopen-verification');
-      expect(await f.runtime.inspect(f.run.runId)).toEqual(f.run);
-      await expect(fs.access(f.count)).rejects.toMatchObject({ code: 'ENOENT' });
-    },
-  );
-
   it('keeps a different legitimate action when Guard was called for the wrong phase', async () => {
     const f = await fixture({ preflight: false });
     const response = await runClassicCli(['guard', 'example', 'build', '--json'], undefined, {
@@ -552,6 +468,11 @@ describe('Classic explicit verification recovery', () => {
         { invocationCwd: f.projectRoot },
       );
       expect(stale.exitCode).not.toBe(0);
+      const checks = await writeClassicPlatformChecks(f.projectRoot, [
+        process.execPath,
+        '-e',
+        'process.exit(0)',
+      ]);
       const verified = await runClassicCli(
         [
           'guard',
@@ -561,10 +482,8 @@ describe('Classic explicit verification recovery', () => {
           'docs/superpowers/reports/verify.md',
           '--apply',
           '--json',
-          '--',
-          process.execPath,
-          '-e',
-          'process.exit(0)',
+          '--checks',
+          checks,
         ],
         undefined,
         { invocationCwd: f.projectRoot },
@@ -642,108 +561,6 @@ describe('Classic explicit verification recovery', () => {
       expect((await f.runtime.inspect(f.run.runId)).revision).toBe(claimed.revision);
     },
   );
-});
-
-it('reopens a changed accepted report in the same Run before its check', async () => {
-  const f = await fixture({ verifyOnly: true });
-  const ref = 'docs/superpowers/reports/verify.md';
-  const action = f.run.actions.at(-1)!;
-  let run = await f.runtime.claim({
-    runId: f.run.runId,
-    expectedRevision: f.run.revision,
-    actionId: action.id,
-    attempt: action.attempt,
-    inputHash: action.inputHash,
-    executorId: 'test',
-    claimToken: 'report-claim',
-  });
-  run = await f.runtime.recordOutcome({
-    runId: run.runId,
-    expectedRevision: run.revision,
-    outcome: {
-      actionId: action.id,
-      attempt: action.attempt,
-      inputHash: action.inputHash,
-      claimToken: 'report-claim',
-      outcomeId: 'report-outcome',
-      status: 'succeeded',
-      output: { event: 'verification-ready', verificationReport: ref },
-    },
-    context: { requestId: 'report', projectRoot: f.projectRoot },
-  });
-  const wait = run.evidenceWaits!.at(-1)!;
-  run = await f.runtime.recordEvidence({
-    runId: run.runId,
-    expectedRevision: run.revision,
-    evidenceId: wait.id,
-    kind: wait.kind,
-    ref,
-    contentHash: createHash('sha256')
-      .update(await fs.readFile(path.join(f.projectRoot, ref)))
-      .digest('hex'),
-    submissionId: 'report-evidence',
-    context: { requestId: 'report-evidence', projectRoot: f.projectRoot },
-  });
-  await fs.appendFile(path.join(f.projectRoot, ref), 'Legitimate correction\n');
-  const blocked = await runClassicCli(
-    [
-      'guard',
-      'example',
-      'verify',
-      '--report',
-      ref,
-      '--apply',
-      '--json',
-      '--',
-      process.execPath,
-      '-e',
-      'process.exit(0)',
-    ],
-    undefined,
-    { invocationCwd: f.projectRoot },
-  );
-  expect(blocked.exitCode).not.toBe(0);
-  expect(JSON.parse(blocked.stdout!).agent.continuation.commandArgs).toEqual([
-    'comet',
-    'state',
-    'reopen-verification',
-    'example',
-    '--expected-revision',
-    String(run.revision),
-    '--json',
-  ]);
-  await f.cli(
-    'state',
-    'reopen-verification',
-    'example',
-    '--expected-revision',
-    String(run.revision),
-  );
-  const verified = await runClassicCli(
-    [
-      'guard',
-      'example',
-      'verify',
-      '--report',
-      ref,
-      '--apply',
-      '--json',
-      '--',
-      process.execPath,
-      '-e',
-      'process.exit(0)',
-    ],
-    undefined,
-    { invocationCwd: f.projectRoot },
-  );
-  expect(verified.exitCode, verified.stderr).toBe(0);
-  const current = await inspectClassicSdkRun(f.projectRoot, 'example');
-  expect(current.state.phase).toBe('archive');
-  expect(
-    current.run.evidenceWaits!.filter(
-      (entry) => entry.stepId === wait.stepId && entry.status === 'resolved',
-    ),
-  ).toHaveLength(2);
 });
 
 it('does not reopen after Archive has moved the change', async () => {

@@ -1,18 +1,21 @@
-import { nativeSdkCanRefreshChecks } from './native-sdk-checks.js';
 import type { RuntimeWait, WorkflowRun } from '../engine/runtime.js';
 import type { NativePortableState } from './native-portable-types.js';
-
 export type NativeSdkVerifyDecisionAction =
   'accept-result' | 'revise-implementation' | 'retry-verifier' | 'resolve-verifier-blocker';
-
 /** CLI、continuation 和转移共用同一状态/Wait 契约，不能展示当前不可执行的决定。 */
 export function nativeSdkVerifyWaitDecisions(
   state: NativePortableState,
   wait: Pick<RuntimeWait, 'stepId' | 'choices'>,
-  run: Readonly<WorkflowRun>,
-): { action: NativeSdkVerifyDecisionAction; choice: string }[] {
+  _run: Readonly<WorkflowRun>,
+): {
+  action: NativeSdkVerifyDecisionAction;
+  choice: string;
+}[] {
   if (state.phase !== 'verify') return [];
-  const decisions: { action: NativeSdkVerifyDecisionAction; choice: string }[] = [];
+  const decisions: {
+    action: NativeSdkVerifyDecisionAction;
+    choice: string;
+  }[] = [];
   if (state.status === 'await-user') {
     if (
       wait.stepId === 'verify.stop' &&
@@ -20,8 +23,6 @@ export function nativeSdkVerifyWaitDecisions(
     ) {
       if (state.loop.next_action === 'resolve-verifier-blocker')
         decisions.push({ action: 'resolve-verifier-blocker', choice: 'retry' });
-      decisions.push({ action: 'revise-implementation', choice: 'repair' });
-    } else if (wait.stepId === 'verify.checks-stop' && state.loop.next_action === 'await-user') {
       decisions.push({ action: 'revise-implementation', choice: 'repair' });
     } else if (
       wait.stepId === 'verify.confirm' &&
@@ -31,7 +32,7 @@ export function nativeSdkVerifyWaitDecisions(
         { action: 'accept-result', choice: 'approved' },
         { action: 'revise-implementation', choice: 'rejected' },
       );
-      if (nativeSdkCanRefreshChecks(run))
+      if (wait.choices.includes('reverify'))
         decisions.push({ action: 'retry-verifier', choice: 'reverify' });
     }
   }
@@ -43,7 +44,6 @@ export function nativeSdkVerifyWaitDecisions(
     decisions.push({ action: 'retry-verifier', choice: 'retry' });
   return decisions.filter(({ choice }) => wait.choices.includes(choice));
 }
-
 export function nativeSdkVerifyDecisions(run: Readonly<WorkflowRun>, state: NativePortableState) {
   if (['failed', 'cancelled', 'completed'].includes(run.status)) return [];
   return run.waits

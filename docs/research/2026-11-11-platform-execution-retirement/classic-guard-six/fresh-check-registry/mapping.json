@@ -1,0 +1,44 @@
+{
+  "cases": [
+    {
+      "id": "classic-sdk-fresh-check-opt-in-guidance",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/classic-guard-six/fresh-check-registry/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-output.test.ts",
+          "namePattern": "keeps actual platform report requirements visible without local reuse switches",
+          "requiredNames": [
+            "Classic next-step source projection keeps actual platform report requirements visible without local reuse switches"
+          ]
+        }
+      ]
+    }
+  ],
+  "behaviorMappings": [
+    {
+      "file": "test/domains/comet-classic/classic-sdk-output.test.ts",
+      "index": 3,
+      "originalName": "keeps fresh-check requirements visible before opting into local reuse",
+      "originalLine": 150,
+      "originalBody": "it('keeps fresh-check requirements visible before opting into local reuse', () => {\n    const run = fixture('full.build.check');\n    const before = structuredClone(run);\n    const continuation = classicSdkContinuation(run, root, 'demo');\n    const next = classicSdkNextAction(run);\n    expect(next).toMatchObject({ instruction: continuation.instruction });\n    expect(continuation.instruction).toContain('--local');\n    expect(continuation.instruction).toContain('不是执行位置');\n    expect(continuation.instruction).toContain('每阶段真实执行');\n    expect(continuation.instruction).toContain('禁止');\n    expect(continuation.commandArgs).not.toContain('--local');\n    expect(run).toEqual(before);\n  })",
+      "targetName": "keeps actual platform report requirements visible without local reuse switches",
+      "targetLine": 156,
+      "targetBody": "it('keeps actual platform report requirements visible without local reuse switches', () => {\n    const run = fixture('full.build.execute', 'comet-build');\n    const before = structuredClone(run);\n    const continuation = classicSdkContinuation(run, root, 'demo');\n    expect(continuation.completion?.commandArgs).toEqual([\n      'comet',\n      'state',\n      'complete-build',\n      'demo',\n      '--checks',\n      '<checks-json-file>',\n      '--json',\n    ]);\n    expect(continuation.completion?.instruction).toContain('平台执行检查');\n    expect(continuation.completion?.instruction).toContain('实际 checks');\n    expect(continuation.completion?.instruction).toContain('checksReason');\n    expect(continuation.completion?.commandArgs).not.toContain('--local');\n    expect(continuation.commandArgs).toBeNull();\n    expect(run).toEqual(before);\n  })",
+      "classification": "split-mechanism-and-business",
+      "business": "Current Build Skill completion needs actual checks JSON and checksReason for empty lists; no --local or automatic command dispatch and original Run unchanged.",
+      "retiredMechanisms": [
+        "--local reuse / per-stage CLI check-run instruction"
+      ],
+      "evidence": [
+        {
+          "fullName": "Classic next-step source projection keeps actual platform report requirements visible without local reuse switches",
+          "status": "passed",
+          "resultFile": "output-guidance-final-results.json"
+        }
+      ],
+      "status": "passed"
+    }
+  ]
+}

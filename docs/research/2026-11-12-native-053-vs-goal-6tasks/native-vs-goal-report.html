@@ -1,0 +1,1421 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Native 0.5.3 与 Goal：6 题 pass@3 对照</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --paper: #ffffff;
+        --canvas: #f3f1ec;
+        --ink: #191817;
+        --muted: #69645d;
+        --line: #cbc6bc;
+        --grid: #e8e4dc;
+        --native: #176b87;
+        --native-soft: #dcebf0;
+        --classic: #595b60;
+        --classic-soft: #e7e7e5;
+        --pass: #28745c;
+        --warn: #a5642b;
+        --fail: #a33a32;
+        --paper-font:
+          'Times New Roman', SimSun, 'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        background: var(--canvas);
+      }
+
+      body {
+        margin: 0;
+        background: var(--canvas);
+        color: var(--ink);
+        font: 15px/1.55 var(--paper-font);
+      }
+
+      main {
+        width: min(1040px, calc(100vw - 40px));
+        margin: 20px auto 52px;
+        padding: 52px 62px 64px;
+        background: var(--paper);
+        border: 1px solid #ddd8cf;
+        border-top: 2px solid var(--ink);
+      }
+
+      header.report-header {
+        max-width: 860px;
+        margin: 0 auto 34px;
+        text-align: center;
+      }
+
+      .kicker {
+        margin: 0 0 12px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(30px, 4.8vw, 48px);
+        line-height: 1.12;
+        letter-spacing: -0.025em;
+        text-wrap: balance;
+      }
+
+      .dek {
+        max-width: 760px;
+        margin: 20px auto 0;
+        color: var(--muted);
+        font-size: 16px;
+        text-wrap: pretty;
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px 18px;
+        margin-top: 20px;
+        color: var(--muted);
+        font: 12px/1.4 var(--paper-font);
+      }
+
+      .language-toggle {
+        position: fixed;
+        top: 18px;
+        right: 18px;
+        z-index: 20;
+        display: inline-flex;
+        padding: 3px;
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        box-shadow: 0 8px 28px rgba(25, 24, 23, 0.12);
+        backdrop-filter: blur(8px);
+      }
+
+      .language-toggle a {
+        padding: 6px 12px;
+        border-radius: 999px;
+        color: var(--muted);
+        font: 700 12px/1.2 var(--paper-font);
+        text-decoration: none;
+      }
+
+      .language-toggle a.is-active {
+        background: var(--ink);
+        color: #fffdf8;
+      }
+
+      section {
+        margin-top: 36px;
+      }
+
+      h2 {
+        margin: 0 0 18px;
+        padding-bottom: 7px;
+        border-bottom: 1px solid var(--ink);
+        font-size: 18px;
+        line-height: 1.25;
+      }
+
+      h3 {
+        margin: 0 0 5px;
+        font-size: 15px;
+      }
+
+      p {
+        margin: 0 0 14px;
+      }
+
+      code {
+        padding: 0.08rem 0.24rem;
+        background: #f2f0eb;
+        font: 0.92em/1.4 var(--paper-font);
+      }
+
+      .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        border-top: 1.5px solid var(--ink);
+        border-bottom: 1px solid var(--ink);
+      }
+
+      .metric {
+        min-width: 0;
+        padding: 18px 16px 16px;
+        border-right: 1px solid var(--grid);
+      }
+
+      .metric:last-child {
+        border-right: 0;
+      }
+
+      .metric-label {
+        min-height: 36px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .metric-value {
+        display: block;
+        margin-top: 7px;
+        color: var(--native);
+        font-size: clamp(25px, 3vw, 34px);
+        font-weight: 700;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .metric-context {
+        display: block;
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .figure {
+        margin-top: 22px;
+        padding-top: 14px;
+        border-top: 1.25px solid var(--ink);
+      }
+
+      .figure-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+
+      .figure-title {
+        margin: 0;
+        font-size: 15px;
+      }
+
+      .figure-note {
+        color: var(--muted);
+        font-size: 12px;
+        text-align: right;
+      }
+
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 18px;
+        margin: 0 0 18px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .legend span::before {
+        display: inline-block;
+        width: 18px;
+        height: 3px;
+        margin: 0 7px 3px 0;
+        background: var(--legend-color);
+        content: '';
+      }
+
+      .chart {
+        display: grid;
+        gap: 19px;
+      }
+
+      .chart-row {
+        display: grid;
+        grid-template-columns: 96px minmax(0, 1fr) 58px;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .chart-label {
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .bar-pair {
+        display: grid;
+        gap: 5px;
+      }
+
+      .track {
+        height: 10px;
+        background: repeating-linear-gradient(
+          to right,
+          transparent 0,
+          transparent calc(25% - 1px),
+          var(--grid) calc(25% - 1px),
+          var(--grid) 25%
+        );
+        border-left: 1px solid var(--line);
+      }
+
+      .bar {
+        width: var(--value);
+        height: 100%;
+        min-width: 2px;
+        background: var(--color);
+      }
+
+      .chart-value {
+        font: 700 12px/1.2 var(--paper-font);
+        text-align: right;
+      }
+
+      .caption {
+        margin: 14px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+        text-wrap: pretty;
+      }
+
+      .table-scroll {
+        overflow-x: auto;
+        border-top: 1.5px solid var(--ink);
+        border-bottom: 1.5px solid var(--ink);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12.5px;
+      }
+
+      th,
+      td {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--grid);
+        text-align: left;
+        vertical-align: middle;
+      }
+
+      th {
+        border-bottom: 1.25px solid var(--ink);
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      td.number,
+      th.number {
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+      }
+
+      tbody tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .score {
+        display: inline-flex;
+        min-width: 46px;
+        justify-content: center;
+        padding: 3px 8px;
+        color: white;
+        background: var(--pass);
+        font: 700 11px/1.4 var(--paper-font);
+      }
+
+      .score.partial {
+        background: var(--warn);
+      }
+
+      .score.low {
+        background: var(--fail);
+      }
+
+      .method-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0;
+        border-top: 1.5px solid var(--ink);
+        border-bottom: 1px solid var(--ink);
+      }
+
+      .method-item {
+        padding: 15px 18px;
+        border-right: 1px solid var(--grid);
+        border-bottom: 1px solid var(--grid);
+      }
+
+      .method-item:nth-child(2n) {
+        border-right: 0;
+      }
+
+      .method-item:nth-last-child(-n + 2) {
+        border-bottom: 0;
+      }
+
+      .method-item p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+
+      .callout {
+        margin-top: 24px;
+        padding: 18px 20px;
+        background: #f4f2ed;
+        border-top: 1px solid var(--ink);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .callout strong {
+        display: block;
+        margin-bottom: 5px;
+      }
+
+      .callout p {
+        margin: 0;
+        color: #44413d;
+      }
+
+      @media (max-width: 760px) {
+        main {
+          width: 100%;
+          margin: 0;
+          padding: 30px 20px 42px;
+          border-right: 0;
+          border-left: 0;
+        }
+
+        .metric-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .metric:nth-child(2) {
+          border-right: 0;
+        }
+
+        .metric:nth-child(-n + 2) {
+          border-bottom: 1px solid var(--grid);
+        }
+
+        .method-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .method-item,
+        .method-item:nth-child(2n),
+        .method-item:nth-last-child(-n + 2) {
+          border-right: 0;
+          border-bottom: 1px solid var(--grid);
+        }
+
+        .method-item:last-child {
+          border-bottom: 0;
+        }
+
+        .figure-head {
+          display: block;
+        }
+
+        .figure-note {
+          margin-top: 5px;
+          text-align: left;
+        }
+
+        .chart-row {
+          grid-template-columns: 76px minmax(0, 1fr) 50px;
+          gap: 8px;
+        }
+      }
+
+      small {
+        color: var(--muted);
+      }
+      td {
+        vertical-align: top;
+      }
+      details {
+        margin: 16px 0;
+      }
+      summary {
+        cursor: pointer;
+      }
+      code {
+        overflow-wrap: anywhere;
+      }
+      .badge-pass {
+        color: var(--pass);
+      }
+      .badge-fail {
+        color: var(--fail);
+      }
+      .badge-unknown {
+        color: var(--muted);
+      }
+      .chart-value {
+        min-width: 0;
+      }
+      .matrix-mark {
+        display: inline-block;
+        min-width: 1.4em;
+        font-weight: 700;
+      }
+      header p {
+        max-width: 75ch;
+      }
+      .missing-label {
+        display: block;
+        font: 12px sans-serif;
+        color: var(--muted);
+        text-align: center;
+        line-height: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header class="report-header">
+        <p class="kicker">COMET / WORKBUDDY CODE + SKILLSBENCH / 2026-11</p>
+        <h1>Native 0.5.3 与 Goal：6 题 pass@3 对照</h1>
+        <p class="dek">
+          预先固定 6 题，每题每组独立运行 3 次。两组使用相同 DeepSeek 模型配置和 Claude Code
+          2.1.318，比较 Native 完整流程与无 Comet 的原生
+          Goal。各数据集分别报告原题成功，不预设比较结果。
+        </p>
+      </header>
+      <section aria-labelledby="delivery-observation">
+        <h2 id="delivery-observation">从产物到验证、交付：本轮两个场景</h2>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>场景</th>
+                <th>Native：原题满分 / 满分且自然结束</th>
+                <th>Goal：原题满分 / 满分且自然结束</th>
+                <th>Native流程通过</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>PDF表单填写</td>
+                <td>2/3 · 2/3</td>
+                <td>1/3 · 1/3</td>
+                <td>3/3 已核对</td>
+              </tr>
+              <tr>
+                <td>全天车辆调度</td>
+                <td>3/3 · 2/3</td>
+                <td>2/3 · 1/3</td>
+                <td>2/3 已核对</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="caption">
+          每个场景每组仅3次。自然结束依据原始执行退出码0；超时留存候选满分仍保留在原题得分中。Native流程另核对Shape、Build、Verify和Archive，流程通过不等于原题满分。该表用于展示具体场景，完整六题成绩、制造业分类的失败及执行开销继续在下方保留，不能据此声称总体胜出。
+        </p>
+      </section>
+      <section aria-labelledby="headline">
+        <h2 id="headline">原题完整成功 · pass@3</h2>
+        <div class="metric-grid">
+          <article class="metric">
+            <div class="metric-label">WorkBuddy Code v1.0 · Native 0.5.3</div>
+            <span class="metric-value">66.7%</span
+            ><span class="metric-context">pass@3 · 2/3 已确认成功；9/9 个样本已记录</span>
+          </article>
+          <article class="metric">
+            <div class="metric-label">WorkBuddy Code v1.0 · Claude Code Goal</div>
+            <span class="metric-value">66.7%</span
+            ><span class="metric-context">pass@3 · 2/3 已确认成功；9/9 个样本已记录</span>
+          </article>
+          <article class="metric">
+            <div class="metric-label">SkillsBench v1.1 · Native 0.5.3</div>
+            <span class="metric-value">66.7%</span
+            ><span class="metric-context">pass@3 · 2/3 已确认成功；9/9 个样本已记录</span>
+          </article>
+          <article class="metric">
+            <div class="metric-label">SkillsBench v1.1 · Claude Code Goal</div>
+            <span class="metric-value">100.0%</span
+            ><span class="metric-context">pass@3 · 3/3 已确认成功；9/9 个样本已记录</span>
+          </article>
+        </div>
+      </section>
+      <section aria-labelledby="rates">
+        <h2 id="rates">可靠性与原始评分</h2>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>数据集 / 执行方式</th>
+                <th>pass@1</th>
+                <th>pass@3</th>
+                <th>pass^3</th>
+                <th>原始 reward 均值 / 覆盖</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>WorkBuddy Code v1.0 / Native 0.5.3</td>
+                <td>6/9 · 66.7%</td>
+                <td>2/3 · 66.7%</td>
+                <td>2/3 · 66.7%</td>
+                <td>0.750 / 9/9</td>
+              </tr>
+              <tr>
+                <td>WorkBuddy Code v1.0 / Claude Code Goal</td>
+                <td>6/9 · 66.7%</td>
+                <td>2/3 · 66.7%</td>
+                <td>2/3 · 66.7%</td>
+                <td>0.750 / 9/9</td>
+              </tr>
+              <tr>
+                <td>SkillsBench v1.1 / Native 0.5.3</td>
+                <td>5/9 · 55.6%</td>
+                <td>2/3 · 66.7%</td>
+                <td>1/3 · 33.3%</td>
+                <td>0.556 / 9/9</td>
+              </tr>
+              <tr>
+                <td>SkillsBench v1.1 / Claude Code Goal</td>
+                <td>4/9 · 44.4%</td>
+                <td>3/3 · 100.0%</td>
+                <td>0/3 · 0.0%</td>
+                <td>0.444 / 9/9</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="caption">
+          主表统计原题判分：reward = 1.0
+          才算成功；已恢复评分的超时留存候选也保留原题满分，不把执行超时改写成答错。pass@3
+          为每题三次至少一次满分；pass^3 为三次全部满分。正常结束与 Native
+          流程验收单列。未知评分保留计划分母并给出区间；两个数据集不混成一个总分。
+        </p>
+      </section>
+      <section aria-labelledby="matrix">
+        <h2 id="matrix">6 题 × 3 次 · 原题结果矩阵</h2>
+        <p>
+          每格依次为 r1、r2、r3。✓ 原题满分，× 有效评分未达满分，? 未运行、缺失或无有效评分。†
+          表示执行超时：保留原题得分，不记为正常结束；执行与流程状态在下方单列。
+        </p>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>数据集</th>
+                <th>题目 / 领域 / 难度</th>
+                <th>Native 0.5.3</th>
+                <th>Goal（无 Comet）</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>WorkBuddy Code v1.0</td>
+                <td>
+                  <code>feature-easy-lru_caching_to_tzoffset</code><br /><small
+                    >feature / easy</small
+                  >
+                </td>
+                <td>
+                  <span class="matrix-mark badge-fail" title="r1; reward=0.5; scored">×</span>
+                  <span class="matrix-mark badge-fail" title="r2; reward=0.0; scored">×</span>
+                  <span class="matrix-mark badge-fail" title="r3; reward=0.25; scored">×</span>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-fail" title="r1; reward=0.25; scored">×</span>
+                  <span class="matrix-mark badge-fail" title="r2; reward=0.25; scored">×</span>
+                  <span class="matrix-mark badge-fail" title="r3; reward=0.25; scored">×</span>
+                </td>
+              </tr>
+              <tr>
+                <td>WorkBuddy Code v1.0</td>
+                <td>
+                  <code>data_reporting-medium-audit_event_export</code><br /><small
+                    >data-reporting / medium</small
+                  >
+                </td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1; reward=1.0; scored">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2; reward=1.0; scored">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3; reward=1.0; scored">✓</span>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1; reward=1.0; scored">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2; reward=1.0; scored">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3; reward=1.0; scored">✓</span>
+                </td>
+              </tr>
+              <tr>
+                <td>WorkBuddy Code v1.0</td>
+                <td>
+                  <code>product_analytics-hard-day7_retention</code><br /><small
+                    >product-analytics / hard</small
+                  >
+                </td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1; reward=1.0; scored">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2; reward=1.0; scored">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3; reward=1.0; scored">✓</span>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1; reward=1.0; scored">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2; reward=1.0; scored">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3; reward=1.0; scored">✓</span>
+                </td>
+              </tr>
+              <tr>
+                <td>SkillsBench v1.1</td>
+                <td>
+                  <code>court-form-filling</code><br /><small>office-white-collar / easy</small>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-fail" title="r1; reward=0; scored">×</span>
+                  <span class="matrix-mark badge-pass" title="r2; reward=1; scored">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3; reward=1; scored">✓</span>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-fail" title="r1; reward=0; scored">×</span>
+                  <span class="matrix-mark badge-pass" title="r2; reward=1; scored">✓</span>
+                  <span class="matrix-mark badge-fail" title="r3; reward=0; scored">×</span>
+                </td>
+              </tr>
+              <tr>
+                <td>SkillsBench v1.1</td>
+                <td>
+                  <code>manufacturing-codebook-normalization</code><br /><small
+                    >industrial-physical-systems / medium</small
+                  >
+                </td>
+                <td>
+                  <span class="matrix-mark badge-fail" title="r1; reward=0; scored">×</span>
+                  <span class="matrix-mark badge-fail" title="r2; reward=0; scored">×</span>
+                  <span class="matrix-mark badge-fail" title="r3; reward=0; scored">×</span>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-fail" title="r1; reward=0; scored">×</span>
+                  <span class="matrix-mark badge-pass" title="r2; reward=1; scored">✓</span>
+                  <span class="matrix-mark badge-fail" title="r3; reward=0; scored">×</span>
+                </td>
+              </tr>
+              <tr>
+                <td>SkillsBench v1.1</td>
+                <td>
+                  <code>paratransit-routing</code><br /><small
+                    >mathematics-or-formal-reasoning / hard</small
+                  >
+                </td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1; reward=1; scored">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2; reward=1; scored">✓</span>
+                  <span class="matrix-mark badge-unknown" title="r3; reward=1; invalid">✓†</span>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-unknown" title="r1; reward=1; invalid">✓†</span>
+                  <span class="matrix-mark badge-fail" title="r2; reward=0; invalid">×†</span>
+                  <span class="matrix-mark badge-pass" title="r3; reward=1; scored">✓</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section aria-labelledby="workflow">
+        <h2 id="workflow">执行方式核对</h2>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>数据集 / 组别</th>
+                <th>取得记录</th>
+                <th>Agent 正常退出</th>
+                <th>执行超时</th>
+                <th>Native 流程通过</th>
+                <th>Goal 激活记录</th>
+                <th>Agent 版本</th>
+                <th>实际模型标签</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>WorkBuddy Code v1.0 / Native 0.5.3</td>
+                <td>9/9</td>
+                <td>6/9（原始记录）</td>
+                <td>0</td>
+                <td>6/6 已核对</td>
+                <td>不适用</td>
+                <td>2.1.318 (Claude Code)</td>
+                <td>deepseek-flash[1m], deepseek-v4-flash</td>
+              </tr>
+              <tr>
+                <td>WorkBuddy Code v1.0 / Claude Code Goal</td>
+                <td>9/9</td>
+                <td>9/9（原始记录）</td>
+                <td>0</td>
+                <td>不适用</td>
+                <td>9/9</td>
+                <td>2.1.318 (Claude Code)</td>
+                <td>deepseek-flash[1M], deepseek-flash[1m], deepseek-v4-flash</td>
+              </tr>
+              <tr>
+                <td>SkillsBench v1.1 / Native 0.5.3</td>
+                <td>9/9</td>
+                <td>5/9（原始记录）</td>
+                <td>1</td>
+                <td>5/6 已核对</td>
+                <td>不适用</td>
+                <td>2.1.318 (Claude Code)</td>
+                <td>deepseek-flash[1m], deepseek-v4-flash</td>
+              </tr>
+              <tr>
+                <td>SkillsBench v1.1 / Claude Code Goal</td>
+                <td>9/9</td>
+                <td>7/9（原始记录）</td>
+                <td>2</td>
+                <td>不适用</td>
+                <td>9/9</td>
+                <td>2.1.318 (Claude Code)</td>
+                <td>deepseek-flash[1M], deepseek-flash[1m], deepseek-v4-flash</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          原题满分、Agent 正常退出与 Native
+          流程验收分别统计。仅恢复原候选评分的缺失报告不伪造原始退出码或流程检查；因此退出与流程列可能存在未知项。Goal
+          不安装 Comet；缺乏原生 Goal 激活证据时，不当作有效 Goal 成绩。
+        </p>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>数据集 / 组别</th>
+                <th>内置质量规则下的 pass@1</th>
+                <th>内置质量规则下的 pass@3</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>WorkBuddy Code v1.0 / Native 0.5.3</td>
+                <td>6/9 · 66.7%</td>
+                <td>2/3 · 66.7%</td>
+              </tr>
+              <tr>
+                <td>WorkBuddy Code v1.0 / Claude Code Goal</td>
+                <td>6/9 · 66.7%</td>
+                <td>2/3 · 66.7%</td>
+              </tr>
+              <tr>
+                <td>SkillsBench v1.1 / Native 0.5.3</td>
+                <td>44.4%–55.6%（1 题/次未知）</td>
+                <td>2/3 · 66.7%</td>
+              </tr>
+              <tr>
+                <td>SkillsBench v1.1 / Claude Code Goal</td>
+                <td>33.3%–55.6%（2 题/次未知）</td>
+                <td>3/3 · 100.0%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="caption">
+          这张附表保留内置 Eval
+          的执行质量筛选结果；超时仍视为未完成，不与主表中的原题留存候选得分混为一谈。
+        </p>
+      </section>
+      <section aria-labelledby="all-attempt-cost">
+        <h2 id="all-attempt-cost">36个计分位置的可观测执行开销</h2>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>数据集 / 组别</th>
+                <th>平均 Agent 墙钟秒数 / 覆盖</th>
+                <th>平均累计执行秒数 / 覆盖</th>
+                <th>平均 Token 总量 / 覆盖</th>
+                <th>平均 CLI 估算美元 / 覆盖</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>WorkBuddy Code v1.0 / Native 0.5.3</td>
+                <td>379.4 / 6/9</td>
+                <td>399.4 / 9/9</td>
+                <td>3,217,099 / 9/9</td>
+                <td>4.041 / 9/9</td>
+              </tr>
+              <tr>
+                <td>WorkBuddy Code v1.0 / Claude Code Goal</td>
+                <td>213.4 / 9/9</td>
+                <td>200.7 / 9/9</td>
+                <td>922,467 / 9/9</td>
+                <td>1.467 / 9/9</td>
+              </tr>
+              <tr>
+                <td>SkillsBench v1.1 / Native 0.5.3</td>
+                <td>1,860.5 / 6/9</td>
+                <td>1,433.6 / 9/9</td>
+                <td>12,772,090 / 9/9</td>
+                <td>12.770 / 9/9</td>
+              </tr>
+              <tr>
+                <td>SkillsBench v1.1 / Claude Code Goal</td>
+                <td>1,576.4 / 9/9</td>
+                <td>1,283.3 / 8/9</td>
+                <td>13,036,560 / 8/9</td>
+                <td>11.109 / 8/9</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="caption">
+          包括业务失败、部分得分和超时，按实际可观测记录计算；缺失开销不记为零。墙钟时间从评估器原始记录读取，包含被中断的会话；累计执行时间仅累加已保存的
+          result.duration_ms，超时可能缺失最后一段，不能视为完整端到端耗时。被替换的环境无效运行不混入36个计分位置，其额外消耗单独列在下表。双方成功的配对统计不能替代全部尝试的结果。
+        </p>
+      </section>
+      <section aria-labelledby="retired-environment-cost">
+        <h2 id="retired-environment-cost">额外环境无效运行：记录与消耗</h2>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>样本</th>
+                <th>保留的原题得分</th>
+                <th>可观测 Agent 秒数</th>
+                <th>原始中断</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>product_analytics-hard-day7_retention / r2</td>
+                <td>1.000</td>
+                <td>236.1</td>
+                <td>Agent execution failed with exit code 122</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="caption">
+          这些真实模型运行及其消耗未删除；替代关系和原始候选保留，主表每个逻辑位置只使用替代结果。
+        </p>
+      </section>
+      <section aria-labelledby="efficiency-workbuddy-code">
+        <h2 id="efficiency-workbuddy-code">WorkBuddy Code v1.0 · 双方成功配对的执行开销</h2>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>指标</th>
+                <th>Native</th>
+                <th>Goal</th>
+                <th>相对差异</th>
+                <th>配对分母</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>累计 Agent 执行耗时（秒）</td>
+                <td>354.2</td>
+                <td>123.2</td>
+                <td>+187.6%</td>
+                <td>6</td>
+              </tr>
+              <tr>
+                <td>工具调用</td>
+                <td>89.00</td>
+                <td>27.00</td>
+                <td>+229.6%</td>
+                <td>6</td>
+              </tr>
+              <tr>
+                <td>Agent 轮次</td>
+                <td>54.33</td>
+                <td>18.50</td>
+                <td>+193.7%</td>
+                <td>6</td>
+              </tr>
+              <tr>
+                <td>启动 / 恢复次数</td>
+                <td>1.33</td>
+                <td>1.00</td>
+                <td>+33.3%</td>
+                <td>6</td>
+              </tr>
+              <tr>
+                <td>非缓存输入 Token</td>
+                <td>69,128</td>
+                <td>18,202</td>
+                <td>+279.8%</td>
+                <td>6</td>
+              </tr>
+              <tr>
+                <td>输出 Token</td>
+                <td>30,309</td>
+                <td>9,964</td>
+                <td>+204.2%</td>
+                <td>6</td>
+              </tr>
+              <tr>
+                <td>可观测 Token 总量（含缓存）</td>
+                <td>2,568,600</td>
+                <td>261,979</td>
+                <td>+880.5%</td>
+                <td>6</td>
+              </tr>
+              <tr>
+                <td>CLI 估算成本（美元）</td>
+                <td>3.555</td>
+                <td>0.776</td>
+                <td>+358.0%</td>
+                <td>6</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section aria-labelledby="efficiency-skillsbench">
+        <h2 id="efficiency-skillsbench">SkillsBench v1.1 · 双方成功配对的执行开销</h2>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>指标</th>
+                <th>Native</th>
+                <th>Goal</th>
+                <th>相对差异</th>
+                <th>配对分母</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>累计 Agent 执行耗时（秒）</td>
+                <td>533.2</td>
+                <td>669.0</td>
+                <td>-20.3%</td>
+                <td>1</td>
+              </tr>
+              <tr>
+                <td>工具调用</td>
+                <td>98.00</td>
+                <td>107.00</td>
+                <td>-8.4%</td>
+                <td>1</td>
+              </tr>
+              <tr>
+                <td>Agent 轮次</td>
+                <td>66.00</td>
+                <td>79.00</td>
+                <td>-16.5%</td>
+                <td>1</td>
+              </tr>
+              <tr>
+                <td>启动 / 恢复次数</td>
+                <td>1.00</td>
+                <td>2.00</td>
+                <td>-50.0%</td>
+                <td>1</td>
+              </tr>
+              <tr>
+                <td>非缓存输入 Token</td>
+                <td>110,047</td>
+                <td>84,570</td>
+                <td>+30.1%</td>
+                <td>1</td>
+              </tr>
+              <tr>
+                <td>输出 Token</td>
+                <td>47,924</td>
+                <td>62,815</td>
+                <td>-23.7%</td>
+                <td>1</td>
+              </tr>
+              <tr>
+                <td>可观测 Token 总量（含缓存）</td>
+                <td>4,235,027</td>
+                <td>6,373,945</td>
+                <td>-33.6%</td>
+                <td>1</td>
+              </tr>
+              <tr>
+                <td>CLI 估算成本（美元）</td>
+                <td>5.575</td>
+                <td>7.008</td>
+                <td>-20.5%</td>
+                <td>1</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <p class="caption">
+        配对效率只使用双方通过内置样本质量筛选、原题满分且 Native
+        流程已核对完成的同题同重复编号。超时留存候选不进入这张配对表，其耗时仍在上方全部计分位置中保留。耗时累加顶层
+        result.duration_ms，包含模型调用、工具执行及续行，不含镜像准备和退出后评分。Token
+        只涵盖保存的 Agent 遥测；Goal 评估器与独立子 Agent 的完整总量可能不可观测。CLI
+        估算不是账单，缺失值不记为零。
+      </p>
+      <section aria-labelledby="failures">
+        <h2 id="failures">失败、部分得分与未知记录</h2>
+        <details>
+          <summary>WorkBuddy Code v1.0 / Native 0.5.3：3 个未确认完整成功的尝试</summary>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>样本</th>
+                  <th>状态</th>
+                  <th>原始 reward</th>
+                  <th>原始失败检查</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>feature-easy-lru_caching_to_tzoffset</code> / r1</td>
+                  <td>scored</td>
+                  <td>0.500</td>
+                  <td>dataset_incomplete: 原始评分未达到完整成功</td>
+                </tr>
+                <tr>
+                  <td><code>feature-easy-lru_caching_to_tzoffset</code> / r2</td>
+                  <td>scored</td>
+                  <td>0.000</td>
+                  <td>dataset_incomplete: 原始评分未达到完整成功</td>
+                </tr>
+                <tr>
+                  <td><code>feature-easy-lru_caching_to_tzoffset</code> / r3</td>
+                  <td>scored</td>
+                  <td>0.250</td>
+                  <td>dataset_incomplete: 原始评分未达到完整成功</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+        <details>
+          <summary>WorkBuddy Code v1.0 / Claude Code Goal：3 个未确认完整成功的尝试</summary>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>样本</th>
+                  <th>状态</th>
+                  <th>原始 reward</th>
+                  <th>原始失败检查</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>feature-easy-lru_caching_to_tzoffset</code> / r1</td>
+                  <td>scored</td>
+                  <td>0.250</td>
+                  <td>dataset_incomplete: 原始评分未达到完整成功</td>
+                </tr>
+                <tr>
+                  <td><code>feature-easy-lru_caching_to_tzoffset</code> / r2</td>
+                  <td>scored</td>
+                  <td>0.250</td>
+                  <td>dataset_incomplete: 原始评分未达到完整成功</td>
+                </tr>
+                <tr>
+                  <td><code>feature-easy-lru_caching_to_tzoffset</code> / r3</td>
+                  <td>scored</td>
+                  <td>0.250</td>
+                  <td>dataset_incomplete: 原始评分未达到完整成功</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+        <details>
+          <summary>SkillsBench v1.1 / Native 0.5.3：5 个未确认完整成功的尝试</summary>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>样本</th>
+                  <th>状态</th>
+                  <th>原始 reward</th>
+                  <th>原始失败检查</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>court-form-filling</code> / r1</td>
+                  <td>scored</td>
+                  <td>0.000</td>
+                  <td>dataset_incomplete: 原始评分未达到完整成功</td>
+                </tr>
+                <tr>
+                  <td><code>manufacturing-codebook-normalization</code> / r1</td>
+                  <td>scored</td>
+                  <td>0.000</td>
+                  <td>dataset_incomplete: 原始评分未达到完整成功</td>
+                </tr>
+                <tr>
+                  <td><code>manufacturing-codebook-normalization</code> / r2</td>
+                  <td>scored</td>
+                  <td>0.000</td>
+                  <td>dataset_incomplete: 原始评分未达到完整成功</td>
+                </tr>
+                <tr>
+                  <td><code>manufacturing-codebook-normalization</code> / r3</td>
+                  <td>scored</td>
+                  <td>0.000</td>
+                  <td>dataset_incomplete: 原始评分未达到完整成功</td>
+                </tr>
+                <tr>
+                  <td><code>paratransit-routing</code> / r3</td>
+                  <td>invalid</td>
+                  <td>1.000</td>
+                  <td>
+                    native_state: no terminal Native archive exists<br />native_loop: portable state
+                    is unavailable<br />Agent execution failed with exit code 124
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+        <details>
+          <summary>SkillsBench v1.1 / Claude Code Goal：6 个未确认完整成功的尝试</summary>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>样本</th>
+                  <th>状态</th>
+                  <th>原始 reward</th>
+                  <th>原始失败检查</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>court-form-filling</code> / r1</td>
+                  <td>scored</td>
+                  <td>0.000</td>
+                  <td>dataset_incomplete: 原始评分未达到完整成功</td>
+                </tr>
+                <tr>
+                  <td><code>court-form-filling</code> / r3</td>
+                  <td>scored</td>
+                  <td>0.000</td>
+                  <td>dataset_incomplete: 原始评分未达到完整成功</td>
+                </tr>
+                <tr>
+                  <td><code>manufacturing-codebook-normalization</code> / r1</td>
+                  <td>scored</td>
+                  <td>0.000</td>
+                  <td>dataset_incomplete: 原始评分未达到完整成功</td>
+                </tr>
+                <tr>
+                  <td><code>manufacturing-codebook-normalization</code> / r3</td>
+                  <td>scored</td>
+                  <td>0.000</td>
+                  <td>dataset_incomplete: 原始评分未达到完整成功</td>
+                </tr>
+                <tr>
+                  <td><code>paratransit-routing</code> / r1</td>
+                  <td>invalid</td>
+                  <td>1.000</td>
+                  <td>Agent execution failed with exit code 124</td>
+                </tr>
+                <tr>
+                  <td><code>paratransit-routing</code> / r2</td>
+                  <td>invalid</td>
+                  <td>0.000</td>
+                  <td>
+                    dataset_incomplete: 原始评分未达到完整成功<br />Agent execution failed with exit
+                    code 124
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+      <section aria-labelledby="citation">
+        <h2 id="citation">可引用的实验结果</h2>
+        <p>
+          在预先固定的 WorkBuddy Code 与 SkillsBench 各 3 道题上，使用同一 DeepSeek 配置（主模型
+          deepseek-flash[1M]）和 Claude Code 2.1.318，每题每组保留 3 次结果，共 36 个计分位置；另有
+          1 次环境中断的 Native 运行及替代记录。WorkBuddy Code v1.0 选样的 pass@3：Native 0.5.3 为
+          2/3（66.7%），无 Comet 的原生 Goal 为 2/3（66.7%）；SkillsBench v1.1 选样的 pass@3：Native
+          0.5.3 为 2/3（66.7%），无 Comet 的原生 Goal 为 3/3（100.0%）。pass@3 指 3 次尝试中至少 1
+          次取得原题满分。这是代表题选样结果，不代表完整官方榜单成绩。
+        </p>
+      </section>
+      <section aria-labelledby="method">
+        <h2 id="method">选题与比较边界</h2>
+        <p>
+          WorkBuddy Code 与 SkillsBench 各选 easy、medium、hard 1 题，难度沿用原数据集标注。每题每组
+          3 次，共 6 题、36 个计分位置。另有 1 次因环境中断而被替代的 Native
+          运行，真实模型运行合计37次，原记录及额外消耗保留。用户在首个真实模型输出前将旧 16
+          题范围缩减为本轮六题；固定选题后不因成绩换题，不自动增加有效结果轮次。
+        </p>
+        <p>
+          模型执行使用内置 comet eval，两组保持原题与原评分器，不额外注入领域 Skills。Native
+          使用启动前冻结的 0.5.3 编译包；运行期间合入的
+          00956d7c（移除文件大小限制）不在本轮候选中。两个运行容器内 CLI 均返回 0.5.3，841 个
+          CLI、编译代码及资产文件与冻结包一致。Goal 不安装 Comet。主模型 deepseek-flash[1M]，两组
+          Haiku 路由都固定到主模型，其余 DeepSeek 路由一致。每个 Run 使用 1 个
+          worker，总模型并发上限
+          4；按镜像就绪与空余并发位分批执行，保留实际启动时序。后续环境构建启用无固定总时限选项；模型仍受固定计划中的逐题执行预算约束，例如
+          SkillsBench 高难题为 3600 秒，不能将本轮描述为模型完全不限时。原评分预算不变。
+        </p>
+        <p>
+          旧 Goal Run
+          执行期间评估器构建辅助代码发生修改，原始报告因此拒绝评分。保留这些原始失败记录和模型输出，将候选原样保存，并在精确匹配原固定计划校验值的冻结适配器中调用同一内置评分器补评分。补评分不调用模型、不修改候选；存在参考材料访问或评分错误时仍不能计为成功。环境准备的改动不涉及原题、Agent交互或评分规则。
+        </p>
+        <p>
+          原批次的本地 Skill
+          脚本副本来自共享工作区；缓存题第3次曾用grep读取其中的Spec路径代码，未执行这些脚本，保存的14个脚本与冻结CLI资产不同。实际CLI执行被冻结，但不能声称所有可读上下文文件都逐字一致；此限制不作为删除有效低分的理由，详见实验计划。
+        </p>
+        <p>
+          这是六题小样本选样，不代表完整官方榜单。环境准备不计入模型耗时。效率与 Token
+          为可观测范围，不能当作完整工作流账单或无混杂因素的因果效果。官网引用必须同时给出模型、题数、重复次数与完整成功定义。
+        </p>
+        <p>
+          <a href="selection.json">六题清单</a> · <a href="model-config.json">模型与路由</a> ·
+          <a href="experiment-plan.zh.md">实验计划</a> ·
+          <a href="native-runtime-verification.json">运行中版本核验</a> ·
+          <a href="build-budget-reproduction.zh.md">准备问题与修复记录</a> ·
+          <a href="comparison-data.json">逐样本数据</a> ·
+          <a href="scoring-recovery.json">补评分来源</a> ·
+          <a href="execution-accounting.json">运行次数核对</a> ·
+          <a href="https://code.claude.com/docs/en/goal">Goal 官方说明</a> ·
+          <a href="https://github.com/Tencent/workbuddy-bench">WorkBuddy 来源</a> ·
+          <a href="https://github.com/benchflow-ai/skillsbench/releases/tag/v1.1"
+            >SkillsBench v1.1 来源</a
+          >
+        </p>
+      </section>
+      <section aria-labelledby="preparation">
+        <h2 id="preparation">模型启动前的失败记录</h2>
+        <p>
+          旧范围的 Windows 启动遇到 Registry 连接与临时目录权限问题，Linux
+          初次启动遇到控制器与模型用户 UID 不一致；六题范围的 Native
+          首次准备还遇到固定300秒构建时限。隔离恢复准备还遇到缓存目录归属、缺少配置及只读资产覆盖错误；另有混合
+          Run 中的两个位置在模型启动前失败。下表各项均未调用模型，原始记录保留，不计入模型成绩；混合
+          Run 的其他有效位置照常保留。后续使用匹配 UID 的 Linux
+          控制器、补齐的隔离副本与修复后的构建预算，每题每组仍保留3次有效结果。
+        </p>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>准备阶段</th>
+                <th>执行组</th>
+                <th>原 Run</th>
+                <th>退出码</th>
+                <th>消耗模型样本</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>旧范围 / Windows</td>
+                <td>skillsbench-goal</td>
+                <td>comet-eval-33bc102d-4850-4cf5-9a88-674027172c20</td>
+                <td>1</td>
+                <td>0</td>
+              </tr>
+              <tr>
+                <td>旧范围 / Windows</td>
+                <td>skillsbench-native</td>
+                <td>comet-eval-ab14f503-3838-42ca-afb4-37da7d5830b0</td>
+                <td>1</td>
+                <td>0</td>
+              </tr>
+              <tr>
+                <td>旧范围 / Linux 用户权限</td>
+                <td>workbuddy-code-native</td>
+                <td>comet-eval-b8fc1eed-c5c9-42a3-88b7-b56e894ac72b</td>
+                <td>1</td>
+                <td>0</td>
+              </tr>
+              <tr>
+                <td>旧范围 / Linux 用户权限</td>
+                <td>workbuddy-code-goal</td>
+                <td>comet-eval-be824267-6c80-47c8-a743-f6f64b84fc86</td>
+                <td>1</td>
+                <td>0</td>
+              </tr>
+              <tr>
+                <td>六题 / Native 冷构建</td>
+                <td>workbuddy-code-native</td>
+                <td>comet-eval-198fdf67-6fed-43f2-a3ee-4fe56af3428c</td>
+                <td>1</td>
+                <td>0</td>
+              </tr>
+              <tr>
+                <td>六题 / Native 冷构建</td>
+                <td>skillsbench-native</td>
+                <td>comet-eval-511d9480-de7f-43f5-a5c1-9291f22a4226</td>
+                <td>1</td>
+                <td>0</td>
+              </tr>
+              <tr>
+                <td>六题 / 隔离恢复准备</td>
+                <td>workbuddy-code-native</td>
+                <td>未创建 Run</td>
+                <td>1</td>
+                <td>0</td>
+              </tr>
+              <tr>
+                <td>六题 / 隔离恢复准备</td>
+                <td>workbuddy-code-native</td>
+                <td>comet-eval-07eef16b-33e2-4996-8b46-37bfe0a52be4</td>
+                <td>1</td>
+                <td>0</td>
+              </tr>
+              <tr>
+                <td>六题 / 隔离恢复准备</td>
+                <td>workbuddy-code-native</td>
+                <td>comet-eval-b1ad6bf5-edfe-466e-8bf0-5f516c2da1bc</td>
+                <td>1</td>
+                <td>0</td>
+              </tr>
+              <tr>
+                <td>六题 / 隔离恢复准备</td>
+                <td>workbuddy-code-native</td>
+                <td>未创建 Run</td>
+                <td>1</td>
+                <td>0</td>
+              </tr>
+              <tr>
+                <td>六题 / 隔离恢复准备</td>
+                <td>workbuddy-code-native</td>
+                <td>comet-eval-46d339ec-467b-4c8f-9fe1-28540304a25d</td>
+                <td>1</td>
+                <td>0</td>
+              </tr>
+              <tr>
+                <td>六题 / 隔离恢复准备</td>
+                <td>workbuddy-code-native</td>
+                <td>comet-eval-d6110d01-e196-41e3-a2a5-342462b5511b</td>
+                <td>1</td>
+                <td>0</td>
+              </tr>
+              <tr>
+                <td>六题 / 单位置启动前失败</td>
+                <td>skillsbench-goal</td>
+                <td>comet-eval-0e3c17c0-fb5d-4bda-ad7f-a4084165f422</td>
+                <td>无单独记录</td>
+                <td>0</td>
+              </tr>
+              <tr>
+                <td>六题 / 单位置启动前失败</td>
+                <td>workbuddy-code-native</td>
+                <td>comet-eval-0ea3b467-e010-4812-bacb-af23d553645b</td>
+                <td>无单独记录</td>
+                <td>0</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p><a href="preparation-attempts.json">启动失败记录</a></p>
+      </section>
+    </main>
+  </body>
+</html>

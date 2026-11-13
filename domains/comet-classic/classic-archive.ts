@@ -1,37 +1,33 @@
-import { assertClassicEditReviewsComplete } from './classic-edit-review.js';
-import { assertClassicAcceptedVerifyInputs } from './classic-command-checks.js';
-import { resolveClassicStateFile } from './classic-state-file.js';
-import { classicSdkEntryData } from './classic-sdk-output.js';
 import { createHash } from 'crypto';
+import path from 'path';
+import type { Checkpoint, EngineAction, RunState } from '../../domains/engine/types.js';
+import type { CliOutputEnvelope, CliOutputLocale } from '../workflow-contract/output-envelope.js';
 import { annotatedMarkdown } from './classic-archive-annotation.js';
-export { annotatedMarkdown } from './classic-archive-annotation.js';
-import { classicCommandProjectRoot, withProjectContext } from './classic-command-context.js';
-import { resolveClassicChangeRuntimeOwner } from './classic-runtime-ownership.js';
-import { classicSdkArchiveGuard } from './classic-sdk-guard.js';
-import { findClassicSdkWorkspace } from './classic-sdk-status.js';
-import { recoverClassicSdkArchive } from './classic-sdk-archive.js';
-import { ClassicArchiveRecoveryApprovalRequired } from './classic-sdk-archive-manifest.js';
 import {
   classicArchivedRequirementsProblems,
   recordClassicArchiveRequirements,
 } from './classic-artifact-requirements.js';
-import path from 'path';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
+import { assertClassicAcceptedVerifyInputs } from './classic-command-checks.js';
+import { classicCommandProjectRoot, withProjectContext } from './classic-command-context.js';
+import { clearCurrentChangeIf } from './classic-current-change.js';
+import { assertClassicLayoutWritable, classicProjectRelative } from './classic-layout.js';
 import { executeClassicOpenSpec } from './classic-openspec-command.js';
 import { classicArchiveEnvelope, classicLocale } from './classic-output-language.js';
-import type { CliOutputEnvelope, CliOutputLocale } from '../workflow-contract/output-envelope.js';
 import {
   collectClassicSpecFiles,
   findClassicArchiveChangeDirectory,
   inspectClassicActiveChangeDirectory,
   openSpecChangeNameError,
 } from './classic-paths.js';
-import { ensureClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-runtime-run.js';
-import { appendClassicStateEvent } from './classic-state-events.js';
-import { readClassicState, withClassicStateLock, writeClassicState } from './classic-store.js';
-import { applyClassicTransition } from './classic-transitions.js';
-import { clearCurrentChangeIf } from './classic-current-change.js';
 import { readClassicDelivery, recordClassicDocumentArchive } from './classic-progress.js';
+import {
+  classicProjectTargetExists,
+  ensureClassicProjectDirectory,
+  inspectClassicProjectTarget,
+  readClassicProjectFile,
+  writeClassicProjectText,
+} from './classic-protected-path.js';
 import {
   appendTrajectory,
   clearPendingAction,
@@ -43,15 +39,18 @@ import {
   writeCheckpoint,
   writePendingAction,
 } from './classic-run-store.js';
-import type { Checkpoint, EngineAction, RunState } from '../../domains/engine/types.js';
-import { assertClassicLayoutWritable, classicProjectRelative } from './classic-layout.js';
-import {
-  classicProjectTargetExists,
-  ensureClassicProjectDirectory,
-  inspectClassicProjectTarget,
-  readClassicProjectFile,
-  writeClassicProjectText,
-} from './classic-protected-path.js';
+import { resolveClassicChangeRuntimeOwner } from './classic-runtime-ownership.js';
+import { ensureClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-runtime-run.js';
+import { ClassicArchiveRecoveryApprovalRequired } from './classic-sdk-archive-manifest.js';
+import { recoverClassicSdkArchive } from './classic-sdk-archive.js';
+import { classicSdkArchiveGuard } from './classic-sdk-guard.js';
+import { classicSdkEntryData } from './classic-sdk-output.js';
+import { findClassicSdkWorkspace } from './classic-sdk-status.js';
+import { appendClassicStateEvent } from './classic-state-events.js';
+import { resolveClassicStateFile } from './classic-state-file.js';
+import { readClassicState, withClassicStateMutation, writeClassicState } from './classic-store.js';
+import { applyClassicTransition } from './classic-transitions.js';
+export { annotatedMarkdown } from './classic-archive-annotation.js';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -426,7 +425,6 @@ export const classicArchiveCommand: ClassicCommandHandler = withProjectContext(a
       throw new ArchiveFailure(red('FATAL: archive requires Classic state'));
     }
     const classic = projection.classic;
-    if (!classic.archived) await assertClassicEditReviewsComplete(projectRoot, change, classic);
     const designDoc = classic.designDoc;
     const planPath = classic.plan;
 
@@ -466,9 +464,8 @@ export const classicArchiveCommand: ClassicCommandHandler = withProjectContext(a
         'Classic change runtime directory',
       );
       const actionId = `classic-archive:${change}`;
-      const recovering = await withClassicStateLock(changeDir, async () => {
+      const recovering = await withClassicStateMutation(changeDir, async () => {
         const runtime = await ensureClassicRuntimeRun(changeDir);
-        await assertClassicEditReviewsComplete(projectRoot, change, runtime.classic);
         if (runtime.classic.phase !== 'archive' || runtime.classic.verifyResult !== 'pass') {
           throw new ArchiveFailure(
             red('FATAL: Archive state changed before preparing the pending action.'),
@@ -597,7 +594,7 @@ export const classicArchiveCommand: ClassicCommandHandler = withProjectContext(a
         );
       }
 
-      await withClassicStateLock(archiveDir, async () => {
+      await withClassicStateMutation(archiveDir, async () => {
         const archivedProjection = await readClassicState(archiveDir);
         if (!archivedProjection.classic || !archivedProjection.run) {
           throw new ArchiveFailure(red('  [FAIL] archived state projection is incomplete'));

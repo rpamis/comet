@@ -1,0 +1,10 @@
+{
+  "retired": [
+    {
+      "file": "test/domains/comet-native/native-portable-archive.test.ts",
+      "name": "returns an archive-ready change to Shape when formal requirements drift",
+      "source": "\n\n  it('returns an archive-ready change to Shape when formal requirements drift', async () => {\n    const config = defaultProjectConfig('docs', 'en');\n    await writeProjectConfig(root, {\n      ...config,\n      native: { ...config.native, document_writes: 'revert' },\n    });\n    const state = await archiveReady('archive-formal-drift');\n    await fs.writeFile(\n      path.join(nativePortableChangeDir(paths, state.name), 'brief.md'),\n      '# Acceptance examples\\n- The canonical behavior is updated.\\n- A new requirement is added.\\n',\n    );\n\n    await expect(archiveNativePortableChange({ paths, name: state.name })).rejects.toThrow(\n      'returned to Shape',\n    );\n    await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({\n      phase: 'shape',\n      verification_result: 'pending',\n      builder_handoff: null,\n    });\n    await expect(fs.stat(path.join(paths.specsDir, 'sample', 'spec.md'))).rejects.toMatchObject({\n      code: 'ENOENT',\n    });\n  });",
+      "reason": "Automatic brief-byte invalidation/rewind was retired. Ordinary edit continuation and real failure protection are retained in native-agent-content-judgment."
+    }
+  ]
+}

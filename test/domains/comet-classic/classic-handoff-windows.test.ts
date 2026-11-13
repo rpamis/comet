@@ -1,28 +1,17 @@
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { writeClassicSdkDesignContext } from '../../../domains/comet-classic/classic-handoff.js';
+import {
+  resolveClassicDesignContext,
+  writeClassicDesignHandoffView,
+} from '../../../domains/comet-classic/classic-handoff.js';
 
 const memory = vi.hoisted(() => ({
   files: new Map<string, string>(),
   specs: [] as string[],
-  originals: [] as string[],
 }));
 vi.mock('../../../domains/comet-classic/classic-store.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../domains/comet-classic/classic-store.js')>()),
   readClassicState: async () => ({ classic: { workflow: 'full', phase: 'design' } }),
-}));
-vi.mock('../../../domains/comet-classic/classic-edit-review.js', async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import('../../../domains/comet-classic/classic-edit-review.js')
-  >()),
-  classicFormalEditReviewScope: async () => ({ workflow: 'classic', change: 'demo' }),
-}));
-vi.mock('../../../domains/workflow-contract/edit-review.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../../domains/workflow-contract/edit-review.js')>()),
-  readApprovedEditOriginalForEvidence: async () => null,
-  rememberApprovedEditOriginal: async (_scope: unknown, file: string) => {
-    memory.originals.push(file);
-  },
 }));
 vi.mock('path', async () => {
   const { win32 } = await vi.importActual<typeof import('node:path')>('node:path');
@@ -34,8 +23,9 @@ vi.mock('../../../domains/comet-classic/classic-protected-path.js', async (impor
   >()),
   classicProjectTargetExists: async (_root: string, file: string) =>
     memory.files.has(file.replaceAll('\\', '/')),
-  readClassicProjectFile: async (_root: string, file: string) => {
-    const content = memory.files.get(file.replaceAll('\\', '/'));
+  readClassicProjectFile: async (root: string, file: string) => {
+    const target = path.win32.isAbsolute(file) ? file : path.win32.join(root, file);
+    const content = memory.files.get(target.replaceAll('\\', '/'));
     if (content === undefined) throw new Error(`Missing fixture: ${file}`);
     return content;
   },
@@ -61,7 +51,6 @@ vi.mock(
 beforeEach(() => {
   memory.files.clear();
   memory.specs = [];
-  memory.originals = [];
 });
 
 describe('Classic beta handoff Windows paths', () => {
@@ -70,21 +59,26 @@ describe('Classic beta handoff Windows paths', () => {
     const changeDir = path.win32.join(projectRoot, 'openspec', 'changes', 'demo');
     const spec = 'C:/project/openspec/changes/demo/specs/login/spec.md';
     memory.specs.push(spec);
+    memory.files.set(
+      'C:/project/openspec/changes/demo/proposal.md',
+      'Original Windows requirements.\n',
+    );
     memory.files.set(spec, '## Requirement: Windows acceptance\n### Scenario: Login succeeds\n');
-    const result = await writeClassicSdkDesignContext({
+    const result = await resolveClassicDesignContext({
       projectRoot,
       changeDir,
       change: 'demo',
       contextCompression: 'beta',
     });
-    expect(result.handoffContext).toBe('openspec/changes/demo/.comet/handoff/spec-context.json');
+    expect(result.handoffContext).toBe('openspec/changes/demo/proposal.md');
+    expect([...memory.files.keys()].some((file) => file.includes('/.comet/handoff/'))).toBe(false);
+    await writeClassicDesignHandoffView({ projectRoot, changeDir, change: 'demo' });
     const markdown = memory.files.get(
-      'C:/project/openspec/changes/demo/.comet/handoff/spec-context.md',
+      'C:/project/openspec/changes/demo/.comet/handoff/design-context.md',
     );
     expect(markdown).toContain('## openspec/changes/demo/specs/login/spec.md');
     expect(markdown).toContain('## Requirement: Windows acceptance');
     expect(markdown).toContain('### Scenario: Login succeeds');
     expect(markdown).not.toContain('No delta spec files found.');
-    expect(memory.originals).toContain('openspec/changes/demo/specs/login/spec.md');
   });
 });

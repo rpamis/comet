@@ -77,6 +77,7 @@ _CONTROLLER_FILES = (
     "scaffold/python/treatments.py",
     "scaffold/python/profiles.py",
     "scaffold/python/manifests.py",
+    "scaffold/python/native_eval.py",
     "scaffold/python/utils.py",
     "scaffold/python/agents.py",
     "scaffold/python/logging.py",

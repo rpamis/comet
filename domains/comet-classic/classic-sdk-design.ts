@@ -1,22 +1,23 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
+import { classicSdkEvidenceInputHash } from './classic-sdk-application.js';
 
 import type { WorkflowRun } from '../engine/runtime.js';
 import { evaluateBranchBinding, isGitWorkTree, liveGitBranch } from './classic-branch-binding.js';
 import { inspectClassicDesignReadiness } from './classic-design-readiness.js';
-import { classicDocumentLanguageMismatch } from './classic-document-language.js';
+import { resolveClassicDesignContext, validateClassicSdkDesignContext } from './classic-handoff.js';
 import {
-  validateClassicSdkDesignContext,
-  writeClassicSdkDesignContext,
-} from './classic-handoff.js';
-import { readClassicProjectFile, writeClassicProjectText } from './classic-protected-path.js';
+  readClassicProjectFile,
+  withClassicSourceObservation,
+  writeClassicProjectText,
+} from './classic-protected-path.js';
 import {
   classicDesignEvidenceReceipt,
   classicOpenEvidenceReceipt,
 } from './classic-sdk-application.js';
 import { inspectClassicSdkRun } from './classic-sdk-status.js';
 import type { ClassicState } from './classic-state.js';
-import { withClassicStateLock } from './classic-store.js';
+import { withClassicStateMutation } from './classic-store.js';
 import { assignClassicTaskIds } from './classic-tasks.js';
 
 async function assertDesignProposalSourcesCurrent(options: {
@@ -44,18 +45,13 @@ async function assertDesignProposalSourcesCurrent(options: {
   const currentSources = await classicOpenEvidenceReceipt(projectRoot, input.changeDir, {
     designRequirements: phaseScoped && options.allowDesignDocumentChanges === true,
   });
-  if (
-    !approvedSources ||
-    approvedSources.ref !== currentSources.ref ||
-    approvedSources.contentHash !== currentSources.contentHash
-  ) {
+  if (!approvedSources || approvedSources.ref !== currentSources.ref) {
     throw new Error(
       `Classic Design OpenSpec artifacts changed after the approved proposal; run comet state revise-design ${change} --expected-revision ${run.revision}, then propose and approve the revised design`,
     );
   }
   if (
     !state.handoffContext ||
-    !state.handoffHash ||
     !(await validateClassicSdkDesignContext({
       run,
       projectRoot,
@@ -114,7 +110,7 @@ export async function proposeClassicSdkDesign(options: {
   if (!action) throw new Error('Classic SDK Run has no pending Design proposal Action');
   const input = run.input as { changeDir: string };
   // 先稳定协调身份，再固定设计来源；Build 读取任务 ID 不应触发重复设计审批。
-  await withClassicStateLock(path.join(projectRoot, input.changeDir), async () => {
+  await withClassicStateMutation(path.join(projectRoot, input.changeDir), async () => {
     const tasksFile = path.join(input.changeDir, 'tasks.md');
     const source = await readClassicProjectFile(projectRoot, tasksFile, {
       label: 'Classic task authority',
@@ -126,17 +122,23 @@ export async function proposeClassicSdkDesign(options: {
       });
     }
   });
-  const sourceEvidence = await classicOpenEvidenceReceipt(projectRoot, input.changeDir);
-  const requirementsEvidence = await classicOpenEvidenceReceipt(projectRoot, input.changeDir, {
-    designRequirements: true,
-  });
-  const handoff = await writeClassicSdkDesignContext({
+  const { sourceEvidence, requirementsEvidence, handoff } = await withClassicSourceObservation(
     projectRoot,
-    run,
-    changeDir: path.join(projectRoot, input.changeDir),
-    change,
-    contextCompression: state.contextCompression,
-  });
+    async () => {
+      const sourceEvidence = await classicOpenEvidenceReceipt(projectRoot, input.changeDir, {
+        run,
+      });
+      const requirementsEvidence = sourceEvidence;
+      const handoff = await resolveClassicDesignContext({
+        projectRoot,
+        run,
+        changeDir: path.join(projectRoot, input.changeDir),
+        change,
+        contextCompression: state.contextCompression,
+      });
+      return { sourceEvidence, requirementsEvidence, handoff };
+    },
+  );
   const claimToken = randomUUID();
   const claimed = await runtime.claim({
     runId: run.runId,
@@ -213,12 +215,13 @@ export async function decideClassicSdkDesign(options: {
 
 /** Read-only Design preflight shared by the Guard preview and the Run commit. */
 export async function inspectClassicSdkDesign(options: {
+  inspected?: Awaited<ReturnType<typeof inspectClassicSdkRun>>;
   projectRoot: string;
   change: string;
   designDoc: string;
 }) {
   const { projectRoot, change, designDoc } = options;
-  const inspected = await inspectClassicSdkRun(projectRoot, change);
+  const inspected = options.inspected ?? (await inspectClassicSdkRun(projectRoot, change));
   const { run, state, profile } = inspected;
   if (profile !== 'full' || !['design', 'build'].includes(state.phase)) {
     throw new Error('Classic Design completion requires a full SDK change in Design');
@@ -270,17 +273,13 @@ export async function inspectClassicSdkDesign(options: {
   if (state.language !== 'en' && state.language !== 'zh-CN') {
     throw new Error('Classic change language is not set');
   }
-  const source = await readClassicProjectFile(projectRoot, designDoc, {
-    label: 'Classic Design document',
-  });
-  const languageIssue = classicDocumentLanguageMismatch(source, state.language, designDoc);
-  if (languageIssue) throw new Error(languageIssue);
   const receipt = await classicDesignEvidenceReceipt(projectRoot, designDoc);
   return { ...inspected, decision, receipt };
 }
 
 /** Guard 在一次预检后立即完成批准；后续 evidence validator 仍独立验证。 */
 export async function inspectAndCompleteClassicSdkDesign(options: {
+  inspected?: Awaited<ReturnType<typeof inspectClassicSdkRun>>;
   projectRoot: string;
   change: string;
   designDoc: string;
@@ -375,7 +374,7 @@ async function completeInspectedClassicSdkDesign(
       evidenceId: evidence.id,
       kind: evidence.kind,
       ref: receipt.ref,
-      contentHash: receipt.contentHash,
+      contentHash: classicSdkEvidenceInputHash(run, 'full.design.document'),
       submissionId: randomUUID(),
       context: { requestId: randomUUID(), projectRoot },
     });

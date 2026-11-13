@@ -261,18 +261,20 @@ export class SqliteAgentContextApplicationStore implements AgentContextApplicati
             `SELECT data FROM applications WHERE ${where} AND outcome IS NOT NULL ORDER BY sequence DESC LIMIT 1`,
           )
           .get(...args);
+        const crossPhase =
+          request.contextMode === 'incremental' && candidate.memoryType === 'core-profile';
         const delivered =
           request.sessionId === undefined
             ? undefined
             : database
                 .prepare(
-                  `SELECT data FROM applications WHERE ${where} AND session=? AND task=? AND phase IS ? AND path IS ? AND operation IS ? AND (scope='project' OR context_project IS ?) ORDER BY sequence DESC LIMIT 1`,
+                  `SELECT data FROM applications WHERE ${where} AND session=? AND task=? ${crossPhase ? "AND json_extract(data,'$.delivery')='full'" : 'AND phase IS ?'} AND path IS ? AND operation IS ? AND (scope='project' OR context_project IS ?) ORDER BY sequence DESC LIMIT 1`,
                 )
                 .get(
                   ...args,
                   request.sessionId,
                   request.task,
-                  request.phase ?? null,
+                  ...(crossPhase ? [] : [request.phase ?? null]),
                   request.path ?? null,
                   request.operation ?? null,
                   request.projectId ?? null,

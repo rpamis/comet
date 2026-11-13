@@ -1,0 +1,159 @@
+{
+  "temporary": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-052-receipt-public-cli-green-aWJrIt",
+  "passed": 2,
+  "failed": 0,
+  "results": [
+    {
+      "location": "project-local",
+      "root": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-052-receipt-public-cli-green-aWJrIt\\project-local",
+      "fixtureProvenance": {
+        "package": "@rpamis/comet@0.5.2",
+        "operation": "Actual @rpamis/comet@0.5.2 writeClassicDelivery + recordClassicDocumentArchive; resulting authentic receipt relocated byte-for-byte to a legacy path that the same published reader accepts.",
+        "graphOrRunForged": false,
+        "authorizationSimulation": "The fixed safe local/archive-only authorization is an explicit simulated User decision passed to the actual published public writer. Actual receipt, archive material and Git commit are produced by that writer/Git, never fabricated.",
+        "currentOriginalPublicCliRed": {
+          "status": 0,
+          "stdout": "{\"status\":\"imported\",\"imported\":[],\"preservedSource\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-legacy-receipt-red-OQ7AVW\\\\project-local\\\\.comet\\\\runtime\",\"classic\":[]}\n",
+          "stderr": ""
+        },
+        "originalRead": {
+          "delivery": {
+            "action": "archive-only",
+            "schemaVersion": 1,
+            "changeIdentity": "run:legacy-document-run",
+            "authorizationId": "d0ebaef8-6892-4498-8b60-80438dc47911"
+          },
+          "verification": {
+            "status": "complete",
+            "archiveVerified": true
+          }
+        },
+        "originalReceipt": {
+          "schemaVersion": 1,
+          "changeIdentity": "run:legacy-document-run",
+          "authorizationId": "d0ebaef8-6892-4498-8b60-80438dc47911",
+          "archiveFiles": {
+            "openspec/changes/demo/.comet/delivery.json": "59d2a6596e0ccd5c4e3724ee927400d9450d4dbda58de1012cf83b196e6bcb24",
+            "openspec/changes/demo/.comet/main-specs.json": "edbfd0512b825ffa4daeb974799528787dd5651de1ff63f5a195ecff238fb109",
+            "openspec/changes/demo/.comet.yaml": "d58221ca9418e3fff7035d2be2a28250e2ecdc089266237e20591923e0e01224",
+            "openspec/changes/demo/proposal.md": "2912f2410b78c0132b132b7b3b8ac34b9162cbc539ed8666d92e882c6edc5c73"
+          }
+        }
+      },
+      "before": "needsVerification",
+      "firstPublicCli": {
+        "status": 0,
+        "stdout": "{\"status\":\"imported\",\"imported\":[],\"preservedSource\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-052-receipt-public-cli-green-aWJrIt\\\\project-local\\\\.comet\\\\runtime\",\"classic\":[\"classic-delivery-receipts/c4e7ddc7485732d10dfccfc4b6b1b4fba7fe626371959dc6447b07a19db377a9.json\"]}\n",
+        "stderr": "",
+        "data": {
+          "status": "imported",
+          "imported": [],
+          "preservedSource": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-052-receipt-public-cli-green-aWJrIt\\project-local\\.comet\\runtime",
+          "classic": [
+            "classic-delivery-receipts/c4e7ddc7485732d10dfccfc4b6b1b4fba7fe626371959dc6447b07a19db377a9.json"
+          ]
+        }
+      },
+      "after": "complete",
+      "repeatPublicCli": {
+        "status": 0,
+        "stdout": "{\"status\":\"imported\",\"imported\":[],\"preservedSource\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-052-receipt-public-cli-green-aWJrIt\\\\project-local\\\\.comet\\\\runtime\",\"classic\":[]}\n",
+        "stderr": "",
+        "data": {
+          "status": "imported",
+          "imported": [],
+          "preservedSource": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-052-receipt-public-cli-green-aWJrIt\\project-local\\.comet\\runtime",
+          "classic": []
+        }
+      },
+      "originalAuthorizationAndReceiptBytesPreserved": true,
+      "originalChangeIdentityAndAuthorizationIdPreserved": true,
+      "originalCommit": null,
+      "headUnchanged": null,
+      "noDuplicateReceiptFiles": true,
+      "relativeMaterialsUnchanged": true,
+      "boundary": "Actual current built public CLI on isolated materialization of authentic frozen published052 receipt/formal bytes. No SDK Run/binding is fabricated or rewritten; original machine absolute migration fence bytes are retained and never followed."
+    },
+    {
+      "location": "git-common",
+      "root": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-052-receipt-public-cli-green-aWJrIt\\git-common",
+      "fixtureProvenance": {
+        "package": "@rpamis/comet@0.5.2",
+        "operation": "Actual @rpamis/comet@0.5.2 writeClassicDelivery local authorization + actual Git archive commit + writeClassicDelivery commit; resulting authentic receipt relocated byte-for-byte to a legacy path that the same published reader accepts.",
+        "graphOrRunForged": false,
+        "authorizationSimulation": "The fixed safe local/archive-only authorization is an explicit simulated User decision passed to the actual published public writer. Actual receipt, archive material and Git commit are produced by that writer/Git, never fabricated.",
+        "currentOriginalPublicCliRed": {
+          "status": 0,
+          "stdout": "{\"status\":\"imported\",\"imported\":[],\"preservedSource\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-legacy-receipt-red-6aZoNs\\\\git-common\\\\.comet\\\\runtime\",\"classic\":[]}\n",
+          "stderr": ""
+        },
+        "originalRead": {
+          "delivery": {
+            "action": "local",
+            "targetBranch": "main",
+            "commit": "b022e66995b584b9344732a40f6fb4f4302e0f84",
+            "schemaVersion": 1,
+            "changeIdentity": "run:legacy-document-run",
+            "authorizationId": "9465edc8-7b9f-4efc-a1e4-a9b66325f792"
+          },
+          "verification": {
+            "status": "complete",
+            "currentBranch": null,
+            "commitExists": false,
+            "archiveCommitted": false,
+            "observedCommit": null,
+            "observedPrUrl": null,
+            "remoteVerified": false,
+            "prVerified": false,
+            "remoteStatus": "notChecked",
+            "prStatus": "notChecked"
+          }
+        },
+        "originalReceipt": {
+          "schemaVersion": 1,
+          "changeIdentity": "run:legacy-document-run",
+          "authorizationId": "9465edc8-7b9f-4efc-a1e4-a9b66325f792",
+          "commit": "b022e66995b584b9344732a40f6fb4f4302e0f84"
+        }
+      },
+      "before": "needsVerification",
+      "firstPublicCli": {
+        "status": 0,
+        "stdout": "{\"status\":\"imported\",\"imported\":[],\"preservedSource\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-052-receipt-public-cli-green-aWJrIt\\\\git-common\\\\.comet\\\\runtime\",\"classic\":[\"classic-delivery-receipts/c4e7ddc7485732d10dfccfc4b6b1b4fba7fe626371959dc6447b07a19db377a9.json\"]}\n",
+        "stderr": "",
+        "data": {
+          "status": "imported",
+          "imported": [],
+          "preservedSource": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-052-receipt-public-cli-green-aWJrIt\\git-common\\.comet\\runtime",
+          "classic": [
+            "classic-delivery-receipts/c4e7ddc7485732d10dfccfc4b6b1b4fba7fe626371959dc6447b07a19db377a9.json"
+          ]
+        }
+      },
+      "after": "complete",
+      "repeatPublicCli": {
+        "status": 0,
+        "stdout": "{\"status\":\"imported\",\"imported\":[],\"preservedSource\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-052-receipt-public-cli-green-aWJrIt\\\\git-common\\\\.comet\\\\runtime\",\"classic\":[]}\n",
+        "stderr": "",
+        "data": {
+          "status": "imported",
+          "imported": [],
+          "preservedSource": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-052-receipt-public-cli-green-aWJrIt\\git-common\\.comet\\runtime",
+          "classic": []
+        }
+      },
+      "originalAuthorizationAndReceiptBytesPreserved": true,
+      "originalChangeIdentityAndAuthorizationIdPreserved": true,
+      "originalCommit": "b022e66995b584b9344732a40f6fb4f4302e0f84",
+      "headUnchanged": "b022e66995b584b9344732a40f6fb4f4302e0f84",
+      "noDuplicateReceiptFiles": true,
+      "relativeMaterialsUnchanged": true,
+      "boundary": "Actual current built public CLI on isolated materialization of authentic frozen published052 receipt/formal bytes. No SDK Run/binding is fabricated or rewritten; original machine absolute migration fence bytes are retained and never followed."
+    }
+  ],
+  "notExecuted": [
+    "Eval",
+    "full suite",
+    "new npm packing/install"
+  ]
+}

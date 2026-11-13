@@ -1,3 +1,8 @@
+import { NativeChangeRevisionConflictError } from './native-runtime-errors.js';
+export {
+  NativeChangeRevisionConflictError,
+  NativeWorkspaceIsolationRequiredError,
+} from './native-runtime-errors.js';
 import { listNativeSdkHistoryPartitions } from './native-sdk-history-discovery.js';
 import { promises as fs } from 'fs';
 import {
@@ -7,60 +12,38 @@ import {
 import path from 'path';
 import { parseDocument, stringify } from 'yaml';
 
-import {
-  inspectGitWorktree,
-  listGitWorktreeRoots,
-  samePath,
-} from '../../platform/paths/git-worktree.js';
+import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 import { createFileRuntimeStore, createRuntime, type WorkflowRun } from '../engine/runtime.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
 
-import { readWorkflowApplicationRun } from '../workflow-application/index.js';
+import { readWorkflowApplicationRun } from '../workflow-application/application.js';
 import { isNativeSdkCancellationComplete } from './native-sdk-cancellation.js';
 import { mapWithConcurrency } from './native-concurrency.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { atomicWriteText } from './native-atomic-file.js';
 import { nativeBriefTemplate } from './native-artifact-language.js';
-import {
-  assertNoPendingNativeRootMove,
-  DEFAULT_NATIVE_SNAPSHOT_CONFIG,
-  readProjectConfig,
-  writeProjectConfig,
-} from './native-config.js';
-import { withNativeMutationLock } from './native-mutation-lock.js';
+import { assertNoPendingNativeRootMove } from './native-config.js';
+import { withNativeMutation } from './native-mutation.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import {
   isInsidePath,
   nativeChangeRuntimeDir,
-  nativePreferredChangeRuntimeDir,
-  nativeProjectPaths,
   resolveContainedNativePath,
 } from './native-paths.js';
 import { readNativeProtectedDirectory } from './native-protected-file.js';
 import { compareAndSwapNativeRevision } from './native-revision.js';
-import {
-  createNativeContentSnapshot,
-  inspectNativeContentSnapshotHealth,
-  readNativeBaselineManifest,
-  writeNativeBaselineManifest,
-} from './native-snapshot.js';
+
 import { assertNativeTrajectoryHealthy } from './native-trajectory-recovery.js';
 import {
-  assertNativeWorkspaceBindingCurrent,
   assertNativeWorkspaceBinding,
   inspectNativeWorkspaceAdvisory,
   inspectNativeWorkspaceBinding,
   readNativeWorkspaceIdentity,
-  writeNativeWorkspaceIdentity,
-  type NativeWorkspaceBinding,
 } from './native-workspace.js';
 import type {
   NativeChangeSchemaInspection,
   NativeChangeState,
-  CometProjectConfig,
-  NativeContentSnapshotManifest,
   NativeProjectPaths,
-  NativeVerificationProtocol,
 } from './native-types.js';
 import { NATIVE_CHANGE_SCHEMA, NATIVE_RUNTIME_PROTOCOL_VERSION } from './native-types.js';
 
@@ -87,54 +70,6 @@ import {
   parseNativeChangeValue,
 } from './native-change-model.js';
 
-export class NativeChangeRevisionConflictError extends Error {
-  readonly code = 'native-change-revision-conflict';
-
-  constructor(
-    readonly change: string,
-    readonly expectedRevision: number,
-    readonly actualRevision: number,
-  ) {
-    super(
-      `Native change ${change} revision conflict: expected ${expectedRevision}, actual ${actualRevision}`,
-    );
-    this.name = 'NativeChangeRevisionConflictError';
-  }
-}
-
-export class NativeWorkspaceIsolationRequiredError extends Error {
-  readonly code = 'native-workspace-isolation-required';
-
-  constructor(
-    readonly requestedIsolation: NativeWorkspaceBinding['isolation'],
-    readonly activeChanges: string[],
-  ) {
-    super(
-      `Native working directory already contains active change${activeChanges.length === 1 ? '' : 's'} ${activeChanges.join(', ')}; create the new change in a separate worktree`,
-    );
-    this.name = 'NativeWorkspaceIsolationRequiredError';
-  }
-}
-
-export class NativeBaselineIncompleteError extends Error {
-  readonly code = 'native-baseline-incomplete';
-
-  constructor(
-    readonly change: string,
-    readonly omittedCount: number,
-    readonly omittedByReason: Record<string, number>,
-    readonly samplePaths: string[],
-    readonly sampleTruncated: boolean,
-    readonly effectiveLimits: NativeContentSnapshotManifest['limits'] | null = null,
-    readonly policyHash: string | null = null,
-  ) {
-    super(
-      `Native change ${change} baseline is incomplete (${omittedCount} omitted entr${omittedCount === 1 ? 'y' : 'ies'}). Adjust native.snapshot scope or resource budgets in .comet/config.yaml, then retry.`,
-    );
-    this.name = 'NativeBaselineIncompleteError';
-  }
-}
-
 export const NATIVE_BRIEF_TEMPLATE = nativeBriefTemplate('en');
 
 export function nativeChangeDir(paths: NativeProjectPaths, name: string): string {
@@ -159,186 +94,6 @@ export async function hasPendingNativeSchemaMigration(
     return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
-    throw error;
-  }
-}
-
-export async function hasPendingNativeCheckpointRecovery(
-  paths: NativeProjectPaths,
-  name: string,
-): Promise<boolean> {
-  const runtimeDir = nativeChangeRuntimeDir(paths, name);
-  const file = path.join(runtimeDir, 'checkpoint-journal.json');
-  await resolveContainedNativePath(
-    isInsidePath(paths.runtimeDir, file) ? paths.runtimeDir : paths.nativeRoot,
-    file,
-  );
-  try {
-    await fs.lstat(file);
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
-    throw error;
-  }
-}
-
-export async function createNativeChange(options: {
-  paths: NativeProjectPaths;
-  name: string;
-  language: 'en' | 'zh-CN';
-  verificationProtocol?: NativeVerificationProtocol;
-  workspaceBinding?: NativeWorkspaceBinding;
-  initialProjectConfig?: CometProjectConfig;
-  now?: Date;
-}): Promise<NativeChangeState> {
-  return withNativeMutationLock(options.paths, `create change ${options.name}`, () =>
-    createNativeChangeLocked(options),
-  );
-}
-
-async function createNativeChangeLocked(options: {
-  paths: NativeProjectPaths;
-  name: string;
-  language: 'en' | 'zh-CN';
-  verificationProtocol?: NativeVerificationProtocol;
-  workspaceBinding?: NativeWorkspaceBinding;
-  initialProjectConfig?: CometProjectConfig;
-  now?: Date;
-}): Promise<NativeChangeState> {
-  assertNativeName(options.name);
-  if (
-    options.initialProjectConfig &&
-    (await readProjectConfig(options.paths.projectRoot)) === null
-  ) {
-    await writeProjectConfig(options.paths.projectRoot, options.initialProjectConfig);
-  }
-  if (options.workspaceBinding) {
-    assertNativeWorkspaceBindingCurrent(options.paths.projectRoot, options.workspaceBinding);
-    const activeChanges = await listActiveNativeChangesOwnedByWorkspace(options.paths);
-    if (activeChanges.length > 0) {
-      throw new NativeWorkspaceIsolationRequiredError(
-        options.workspaceBinding.isolation,
-        activeChanges,
-      );
-    }
-  }
-  const verificationProtocol = options.verificationProtocol ?? 'legacy-v1';
-  const changeDir = nativeChangeDir(options.paths, options.name);
-  const runtimeDir = nativePreferredChangeRuntimeDir(options.paths, options.name);
-  await resolveContainedNativePath(options.paths.nativeRoot, changeDir);
-  await resolveContainedNativePath(options.paths.runtimeDir, runtimeDir);
-  let createdChangeDir = false;
-  let createdRuntimeDir = false;
-  try {
-    try {
-      await fs.mkdir(changeDir, { recursive: false });
-      createdChangeDir = true;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        await fs.mkdir(options.paths.changesDir, { recursive: true });
-        try {
-          await fs.mkdir(changeDir, { recursive: false });
-          createdChangeDir = true;
-        } catch (retryError) {
-          if ((retryError as NodeJS.ErrnoException).code === 'EEXIST') {
-            throw new Error(`Native change already exists: ${options.name}`, {
-              cause: retryError,
-            });
-          }
-          throw retryError;
-        }
-      } else if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
-        throw new Error(`Native change already exists: ${options.name}`, { cause: error });
-      } else {
-        throw error;
-      }
-    }
-    try {
-      await fs.mkdir(runtimeDir, { recursive: false });
-      createdRuntimeDir = true;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        await fs.mkdir(options.paths.changesRuntimeDir, { recursive: true });
-        await fs.mkdir(runtimeDir, { recursive: false });
-        createdRuntimeDir = true;
-      } else if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
-        throw new Error(`Native change Runtime already exists: ${options.name}`, { cause: error });
-      } else {
-        throw error;
-      }
-    }
-    const state: NativeChangeState = {
-      schema: NATIVE_CHANGE_SCHEMA,
-      minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
-      revision: 1,
-      verification_protocol: verificationProtocol,
-      name: options.name,
-      language: options.language,
-      phase: 'shape',
-      brief: 'brief.md',
-      approval: null,
-      approved_contract_hash: null,
-      spec_changes: [],
-      verification_result: 'pending',
-      verification_report: null,
-      implementation_scope: null,
-      verification_evidence: null,
-      partial_allowance: null,
-      archived: false,
-      created_at: (options.now ?? new Date()).toISOString().slice(0, 10),
-      run_id: null,
-    };
-    await Promise.all([
-      fs.mkdir(path.join(changeDir, 'specs'), { recursive: true }),
-      fs.mkdir(path.join(runtimeDir, 'checkpoints'), { recursive: true }),
-      atomicWriteText(path.join(changeDir, 'brief.md'), nativeBriefTemplate(options.language)),
-    ]);
-    const projectConfig = await readProjectConfig(options.paths.projectRoot);
-    const snapshot = projectConfig?.native.snapshot ?? DEFAULT_NATIVE_SNAPSHOT_CONFIG;
-    const baseline = await createNativeContentSnapshot(options.paths, {
-      now: options.now,
-      origin: 'change-created',
-      policy: snapshot,
-      maxSelectionRecords: snapshot.max_selection_records,
-      limits: {
-        maxFiles: snapshot.max_files,
-        maxFileBytes: snapshot.max_total_bytes,
-        maxTotalBytes: snapshot.max_total_bytes,
-        maxDurationMs: snapshot.max_duration_ms,
-      },
-      deadlineMs: snapshot.max_duration_ms,
-    });
-    if (!baseline.complete) {
-      const health = inspectNativeContentSnapshotHealth(baseline);
-      const omittedByReason = baseline.omitted.reduce<Record<string, number>>((counts, item) => {
-        counts[item.reason] = (counts[item.reason] ?? 0) + 1;
-        return counts;
-      }, {});
-      const overflowCount = baseline.omissionOverflow?.count ?? 0;
-      if (overflowCount > 0) omittedByReason.overflow = overflowCount;
-      throw new NativeBaselineIncompleteError(
-        state.name,
-        baseline.omittedCount,
-        omittedByReason,
-        health.samplePaths,
-        health.sampleTruncated,
-        baseline.limits,
-        baseline.policy?.hash ?? null,
-      );
-    }
-    await writeNativeBaselineManifest(options.paths, state.name, baseline);
-    await createNativeChangeFile(options.paths, state);
-    await writeNativeWorkspaceIdentity({
-      paths: options.paths,
-      name: state.name,
-      revision: state.revision,
-      now: options.now,
-      ...(options.workspaceBinding ? { binding: options.workspaceBinding } : {}),
-    });
-    return state;
-  } catch (error) {
-    if (createdRuntimeDir) await fs.rm(runtimeDir, { recursive: true, force: true });
-    if (createdChangeDir) await fs.rm(changeDir, { recursive: true, force: true });
     throw error;
   }
 }
@@ -377,9 +132,6 @@ export async function inspectNativeChange(
       message: `Native schema migration is incomplete for ${name}; run doctor --repair`,
     };
   }
-  if (inspection.status === 'current' && inspection.state) {
-    await assertNativeVerificationProtocolBinding(paths, inspection.state as NativeChangeState);
-  }
   return inspection;
 }
 
@@ -403,17 +155,6 @@ export async function inspectNativeChangeStateDocument(
   return inspection;
 }
 
-async function assertNativeVerificationProtocolBinding(
-  paths: NativeProjectPaths,
-  state: NativeChangeState,
-): Promise<void> {
-  const baseline = await readNativeBaselineManifest(paths, state.name);
-  if (baseline === null) return;
-  if (state.verification_protocol !== 'legacy-v1') {
-    throw new Error(`Native verification protocol is unsupported: ${state.verification_protocol}`);
-  }
-}
-
 export async function readNativeChange(
   paths: NativeProjectPaths,
   name: string,
@@ -434,22 +175,6 @@ export async function writeNativeChange(
   state: NativeChangeState,
 ): Promise<NativeChangeState> {
   return compareAndSwapNativeChange(paths, state, state.revision);
-}
-
-async function createNativeChangeFile(
-  paths: NativeProjectPaths,
-  state: NativeChangeState,
-): Promise<void> {
-  const file = path.join(nativeChangeDir(paths, state.name), NATIVE_CHANGE_STATE_FILE);
-  await resolveContainedNativePath(paths.nativeRoot, file);
-  try {
-    await fs.access(file);
-    throw new Error(`Native change state already exists: ${state.name}`);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-  }
-  if (state.revision !== 1) throw new Error('New Native change must start at revision 1');
-  await atomicWriteText(file, stringify(nativeChangeDocument(state)));
 }
 
 export async function compareAndSwapNativeChangeFile(
@@ -487,19 +212,10 @@ export async function compareAndSwapNativeChangeLocked(
   paths: NativeProjectPaths,
   state: NativeChangeState,
   expectedRevision: number,
-  options?: { allowPendingCheckpointRecovery?: boolean },
 ): Promise<NativeChangeState> {
   await assertNoPendingNativeRootMove(paths.projectRoot);
   if (await hasPendingNativeSchemaMigration(paths, state.name)) {
     throw new NativeSchemaMigrationRequiredError(state.name, state.schema);
-  }
-  if (
-    !options?.allowPendingCheckpointRecovery &&
-    (await hasPendingNativeCheckpointRecovery(paths, state.name))
-  ) {
-    throw new Error(
-      `Native progress checkpoint recovery is required for ${state.name} before another state write`,
-    );
   }
   const current = await readNativeChange(paths, state.name);
   if (current.verification_protocol !== state.verification_protocol) {
@@ -516,7 +232,7 @@ export async function compareAndSwapNativeChange(
   state: NativeChangeState,
   expectedRevision: number,
 ): Promise<NativeChangeState> {
-  return withNativeMutationLock(paths, `write change ${state.name}`, () =>
+  return withNativeMutation(paths, () =>
     compareAndSwapNativeChangeLocked(paths, state, expectedRevision),
   );
 }
@@ -605,6 +321,7 @@ async function inspectActiveNativeChangesOwnedByWorkspace(
         store:
           sdkOwner.application === 'native'
             ? createFileRuntimeStore<WorkflowRun>({
+                singleWriter: true,
                 rootDir: path.join(paths.workspaceRuntimeRoot, 'sdk-runs', 'native'),
               })
             : {
@@ -615,11 +332,17 @@ async function inspectActiveNativeChangesOwnedByWorkspace(
         workflows: [],
       });
       const run = await runtime.inspect(sdkOwner.runId);
-      if (run.workflow.id !== 'comet-native' || !['1', '2', '3'].includes(run.workflow.version)) {
+      if (
+        run.workflow.id !== 'comet-native' ||
+        !['1', '2', '3', '4'].includes(run.workflow.version)
+      ) {
         throw new Error(`Native SDK Run ${name} does not match its change ownership`);
       }
       const state = parseNativePortableState(run.state);
-      const input = run.input as { name?: unknown; artifactRootRef?: unknown } | null;
+      const input = run.input as {
+        name?: unknown;
+        artifactRootRef?: unknown;
+      } | null;
       if (
         state.name !== name ||
         run.runId !== name ||
@@ -630,7 +353,10 @@ async function inspectActiveNativeChangesOwnedByWorkspace(
       }
       if (
         state.archived ||
-        (await isNativeSdkCancellationComplete({ projectRoot: paths.projectRoot, run }))
+        (await isNativeSdkCancellationComplete({
+          projectRoot: paths.projectRoot,
+          run,
+        }))
       )
         return null;
       workspace ??= inspectGitWorktree(paths.projectRoot);
@@ -643,80 +369,43 @@ async function inspectActiveNativeChangesOwnedByWorkspace(
       }
       return name;
     }
-    const inspection = await inspectNativeChangeStateDocument(paths, name);
+    const document = await readChangeDocumentFile(
+      path.join(nativeChangeDir(paths, name), NATIVE_CHANGE_STATE_FILE),
+      paths.nativeRoot,
+    );
+    if (
+      document &&
+      typeof document === 'object' &&
+      (document as { schema?: unknown }).schema === 'comet.native.v4'
+    ) {
+      const state = parseNativePortableState(document);
+      if (state.name !== name) throw new Error('Native change directory/name mismatch: ' + name);
+      if (state.archived) return null;
+      workspace ??= inspectGitWorktree(paths.projectRoot);
+      if (
+        (state.workspace.change_branch !== null &&
+          workspace.currentBranch !== state.workspace.change_branch) ||
+        (state.workspace.isolation === 'worktree' && !workspace.isSecondaryWorktree)
+      )
+        return null;
+      return name;
+    }
+    const inspection = inspectNativeChangeValue(document);
     if (!inspection.state) {
-      if (await hasForeignRegisteredWorkspaceOwner(paths, name)) return null;
       return name;
     }
     if (inspection.state.archived) return null;
     const identity = await readNativeWorkspaceIdentity(paths, name);
-    if (!identity && (await hasForeignRegisteredWorkspaceOwner(paths, name))) return null;
     if (identity?.schema === 'comet.native.workspace.v3') {
       const binding = await inspectNativeWorkspaceBinding({ paths, identity });
       if (binding.code === 'workspace-binding-root-changed') return null;
     } else if (identity) {
-      const advisory = await inspectNativeWorkspaceAdvisory({ paths, identity });
+      const advisory = await inspectNativeWorkspaceAdvisory({
+        paths,
+        identity,
+      });
       if (advisory.state === 'drifted') return null;
     }
     return name;
   }
-}
-
-async function hasForeignRegisteredWorkspaceOwner(
-  paths: NativeProjectPaths,
-  name: string,
-): Promise<boolean> {
-  for (const root of listGitWorktreeRoots(paths.projectRoot)) {
-    if (samePath(root, paths.projectRoot)) continue;
-    try {
-      const config = await readProjectConfig(root);
-      if (!config) continue;
-      const candidatePaths = await nativeProjectPaths(root, config.native.artifact_root, {
-        readOnly: true,
-      });
-      const changeDir = path.join(candidatePaths.changesDir, name);
-      const portableStateFile = path.join(changeDir, 'comet-state.yaml');
-      try {
-        const portableSource = await fs.readFile(portableStateFile, 'utf8');
-        if (/^schema:\s*comet\.native\.v4\s*$/mu.test(portableSource)) {
-          const localSource = await fs.readFile(
-            path.join(nativePreferredChangeRuntimeDir(candidatePaths, name), 'state.json'),
-            'utf8',
-          );
-          const local = JSON.parse(localSource) as {
-            schema?: unknown;
-            workspace?: { projectRoot?: unknown };
-          };
-          if (
-            local.schema === 'comet.native.local-execution.v4' &&
-            typeof local.workspace?.projectRoot === 'string' &&
-            samePath(local.workspace.projectRoot, root)
-          ) {
-            return true;
-          }
-          continue;
-        }
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-          // A malformed foreign portable overlay cannot prove ownership.
-        }
-      }
-      await fs.access(path.join(changeDir, NATIVE_CHANGE_STATE_FILE));
-      const identity = await readNativeWorkspaceIdentity(candidatePaths, name);
-      if (!identity) continue;
-      if (identity.schema === 'comet.native.workspace.v3') {
-        const binding = await inspectNativeWorkspaceBinding({ paths: candidatePaths, identity });
-        if (binding.state === 'aligned') return true;
-        continue;
-      }
-      const advisory = await inspectNativeWorkspaceAdvisory({
-        paths: candidatePaths,
-        identity,
-      });
-      if (advisory.state !== 'drifted') return true;
-    } catch {
-      // A foreign worktree that cannot prove ownership must not suppress the local change.
-    }
-  }
-  return false;
 }

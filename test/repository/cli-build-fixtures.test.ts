@@ -3,6 +3,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
+import * as sqlite from '../../platform/fs/sqlite.js';
+import {
+  withRecoverableFileLock,
+  diagnoseRecoverableFileLock,
+  repairRecoverableFileLock,
+} from '../../platform/fs/recoverable-file-lock.js';
 
 const probes = vi.hoisted(() => ({
   readProcessIdentity: vi.fn(async () => 'synthetic-process-identity'),
@@ -82,39 +88,62 @@ it('reuses complete fresh CLI outputs without creating a build lock in a read-on
   const open = vi.spyOn(fs, 'open').mockImplementation(async () => {
     throw Object.assign(new Error('read-only candidate'), { code: 'EROFS' });
   });
+  const database = vi.spyOn(sqlite, 'openSqliteDatabase').mockImplementation(() => {
+    throw Object.assign(new Error('read-only candidate'), { code: 'EROFS' });
+  });
   await ensureCliBuilt(root);
   expect(open).not.toHaveBeenCalled();
+  expect(database).not.toHaveBeenCalled();
   expect(await fs.readFile(path.join(root, 'build-count.txt'), 'utf8')).toBe('build\n');
 });
 
 it('waits for a live build owner even when compiled CLI outputs are fresh', async () => {
   const root = await fixture();
   await ensureCliBuilt(root);
-  const prior = await owner(root, 10 * 60_000);
-  await expect(
-    ensureCliBuilt(root, { lockOptions: { timeoutMs: 40, retryMs: 5 } }),
-  ).rejects.toThrow('Timed out waiting');
-  expect(await fs.readFile(prior.ref, 'utf8')).toBe(prior.bytes);
+  const ref = path.join(root, '.comet-test-build.lock');
+  await withRecoverableFileLock(ref, async () => {
+    const bytes = await fs.readFile(ref, 'utf8');
+    await expect(
+      ensureCliBuilt(root, { lockOptions: { timeoutMs: 40, retryMs: 5 } }),
+    ).rejects.toThrow('Timed out waiting');
+    expect(await fs.readFile(ref, 'utf8')).toBe(bytes);
+  });
   expect(await fs.readFile(path.join(root, 'build-count.txt'), 'utf8')).toBe('build\n');
 });
 
 it('does not take a live build lock just because its timestamp is old', async () => {
   const root = await fixture();
-  const prior = await owner(root, 10 * 60_000);
-  await expect(
-    ensureCliBuilt(root, { lockOptions: { timeoutMs: 40, retryMs: 5 } }),
-  ).rejects.toThrow('Timed out waiting');
-  expect(await fs.readFile(prior.ref, 'utf8')).toBe(prior.bytes);
+  const ref = path.join(root, '.comet-test-build.lock');
+  await withRecoverableFileLock(ref, async () => {
+    const bytes = await fs.readFile(ref, 'utf8');
+    const old = new Date(Date.now() - 10 * 60_000);
+    await fs.utimes(ref, old, old);
+    await expect(
+      ensureCliBuilt(root, { lockOptions: { timeoutMs: 40, retryMs: 5 } }),
+    ).rejects.toThrow('Timed out waiting');
+    expect(await fs.readFile(ref, 'utf8')).toBe(bytes);
+  });
   await expect(fs.access(path.join(root, 'build-count.txt'))).rejects.toThrow();
 });
 
-it('recovers a lock whose recorded process identity has exited', async () => {
+it('requires explicit stop confirmation before recovering a legacy build lock', async () => {
   const root = await fixture();
-  await owner(root, 0);
+  const prior = await owner(root, 0);
   probes.inspectProcessLiveness.mockResolvedValue('dead');
+  await expect(ensureCliBuilt(root)).rejects.toThrow('Legacy lock requires confirmation');
+  expect(await fs.readFile(prior.ref, 'utf8')).toBe(prior.bytes);
+  await expect(fs.access(path.join(root, 'build-count.txt'))).rejects.toThrow();
+  const diagnosis = await diagnoseRecoverableFileLock(prior.ref);
+  expect(
+    await repairRecoverableFileLock(prior.ref, diagnosis.token!, {
+      confirmedOwnerStopped: true,
+    }),
+  ).toBe('removed');
   await ensureCliBuilt(root, { lockOptions: { timeoutMs: 100, retryMs: 5 } });
   expect(await fs.readFile(path.join(root, 'build-count.txt'), 'utf8')).toBe('build\n');
   await expect(fs.access(path.join(root, '.comet-test-build.lock'))).rejects.toThrow();
+  expect(probes.inspectProcessLiveness).not.toHaveBeenCalled();
+  expect(probes.readProcessIdentity).not.toHaveBeenCalled();
 });
 
 it('keeps an owner whose process identity cannot be established', async () => {
@@ -123,6 +152,6 @@ it('keeps an owner whose process identity cannot be established', async () => {
   probes.inspectProcessLiveness.mockResolvedValue('unknown');
   await expect(
     ensureCliBuilt(root, { lockOptions: { timeoutMs: 40, retryMs: 5 } }),
-  ).rejects.toThrow('Timed out waiting');
+  ).rejects.toThrow('Legacy lock requires confirmation');
   expect(await fs.readFile(prior.ref, 'utf8')).toBe(prior.bytes);
 });

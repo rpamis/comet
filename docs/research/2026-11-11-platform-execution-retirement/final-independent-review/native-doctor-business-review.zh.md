@@ -1,0 +1,11 @@
+# Native Doctor业务补丁独立审查
+
+没有阻塞问题。审查的完整patch与实际依赖字节已保存在本目录；未修改仓库、运行build或测试/Eval。
+
+Global Doctor只新增当前workspace本地历史名字发现和readOnly:true的原SDK Run检查；读取损坏closed记录会返回紧凑逐change findings和65，不重写历史。显式migrate-history复用原close；false不会进入migrated，原active保持active。flag互斥位于doctorPaths前，避免混合两个独立变更操作。
+
+双owner处理只捕获原active/history精确冲突，再调用既有recoverSdkChangeOwnerToActive。change-runtime-owner.ts:83边界parser将schema/workflow/change和sdk必需字段绑定；:797 sameOwner比较全部字段；:982不同owner先抛错，:990仅允许builtin native SDK owner；之后才移动原分区并重新inspect Run。因此不同application/runId/format不会被该补丁覆盖。同语义但JSON空白不同的owner不构成不同身份；两边不是逐字相同也不会让不同字段绕过parser。
+
+恢复可能使用既有短命owner写锁；这属于显式业务身份恢复，未引入普通命令监管/停止握手。现有Store/CAS和业务清理仍是闭合依据。没有重新创建旧state-projections/import-journal/旧工厂或第二套恢复状态。
+
+这是增量只读Review，不把源码推断说成真实故障注入通过；原跨owner/坏Run/Archive义务执行证据由根与native_step单独提供。

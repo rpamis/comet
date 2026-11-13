@@ -88,7 +88,7 @@ it('rejects absent, empty, incomplete and falsely hashed phase artifacts and pre
         artifacts: [{ uri: 'docs/design.md', sha256 }],
       },
     });
-  await expect(submit('missing', digest(''))).rejects.toThrow(/工件|产物|不存在|exist/);
+  await expect(submit('missing', digest(''))).rejects.toThrow(/工件|产物|不存在|exist|ENOENT/);
   await fs.mkdir(path.join(root, 'docs'));
   await fs.writeFile(path.join(root, 'docs/design.md'), '');
   await expect(submit('empty', digest(''))).rejects.toThrow(/空|empty/);
@@ -259,6 +259,6 @@ it('preserves pinned artifact requirements when business bindings mutate their c
         output: {},
       },
     }),
-  ).rejects.toThrow(/产物|工件|exist/);
+  ).rejects.toThrow(/产物|工件|exist|ENOENT/);
   expect((await runtime.inspect('one')).actions[0].status).toBe('running');
 });

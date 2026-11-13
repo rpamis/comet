@@ -20,18 +20,20 @@ def test_dataset_environment_copy_preserves_bound_dockerfile_bytes(
 ):
     from scaffold.python import builtin_datasets, utils
 
-    monkeypatch.setattr(utils, 'build_docker_image', lambda *args, **kwargs: 'fixture:bound')
-    monkeypatch.setattr(builtin_datasets, 'docker', lambda *args: '')
-    environment = tmp_path / 'bound-environment'
+    monkeypatch.setattr(utils, "build_docker_image", lambda *args, **kwargs: "fixture:bound")
+    monkeypatch.setattr(builtin_datasets, "docker", lambda *args: "")
+    environment = tmp_path / "bound-environment"
     environment.mkdir()
-    dockerfile = b'FROM fixture\nCOPY candidate /candidate\n'
-    (environment / 'Dockerfile').write_bytes(dockerfile)
-    (environment / '.dataset-task.json').write_text(
-        json.dumps({'controllerPaths': [], 'environmentFiles': ['Dockerfile'], 'workdir': '/workspace'})
+    dockerfile = b"FROM fixture\nCOPY candidate /candidate\n"
+    (environment / "Dockerfile").write_bytes(dockerfile)
+    (environment / ".dataset-task.json").write_text(
+        json.dumps(
+            {"controllerPaths": [], "environmentFiles": ["Dockerfile"], "workdir": "/workspace"}
+        )
     )
     workspace = setup_test_context(environment_dir=environment)
-    assert (workspace / '.dataset-build/Dockerfile').read_bytes() == dockerfile
-    assert (environment / 'Dockerfile').read_bytes() == dockerfile
+    assert (workspace / ".dataset-build/Dockerfile").read_bytes() == dockerfile
+    assert (environment / "Dockerfile").read_bytes() == dockerfile
 
 
 def test_authored_environment_image_identity_binds_copied_inputs(tmp_path, setup_test_context):
@@ -96,7 +98,11 @@ def test_current_native_shared_host_check_is_available_without_loading_other_ski
 
     def copy_snapshot(_environment, workspace):
         if reference_present:
-            target = workspace / conftest.CURRENT_COMET_SNAPSHOT_REF / 'assets/skills/comet/reference/host-check.md'
+            target = (
+                workspace
+                / conftest.CURRENT_COMET_SNAPSHOT_REF
+                / "assets/skills/comet/reference/host-check.md"
+            )
             target.parent.mkdir(parents=True)
             target.write_bytes(reference.read_bytes())
 
@@ -112,6 +118,7 @@ def test_current_native_shared_host_check_is_available_without_loading_other_ski
     assert (skills / "comet-native/SKILL.md").read_text(encoding="utf-8") == native
     assert not (skills / "comet/SKILL.md").exists()
     assert not (skills / "comet/scripts").exists()
+
 
 if sys.platform == "win32":
     import msvcrt
@@ -164,14 +171,14 @@ def test_file_lock_context_manager_allows_exclusive_writes(tmp_path: Path):
 def test_current_cli_snapshot_uses_explicit_source_root(tmp_path, monkeypatch):
     source = tmp_path / "baseline"
     files = {
-        "package.json": '{}',
-        "bin/comet.js": '// baseline entry',
-        "assets/manifest.json": '{}',
-        "assets/skills/comet/SKILL.md": '# Baseline',
-        "app/index.ts": 'export {};',
-        "domains/example.ts": 'export {};',
-        "platform/example.ts": 'export {};',
-        "tsconfig.json": '{}',
+        "package.json": "{}",
+        "bin/comet.js": "// baseline entry",
+        "assets/manifest.json": "{}",
+        "assets/skills/comet/SKILL.md": "# Baseline",
+        "app/index.ts": "export {};",
+        "domains/example.ts": "export {};",
+        "platform/example.ts": "export {};",
+        "tsconfig.json": "{}",
     }
     for relative, content in files.items():
         target = source / relative
@@ -186,7 +193,7 @@ def test_current_cli_snapshot_uses_explicit_source_root(tmp_path, monkeypatch):
         for relative in ["app/cli/index.js", "domains/dashboard/native-adapter.js"]:
             target = output / relative
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text('// compiled baseline', encoding="utf-8")
+            target.write_text("// compiled baseline", encoding="utf-8")
         return "test-compiler"
 
     monkeypatch.setenv("BENCH_COMET_SOURCE_ROOT", str(source))
@@ -194,15 +201,24 @@ def test_current_cli_snapshot_uses_explicit_source_root(tmp_path, monkeypatch):
     workspace = tmp_path / "workspace"
     conftest._copy_current_comet_cli_snapshot(environment, workspace)
     snapshot = workspace / conftest.CURRENT_COMET_SNAPSHOT_REF
-    assert (snapshot / "bin/comet.js").read_text() == '// baseline entry'
+    assert (snapshot / "bin/comet.js").read_text() == "// baseline entry"
     identity = json.loads((snapshot / "build-identity.json").read_text())
     assert identity["compilerVersion"] == "test-compiler"
     assert identity["sourceHash"]
 
 
-def test_published_cli_snapshot_does_not_require_typescript_or_repository_sources(tmp_path, monkeypatch):
+def test_published_cli_snapshot_does_not_require_typescript_or_repository_sources(
+    tmp_path, monkeypatch
+):
     source = tmp_path / "published"
-    files = {"package.json": '{}', "bin/comet.js": '// published entry', "assets/manifest.json": '{}', "assets/skills/comet/SKILL.md": '# Published', "dist/app/cli/index.js": '// published cli', "dist/domains/dashboard/native-adapter.js": '// published adapter'}
+    files = {
+        "package.json": "{}",
+        "bin/comet.js": "// published entry",
+        "assets/manifest.json": "{}",
+        "assets/skills/comet/SKILL.md": "# Published",
+        "dist/app/cli/index.js": "// published cli",
+        "dist/domains/dashboard/native-adapter.js": "// published adapter",
+    }
     for relative, content in files.items():
         target = source / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -211,69 +227,19 @@ def test_published_cli_snapshot_does_not_require_typescript_or_repository_source
     environment.mkdir()
     (environment / conftest.CURRENT_COMET_CLI_MARKER).touch()
     monkeypatch.setenv("BENCH_COMET_SOURCE_ROOT", str(source))
-    monkeypatch.setattr(conftest, "_build_current_comet_dist", lambda *_: pytest.fail("Published consumers must not compile repository sources"))
+    monkeypatch.setattr(
+        conftest,
+        "_build_current_comet_dist",
+        lambda *_: pytest.fail("Published consumers must not compile repository sources"),
+    )
     workspace = tmp_path / "workspace"
     conftest._copy_current_comet_cli_snapshot(environment, workspace)
     snapshot = workspace / conftest.CURRENT_COMET_SNAPSHOT_REF
-    assert (snapshot / 'dist/app/cli/index.js').read_text() == '// published cli'
-    assert json.loads((snapshot / 'build-identity.json').read_text())["compilerVersion"] == "published-dist"
-
-
-def test_cli_snapshot_stays_out_of_native_inputs_while_app_dist_remains_bound(tmp_path, monkeypatch):
-    source = tmp_path / 'published-cli'
-    for ref in ['package.json', 'bin/comet.js', 'assets/manifest.json',
-                'dist/app/cli/index.js', 'dist/domains/dashboard/native-adapter.js']:
-        target = source / ref
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text('{}' if ref.endswith('.json') else 'export {};', encoding='utf-8')
-    environment = tmp_path / 'environment'
-    environment.mkdir()
-    (environment / conftest.CURRENT_COMET_CLI_MARKER).touch()
-    monkeypatch.setenv('BENCH_COMET_SOURCE_ROOT', str(source))
-    workspace = tmp_path / 'workspace'
-    conftest._copy_current_comet_cli_snapshot(environment, workspace)
-    assert not (workspace / 'node_modules').exists()
-    (workspace / '.gitignore').write_text('_eval_current_comet/\n.dataset-state/\ndist/\n')
-    (workspace / 'README.md').write_text('Business project')
-    app = workspace / 'dist/app.js'
-    app.parent.mkdir()
-    app.write_text('export const value = 1;')
-    from scaffold.python.paths import DATASET_NPM_CACHE_REF
-    cache = workspace / DATASET_NPM_CACHE_REF / 'dist/cached.js'
-    cache.parent.mkdir(parents=True)
-    cache.write_text('tool dependency cache')
-    root_app = workspace / '.dataset-state/root/app/dist/generated.js'
-    root_app.parent.mkdir(parents=True)
-    root_app.write_text('business output outside the npm cache')
-    subprocess.run(['git', 'init', '--quiet', str(workspace)], check=True)
-    subprocess.run(['git', 'add', '.gitignore', 'README.md'], cwd=workspace, check=True)
-    subprocess.run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@eval.invalid',
-                    'commit', '--quiet', '-m', 'initial'], cwd=workspace, check=True)
-    sdk = conftest.REPOSITORY_ROOT / 'dist/domains/comet-native/native-portable-checks.js'
-    script = '''const {nativeRawInputSnapshot}=await import(process.argv[1]);
-const result=await nativeRawInputSnapshot({projectRoot:process.argv[2]});
-console.log(JSON.stringify(result));'''
-
-    def baseline():
-        result = subprocess.run(['node', '--input-type=module', '-e', script, sdk.as_uri(), str(workspace)],
-            capture_output=True, text=True, encoding='utf-8',
-            env={**{key: value for key, value in os.environ.items()
-                    if key in {'PATH', 'SYSTEMROOT', 'WINDIR'}},
-                 'HOME': str(tmp_path/'home'), 'USERPROFILE': str(tmp_path/'home')})
-        assert result.returncode == 0, result.stderr
-        return json.loads(result.stdout)
-
-    before = baseline()
-    assert before['complete'] is True
-    assert 'dist/app.js' in {f['path'] for f in before['files']}
-    tooling = next(workspace.glob('**/build-identity.json')).parent.relative_to(workspace).as_posix()
-    assert not any(f['path'] == tooling or f['path'].startswith(tooling + '/') for f in before['files'])
-    assert not any('/.npm/' in f['path'] for f in before['files'])
-    assert not any('/.cache/npm/' in f['path'] for f in before['files'])
-    assert '.dataset-state/root/app/dist/generated.js' in {f['path'] for f in before['files']}
-    app.write_text('export const value = 2;')
-    after = baseline()
-    assert before['contentHash'] != after['contentHash']
+    assert (snapshot / "dist/app/cli/index.js").read_text() == "// published cli"
+    assert (
+        json.loads((snapshot / "build-identity.json").read_text())["compilerVersion"]
+        == "published-dist"
+    )
 
 
 @pytest.mark.skipif(msvcrt is None, reason="Windows locking API only")
@@ -403,13 +369,17 @@ evaluation:
     assert config._comet_frozen_task_set.source == "generated-cache"
 
 
-def test_generated_case_collection_inherits_authoritative_interaction_without_rewriting_frozen_cases(tmp_path, monkeypatch):
+def test_generated_case_collection_inherits_authoritative_interaction_without_rewriting_frozen_cases(
+    tmp_path, monkeypatch
+):
     from scaffold.python.manifests import load_eval_manifest
+
     skill = tmp_path / "skill"
     skill.mkdir()
     (skill / "SKILL.md").write_text("Use the fixed Runtime.", encoding="utf-8")
     original = tmp_path / "original.yaml"
-    original.write_text("""apiVersion: comet.eval/v1alpha1
+    original.write_text(
+        """apiVersion: comet.eval/v1alpha1
 kind: SkillEvalManifest
 metadata: {name: original}
 skill: {name: fixed-skill, source: skill, profile: generic}
@@ -423,9 +393,12 @@ interaction:
 execution: {agent: codex, model: primary-model}
 judge: {agent: codex, model: judge-model}
 evaluation: {}
-""", encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
     generated = tmp_path / "generated.yaml"
-    generated.write_text("""apiVersion: comet.eval/v1alpha1
+    generated.write_text(
+        """apiVersion: comet.eval/v1alpha1
 kind: SkillEvalManifest
 metadata: {name: generated}
 skill: {name: fixed-skill, source: skill, profile: generic}
@@ -433,14 +406,27 @@ evaluation:
   tasks:
     - {name: frozen-one, prompt: Run the actual workflow., expect: {files: [CONTEXT.md]}}
     - {name: frozen-two, prompt: Refuse approval., expect: {files: [rejected.md]}}
-""", encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
     original_bytes = generated.read_bytes()
     expected = load_eval_manifest(original)
     assert load_eval_manifest(generated).interaction.mode == "none"
-    options = {"--eval-manifest": str(original), "--skill-path": str(skill), "--project-root": str(tmp_path)}
-    config = SimpleNamespace(option=SimpleNamespace(collectonly=False, eval_manifest=str(original)), getoption=lambda name: options.get(name))
+    options = {
+        "--eval-manifest": str(original),
+        "--skill-path": str(skill),
+        "--project-root": str(tmp_path),
+    }
+    config = SimpleNamespace(
+        option=SimpleNamespace(collectonly=False, eval_manifest=str(original)),
+        getoption=lambda name: options.get(name),
+    )
     monkeypatch.setattr("scaffold.python.utils.load_eval_environment", lambda: None)
-    monkeypatch.setattr(conftest, "ensure_generated_manifest", lambda *args, **kwargs: SimpleNamespace(manifest_path=generated))
+    monkeypatch.setattr(
+        conftest,
+        "ensure_generated_manifest",
+        lambda *args, **kwargs: SimpleNamespace(manifest_path=generated),
+    )
     conftest._ensure_auto_generated_manifest(config)
     for task in config._comet_resolved_tasks.values():
         assert task.config.interaction == expected.interaction
@@ -1498,6 +1484,67 @@ def test_prebuild_docker_image_allows_a_cold_image_build_to_run_for_fifteen_minu
     ]
 
 
+@pytest.mark.parametrize(
+    "treatment", ["COMET_NATIVE_SDK_CURRENT", "COMET_NATIVE_040_RC1", "COMET_CLASSIC_DOCS_LAYOUT"]
+)
+def test_session_prebuild_defers_current_native_to_its_prepared_case_workspace(
+    tmp_path, monkeypatch, treatment
+):
+    environment = tmp_path / "original"
+    environment.mkdir()
+    (environment / "Dockerfile").write_text("FROM python:3.12-slim\n")
+    config = SimpleNamespace(
+        option=SimpleNamespace(collectonly=False),
+        getoption=lambda name: treatment if name == "--treatment" else None,
+    )
+    request = SimpleNamespace(config=config)
+    calls = []
+    monkeypatch.setattr(conftest, "_is_unit_tests_only", lambda _: False)
+    monkeypatch.setattr(conftest, "_docker_environment_dirs_for_request", lambda *_: [environment])
+    monkeypatch.setattr(
+        conftest, "_resolve_eval_agent", lambda _: SimpleNamespace(agent="claude-code")
+    )
+    monkeypatch.setattr(conftest, "context_from_environment", lambda: None)
+    monkeypatch.setattr(conftest, "DOCKER_BUILD_LOCK", tmp_path / "build.lock")
+
+    def build(directory, *args, **kwargs):
+        calls.append(directory)
+        return "prepared-image"
+
+    monkeypatch.setattr(conftest, "_build_docker_image_with_lock", build)
+    fixture = conftest.prebuild_docker_image.__wrapped__(request)
+    next(fixture)
+    with pytest.raises(StopIteration):
+        next(fixture)
+    assert calls == (
+        [] if treatment in {"COMET_NATIVE_SDK_CURRENT", "COMET_NATIVE_040_RC1"} else [environment]
+    )
+
+
+def test_docker_build_lock_wait_uses_the_same_budget_as_the_cold_build(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+
+    environment = tmp_path / "environment"
+    environment.mkdir()
+    (environment / "Dockerfile").write_text("FROM scratch\n")
+    budgets = []
+
+    @contextmanager
+    def lock(_path, timeout=600):
+        budgets.append(timeout)
+        yield
+
+    monkeypatch.setattr(conftest, "file_lock", lock)
+    monkeypatch.setattr(conftest, "context_from_environment", lambda: None)
+    monkeypatch.setattr(
+        conftest,
+        "run_shell",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, "image", ""),
+    )
+    assert conftest._build_docker_image_with_lock(environment) == "image"
+    assert budgets == [900]
+
+
 def test_resolve_eval_agent_applies_cli_manifest_precedence(tmp_path: Path):
     manifest = tmp_path / "eval.yaml"
     manifest.write_text(
@@ -1548,8 +1595,16 @@ def test_docker_prebuild_uses_only_the_tasks_selected_by_an_eval_manifest(
     class Config:
         _comet_frozen_task_set = SimpleNamespace(
             tasks=(
-                SimpleNamespace(task=SimpleNamespace(environment_dir=tasks_dir / "authoring-skill-smoke" / "environment")),
-                SimpleNamespace(task=SimpleNamespace(environment_dir=tasks_dir / "workflow-route-conformance" / "environment")),
+                SimpleNamespace(
+                    task=SimpleNamespace(
+                        environment_dir=tasks_dir / "authoring-skill-smoke" / "environment"
+                    )
+                ),
+                SimpleNamespace(
+                    task=SimpleNamespace(
+                        environment_dir=tasks_dir / "workflow-route-conformance" / "environment"
+                    )
+                ),
             )
         )
 
@@ -1575,7 +1630,12 @@ def test_docker_prebuild_uses_only_the_tasks_selected_by_an_eval_manifest(
 def test_docker_prebuild_consumes_only_frozen_task_environments(tmp_path: Path, source, selected):
     tasks_dir = tmp_path / "tasks"
     environments = {}
-    for name in ("authoring-skill-smoke", "workflow-route-conformance", "source-custom", "unrelated"):
+    for name in (
+        "authoring-skill-smoke",
+        "workflow-route-conformance",
+        "source-custom",
+        "unrelated",
+    ):
         environment = tasks_dir / name / "environment"
         environment.mkdir(parents=True)
         (environment / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
@@ -1583,7 +1643,9 @@ def test_docker_prebuild_consumes_only_frozen_task_environments(tmp_path: Path, 
 
     frozen = SimpleNamespace(
         source=source,
-        generation=SimpleNamespace(generation_hash="frozen-hash") if source == "generated-cache" else None,
+        generation=SimpleNamespace(generation_hash="frozen-hash")
+        if source == "generated-cache"
+        else None,
         tasks=tuple(
             SimpleNamespace(
                 name=name,
@@ -1726,7 +1788,9 @@ def test_extract_loop_binds_trusted_sdk_recovery_observation():
     evidence = {"schema": "comet.eval.native-recovery-boundary.v1", "revision": 9}
     interaction = conftest._extract_loop_interaction(
         "[loop] role-session subject before\n"
-        + "[loop] sdk-recovery-boundary " + json.dumps(evidence) + "\n"
+        + "[loop] sdk-recovery-boundary "
+        + json.dumps(evidence)
+        + "\n"
         + "[loop] fresh resume boundary detected; starting a new subject session\n"
         + "[loop] role-session subject after\n"
     )

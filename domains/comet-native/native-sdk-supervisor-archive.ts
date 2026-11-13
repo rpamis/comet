@@ -1,11 +1,11 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { nativeSupervisorContractRef } from './native-children-contract.js';
 
 import { stringify } from 'yaml';
 
-import { inspectGitWorktree, resolveGitRef } from '../../platform/paths/git-worktree.js';
+import { inspectGitWorktree, resolveGitRef, samePath } from '../../platform/paths/git-worktree.js';
 import { runGitCommand } from '../../platform/process/git.js';
-import { runExternalCommand } from '../../platform/process/external-command.js';
 import type {
   RuntimeAction,
   RuntimeExecutor,
@@ -13,51 +13,45 @@ import type {
   RuntimeValue,
   WorkflowRun,
 } from '../engine/runtime.js';
-import { hashRuntimeValue } from '../engine/runtime.js';
 import { atomicWriteText } from './native-atomic-file.js';
-import { readProjectConfig } from './native-config.js';
+import { readNativeBoundedTextFile } from './native-bounded-file.js';
+import { DEFAULT_NATIVE_MAX_PARALLEL_CHILDREN, readProjectConfig } from './native-config.js';
 import { nativeProjectPaths } from './native-paths.js';
 import {
   createNativePortableState,
   parseNativePortableState,
+  parseNativeReportedChecks,
   readNativePortableState,
 } from './native-portable-state.js';
-import type { NativePortableState } from './native-portable-types.js';
 import { toNativePortableText } from './native-portable-text.js';
+import type { NativeBuilderCheckSummary, NativePortableState } from './native-portable-types.js';
+import { NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
+import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
+import { currentNativeSdkSupervisorPlan } from './native-sdk-supervisor-prepare.js';
+import { supervisorAcceptanceScope } from './native-supervisor-model.js';
+import { nativeSupervisorChildWorktree } from './native-supervisor-workspace.js';
 import {
   inspectNativeVerificationReportAlignment,
   renderNativeVerificationReport,
   writeNativeVerificationReport,
 } from './native-verification-report-v2.js';
-import { supervisorAcceptanceScope } from './native-supervisor-model.js';
-import { currentNativeSdkSupervisorPlan } from './native-sdk-supervisor-prepare.js';
-import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
-import { nativeSupervisorChildWorktree } from './native-supervisor-workspace.js';
 import { nativeWorkspaceIsClean } from './native-workspace-config.js';
-import { samePath } from '../../platform/paths/git-worktree.js';
-import { readNativeBoundedTextFile } from './native-bounded-file.js';
-import { inspectNativePortableAcceptanceDrift } from './native-portable-requirements.js';
-import { NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
 
 const COMMIT_PATTERN = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 const ACCEPTANCE_ID_PATTERN = /^A[1-9][0-9]*$/u;
-const CHILD_ARCHIVE_FILES = [
-  'brief.md',
-  'spec.md',
-  'archive-source.md',
-  'comet-state.yaml',
-  'verification.md',
-] as const;
 
 export interface NativeSupervisorChildArchiveActivation {
   child: string;
   candidateCommit: string;
   integrationCommit: string;
-  checksActionId: string;
-  contractHash: string;
+  checksActionId?: string;
+  mergeActionId?: string;
+  repairActionId?: string;
+  contractRef: string;
 }
 
 interface NativeSupervisorChildArchiveBinding {
+  maxParallelChildren: number;
   parent: string;
   child: string;
   language: 'en' | 'zh-CN';
@@ -83,6 +77,7 @@ interface NativeSupervisorChildArchiveBinding {
     exitCode: number | null;
     durationMs: number;
   }>;
+  reportedChecks?: NativeBuilderCheckSummary[];
   childChecksCompletedAt: string;
   integrationChecksCompletedAt: string;
   scopedAcceptance: Array<{ id: string; source: string; text: string }>;
@@ -95,12 +90,15 @@ function activation(input: unknown): NativeSupervisorChildArchiveActivation {
     typeof record.child !== 'string' ||
     typeof record.candidateCommit !== 'string' ||
     typeof record.integrationCommit !== 'string' ||
-    typeof record.checksActionId !== 'string' ||
-    typeof record.contractHash !== 'string'
+    (typeof record.checksActionId !== 'string' && typeof record.mergeActionId !== 'string') ||
+    typeof nativeSupervisorContractRef(record) !== 'string'
   ) {
     throw new Error('Native Supervisor child archive lacks its activation');
   }
-  return record as unknown as NativeSupervisorChildArchiveActivation;
+  return {
+    ...record,
+    contractRef: nativeSupervisorContractRef(record)!,
+  } as unknown as NativeSupervisorChildArchiveActivation;
 }
 
 function succeededChildAction(
@@ -133,27 +131,75 @@ async function childArchiveBinding(
   if (
     state.phase !== 'build' ||
     state.status !== 'active' ||
-    !state.children_contract_hash ||
-    input.contractHash !== state.children_contract_hash ||
+    !state.children_contract_ref ||
+    nativeSupervisorContractRef(input, run) !== state.children_contract_ref ||
     !plan.contract.children.some(({ name }) => name === input.child) ||
     !COMMIT_PATTERN.test(input.candidateCommit) ||
     !COMMIT_PATTERN.test(input.integrationCommit)
   ) {
     throw new Error('Native Supervisor child archive does not match the confirmed plan');
   }
-  const integrationChecks = run.actions.find((candidate) => candidate.id === input.checksActionId);
-  const integrationChecksOutput = integrationChecks?.outcome?.output as
-    { candidateId?: unknown; completedAt?: unknown } | null | undefined;
+  // 旧归档输入仅从原已接受记录解析来源，不恢复检查任务。
+  const legacyCheck = input.checksActionId
+    ? run.actions.find((candidate) => candidate.id === input.checksActionId)
+    : undefined;
+  const legacyOutput = legacyCheck?.outcome?.output as
+    { candidateId?: string; completedAt?: string } | undefined;
   if (
-    integrationChecks?.stepId !== 'supervisor.child.integration-checks' ||
-    integrationChecks.status !== 'succeeded' ||
-    (integrationChecks.input as { activation?: { child?: unknown } } | null)?.activation?.child !==
-      input.child ||
-    integrationChecksOutput?.candidateId !== input.integrationCommit ||
-    typeof integrationChecksOutput?.completedAt !== 'string'
-  ) {
-    throw new Error('Native Supervisor child archive lacks its passed integration checks');
-  }
+    legacyCheck &&
+    (legacyCheck.stepId !== 'supervisor.child.integration-checks' ||
+      legacyCheck.status !== 'succeeded' ||
+      legacyOutput?.candidateId !== input.integrationCommit ||
+      typeof legacyOutput.completedAt !== 'string')
+  )
+    throw new Error('Native legacy archive lacks its original accepted integration result');
+  const mergeActionId =
+    input.mergeActionId ??
+    (legacyCheck?.input as { activation?: { mergeActionId?: string } } | undefined)?.activation
+      ?.mergeActionId;
+  const merge = run.actions.find((candidate) => candidate.id === mergeActionId);
+  const merged = merge?.outcome?.output as
+    { child?: string; integrationCommit?: string } | undefined;
+  const repairActionId =
+    input.repairActionId ??
+    (legacyCheck?.input as { activation?: { repairActionId?: string } } | undefined)?.activation
+      ?.repairActionId;
+  const repair = repairActionId
+    ? run.actions.find((candidate) => candidate.id === repairActionId)
+    : undefined;
+  const repaired = repair?.outcome?.output as
+    { integrationCommit?: string; checks?: unknown } | undefined;
+  if (
+    merge?.stepId !== 'supervisor.child.integrate' ||
+    merge.status !== 'succeeded' ||
+    merged?.child !== input.child ||
+    (repair
+      ? repair.stepId !== 'supervisor.child.integration-repair' ||
+        repair.status !== 'succeeded' ||
+        (
+          repair.input as {
+            activation?: { mergeActionId?: string; child?: string; candidateCommit?: string };
+          }
+        ).activation?.mergeActionId !== merge.id ||
+        (repair.input as { activation: { child: string; candidateCommit: string } }).activation
+          .child !== input.child ||
+        (repair.input as { activation: { candidateCommit: string } }).activation.candidateCommit !==
+          input.candidateCommit ||
+        nativeSupervisorContractRef(
+          (repair.input as { activation: Record<string, unknown> }).activation,
+          run,
+        ) !== state.children_contract_ref ||
+        repaired?.integrationCommit !== input.integrationCommit
+      : merged.integrationCommit !== input.integrationCommit)
+  )
+    throw new Error('Native Supervisor child archive lacks its accepted integration task');
+  const integrationCompletedAt =
+    legacyOutput?.completedAt ??
+    runGitCommand(
+      (run.outputs['supervisor.prepare']?.value as { integrationWorktree: string })
+        .integrationWorktree,
+      ['show', '-s', '--format=%cI', input.integrationCommit],
+    ).trim();
   const verifier = succeededChildAction(run, 'supervisor.child.verifier', input.child, (output) => {
     const evidence = output.evidence as { summary?: unknown } | null | undefined;
     return (
@@ -170,6 +216,7 @@ async function childArchiveBinding(
     summary: string;
     risks?: unknown;
     acceptance?: Array<{ id?: unknown; result?: unknown; reason?: unknown }>;
+    checks?: unknown;
   };
   const builder = succeededChildAction(
     run,
@@ -177,26 +224,21 @@ async function childArchiveBinding(
     input.child,
     (output) => output.candidateCommit === input.candidateCommit,
   );
-  const childChecks = succeededChildAction(
-    run,
-    'supervisor.child.checks',
-    input.child,
-    (output) => output.candidateId === input.candidateCommit,
+  const legacyVerifier = ['1', '2', '3'].includes(
+    verifier.action.executionOrigin?.workflow.version ?? '',
   );
-  if (!childChecks) {
-    throw new Error('Native Supervisor child archive lacks its completed Child checks');
-  }
-  const childChecksOutput = childChecks.output as {
-    checks?: Array<Record<string, unknown>>;
-    completedAt?: unknown;
-  };
-  if (
-    !Array.isArray(childChecksOutput.checks) ||
-    childChecksOutput.checks.length === 0 ||
-    typeof childChecksOutput.completedAt !== 'string'
-  ) {
-    throw new Error('Native Supervisor child archive has invalid Child check evidence');
-  }
+  const childChecks = legacyVerifier
+    ? succeededChildAction(
+        run,
+        'supervisor.child.checks',
+        input.child,
+        (output) => output.candidateId === input.candidateCommit,
+      )
+    : null;
+  if (legacyVerifier && !childChecks)
+    throw new Error('Legacy Child archive lacks its original accepted checks');
+  const childChecksOutput = childChecks?.output as
+    { checks?: Array<Record<string, unknown>>; completedAt?: string } | undefined;
   const prepared = run.outputs['supervisor.prepare']?.value as
     { integrationWorktree?: unknown; integrationBranch?: unknown } | undefined;
   if (
@@ -245,7 +287,7 @@ async function childArchiveBinding(
       throw new Error(`Native Supervisor child archive evidence does not cover acceptance ${id}`);
     }
   }
-  const childCheckRows = childChecksOutput.checks.map((check) => {
+  const childCheckRows = (childChecksOutput?.checks ?? []).map((check) => {
     if (
       typeof check.id !== 'string' ||
       typeof check.name !== 'string' ||
@@ -271,6 +313,10 @@ async function childArchiveBinding(
     : [];
   return {
     parent: state.name,
+    maxParallelChildren:
+      plan.state.coordination_mode === 'single-session'
+        ? 1
+        : (plan.config.native.max_parallel_children ?? DEFAULT_NATIVE_MAX_PARALLEL_CHILDREN),
     child: input.child,
     language: state.language,
     targetBranch: plan.targetBranch,
@@ -287,8 +333,11 @@ async function childArchiveBinding(
     verifierRisks: risks,
     verifierAcceptance,
     childChecks: childCheckRows,
-    childChecksCompletedAt: childChecksOutput.completedAt,
-    integrationChecksCompletedAt: integrationChecksOutput.completedAt,
+    ...(legacyVerifier
+      ? {}
+      : { reportedChecks: parseNativeReportedChecks(verifierEvidence.checks ?? []) }),
+    childChecksCompletedAt: childChecksOutput?.completedAt ?? integrationCompletedAt,
+    integrationChecksCompletedAt: integrationCompletedAt,
     scopedAcceptance,
   };
 }
@@ -301,20 +350,22 @@ async function childArchiveMaterials(
 ): Promise<Record<string, string>> {
   const plan = await currentNativeSdkSupervisorPlan(run, projectRoot);
   const paths = await nativeProjectPaths(projectRoot, plan.config.native.artifact_root);
-  const drift = await inspectNativePortableAcceptanceDrift({ paths, state: plan.state });
-  if (drift.drifted) throw new Error(drift.reason ?? 'Native confirmed archive sources changed');
   const parentDir = path.join(paths.changesDir, binding.parent);
-  const brief = await readNativeBoundedTextFile({ root: parentDir, ref: plan.state.brief });
+  const brief = await readNativeBoundedTextFile({
+    root: parentDir,
+    ref: plan.state.brief,
+    includeHash: false,
+  });
   const specs = await Promise.all(
     plan.state.spec_changes.flatMap((spec) =>
-      spec.source ? [readNativeBoundedTextFile({ root: parentDir, ref: spec.source })] : [],
+      spec.source
+        ? [readNativeBoundedTextFile({ root: parentDir, ref: spec.source, includeHash: false })]
+        : [],
     ),
   );
   const title = binding.language === 'zh-CN' ? '子任务归档' : 'Archived Child';
   const scope = binding.scopedAcceptance.map((item) => `- ${item.id}: ${item.text}`).join('\n');
-  const sources = [brief, ...specs]
-    .map((source) => `- ${source.ref}: SHA256 ${source.hash}`)
-    .join('\n');
+  const sources = [brief, ...specs].map((source) => `- ${source.ref}`).join('\n');
   return {
     'brief.md': `# ${binding.child}\n\n${title}: ${binding.parent}\n\n${binding.language === 'zh-CN' ? '本归档仅覆盖以下已确认验收项。Spec 是 Parent 已确认内容的快照，不表示独立 Child Spec 变更或新增验收。' : 'This archive covers only the confirmed acceptance below. The Spec is a snapshot of the confirmed Parent, not an independent Child Spec change or additional acceptance.'}\n\n${scope}\n\n[Parent Spec](spec.md) · [${binding.language === 'zh-CN' ? '来源与原始简报' : 'Sources and original brief'}](archive-source.md) · [${binding.language === 'zh-CN' ? '验收记录' : 'Verification'}](verification.md)\n`,
     'spec.md':
@@ -323,7 +374,7 @@ async function childArchiveMaterials(
         : specs.length === 1
           ? specs[0].text
           : specs.map((spec) => `# ${spec.ref}\n\n${spec.text}`).join('\n\n'),
-    'archive-source.md': `# ${binding.language === 'zh-CN' ? '归档材料来源' : 'Archive material sources'}\n\n- Parent Run: ${run.runId}\n- Archive Action: ${action.id}\n- Contract: ${activation(action.input).contractHash}\n- Candidate: ${binding.candidateCommit}\n- Verifier: ${binding.verifierSessionId}\n- Integration checks: ${activation(action.input).checksActionId}\n- Shape confirmation: ${plan.state.shape_confirmation_hash}\n\n${sources}\n\n## ${binding.language === 'zh-CN' ? 'Parent 原始简报' : 'Original Parent brief'}\n\n${brief.text}`,
+    'archive-source.md': `# ${binding.language === 'zh-CN' ? '归档材料来源' : 'Archive material sources'}\n\n- Parent Run: ${run.runId}\n- Archive Action: ${action.id}\n- Contract: ${nativeSupervisorContractRef(activation(action.input), run)}\n- Candidate: ${binding.candidateCommit}\n- Verifier: ${binding.verifierSessionId}\n- Integration Action: ${activation(action.input).mergeActionId ?? activation(action.input).checksActionId}\n\n${sources}\n\n## ${binding.language === 'zh-CN' ? 'Parent 原始简报' : 'Original Parent brief'}\n\n${brief.text}`,
   };
 }
 
@@ -333,13 +384,11 @@ export async function writeMissingNativeSupervisorArchiveMaterials(
   dryRun: boolean,
 ) {
   const missing: string[] = [];
-  for (const [ref, content] of Object.entries(materials)) {
+  for (const ref of Object.keys(materials)) {
     const existing = await readNativeBoundedTextFile({ root: directory, ref }).catch((error) => {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
       throw error;
     });
-    if (existing && existing.text.replace(/\r\n/gu, '\n') !== content.replace(/\r\n/gu, '\n'))
-      throw new Error(`Native archive material conflict: ${ref}`);
     if (!existing) missing.push(ref);
   }
   if (!dryRun)
@@ -377,7 +426,7 @@ export async function restoreNativeSupervisorChildArchiveMaterials(
     (action) =>
       action.stepId === 'supervisor.child.archive' &&
       action.status === 'succeeded' &&
-      activation(action.input).contractHash === state.children_contract_hash,
+      nativeSupervisorContractRef(activation(action.input), run) === state.children_contract_ref,
   )) {
     if (action.claim?.executorId !== nativeSdkSupervisorChildArchiveExecutor.id)
       throw new Error('Native child archive receipt lacks its Runtime executor');
@@ -409,22 +458,6 @@ export async function restoreNativeSupervisorChildArchiveMaterials(
       archived.verification.completed_at !== binding.integrationChecksCompletedAt
     )
       throw new Error('Native archived record does not match its accepted candidate');
-    if (
-      hashRuntimeValue(archived as unknown as RuntimeValue) !==
-      hashRuntimeValue(buildChildArchiveState(binding) as unknown as RuntimeValue)
-    )
-      throw new Error('Native archived state differs from its original accepted evidence');
-    const alignment = await inspectNativeVerificationReportAlignment({
-      file: path.join(directory, 'verification.md'),
-      stateVersion: archived.state_version,
-    });
-    if (alignment !== 'aligned') throw new Error('Native archived verification report changed');
-    const report = await readNativeBoundedTextFile({ root: directory, ref: 'verification.md' });
-    if (
-      report.text.replace(/\r\n/gu, '\n') !==
-      renderNativeVerificationReport(archived).replace(/\r\n/gu, '\n')
-    )
-      throw new Error('Native archived verification content differs from its accepted evidence');
     const materials = await childArchiveMaterials(run, action, options.projectRoot, binding);
     const missing = await writeMissingNativeSupervisorArchiveMaterials(directory, materials, true);
     recovered.push({
@@ -520,6 +553,7 @@ function buildChildArchiveState(binding: NativeSupervisorChildArchiveBinding): N
           ? 'self-reviewed'
           : 'skill-coordinated',
       verdict: 'pass',
+      ...(binding.reportedChecks ? { reported_checks: binding.reportedChecks } : {}),
       checks: binding.childChecks.map((check) => ({
         id: check.id,
         name: toNativePortableText(check.name),
@@ -585,82 +619,12 @@ function assertArchiveOnlyCommit(worktree: string, commit: string, archiveRelati
   }
 }
 
-async function assertChildArchiveFileSnapshot(
-  worktree: string,
-  directory: string,
-  ref: string,
-  expected: string | undefined,
-): Promise<void> {
-  const existing = await readNativeBoundedTextFile({ root: directory, ref }).catch((error) => {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    throw error;
-  });
-  let actual = existing
-    ? runGitCommand(worktree, ['hash-object', '--no-filters', '--', path.join(directory, ref)])
-    : undefined;
-  if (
-    actual !== expected &&
-    expected &&
-    existing &&
-    existing.text.includes('\r\n') &&
-    existing.size === Buffer.byteLength(existing.text, 'utf8')
-  ) {
-    // Git 检出可以改变换行；只核对 LF 形式，不运行用户定义的 clean filter。
-    actual = runExternalCommand('git', ['hash-object', '--no-filters', '--stdin'], {
-      cwd: worktree,
-      input: existing.text.replace(/\r\n/gu, '\n'),
-    }).trim();
-  }
-  if (actual !== expected || (!actual && ['comet-state.yaml', 'verification.md'].includes(ref)))
-    throw new Error(`Native archive material conflict: ${ref}`);
-}
-
-/** 新一轮只可替换仍与原归档提交逐字一致的文件，保留旧材料的 Git 历史。 */
-export async function assertNativeSupervisorArchiveSnapshot(options: {
-  worktree: string;
-  directory: string;
-  archiveRelative: string;
-  archiveCommit: string;
-}): Promise<ReadonlyMap<string, string>> {
-  const { worktree, directory, archiveRelative, archiveCommit } = options;
-  if (!COMMIT_PATTERN.test(archiveCommit))
-    throw new Error('Native Supervisor child archive has an invalid predecessor commit');
-  const unexpected = (await fs.readdir(directory)).filter(
-    (ref) => !(CHILD_ARCHIVE_FILES as readonly string[]).includes(ref),
-  );
-  if (unexpected.length > 0)
-    throw new Error(`Native archive material conflict: ${unexpected.join(', ')}`);
-  const entries = runGitCommand(worktree, [
-    'ls-tree',
-    '-z',
-    archiveCommit,
-    '--',
-    ...CHILD_ARCHIVE_FILES.map((ref) => `${archiveRelative}/${ref}`),
-  ])
-    .split('\0')
-    .filter(Boolean);
-  const original = new Map<string, string>();
-  for (const entry of entries) {
-    const match = /^(?:100644|100755) blob ([a-f0-9]+)\t(.+)$/u.exec(entry);
-    if (!match) throw new Error('Native Supervisor child archive has a non-file predecessor');
-    original.set(match[2], match[1]);
-  }
-  for (const ref of CHILD_ARCHIVE_FILES)
-    await assertChildArchiveFileSnapshot(
-      worktree,
-      directory,
-      ref,
-      original.get(`${archiveRelative}/${ref}`),
-    );
-  return original;
-}
-
 async function assertChildArchivePredecessor(
   run: Readonly<WorkflowRun>,
   action: Readonly<RuntimeAction>,
   binding: NativeSupervisorChildArchiveBinding,
   location: { relative: string },
-): Promise<ReadonlyMap<string, string>> {
+): Promise<void> {
   const index = run.actions.findIndex((candidate) => candidate.id === action.id);
   const previous =
     index < 0
@@ -689,20 +653,13 @@ async function assertChildArchivePredecessor(
   )
     throw new Error('Native Supervisor child archive lacks its accepted predecessor receipt');
   assertArchiveOnlyCommit(binding.worktree, receipt.archiveCommit, location.relative);
-  let snapshot: ReadonlyMap<string, string> = new Map();
+
   for (const [worktree, commit] of [
     [binding.worktree, binding.candidateCommit],
     [binding.integrationWorktree, binding.integrationCommit],
   ]) {
     runGitCommand(worktree, ['merge-base', '--is-ancestor', receipt.archiveCommit, commit]);
-    snapshot = await assertNativeSupervisorArchiveSnapshot({
-      worktree,
-      directory: path.join(worktree, location.relative),
-      archiveRelative: location.relative,
-      archiveCommit: receipt.archiveCommit,
-    });
   }
-  return snapshot;
 }
 
 async function pathExists(file: string): Promise<boolean> {
@@ -773,11 +730,9 @@ export const nativeSdkSupervisorChildArchiveExecutor: RuntimeExecutor = {
       }
       const state = buildChildArchiveState(binding);
       const materials = await childArchiveMaterials(run, action, context.projectRoot, binding);
-      const predecessor = recovered
-        ? await assertChildArchivePredecessor(run, action, binding, location)
-        : null;
+      if (recovered) await assertChildArchivePredecessor(run, action, binding, location);
       await fs.mkdir(location.target, { recursive: true });
-      if (predecessor) {
+      if (recovered) {
         const records = {
           ...materials,
           'comet-state.yaml': stringify(state),
@@ -786,13 +741,6 @@ export const nativeSdkSupervisorChildArchiveExecutor: RuntimeExecutor = {
         for (const [ref, content] of Object.entries(records))
           await atomicWriteText(path.join(location.target, ref), content, {
             containedRoot: location.nativeRoot,
-            beforeCommit: () =>
-              assertChildArchiveFileSnapshot(
-                binding.worktree,
-                location.target,
-                ref,
-                predecessor.get(`${location.relative}/${ref}`),
-              ),
           });
       } else {
         await writeMissingNativeSupervisorArchiveMaterials(location.target, materials, false);
@@ -890,6 +838,7 @@ export const nativeSdkSupervisorChildArchiveExecutor: RuntimeExecutor = {
         archiveCommit,
         baseCommit: binding.integrationCommit,
         integrationCommit,
+        maxParallelChildren: binding.maxParallelChildren,
       } as unknown as RuntimeValue,
     };
   },

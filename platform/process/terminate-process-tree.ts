@@ -4,6 +4,15 @@ import path from 'node:path';
 const WINDOWS_TASKKILL_ATTEMPT_MS = 1_000;
 const WINDOWS_TASKKILL_ATTEMPTS = 2;
 const POSIX_GROUP_EXIT_WAIT_MS = 1_000;
+const terminationPreparations = new WeakMap<ChildProcess, () => Promise<void>>();
+
+/** 自有监管器在整树清理前完成已启动的子树清理，避免两个 taskkill 互相终止。 */
+export function registerTerminationPreparation(
+  child: ChildProcess,
+  prepare: () => Promise<void>,
+): void {
+  terminationPreparations.set(child, prepare);
+}
 
 async function waitForPosixGroupExit(pid: number): Promise<boolean> {
   const deadline = Date.now() + POSIX_GROUP_EXIT_WAIT_MS;
@@ -25,7 +34,7 @@ export async function terminateProcessTree(child: ChildProcess): Promise<void> {
   await terminateProcessTreeConfirmed(child);
 }
 
-/** 返回整树终止是否已确认；只杀掉组长不能证明 Windows 后代已退出。 */
+/** 返回整树终止是否已确认；只杀掉组长不能证明后代已退出。 */
 export async function terminateProcessTreeConfirmed(child: ChildProcess): Promise<boolean> {
   const pid = child.pid;
   if (pid === undefined) {
@@ -35,6 +44,8 @@ export async function terminateProcessTreeConfirmed(child: ChildProcess): Promis
   if (process.platform === 'win32') {
     const exited = () => typeof child.exitCode === 'number' || child.signalCode != null;
     // 已退出的 ChildProcess 句柄不能授权再次按裸 PID 杀树，PID 可能已复用。
+    if (exited()) return false;
+    await terminationPreparations.get(child)?.();
     if (exited()) return false;
     const configuredSystemRoot = process.env.SystemRoot ?? process.env.WINDIR;
     const systemRoot =
@@ -81,6 +92,7 @@ export async function terminateProcessTreeConfirmed(child: ChildProcess): Promis
     child.stderr?.destroy();
     return false;
   }
+  let groupExited = false;
   try {
     process.kill(-pid, 'SIGKILL');
   } catch (error) {
@@ -92,7 +104,11 @@ export async function terminateProcessTreeConfirmed(child: ChildProcess): Promis
       !(process.platform === 'darwin' && code === 'EPERM' && (await waitForPosixGroupExit(pid)))
     )
       throw error;
+    groupExited = true;
   }
   child.kill('SIGKILL');
+  // Darwin 接受组信号后，忽略 stdio 的后代仍可能尚未退出。
+  // 沿用自清理分支的整组探测，不把信号已发送当成退出证明。
+  if (process.platform === 'darwin' && !groupExited) return waitForPosixGroupExit(pid);
   return true;
 }

@@ -1,7 +1,9 @@
 import { promises as fs } from 'node:fs';
 import { runInNewContext } from 'node:vm';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
+import { assertCoreRegressionReport } from '../../scripts/lint/core-regressions.mjs';
 
 async function readWorkflow(name: string): Promise<string> {
   return (await fs.readFile(`.github/workflows/${name}`, 'utf8')).replace(/\r\n/g, '\n');
@@ -50,10 +52,25 @@ describe('CI workflows', () => {
     expect(matrix.filter((item: { os: string }) => item.os === 'windows-latest')).toEqual(
       [1, 2, 3, 4].map((shard) => ({ os: 'windows-latest', shard, shards: 4 })),
     );
-    for (const os of ['ubuntu-latest', 'macos-latest'])
+    for (const os of ['macos-latest'])
       expect(matrix.filter((item: { os: string }) => item.os === os)).toEqual([
         { os, shard: 1, shards: 1 },
       ]);
+    expect(matrix.some((item: { os: string }) => item.os === 'ubuntu-latest')).toBe(false);
+    const linux = workflow.jobs['core-regression-report'];
+    expect(linux.needs).toBe('quality');
+    expect(
+      linux.steps.some(
+        (step: { run?: string }) =>
+          step.run === 'pnpm test:core-regressions --verify-report coverage/vitest-results.json',
+      ),
+    ).toBe(true);
+    expect(
+      linux.steps.some((step: { uses?: string }) =>
+        step.uses?.startsWith('actions/download-artifact@'),
+      ),
+    ).toBe(true);
+    expect(workflow.jobs['ci-required'].needs).toContain('core-regression-report');
     expect(
       core.steps.some(
         (step: { run?: string }) =>
@@ -124,6 +141,15 @@ describe('CI workflows', () => {
     const node = ci.jobs['node-compatibility'];
     expect(node.strategy['fail-fast']).toBe(false);
     expect(node.strategy.matrix.shard).toEqual([1, 2]);
+    const upstream = node.steps.find(
+      (step: { run?: string }) => step.run === 'pnpm test:openspec-upstream',
+    );
+    expect(upstream.if).toBe('matrix.shard == 1');
+    expect(
+      ci.jobs.quality.steps.find(
+        (step: { run?: string }) => step.run === 'pnpm test:openspec-upstream',
+      ).if,
+    ).toBeUndefined();
     expect(node['timeout-minutes']).toBeGreaterThanOrEqual(40);
     const tests = node.steps.find((step: { id?: string }) => step.id === 'node22-tests');
     expect(tests.run).toContain('pnpm test --shard=${{ matrix.shard }}/2');
@@ -135,6 +161,100 @@ describe('CI workflows', () => {
     expect(report.if).toContain('always()');
     expect(report.with.name).toContain('${{ matrix.shard }}');
     expect(ci.jobs['ci-required'].needs).toContain('node-compatibility');
+  });
+
+  it('reuses every Linux Runtime file from quality while retaining real Docker and other OS execution', async () => {
+    const workflow = parse(await readWorkflow('ci.yml'));
+    const pkg = JSON.parse(await fs.readFile('package.json', 'utf8'));
+    const runtime = workflow.jobs['runtime-smoke'];
+    const ordinary = runtime.steps.filter(
+      (step: { name?: string; run?: string }) =>
+        step.run &&
+        step.name !== 'Verify Eval cancellation against real Docker containers' &&
+        (/vitest run/u.test(step.run) || /test:native-parallel|test:runtime-smoke/u.test(step.run)),
+    );
+    expect(ordinary).toHaveLength(6);
+    for (const step of ordinary) {
+      expect(step.if).toBe("matrix.os != 'ubuntu-latest'");
+      expect(step['continue-on-error']).toBeUndefined();
+    }
+    const files = [
+      ...new Set<string>(
+        ordinary.flatMap((step: { run: string }) => {
+          const command = step.run.startsWith('pnpm test:')
+            ? pkg.scripts[step.run.slice('pnpm '.length)]
+            : step.run;
+          return command.match(/test\/[^\s]+\.test\.ts/gu) ?? [];
+        }),
+      ),
+    ];
+    expect(files).toHaveLength(20);
+    await Promise.all(files.map((file) => fs.access(file)));
+    const linux = workflow.jobs['core-regression-report'];
+    expect(linux.needs).toBe('quality');
+    const download = linux.steps.findIndex((step: { uses?: string }) =>
+      step.uses?.startsWith('actions/download-artifact@'),
+    );
+    expect(download).toBeGreaterThanOrEqual(0);
+    expect(linux.steps[download].with).toEqual({ name: 'coverage', path: 'coverage' });
+    const verification = linux.steps.findIndex(
+      (step: { name?: string }) =>
+        step.name === 'Verify Linux Runtime coverage in the same workflow report',
+    );
+    expect(verification).toBeGreaterThan(download);
+    const step = linux.steps[verification];
+    expect(step.if).toBeUndefined();
+    expect(step['continue-on-error']).toBeUndefined();
+    expect(step.run).toContain(
+      "import { assertCoreRegressionReport } from './scripts/lint/core-regressions.mjs';",
+    );
+    const source = step.run.match(/^node --input-type=module <<'NODE'\n([\s\S]+)\nNODE\n?$/u)?.[1];
+    expect(source).toBeDefined();
+    const body = source!.replace(/^import .*;\n/gmu, '');
+    const complete = {
+      success: true,
+      numFailedTests: 0,
+      numFailedTestSuites: 0,
+      numRuntimeErrorTestSuites: 0,
+      testResults: files.map((file) => ({
+        name: path.resolve(file),
+        assertionResults: [{ fullName: 'platform regression', status: 'passed' }],
+      })),
+    };
+    const verify = (report: typeof complete) =>
+      runInNewContext(body + '\nfiles;', {
+        readFileSync: (file: string, encoding: string) => {
+          expect(file).toBe('coverage/vitest-results.json');
+          expect(encoding).toBe('utf8');
+          return JSON.stringify(report);
+        },
+        assertCoreRegressionReport,
+        process: { cwd: () => process.cwd(), platform: process.platform },
+        console: { log: () => undefined },
+      });
+    expect(verify(complete)).toEqual(files);
+    expect(() => verify({ ...complete, testResults: complete.testResults.slice(1) })).toThrow();
+    const skipped = structuredClone(complete);
+    skipped.testResults[0].assertionResults[0].status = 'pending';
+    expect(() => verify(skipped)).toThrow();
+    const failed = structuredClone(complete);
+    failed.success = false;
+    failed.numFailedTests = 1;
+    failed.testResults[0].assertionResults[0].status = 'failed';
+    expect(() => verify(failed)).toThrow();
+    const docker = runtime.steps.find(
+      (item: { name?: string }) =>
+        item.name === 'Verify Eval cancellation against real Docker containers',
+    );
+    expect(docker.if).toBe("matrix.os == 'ubuntu-latest'");
+    expect(docker.env.COMET_EVAL_DOCKER_INTEGRATION).toBe('1');
+    expect(docker.run).toContain('docker pull alpine:3.21');
+    expect(docker.run).toContain(
+      'test/domains/eval/eval-container-cleanup.integration.test.ts --maxWorkers=1',
+    );
+    expect(docker['continue-on-error']).toBeUndefined();
+    expect(workflow.jobs['ci-required'].needs).toContain('core-regression-report');
+    expect(workflow.jobs['ci-required'].needs).toContain('runtime-smoke');
   });
 
   it('executes DSH installation and PowerShell protocol regressions on the OS matrix', async () => {
@@ -152,21 +272,25 @@ describe('CI workflows', () => {
     expect(runtime.strategy.matrix.os).toEqual(['ubuntu-latest', 'macos-latest', 'windows-latest']);
     const commands = runtime.steps.map((step: { run?: string }) => step.run ?? '').join('\n');
     expect(commands).toContain('test/platform/workspace-runtime.test.ts');
-    expect(commands).toContain('test/domains/workflow-contract/workspace-runtime.test.ts');
+    expect(commands).toContain(
+      'test/domains/workflow-contract/workspace-runtime-entrypoints.test.ts',
+    );
+    expect(commands).toContain(
+      'test/domains/workflow-contract/workspace-runtime-current-business.test.ts',
+    );
+    expect(commands).not.toContain('test/domains/workflow-contract/workspace-runtime.test.ts');
   });
 
-  it('runs real Native process regressions without competing test workers', async () => {
+  it('runs CLI-owned process cleanup regressions without competing test workers', async () => {
     const workflow = parse(await readWorkflow('ci.yml'));
     const step = workflow.jobs['runtime-smoke'].steps.find(
-      (step: { name?: string }) => step.name === 'Native check process and recovery regressions',
+      (step: { name?: string }) => step.name === 'CLI-owned process cleanup regressions',
     );
     expect(step.run).toContain('--maxWorkers=1');
-    expect(step.run).toContain('test/domains/comet-native/native-check-executor.test.ts');
-    expect(step.run).toContain(
-      'test/domains/comet-native/native-check-executor-termination.test.ts',
-    );
+    expect(step.run).toContain('test/platform/process/owned-command-termination.test.ts');
+    expect(step.run).toContain('test/platform/process/node-cli-command.test.ts');
     expect(step.run).toContain('test/platform/process/process-identity.test.ts');
-    expect(step.if).toBeUndefined();
+    expect(step.if).toBe("matrix.os != 'ubuntu-latest'");
     expect(step['continue-on-error']).toBeUndefined();
   });
 
@@ -428,6 +552,42 @@ describe('CI workflows', () => {
     );
     expect(classic.run).toContain('--maxWorkers=1');
     expect(steps.indexOf(classic)).toBeGreaterThan(steps.indexOf(sdk));
+  });
+
+  it('runs macOS cold claim context delivery separately and uploads its results', async () => {
+    const ci = parse(await readWorkflow('ci.yml')) as {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{
+            id?: string;
+            run?: string;
+            if?: string;
+            uses?: string;
+            with?: Record<string, unknown>;
+          }>;
+        }
+      >;
+    };
+    const steps = ci.jobs['sdk-contracts'].steps;
+    const sdk = steps.find((step) => step.id === 'sdk-tests')!;
+    const claim = steps.find((step) => step.id === 'claim-context-tests')!;
+    const upload = steps.find((step) => step.uses?.startsWith('actions/upload-artifact@'))!;
+    expect(sdk.run).toContain(
+      "matrix.os == 'macos-latest' && '--exclude test/app/native-runtime-dispatch.test.ts'",
+    );
+    expect(claim.if).toBe(
+      "${{ !cancelled() && matrix.os == 'macos-latest' && matrix.shard == 1 && steps.sdk-tests.outcome != 'skipped' }}",
+    );
+    expect(claim.run).toContain(
+      'vitest run test/app/native-runtime-dispatch.test.ts --maxWorkers=1',
+    );
+    expect(claim.run).toContain('--outputFile.json=coverage/sdk/claim-context-results.json');
+    expect(claim.run).not.toContain('--testNamePattern');
+    expect(claim.run).not.toContain('--passWithNoTests');
+    expect(steps.indexOf(claim)).toBeGreaterThan(steps.indexOf(sdk));
+    expect(steps.indexOf(upload)).toBeGreaterThan(steps.indexOf(claim));
+    expect(upload.with?.path).toBe('coverage/sdk/');
   });
 
   it('requires SDK contracts on every supported CI platform and the minimum Node version', async () => {

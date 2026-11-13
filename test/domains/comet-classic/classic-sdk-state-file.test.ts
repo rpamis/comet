@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import {
   classicOpenEvidenceReceipt,
-  defineClassicWorkflowApplication,
+  defineClassicAgentWorkflowApplication,
 } from '../../../domains/comet-classic/classic-sdk-application.js';
 import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
 import {
@@ -177,16 +177,15 @@ describe('Classic SDK state file contract', () => {
     const hash = await withClassicCommandContext({ projectRoot: root, invocationCwd: root }, () =>
       runClassicCli(['handoff', 'demo', '--hash-only']),
     );
-    expect(hash.exitCode, hash.stderr).toBe(0);
-    expect(hash.stdout?.trim()).toMatch(/^[a-f0-9]{64}$/u);
-    expect(hash.stderr).toContain('comet state next demo --json');
-    expect(hash.stderr).not.toContain('NEXT: comet handoff');
+    expect(hash.exitCode).toBe(64);
+    expect(hash.stderr).toContain('--hash-only 已移除');
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(source);
     await expect(
       fs.access(path.join(path.dirname(stateFile), '.comet/run-state.json')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it('reuses a source-current SDK handoff without changing an approval or state', async () => {
+  it('reuses the formal SDK handoff reference after Agent edits without changing an approval or state', async () => {
     const { root, cli, stateFile } = await project();
     expect((await cli('init', 'demo', 'full', '--isolation', 'current')).exitCode).toBe(0);
     expect((await cli('set', 'demo', 'language', 'en')).exitCode).toBe(0);
@@ -224,6 +223,7 @@ describe('Classic SDK state file contract', () => {
       evidenceId: run.evidenceWaits![0].id,
       kind: 'classic-open-artifacts',
       ...(await classicOpenEvidenceReceipt(root, 'openspec/changes/demo')),
+      contentHash: open.inputHash,
       submissionId: 'sdk-open-evidence',
       context: { projectRoot: root, requestId: 'sdk-open-evidence' },
     });
@@ -249,6 +249,7 @@ describe('Classic SDK state file contract', () => {
     );
     expect(proposal.exitCode, proposal.stderr).toBe(0);
     const before = await inspectClassicSdkRun(root, 'demo');
+    expect(before.state.handoffContext).toBe('openspec/changes/demo/proposal.md');
     const source = await fs.readFile(stateFile, 'utf8');
     const handoff = await withClassicCommandContext(
       { projectRoot: root, invocationCwd: root },
@@ -258,11 +259,12 @@ describe('Classic SDK state file contract', () => {
     expect((await inspectClassicSdkRun(root, 'demo')).run).toEqual(before.run);
     expect(await fs.readFile(stateFile, 'utf8')).toBe(source);
     await fs.appendFile(path.join(changeDir, 'tasks.md'), '- [ ] New requirement\n');
-    const stale = await withClassicCommandContext({ projectRoot: root, invocationCwd: root }, () =>
-      runClassicCli(['handoff', 'demo', 'design', '--write']),
+    const current = await withClassicCommandContext(
+      { projectRoot: root, invocationCwd: root },
+      () => runClassicCli(['handoff', 'demo', 'design', '--write']),
     );
-    expect(stale.exitCode).not.toBe(0);
-    expect(stale.stderr).toMatch(/changed|approval/u);
+    expect(current.exitCode, current.stderr).toBe(0);
+    expect(current.stderr).toContain('[HANDOFF] source openspec/changes/demo/proposal.md');
     expect((await inspectClassicSdkRun(root, 'demo')).run).toEqual(before.run);
     expect(await fs.readFile(stateFile, 'utf8')).toBe(source);
   });
@@ -407,7 +409,7 @@ describe('Classic SDK state file contract', () => {
         file === 'tasks.md' ? '- [ ] Implement the change\n' : `# ${file}\n`,
       );
     }
-    const application = defineClassicWorkflowApplication('hotfix');
+    const application = defineClassicAgentWorkflowApplication('hotfix');
     const runtime = createRuntime({
       store: createClassicSdkStateStore(root),
       workflows: [application.workflow],
@@ -442,6 +444,7 @@ describe('Classic SDK state file contract', () => {
       evidenceId: run.evidenceWaits![0].id,
       kind: 'classic-open-artifacts',
       ...(await classicOpenEvidenceReceipt(root, changeRef)),
+      contentHash: action.inputHash,
       submissionId: 'portable-build-open-evidence',
       expectedRevision: run.revision,
       context: { requestId: 'portable-build-open-evidence', projectRoot: root },

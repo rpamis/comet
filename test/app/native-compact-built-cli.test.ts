@@ -32,7 +32,7 @@ it('runs compact Native status through the real bin and independent bundle in a 
         minify: true,
         define: { __COMET_VERSION__: JSON.stringify('0.5.0') },
         banner: {
-          js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
+          js: "import { createRequire as __cometCreateRequire } from 'node:module'; const require = __cometCreateRequire(import.meta.url);",
         },
       });
     }

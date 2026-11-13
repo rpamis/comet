@@ -1,0 +1,18 @@
+{
+  "registry": {
+    "file": "docs/research/2026-11-11-platform-execution-retirement/classic-first-commit-fixture/registry.json",
+    "sha256": "5018f7c176fdc5b2dfe2ccc98e263bf452e6127d12ca7c4b9e05621f13b9f651"
+  },
+  "tests": {
+    "file": "docs/research/2026-11-11-platform-execution-retirement/classic-first-commit-fixture/tests.json",
+    "sha256": "ebcaa4001f3ddf9660b31f7761bc81b830cd7548eca082ce383ae4bc2d73d33f"
+  },
+  "mapping": {
+    "file": "docs/research/2026-11-11-platform-execution-retirement/classic-first-commit-fixture/mapping.json",
+    "sha256": "f0f315c10c456d4370f14a230204cfa401c628487ba7c25e02cc67be8812d981"
+  },
+  "patch": {
+    "file": "docs/research/2026-11-11-platform-execution-retirement/classic-first-commit-fixture/patch.patch",
+    "sha256": "2b4d3cf9db8d13e31ea7aca09dfc7cd333facd4e40f4766190326725ce177a6c"
+  }
+}

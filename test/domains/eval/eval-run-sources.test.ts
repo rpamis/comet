@@ -1,3 +1,4 @@
+import { requireFileSymlink } from '../../helpers/file-symlink.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -61,7 +62,8 @@ describe('Eval source discovery', () => {
     await fs.rm(path.join(reports, '../../run-two'), { recursive: true });
     expect(await listEvalRunSources(root)).toHaveLength(1);
   });
-  it('rejects cached report files replaced by symlinks and recovers after repair', async () => {
+  it('rejects cached report files replaced by symlinks and recovers after repair', async (context) => {
+    await requireFileSymlink(context);
     await fingerprint(root);
     const file = path.join(reports, 'one_report.json');
     await fs.rm(file);

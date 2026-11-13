@@ -1,0 +1,1567 @@
+{
+  "baseline": "7f016b28",
+  "platform": "win32",
+  "node": "v22.20.0",
+  "checks": {
+    "build": "passed",
+    "generated": "passed",
+    "lint": {
+      "status": "passed",
+      "preexistingWarnings": 9
+    },
+    "badcaseRegistration": "passed",
+    "generatedHook": {
+      "generatedBundle": "comet-hook-router-guard.mjs",
+      "neutralWithBrokenHistory": {
+        "allowed": true,
+        "reason": "Unselected neutral documentation write"
+      },
+      "malformedSelectionRejected": "current change selection contains invalid JSON: Expected property name or '}' in JSON at position 1 (line 1 column 2)"
+    }
+  },
+  "runs": [
+    {
+      "run": "runtime-new-contracts-final-tests",
+      "success": true,
+      "passed": 49,
+      "failed": 0,
+      "executed": [
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router allows unselected neutral docs without inspecting damaged historical Runs"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router stays neutral for an unknown write target without reading Comet state"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router selects task context before an agent starts without requiring an active change"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router does not invent a cross-task session id when the host omits one"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router keeps optional context failures nonblocking and returns a bounded host diagnostic"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router stays neutral for project-external targets without reading Comet state"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router protects user-level Runtime before resolving none ownership"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router protects user-level Runtime before resolving native ownership"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router protects user-level Runtime before resolving classic ownership"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router protects user-level Runtime before resolving application ownership"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router protects relative Runtime targets resolved from the host runtime cwd"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router protects relative Runtime targets resolved from the host project-subdirectory cwd"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router does not expand ordinary project scope using host cwd candidates"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router protects a linked alias of user-level Runtime while leaving another workspace alone"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router fails closed when the scope of an explicit write target cannot be determined"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router filters external targets before delegating a mixed write to the owning Guard"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router routes one event to only the selected Native Guard"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router keeps optional context collection outside the synchronous write Hook path"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router does not enumerate Classic state when Native owns the current selection"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router ignores the standalone root when default owner enumeration checks Classic"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router routes one event to only the selected Classic Guard"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router does not enumerate Native state when Classic owns the current selection"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router fails closed when multiple workflows have active changes without a selection"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router fails closed when one workflow has multiple active changes without a selection"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router allows an explicit user Hook output without selecting a Comet change"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router does not let the user allowlist bypass workflow-owned roots"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router allows ordinary development when a stale selection has no active replacement"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router classifies a stale selection with zero active changes as none"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router infers the sole active change after ignoring a stale selection"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router requires selection when a stale selection leaves multiple active changes"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router classifies unreadable change state without throwing from Doctor callers"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router allows ordinary development when no Comet change is active"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router requires the Native CLI before an unowned Native formal artifact write"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router allows ordinary development when configured workflow roots have not been created"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router infers the only active change without writing selection"
+        },
+        {
+          "file": "hook-router.test.ts",
+          "name": "Comet Hook Router treats no-config projects as Classic-only legacy projects"
+        },
+        {
+          "file": "classic-agent-checks.test.ts",
+          "name": "compiles Classic full Agent checks without changing the legacy definition"
+        },
+        {
+          "file": "classic-agent-checks.test.ts",
+          "name": "compiles Classic hotfix Agent checks without changing the legacy definition"
+        },
+        {
+          "file": "classic-agent-checks.test.ts",
+          "name": "compiles Classic tweak Agent checks without changing the legacy definition"
+        },
+        {
+          "file": "classic-agent-checks.test.ts",
+          "name": "continues a new Classic Run with platform check reports and rejects failed reports before claiming"
+        },
+        {
+          "file": "native-check-without-pid.test.ts",
+          "name": "cancels the current managed check through its stop request without persisting or probing PID"
+        },
+        {
+          "file": "native-check-without-pid.test.ts",
+          "name": "accepts the original legacy stop receipt without querying its historical PID"
+        },
+        {
+          "file": "native-lock-without-pid.test.ts",
+          "name": "keeps Native mutation exclusion without binding a PID or probing a thread"
+        },
+        {
+          "file": "native-lock-without-pid.test.ts",
+          "name": "keeps ordinary lock acquisition outside a running Native recovery section"
+        },
+        {
+          "file": "lock-without-pid.test.ts",
+          "name": "releases the transaction after the writer exits without a PID lookup or doctor repair"
+        },
+        {
+          "file": "lock-without-pid.test.ts",
+          "name": "retires a confirmed legacy operation without binding its PID to the replacement"
+        },
+        {
+          "file": "lock-without-pid.test.ts",
+          "name": "preserves the original operation error when lock cleanup also fails"
+        },
+        {
+          "file": "lock-without-pid.test.ts",
+          "name": "serializes writers without probing or persisting a process identity"
+        },
+        {
+          "file": "lock-without-pid.test.ts",
+          "name": "serializes independent processes without process ownership records"
+        }
+      ]
+    },
+    {
+      "run": "runtime-classic-v2-full-tests",
+      "success": true,
+      "passed": 9,
+      "failed": 0,
+      "executed": [
+        {
+          "file": "classic-agent-content-judgment.test.ts",
+          "name": "continues the same Classic full Verify and Archive after ordinary edits without content proof"
+        },
+        {
+          "file": "classic-agent-content-judgment.test.ts",
+          "name": "continues the same Classic hotfix Verify and Archive after ordinary edits without content proof"
+        },
+        {
+          "file": "classic-agent-content-judgment.test.ts",
+          "name": "continues the same Classic tweak Verify and Archive after ordinary edits without content proof"
+        },
+        {
+          "file": "classic-agent-content-judgment.test.ts",
+          "name": "blocks Classic Archive when a new real check fails after an accepted pass"
+        },
+        {
+          "file": "classic-agent-content-judgment.test.ts",
+          "name": "completes Classic full from an Agent-reviewed design without metadata rules through source"
+        },
+        {
+          "file": "classic-agent-content-judgment.test.ts",
+          "name": "completes Classic full from an Agent-reviewed design without metadata rules through generated"
+        },
+        {
+          "file": "classic-agent-content-judgment.test.ts",
+          "name": "continues the same Classic full Verify and Archive through the generated Runtime without content proof"
+        },
+        {
+          "file": "classic-agent-content-judgment.test.ts",
+          "name": "continues the same Classic hotfix Verify and Archive through the generated Runtime without content proof"
+        },
+        {
+          "file": "classic-agent-content-judgment.test.ts",
+          "name": "continues the same Classic tweak Verify and Archive through the generated Runtime without content proof"
+        }
+      ]
+    },
+    {
+      "run": "runtime-classic-v1-upgrade-tests",
+      "success": true,
+      "passed": 4,
+      "failed": 0,
+      "executed": [
+        {
+          "file": "classic-sdk-verify-rounds.test.ts",
+          "name": "runs first managed checks after 'tweak' upgrades to full through 'source'"
+        },
+        {
+          "file": "classic-sdk-verify-rounds.test.ts",
+          "name": "runs first managed checks after 'tweak' upgrades to full through 'generated'"
+        },
+        {
+          "file": "classic-sdk-verify-rounds.test.ts",
+          "name": "runs first managed checks after 'hotfix' upgrades to full through 'source'"
+        },
+        {
+          "file": "classic-sdk-verify-rounds.test.ts",
+          "name": "runs first managed checks after 'hotfix' upgrades to full through 'generated'"
+        }
+      ]
+    },
+    {
+      "run": "runtime-sdk-migration-tests",
+      "success": true,
+      "passed": 27,
+      "failed": 0,
+      "executed": [
+        {
+          "file": "native-check-registration.test.ts",
+          "name": "Native check process registration does not register or start a command after its operation is cancelled"
+        },
+        {
+          "file": "native-check-registration.test.ts",
+          "name": "Native check process registration waits for registration even if the check has already exited"
+        },
+        {
+          "file": "native-check-registration.test.ts",
+          "name": "Native check process registration terminates the check and preserves a registration failure before returning"
+        },
+        {
+          "file": "native-check-registration.test.ts",
+          "name": "Native check process registration rejects an unavailable log before spawning or registering the check"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "reuses a confirmed stop only while the complete execution record still matches"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "keeps a Windows running check blocked when both owner and supervisor exited without tree evidence"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "keeps a Windows interrupted check blocked when both owner and supervisor exited without tree evidence"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "keeps a Windows completed check blocked when both owner and supervisor exited without tree evidence"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "accepts a cold completed Windows result only with its own confirmed process receipt"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "does not let an unconfirmed cleanup overwrite a confirmed receipt"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "rejects a termination receipt with another instanceId"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "does not transfer the previous check receipt to a newly registered check with the same pid"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "allows a legacy Windows registration only after explicitly bound manual stop evidence"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "rejects manual evidence while the original owner could still start another check"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "persists only confirmed cancellation cleanup (false)"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "persists only confirmed cancellation cleanup (true)"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "releases a cancelled Windows check only after the original action and process evidence agree"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "persists confirmed Windows cleanup when creation-identity probing was unavailable"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "keeps legacy no-identity registrations recoverable with explicit stop evidence"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "does not infer no process from an unconfirmed interruption before child registration"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "keeps the pre-registration crash gap unknown before a child pid can be saved"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "keeps terminal stop evidence portable without changing the business result"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "requires an accepted and exactly bound receipt for legacy interruption stop evidence"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "requires exact manual stop evidence for a childless reserved snapshot on every platform"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "requires exact manual stop evidence for a childless interrupted snapshot on every platform"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "omits settled execution reads in lightweight inspection but diagnoses missing stop evidence"
+        },
+        {
+          "file": "native-sdk-check-termination.test.ts",
+          "name": "does not reopen settled execution records when reconciling existing stop proof"
+        }
+      ]
+    },
+    {
+      "run": "runtime-legacy-recovery-final-tests",
+      "success": true,
+      "passed": 25,
+      "failed": 0,
+      "executed": [
+        {
+          "file": "native-portable-check-termination.test.ts",
+          "name": "Native portable unconfirmed check termination resolves an explicit empty check plan once before dispatching the Verifier"
+        },
+        {
+          "file": "native-portable-check-termination.test.ts",
+          "name": "Native portable unconfirmed check termination preserves completed check receipts when an empty plan is requested"
+        },
+        {
+          "file": "native-portable-check-termination.test.ts",
+          "name": "Native portable unconfirmed check termination dispatches an explicit empty check plan through the generated Native next bundle"
+        },
+        {
+          "file": "native-portable-check-termination.test.ts",
+          "name": "Native portable unconfirmed check termination persists an Agent-confirmed interruption before allowing an explicit check retry"
+        },
+        {
+          "file": "native-portable-check-termination.test.ts",
+          "name": "Native portable unconfirmed check termination preserves the registered process and blocks retries for runtime checks"
+        },
+        {
+          "file": "native-portable-check-termination.test.ts",
+          "name": "Native portable unconfirmed check termination preserves the registered process and blocks retries for verifier checks"
+        },
+        {
+          "file": "native-portable-check-termination.test.ts",
+          "name": "Native portable unconfirmed check termination preserves the registered process and blocks retries for legacy-verifier checks"
+        },
+        {
+          "file": "native-portable-recovery.test.ts",
+          "name": "Native portable recovery rebuilds a missing local overlay at the shape boundary without changing semantic state"
+        },
+        {
+          "file": "native-portable-recovery.test.ts",
+          "name": "Native portable recovery rebuilds a missing local overlay at the build boundary without changing semantic state"
+        },
+        {
+          "file": "native-portable-recovery.test.ts",
+          "name": "Native portable recovery does not inherit an Archive-ready pass when the local Runtime is missing"
+        },
+        {
+          "file": "native-portable-recovery.test.ts",
+          "name": "Native portable recovery does not inherit an Archive-ready pass when the local Runtime is stale"
+        },
+        {
+          "file": "native-portable-recovery.test.ts",
+          "name": "Native portable recovery preserves a running Verifier until its host reports an explicit execution error"
+        },
+        {
+          "file": "native-portable-recovery.test.ts",
+          "name": "Native portable recovery restarts the complete acceptance scope when a running repair Verifier is lost"
+        },
+        {
+          "file": "native-portable-recovery.test.ts",
+          "name": "Native portable recovery rebuilds a missing verification report from matching portable state"
+        },
+        {
+          "file": "native-portable-recovery.test.ts",
+          "name": "Native portable recovery discards a stale non-repeatable check without changing newer portable state"
+        },
+        {
+          "file": "native-supervisor-check-process.test.ts",
+          "name": "Supervisor check process recovery preserves unconfirmed process termination and blocks owner-dead recovery"
+        },
+        {
+          "file": "native-supervisor-check-process.test.ts",
+          "name": "Supervisor check process recovery does not start another check while the registered process outlives its recorded owner"
+        },
+        {
+          "file": "native-supervisor-check-process.test.ts",
+          "name": "Supervisor check process recovery reconciles a complete check receipt even when the former owner process is alive"
+        },
+        {
+          "file": "native-supervisor-check-process.test.ts",
+          "name": "Supervisor check process recovery does not reuse a completed receipt for changed inputs after the former owner exits"
+        },
+        {
+          "file": "native-supervisor-check-process.test.ts",
+          "name": "Supervisor check process recovery does not replay an unregistered process and provides a candidate-preserving recovery route"
+        },
+        {
+          "file": "native-supervisor-check-process.test.ts",
+          "name": "Supervisor check process recovery requires explicit retry for interrupted checks and preserves passed checks"
+        },
+        {
+          "file": "native-supervisor-integration-execution.test.ts",
+          "name": "Supervisor integration check execution preserves unconfirmed process termination and blocks owner-dead recovery"
+        },
+        {
+          "file": "native-supervisor-integration-execution.test.ts",
+          "name": "Supervisor integration check execution reserves the integration worktree before running checks with competing plans"
+        },
+        {
+          "file": "native-supervisor-integration-execution.test.ts",
+          "name": "Supervisor integration check execution preserves a failed integration receipt and requires a changed plan before retry"
+        },
+        {
+          "file": "native-supervisor-integration-execution.test.ts",
+          "name": "Supervisor integration check execution exposes only interrupted integration checks as an explicit retry action"
+        }
+      ]
+    },
+    {
+      "run": "runtime-final-recovery-tests",
+      "success": true,
+      "passed": 110,
+      "failed": 0,
+      "executed": [
+        {
+          "file": "recoverable-file-lock.test.ts",
+          "name": "recoverable file lock safety publishes an uncontended owner without creating coordinator tickets"
+        },
+        {
+          "file": "recoverable-file-lock.test.ts",
+          "name": "recoverable file lock safety never uses age or clock drift to steal unknown owner \"\""
+        },
+        {
+          "file": "recoverable-file-lock.test.ts",
+          "name": "recoverable file lock safety never uses age or clock drift to steal unknown owner \"{partial-owner:\""
+        },
+        {
+          "file": "recoverable-file-lock.test.ts",
+          "name": "recoverable file lock safety publishes complete owner records before the public lock exists"
+        },
+        {
+          "file": "recoverable-file-lock.test.ts",
+          "name": "recoverable file lock safety ignores dead choosing and ticket owners without minimum age or deleting their records"
+        },
+        {
+          "file": "recoverable-file-lock.test.ts",
+          "name": "recoverable file lock safety propagates unreadable metadata rather than diagnosing healthy or removing it"
+        },
+        {
+          "file": "recoverable-file-lock.test.ts",
+          "name": "recoverable file lock safety uses a monotonic timeout when the wall clock moves backwards"
+        },
+        {
+          "file": "recoverable-file-lock.test.ts",
+          "name": "recoverable file lock safety treats a legacy owner with no hostname as unknown even when that pid is absent locally"
+        },
+        {
+          "file": "recoverable-file-lock.test.ts",
+          "name": "recoverable file lock release removes its own lock when the coordinator cannot run at release time"
+        },
+        {
+          "file": "recoverable-file-lock.test.ts",
+          "name": "recoverable file lock release keeps a lock whose metadata changed while held and reports it"
+        },
+        {
+          "file": "recoverable-file-lock.test.ts",
+          "name": "recoverable file lock release lets the same process acquire the lock again after a failed coordinated release"
+        },
+        {
+          "file": "recoverable-file-lock.test.ts",
+          "name": "recoverable file lock release never removes a lock another owner republished while held"
+        },
+        {
+          "file": "recoverable-file-lock.test.ts",
+          "name": "recoverable file lock release never removes a lock another owner republished while the coordinator is unusable"
+        },
+        {
+          "file": "recoverable-file-lock.test.ts",
+          "name": "recoverable file lock release says nothing when the lock is already gone before release"
+        },
+        {
+          "file": "recoverable-file-lock.test.ts",
+          "name": "recoverable file lock release keeps a lock it cannot inspect at release time and reports why"
+        },
+        {
+          "file": "classic-agent-command-selection.test.ts",
+          "name": "runs only the Agent-selected Build command for compat through source"
+        },
+        {
+          "file": "classic-agent-command-selection.test.ts",
+          "name": "runs only the Agent-selected Build command for compat through generated"
+        },
+        {
+          "file": "classic-agent-command-selection.test.ts",
+          "name": "runs only the Agent-selected Build command for sdk through source"
+        },
+        {
+          "file": "classic-agent-command-selection.test.ts",
+          "name": "runs only the Agent-selected Build command for sdk through generated"
+        },
+        {
+          "file": "classic-agent-command-selection.test.ts",
+          "name": "continues the original Classic check receipt without SDK parameters or repeated execution through source"
+        },
+        {
+          "file": "classic-agent-command-selection.test.ts",
+          "name": "continues the original Classic check receipt without SDK parameters or repeated execution through generated"
+        },
+        {
+          "file": "native-check-executor-termination.test.ts",
+          "name": "preserves normal Windows check result 0 after confirmed tree termination"
+        },
+        {
+          "file": "native-check-executor-termination.test.ts",
+          "name": "preserves normal Windows check result 2 after confirmed tree termination"
+        },
+        {
+          "file": "native-check-executor-termination.test.ts",
+          "name": "reports a timeout only after confirmed tree termination"
+        },
+        {
+          "file": "native-check-executor-termination.test.ts",
+          "name": "stops immediately on a supervisor error instead of converting it into a command timeout"
+        },
+        {
+          "file": "native-check-executor-termination.test.ts",
+          "name": "waits for supervisor readiness before releasing the registered command"
+        },
+        {
+          "file": "native-check-executor-termination.test.ts",
+          "name": "cancels pending supervisor readiness immediately when its supervisor errors"
+        },
+        {
+          "file": "native-check-executor-termination.test.ts",
+          "name": "never releases a late-ready command after its registration deadline has cancelled it"
+        },
+        {
+          "file": "native-check-executor-termination.test.ts",
+          "name": "rejects Windows completed when only the leader was stopped"
+        },
+        {
+          "file": "native-check-executor-termination.test.ts",
+          "name": "rejects Windows timeout when only the leader was stopped"
+        },
+        {
+          "file": "native-check-executor-termination.test.ts",
+          "name": "preserves command completion and timeout facts when completed cleanup is unconfirmed"
+        },
+        {
+          "file": "native-check-executor-termination.test.ts",
+          "name": "preserves command completion and timeout facts when timeout cleanup is unconfirmed"
+        },
+        {
+          "file": "native-check-executor-termination.test.ts",
+          "name": "does not hang when failed Windows tree cleanup never emits close"
+        },
+        {
+          "file": "native-check-executor-termination.test.ts",
+          "name": "settles an interrupted check when confirmed Windows cleanup never closes inherited pipes"
+        },
+        {
+          "file": "native-check-executor-termination.test.ts",
+          "name": "rejects a durable termination receipt failure instead of leaving the result pending"
+        },
+        {
+          "file": "native-check-executor-termination.test.ts",
+          "name": "does not turn a completed check into a timeout while confirmed cleanup is finishing"
+        },
+        {
+          "file": "native-check-executor-termination.test.ts",
+          "name": "does not let a log write error bypass pending Windows tree confirmation after close"
+        },
+        {
+          "file": "native-check-owner-recovery.test.ts",
+          "name": "Native check owner recovery recognizes completed receipt reuse without a child but keeps an unregistered launch unknown"
+        },
+        {
+          "file": "native-check-owner-recovery.test.ts",
+          "name": "Native check owner recovery stops checks and their descendants when their actual owner receives SIGTERM"
+        },
+        {
+          "file": "native-check-owner-recovery.test.ts",
+          "name": "Native check owner recovery stops checks and their descendants when their actual owner receives SIGKILL"
+        },
+        {
+          "file": "native-check-owner-recovery.test.ts",
+          "name": "Native check owner recovery keeps its deadline when the owner event loop cannot run its timeout timer"
+        },
+        {
+          "file": "native-check-owner-recovery.test.ts",
+          "name": "Native check owner recovery does not launch the command before registration and bounds a stuck registration"
+        },
+        {
+          "file": "native-check-owner-recovery.test.ts",
+          "name": "Native check owner recovery kills background descendants before reporting their parent command complete"
+        },
+        {
+          "file": "native-check-owner-recovery.test.ts",
+          "name": "Native check owner recovery does not replay a check after its supervisor is killed before completion"
+        },
+        {
+          "file": "native-check-owner-recovery.test.ts",
+          "name": "Native check owner recovery records owner death as unknown while preserving claim and refuses overwrite across attempts"
+        },
+        {
+          "file": "native-check-owner-recovery.test.ts",
+          "name": "Native check owner recovery persists cancellation before a delayed executor has registered so it cannot launch"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration retries a transient fence publication observation with a bounded fresh read"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration does not reuse an unstable fence after its bounded publication retries"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration reads the same saved run and lock through a Windows case alias"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration validates the volume root without attempting mkdir when the root would reject it"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration rejects a nonphysical volume root reported as a file before creating directories"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration rejects a nonphysical volume root reported as a symlink before creating directories"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration preserves a volume root lstat ENOENT error without attempting mkdir"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration preserves a volume root lstat EACCES error without attempting mkdir"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration preserves a volume root lstat EPERM error without attempting mkdir"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration checks read-only fence ownership without following a foreign target"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration creates the user-level runtime and its compatibility fence with concurrent initialization"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration migrates the entire legacy tree, preserves evidence, and leaves only one fence"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration supports separate files with a directory fence that blocks legacy writes"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration copies across filesystem boundaries and only renames within each filesystem"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration refuses old lock or in-flight writer native/locks/root-move.lock without modifying the source"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration refuses old lock or in-flight writer native/check.json.tmp without modifying the source"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration refuses old lock or in-flight writer sdk-runs/one/store.lock.contenders/old.ticket without modifying the source"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration refuses unfinished transactions and active execution owners"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration keeps completed transaction and execution evidence"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration checks repeated journal names while preserving prepared transaction evidence"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration checks repeated journal names while preserving committed transaction evidence"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration checks repeated journal names while preserving rolled-back transaction evidence"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration does not interpret journal-like evidence with another suffix as transaction state"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration rejects a symlink inside the source and a symlinked data subtree"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration rejects hardlinks instead of migrating data another path can change"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration never merges an existing target even when its bytes match"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration retains recovery records and safely completes on retry after a crash at afterJournal"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration retains recovery records and safely completes on retry after a crash at afterFence"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration retains recovery records and safely completes on retry after a crash at afterCopy"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration retains recovery records and safely completes on retry after a crash at afterPublish"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration detects a writer changing the quarantined source before publication"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration isolates a copied foreign fence without following its recorded target"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration rejects source or destination outside the current workspace runtime"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration accepts a same-workspace fence after moving a change into archive"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration refuses changing the home root for a fence belonging to this workspace"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration does not treat an old SDK revision as the current active execution"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration refuses an invalid latest revision and an incomplete history"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration preserves completed transaction backups without interpreting them as journals"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration migrates large ordinary files without attempting to parse them as fences"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration migrates through a workspace alias and coalesces alias and physical callers"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration accepts an explicitly contained Git metadata source and rejects its siblings"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration pairs Classic command execution events before migrating any sibling artifact"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration preserves a pending handoff and an unknown action without migration"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration migrates a valid legacy restored checkpoint at physical slot 1"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration migrates a valid legacy restored checkpoint at physical slot 2"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration resumes a migration whose recorded local process has exited"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration recovers a stopped migration without host or PID binding"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration refuses recovery after copied evidence is changed or a conflicting target appears"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration rebuilds a proven partial copy from its unchanged backup"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration keeps unknown files in a partial stage and fails closed"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration checks old locks and migration journals without creating directories"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration recreates a lost current-workspace runtime for portable checkpoint recovery"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration does not recreate a lost runtime when its fence points to a different target"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration allows portable recovery after a migrated Native change runtime is lost"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration leaves lost Classic run-state and checkpoint files absent for portable recovery"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration still rejects a changed per-record fence target after local data loss"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration seals a missing legacy file lock without creating a home lock"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration never replaces an existing legacy lock or an unknown directory while sealing"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration keeps a sealed legacy lock valid across archive moves while rejecting target drift"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration only accepts a copied legacy lock fence with explicit foreign-workspace permission"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration does not leave a half fence when interrupted after staging mkdir"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration does not replace a legacy file appearing before fence publication"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration does not replace a legacy directory appearing before fence publication"
+        },
+        {
+          "file": "workspace-runtime.test.ts",
+          "name": "workspace runtime resolution and migration keeps non-Git runtime evidence isolated after git init without following its old fence"
+        }
+      ]
+    },
+    {
+      "run": "runtime-final-contract-tests",
+      "success": true,
+      "passed": 102,
+      "failed": 0,
+      "executed": [
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade shares identity only after the shortcut command has finished"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade shares identity only after the group command has finished"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade offers a concise Classic command overview with drill-down help"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade does not collect context or record workflow success for --help"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade does not collect context or record workflow success for -h"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade exposes the stable public Classic commands including executed checks"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade registers the Classic facade from its single public command source"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade dispatches exact argv and forwards stdout, stderr, and a nonzero exit code"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade preserves flag order through real Commander registration"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade routes Classic group argv before global version parsing"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade records full evidence before compacting JSON stdout"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade records a successful Classic archive through the shared plugin bridge"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade automatically collects task context before a Classic command"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade records Classic verification using the selected preset family"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade preserves integration, delimiter, and exactly one plugin event through the shortcut facade"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade preserves integration, delimiter, and exactly one plugin event through the group facade"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade uses COMET_TASK without explicit flags and isolates plugin failures from workflow success"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade does not record the default read-only state query: current"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade does not record the default read-only state query: next"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade does not record the default read-only state query: get"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade injects the self-contained packaged executor through the same integration and plugin boundary"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade reports missing --comet-task values in JSON before dispatch"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade reports missing --comet-path values in JSON before dispatch"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade reports missing --comet-phase values in JSON before dispatch"
+        },
+        {
+          "file": "classic-command.test.ts",
+          "name": "Classic command facade reports missing --comet-workflow values in JSON before dispatch"
+        },
+        {
+          "file": "classic-runtime-assets.test.ts",
+          "name": "Classic runtime release assets imports the state command without side effects and keeps standalone help working through a linked directory"
+        },
+        {
+          "file": "classic-runtime-assets.test.ts",
+          "name": "Classic runtime release assets imports the check command without side effects and keeps standalone help working through a linked directory"
+        },
+        {
+          "file": "classic-runtime-assets.test.ts",
+          "name": "Classic runtime release assets imports the guard command without side effects and keeps standalone help working through a linked directory"
+        },
+        {
+          "file": "classic-runtime-assets.test.ts",
+          "name": "Classic runtime release assets imports the handoff command without side effects and keeps standalone help working through a linked directory"
+        },
+        {
+          "file": "classic-runtime-assets.test.ts",
+          "name": "Classic runtime release assets imports the archive command without side effects and keeps standalone help working through a linked directory"
+        },
+        {
+          "file": "classic-runtime-assets.test.ts",
+          "name": "Classic runtime release assets ships bilingual Classic references under the Classic entry"
+        },
+        {
+          "file": "classic-runtime-assets.test.ts",
+          "name": "Classic runtime release assets lists every shipped Classic script in the assets manifest"
+        },
+        {
+          "file": "classic-runtime-assets.test.ts",
+          "name": "Classic runtime release assets keeps relative launcher imports resolvable inside shipped scripts"
+        },
+        {
+          "file": "classic-runtime-assets.test.ts",
+          "name": "Classic runtime release assets keeps npm package allowlist broad enough to ship Comet assets and installer"
+        },
+        {
+          "file": "comet-entry-runtime-assets.test.ts",
+          "name": "Comet entry resolver runtime release asset publishes one fresh self-contained resolver without workflow execution logic"
+        },
+        {
+          "file": "comet-entry-runtime-assets.test.ts",
+          "name": "Comet entry resolver runtime release asset publishes a fresh Hook Router that validates platform configuration"
+        },
+        {
+          "file": "comet-entry-runtime-assets.test.ts",
+          "name": "Comet entry resolver runtime release asset initializes plugin context from an installed-only Hook Router with the build version"
+        },
+        {
+          "file": "comet-entry-runtime-assets.test.ts",
+          "name": "Comet entry resolver runtime release asset reports bounded plugin initialization failures from an installed-only Hook Router"
+        },
+        {
+          "file": "comet-entry-runtime-assets.test.ts",
+          "name": "Comet entry resolver runtime release asset does not let an unrelated malformed Classic change block the selected Classic owner"
+        },
+        {
+          "file": "comet-entry-runtime-assets.test.ts",
+          "name": "Comet entry resolver runtime release asset blocks a selected Classic change from writing another Classic change artifact"
+        },
+        {
+          "file": "comet-entry-runtime-assets.test.ts",
+          "name": "Comet entry resolver runtime release asset blocks a Windows case variant that targets another selected Classic change"
+        },
+        {
+          "file": "comet-entry-runtime-assets.test.ts",
+          "name": "Comet entry resolver runtime release asset blocks a selected Classic change from writing an archived Classic artifact"
+        },
+        {
+          "file": "comet-entry-runtime-assets.test.ts",
+          "name": "Comet entry resolver runtime release asset resolves Native from project config with only the bundled Skill runtime available"
+        },
+        {
+          "file": "comet-entry-runtime-assets.test.ts",
+          "name": "Comet entry resolver runtime release asset fails closed when configuration is absent with only the bundled Skill runtime available"
+        },
+        {
+          "file": "comet-entry-runtime-assets.test.ts",
+          "name": "Comet entry resolver runtime release asset fails closed on malformed config instead of falling back to Classic"
+        },
+        {
+          "file": "native-runtime-assets.test.ts",
+          "name": "Native runtime release asset publishes the Native Skill, references, and runtime from the manifest"
+        },
+        {
+          "file": "native-runtime-assets.test.ts",
+          "name": "Native runtime release asset ships one fresh self-contained Node runtime"
+        },
+        {
+          "file": "native-runtime-assets.test.ts",
+          "name": "Native runtime release asset ships one self-contained bundle per command launcher"
+        },
+        {
+          "file": "native-runtime-assets.test.ts",
+          "name": "Native runtime release asset keeps command syntax and defaults in CLI help instead of Skill references"
+        },
+        {
+          "file": "native-runtime-assets.test.ts",
+          "name": "Native runtime release asset detects a stale generated runtime"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing ends the response before newly presented comet-classic content can be approved in Chinese"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing ends the response before newly presented comet-open content can be approved in Chinese"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing ends the response before newly presented comet-design content can be approved in Chinese"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing ends the response before newly presented comet-classic content can be approved in English"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing ends the response before newly presented comet-open content can be approved in English"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing ends the response before newly presented comet-design content can be approved in English"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing loads Open and Design Skills and enforces the confirmed reply rule at the Chinese entry"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing loads Open and Design Skills and enforces the confirmed reply rule at the English entry"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing keeps text-only approval pauses explicit in the shared decision protocol in skills-zh"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing keeps text-only approval pauses explicit in the shared decision protocol in skills"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing requires the actual reply to the presented content before approving comet-open"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing requires the actual reply to the presented content before approving comet-design"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing requires the actual reply to the presented English content before approving comet-open"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing requires the actual reply to the presented English content before approving comet-design"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing shares creation order and early host checks in skills"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing shares creation order and early host checks in skills-zh"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing provides stage context at every Classic entry in skills"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing provides stage context at every Classic entry in skills-zh"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing describes checkpoint-backed recovery in both English Classic entries"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing keeps the English comet-classic SDK path and compat boundary"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing keeps the English comet-open SDK path and compat boundary"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing keeps the English comet-design SDK path and compat boundary"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing keeps the English comet-build SDK path and compat boundary"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing keeps the English comet-verify SDK path and compat boundary"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing keeps the English comet-archive SDK path and compat boundary"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing keeps the English comet-hotfix SDK path and compat boundary"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing keeps the English comet-tweak SDK path and compat boundary"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing routes an initialized change by the authoritative runtime format"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing creates new full changes as SDK Runs and binds Open approval to its preview"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing uses the Design proposal Wait for SDK approval and preserves the legacy recipe"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing routes SDK Build configuration, plan, execution, and check through one Run"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing routes SDK Verify review failures and checked reports through one Run"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing binds SDK Archive and delivery to one approved proposal"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing routes SDK hotfix through preset Open, checked Build, and confirmed escalation"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic Chinese Skill SDK routing routes SDK tweak through preset Open, checked Build, and confirmed escalation"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic SDK continuation handoffs in both languages keeps Chinese preset routing and the required approval boundary"
+        },
+        {
+          "file": "classic-sdk-skill-routing.test.ts",
+          "name": "Classic SDK continuation handoffs in both languages keeps English preset routing and the required approval boundary"
+        },
+        {
+          "file": "native-sdk-skill-routing.test.ts",
+          "name": "Workflow Rule and Native task agreement aligns review, delivered context and optional learning in md"
+        },
+        {
+          "file": "native-sdk-skill-routing.test.ts",
+          "name": "Workflow Rule and Native task agreement aligns review, delivered context and optional learning in en.md"
+        },
+        {
+          "file": "native-sdk-skill-routing.test.ts",
+          "name": "Chinese Native SDK Skill route prefers receipt result submission consistently through SDK verification in skills"
+        },
+        {
+          "file": "native-sdk-skill-routing.test.ts",
+          "name": "Chinese Native SDK Skill route prefers receipt result submission consistently through SDK verification in skills-zh"
+        },
+        {
+          "file": "native-sdk-skill-routing.test.ts",
+          "name": "Chinese Native SDK Skill route preserves user-specified artifact locations through Shape, Build and independent Verify"
+        },
+        {
+          "file": "native-sdk-skill-routing.test.ts",
+          "name": "Chinese Native SDK Skill route keeps confirmed artifact-location requirements in the English Native route"
+        },
+        {
+          "file": "native-sdk-skill-routing.test.ts",
+          "name": "Chinese Native SDK Skill route separates SDK claims, outcomes, and verification in skills"
+        },
+        {
+          "file": "native-sdk-skill-routing.test.ts",
+          "name": "Chinese Native SDK Skill route separates SDK claims, outcomes, and verification in skills-zh"
+        },
+        {
+          "file": "native-sdk-skill-routing.test.ts",
+          "name": "Chinese Native SDK Skill route routes SDK-owned changes by the persisted Run projection and keeps legacy instructions separate"
+        },
+        {
+          "file": "native-sdk-skill-routing.test.ts",
+          "name": "Chinese Native SDK Skill route uses the public SDK dispatch protocol for host work and binds user decisions"
+        },
+        {
+          "file": "native-sdk-skill-routing.test.ts",
+          "name": "Chinese Native SDK Skill route keeps the English SDK path aligned with public Native commands"
+        },
+        {
+          "file": "native-sdk-skill-routing.test.ts",
+          "name": "keeps optional review and learning out of ordinary Native completion in skills"
+        },
+        {
+          "file": "native-sdk-skill-routing.test.ts",
+          "name": "keeps optional review and learning out of ordinary Native completion in skills-zh"
+        },
+        {
+          "file": "workflow-content-proof-removal.test.ts",
+          "name": "keeps Agent edit judgment and actual workflow authorization in skills-zh"
+        },
+        {
+          "file": "workflow-content-proof-removal.test.ts",
+          "name": "keeps Agent edit judgment and actual workflow authorization in skills"
+        }
+      ]
+    },
+    {
+      "run": "runtime-final-native-task-tests",
+      "success": true,
+      "passed": 13,
+      "failed": 0,
+      "executed": [
+        {
+          "file": "native-sdk-application.test.ts",
+          "name": "Native SDK v3 checkpoint and report boundaries commits acceptance without report Actions and retries a failed view without changing the decision"
+        },
+        {
+          "file": "native-sdk-application.test.ts",
+          "name": "Native SDK v3 checkpoint and report boundaries combines approved report validation with preflight and checkpoints only the next external boundary"
+        },
+        {
+          "file": "native-sdk-application.test.ts",
+          "name": "Native high-level task continuation submits Build and claims same-session Verify in one call, then completes authorized Archive in one result call"
+        },
+        {
+          "file": "native-sdk-application.test.ts",
+          "name": "Native high-level task safeguards waits for acceptance without delegated approval and replays the same result without duplicate progression"
+        },
+        {
+          "file": "native-sdk-application.test.ts",
+          "name": "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+        },
+        {
+          "file": "native-sdk-application.test.ts",
+          "name": "Native high-level task safeguards rejects a wrong result session and candidate drift before accepting Verify"
+        },
+        {
+          "file": "native-sdk-application.test.ts",
+          "name": "Native high-level task safeguards keeps complete acceptance content while reducing normal output below full SDK details"
+        },
+        {
+          "file": "native-sdk-application.test.ts",
+          "name": "skips unrelated recovery handlers while the ordinary Verifier is running"
+        },
+        {
+          "file": "native-sdk-application.test.ts",
+          "name": "keeps non-Git result transport outside candidate inputs through the high-level task path"
+        },
+        {
+          "file": "native-sdk-application.test.ts",
+          "name": "preserves a committed Builder result when its internal check cannot start"
+        },
+        {
+          "file": "native-sdk-application.test.ts",
+          "name": "rejects incomplete or forged high-level results without completing the original Verify task"
+        },
+        {
+          "file": "native-sdk-application.test.ts",
+          "name": "keeps the selected independent review when the next claim omits review options"
+        },
+        {
+          "file": "native-sdk-application.test.ts",
+          "name": "completes Archive on the returned third call after the user accepts the current result"
+        }
+      ]
+    }
+  ],
+  "targetedRegistration": {
+    "groups": 21,
+    "results": [
+      {
+        "id": "registered-classic-agent-edit-continuation",
+        "passed": 7
+      },
+      {
+        "id": "registered-native-confirmed-stop-probe-reuse",
+        "passed": 1
+      },
+      {
+        "id": "registered-native-531-supervisor-startup-errors",
+        "passed": 2
+      },
+      {
+        "id": "registered-native-all-reused-checks-without-child-file-1",
+        "passed": 1
+      },
+      {
+        "id": "registered-native-all-reused-checks-without-child-file-2",
+        "passed": 0,
+        "error": "Error: registered-native-all-reused-checks-without-child-file-2: failed, incomplete, or empty regression result"
+      },
+      {
+        "id": "registered-recoverable-file-lock-release-after-coordinator-failure",
+        "passed": 4
+      },
+      {
+        "id": "registered-recoverable-file-lock-release-outcome-reported",
+        "passed": 4
+      },
+      {
+        "id": "registered-native-portable-orphan-interruption-persistence-file-1",
+        "passed": 1
+      },
+      {
+        "id": "registered-native-portable-orphan-interruption-persistence-file-2",
+        "passed": 1
+      },
+      {
+        "id": "registered-workflow-simplification-t09-native-short-lock-file-1",
+        "passed": 4
+      },
+      {
+        "id": "registered-workflow-simplification-t09-native-short-lock-file-2",
+        "passed": 2
+      },
+      {
+        "id": "registered-workflow-simplification-t09-native-short-lock-file-3",
+        "passed": 2
+      },
+      {
+        "id": "registered-agent-classic-freeform-design",
+        "passed": 2
+      },
+      {
+        "id": "registered-agent-classic-source-handoff-file-1",
+        "passed": 5
+      },
+      {
+        "id": "registered-agent-classic-source-handoff-file-2",
+        "passed": 2
+      },
+      {
+        "id": "registered-native-proven-orphan-check-explicit-retry-file-1",
+        "passed": 4
+      },
+      {
+        "id": "registered-native-proven-orphan-check-explicit-retry-file-2",
+        "passed": 4
+      },
+      {
+        "id": "registered-runtime-pid-free-lock-recovery",
+        "passed": 7
+      },
+      {
+        "id": "registered-native-pid-free-check-stop-and-legacy-receipt",
+        "passed": 2
+      },
+      {
+        "id": "registered-classic-agent-check-reports-v2",
+        "passed": 1
+      },
+      {
+        "id": "registered-entry-neutral-docs-isolated-from-history",
+        "passed": 1
+      }
+    ],
+    "explanation": "21 exact registered groups: 20 passed; the remaining original non-repeatable reverify case fails identically at baseline. Passing counts can overlap other runs."
+  },
+  "adjacentLegacy": {
+    "passed": 37,
+    "failed": 36,
+    "baselineAlsoFailed": 36,
+    "unresolvedRepairDelivery": [
+      "completes full delivery when repair approval changes only the committed archive checkpoint",
+      "repairs late declared check outputs after Archive without replaying Archive or committing generated files"
+    ]
+  },
+  "reviews": {
+    "standards": "approved migration and source; 21 originals byte-identical; 803 legacy fixture assertions retained",
+    "spec": "approved migration and source; baseline comparison confirms no new failures in the 37 selected failing cases"
+  },
+  "notExecuted": [
+    "repository full suite",
+    "Linux/macOS execution",
+    "npm package/install validation",
+    "actual Agent platform Hook installation",
+    "real model Eval (not authorized)"
+  ],
+  "incompleteRuns": [
+    {
+      "scope": "first public core-regressions selection",
+      "status": "cancelled",
+      "reason": "selection merged a whole historical group; replaced with exact registration entries, not counted as passed"
+    },
+    {
+      "scope": "initial PID/legacy protocol runs",
+      "status": "failed",
+      "reason": "original failures kept in temporary reports; migration and meaningful corrections validated in listed later runs"
+    }
+  ]
+}

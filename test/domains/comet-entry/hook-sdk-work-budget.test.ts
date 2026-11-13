@@ -16,6 +16,10 @@ import * as classicSdk from '../../../domains/comet-classic/classic-sdk-status.j
 import * as classicLayout from '../../../domains/comet-classic/classic-layout.js';
 import * as nativeSdk from '../../../domains/comet-native/native-runtime-ownership.js';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+import {
+  readProjectConfig,
+  writeProjectConfig,
+} from '../../../domains/comet-native/native-config.js';
 import { clearCometCurrentSelection } from '../../../domains/workflow-contract/current-selection.js';
 import { runWithHookReadCache } from '../../../platform/process/hook-read-cache.js';
 
@@ -143,6 +147,12 @@ describe('Hook SDK request work budget', () => {
     ]);
     expect(initialized.exitCode, initialized.stderr).toBe(0);
     await clearCometCurrentSelection(root);
+    const config = (await readProjectConfig(root))!;
+    // Exercise inferred ownership rather than the unselected neutral-document shortcut.
+    await writeProjectConfig(root, {
+      ...config,
+      classic: { ...config.classic, artifact_layout: 'legacy', document_evidence: 'strict' },
+    });
     const inspect = vi.spyOn(nativeSdk, 'inspectNativeSdkRun');
     for (let count = 1; count <= 2; count += 1) {
       await expect(

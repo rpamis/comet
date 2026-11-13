@@ -15,6 +15,7 @@ export interface WorkflowProjectConfigIdentity {
 }
 
 export interface WorkflowProjectConfigSnapshot {
+  source: string | null;
   document: ParsedWorkflowProjectConfigDocument | null;
   identity: WorkflowProjectConfigIdentity;
 }
@@ -75,6 +76,7 @@ export async function readWorkflowProjectConfigSnapshot(
 ): Promise<WorkflowProjectConfigSnapshot> {
   const bytes = await readWorkflowProjectConfigBytes(projectRoot);
   return {
+    source: bytes?.toString('utf8') ?? null,
     document: bytes ? parseWorkflowProjectConfigDocument(bytes.toString('utf8'), options) : null,
     identity: projectConfigIdentity(bytes),
   };

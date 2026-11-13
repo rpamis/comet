@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { atomicLinkContainedFile } from '../../../domains/workflow-contract/contained-atomic-write.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
@@ -25,6 +26,37 @@ describe('contained atomic write', () => {
   afterEach(async () => {
     await fs.rm(root, { recursive: true, force: true });
     await fs.rm(outside, { recursive: true, force: true });
+  });
+
+  it('publishes a fixed hard link to the actual source bytes', async () => {
+    const source = path.join(root, 'owner.json');
+    const target = path.join(root, 'records', 'owner.json');
+    await fs.writeFile(source, '{"owner":"first"}');
+    await atomicLinkContainedFile(source, target, { containedRoot: root });
+    expect((await fs.stat(source)).ino).toBe((await fs.stat(target)).ino);
+    await fs.writeFile(source, '{"owner":"changed"}');
+    expect(await fs.readFile(target, 'utf8')).toBe('{"owner":"changed"}');
+    await atomicLinkContainedFile(source, target, { containedRoot: root });
+    expect(await temporaryFiles(path.dirname(target))).toEqual([]);
+  });
+
+  it('rejects a displaced source parent before publishing its fixed link', async () => {
+    const directory = path.join(root, 'active');
+    await fs.mkdir(directory);
+    const source = path.join(directory, 'owner.json');
+    const target = path.join(root, 'records', 'owner.json');
+    await fs.writeFile(source, '{}');
+    await expect(
+      atomicLinkContainedFile(source, target, {
+        containedRoot: root,
+        beforeCommit: async () => {
+          await fs.rename(directory, `${directory}-original`);
+          await fs.mkdir(directory);
+          await fs.writeFile(source, '{}');
+        },
+      }),
+    ).rejects.toThrow();
+    await expect(fs.access(target)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('commits a normal write even though writing changes size and ctime', async () => {

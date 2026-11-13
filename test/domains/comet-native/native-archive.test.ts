@@ -1,140 +1,86 @@
-import { promises as fs } from 'fs';
-import os from 'os';
-import path from 'path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { recoverArchiveTransaction } from '../../../domains/comet-native/native-archive.js';
 import {
-  archiveNativeChange,
-  NativeArchivePreflightError,
-  recoverArchiveTransaction,
-} from '../../../domains/comet-native/native-archive.js';
-import { nativeArchiveTransactionPaths } from '../../../domains/comet-native/native-archive-transaction.js';
+  applyNativeArchiveTransactionV2,
+  nativeArchiveTransactionPaths,
+} from '../../../domains/comet-native/native-archive-transaction.js';
 import {
-  createNativeChange,
+  nativeChangeDocument,
   readNativeChangeFile,
 } from '../../../domains/comet-native/native-change.js';
-import { sha256File } from '../../../domains/comet-native/native-hash.js';
+import { stringify } from 'yaml';
 import {
   nativePreferredChangeRuntimeDir,
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
-import {
-  resolveSelectedNativeChange,
-  selectNativeChange,
-} from '../../../domains/comet-native/native-selection.js';
 import { readNativeTransaction } from '../../../domains/comet-native/native-transaction.js';
-import type {
-  NativeProjectPaths,
-  NativeSpecChange,
-} from '../../../domains/comet-native/native-types.js';
-import {
-  prepareNativeArchiveFixture,
-  readyNativeArchivePreflight,
-} from '../../helpers/native-archive.js';
+import { resolveSelectedNativeChange } from '../../../domains/comet-native/native-selection.js';
+import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+import { loadPreparedNativeArchive } from '../../helpers/native-archive-wal.js';
 
 describe('Native archive', () => {
   let projectRoot: string;
   let paths: NativeProjectPaths;
-
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-archive-'));
     paths = await nativeProjectPaths(projectRoot, '.');
   });
-
   afterEach(async () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
-  it('rejects an invalid preflight hash before inspecting Archive state', async () => {
-    await createNativeChange({
-      paths,
-      verificationProtocol: 'legacy-v1',
-      name: 'invalid-preflight',
-      language: 'en',
-    });
-    await expect(
-      archiveNativeChange({ paths, name: 'invalid-preflight', expectedPreflightHash: 'bad' }),
-    ).rejects.toThrow('expected preflight must be a SHA-256 hash');
-  });
-
   it('applies create, replace, and remove specs before archiving the active change', async () => {
-    const replace = path.join(paths.specsDir, 'authentication', 'spec.md');
-    const remove = path.join(paths.specsDir, 'legacy-auth', 'spec.md');
-    await fs.mkdir(path.dirname(replace), { recursive: true });
-    await fs.mkdir(path.dirname(remove), { recursive: true });
-    await fs.writeFile(replace, 'old authentication\n');
-    await fs.writeFile(remove, 'legacy authentication\n');
-    const specChanges: NativeSpecChange[] = [
-      { capability: 'sessions', operation: 'create', source: 'specs/sessions.md', base_hash: null },
-      {
-        capability: 'authentication',
-        operation: 'replace',
-        source: 'specs/authentication.md',
-        base_hash: await sha256File(replace),
-      },
-      {
-        capability: 'legacy-auth',
-        operation: 'remove',
-        base_hash: await sha256File(remove),
-      },
-    ];
-    const now = new Date('2026-07-14T02:00:00.000Z');
-    const { changeDir } = await prepareNativeArchiveFixture({
-      paths,
-      name: 'auth-update',
-      specChanges,
-      proposedSpecs: {
-        'specs/sessions.md': 'session spec\n',
-        'specs/authentication.md': 'new auth spec\n',
-      },
-    });
-    await selectNativeChange(paths, 'auth-update');
-    const expectedPreflightHash = await readyNativeArchivePreflight({
-      paths,
-      name: 'auth-update',
-      now,
-    });
-
-    const result = await archiveNativeChange({
-      paths,
-      name: 'auth-update',
-      expectedPreflightHash,
-      now,
-    });
-
-    expect(result.archiveDir).toBe(path.join(paths.archiveDir, '2026-07-14-auth-update'));
-    expect(await fs.readFile(path.join(paths.specsDir, 'sessions', 'spec.md'), 'utf8')).toBe(
-      'session spec\n',
+    const fixture = await loadPreparedNativeArchive(paths, 'all-spec');
+    const changeDir = path.join(paths.changesDir, fixture.state.name);
+    const archiveDir = path.join(paths.archiveDir, '2026-07-24-archive-fixture');
+    await fs.writeFile(
+      path.join(projectRoot, '.comet/current-change.json'),
+      JSON.stringify({
+        schema: 'comet.selection.v2',
+        branch: null,
+        workflow: 'native',
+        change: fixture.state.name,
+      }),
     );
-    expect(await fs.readFile(replace, 'utf8')).toBe('new auth spec\n');
-    await expect(fs.access(remove)).rejects.toMatchObject({ code: 'ENOENT' });
+    const result = await recoverArchiveTransaction({
+      paths,
+      transactionId: fixture.journal.id,
+      strategy: 'continue',
+    });
+    expect(await fs.readFile(path.join(paths.specsDir, 'sessions/spec.md'), 'utf8')).toBe(
+      'new sessions\n',
+    );
+    expect(await fs.readFile(path.join(paths.specsDir, 'authentication/spec.md'), 'utf8')).toBe(
+      'new auth\n',
+    );
+    await expect(fs.access(path.join(paths.specsDir, 'legacy-auth/spec.md'))).rejects.toMatchObject(
+      { code: 'ENOENT' },
+    );
     await expect(fs.access(changeDir)).rejects.toMatchObject({ code: 'ENOENT' });
-    expect(
-      await readNativeChangeFile(path.join(result.archiveDir, 'comet-state.yaml')),
-    ).toMatchObject({
+    expect(await readNativeChangeFile(path.join(archiveDir, 'comet-state.yaml'))).toMatchObject({
       archived: true,
       phase: 'archive',
     });
+    // 历史记录留在原 Runtime，恢复不再递归删除 Run 与结果。
     await expect(
-      fs.access(nativePreferredChangeRuntimeDir(paths, 'auth-update')),
-    ).rejects.toMatchObject({ code: 'ENOENT' });
-    await expect(fs.access(path.join(result.archiveDir, 'runtime'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
-    expect(result.runtimeCleanupWarning).toBeNull();
-    expect(await readNativeTransaction(paths, result.transactionId)).toMatchObject({
+      fs.access(nativePreferredChangeRuntimeDir(paths, fixture.state.name)),
+    ).resolves.toBeUndefined();
+    expect(await readNativeTransaction(paths, result.id)).toMatchObject({
       schema: 'comet.native.transaction.v2',
       kind: 'archive',
       status: 'committed',
-      preflightHash: expectedPreflightHash,
+      preflightHash: fixture.journal.preflightHash,
     });
-    const storedJournal = JSON.parse(
-      await fs.readFile(nativeArchiveTransactionPaths(paths, result.transactionId).journal, 'utf8'),
-    ) as Record<string, unknown>;
-    expect(storedJournal).not.toHaveProperty('projectRoot');
-    expect(storedJournal).not.toHaveProperty('nativeRoot');
-    expect(JSON.stringify(storedJournal)).not.toContain(projectRoot);
-    expect(storedJournal.operations).toEqual(
+    const journal = JSON.parse(
+      await fs.readFile(nativeArchiveTransactionPaths(paths, result.id).journal, 'utf8'),
+    );
+    expect(journal).not.toHaveProperty('projectRoot');
+    expect(journal).not.toHaveProperty('nativeRoot');
+    expect(JSON.stringify(journal)).not.toContain(projectRoot);
+    expect(journal.operations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           type: 'write',
@@ -149,205 +95,70 @@ describe('Native archive', () => {
       ]),
     );
     await expect(
-      fs.access(path.join(paths.projectRoot, '.comet', 'current-change.json')),
+      fs.access(path.join(projectRoot, '.comet/current-change.json')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('supports an archive with no spec changes', async () => {
-    const now = new Date('2026-07-15T00:00:00.000Z');
-    const { changeDir } = await prepareNativeArchiveFixture({ paths, name: 'docs-only' });
-    const expectedPreflightHash = await readyNativeArchivePreflight({
+    const fixture = await loadPreparedNativeArchive(paths, 'no-spec');
+    const result = await recoverArchiveTransaction({
       paths,
-      name: 'docs-only',
-      now,
+      transactionId: fixture.journal.id,
+      strategy: 'continue',
     });
-    await fs.rm(path.join(changeDir, 'evidence.md'), { force: true });
-    const result = await archiveNativeChange({
-      paths,
-      name: 'docs-only',
-      expectedPreflightHash,
-      now,
-    });
+    expect(result.status).toBe('committed');
     expect(await fs.readdir(paths.specsDir).catch(() => [])).toEqual([]);
     expect(
-      await readNativeChangeFile(path.join(result.archiveDir, 'comet-state.yaml')),
-    ).toMatchObject({
-      archived: true,
-    });
-    await expect(
-      fs.readFile(path.join(result.archiveDir, 'evidence.md'), 'utf8'),
-    ).resolves.toContain('# Comet Native Evidence Projection');
-  });
-
-  it('keeps a committed archive when local Runtime cleanup fails', async () => {
-    const now = new Date('2026-07-15T00:30:00.000Z');
-    const name = 'cleanup-warning';
-    await prepareNativeArchiveFixture({ paths, name });
-    const expectedPreflightHash = await readyNativeArchivePreflight({ paths, name, now });
-    const runtimeDir = nativePreferredChangeRuntimeDir(paths, name);
-    const realRm = fs.rm.bind(fs);
-    const rm = vi.spyOn(fs, 'rm').mockImplementation(async (target, options) => {
-      if (path.resolve(String(target)) === path.resolve(runtimeDir)) {
-        throw Object.assign(new Error('Runtime directory is busy'), { code: 'EBUSY' });
-      }
-      return realRm(target, options);
-    });
-    try {
-      const result = await archiveNativeChange({
-        paths,
-        name,
-        expectedPreflightHash,
-        now,
-      });
-
-      expect(result.runtimeCleanupWarning).toContain('Runtime directory is busy');
-      expect(
-        await readNativeChangeFile(path.join(result.archiveDir, 'comet-state.yaml')),
-      ).toMatchObject({
-        archived: true,
-      });
-      await expect(fs.access(runtimeDir)).resolves.toBeUndefined();
-      expect(await readNativeTransaction(paths, result.transactionId)).toMatchObject({
-        status: 'committed',
-      });
-    } finally {
-      rm.mockRestore();
-    }
-  });
-
-  it('rechecks verification freshness after spec operations and before moving the change', async () => {
-    const now = new Date('2026-07-15T01:00:00.000Z');
-    const specChanges: NativeSpecChange[] = [
-      {
-        capability: 'freshness-fence',
-        operation: 'create',
-        source: 'specs/freshness-fence.md',
-        base_hash: null,
-      },
-    ];
-    const { changeDir } = await prepareNativeArchiveFixture({
-      paths,
-      name: 'freshness-fence',
-      specChanges,
-      proposedSpecs: {
-        'specs/freshness-fence.md': 'freshness fence spec\n',
-      },
-    });
-    const expectedPreflightHash = await readyNativeArchivePreflight({
-      paths,
-      name: 'freshness-fence',
-      now,
-    });
-    let transactionId = '';
-
-    await expect(
-      archiveNativeChange({
-        paths,
-        name: 'freshness-fence',
-        expectedPreflightHash,
-        now,
-        hooks: {
-          afterPrepared: (journal) => {
-            transactionId = journal.id;
-          },
-          beforeArchiveChangeMove: () =>
-            fs.writeFile(
-              path.join(projectRoot, 'native-archive-proof.txt'),
-              'changed after verification\n',
-            ),
-        },
-      }),
-    ).rejects.toThrow('verification freshness changed before moving');
-
-    await expect(fs.stat(changeDir)).resolves.toBeDefined();
-    await expect(
-      fs.readFile(path.join(paths.specsDir, 'freshness-fence', 'spec.md'), 'utf8'),
-    ).resolves.toBe('freshness fence spec\n');
-    await expect(
-      fs.access(path.join(paths.archiveDir, '2026-07-15-freshness-fence')),
-    ).rejects.toMatchObject({ code: 'ENOENT' });
-
-    await fs.writeFile(
-      path.join(projectRoot, 'native-archive-proof.txt'),
-      'Native Archive fixture evidence.\n',
-    );
-    await expect(
-      recoverArchiveTransaction({
-        paths,
-        transactionId,
-        strategy: 'continue',
-      }),
-    ).resolves.toMatchObject({ status: 'committed' });
-    await expect(fs.access(changeDir)).rejects.toMatchObject({ code: 'ENOENT' });
-    await expect(
-      fs.stat(path.join(paths.archiveDir, '2026-07-15-freshness-fence')),
-    ).resolves.toBeDefined();
+      await readNativeChangeFile(
+        path.join(paths.archiveDir, '2026-07-24-archive-fixture/comet-state.yaml'),
+      ),
+    ).toMatchObject({ archived: true });
   });
 
   it('preserves the current selection when archiving a different Native change', async () => {
-    const now = new Date('2026-07-15T00:00:00.000Z');
-    await createNativeChange({
-      paths,
-      name: 'selected-change',
-      language: 'en',
-      verificationProtocol: 'legacy-v1',
+    const fixture = await loadPreparedNativeArchive(paths, 'no-spec');
+    const selection = path.join(projectRoot, '.comet/current-change.json');
+    await fs.mkdir(path.join(paths.changesDir, 'selected-change'), { recursive: true });
+    await fs.writeFile(
+      path.join(paths.changesDir, 'selected-change/comet-state.yaml'),
+      stringify(
+        nativeChangeDocument({
+          ...fixture.state,
+          name: 'selected-change',
+          phase: 'shape',
+          archived: false,
+        }),
+      ),
+    );
+    const original = JSON.stringify({
+      schema: 'comet.selection.v2',
+      branch: null,
+      workflow: 'native',
+      change: 'selected-change',
     });
-    await prepareNativeArchiveFixture({ paths, name: 'archived-change' });
-    await selectNativeChange(paths, 'selected-change');
-    const expectedPreflightHash = await readyNativeArchivePreflight({
+    await fs.writeFile(selection, original);
+    await recoverArchiveTransaction({
       paths,
-      name: 'archived-change',
-      now,
+      transactionId: fixture.journal.id,
+      strategy: 'continue',
     });
-
-    await archiveNativeChange({
-      paths,
-      name: 'archived-change',
-      expectedPreflightHash,
-      now,
-    });
-
     expect(await resolveSelectedNativeChange(paths)).toBe('selected-change');
+    expect(await fs.readFile(selection, 'utf8')).toBe(original);
   });
 
   it('refuses a transactions junction that would stage archive data outside comet', async () => {
+    const fixture = await loadPreparedNativeArchive(paths, 'replace-create');
     const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-transactions-outside-'));
     try {
-      const specChanges: NativeSpecChange[] = [
-        {
-          capability: 'sessions',
-          operation: 'create',
-          source: 'specs/sessions.md',
-          base_hash: null,
-        },
-      ];
-      const now = new Date('2026-07-17T00:00:00.000Z');
-      await prepareNativeArchiveFixture({
-        paths,
-        name: 'unsafe-transactions',
-        specChanges,
-        proposedSpecs: { 'specs/sessions.md': 'session spec\n' },
-      });
-      const expectedPreflightHash = await readyNativeArchivePreflight({
-        paths,
-        name: 'unsafe-transactions',
-        now,
-      });
       await fs.rm(paths.transactionsDir, { recursive: true, force: true });
       await fs.symlink(
         outside,
         paths.transactionsDir,
         process.platform === 'win32' ? 'junction' : 'dir',
       );
-
-      await expect(
-        archiveNativeChange({
-          paths,
-          name: 'unsafe-transactions',
-          expectedPreflightHash,
-          now,
-        }),
-      ).rejects.toThrow('resolves outside the Native root');
+      await expect(applyNativeArchiveTransactionV2(paths, fixture.journal)).rejects.toThrow(
+        /outside|real directory|symbolic link/u,
+      );
       expect(await fs.readdir(outside)).toEqual([]);
     } finally {
       await fs.rm(outside, { recursive: true, force: true });
@@ -355,102 +166,38 @@ describe('Native archive', () => {
   });
 
   it('returns structured base-hash conflicts and leaves canonical specs unchanged', async () => {
-    const canonical = path.join(paths.specsDir, 'authentication', 'spec.md');
-    await fs.mkdir(path.dirname(canonical), { recursive: true });
-    await fs.writeFile(canonical, 'expected canonical\n');
-    const expectedHash = await sha256File(canonical);
-    const now = new Date('2026-07-17T00:00:00.000Z');
-    const { changeDir } = await prepareNativeArchiveFixture({
-      paths,
-      name: 'conflicting-auth',
-      specChanges: [
-        {
-          capability: 'authentication',
-          operation: 'replace',
-          source: 'specs/authentication.md',
-          base_hash: expectedHash,
-        },
-      ],
-      proposedSpecs: { 'specs/authentication.md': 'proposed spec\n' },
-    });
-    // Preview the exact facts first, then simulate another writer changing the canonical spec.
-    const expectedPreflightHash = await readyNativeArchivePreflight({
-      paths,
-      name: 'conflicting-auth',
-      now,
-    });
+    const fixture = await loadPreparedNativeArchive(paths, 'replace-create');
+    const canonical = path.join(paths.specsDir, 'authentication/spec.md');
     await fs.writeFile(canonical, 'current canonical\n');
-
-    let thrown: unknown;
-    try {
-      await archiveNativeChange({
-        paths,
-        name: 'conflicting-auth',
-        expectedPreflightHash,
-        now,
-      });
-    } catch (error) {
-      thrown = error;
-    }
-    expect(thrown).toBeInstanceOf(NativeArchivePreflightError);
-    expect(thrown).toMatchObject({ code: 'native-archive-preflight' });
+    await expect(applyNativeArchiveTransactionV2(paths, fixture.journal)).rejects.toMatchObject({
+      message: expect.stringMatching(/content changed|hash/u),
+    });
     expect(await fs.readFile(canonical, 'utf8')).toBe('current canonical\n');
-    expect(await fs.stat(changeDir)).toBeTruthy();
+    await expect(fs.stat(path.join(paths.changesDir, fixture.state.name))).resolves.toBeTruthy();
   });
 
   it('never overwrites an existing date-prefixed archive target', async () => {
-    const now = new Date('2026-07-16T00:00:00.000Z');
-    const { changeDir } = await prepareNativeArchiveFixture({
-      paths,
-      name: 'immutable-target',
-    });
-    const expectedPreflightHash = await readyNativeArchivePreflight({
-      paths,
-      name: 'immutable-target',
-      now,
-    });
-    const target = path.join(paths.archiveDir, '2026-07-16-immutable-target');
+    const fixture = await loadPreparedNativeArchive(paths, 'no-spec');
+    const target = path.join(paths.archiveDir, '2026-07-24-archive-fixture');
     await fs.mkdir(target, { recursive: true });
     await fs.writeFile(path.join(target, 'sentinel.txt'), 'keep');
-    await expect(
-      archiveNativeChange({
-        paths,
-        name: 'immutable-target',
-        expectedPreflightHash,
-        now,
-      }),
-    ).rejects.toBeInstanceOf(NativeArchivePreflightError);
+    await expect(applyNativeArchiveTransactionV2(paths, fixture.journal)).rejects.toThrow(
+      /target|content|exists/u,
+    );
     expect(await fs.readFile(path.join(target, 'sentinel.txt'), 'utf8')).toBe('keep');
-    expect(await fs.stat(changeDir)).toBeTruthy();
+    await expect(fs.stat(path.join(paths.changesDir, fixture.state.name))).resolves.toBeTruthy();
   });
 
   it('refuses canonical spec junctions that would write outside comet', async () => {
+    const fixture = await loadPreparedNativeArchive(paths, 'replace-create');
     const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-spec-outside-'));
     try {
-      await fs.mkdir(paths.specsDir, { recursive: true });
-      await fs.symlink(
-        outside,
-        path.join(paths.specsDir, 'escaped-spec'),
-        process.platform === 'win32' ? 'junction' : 'dir',
+      const parent = path.join(paths.specsDir, 'sessions');
+      await fs.rm(parent, { recursive: true, force: true });
+      await fs.symlink(outside, parent, process.platform === 'win32' ? 'junction' : 'dir');
+      await expect(applyNativeArchiveTransactionV2(paths, fixture.journal)).rejects.toThrow(
+        /real directory|outside|symbolic link/u,
       );
-      const now = new Date('2026-07-17T00:00:00.000Z');
-      await prepareNativeArchiveFixture({
-        paths,
-        name: 'escaped-spec-change',
-        specChanges: [
-          {
-            capability: 'escaped-spec',
-            operation: 'create',
-            source: 'specs/escaped-spec.md',
-            base_hash: null,
-          },
-        ],
-        proposedSpecs: { 'specs/escaped-spec.md': 'outside denied\n' },
-      });
-
-      await expect(
-        readyNativeArchivePreflight({ paths, name: 'escaped-spec-change', now }),
-      ).rejects.toThrow(/must be a real directory|outside the Native root/u);
       await expect(fs.access(path.join(outside, 'spec.md'))).rejects.toMatchObject({
         code: 'ENOENT',
       });

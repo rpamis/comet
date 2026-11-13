@@ -1,12 +1,12 @@
+import { promises as fs } from 'node:fs';
 import type { WorkflowRun } from '../engine/runtime.js';
 import { parseNativePortableState } from './native-portable-state.js';
-import { promises as fs } from 'node:fs';
 
+import { nativeLocalizedText, nativeVerificationHeading } from './native-artifact-language.js';
 import { atomicWriteText } from './native-atomic-file.js';
 import { canonicalHash } from './native-canonical-hash.js';
-import { nativeLocalizedText, nativeVerificationHeading } from './native-artifact-language.js';
-import { NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
 import type { NativePortableState, NativePortableText } from './native-portable-types.js';
+import { NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
 import type { NativeSupervisorState } from './native-supervisor.js';
 
 export function nativeVerificationResultHash(state: NativePortableState): string {
@@ -22,18 +22,18 @@ export function nativeVerificationResultHash(state: NativePortableState): string
 export function nativeSdkVerificationReportOutput(
   run: Readonly<WorkflowRun>,
 ): Record<string, unknown> | undefined {
-  if (run.workflow.version !== '3')
+  if (!['3', '4'].includes(run.workflow.version))
     return run.outputs['verify.report']?.value as Record<string, unknown> | undefined;
   const state = parseNativePortableState(run.state);
   if (!state.builder_handoff || !state.verification) return undefined;
-  const resultHash = nativeVerificationResultHash(state);
   for (const wait of [...run.waits].reverse()) {
     if (wait.stepId !== 'verify.confirm') continue;
     const report = (wait.proposal as { activation?: { report?: Record<string, unknown> } })
       .activation?.report;
     if (
       report?.candidateId === state.builder_handoff.candidate_id &&
-      report.verificationResultHash === resultHash
+      (report.iteration === undefined || report.iteration === state.loop.iteration) &&
+      (report.attempt === undefined || report.attempt === state.loop.attempt)
     )
       return report;
   }
@@ -164,8 +164,16 @@ export function renderNativeVerificationReport(
         `| ${tableCell(entry.id)} | ${tableCell(entry.result)} | ${tableCell(entry.source)} | ${tableCell(entry.text)} | ${tableCell(display(entry.reason))} |`,
     )
     .join('\n');
-  const checks =
-    state.verification.checks.length === 0
+  const checks = state.verification.reported_checks
+    ? [
+        `| ${localized('Agent-reported check', 'Agent 报告的检查')} | ${localized('Result', '结果')} | ${localized('Execution and evidence', '执行与证据')} |`,
+        '| --- | --- | --- |',
+        ...state.verification.reported_checks.map(
+          (check) =>
+            `| ${tableCell(display(check.name))} | ${check.result} | ${tableCell(display(check.note))} |`,
+        ),
+      ].join('\n')
+    : state.verification.checks.length === 0
       ? `_${localized('No Runtime checks were recorded.', '没有记录 Runtime 检查。')}_`
       : [
           `| ${localized('Check', '检查')} | ${localized('Command', '命令')} | ${localized('Working directory', '工作目录')} | ${localized('Status', '状态')} | ${localized('Exit', '退出码')} | ${localized('Duration', '耗时')} |`,

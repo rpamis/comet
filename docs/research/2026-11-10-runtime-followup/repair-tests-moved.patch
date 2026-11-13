@@ -1,0 +1,288 @@
+diff --git a/test/domains/comet-native/native-repair-transitions.test.ts b/test/domains/comet-native/native-repair-transitions.test.ts
+index f62746a2..19d838e5 100644
+--- a/test/domains/comet-native/native-repair-transitions.test.ts
++++ b/test/domains/comet-native/native-repair-transitions.test.ts
+@@ -6,8 +6,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+ import {
+   createNativeChange,
+   nativeChangeDir,
++  readNativeChange,
+ } from '../../../domains/comet-native/native-change.js';
+-import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+ import {
+   defaultProjectConfig,
+   readProjectConfig,
+@@ -252,7 +252,7 @@ describe('Native repair stagnation transitions', () => {
+     ]);
+   });
+ 
+-  it.skip('persists a third-failure stop and records exactly one explicit override', async () => {
++  it('persists a third-failure stop and records exactly one explicit override', async () => {
+     const stopped = await reachManualStop();
+     expect(stopped).toMatchObject({
+       next: 'manual',
+@@ -267,46 +267,50 @@ describe('Native repair stagnation transitions', () => {
+       findings: [expect.objectContaining({ code: 'repair-stagnation-stop' })],
+     });
+     const signature = stopped.repair!.signatureHash;
+-    await expect(inspectNativeStatus(paths, 'repair-change')).resolves.toMatchObject({
+-      nextCommand: null,
+-      repair: { disposition: 'manual-stop', signatureHash: signature },
+-      continuation: { disposition: 'blocked' },
++    const originalRunId = stopped.change.run_id;
++    const stoppedHistory = await inspectNativeRepairHistory(paths, stopped.change);
++    expect(stoppedHistory.committed.runId).toBe(originalRunId);
++    expect(stoppedHistory.history.filter((entry) => entry.kind === 'failure')).toHaveLength(3);
++    expect(stoppedHistory.history.filter((entry) => entry.kind === 'override')).toHaveLength(0);
++    expect(stoppedHistory.latest).toMatchObject({
++      disposition: 'manual-stop',
++      signatureHash: signature,
+     });
+ 
+-    const unchanged = await runNativeCli([
+-      'next',
+-      'repair-change',
+-      '--summary',
+-      'Retry the same implementation without an override.',
+-      '--artifact',
+-      'src/feature.ts',
+-      '--json',
+-      '--project-root',
+-      projectRoot,
+-    ]);
+-    expect(unchanged.exitCode).toBe(75);
+-    expect(JSON.parse(unchanged.stdout!)).toMatchObject({
+-      error: { code: 'blocked' },
+-      data: {
+-        next: 'manual',
+-        change: { phase: 'build' },
+-        findings: [expect.objectContaining({ code: 'repair-stagnation-stop' })],
+-      },
++    const unchanged = await leaveBuild('Retry the same implementation without an override.');
++    expect(unchanged).toMatchObject({
++      next: 'manual',
++      change: { phase: 'build', run_id: originalRunId },
++      findings: [expect.objectContaining({ code: 'repair-stagnation-stop' })],
+     });
++    expect((await inspectNativeRepairHistory(paths, unchanged.change)).history).toEqual(
++      stoppedHistory.history,
++    );
+     await expect(
+       leaveBuild('Use a mismatched override.', {
+         signature: 'a'.repeat(64),
+         summary: 'The retry uses a different debugging hypothesis.',
+       }),
+     ).rejects.toThrow('latest manual stop');
++    expect((await inspectNativeRepairHistory(paths, unchanged.change)).history).toEqual(
++      stoppedHistory.history,
++    );
+ 
+     const overridden = await leaveBuild('Use the one explicit repair override.', {
+       signature,
+       summary: 'Retry once with a different debugging hypothesis while keeping the same checks.',
+     });
+-    expect(overridden).toMatchObject({ next: 'auto', change: { phase: 'verify' } });
++    expect(overridden).toMatchObject({
++      next: 'auto',
++      change: { phase: 'verify', run_id: originalRunId },
++    });
+     const historyAfterOverride = await inspectNativeRepairHistory(paths, overridden.change);
++    expect(historyAfterOverride.committed.runId).toBe(originalRunId);
+     expect(historyAfterOverride.history).toHaveLength(4);
++    expect(historyAfterOverride.history.slice(0, 3)).toEqual(stoppedHistory.history);
++    expect(historyAfterOverride.history.filter((entry) => entry.kind === 'override')).toHaveLength(
++      1,
++    );
+     expect(historyAfterOverride.history.at(-1)).toMatchObject({
+       kind: 'override',
+       signatureHash: signature,
+@@ -327,7 +331,14 @@ describe('Native repair stagnation transitions', () => {
+         requiredInputs: ['repair-continuation-decision'],
+       },
+     });
+-    const exhausted = await leaveBuild('Try to repeat an exhausted override.');
++    const failureHistory = await inspectNativeRepairHistory(paths, failedAfterOverride.change);
++    expect(failureHistory.committed.runId).toBe(originalRunId);
++    expect(failureHistory.history.filter((entry) => entry.kind === 'failure')).toHaveLength(4);
++    expect(failureHistory.history.filter((entry) => entry.kind === 'override')).toHaveLength(1);
++    const exhausted = await leaveBuild('Try to repeat an exhausted override.', {
++      signature,
++      summary: 'Request the same matching override a second time.',
++    });
+     expect(exhausted).toMatchObject({
+       next: 'manual',
+       findings: [expect.objectContaining({ code: 'repair-override-exhausted' })],
+@@ -338,6 +349,9 @@ describe('Native repair stagnation transitions', () => {
+       },
+     });
+ 
++    expect((await inspectNativeRepairHistory(paths, exhausted.change)).history).toEqual(
++      failureHistory.history,
++    );
+     await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 3;\n');
+     const progressed = await leaveBuild('A code-only change cannot reset the semantic gap.');
+     expect(progressed).toMatchObject({
+@@ -349,6 +363,10 @@ describe('Native repair stagnation transitions', () => {
+         requiredInputs: ['repair-continuation-decision'],
+       },
+     });
++    expect(progressed.change.run_id).toBe(originalRunId);
++    expect((await inspectNativeRepairHistory(paths, progressed.change)).history).toEqual(
++      failureHistory.history,
++    );
+   });
+ 
+   it('rejects oversized trajectory text before state or evidence mutation', async () => {
+@@ -472,6 +490,73 @@ describe('Native repair stagnation transitions', () => {
+       );
+       await leaveBuild(`Repair ${attempt} changes the implementation scope.`);
+     }
++    const stopped = await readNativeChange(paths, 'repair-change');
++    const originalRunId = stopped.run_id;
++    const stoppedHistory = await inspectNativeRepairHistory(paths, stopped);
++    expect(stoppedHistory.committed.runId).toBe(originalRunId);
++    expect(stoppedHistory.history.filter((entry) => entry.kind === 'failure')).toHaveLength(5);
++    expect(stoppedHistory.history.filter((entry) => entry.kind === 'override')).toHaveLength(0);
++
++    await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 99;\n');
++    const stillStopped = await leaveBuild('Implementation changed after the hard stop.');
++    expect(stillStopped).toMatchObject({
++      next: 'manual',
++      change: { phase: 'build', run_id: originalRunId },
++      continuation: {
++        disposition: 'await-user',
++        requiresUserDecision: true,
++        requiredInputs: ['repair-continuation-decision'],
++      },
++    });
++    expect((await inspectNativeRepairHistory(paths, stillStopped.change)).history).toEqual(
++      stoppedHistory.history,
++    );
++
++    const config = (await readProjectConfig(projectRoot))!;
++    await writeProjectConfig(projectRoot, {
++      ...config,
++      native: { ...config.native, max_verify_failures: 6 },
++    });
++    const progressed = await leaveBuild(
++      'The configured contract budget now permits one more attempt.',
++    );
++    expect(progressed).toMatchObject({
++      next: 'auto',
++      change: { phase: 'verify', verification_result: 'pending', run_id: originalRunId },
++    });
++    const retainedHistory = await inspectNativeRepairHistory(paths, progressed.change);
++    expect(retainedHistory.committed.runId).toBe(originalRunId);
++    expect(retainedHistory.history).toEqual(stoppedHistory.history);
++
++    const sixth = await failVerify(
++      'The changed implementation consumes the sixth contract failure.',
++      undefined,
++      'third-check',
++    );
++    expect(sixth).toMatchObject({
++      next: 'manual',
++      change: { phase: 'build', run_id: originalRunId },
++      repair: { disposition: 'hard-stop', totalRepairFailures: 6, remainingIterations: 0 },
++      continuation: {
++        disposition: 'await-user',
++        requiresUserDecision: true,
++        requiredInputs: ['repair-continuation-decision'],
++      },
++    });
++    const sixthHistory = await inspectNativeRepairHistory(paths, sixth.change);
++    expect(sixthHistory.committed.runId).toBe(originalRunId);
++    expect(sixthHistory.history.filter((entry) => entry.kind === 'failure')).toHaveLength(6);
++    expect(sixthHistory.history.slice(0, 5)).toEqual(stoppedHistory.history);
++    expect(sixthHistory.history.filter((entry) => entry.kind === 'override')).toHaveLength(0);
++    const exhausted = await leaveBuild('The sixth failure still exhausts the configured budget.');
++    expect(exhausted).toMatchObject({
++      next: 'manual',
++      change: { phase: 'build', run_id: originalRunId },
++      findings: [expect.objectContaining({ code: 'repair-iteration-limit' })],
++    });
++    expect((await inspectNativeRepairHistory(paths, exhausted.change)).history).toEqual(
++      sixthHistory.history,
++    );
+   }, 60_000);
+ 
+   it('does not persist a partial allowance when the repair guard stops Build', async () => {
+@@ -623,78 +708,4 @@ describe('Native repair stagnation transitions', () => {
+     const history = await inspectNativeRepairHistory(paths, recovered.change);
+     expect(history.history.filter((entry) => entry.kind === 'failure')).toHaveLength(3);
+   });
+-
+-  it.skip('hard-stops at five alternating failures and preserves the count when config increases', async () => {
+-    let finalResult: Awaited<ReturnType<typeof failVerify>> | null = null;
+-    for (let attempt = 1; attempt <= 5; attempt += 1) {
+-      finalResult = await failVerify(
+-        `Verification failure ${attempt}.`,
+-        undefined,
+-        Array.from({ length: 6 - attempt }, (_, index) => `check-${index + 1}`),
+-      );
+-      if (attempt < 5) {
+-        expect(finalResult.next).toBe('auto');
+-        await leaveBuild(`Repair attempt ${attempt} is ready.`);
+-      }
+-    }
+-
+-    expect(finalResult).toMatchObject({
+-      next: 'manual',
+-      change: { phase: 'build' },
+-      repair: {
+-        disposition: 'hard-stop',
+-        totalRepairFailures: 5,
+-        remainingIterations: 0,
+-      },
+-      findings: [expect.objectContaining({ code: 'repair-iteration-limit' })],
+-      continuation: {
+-        disposition: 'await-user',
+-        requiresUserDecision: true,
+-        requiredInputs: ['repair-continuation-decision'],
+-      },
+-    });
+-    await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 99;\n');
+-    const stillStopped = await leaveBuild('Implementation changed after the hard stop.');
+-    expect(stillStopped).toMatchObject({
+-      next: 'manual',
+-      change: { phase: 'build' },
+-      continuation: {
+-        disposition: 'await-user',
+-        requiresUserDecision: true,
+-        requiredInputs: ['repair-continuation-decision'],
+-      },
+-    });
+-
+-    const config = defaultProjectConfig('.');
+-    config.native.max_verify_failures = 6;
+-    await writeProjectConfig(projectRoot, config);
+-    const progressed = await runNativeCli([
+-      'next',
+-      'repair-change',
+-      '--summary',
+-      'The configured contract budget now permits one more attempt.',
+-      '--artifact',
+-      'src/feature.ts',
+-      '--json',
+-      '--project-root',
+-      projectRoot,
+-    ]);
+-    expect(progressed.exitCode).toBe(0);
+-    const progressedData = JSON.parse(progressed.stdout!);
+-    expect(progressedData.data).toMatchObject({
+-      change: { phase: 'verify', verification_result: 'pending' },
+-    });
+-    const freshEpisode = await failVerify(
+-      'The changed implementation consumes the sixth contract failure.',
+-      undefined,
+-      'third-check',
+-    );
+-    expect(progressed).toMatchObject({
+-      exitCode: 0,
+-    });
+-    expect(freshEpisode).toMatchObject({
+-      next: 'manual',
+-      repair: { disposition: 'hard-stop', totalRepairFailures: 6, remainingIterations: 0 },
+-    });
+-  }, 60_000);
+ });

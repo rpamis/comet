@@ -1,6 +1,26 @@
 {
   "assetsRoot": "assets",
   "manifestPath": "assets/manifest.json",
+  "codexPlugin": {
+    "templateRoot": "plugin/codex",
+    "icon": "plugin/codex/icon.png",
+    "files": ["plugin.json", "README.md", "hooks/hooks.json", "mcp.json", "icon.png"]
+  },
+  "dshPlugin": {
+    "templateRoot": "plugin/dsh",
+    "files": [
+      "package.json",
+      "cordis.patch.yml",
+      "index.js",
+      "client.js",
+      "README.md",
+      "README.en.md",
+      "icon.png",
+      "icon-client-64.png",
+      "locale/en.json",
+      "locale/zh.json"
+    ]
+  },
   "skillsRoots": {
     "en": "assets/skills",
     "zh": "assets/skills-zh"
@@ -9,6 +29,7 @@
     "comet/reference/change-walkthrough.md",
     "comet/reference/edit-review.md",
     "comet/reference/host-check.md",
+    "comet/reference/platform-execution.md",
     "comet/reference/task-learning.md"
   ],
   "classicRuntime": {
@@ -134,9 +155,10 @@
     "test",
     "tsconfig.json",
     "website",
-    "vitest.config.ts"
+    "vitest.config.ts",
+    "plugin"
   ],
-  "sourceRoots": ["app", "domains", "platform"],
+  "sourceRoots": ["app", "domains", "platform", "plugin"],
   "dependencyRules": {
     "compatibilityFacades": [
       {
@@ -145,7 +167,6 @@
           "domains/comet-native/native-portable-storage.ts",
           "domains/comet-native/native-portable-requirements.ts",
           "domains/comet-native/native-portable-delta-rebase.ts",
-          "domains/comet-native/native-portable-checks.ts",
           "domains/comet-native/native-portable-verification.ts",
           "domains/comet-native/native-portable-coordination.ts",
           "domains/comet-native/native-portable-shape-coordination.ts",
@@ -167,7 +188,7 @@
     "pureModelModules": [
       "domains/comet-classic/classic-sdk-delivery-repair-model.ts",
       "domains/comet-native/native-change-model.ts",
-      "domains/comet-native/native-check-receipt-model.ts",
+      "domains/comet-native/native-runtime-errors.ts",
       "domains/comet-native/native-sdk-review.ts",
       "domains/comet-native/native-supervisor-model.ts"
     ],
@@ -177,8 +198,14 @@
       "domains/workflow-contract"
     ],
     "allowedDomainDependencies": [
-      { "from": "workflow-creation", "to": "workflow-contract" },
-      { "from": "dashboard", "to": "comet-classic" },
+      {
+        "from": "workflow-creation",
+        "to": "workflow-contract"
+      },
+      {
+        "from": "dashboard",
+        "to": "comet-classic"
+      },
       {
         "from": "bundle",
         "to": "skill"
@@ -446,6 +473,10 @@
       {
         "from": "workflow-generation",
         "to": "comet-classic"
+      },
+      {
+        "from": "workflow-contract",
+        "to": "engine"
       }
     ],
     "crossDomainEntrypoints": [
@@ -473,7 +504,6 @@
       "domains/comet-native/native-config.ts",
       "domains/comet-native/native-diagnostics.ts",
       "domains/comet-native/native-hook-guard.ts",
-      "domains/comet-native/native-local-execution.ts",
       "domains/comet-native/native-paths.ts",
       "domains/comet-native/native-portable-runtime.ts",
       "domains/comet-native/native-portable-state.ts",
@@ -531,8 +561,6 @@
       "domains/workflow-contract/hook.ts",
       "domains/workflow-contract/index.ts",
       "domains/workflow-contract/neutral-document-path.ts",
-      "domains/workflow-contract/edit-impact.ts",
-      "domains/workflow-contract/edit-review.ts",
       "domains/workflow-contract/output-envelope.ts",
       "domains/workflow-contract/compact-output.ts",
       "domains/workflow-contract/task-context.ts",
@@ -546,38 +574,31 @@
       "domains/workflow-application/run-trace.ts",
       "domains/workflow-creation/index.ts",
       "domains/workflow-application/application.ts",
+      "domains/workflow-application/skill-work.ts",
       "domains/workflow-application/skill-adapter.ts",
       "domains/workflow-generation/index.ts",
       "domains/comet-native/native-application.ts",
-      "domains/comet-classic/classic-sdk-application.ts"
+      "domains/comet-classic/classic-sdk-application.ts",
+      "domains/workflow-contract/legacy-runtime-import.ts",
+      "domains/comet-classic/classic-legacy-runtime-import.ts",
+      "domains/comet-native/native-children-contract.ts"
     ],
     "restrictedDependencies": [
       {
-        "target": "domains/comet-native/native-mutation-lock.ts",
+        "target": "domains/comet-native/native-mutation.ts",
         "importers": [
           "domains/comet-native/index.ts",
           "domains/comet-native/native-archive.ts",
           "domains/comet-native/native-change.ts",
-          "domains/comet-native/native-check.ts",
-          "domains/comet-native/native-check-stop-evidence.ts",
-          "domains/comet-native/native-checkpoint-journal.ts",
-          "domains/comet-native/native-doctor-command.ts",
-          "domains/comet-native/native-evidence-retention.ts",
-          "domains/comet-native/native-edit-review-command.ts",
           "domains/comet-native/native-portable-archive.ts",
-          "domains/comet-native/native-portable-checks.ts",
-          "domains/comet-native/native-portable-coordination.ts",
           "domains/comet-native/native-portable-delta-rebase.ts",
           "domains/comet-native/native-portable-migration-runtime.ts",
-          "domains/comet-native/native-portable-recovery.ts",
           "domains/comet-native/native-portable-requirements.ts",
           "domains/comet-native/native-portable-shape-coordination.ts",
           "domains/comet-native/native-portable-verification.ts",
           "domains/comet-native/native-portable-verifier-coordination.ts",
-          "domains/comet-native/native-progress-checkpoint.ts",
           "domains/comet-native/native-runner-input.ts",
           "domains/comet-native/native-runtime-ownership.ts",
-          "domains/comet-native/native-schema-migration.ts",
           "domains/comet-native/native-sdk-application.ts",
           "domains/comet-native/native-sdk-create.ts",
           "domains/comet-native/native-sdk-cancellation-cleanup.ts",
@@ -587,15 +608,11 @@
           "domains/comet-native/native-selection.ts",
           "domains/comet-native/native-specs.ts",
           "domains/comet-native/native-supervisor-coordinator.ts",
-          "domains/comet-native/native-supervisor-evidence.ts",
-          "domains/comet-native/native-supervisor-workspace.ts",
           "domains/comet-native/native-trajectory-recovery.ts",
           "domains/comet-native/native-transition-journal.ts",
-          "domains/comet-native/native-transitions.ts",
-          "domains/comet-native/native-verification-receipt-runtime.ts",
           "domains/comet-native/native-workspace.ts"
         ],
-        "reason": "Only reviewed Native mutation entrypoints may acquire or re-export the project mutation lock."
+        "reason": "Only reviewed Native mutation entrypoints may cross the existing transaction recovery boundary."
       }
     ]
   },
@@ -644,5 +661,6 @@
     "bin/comet-daemon-router.js",
     "bin/fast-runtime-router.js"
   ],
-  "testRoots": ["test"]
+  "testRoots": ["test"],
+  "pluginModules": ["codex", "dsh"]
 }

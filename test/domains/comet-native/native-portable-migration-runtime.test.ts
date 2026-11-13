@@ -1,10 +1,11 @@
+import { readNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
+import '../../helpers/isolated-agent-home.js';
 import { promises as fs } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
-import { isWorkspaceRuntimeMigrationFence } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
 
 import {
@@ -15,7 +16,7 @@ import {
   ensureNativeDirectories,
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
-import { withNativeMutationLock } from '../../../domains/comet-native/native-mutation-lock.js';
+import { withNativeMutation } from '../../../domains/comet-native/native-mutation.js';
 import {
   hasIncompleteNativePortableMigration,
   migrateNativeLegacyChangeToPortable,
@@ -90,77 +91,85 @@ describe('Native portable migration Runtime', () => {
     const paths = await portableChange();
     const localRuntime = path.join(paths.changesRuntimeDir, 'portable-change');
     const legacyRuntime = path.join(paths.changesDir, 'portable-change', 'runtime');
-    await fs.cp(localRuntime, legacyRuntime, { recursive: true });
-    await fs.rm(localRuntime, { recursive: true });
-    await nativeProjectPaths(paths.projectRoot, 'docs');
+    await fs.mkdir(legacyRuntime, { recursive: true });
     return { paths, localRuntime, legacyRuntime };
   }
 
-  it('does not treat a validated migration fence as incomplete portable migration', async () => {
-    const { paths, localRuntime, legacyRuntime } = await migratedPortableChange();
-    const stateFile = path.join(localRuntime, 'state.json');
-    const stateBefore = await fs.readFile(stateFile);
-    const fenceBefore = await fs.readFile(legacyRuntime);
+  it('keeps committed portable business without rebuilding a retired fence or execution mirror', async () => {
+    const { paths, localRuntime, legacyRuntime } = await migratedPortableChange(),
+      file = path.join(paths.changesDir, 'portable-change', 'comet-state.yaml'),
+      before = await fs.readFile(file),
+      state = await readNativePortableState(file);
     await expect(hasIncompleteNativePortableMigration(paths, 'portable-change')).resolves.toBe(
       false,
     );
-    await migrateNativeLegacyChangeToPortable({ paths, name: 'portable-change' });
-    expect(await fs.readFile(stateFile)).toEqual(stateBefore);
-    expect(await fs.readFile(legacyRuntime)).toEqual(fenceBefore);
+    expect(await migrateNativeLegacyChangeToPortable({ paths, name: 'portable-change' })).toEqual(
+      state,
+    );
+    expect(await fs.readFile(file)).toEqual(before);
+    expect((await fs.lstat(legacyRuntime)).isDirectory()).toBe(true);
+    await expect(fs.access(path.join(localRuntime, 'state.json'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
   });
 
   it.for(['invalid-json', 'unknown-schema', 'different-change', 'symlink'] as const)(
-    'refuses migration cleanup with %s local state and preserves all evidence',
-    async (caseName, context) => {
-      if (caseName === 'symlink') await requireFileSymlink(context);
-      const { paths, localRuntime, legacyRuntime } = await migratedPortableChange();
-      const stateFile = path.join(localRuntime, 'state.json');
-      const value = JSON.parse(await fs.readFile(stateFile, 'utf8'));
-      if (caseName === 'unknown-schema') value.schema = 'comet.native.local-execution.future';
-      if (caseName === 'different-change') value.change = 'another-change';
-      const bytes = caseName === 'invalid-json' ? '{broken' : JSON.stringify(value);
-      if (caseName === 'symlink') {
-        const outside = path.join(paths.projectRoot, 'outside-state.json');
-        await fs.writeFile(outside, bytes);
-        await fs.unlink(stateFile);
-        await fs.symlink(outside, stateFile);
-      } else {
-        await fs.writeFile(stateFile, bytes);
-      }
-      const projection = path.join(paths.changesDir, 'portable-change', 'checkpoint.md');
-      const evidence = path.join(localRuntime, 'check.log');
-      await fs.writeFile(projection, 'old projection');
-      await fs.writeFile(evidence, 'retained evidence');
-      const fenceBefore = await fs.readFile(legacyRuntime);
-
-      await expect(
-        migrateNativeLegacyChangeToPortable({ paths, name: 'portable-change' }),
-      ).rejects.toThrow();
-      await expect(
-        nativeDoctorCommand(['portable-change', '--repair'], paths.projectRoot),
-      ).rejects.toThrow();
-      expect(await fs.readFile(stateFile, 'utf8')).toBe(bytes);
-      expect(await fs.readFile(projection, 'utf8')).toBe('old projection');
-      expect(await fs.readFile(evidence, 'utf8')).toBe('retained evidence');
-      expect(await fs.readFile(legacyRuntime)).toEqual(fenceBefore);
-      if (caseName === 'symlink') expect((await fs.lstat(stateFile)).isSymbolicLink()).toBe(true);
+    'preserves ignored %s local cache without changing portable business',
+    async (kind, context) => {
+      if (kind === 'symlink') await requireFileSymlink(context);
+      const { paths, localRuntime } = await migratedPortableChange(),
+        file = path.join(paths.changesDir, 'portable-change', 'comet-state.yaml'),
+        before = await fs.readFile(file),
+        state = await readNativePortableState(file),
+        cache = path.join(localRuntime, 'state.json');
+      await fs.mkdir(localRuntime, { recursive: true });
+      const source =
+        kind === 'invalid-json'
+          ? '{SIMULATED retired cache'
+          : JSON.stringify({
+              schema:
+                kind === 'unknown-schema'
+                  ? 'SIMULATED-future-cache'
+                  : 'comet.native.local-execution.v4',
+              change: 'another-change',
+              execution: { status: 'failed' },
+            });
+      if (kind === 'symlink') {
+        const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'native-retired-cache-target-'));
+        roots.push(outside);
+        const target = path.join(outside, 'state.json');
+        await fs.writeFile(target, source);
+        await fs.symlink(target, cache);
+      } else await fs.writeFile(cache, source);
+      expect(await migrateNativeLegacyChangeToPortable({ paths, name: 'portable-change' })).toEqual(
+        state,
+      );
+      expect(await fs.readFile(file)).toEqual(before);
+      expect(await fs.readFile(cache, 'utf8')).toBe(source);
+      expect((await fs.lstat(cache)).isSymbolicLink()).toBe(kind === 'symlink');
     },
   );
 
-  it('rejects a changed fence target when repairing with captured project paths', async () => {
-    const { paths, localRuntime, legacyRuntime } = await migratedPortableChange();
-    const fence = JSON.parse(await fs.readFile(legacyRuntime, 'utf8'));
-    fence.target = path.join(paths.changesRuntimeDir, 'another-change');
-    const changedFence = JSON.stringify(fence);
-    await fs.writeFile(legacyRuntime, changedFence);
-    const stateBefore = await fs.readFile(path.join(localRuntime, 'state.json'));
-
-    await expect(hasIncompleteNativePortableMigration(paths, 'portable-change')).rejects.toThrow();
-    await expect(
-      migrateNativeLegacyChangeToPortable({ paths, name: 'portable-change' }),
-    ).rejects.toThrow();
-    expect(await fs.readFile(path.join(localRuntime, 'state.json'))).toEqual(stateBefore);
-    expect(await fs.readFile(legacyRuntime, 'utf8')).toBe(changedFence);
+  it('does not use replaced legacy cache paths as portable business authority', async () => {
+    const { paths, legacyRuntime } = await migratedPortableChange(),
+      file = path.join(paths.changesDir, 'portable-change', 'comet-state.yaml'),
+      bytes = await fs.readFile(file),
+      state = await readNativePortableState(file),
+      original = legacyRuntime + '-original';
+    await fs.writeFile(path.join(legacyRuntime, 'cache.txt'), 'SIMULATED original retired cache');
+    await fs.rename(legacyRuntime, original);
+    await fs.mkdir(legacyRuntime);
+    await fs.writeFile(path.join(legacyRuntime, 'cache.txt'), 'SIMULATED replaced retired cache');
+    expect(await migrateNativeLegacyChangeToPortable({ paths, name: 'portable-change' })).toEqual(
+      state,
+    );
+    expect(await fs.readFile(file)).toEqual(bytes);
+    expect(await fs.readFile(path.join(original, 'cache.txt'), 'utf8')).toBe(
+      'SIMULATED original retired cache',
+    );
+    expect(await fs.readFile(path.join(legacyRuntime, 'cache.txt'), 'utf8')).toBe(
+      'SIMULATED replaced retired cache',
+    );
   });
 
   it('does not treat a portable verification report as incomplete migration', async () => {
@@ -175,7 +184,7 @@ describe('Native portable migration Runtime', () => {
     );
   });
 
-  it('commits portable YAML before cleaning legacy Runtime and is idempotent', async () => {
+  it('commits portable YAML while retaining legacy evidence and is idempotent', async () => {
     const paths = await legacyChange();
     const migrated = await migrateNativeLegacyChangeToPortable({ paths, name: 'legacy-change' });
     expect(migrated).toMatchObject({
@@ -188,77 +197,54 @@ describe('Native portable migration Runtime', () => {
     expect(JSON.stringify(migrated)).not.toContain('a'.repeat(64));
     expect((await fs.readdir(path.join(paths.changesRuntimeDir, 'legacy-change'))).sort()).toEqual([
       'evidence',
-      'state.json',
     ]);
-    await expect(
-      fs.stat(path.join(paths.changesDir, 'legacy-change', 'evidence.md')),
-    ).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
-    await expect(
-      fs.stat(path.join(paths.changesDir, 'legacy-change', 'verification.md')),
-    ).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+    expect(
+      await fs.readFile(path.join(paths.changesDir, 'legacy-change', 'evidence.md'), 'utf8'),
+    ).toBe('legacy evidence');
+    expect(
+      await fs.readFile(path.join(paths.changesDir, 'legacy-change', 'verification.md'), 'utf8'),
+    ).toBe('legacy verification: passed');
     expect(await migrateNativeLegacyChangeToPortable({ paths, name: 'legacy-change' })).toEqual(
       migrated,
     );
   });
 
-  it('finishes cleanup and rebuilds local state when the portable YAML outlives its transaction', async () => {
-    const paths = await legacyChange();
-    const migrated = await migrateNativeLegacyChangeToPortable({
-      paths,
-      name: 'legacy-change',
-    });
-    const activeDir = path.join(paths.changesDir, 'legacy-change');
-    const legacyRuntime = path.join(activeDir, 'runtime');
-    const localRuntime = path.join(paths.changesRuntimeDir, 'legacy-change');
+  it('retains committed portable history without rebuilding retired local projections', async () => {
+    const paths = await legacyChange(),
+      migrated = await migrateNativeLegacyChangeToPortable({ paths, name: 'legacy-change' }),
+      active = path.join(paths.changesDir, 'legacy-change'),
+      legacyRuntime = path.join(active, 'runtime'),
+      localRuntime = path.join(paths.changesRuntimeDir, 'legacy-change');
     await fs.mkdir(legacyRuntime, { recursive: true });
     await fs.writeFile(path.join(legacyRuntime, 'trajectory.jsonl'), '{"type":"legacy-history"}\n');
-    await fs.writeFile(path.join(activeDir, 'checkpoint.md'), 'legacy projection');
+    await fs.writeFile(path.join(active, 'checkpoint.md'), 'legacy projection');
     await fs.rm(localRuntime, { recursive: true, force: true });
-
-    const recovered = await migrateNativeLegacyChangeToPortable({
-      paths,
-      name: 'legacy-change',
-    });
-
-    expect(recovered).toEqual(migrated);
-    expect(await isWorkspaceRuntimeMigrationFence(legacyRuntime, localRuntime)).toBe(true);
-    await expect(fs.stat(path.join(activeDir, 'checkpoint.md'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
-    expect((await fs.readdir(localRuntime)).sort()).toEqual(['state.json', 'trajectory.jsonl']);
-    expect(await fs.readFile(path.join(localRuntime, 'trajectory.jsonl'), 'utf8')).toBe(
+    const file = path.join(active, 'comet-state.yaml'),
+      bytes = await fs.readFile(file);
+    expect(await migrateNativeLegacyChangeToPortable({ paths, name: 'legacy-change' })).toEqual(
+      migrated,
+    );
+    expect(await fs.readFile(file)).toEqual(bytes);
+    expect(await fs.readFile(path.join(legacyRuntime, 'trajectory.jsonl'), 'utf8')).toBe(
       '{"type":"legacy-history"}\n',
     );
-    expect(
-      JSON.parse(await fs.readFile(path.join(localRuntime, 'state.json'), 'utf8')),
-    ).toMatchObject({
-      schema: 'comet.native.local-execution.v4',
-      change: 'legacy-change',
-      basedOnStateVersion: migrated.state_version,
-      execution: null,
-      checks: [],
-    });
+    expect(await fs.readFile(path.join(active, 'checkpoint.md'), 'utf8')).toBe('legacy projection');
+    await expect(fs.access(localRuntime)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('recognizes only valid portable migration journals and lets that migration resume itself', async () => {
     const paths = await legacyChange();
     await fs.writeFile(path.join(paths.transactionsDir, 'notes.json'), '{"status":"prepared"}');
-    await expect(
-      withNativeMutationLock(paths, 'unrelated file probe', async () => 'allowed'),
-    ).resolves.toBe('allowed');
+    await expect(withNativeMutation(paths, async () => 'allowed')).resolves.toBe('allowed');
 
     const invalidTransaction = path.join(
       paths.transactionsDir,
       'portable-migration-invalid-change.json',
     );
     await fs.writeFile(invalidTransaction, '{}\n');
-    await expect(
-      withNativeMutationLock(paths, 'invalid transaction probe', async () => 'blocked'),
-    ).rejects.toThrow('transaction recovery is required');
+    await expect(withNativeMutation(paths, async () => 'blocked')).rejects.toThrow(
+      'transaction recovery is required',
+    );
     await fs.rm(invalidTransaction);
 
     const transactionFile = path.join(
@@ -298,9 +284,7 @@ describe('Native portable migration Runtime', () => {
         createdAt: new Date().toISOString(),
       })}\n`,
     );
-    await expect(
-      withNativeMutationLock(paths, 'completed transaction probe', async () => 'allowed'),
-    ).resolves.toBe('allowed');
+    await expect(withNativeMutation(paths, async () => 'allowed')).resolves.toBe('allowed');
     await expect(
       migrateNativeLegacyChangeToPortable({ paths, name: 'legacy-change' }),
     ).resolves.toEqual(migrated);

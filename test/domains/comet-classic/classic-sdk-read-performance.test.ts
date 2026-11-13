@@ -1,3 +1,4 @@
+import '../../helpers/isolated-agent-home.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { promises as fs } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -124,12 +125,12 @@ describe('Classic SDK read work budgets', () => {
     expect(classicSdkNextAction({ ...observed, status: 'completed' })).toEqual({ kind: 'done' });
   });
 
-  it('reads stable state once without rewriting either projection', async () => {
+  it('reads stable state once without rewriting YAML or creating a retired marker', async () => {
     const { store, stateFile, markerFile } = await preparedChange();
     const before = await store.read('demo');
     const timestamp = new Date('2020-01-01T00:00:00.000Z');
     await fs.utimes(stateFile, timestamp, timestamp);
-    await fs.utimes(markerFile, timestamp, timestamp);
+    await expect(fs.access(markerFile)).rejects.toMatchObject({ code: 'ENOENT' });
     const reads = vi.spyOn(fs, 'open');
     const renames = vi.spyOn(fs, 'rename');
     expect(await store.read('demo')).toEqual(before);
@@ -138,7 +139,7 @@ describe('Classic SDK read work budgets', () => {
       0,
     );
     expect((await fs.stat(stateFile)).mtimeMs).toBe(timestamp.getTime());
-    expect((await fs.stat(markerFile)).mtimeMs).toBe(timestamp.getTime());
+    await expect(fs.access(markerFile)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('does not probe Git while projecting a Run that has no branch binding', async () => {
@@ -173,7 +174,7 @@ describe('Classic SDK read work budgets', () => {
     expect(await store.read('demo')).toEqual(before);
   });
 
-  it('imports user settings once, advances its marker, and still rejects Runtime-owned edits', async () => {
+  it('imports user settings once and still rejects Runtime-owned edits without a marker', async () => {
     const { store, stateFile, markerFile } = await preparedChange();
     const before = (await store.read('demo'))!;
     const source = await fs.readFile(stateFile, 'utf8');
@@ -182,15 +183,11 @@ describe('Classic SDK read work budgets', () => {
     const imported = (await store.read('demo'))!;
     expect(imported.revision).toBe(before.revision + 1);
     expect(imported.state).toMatchObject({ language: 'zh-CN' });
-    expect(renames.mock.calls.filter(([, target]) => String(target) === markerFile)).toHaveLength(
-      1,
-    );
-    expect(JSON.parse(await fs.readFile(markerFile, 'utf8')).revision).toBe(imported.revision);
+    expect(renames.mock.calls.filter(([, target]) => String(target) === stateFile)).toHaveLength(1);
+    await expect(fs.access(markerFile)).rejects.toMatchObject({ code: 'ENOENT' });
     renames.mockClear();
     expect((await store.read('demo'))?.revision).toBe(imported.revision);
-    expect(renames.mock.calls.filter(([, target]) => String(target) === markerFile)).toHaveLength(
-      0,
-    );
+    expect(renames.mock.calls.filter(([, target]) => String(target) === stateFile)).toHaveLength(0);
     await fs.writeFile(
       stateFile,
       (await fs.readFile(stateFile, 'utf8')).replace(/^phase: .*$/mu, 'phase: archive'),
@@ -198,31 +195,32 @@ describe('Classic SDK read work budgets', () => {
     await expect(store.read('demo')).rejects.toThrow(/Runtime-owned field/u);
   });
 
-  it('rejects a stale CAS and repairs a missing marker without changing revision', async () => {
-    const { store, markerFile } = await preparedChange();
-    const before = (await store.read('demo'))!;
+  it('rejects a stale CAS without changing revision or creating a retired marker', async () => {
+    const { store, stateFile, markerFile } = await preparedChange(),
+      before = (await store.read('demo'))!,
+      bytes = await fs.readFile(stateFile);
     expect(
       await store.compareAndSwap('demo', before.revision + 1, {
         ...before,
         revision: before.revision + 2,
       }),
     ).toBe(false);
-    await fs.rm(markerFile);
-    expect((await store.read('demo'))?.revision).toBe(before.revision);
-    expect(JSON.parse(await fs.readFile(markerFile, 'utf8')).revision).toBe(before.revision);
+    expect(await store.read('demo')).toEqual(before);
+    expect(await fs.readFile(stateFile)).toEqual(bytes);
+    await expect(fs.access(markerFile)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it.skipIf(process.platform === 'win32')(
-    'rejects an equal-content projection marker replaced by a symlink',
+    'rejects an equal-content portable state file replaced by a symlink',
     async () => {
-      const { root, store, markerFile } = await preparedChange();
+      const { root, store, stateFile } = await preparedChange();
       await store.read('demo');
-      const target = path.join(root, 'copied-marker.json');
-      const source = await fs.readFile(markerFile, 'utf8');
+      const target = path.join(root, 'copied-state.yaml');
+      const source = await fs.readFile(stateFile, 'utf8');
       await fs.writeFile(target, source);
-      await fs.rm(markerFile);
-      await fs.symlink(target, markerFile);
-      await expect(store.read('demo')).rejects.toThrow(/symbolic link/u);
+      await fs.rm(stateFile);
+      await fs.symlink(target, stateFile);
+      await expect(store.read('demo')).rejects.toThrow(/regular file/u);
       expect(await fs.readFile(target, 'utf8')).toBe(source);
     },
   );

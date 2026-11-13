@@ -34,7 +34,7 @@
   "概览、分页列表和单 change 详情使用独立采集路径；列表只返回轻量投影，用户选中后才加载产物正文。": "Use separate collection paths for the overview, paginated lists, and individual change details. Lists return lightweight data; artifact bodies load only after selection.",
   "分页游标绑定 snapshot，状态变化时返回明确的 stale cursor。": "Bind pagination cursors to the snapshot and report stale cursors when state changes.",
   "所有产物路径在读取前验证仍位于项目目录内。": "Validate that artifact paths remain within the project before reading.",
-  "预览正文使用固定字节预算并报告 truncated 状态。": "Bound preview bodies by a byte budget and report truncation.",
+  "选中产物后加载完整正文，不截断文件内容。": "Load the complete artifact body after selection without truncating file content.",
   "初始化 Classic OpenSpec 工作区": "Initialize the Classic OpenSpec workspace",
   "新项目启用 Classic 后缺少稳定目录、模板和状态文件，首次运行经常需要人工补齐 proposal、design 和 tasks 结构。": "New Classic projects lack stable directories, templates, and state files, so users often need to create proposal, design, and task structures manually on the first run.",
   "初始化命令一次创建 docs 布局、OpenSpec 模板与 Comet 配置，并且重复运行不会覆盖已有用户文档。": "Create the docs layout, OpenSpec templates, and Comet configuration together. Repeated initialization must preserve existing user documents.",

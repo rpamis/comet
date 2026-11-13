@@ -1,0 +1,13 @@
+{
+  "publicCliExit": 0,
+  "healthy": true,
+  "runId": "comet-any-sdk",
+  "status": "completed",
+  "actionCount": 97,
+  "sameActionIds": true,
+  "sameState": true,
+  "sameOriginalOutcomes": true,
+  "stopEvidenceCount": 21,
+  "storage": "closed",
+  "copiedLocalRunHistory": false
+}

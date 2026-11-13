@@ -1,0 +1,29 @@
+{
+  "artifacts": [
+    {
+      "file": "docs/research/2026-11-11-platform-execution-retirement/entry-owner-batch-migration/registry.json",
+      "sha256": "f63b54da26e3842b5cf6cc155ca81efade1c53352baefe1629176c25a42ead13"
+    },
+    {
+      "file": "docs/research/2026-11-11-platform-execution-retirement/entry-owner-batch-migration/tests.json",
+      "sha256": "6327b88bf7b3e11ded71e5a4f7483e3f29ed2bffa233551dea6178a9dfff62fb"
+    },
+    {
+      "file": "docs/research/2026-11-11-platform-execution-retirement/entry-owner-batch-migration/mapping.json",
+      "sha256": "936751ae4a2c7977c532d972ee46af91651eb57191261531a7cacecba5ed9191"
+    },
+    {
+      "file": "docs/research/2026-11-11-platform-execution-retirement/entry-owner-batch-migration/patch.patch",
+      "sha256": "dbadad7a73f71ac7d687253c3a76f59bcb4a910eb207263e8871af5a98bd522f"
+    }
+  ],
+  "changedTest": "test/domains/comet-entry/project-sdk-status.test.ts",
+  "effectiveCaseIds": [],
+  "result": {
+    "success": true,
+    "passed": 24,
+    "failed": 0,
+    "skipped": 1
+  },
+  "resultFile": "docs/research/2026-11-11-platform-execution-retirement/entry-owner-batch-migration/file-after.json"
+}

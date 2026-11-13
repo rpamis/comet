@@ -1,0 +1,419 @@
+diff --git a/test/domains/comet-classic/classic-sdk-archive-preflight.test.ts b/test/domains/comet-classic/classic-sdk-archive-preflight.test.ts
+index 77fe4f31..48989fcf 100644
+--- a/test/domains/comet-classic/classic-sdk-archive-preflight.test.ts
++++ b/test/domains/comet-classic/classic-sdk-archive-preflight.test.ts
+@@ -1,3 +1,4 @@
++import { writeClassicPlatformChecks } from '../../helpers/classic-platform-checks.js';
+ import { execFileSync } from 'node:child_process';
+ import { promises as fs } from 'node:fs';
+ import os from 'node:os';
+@@ -15,18 +16,6 @@ import { createClassicSdkStateStore } from '../../../domains/comet-classic/class
+ import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
+ import { createRuntime } from '../../../domains/engine/runtime.js';
+ 
+-// This suite restores original managed checks; new v2 Runs have platform-report coverage.
+-vi.mock('../../../domains/comet-classic/classic-sdk-application.js', async (importOriginal) => {
+-  const actual =
+-    await importOriginal<
+-      typeof import('../../../domains/comet-classic/classic-sdk-application.js')
+-    >();
+-  return {
+-    ...actual,
+-    defineClassicAgentWorkflowApplication: actual.defineClassicWorkflowApplication,
+-  };
+-});
+-
+ const roots: string[] = [];
+ afterEach(async () => {
+   vi.restoreAllMocks();
+@@ -107,23 +96,12 @@ async function fixture(
+   }
+   const preview = await cli('guard', 'example', 'open');
+   await cli('guard', 'example', 'open', '--apply', '--approval-hash', preview.approvalHash);
+-  // 命令分隔符后的参数属于被检查进程；直接调用避免追加 --json。
+-  const checked = await runClassicCli(
+-    [
+-      'guard',
+-      'example',
+-      'build',
+-      '--apply',
+-      '--json',
+-      '--',
+-      process.execPath,
+-      '-e',
+-      'process.exit(0)',
+-    ],
+-    undefined,
+-    { invocationCwd: projectRoot },
+-  );
+-  expect(checked.exitCode, checked.stderr).toBe(0);
++  const checks = await writeClassicPlatformChecks(projectRoot, [
++    process.execPath,
++    '-e',
++    'process.exit(0)',
++  ]);
++  await cli('guard', 'example', 'build', '--apply', '--checks', checks);
+   const report = 'docs/superpowers/reports/verify.md';
+   await fs.mkdir(path.dirname(path.join(projectRoot, report)), { recursive: true });
+   await fs.writeFile(path.join(projectRoot, report), '# Verification\nPASS\n');
+@@ -139,24 +117,8 @@ async function fixture(
+       cli,
+       active,
+     };
+-  const verified = await runClassicCli(
+-    [
+-      'guard',
+-      'example',
+-      'verify',
+-      '--report',
+-      report,
+-      '--apply',
+-      '--json',
+-      '--',
+-      process.execPath,
+-      '-e',
+-      'process.exit(0)',
+-    ],
+-    undefined,
+-    { invocationCwd: projectRoot },
+-  );
+-  expect(verified.exitCode, verified.stderr).toBe(0);
++  await writeClassicPlatformChecks(projectRoot, [process.execPath, '-e', 'process.exit(0)']);
++  await cli('guard', 'example', 'verify', '--report', report, '--apply', '--checks', checks);
+   const proposed = await cli(
+     'state',
+     'propose-archive',
+@@ -506,6 +468,11 @@ describe('Classic explicit verification recovery', () => {
+         { invocationCwd: f.projectRoot },
+       );
+       expect(stale.exitCode).not.toBe(0);
++      const checks = await writeClassicPlatformChecks(f.projectRoot, [
++        process.execPath,
++        '-e',
++        'process.exit(0)',
++      ]);
+       const verified = await runClassicCli(
+         [
+           'guard',
+@@ -515,10 +482,8 @@ describe('Classic explicit verification recovery', () => {
+           'docs/superpowers/reports/verify.md',
+           '--apply',
+           '--json',
+-          '--',
+-          process.execPath,
+-          '-e',
+-          'process.exit(0)',
++          '--checks',
++          checks,
+         ],
+         undefined,
+         { invocationCwd: f.projectRoot },
+diff --git a/test/domains/comet-classic/classic-sdk-delivery-scope.test.ts b/test/domains/comet-classic/classic-sdk-delivery-scope.test.ts
+index feafccff..df7dd2c4 100644
+--- a/test/domains/comet-classic/classic-sdk-delivery-scope.test.ts
++++ b/test/domains/comet-classic/classic-sdk-delivery-scope.test.ts
+@@ -1,3 +1,4 @@
++import { writeClassicPlatformChecks } from '../../helpers/classic-platform-checks.js';
+ import { requireFileSymlink } from '../../helpers/file-symlink.js';
+ import { readClassicArchiveManifest } from '../../../domains/comet-classic/classic-sdk-archive-manifest.js';
+ import { defineClassicWorkflowApplication } from '../../../domains/comet-classic/classic-sdk-application.js';
+@@ -23,18 +24,6 @@ import {
+   parseClassicStateDocument,
+ } from '../../../domains/comet-classic/classic-state.js';
+ 
+-// Preserve the original v1 managed-check contract; default v2 Runs have separate public CLI coverage.
+-vi.mock('../../../domains/comet-classic/classic-sdk-application.js', async (importOriginal) => {
+-  const actual =
+-    await importOriginal<
+-      typeof import('../../../domains/comet-classic/classic-sdk-application.js')
+-    >();
+-  return {
+-    ...actual,
+-    defineClassicAgentWorkflowApplication: actual.defineClassicWorkflowApplication,
+-  };
+-});
+-
+ const roots: string[] = [];
+ // Both transient directories that `migrationFiles` can record a fence from. They are
+ // omitted from the archived tree, so the fence reaches `optionalFiles` instead.
+@@ -44,8 +33,9 @@ it('keeps foreign drafts out of legacy deliveryInputs without changing the origi
+   const f = await hotfix({ parked: true });
+   f.commitImplementation();
+   f.commitArchive();
++  // SIMULATED legacy path encoding on an actually completed Archive preflight.
+   const legacy = structuredClone(f.archived);
+-  const check = legacy.actions.findLast((action) => action.stepId === 'hotfix.verify.check')!;
++  const check = legacy.actions.findLast((action) => action.stepId === 'hotfix.archive.preflight')!;
+   const output = check.outcome!.output as {
+     deliveryInputs?: Record<string, string>;
+     deliveryPaths?: string[];
+@@ -182,7 +172,10 @@ async function hotfix(
+     expect(native.exitCode, native.stderr).toBe(0);
+     await put('openspec/changes/parked-classic/proposal.md', '# Parked Classic proposal\n');
+   }
+-  if (options.initialDraft) await put('unrelated-draft.ts', 'export const unfinished = true;\n');
++  if (options.initialDraft) {
++    await put('unrelated-draft.ts', 'export const unfinished = true;\n');
++    await put('private-notes.ts', '// Existing work outside this change.\n');
++  }
+   const invoke = async (...args: string[]) => {
+     const separator = args.indexOf('--');
+     args.splice(separator < 0 ? args.length : separator, 0, '--json');
+@@ -206,7 +199,10 @@ async function hotfix(
+       JSON.stringify({
+         operation: 'start',
+         runId: 'example',
+-        workflow: { id: 'comet-classic-hotfix', version: '1' },
++        workflow: {
++          id: 'comet-classic-hotfix',
++          version: defineClassicWorkflowApplication('hotfix').workflow.version,
++        },
+         input: {
+           change: 'example',
+           changeDir: 'openspec/changes/example',
+@@ -269,7 +265,8 @@ async function hotfix(
+         ],
+       }),
+     );
+-  await cli('guard', 'example', 'build', '--apply', '--local', '--', ...argv);
++  const checks = await writeClassicPlatformChecks(projectRoot, argv);
++  await cli('guard', 'example', 'build', '--apply', '--checks', checks);
+   const reportRef = 'docs/superpowers/reports/hotfix.md';
+   await put(
+     reportRef,
+@@ -282,9 +279,8 @@ async function hotfix(
+     '--report',
+     reportRef,
+     '--apply',
+-    '--local',
+-    '--',
+-    ...argv,
++    '--checks',
++    await writeClassicPlatformChecks(projectRoot, argv),
+   );
+   const inspect = () => inspectClassicSdkRun(projectRoot, 'example');
+   const verified = (await inspect()).run;
+@@ -318,6 +314,16 @@ async function hotfix(
+     'example',
+     '--summary',
+     'Archive the verified hotfix.',
++    ...(options.initialDraft === 'modified'
++      ? [
++          '--delivery-path',
++          'source.js',
++          '--delivery-path',
++          'src/changes/adapter.ts',
++          '--delivery-path',
++          'unrelated-draft.ts',
++        ]
++      : []),
+     ...(options.deliveryAction === 'push' ? ['--remote', 'origin'] : []),
+   );
+   await cli(
+@@ -407,7 +413,7 @@ it('delivers without an unchanged untracked draft that predates the change', asy
+   );
+ });
+ 
+-it('requires delivery of an initial draft modified during the change', async () => {
++it('requires delivery of an explicitly selected initial draft', async () => {
+   const f = await hotfix({ initialDraft: 'modified' });
+   f.commitImplementation();
+   const commit = f.commitArchive();
+@@ -416,10 +422,35 @@ it('requires delivery of an initial draft modified during the change', async ()
+   expect(rejected.response.stderr).toContain('unrelated-draft.ts');
+ });
+ 
++it('delivers an explicitly approved initial draft without including an unrelated draft', async () => {
++  const f = await hotfix({ initialDraft: 'modified' });
++  f.commitImplementation();
++  f.git('add', '--', 'unrelated-draft.ts');
++  f.git('commit', '-m', 'complete the approved initial draft');
++  const commit = f.commitArchive();
++  const completed = await f.cli('state', 'complete-delivery', 'example', '--commit', commit);
++  expect(completed.nextAction.kind).toBe('done');
++  expect(f.git('show', 'HEAD:unrelated-draft.ts')).toContain('unfinished = false');
++  expect(f.git('status', '--porcelain')).toContain('?? private-notes.ts');
++  expect(await fs.readFile(path.join(f.projectRoot, 'private-notes.ts'), 'utf8')).toBe(
++    '// Existing work outside this change.\n',
++  );
++  const approval = f.archived.waits.find((wait) => wait.stepId === 'hotfix.archive.confirm')!;
++  expect(approval.status).toBe('resolved');
++  expect(approval.proposal).toMatchObject({
++    outputs: {
++      'hotfix.archive.prepare': {
++        deliveryPaths: ['source.js', 'src/changes/adapter.ts', 'unrelated-draft.ts'],
++      },
++    },
++  });
++});
++
+ it('does not trust a workspace baseline supplied through public dispatch start', async () => {
+   const f = await hotfix({ forgedBaseline: true });
+-  const output = f.verified.actions.findLast((action) => action.stepId === 'hotfix.verify.check')!
+-    .outcome!.output as { deliveryPaths: string[] };
++  const output = f.archived.actions.findLast(
++    (action) => action.stepId === 'hotfix.archive.preflight',
++  )!.outcome!.output as { deliveryPaths: string[] };
+   expect(output.deliveryPaths).toContain('source.js');
+   f.git('add', '--', 'src/changes/adapter.ts');
+   f.git('commit', '-m', 'adapter only');
+@@ -473,8 +504,9 @@ it.each(['docs', 'specifications/custom'])(
+   'keeps parked Native Shape and Classic drafts out of hotfix delivery inputs under %s',
+   async (nativeRoot) => {
+     const f = await hotfix({ parked: true, nativeRoot });
+-    const output = f.verified.actions.findLast((action) => action.stepId === 'hotfix.verify.check')!
+-      .outcome!.output as { deliveryPaths: string[] };
++    const output = f.archived.actions.findLast(
++      (action) => action.stepId === 'hotfix.archive.preflight',
++    )!.outcome!.output as { deliveryPaths: string[] };
+     expect(output.deliveryPaths).toEqual(['source.js', 'src/changes/adapter.ts']);
+     expect(output).not.toHaveProperty('manifestRef');
+     expect(
+@@ -683,7 +715,7 @@ it('recovers polluted 0.5.0 delivery paths without changing the Run and rejects
+   f.commitImplementation();
+   f.commitArchive();
+   const oldRun = structuredClone(f.archived);
+-  const output = oldRun.actions.findLast((action) => action.stepId === 'hotfix.verify.check')!
++  const output = oldRun.actions.findLast((action) => action.stepId === 'hotfix.archive.preflight')!
+     .outcome!.output as { deliveryInputs?: Record<string, string>; deliveryPaths?: string[] };
+   output.deliveryInputs = Object.fromEntries(
+     output.deliveryPaths!.map((ref) => [ref, 'legacy-file-digest']),
+@@ -1018,7 +1050,7 @@ it('revalidates a portable historical archive outcome without inventing new exec
+ });
+ 
+ it.each([false, true])(
+-  'reads completed archived history across worktrees after amend=%s without importing a duplicate Run',
++  'reads completed history in the explicit worktree after amend=%s without importing a duplicate Run',
+   async (amend) => {
+     const f = await hotfix({ isolation: 'worktree' });
+     f.commitImplementation();
+@@ -1040,9 +1072,15 @@ it.each([false, true])(
+     const stateFile = path.join(integration, f.archiveRef, 'comet-state.yaml');
+     const state = await fs.readFile(stateFile);
+     const runtime = await publicStateRuntime(f.root);
++    const primary = spawnSync(process.execPath, [runtime, 'next', 'example', '--json'], {
++      cwd: integration,
++      encoding: 'utf8',
++    });
++    expect(primary.status).not.toBe(0);
++    expect(primary.stdout).toContain('original completed Run history');
+     for (const command of ['next', 'checkpoint', 'select']) {
+       const result = spawnSync(process.execPath, [runtime, command, 'example', '--json'], {
+-        cwd: integration,
++        cwd: f.projectRoot,
+         encoding: 'utf8',
+       });
+       expect(result.status, result.stdout || result.stderr).toBe(command === 'select' ? 1 : 0);
+diff --git a/test/domains/comet-classic/classic-sdk-delivery-inputs.test.ts b/test/domains/comet-classic/classic-sdk-delivery-inputs.test.ts
+index 31d1717a..b9e06d67 100644
+--- a/test/domains/comet-classic/classic-sdk-delivery-inputs.test.ts
++++ b/test/domains/comet-classic/classic-sdk-delivery-inputs.test.ts
+@@ -10,21 +10,20 @@ import {
+ } from '../../../domains/comet-classic/classic-sdk-delivery-inputs.js';
+ import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
+ 
++vi.mock('node:child_process', async (importOriginal) => {
++  const actual = await importOriginal<typeof import('node:child_process')>();
++  return { ...actual, execFileSync: vi.fn(actual.execFileSync) };
++});
++
+ describe('Classic SDK declared delivery inputs', () => {
+   let root: string;
+-  const identity = { argv: [process.execPath, 'check.cjs'], cwd: '.' };
+   const git = (...args: string[]) => execFileSync('git', args, { cwd: root, stdio: 'ignore' });
+   const put = async (ref: string, source = 'original\n') => {
+     await fs.mkdir(path.dirname(path.join(root, ref)), { recursive: true });
+     await fs.writeFile(path.join(root, ref), source);
+   };
+-  const inputs = async (files: string[], outputs: string[] = []) => {
+-    await put(
+-      '.comet/check-policy.json',
+-      JSON.stringify({ version: 2, commands: [{ ...identity, files, outputs }] }),
+-    );
+-    return collectClassicSdkDeliveryInputs(root, '', identity);
+-  };
++  const inputs = (deliveryPaths?: string[]) =>
++    collectClassicSdkDeliveryInputs(root, undefined, deliveryPaths);
+ 
+   beforeEach(async () => {
+     root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-delivery-inputs-'));
+@@ -69,47 +68,58 @@ describe('Classic SDK declared delivery inputs', () => {
+       vi.spyOn(nativeFs, 'lstatSync'),
+     ];
+     syncBuiltinESMExports();
++    const commandsBefore = vi.mocked(execFileSync).mock.calls.length;
+     expect(await assertClassicSdkDeliveryFileInputs(root, inputs)).toEqual(new Set(names));
++    expect(vi.mocked(execFileSync).mock.calls.length - commandsBefore).toBeLessThanOrEqual(2);
+     expect(probes.reduce((count, probe) => count + probe.mock.calls.length, 0)).toBeLessThanOrEqual(
+       800,
+     );
+   });
+ 
+-  it.each(['src', 'src/**'])('includes staged deletions covered by %s', async (pattern) => {
+-    git('rm', '--', 'src/obsolete.js', 'src/nested/obsolete.js');
+-    await put('source.js', 'updated\n');
+-    await put('src/kept.js');
+-    expect(await inputs(['source.js', pattern])).toEqual([
+-      'source.js',
+-      'src/kept.js',
+-      'src/nested/obsolete.js',
+-      'src/obsolete.js',
+-    ]);
+-  });
++  it.each(['staged', 'unstaged'])(
++    'includes %s deletions among current delivery paths',
++    async (mode) => {
++      if (mode === 'staged') git('rm', '--', 'src/obsolete.js', 'src/nested/obsolete.js');
++      else {
++        await fs.unlink(path.join(root, 'src/obsolete.js'));
++        await fs.unlink(path.join(root, 'src/nested/obsolete.js'));
++      }
++      await put('source.js', 'updated\n');
++      await put('src/kept.js');
++      expect(await inputs()).toEqual([
++        'source.js',
++        'src/kept.js',
++        'src/nested/obsolete.js',
++        'src/obsolete.js',
++      ]);
++    },
++  );
+ 
+-  it('keeps deleted descendants when the declared directory no longer exists', async () => {
++  it('keeps deleted descendants when their directory no longer exists', async () => {
+     git('rm', '-r', '--', 'src');
+-    expect(await inputs(['src'])).toEqual(['src/nested/obsolete.js', 'src/obsolete.js']);
++    expect(await inputs()).toEqual(['src/nested/obsolete.js', 'src/obsolete.js']);
+   });
+ 
+-  it('does not include sibling paths or files outside the declared directory', async () => {
++  it('keeps an explicit delivery selection separate from deleted sibling paths', async () => {
+     git('rm', '-r', '--', 'src', 'src-other', 'src.js', 'source.js');
+-    expect(await inputs(['src'])).toEqual(['src/nested/obsolete.js', 'src/obsolete.js']);
++    expect(await inputs(['src/nested/obsolete.js', 'src/obsolete.js'])).toEqual([
++      'src/nested/obsolete.js',
++      'src/obsolete.js',
++    ]);
+   });
+ 
+-  it('preserves exact-file and glob output exclusions for staged deletions', async () => {
++  it('retains only the deleted output explicitly selected for delivery', async () => {
+     await put('src/obsolete.js.map');
+     git('add', '--all');
+     git('commit', '-m', 'add sibling file');
+     git('rm', '-r', '--', 'src');
+-    expect(await inputs(['src'], ['src/obsolete.js', 'src/nested/**'])).toEqual([
+-      'src/obsolete.js.map',
+-    ]);
++    expect(await inputs(['src/obsolete.js.map'])).toEqual(['src/obsolete.js.map']);
+   });
+ 
+-  it('keeps literal files exact and globs within their declared path segments', async () => {
++  it('keeps explicit delivery files exact without applying old check-policy globs', async () => {
+     git('rm', '-r', '--', 'src');
++    await put('.comet/check-policy.json', '{invalid retired policy');
+     expect(await inputs(['src/obsolete.js'])).toEqual(['src/obsolete.js']);
+-    expect(await inputs(['src/*.js'])).toEqual(['src/obsolete.js']);
++    expect(await inputs()).toEqual(['src/nested/obsolete.js', 'src/obsolete.js']);
+   });
+ });

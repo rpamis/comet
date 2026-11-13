@@ -1,0 +1,28 @@
+{
+  "results": [
+    {
+      "root": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-legacy-receipt-red-6aZoNs\\git-common",
+      "location": "git-common",
+      "originalCommitPreserved": true,
+      "headUnchanged": "b022e66995b584b9344732a40f6fb4f4302e0f84",
+      "imported": [
+        "classic-delivery-receipts/c4e7ddc7485732d10dfccfc4b6b1b4fba7fe626371959dc6447b07a19db377a9.json"
+      ],
+      "before": "needsVerification",
+      "after": "complete",
+      "originalAuthorizationPreserved": true,
+      "sourceAndTargetBytesEqual": true,
+      "repeatedImportNoOp": true,
+      "unmodifiedCurrentCliAfterPrototype": {
+        "status": 0,
+        "stdout": "{\"status\":\"imported\",\"imported\":[],\"preservedSource\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-legacy-receipt-red-6aZoNs\\\\git-common\\\\.comet\\\\runtime\",\"classic\":[]}\n"
+      },
+      "boundary": "Temp patched explicit importer compiled from current TS; product source and public CLI are unmodified. Green import call is the Temp prototype, not claimed product CLI fix."
+    }
+  ],
+  "notExecuted": [
+    "patched product public CLI",
+    "Eval",
+    "full suite"
+  ]
+}

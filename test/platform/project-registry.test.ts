@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { withRecoverableFileLock } from '../../platform/fs/plugin-store.js';
+import * as sqlite from '../../platform/fs/sqlite.js';
 
 import {
   ProjectRegistryError,
@@ -105,9 +106,9 @@ describe('project installation registry', () => {
     const attempted = new Promise<void>((resolve) => {
       signalAttempt = resolve;
     });
-    const originalOpen = fs.open.bind(fs);
-    const open = vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
-      if (args[0] === lockPath && args[1] === 'wx') signalAttempt();
+    const originalOpen = sqlite.openSqliteDatabase;
+    const open = vi.spyOn(sqlite, 'openSqliteDatabase').mockImplementation((...args) => {
+      if (String(args[0]).endsWith(lockPath + '.sqlite')) signalAttempt();
       return originalOpen(...args);
     });
     const removing = expect(
@@ -200,8 +201,9 @@ describe('project installation registry', () => {
       .mockRejectedValue(Object.assign(new Error('read only'), { code: 'EROFS' }));
     try {
       expect((await readProjectRegistry({ homeDir, strict: true })).projects).toHaveLength(1);
-      expect(await fs.readdir(path.dirname(getProjectRegistryPath(homeDir)))).toEqual([
+      expect((await fs.readdir(path.dirname(getProjectRegistryPath(homeDir)))).sort()).toEqual([
         'installations.json',
+        'installations.json.lock.sqlite',
       ]);
     } finally {
       rename.mockRestore();

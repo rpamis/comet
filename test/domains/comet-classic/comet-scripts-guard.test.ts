@@ -5,12 +5,51 @@
  * design guard (design_doc requirement), and build-complete guard (review_mode).
  */
 import { beforeEach, describe, expect, it } from 'vitest';
-import { execFileSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { resolveClassicRunDirectory } from '../../../domains/comet-classic/classic-runtime-paths.js';
 import { runNode, CLASSIC_SCRIPT_COMMAND_TIMEOUT } from '../../helpers/comet-test-utils.js';
+
+// SIMULATED Agent executes the actual platform command and submits the observed result.
+function runPlatformCheck(
+  cwd: string,
+  _retiredScript: string,
+  args: string[],
+  env: NodeJS.ProcessEnv = {},
+  timeout?: number,
+) {
+  runNode(cwd, path.join(scriptsDir, 'comet-guard.mjs'), [args[1], args[2]]);
+  const divider = args.indexOf('--');
+  if (divider < 0) throw new Error('Actual argv required');
+  const argv = args.slice(divider + 1);
+  const executed = spawnSync(argv[0], argv.slice(1), {
+    cwd,
+    encoding: 'utf8',
+    env: { ...process.env, ...env },
+    timeout,
+  });
+  if (executed.error || executed.status === null)
+    throw executed.error ?? new Error('Platform command has no exit code');
+  const recorded = runNode(
+    cwd,
+    path.join(scriptsDir, 'comet-state.mjs'),
+    [
+      'record-check',
+      args[1],
+      args[2],
+      '--command',
+      JSON.stringify(argv),
+      '--exit-code',
+      String(executed.status),
+    ],
+    env,
+    timeout,
+  );
+  expect(recorded.status, recorded.stderr).toBe(0);
+  return { ...recorded, status: executed.status };
+}
 
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
 const classicRuntimeRoot = path.resolve('assets', 'skills', 'comet', 'runtime', 'classic');
@@ -20,6 +59,7 @@ async function writeFile(filePath: string, content: string) {
   await fs.writeFile(filePath, content);
 }
 
+// SIMULATED historical Compat document fixture; no accepted execution receipt is fabricated.
 async function createChange(tmpDir: string, name: string, yaml: string, tasks = '- [x] done\n') {
   const changeDir = path.join(tmpDir, 'openspec', 'changes', name);
   await fs.mkdir(changeDir, { recursive: true });
@@ -319,7 +359,7 @@ describe('comet guard', () => {
       expect(preparation.stderr).toContain('[PASS] review_mode selected');
       expect(preparation.stderr).toContain('[PASS] plan task mapping is valid');
       expect(
-        runNode(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
+        runPlatformCheck(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
           'run',
           'review-off-guard',
           'build',
@@ -370,7 +410,7 @@ describe('comet guard', () => {
       );
       runNode(tmpDir, guardScript, ['hotfix-guard', 'build']);
       expect(
-        runNode(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
+        runPlatformCheck(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
           'run',
           'hotfix-guard',
           'build',
@@ -442,25 +482,54 @@ describe('comet guard', () => {
       exitCode: number,
     ) {
       runNode(tmpDir, guardScript, [name, scope]);
+      const argv = [process.execPath, '-e', 'process.exit(' + exitCode + ')'];
+      const actual = spawnSync(argv[0], argv.slice(1), {
+        cwd: tmpDir,
+        encoding: 'utf8',
+      });
+      expect(actual.error).toBeUndefined();
+      expect(actual.status).toBe(exitCode);
       return runNode(tmpDir, stateScript, [
         'record-check',
         name,
         scope,
         '--command',
-        command,
+        JSON.stringify(argv),
         '--exit-code',
-        String(exitCode),
+        String(actual.status),
       ]);
     }
 
     it('keeps a bound_branch healed during guard --apply', async () => {
-      execFileSync('git', ['switch', '-c', 'feat-x'], { cwd: tmpDir, stdio: 'ignore' });
+      execFileSync('git', ['switch', '-c', 'feat-x'], {
+        cwd: tmpDir,
+        stdio: 'ignore',
+      });
       await createChange(tmpDir, 'apply-heal', buildYaml);
       await writeFile(
         path.join(tmpDir, 'package.json'),
         JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
       );
 
+      const checked = runPlatformCheck(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
+        'run',
+        'apply-heal',
+        'build',
+        '--',
+        process.execPath,
+        '-e',
+        'process.exit(0)',
+      ]);
+      expect(checked.status, checked.stderr).toBe(0);
+      // SIMULATED missing branch projection after the real report: --apply must heal it and reread before transition.
+      const branchState = path.join(tmpDir, 'openspec/changes/apply-heal/.comet.yaml');
+      await fs.writeFile(
+        branchState,
+        (await fs.readFile(branchState, 'utf8')).replace(
+          /^bound_branch:.*$/mu,
+          'bound_branch: null',
+        ),
+      );
       const result = runNode(
         tmpDir,
         guardScript,
@@ -486,16 +555,14 @@ describe('comet guard', () => {
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain('[FAIL] Build passes');
-      expect(result.stderr).toContain('No current Runtime build evidence');
-      expect(result.stderr).toContain(
-        'comet check run commandless-build build --local -- <program> [args...]',
-      );
+      expect(result.stderr).toContain('没有本阶段的完整检查报告');
+      expect(result.stderr).toContain('Agent 平台');
     });
 
     it('accepts successful build evidence and prints its source, time, and command', async () => {
       await createChange(tmpDir, 'recorded-build', buildYaml);
       runNode(tmpDir, guardScript, ['recorded-build', 'build']);
-      const recorded = runNode(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
+      const recorded = runPlatformCheck(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
         'run',
         'recorded-build',
         'build',
@@ -524,7 +591,7 @@ describe('comet guard', () => {
       );
       runNode(tmpDir, guardScript, ['recorded-verify', 'verify']);
       expect(
-        runNode(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
+        runPlatformCheck(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
           'run',
           'recorded-verify',
           'verify',
@@ -558,11 +625,11 @@ describe('comet guard', () => {
       const result = runNode(tmpDir, guardScript, ['verify-not-build', 'verify']);
 
       expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain('Latest recorded verify check failed with exit code 7');
+      expect(result.stderr).toContain('检查未通过，退出码 7');
       expect(result.stderr).not.toContain('[PASS] Verification passes');
     });
 
-    it('rejects removed build_command before verify inference or evidence consumption', async () => {
+    it('does not execute removed build_command or infer verification without a report', async () => {
       await createChange(tmpDir, 'verify-removed-build-command', verifyYaml);
       await writeFile(
         path.join(tmpDir, 'reports', 'verification.md'),
@@ -588,7 +655,8 @@ describe('comet guard', () => {
       const result = runNode(tmpDir, guardScript, ['verify-removed-build-command', 'verify']);
 
       expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain('build_command has been removed');
+      expect(result.stderr).toContain('没有本阶段的完整检查报告');
+      expect(result.stderr).not.toContain('guard auto-ran');
       expect(result.stderr).not.toContain('[PASS] Verification passes');
     });
 
@@ -599,7 +667,7 @@ describe('comet guard', () => {
       const result = runNode(tmpDir, guardScript, ['cross-scope', 'build']);
 
       expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain('No current Runtime build evidence');
+      expect(result.stderr).toContain('没有本阶段的完整检查报告');
     });
 
     it('uses the latest same-run evidence even when an older check succeeded', async () => {
@@ -610,8 +678,8 @@ describe('comet guard', () => {
       const result = runNode(tmpDir, guardScript, ['latest-build', 'build']);
 
       expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain('Latest recorded build check failed with exit code 2');
-      expect(result.stderr).toContain('comet check run latest-build build --local -- pnpm lint');
+      expect(result.stderr).toContain('检查未通过，退出码 2');
+      expect(result.stderr).toContain('检查未通过，退出码 2');
     });
 
     it('ignores evidence recorded for another change', async () => {
@@ -622,7 +690,7 @@ describe('comet guard', () => {
       const result = runNode(tmpDir, guardScript, ['target-build', 'build']);
 
       expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain('No current Runtime build evidence');
+      expect(result.stderr).toContain('没有本阶段的完整检查报告');
     });
 
     it('ignores evidence recorded for another run', async () => {
@@ -633,6 +701,7 @@ describe('comet guard', () => {
       const run = JSON.parse(
         await fs.readFile(path.join(runtimeDirectory, '.comet', 'run-state.json'), 'utf8'),
       ) as { trajectoryRef: string };
+      // SIMULATED malicious foreign-Run event: never an accepted execution receipt.
       await fs.appendFile(
         path.join(runtimeDirectory, run.trajectoryRef),
         `${JSON.stringify({
@@ -647,10 +716,10 @@ describe('comet guard', () => {
       const result = runNode(tmpDir, guardScript, ['other-run', 'build']);
 
       expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain('No current Runtime build evidence');
+      expect(result.stderr).toContain('没有本阶段的完整检查报告');
     });
 
-    it('does not let successful stored evidence override an inferred npm failure', async () => {
+    it('does not let an older successful report override a real platform build failure', async () => {
       await createChange(tmpDir, 'inferred-failure', buildYaml);
       expect((await recordCheck('inferred-failure', 'build', 'pnpm lint', 0)).status).toBe(0);
       await writeFile(
@@ -658,47 +727,32 @@ describe('comet guard', () => {
         JSON.stringify({ scripts: { build: 'node -e "process.exit(7)"' } }),
       );
 
+      // SIMULATED Agent executes the project script on its platform, not through Guard.
+      const actual = spawnSync(process.execPath, ['-e', 'process.exit(7)'], {
+        cwd: tmpDir,
+        encoding: 'utf8',
+      });
+      expect(actual.status).toBe(7);
+      expect(
+        (await recordCheck('inferred-failure', 'build', 'actual platform Node', actual.status!))
+          .status,
+      ).toBe(0);
       const result = runNode(tmpDir, guardScript, ['inferred-failure', 'build']);
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).not.toContain('recorded command-check');
     });
 
-    it('detects and executes an inferred npm build from the nested invocation cwd', async () => {
-      await createChange(tmpDir, 'nested-inferred-build', buildYaml);
-      await writeFile(
-        path.join(tmpDir, 'package.json'),
-        JSON.stringify({ scripts: { build: 'node -e "process.exit(23)"' } }),
-      );
-      const nested = path.join(tmpDir, 'packages', 'app');
-      await writeFile(path.join(tmpDir, '.gitignore'), 'nested-build-ran\n');
-      await writeFile(
-        path.join(nested, 'package.json'),
-        JSON.stringify({
-          scripts: {
-            build: "node -e \"require('fs').writeFileSync('nested-build-ran', 'ok')\"",
-          },
-        }),
-      );
-
-      const result = runNode(nested, guardScript, ['nested-inferred-build', 'build']);
-
-      expect(result.status, result.stderr).toBe(0);
-      expect(await fs.readFile(path.join(nested, 'nested-build-ran'), 'utf8')).toBe('ok');
-      await expect(fs.access(path.join(tmpDir, 'nested-build-ran'))).rejects.toMatchObject({
-        code: 'ENOENT',
-      });
-    });
-
-    it('makes COMET_SKIP_BUILD visible instead of reporting an ordinary silent pass', async () => {
+    it('does not let COMET_SKIP_BUILD bypass a missing actual platform report', async () => {
       await createChange(tmpDir, 'visible-skip', buildYaml);
 
       const result = runNode(tmpDir, guardScript, ['visible-skip', 'build'], {
         COMET_SKIP_BUILD: '1',
       });
 
-      expect(result.status).toBe(0);
-      expect(result.stderr).toContain('SKIPPED via COMET_SKIP_BUILD=1');
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('没有本阶段的完整检查报告');
+      expect(result.stderr).not.toContain('[PASS] Build passes');
     });
   });
 });

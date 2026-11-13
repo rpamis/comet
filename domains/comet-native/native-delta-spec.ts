@@ -7,8 +7,6 @@ export const NATIVE_DELTA_FILE = 'delta.yaml' as const;
 
 const CAPABILITY_ID_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 const REQUIREMENT_ID_PATTERN = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/u;
-const HASH_PATTERN = /^[a-f0-9]{64}$/iu;
-const MAX_BASE_REQUIREMENTS = 512;
 
 export type NativeDeltaOperationKind = 'add' | 'modify' | 'remove' | 'rename';
 
@@ -26,7 +24,7 @@ export interface NativeDeltaDocument {
   readonly schema: typeof NATIVE_DELTA_SCHEMA;
   /** Stable capability identity; it is intentionally independent of change name. */
   readonly capability: string;
-  readonly base_hash: string;
+  readonly base_hash?: string;
   readonly base_version: number;
   /** Hash of content outside managed Requirement sections for legacy migration safety. */
   readonly legacy_hash?: string;
@@ -39,8 +37,8 @@ export interface NativeDeltaDocument {
 
 export interface NativeDeltaApplyResult {
   readonly markdown: string;
-  readonly base_hash: string;
-  readonly result_hash: string;
+  readonly base_hash?: string;
+  readonly result_hash?: string;
   readonly rebased: boolean;
   readonly changedRequirementIds: readonly string[];
   readonly operationResults: readonly NativeDeltaOperationResult[];
@@ -139,41 +137,6 @@ function optionalText(value: unknown, label: string): string | undefined {
   return normalizeLineEndings(value).replace(/^\n+|\n+$/gu, '');
 }
 
-function hashValue(value: unknown, label: string): string {
-  const result = requiredString(value, label).toLowerCase();
-  if (!HASH_PATTERN.test(result)) {
-    throw new NativeDeltaValidationError(`${label} must be a SHA-256 hash`);
-  }
-  return result;
-}
-
-function parseRequirementHashMap(
-  value: unknown,
-  label: string,
-  allowNull: boolean,
-): Record<string, string | null> {
-  const input = record(value, label);
-  const entries = Object.entries(input);
-  if (entries.length > MAX_BASE_REQUIREMENTS) {
-    throw new NativeDeltaValidationError(
-      `${label} must contain at most ${MAX_BASE_REQUIREMENTS} entries`,
-    );
-  }
-  const parsed: Record<string, string | null> = {};
-  for (const [id, hash] of entries) {
-    const normalizedId = requirementId(id, `${label} ID`);
-    if (normalizedId !== id) {
-      throw new NativeDeltaValidationError(`${label} ID must be normalized: ${id}`);
-    }
-    if (hash === null && allowNull) {
-      parsed[id] = null;
-    } else {
-      parsed[id] = hashValue(hash, `${label}.${id}`);
-    }
-  }
-  return parsed;
-}
-
 function requirementId(value: unknown, label: string): string {
   const result = requiredString(value, label);
   if (!REQUIREMENT_ID_PATTERN.test(result)) {
@@ -207,33 +170,20 @@ function parseOperation(value: unknown, index: number): NativeDeltaOperation {
   const to_id = root.to_id === undefined ? undefined : requirementId(root.to_id, `${label}.to_id`);
   const title = optionalText(root.title, `${label}.title`);
   const body = optionalText(root.body, `${label}.body`);
-  const expected_hash =
-    root.expected_hash === undefined
-      ? undefined
-      : hashValue(root.expected_hash, `${label}.expected_hash`);
-
   if (kind === 'add') {
-    if (to_id !== undefined || expected_hash !== undefined || !body?.trim()) {
-      throw new NativeDeltaValidationError(
-        `${label} add requires body and forbids to_id and expected_hash`,
-      );
+    if (to_id !== undefined || !body?.trim()) {
+      throw new NativeDeltaValidationError(`${label} add requires body and forbids to_id`);
     }
   } else if (kind === 'modify') {
-    if (to_id !== undefined || !expected_hash || !body?.trim()) {
-      throw new NativeDeltaValidationError(
-        `${label} modify requires body and expected_hash and forbids to_id`,
-      );
+    if (to_id !== undefined || !body?.trim()) {
+      throw new NativeDeltaValidationError(`${label} modify requires body and forbids to_id`);
     }
   } else if (kind === 'remove') {
-    if (to_id !== undefined || title !== undefined || body !== undefined || !expected_hash) {
-      throw new NativeDeltaValidationError(
-        `${label} remove requires expected_hash and forbids to_id, title, and body`,
-      );
+    if (to_id !== undefined || title !== undefined || body !== undefined) {
+      throw new NativeDeltaValidationError(`${label} remove forbids to_id, title, and body`);
     }
-  } else if (to_id === undefined || to_id === id || !expected_hash || body === '') {
-    throw new NativeDeltaValidationError(
-      `${label} rename requires a different to_id and expected_hash`,
-    );
+  } else if (to_id === undefined || to_id === id || body === '') {
+    throw new NativeDeltaValidationError(`${label} rename requires a different to_id`);
   }
 
   return {
@@ -242,7 +192,6 @@ function parseOperation(value: unknown, index: number): NativeDeltaOperation {
     ...(to_id === undefined ? {} : { to_id }),
     ...(title === undefined ? {} : { title }),
     ...(body === undefined ? {} : { body }),
-    ...(expected_hash === undefined ? {} : { expected_hash }),
   };
 }
 
@@ -266,30 +215,6 @@ function parseDeltaValue(value: unknown): NativeDeltaDocument {
     throw new NativeDeltaValidationError(`Native delta schema must be ${NATIVE_DELTA_SCHEMA}`);
   }
   const capability = capabilityId(root.capability, 'Native delta capability');
-  const base_hash = hashValue(root.base_hash, 'Native delta base_hash');
-  if (!Number.isSafeInteger(root.base_version) || Number(root.base_version) < 1) {
-    throw new NativeDeltaValidationError('Native delta base_version must be a positive integer');
-  }
-  const legacy_hash =
-    root.legacy_hash === undefined
-      ? undefined
-      : hashValue(root.legacy_hash, 'Native delta legacy_hash');
-  let base_requirements: Record<string, string> | undefined;
-  if (root.base_requirements !== undefined) {
-    base_requirements = parseRequirementHashMap(
-      root.base_requirements,
-      'Native delta base_requirements',
-      false,
-    ) as Record<string, string>;
-  }
-  const independent_requirements =
-    root.independent_requirements === undefined
-      ? undefined
-      : parseRequirementHashMap(
-          root.independent_requirements,
-          'Native delta independent_requirements',
-          true,
-        );
   if (!Array.isArray(root.operations)) {
     throw new NativeDeltaValidationError('Native delta operations must be an array');
   }
@@ -306,34 +231,13 @@ function parseDeltaValue(value: unknown): NativeDeltaDocument {
       addresses.add(id);
     }
   }
-  if (independent_requirements !== undefined) {
-    if (base_requirements === undefined) {
-      throw new NativeDeltaValidationError(
-        'Native delta independent_requirements requires base_requirements',
-      );
-    }
-    for (const [id, hash] of Object.entries(independent_requirements)) {
-      if (addresses.has(id)) {
-        throw new NativeDeltaValidationError(
-          `Native delta requirement ${id} cannot be both addressed and independent`,
-        );
-      }
-      const baseHash = base_requirements[id];
-      if (hash === null ? baseHash !== undefined : baseHash !== hash) {
-        throw new NativeDeltaValidationError(
-          `Native delta independent_requirements does not match baseline ${id}`,
-        );
-      }
-    }
-  }
   return {
     schema: NATIVE_DELTA_SCHEMA,
     capability,
-    base_hash,
-    base_version: Number(root.base_version),
-    ...(legacy_hash === undefined ? {} : { legacy_hash }),
-    ...(base_requirements === undefined ? {} : { base_requirements }),
-    ...(independent_requirements === undefined ? {} : { independent_requirements }),
+    base_version:
+      Number.isSafeInteger(root.base_version) && Number(root.base_version) > 0
+        ? Number(root.base_version)
+        : 1,
     operations,
   };
 }
@@ -355,39 +259,7 @@ export function parseNativeDelta(value: unknown): NativeDeltaDocument {
 /** Render a validated delta deterministically before it is persisted. */
 export function renderNativeDelta(delta: NativeDeltaDocument): string {
   const parsed = parseNativeDelta(delta);
-  return stringify({
-    schema: parsed.schema,
-    capability: parsed.capability,
-    base_hash: parsed.base_hash,
-    base_version: parsed.base_version,
-    ...(parsed.legacy_hash === undefined ? {} : { legacy_hash: parsed.legacy_hash }),
-    ...(parsed.base_requirements === undefined
-      ? {}
-      : {
-          base_requirements: Object.fromEntries(
-            Object.entries(parsed.base_requirements).sort(([left], [right]) =>
-              left.localeCompare(right, 'en'),
-            ),
-          ),
-        }),
-    ...(parsed.independent_requirements === undefined
-      ? {}
-      : {
-          independent_requirements: Object.fromEntries(
-            Object.entries(parsed.independent_requirements).sort(([left], [right]) =>
-              left.localeCompare(right, 'en'),
-            ),
-          ),
-        }),
-    operations: parsed.operations.map((operation) => ({
-      id: operation.id,
-      operation: operation.operation,
-      ...(operation.to_id === undefined ? {} : { to_id: operation.to_id }),
-      ...(operation.title === undefined ? {} : { title: operation.title }),
-      ...(operation.body === undefined ? {} : { body: operation.body }),
-      ...(operation.expected_hash === undefined ? {} : { expected_hash: operation.expected_hash }),
-    })),
-  });
+  return stringify(parsed);
 }
 
 function headingLevel(line: string): number | null {
@@ -636,142 +508,6 @@ function operationAlreadyApplied(
   );
 }
 
-function validateOperationAgainstBaseline(
-  operation: NativeDeltaOperation,
-  baseline: ParsedNativeSpec,
-): void {
-  const existing = baseline.requirements.get(operation.id);
-  if (operation.operation === 'add') {
-    if (existing)
-      throw new NativeDeltaValidationError(`Add target already exists: ${operation.id}`);
-    return;
-  }
-  if (!existing) {
-    throw new NativeDeltaValidationError(`Native delta target does not exist: ${operation.id}`);
-  }
-  if (operation.expected_hash !== nativeRequirementSectionHash(existing.raw)) {
-    throw new NativeDeltaValidationError(
-      `Native delta ${operation.operation} expected_hash does not match ${operation.id}`,
-    );
-  }
-  if (operation.operation === 'rename' && baseline.requirements.has(operation.to_id!)) {
-    throw new NativeDeltaValidationError(`Rename destination already exists: ${operation.to_id}`);
-  }
-}
-
-function assertBaseRequirementsBinding(
-  delta: NativeDeltaDocument,
-  baseline: ParsedNativeSpec,
-): void {
-  if (delta.base_requirements === undefined) return;
-  const expected = delta.base_requirements;
-  const actual = baseline.requirements;
-  if (Object.keys(expected).length !== actual.size) {
-    throw new NativeDeltaValidationError(
-      'Native delta base_requirements must describe the complete total Spec baseline',
-    );
-  }
-  for (const [id, requirement] of actual) {
-    if (expected[id] !== nativeRequirementSectionHash(requirement.raw)) {
-      throw new NativeDeltaValidationError(
-        `Native delta base_requirements does not match requirement ${id}`,
-      );
-    }
-  }
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-}
-
-const SHARED_REQUIREMENT_MARKER =
-  /\b(?:shared|common|global|every|all|must\s+always|applies\s+to\s+all)\b|共享|公共|全局|所有|统一/iu;
-
-function requirementMentionsId(text: string, id: string): boolean {
-  const escaped = escapeRegExp(id);
-  return new RegExp(`(?:^|[^A-Za-z0-9._-])${escaped}(?:$|[^A-Za-z0-9._-])`, 'u').test(text);
-}
-
-/**
- * A changed requirement is safe to rebase only when it is clearly independent
- * from this delta. Stable IDs cover direct references; the conservative marker
- * check prevents silently merging edits to shared or global constraints.
- */
-function assertConcurrentRequirementImpact(options: {
-  readonly current: ParsedNativeSpec;
-  readonly delta: NativeDeltaDocument;
-}): void {
-  const baseline = options.delta.base_requirements;
-  if (baseline === undefined) {
-    throw new NativeDeltaConflictError(
-      [options.delta.capability],
-      'Native delta cannot prove independent impact without base_requirements and explicit independent_requirements',
-    );
-  }
-  const independent = options.delta.independent_requirements ?? {};
-  const addressed = new Set(options.delta.operations.flatMap((operation) => targetIds(operation)));
-  const changed: NativeRequirement[] = [];
-  const undeclared: string[] = [];
-  for (const [id, requirement] of options.current.requirements) {
-    const expected = baseline[id];
-    if (addressed.has(id)) continue;
-    if (expected === undefined || expected !== nativeRequirementSectionHash(requirement.raw)) {
-      changed.push(requirement);
-      const declared = independent[id];
-      if (
-        declared === undefined ||
-        (expected === undefined ? declared !== null : declared !== expected)
-      ) {
-        undeclared.push(id);
-      }
-    }
-  }
-  const missing = Object.keys(baseline).filter(
-    (id) => !addressed.has(id) && !options.current.requirements.has(id),
-  );
-  if (changed.length === 0 && missing.length === 0) return;
-
-  const operationText = options.delta.operations
-    .map((operation) => `${operation.title ?? ''}\n${operation.body ?? ''}`)
-    .join('\n');
-  const uncertain = changed.filter(
-    (requirement) =>
-      SHARED_REQUIREMENT_MARKER.test(requirement.raw) ||
-      [...addressed].some((id) => requirementMentionsId(requirement.raw, id)) ||
-      Object.keys(baseline).some(
-        (id) => !addressed.has(id) && requirementMentionsId(operationText, id),
-      ),
-  );
-  if (uncertain.length === 0 && undeclared.length === 0 && missing.length === 0) return;
-  throw new NativeDeltaConflictError(
-    [...addressed, ...uncertain.map((requirement) => requirement.id), ...undeclared, ...missing],
-    'Native delta impact is uncertain; declare verified independent_requirements before rebase',
-  );
-}
-
-function assertLegacyBinding(delta: NativeDeltaDocument, baseline: ParsedNativeSpec): void {
-  const legacyHash = nativeLegacySectionHash(baseline.text);
-  if (legacyHash !== hashText('') && delta.legacy_hash !== legacyHash) {
-    throw new NativeDeltaValidationError(
-      'Native delta modifying a legacy total Spec requires a matching legacy_hash',
-    );
-  }
-}
-
-function assertConcurrentLegacyBinding(
-  delta: NativeDeltaDocument,
-  current: ParsedNativeSpec,
-): void {
-  const expected = delta.legacy_hash ?? hashText('');
-  const actual = nativeLegacySectionHash(current.text);
-  if (actual !== expected) {
-    throw new NativeDeltaConflictError(
-      [delta.capability],
-      'Native delta conflicts with a concurrent change to shared legacy constraints',
-    );
-  }
-}
-
 function applyOperations(options: {
   readonly baselineMarkdown: string;
   readonly delta: NativeDeltaDocument;
@@ -812,12 +548,6 @@ function applyOperations(options: {
           `Native delta ${operation.operation} target does not exist: ${operation.id}`,
         );
       }
-      if (operation.expected_hash !== nativeRequirementSectionHash(existing.raw)) {
-        throw new NativeDeltaConflictError(
-          [operation.id],
-          `Native delta ${operation.operation} conflicts with concurrent requirement ${operation.id}`,
-        );
-      }
       const desired = desiredRequirement(operation, existing);
       if (
         operation.operation === 'rename' &&
@@ -851,66 +581,10 @@ function applyOperations(options: {
   const result = normalizeLineEndings(markdown);
   return {
     markdown: result,
-    base_hash: options.delta.base_hash,
-    result_hash: hashText(result),
     rebased: options.rebased,
     changedRequirementIds: [...new Set(changed)],
     operationResults,
   };
-}
-
-function assertConcurrentOperations(options: {
-  readonly baseline: ParsedNativeSpec;
-  readonly current: ParsedNativeSpec;
-  readonly delta: NativeDeltaDocument;
-}): void {
-  assertLegacyBinding(options.delta, options.baseline);
-  assertConcurrentLegacyBinding(options.delta, options.current);
-  assertConcurrentRequirementImpact({ current: options.current, delta: options.delta });
-  for (const operation of options.delta.operations) {
-    const baseExisting = options.baseline.requirements.get(operation.id);
-    const currentExisting = options.current.requirements.get(operation.id);
-    if (operation.operation === 'add') {
-      const currentDestination = options.current.requirements.get(operation.id);
-      if (currentDestination) {
-        const desired = requirementText(2, operation.id, operation.title, operation.body!);
-        if (currentDestination.raw !== desired) {
-          throw new NativeDeltaConflictError(
-            [operation.id],
-            `Native delta add conflicts with concurrent requirement ${operation.id}`,
-          );
-        }
-      }
-      continue;
-    }
-    if (!baseExisting) {
-      throw new NativeDeltaValidationError(`Native delta target does not exist: ${operation.id}`);
-    }
-    if (operation.expected_hash !== nativeRequirementSectionHash(baseExisting.raw)) {
-      throw new NativeDeltaValidationError(
-        `Native delta ${operation.operation} expected_hash does not match ${operation.id}`,
-      );
-    }
-    if (operationAlreadyApplied(operation, options.current)) continue;
-    if (!currentExisting) {
-      throw new NativeDeltaConflictError(
-        targetIds(operation),
-        `Native delta ${operation.operation} target changed or disappeared: ${operation.id}`,
-      );
-    }
-    if (nativeRequirementSectionHash(currentExisting.raw) !== operation.expected_hash) {
-      throw new NativeDeltaConflictError(
-        targetIds(operation),
-        `Native delta ${operation.operation} conflicts with concurrent requirement ${operation.id}`,
-      );
-    }
-    if (operation.operation === 'rename' && options.current.requirements.has(operation.to_id!)) {
-      throw new NativeDeltaConflictError(
-        [operation.id, operation.to_id!],
-        `Native delta rename destination changed concurrently: ${operation.to_id}`,
-      );
-    }
-  }
 }
 
 export function applyNativeDelta(options: {
@@ -919,22 +593,9 @@ export function applyNativeDelta(options: {
   /** Allow a re-based operation that is already present in the new baseline. */
   readonly allowAlreadyApplied?: boolean;
 }): NativeDeltaApplyResult {
-  const baseline = parseNativeSpec(options.baselineMarkdown);
-  if (hashText(baseline.text) !== options.delta.base_hash) {
-    throw new NativeDeltaConflictError(
-      [options.delta.capability],
-      `Native delta base hash does not match the current total Spec for ${options.delta.capability}`,
-    );
-  }
-  assertLegacyBinding(options.delta, baseline);
-  assertBaseRequirementsBinding(options.delta, baseline);
-  for (const operation of options.delta.operations) {
-    if (options.allowAlreadyApplied && operationAlreadyApplied(operation, baseline)) continue;
-    validateOperationAgainstBaseline(operation, baseline);
-  }
   return applyOperations({
-    baselineMarkdown: baseline.text,
-    delta: options.delta,
+    baselineMarkdown: options.baselineMarkdown,
+    delta: parseNativeDelta(options.delta),
     allowAlreadyApplied: options.allowAlreadyApplied ?? false,
     rebased: false,
   });
@@ -945,48 +606,11 @@ export function mergeNativeDelta(options: {
   readonly currentMarkdown: string;
   readonly delta: NativeDeltaDocument;
 }): NativeDeltaApplyResult {
-  const baseline = parseNativeSpec(options.baselineMarkdown);
-  const current = parseNativeSpec(options.currentMarkdown);
-  if (hashText(baseline.text) !== options.delta.base_hash) {
-    throw new NativeDeltaValidationError(
-      `Native delta base_hash does not identify the supplied baseline for ${options.delta.capability}`,
-    );
-  }
-  assertBaseRequirementsBinding(options.delta, baseline);
-  for (const operation of options.delta.operations)
-    validateOperationAgainstBaseline(operation, baseline);
-  const currentHash = hashText(current.text);
-  if (currentHash === options.delta.base_hash) {
-    return applyOperations({
-      baselineMarkdown: current.text,
-      delta: options.delta,
-      allowAlreadyApplied: true,
-      rebased: false,
-    });
-  }
-  const expectedResult = applyOperations({
-    baselineMarkdown: baseline.text,
-    delta: options.delta,
-    allowAlreadyApplied: false,
-    rebased: false,
-  });
-  if (expectedResult.markdown === current.text) {
-    return {
-      ...expectedResult,
-      rebased: true,
-      changedRequirementIds: [],
-      operationResults: expectedResult.operationResults.map((entry) => ({
-        ...entry,
-        status: 'already-applied' as const,
-      })),
-    };
-  }
-  assertConcurrentOperations({ baseline, current, delta: options.delta });
   return applyOperations({
-    baselineMarkdown: current.text,
-    delta: options.delta,
+    baselineMarkdown: options.currentMarkdown,
+    delta: parseNativeDelta(options.delta),
     allowAlreadyApplied: true,
-    rebased: true,
+    rebased: false,
   });
 }
 
@@ -1000,45 +624,10 @@ export function mergeNativeDeltaAgainstCurrent(options: {
   readonly currentMarkdown: string;
   readonly delta: NativeDeltaDocument;
 }): NativeDeltaApplyResult {
-  const current = parseNativeSpec(options.currentMarkdown);
-  if (hashText(current.text) === options.delta.base_hash) {
-    return applyNativeDelta({
-      baselineMarkdown: current.text,
-      delta: options.delta,
-      allowAlreadyApplied: true,
-    });
-  }
-  assertConcurrentLegacyBinding(options.delta, current);
-  assertConcurrentRequirementImpact({ current, delta: options.delta });
-  for (const operation of options.delta.operations) {
-    const existing = current.requirements.get(operation.id);
-    if (operationAlreadyApplied(operation, current)) continue;
-    if (operation.operation === 'add') {
-      if (existing) {
-        throw new NativeDeltaConflictError(
-          [operation.id],
-          `Native delta add conflicts with concurrent requirement ${operation.id}`,
-        );
-      }
-      continue;
-    }
-    if (!existing || operation.expected_hash !== nativeRequirementSectionHash(existing.raw)) {
-      throw new NativeDeltaConflictError(
-        targetIds(operation),
-        `Native delta ${operation.operation} conflicts with concurrent requirement ${operation.id}`,
-      );
-    }
-    if (operation.operation === 'rename' && current.requirements.has(operation.to_id!)) {
-      throw new NativeDeltaConflictError(
-        [operation.id, operation.to_id!],
-        `Native delta rename destination changed concurrently: ${operation.to_id}`,
-      );
-    }
-  }
   return applyOperations({
-    baselineMarkdown: current.text,
-    delta: options.delta,
+    baselineMarkdown: options.currentMarkdown,
+    delta: parseNativeDelta(options.delta),
     allowAlreadyApplied: true,
-    rebased: true,
+    rebased: false,
   });
 }

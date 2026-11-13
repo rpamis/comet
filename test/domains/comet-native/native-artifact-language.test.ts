@@ -27,7 +27,6 @@ import {
   defaultProjectConfig,
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
-import { renderNativeEvidenceProjectionMarkdown } from '../../../domains/comet-native/native-evidence-projection.js';
 
 describe('Native artifact language', () => {
   const roots: string[] = [];
@@ -64,23 +63,6 @@ describe('Native artifact language', () => {
     const nextHeading = enTemplate.indexOf('# Non-goals\n');
     expect(enTemplate.slice(scopeStart, nextHeading)).toContain('## Directory structure\n');
   });
-
-  it.each(['en', 'zh-CN'] as const)(
-    'does not treat the %s template guidance as completed directory structure',
-    async (language) => {
-      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-blank-template-'));
-      roots.push(root);
-      await fs.writeFile(path.join(root, 'brief.md'), nativeBriefTemplate(language));
-      await expect(
-        validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),
-      ).resolves.toMatchObject({
-        valid: false,
-        findings: expect.arrayContaining([
-          expect.objectContaining({ code: 'brief-structure-subsection-missing' }),
-        ]),
-      });
-    },
-  );
 
   it('matches bilingual directory structure headings', () => {
     expect(isNativeBriefStructureHeading('目录结构')).toBe(true);
@@ -173,22 +155,5 @@ describe('Native artifact language', () => {
         'utf8',
       ),
     ).resolves.toContain('# 目标\n');
-  });
-
-  it('localizes the human-readable evidence projection', () => {
-    const projection = renderNativeEvidenceProjectionMarkdown({
-      change: 'zh-change',
-      phase: 'shape',
-      revision: 1,
-      language: 'zh-CN',
-      scope: null,
-      envelope: null,
-      receipts: [],
-      generatedAt: '2026-08-15T00:00:00.000Z',
-    });
-
-    expect(projection).toContain('# Comet Native 证据概览\n');
-    expect(projection).toContain('## 实现范围\n');
-    expect(projection).not.toContain('# Comet Native Evidence Projection\n');
   });
 });

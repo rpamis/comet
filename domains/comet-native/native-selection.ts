@@ -9,7 +9,7 @@ import {
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
 import { assertNativeName, readNativeChange } from './native-change.js';
 import { assertNoPendingNativeRootMove } from './native-config.js';
-import { withNativeMutationLock } from './native-mutation-lock.js';
+import { withNativeMutation } from './native-mutation.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import type { NativeProjectPaths } from './native-types.js';
 import { isNativePortableChange, readNativePortableChange } from './native-portable-runtime.js';
@@ -18,9 +18,9 @@ import { createFileRuntimeStore, createRuntime, type WorkflowRun } from '../engi
 import {
   loadWorkflowApplication,
   resolveWorkflowApplicationFile,
-} from '../workflow-application/index.js';
+} from '../workflow-application/application.js';
 
-export const NATIVE_SELECTION_MAX_BYTES = 16 * 1024;
+export const NATIVE_SELECTION_MAX_BYTES = Number.MAX_SAFE_INTEGER;
 
 export async function readNativeSelectionRecord(
   paths: NativeProjectPaths,
@@ -61,6 +61,7 @@ async function assertNativeChangeSelectable(
       : createRuntime({
           workflows: [],
           store: createFileRuntimeStore<WorkflowRun>({
+            singleWriter: true,
             rootDir: path.join(paths.workspaceRuntimeRoot, 'sdk-runs/native'),
           }),
         });
@@ -76,7 +77,7 @@ async function assertNativeChangeSelectable(
 }
 
 export async function selectNativeChange(paths: NativeProjectPaths, name: string): Promise<void> {
-  return withNativeMutationLock(paths, `select change ${name}`, async () => {
+  return withNativeMutation(paths, async () => {
     assertNativeName(name);
     await assertNativeChangeSelectable(paths, name);
     const owner = await readSdkChangeOwner(paths.projectRoot, 'native', name);
@@ -100,9 +101,7 @@ export async function resolveSelectedNativeChange(
 }
 
 export async function clearNativeSelection(paths: NativeProjectPaths): Promise<void> {
-  return withNativeMutationLock(paths, 'clear change selection', () =>
-    clearNativeSelectionLocked(paths),
-  );
+  return withNativeMutation(paths, () => clearNativeSelectionLocked(paths));
 }
 
 export async function clearNativeSelectionLocked(paths: NativeProjectPaths): Promise<void> {
@@ -117,9 +116,7 @@ export async function clearNativeSelectionIf(
   paths: NativeProjectPaths,
   name: string,
 ): Promise<boolean> {
-  return withNativeMutationLock(paths, `clear selection for ${name}`, () =>
-    clearNativeSelectionIfLocked(paths, name),
-  );
+  return withNativeMutation(paths, () => clearNativeSelectionIfLocked(paths, name));
 }
 
 export async function clearNativeSelectionIfLocked(

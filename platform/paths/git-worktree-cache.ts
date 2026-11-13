@@ -6,6 +6,7 @@ import path from 'node:path';
 export async function gitWorktreeMetadataStamp(
   projectPath: string,
   configPaths: readonly string[],
+  options: { localOnly?: boolean } = {},
 ): Promise<string | null> {
   try {
     const parts: string[] = [];
@@ -72,6 +73,7 @@ export async function gitWorktreeMetadataStamp(
     ])
       await file(target);
     const registry = path.join(common, 'worktrees');
+    if (options.localOnly) return createHash('sha256').update(JSON.stringify(parts)).digest('hex');
     if ((await file(registry)) !== null) return null;
     let names: string[];
     try {

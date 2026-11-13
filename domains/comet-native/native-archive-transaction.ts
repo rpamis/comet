@@ -21,6 +21,8 @@ import {
   parseNativeArchiveTransactionJournalV2,
   readNativeTransactionEvents,
   resolveNativeTransactionPaths,
+  resolveNativeTransactionReference,
+  retireNativeTransaction,
   type NativeArchiveTransactionJournalV2,
   type NativeArchiveTransactionOperationV2,
 } from './native-transaction.js';
@@ -89,6 +91,8 @@ interface NativeArchiveCasRecord {
 }
 
 function resolveRefLexically(paths: NativeProjectPaths, ref: string): string {
+  const historical = resolveNativeTransactionReference(paths, ref);
+  if (historical) return historical;
   const runtimePrefix = 'runtime/';
   const runtimeRef = ref.startsWith(runtimePrefix);
   const root = runtimeRef ? paths.runtimeDir : paths.nativeRoot;
@@ -172,6 +176,8 @@ async function setStatus(
   const updated = parseNativeArchiveTransactionJournalV2({ ...journal, status });
   const tx = await resolveNativeTransactionPaths(paths, updated.id);
   await atomicWriteJson(tx.journal, updated, { containedRoot: paths.runtimeDir });
+  if (status === 'committed' || status === 'rolled-back')
+    await retireNativeTransaction(paths, journal.id);
   return updated;
 }
 

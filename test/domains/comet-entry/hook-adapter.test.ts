@@ -85,6 +85,21 @@ const PLATFORM_FIXTURES = [
 ] as const;
 
 describe('Comet Hook platform adapter', () => {
+  it('reads native Codex apply_patch commands without interpreting shell commands as patches', () => {
+    const patch = '*** Begin Patch\n*** Add File: src/new.ts\n+fixture\n*** End Patch';
+    for (const tool_input of [{ command: patch }, JSON.stringify({ command: patch })]) {
+      expect(
+        parseCometHookRequest(JSON.stringify({ tool_name: 'apply_patch', tool_input })),
+      ).toMatchObject({
+        intent: 'write',
+        targets: ['src/new.ts'],
+        writes: [{ path: 'src/new.ts', patch }],
+      });
+    }
+    expect(
+      parseCometHookRequest(JSON.stringify({ tool_name: 'Bash', tool_input: { command: patch } })),
+    ).toMatchObject({ intent: 'unknown', targets: [] });
+  });
   it('ignores non-file resource targets without discarding real files in the same event', () => {
     const file = path.resolve('src/new-file.ts');
     expect(

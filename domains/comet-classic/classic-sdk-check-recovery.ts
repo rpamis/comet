@@ -1,21 +1,6 @@
-import { resolveClassicCheckTimeout } from './classic-project-config.js';
 import { isClassicSdkRejectedBuildProposal } from './classic-build-configuration.js';
 import path from 'node:path';
-import {
-  hashRuntimeValue,
-  portableClaimToken,
-  type RuntimeValue,
-  type WorkflowRun,
-} from '../engine/runtime.js';
-import { classicProjectTargetExists } from './classic-protected-path.js';
-import { classicSdkCheckCommand } from './classic-sdk-check.js';
-import {
-  classicSdkCheckRecordRef,
-  classicSdkCheckDirectoryRef,
-  assertClassicSdkCheckReceipt,
-  readClassicSdkCheckRecoveryRecord,
-} from './classic-sdk-check-record.js';
-
+import { type WorkflowRun } from '../engine/runtime.js';
 /** 只读诊断；恢复请求仍须由 Runtime 校验原 claim、版本和检查证据。 */
 export async function inspectClassicSdkActionRecovery(projectRoot: string, run: WorkflowRun) {
   const action = run.actions.find((entry) => ['running', 'unknown'].includes(entry.status));
@@ -41,7 +26,13 @@ export async function inspectClassicSdkActionRecovery(projectRoot: string, run: 
         'comet',
         'state',
         'propose-build',
-        String((run.input as { change: string }).change),
+        String(
+          (
+            run.input as {
+              change: string;
+            }
+          ).change,
+        ),
         '--file',
         '<configuration-json>',
         '--json',
@@ -50,113 +41,21 @@ export async function inspectClassicSdkActionRecovery(projectRoot: string, run: 
       inspectRequest: { operation: 'inspect', runId: run.runId },
     };
   }
-  const isCheck = action.type === 'call_tool' && action.ref === 'classic-check';
-  const input = run.input as { changeDir?: string } | null;
-  const evidenceDirectory = input?.changeDir ? classicSdkCheckDirectoryRef(run) : null;
-  let recordRef = isCheck && action.claim ? classicSdkCheckRecordRef(run, action) : null;
-  let record: Record<string, unknown> | null = null;
-  let recordProblem: string | null = null;
-  if (recordRef) {
-    try {
-      const recovered = await readClassicSdkCheckRecoveryRecord(projectRoot, run, action);
-      if (recovered) {
-        recordRef = recovered.ref;
-        const value = recovered.value as Record<string, unknown> & {
-          status: string;
-          claim: { token: string };
-          command: { argv: unknown; cwd: string; timeoutMs: number };
-          result: { status: 'succeeded' | 'failed'; output: Record<string, RuntimeValue> };
-        };
-        if (
-          value?.schema !== 'comet.classic-sdk-check.v1' ||
-          value.runId !== run.runId ||
-          value.actionId !== action.id ||
-          value.attempt !== action.attempt ||
-          value.inputHash !== action.inputHash ||
-          hashRuntimeValue({
-            ...value.claim,
-            token: portableClaimToken(value.claim?.token ?? ''),
-          }) !==
-            hashRuntimeValue({
-              ...action.claim,
-              token: portableClaimToken(action.claim?.token ?? ''),
-            }) ||
-          !['started', 'completed', 'stop-unconfirmed'].includes(value.status) ||
-          (value.status === 'stop-unconfirmed' && value.stopConfirmed !== false) ||
-          !Array.isArray(value.command?.argv) ||
-          value.command.argv.length === 0 ||
-          value.command.argv.some((argument: unknown) => typeof argument !== 'string') ||
-          typeof value.command.cwd !== 'string' ||
-          !Number.isInteger(value.command.timeoutMs) ||
-          (value.status === 'completed' &&
-            (!['succeeded', 'failed'].includes(value.result?.status) ||
-              !value.result.output ||
-              typeof value.result.output !== 'object' ||
-              Array.isArray(value.result.output) ||
-              hashRuntimeValue(value.result.output.argv) !== hashRuntimeValue(value.command.argv) ||
-              value.result.output.cwd !== value.command.cwd ||
-              value.result.output.timeoutMs !== value.command.timeoutMs ||
-              value.result.output.receiptRef !== value.receiptRef))
-        )
-          throw new Error('Classic check recovery record does not match the original claim');
-        if (value.status === 'completed')
-          await assertClassicSdkCheckReceipt(projectRoot, run, action, value.result);
-        record = value;
-      }
-    } catch (error) {
-      recordProblem = error instanceof Error ? error.message : String(error);
-    }
-  }
-  let command: unknown = record?.command ?? null;
-  if (isCheck && !command) {
-    try {
-      const fixed = classicSdkCheckCommand(run, action, projectRoot);
-      command = {
-        argv: fixed.argv,
-        cwd: fixed.cwd ?? '.',
-        timeoutMs: await resolveClassicCheckTimeout(projectRoot, fixed.timeoutMs),
-      };
-    } catch {
-      // 旧 CLI 在执行前未保存 argv；如实报告缺失，不能从上轮检查猜测。
-    }
-  }
-  const locations = await Promise.all(
-    ['receiptRef', 'manifestRef'].map(async (key) => {
-      const ref = record?.[key];
-      if (typeof ref !== 'string') return [key, null] as const;
-      try {
-        return [
-          key,
-          {
-            ref,
-            exists: await classicProjectTargetExists(projectRoot, ref, {
-              label: 'Classic check evidence',
-              expected: 'file',
-            }),
-          },
-        ] as const;
-      } catch (error) {
-        return [
-          key,
-          { ref, exists: false, problem: error instanceof Error ? error.message : String(error) },
-        ] as const;
-      }
-    }),
-  );
   const original = { actionId: action.id, attempt: action.attempt, inputHash: action.inputHash };
-  const application = run.workflow.id.replace('comet-classic-', 'classic-');
   const requestBase = { runId: run.runId, expectedRevision: run.revision };
-  const completed =
-    record?.status === 'completed' && record.result && action.claim
-      ? (record.result as { status: 'succeeded' | 'failed'; output: unknown })
-      : null;
   const interruptedBuilder =
     action.type === 'invoke_skill' &&
     action.status === 'unknown' &&
-    action.stepId === `${(run.state as { workflow?: string }).workflow}.build.execute` &&
+    action.stepId ===
+      (
+        run.state as {
+          workflow: string;
+        }
+      ).workflow +
+        '.build.execute' &&
     action.claim;
   return {
-    status: record?.status === 'stop-unconfirmed' ? 'stop-unconfirmed' : 'outcome-unknown',
+    status: 'outcome-unknown',
     blocked: true,
     action: {
       ...original,
@@ -166,47 +65,10 @@ export async function inspectClassicSdkActionRecovery(projectRoot: string, run: 
       retry: action.retry,
     },
     claim: action.claim ?? null,
-    command,
-    record: {
-      ref: recordRef,
-      status: record?.status ?? (recordProblem ? 'invalid' : 'missing'),
-      problem: recordProblem,
-    },
-    evidence: { directory: evidenceDirectory, ...Object.fromEntries(locations) },
     instructions: [
-      ...(record?.status === 'stop-unconfirmed'
-        ? [
-            '本次命令已执行，但进程树停止尚未确认。即使组长已退出，也必须核实所有后代进程停止；在此之前不得写入项目、提交失败结果解除阻塞或重跑检查。',
-            '若决定取消本次 Run，核实原执行及所有后代已停止后，填写 cancelRequestTemplate 中的真实停止证据，并通过 runtime dispatch 提交。仅取消调度而没有 stoppedActions 不能解除工作区占用；取消后须读取最新 revision 再提交停止确认。',
-          ]
-        : []),
-      '检查原执行器是否仍在运行，并核对本次 claim 对应的命令和记录；结果明确前不能继续或重新运行检查。',
-      completed
-        ? '已找到本次执行结果记录。核对命令、日志、输入快照与退出码后，使用 recordOutcomeRequest 回填原结果；之后仍需通过正常检查证据校验。'
-        : '未找到本次完整结果。日志、外部 marker 或进程结束本身不能证明检查通过；联系原执行器取回完整结果，不得编造成功收据。',
-      '只有已核实原尝试完全未执行时，才可先 mark-unknown，再重新读取当前 revision 并填写 retryRequestTemplate 的真实核对证据；已经执行或仍不明时不得声明 not-executed。',
-      ...(interruptedBuilder
-        ? [
-            '仅在核实原 Builder 和其执行的工作均已停止、已核对部分产物及外部副作用、且没有可信成功结果时，可填写 interruptedOutcomeRequestTemplate：记录实际停止事实与原领取令牌，回填失败后按最新状态继续 Build；不要删除或覆盖已有工作。',
-          ]
-        : []),
+      '通过 Agent 平台核对或等待原任务，沿用原领取提交实际结果；等待超时不能另派任务，也不能把未知结果记成通过。',
+      '平台负责执行的超时、取消和进程清理；Comet 仅保留业务任务和批准。',
     ],
-    dispatch: {
-      application,
-      projectRoot: path.resolve(projectRoot),
-      commandArgs: [
-        'comet',
-        'runtime',
-        'dispatch',
-        '--application',
-        application,
-        '--project-root',
-        path.resolve(projectRoot),
-        '--request',
-        '<request.json>',
-        '--json',
-      ],
-    },
     inspectRequest: { operation: 'inspect', runId: run.runId },
     ...(action.status === 'running'
       ? {
@@ -215,22 +77,7 @@ export async function inspectClassicSdkActionRecovery(projectRoot: string, run: 
             ...requestBase,
             actionId: action.id,
             attempt: action.attempt,
-            reason: '原执行器中断，正在核对本次执行结果',
-          },
-        }
-      : {}),
-    ...(completed
-      ? {
-          recordOutcomeRequest: {
-            operation: 'record-outcome',
-            ...requestBase,
-            outcome: {
-              ...original,
-              claimToken: action.claim!.token,
-              outcomeId: hashRuntimeValue({ recordRef, result: completed }),
-              status: completed.status,
-              output: completed.output,
-            },
+            reason: '平台无法取回原任务结果，正在核对实际工作',
           },
         }
       : {}),
@@ -244,41 +91,21 @@ export async function inspectClassicSdkActionRecovery(projectRoot: string, run: 
               claimToken: '<原领取令牌>',
               outcomeId: '<本次结果的唯一标识>',
               status: 'failed',
-              output: { summary: '<填写核实停止、部分产物和外部副作用的事实与来源>' },
+              output: { summary: '<填写平台任务状态、部分产物和外部副作用的实际核对结果>' },
             },
             context: { projectRoot: path.resolve(projectRoot) },
           },
         }
       : {}),
-    ...(record?.status === 'stop-unconfirmed' && action.claim
-      ? {
-          cancelRequestTemplate: {
-            operation: 'cancel',
-            ...requestBase,
-            reason: '取消已超时的检查及其 Run',
-            stoppedActions: [
-              {
-                ...original,
-                claimToken: action.claim.token,
-                evidence: '<填写核实原检查进程及所有后代已停止的事实和来源>',
-              },
-            ],
-          },
-        }
-      : {}),
-    ...(record?.status === 'stop-unconfirmed'
-      ? {}
-      : {
-          retryRequestTemplate: {
-            operation: 'retry',
-            ...requestBase,
-            actionId: action.id,
-            attempt: action.attempt,
-            reconciliation: {
-              resolution: 'not-executed',
-              evidence: { summary: '<填写证明原尝试完全未执行的核对结果和来源>' },
-            },
-          },
-        }),
+    retryRequestTemplate: {
+      operation: 'retry',
+      ...requestBase,
+      actionId: action.id,
+      attempt: action.attempt,
+      reconciliation: {
+        resolution: 'not-executed',
+        evidence: { summary: '<只有证实原任务从未执行时才能填写>' },
+      },
+    },
   };
 }

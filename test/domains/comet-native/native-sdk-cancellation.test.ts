@@ -1,3 +1,4 @@
+import '../../helpers/isolated-agent-home.js';
 import { nativeSdkApplicationForRun } from '../../../domains/comet-native/native-sdk-application.js';
 import { createRuntime, createFileRuntimeStore } from '../../../domains/engine/runtime.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
@@ -6,10 +7,7 @@ import {
   inspectNativeHookGuard,
   parseNativeHookRequest,
 } from '../../../domains/comet-native/native-hook-guard.js';
-import {
-  createNativeChange,
-  listActiveNativeChangesOwnedByWorkspace,
-} from '../../../domains/comet-native/native-change.js';
+import { listActiveNativeChangesOwnedByWorkspace } from '../../../domains/comet-native/native-change.js';
 import { createNativePortableChange } from '../../../domains/comet-native/native-portable-requirements.js';
 import { createNativeSdkChange } from '../../../domains/comet-native/native-sdk-create.js';
 import { isNativeSdkChangeCancellationComplete } from '../../../domains/comet-native/native-sdk-cancellation.js';
@@ -17,7 +15,7 @@ import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { prepareNativeApplication } from '../../helpers/native-application.js';
 import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
@@ -28,11 +26,12 @@ import {
   inspectNativeSdkRun,
 } from '../../../domains/comet-native/native-runtime-ownership.js';
 import { settleNativeSdkCancellation } from '../../../domains/comet-native/native-sdk-cancellation-cleanup.js';
+import * as selectionModule from '../../../domains/workflow-contract/current-selection.js';
 import { readCometCurrentSelection } from '../../../domains/workflow-contract/current-selection.js';
-import type { RuntimeStoppedAction } from '../../../domains/engine/runtime.js';
 
 const roots: string[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
@@ -83,10 +82,10 @@ async function fixture(stage: 'unstarted' | 'approval' | 'builder' = 'unstarted'
 }
 
 describe('Native cancellation lifecycle', () => {
-  it('keeps a cancelled claimed execution active until the original host proves it stopped', async () => {
+  it('cancels claimed Builder scheduling while retaining its original claim without process-stop receipts', async () => {
     const f = await fixture('builder');
-    const before = await f.runtime.inspect(f.name);
-    const action = before.actions.at(-1)!;
+    const before = await f.runtime.inspect(f.name),
+      action = before.actions.at(-1)!;
     const claimed = await f.runtime.claim({
       runId: f.name,
       actionId: action.id,
@@ -95,94 +94,64 @@ describe('Native cancellation lifecycle', () => {
       executorId: 'original-host',
       claimToken: 'retained-host-claim',
     });
-    await f.runtime.cancel({ runId: f.name, reason: 'Stop scheduling' });
-    expect(await isNativeSdkChangeCancellationComplete(f.root, f.name)).toBe(false);
+    const cancelled = await f.runtime.cancel({ runId: f.name, reason: 'Stop scheduling' });
+    expect(await isNativeSdkChangeCancellationComplete(f.root, f.name)).toBe(true);
     const store = createFileRuntimeStore({
       rootDir: path.join(resolveWorkspaceRuntimeRootSync(f.root), 'sdk-runs', 'native'),
     });
-    expect(await store.readDisposition(f.name)).toBe('active');
+    expect(await store.readDisposition(f.name)).toBe('closed');
+    const original = cancelled.actions.find((a) => a.id === action.id)!;
+    expect(original).toMatchObject({ status: 'cancelled', claim: claimed.actions.at(-1)!.claim });
+    expect(original.executionStop).toBeUndefined();
+    expect(original.cancellation?.evidence).toBeUndefined();
+    const status = await f.cli(['status', f.name]);
+    expect(status.data).toMatchObject({
+      status: 'cancelled',
+      cancellation: { quiescent: true, outstandingActions: [] },
+    });
+    expect(status.data.continuation.userCommunication.agentInstruction).toContain(
+      'does not certify process termination',
+    );
     for (const command of [
-      `comet native doctor ${f.name} --repair --json`,
-      'comet runtime dispatch --application native --request stop-confirmation.json',
-    ]) {
-      const request = parseNativeHookRequest(
-        JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
-      );
-      expect(await inspectNativeHookGuard(f.root, request, f.name)).toMatchObject({
-        allowed: true,
-      });
-    }
-
+      'comet native doctor ' + f.name + ' --repair --json',
+      'comet runtime dispatch --application native --request original-result.json',
+    ])
+      expect(
+        await inspectNativeHookGuard(
+          f.root,
+          parseNativeHookRequest(JSON.stringify({ tool_name: 'Bash', tool_input: { command } })),
+          f.name,
+        ),
+      ).toMatchObject({ allowed: true });
     expect(
       await inspectNativeHookGuard(f.root, { intent: 'write', targets: ['src/replacement.ts'] }),
-    ).toMatchObject({ allowed: false, reason: expect.stringContaining('cancelling') });
+    ).toMatchObject({ allowed: true });
     expect(
       await inspectNativeHookGuard(
         f.root,
         { intent: 'write', targets: ['src/replacement.ts'] },
         f.name,
       ),
-    ).toMatchObject({ allowed: false, reason: expect.stringContaining('cancelling') });
-
-    expect(await listActiveNativeHookChanges(f.root)).toEqual([
-      expect.objectContaining({ name: f.name }),
-    ]);
-    await f.runtime.cancel({
-      runId: f.name,
-      reason: 'Original host stopped',
-      stoppedActions: [
-        {
-          actionId: action.id,
-          attempt: action.attempt,
-          inputHash: action.inputHash,
-          claimToken: claimed.actions.at(-1)!.claim!.token,
-          evidence: 'The original execution and all of its child tasks stopped.',
-        },
-      ],
-    });
-    expect(await isNativeSdkChangeCancellationComplete(f.root, f.name)).toBe(true);
-    expect(await store.readDisposition(f.name)).toBe('closed');
+    ).toMatchObject({ allowed: true });
     expect(await listActiveNativeHookChanges(f.root)).toEqual([]);
   });
 
-  it('reports pending selection cleanup and the retained root lock age gate instead of declaring cancellation complete', async () => {
+  it('keeps failed selection cleanup visible until explicit repair and preserves the original cancelled Run', async () => {
     const f = await fixture('unstarted');
     const before = await f.runtime.inspect(f.name);
     const paths = await nativeProjectPaths(
       f.root,
       (before.input as { artifactRootRef: string }).artifactRootRef,
     );
-    await fs.mkdir(paths.locksDir, { recursive: true });
-    const lock = path.join(paths.locksDir, 'root-move.lock');
-    const owner = {
-      id: 'controlled-foreign-root',
-      pid: 2147483647,
-      hostname: 'controlled-foreign-host',
-      createdAt: new Date().toISOString(),
-      operation: 'Controlled root move interruption',
-    };
-    await fs.writeFile(lock, JSON.stringify(owner));
+    const release = vi
+      .spyOn(selectionModule, 'clearCometCurrentSelectionIf')
+      .mockRejectedValue(new Error('SIMULATED selection publication failure'));
     await expect(
-      f.runtime.cancel({ runId: f.name, reason: 'Cancel while root cleanup is blocked' }),
-    ).rejects.toThrow(/Native lock is already held/);
-    expect(await f.runtime.inspect(f.name)).toEqual(before);
-    // 旧版本可能已经提交取消；保留该故障恢复覆盖，而不是绕过新的提交前保护。
-    const application = nativeSdkApplicationForRun(before);
-    const legacy = createRuntime({
-      store: createFileRuntimeStore({
-        rootDir: path.join(resolveWorkspaceRuntimeRootSync(f.root), 'sdk-runs', 'native'),
-      }),
-      workflows: [application.workflow],
-      transitionHandlers: [application.transitionHandler],
-      validators: application.validators,
-      stateValidators: application.stateValidators,
-      commandValidators: application.commandValidators,
-    });
-    const cancelled = await legacy.cancel({
-      runId: f.name,
-      reason: 'Legacy committed cancellation',
-    });
-    await f.runtime.inspect(f.name);
+      f.runtime.cancel({ runId: f.name, reason: 'Cancel with failed selection publication' }),
+    ).rejects.toThrow(/current selection release remains pending/);
+    const cancelled = await f.runtime.inspect(f.name);
+    expect(cancelled.status).toBe('cancelled');
+    expect(cancelled.state).toEqual(before.state);
     await expect(
       settleNativeSdkCancellation({ projectRoot: f.root, run: cancelled }),
     ).rejects.toThrow(/current selection release remains pending/);
@@ -192,7 +161,6 @@ describe('Native cancellation lifecycle', () => {
       cancellation: {
         quiescent: true,
         cleanupRequired: true,
-        cleanup: { rootMoveLock: { status: 'unknown', owner, minimumUnknownOwnerAgeMs: 900000 } },
       },
       continuation: {
         disposition: 'blocked',
@@ -202,7 +170,7 @@ describe('Native cancellation lifecycle', () => {
     expect(await isNativeSdkChangeCancellationComplete(f.root, f.name)).toBe(false);
     for (const command of [
       `comet native doctor ${f.name} --repair --json`,
-      'comet runtime dispatch --application native --request stop-confirmation.json',
+      'comet runtime dispatch --application native --request original-result.json',
     ]) {
       const request = parseNativeHookRequest(
         JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
@@ -226,19 +194,16 @@ describe('Native cancellation lifecycle', () => {
     expect(await listActiveNativeHookChanges(f.root)).toEqual([
       expect.objectContaining({ name: f.name }),
     ]);
-    expect(status.data.cancellation.cleanup.rootMoveLock.remainingMs).toBeGreaterThan(850000);
     const doctor = await f.cli(['doctor', f.name]);
     expect(doctor.data.healthy).toBe(false);
     expect(
-      doctor.data.findings.some(
+      doctor.data.diagnostics.issues.some(
         (finding: { code: string }) => finding.code === 'sdk-cancellation-cleanup-pending',
       ),
       JSON.stringify(doctor.data),
     ).toBe(true);
-    expect(JSON.parse(await fs.readFile(lock, 'utf8'))).toEqual(owner);
-    // 受控假持有者自行释放它创建的锁；不是让 Runtime 绕过未知 owner 的保护。
-    await fs.unlink(lock);
-    // 锁已由原持有者释放，但选择清理尚未完成，三种创建入口都必须保留阻塞。
+    release.mockRestore();
+    // A failed selection write is repaired explicitly; the cancelled Run remains original.
     expect(await listActiveNativeChangesOwnedByWorkspace(paths)).toEqual([f.name]);
     const creation = {
       paths,
@@ -246,7 +211,7 @@ describe('Native cancellation lifecycle', () => {
       language: 'en' as const,
       workspaceBinding: { isolation: 'current' as const, changeBranch: null, targetBranch: null },
     };
-    for (const create of [createNativeSdkChange, createNativePortableChange, createNativeChange]) {
+    for (const create of [createNativeSdkChange, createNativePortableChange]) {
       await expect(create(creation)).rejects.toThrow(/active|workspace|isolation/i);
     }
     expect(await readCometCurrentSelection(f.root)).toMatchObject({
@@ -256,11 +221,9 @@ describe('Native cancellation lifecycle', () => {
     expect((await f.cli(['doctor', f.name, '--repair'])).exitCode).toBe(0);
     expect((await f.cli(['status', f.name])).data.status).toBe('cancelled');
     expect((await f.cli(['new', 'after-root-release'])).exitCode).toBe(0);
-    await fs.writeFile(lock, JSON.stringify(owner));
     expect((await f.cli(['next', f.name])).exitCode).toBe(0);
     expect((await f.cli(['doctor', f.name, '--repair'])).data.healthy).toBe(true);
-    expect((await f.cli(['doctor'])).data.healthy).toBe(false);
-    expect(JSON.parse(await fs.readFile(lock, 'utf8'))).toEqual(owner);
+    expect((await f.cli(['doctor'])).data.healthy).toBe(true);
     expect(await readCometCurrentSelection(f.root)).toMatchObject({
       status: 'selected',
       selection: { change: 'after-root-release' },
@@ -298,14 +261,21 @@ describe('Native cancellation lifecycle', () => {
         cancellation: { status: string };
         continuation: { disposition: string };
       };
-      expect(cli.data).toMatchObject(
-        result.response.status === 'succeeded' ? result.response.data : null,
-      );
+      if (result.response.status !== 'succeeded') throw Error('Expected successful cancellation');
+      expect(result.response.data).toEqual(await f.runtime.inspect(f.name));
       expect(cli.data).toMatchObject({
-        continuation: { mode: stage === 'unstarted' ? 'done' : 'reconcile' },
+        runId: result.response.data.runId,
+        revision: result.response.data.revision,
+        status: result.response.data.status,
+        state: result.response.data.state,
       });
-      expect(cli.cancellation.status).toBe(stage === 'unstarted' ? 'cancelled' : 'cancelling');
-      expect(cli.continuation.disposition).toBe(stage === 'unstarted' ? 'done' : 'blocked');
+      for (const field of ['actions', 'history', 'outputs', 'commands'])
+        expect(cli.data).not.toHaveProperty(field);
+      expect(cli.data).toMatchObject({
+        continuation: { mode: 'done' },
+      });
+      expect(cli.cancellation.status).toBe('cancelled');
+      expect(cli.continuation.disposition).toBe('done');
     },
   );
 
@@ -317,36 +287,23 @@ describe('Native cancellation lifecycle', () => {
     const claimed = await f.claim(builder, 'custom-builder');
     const action = claimed.actions.find(({ id }) => id === builder.id)!;
     await f.dispatch({ operation: 'cancel', runId: f.name, reason: 'Stop this custom task' });
-    const cancelling = await f.native(['status', f.name]);
-    expect(cancelling).toMatchObject({
-      status: 'cancelling',
-      application: { id: 'native-candidate-review' },
-    });
-    await f.dispatch({
-      operation: 'cancel',
-      runId: f.name,
-      reason: 'Original host stopped',
-      stoppedActions: [
-        {
-          actionId: action.id,
-          attempt: action.attempt,
-          inputHash: action.inputHash,
-          claimToken: action.claim!.token,
-          evidence: 'Original custom Builder and all its children stopped; candidate.txt retained.',
-        },
-      ],
-    });
     const status = await f.native(['status', f.name]);
     expect(status).toMatchObject({
       status: 'cancelled',
+      application: { id: 'native-candidate-review' },
       cancellation: { quiescent: true },
       continuation: { disposition: 'done' },
     });
     expect((await f.native(['new', 'replacement'])).name).toBe('replacement');
     const cancelled = await f.dispatch({ operation: 'inspect', runId: f.name });
     expect(cancelled.status).toBe('cancelled');
-    expect(cancelled.actions.find(({ id }) => id === action.id)?.cancellation?.evidence).toContain(
-      'retained',
+    const original = cancelled.actions.find(({ id }) => id === action.id)!;
+    expect(original.claim).toEqual(action.claim);
+    expect(original.status).toBe('cancelled');
+    expect(original.executionStop).toBeUndefined();
+    expect(original.cancellation?.evidence).toBeUndefined();
+    expect(await fs.readFile(path.join(f.projectRoot, 'candidate.txt'), 'utf8')).toBe(
+      'unreviewed\n',
     );
   });
   it.each(['unstarted', 'approval', 'builder'] as const)(
@@ -399,7 +356,7 @@ describe('Native cancellation lifecycle', () => {
       expect(next.data.continuation).toEqual(status.data.continuation);
       expect((await f.cli(['doctor', f.name, '--repair'])).data).toMatchObject({
         healthy: true,
-        findings: [],
+        diagnostics: { issues: [] },
         status: 'cancelled',
       });
       expect(await isNativeSdkChangeCancellationComplete(f.root, f.name)).toBe(true);
@@ -422,15 +379,15 @@ describe('Native cancellation lifecycle', () => {
   );
 
   it.each([false, true])(
-    'retains a claimed Builder until its original host proves it stopped (unknown=%s)',
+    'retains a cancelled Builder claim and partial work without a stop receipt (unknown=%s)',
     async (unknown) => {
       const f = await fixture('builder');
-      const before = await f.runtime.inspect(f.name);
-      const builder = before.actions.find(
-        ({ stepId, status }) => stepId === 'build.builder' && status === 'pending',
-      )!;
+      const before = await f.runtime.inspect(f.name),
+        builder = before.actions.find(
+          (a) => a.stepId === 'build.builder' && a.status === 'pending',
+        )!;
       expect(builder).toBeDefined();
-      await f.runtime.claim({
+      const claimed = await f.runtime.claim({
         runId: f.name,
         actionId: builder.id,
         attempt: builder.attempt,
@@ -456,51 +413,19 @@ describe('Native cancellation lifecycle', () => {
       });
       const status = await f.cli(['status', f.name]);
       expect(status.data).toMatchObject({
-        status: 'cancelling',
-        continuation: {
-          disposition: 'blocked',
-          action: 'none',
-          requiredInputs: ['original-execution-stop-evidence'],
-        },
+        status: 'cancelled',
+        cancellation: { quiescent: true, outstandingActions: [] },
+        continuation: { disposition: 'done', action: 'none', requiredInputs: [] },
       });
       expect(status.data.pendingActions).toBeUndefined();
       expect(status.data.continuation.commandAlternatives).toEqual([]);
       expect(status.data.continuation.requiresUserDecision).toBe(false);
       expect(status.data.continuation.runnerAction.kind).toBe('none');
-      expect((await f.cli(['new', 'blocked-replacement'])).exitCode).toBe(73);
-      expect((await f.cli(['doctor', f.name, '--repair'])).data).toMatchObject({
-        healthy: false,
-        findings: [{ code: 'sdk-cancellation-execution-unresolved' }],
-      });
-      const request = status.data.cancellation.outstandingActions[0].acknowledgementRequest;
-      expect(request).toMatchObject({
-        operation: 'cancel',
-        runId: f.name,
-        expectedRevision: cancelled.revision,
-        stoppedActions: [
-          {
-            actionId: builder.id,
-            attempt: builder.attempt,
-            inputHash: builder.inputHash,
-            claimToken: 'original-claim',
-          },
-        ],
-      });
-      const evidence =
-        'Original Builder and all its child tasks are stopped; partial-work.txt is retained.';
-      const stopped: RuntimeStoppedAction = { ...request.stoppedActions[0], evidence };
-      const requestFile = path.join(f.root, 'stopped-request.json');
-      await fs.writeFile(requestFile, JSON.stringify({ ...request, stoppedActions: [stopped] }));
-      const response = await runtimeDispatchCommand({
-        request: requestFile,
-        application: 'native',
-        projectRoot: f.root,
-      });
-      expect(response.response.status, JSON.stringify(response.response)).toBe('succeeded');
-      expect((await f.cli(['status', f.name])).data).toMatchObject({
-        status: 'cancelled',
-        cancellation: { quiescent: true },
-      });
+      expect(status.data.continuation.userCommunication.agentInstruction).toContain(
+        'does not certify process termination',
+      );
+      const doctor = await f.cli(['doctor', f.name, '--repair']);
+      expect(doctor.data).toMatchObject({ healthy: true, diagnostics: { issues: [] } });
       expect((await f.cli(['new', 'replacement'])).exitCode).toBe(0);
       await expect(
         f.runtime.recordOutcome({
@@ -519,10 +444,12 @@ describe('Native cancellation lifecycle', () => {
       expect(await fs.readFile(path.join(f.root, 'partial-work.txt'), 'utf8')).toBe(
         'Preserve my unfinished implementation\n',
       );
-      expect(
-        (await f.runtime.inspect(f.name)).actions.find(({ id }) => id === builder.id)?.cancellation
-          ?.evidence,
-      ).toBe(evidence);
+      const original = (await f.runtime.inspect(f.name)).actions.find((a) => a.id === builder.id)!;
+      expect(original.claim).toEqual(claimed.actions.find((a) => a.id === builder.id)!.claim);
+      expect(original.status).toBe('cancelled');
+      expect(original.executionStop).toBeUndefined();
+      expect(original.cancellation?.evidence).toBeUndefined();
+      expect((await f.runtime.inspect(f.name)).revision).toBe(cancelled.revision);
     },
   );
 });

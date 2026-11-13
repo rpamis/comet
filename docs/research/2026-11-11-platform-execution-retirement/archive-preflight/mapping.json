@@ -1,0 +1,26 @@
+{
+  "cases": [
+    {
+      "id": "native-automated-receipt-git-parent-alias",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/archive-preflight/README.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^does not ship retired Native execution and snapshot implementations$",
+          "requiredNames": [
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^continues the original Native Run through a generated Runtime and parent directory alias$",
+          "requiredNames": [
+            "continues the original Native Run through a generated Runtime and parent directory alias"
+          ]
+        }
+      ]
+    }
+  ]
+}

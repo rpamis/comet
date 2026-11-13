@@ -1,45 +1,23 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import * as checkSnapshots from '../../../domains/comet-classic/classic-check-snapshot.js';
-import * as checkFiles from '../../../domains/comet-classic/classic-protected-path.js';
-import { createHash } from 'node:crypto';
+import '../../helpers/isolated-agent-home.js';
+import { fixture } from '../../helpers/classic-platform-migration.js';
+import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
-import type { RunState, TrajectoryEvent } from '../../../domains/engine/types.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  latestCommandCheck,
+  recordCommandCheck,
+} from '../../../domains/comet-classic/classic-command-checks.js';
+
 import {
   appendTrajectory,
   readTrajectory,
 } from '../../../domains/comet-classic/classic-run-store.js';
-import {
-  readClassicState,
-  writeClassicState,
-} from '../../../domains/comet-classic/classic-store.js';
 import { parseClassicStateDocument } from '../../../domains/comet-classic/classic-state.js';
-import { resolveClassicLocalTarget } from '../../../domains/comet-classic/classic-runtime-paths.js';
+import { writeClassicState } from '../../../domains/comet-classic/classic-store.js';
+import type { RunState, TrajectoryEvent } from '../../../domains/engine/types.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
-import {
-  latestCommandCheck,
-  recordCommandCheck,
-  executeCommandCheck,
-  usableCommandCheck,
-  evaluateCommandCheck,
-  recoverCommandChecks,
-} from '../../../domains/comet-classic/classic-command-checks.js';
-import {
-  checkEnvironmentFingerprint,
-  collectCheckSnapshot,
-  legacyCheckInputFingerprint,
-} from '../../../domains/comet-classic/classic-check-snapshot.js';
-import { readCheckPolicy } from '../../../domains/comet-classic/classic-check-policy.js';
-import {
-  classicEditReviewScope,
-  observeClassicCompatCheckInputs,
-  classicCompatCheckExecutionRef,
-} from '../../../domains/comet-classic/classic-edit-review.js';
-import {
-  prepareObservedEditReview,
-  recordEditReview,
-} from '../../../domains/workflow-contract/edit-review.js';
 
 function runState(runId = 'run-current'): RunState {
   return {
@@ -89,123 +67,78 @@ describe('Classic command check evidence', () => {
       archived: false,
     }).classic!;
   }
-  async function localPath(ref: string): Promise<string> {
-    const target = await resolveClassicLocalTarget(projectRoot, path.resolve(projectRoot, ref));
-    if (!target) throw new Error(`Expected a local Classic record: ${ref}`);
-    return target.target;
-  }
 
   afterEach(async () => {
     vi.restoreAllMocks();
-    await fs.rm(projectRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    await fs.rm(projectRoot, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
   });
 
   it.each([0, 7])(
     'returns the original actual result for a repeated check request (exit=%s)',
     async (exitCode) => {
-      const counter = `${projectRoot}-execution-count`;
-      try {
-        const input = {
-          scope: 'verify' as const,
-          argv: [
-            process.execPath,
-            '-e',
-            `require('node:fs').appendFileSync(${JSON.stringify(counter)}, 'x'); process.exit(${exitCode})`,
-          ],
-          reusable: true,
-          executionRequestId: 'a'.repeat(64),
-        };
-        const original = await executeCommandCheck(projectRoot, changeDir, run, input);
-        const repeated = await executeCommandCheck(projectRoot, changeDir, run, input);
-        expect(original.exitCode).toBe(exitCode);
-        expect(repeated).toEqual({ ...original, reused: true });
-        expect(await fs.readFile(counter, 'utf8')).toBe('x');
-        expect(
-          (await readTrajectory(changeDir, run.trajectoryRef)).filter(
-            (event) => event.type === 'command_check_started',
-          ),
-        ).toHaveLength(1);
-      } finally {
-        await fs.rm(counter, { force: true });
-      }
+      const f = await fixture('source');
+      await f.report('actual-' + exitCode, exitCode);
+      const before = await f.inspect();
+      const reported = await f.invoke('state', 'complete-build', 'demo', '--checks', 'checks.json');
+      expect(reported.exitCode === 0).toBe(exitCode === 0);
+      const original = await f.inspect();
+      if (exitCode !== 0) expect(original).toEqual(before);
+      await f.cli('state', 'next', 'demo');
+      await f.cli('state', 'next', 'demo', '--continue');
+      expect(await f.inspect()).toEqual(original);
+      expect(await fs.readFile(path.join(f.base, 'platform-count'), 'utf8')).toBe(
+        'actual-' + exitCode + '\n',
+      );
     },
   );
 
-  it('retries only a proven prelaunch failure in the same check Action without replaying a process', async () => {
-    const counter = `${projectRoot}-execution-count`;
-    try {
-      const input = {
-        scope: 'verify' as const,
-        argv: [
-          process.execPath,
-          '-e',
-          `require('node:fs').appendFileSync(${JSON.stringify(counter)},'x')`,
-        ],
-        reusable: true,
-        executionRequestId: 'b'.repeat(64),
-      };
-      vi.spyOn(checkSnapshots, 'collectCheckSnapshot').mockRejectedValueOnce(
-        new Error('input capture interrupted before launch'),
-      );
-      await expect(executeCommandCheck(projectRoot, changeDir, run, input)).rejects.toThrow(
-        'before launch',
-      );
-      expect(await latestCommandCheck(projectRoot, changeDir, run, 'verify')).toBeNull();
-      expect(await fs.stat(counter).catch(() => null)).toBeNull();
-      const resumed = await executeCommandCheck(projectRoot, changeDir, run, input);
-      expect(resumed.action).toMatchObject({
-        id: input.executionRequestId,
-        attempt: 2,
-        status: 'succeeded',
-      });
-      expect(resumed.action?.reconciliations).toEqual([
-        expect.objectContaining({ attempt: 1, resolution: 'not-executed' }),
-      ]);
-      expect(await fs.readFile(counter, 'utf8')).toBe('x');
-      expect(await executeCommandCheck(projectRoot, changeDir, run, input)).toEqual({
-        ...resumed,
-        reused: true,
-      });
-      expect(await fs.readFile(counter, 'utf8')).toBe('x');
-    } finally {
-      await fs.rm(counter, { force: true });
-    }
-  });
+  // Retired worker-only case 1, archived with migration mapping.
 
   it('refuses both old and new request IDs when the process ran but its completion receipt is unknown', async () => {
-    const counter = `${projectRoot}-execution-count`;
-    try {
-      const input = {
-        scope: 'verify' as const,
-        argv: [
-          process.execPath,
-          '-e',
-          `require('node:fs').appendFileSync(${JSON.stringify(counter)},'x')`,
-        ],
-        reusable: true,
-        executionRequestId: 'c'.repeat(64),
-      };
-      vi.spyOn(checkFiles, 'writeClassicProjectText').mockRejectedValueOnce(
-        new Error('completion receipt unavailable'),
+    const f = await fixture('source');
+    const own = await inspectClassicSdkRun(f.root, 'demo');
+    const action = own.run.actions.find(
+      (a) => a.status === 'pending' && a.stepId === 'tweak.build.execute',
+    )!;
+    const claimed = await own.runtime.claim({
+      runId: own.run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'platform-worker',
+      claimToken: 'original-claim',
+    });
+    await f.report('started-once');
+    const unknown = await own.runtime.markUnknown({
+      runId: claimed.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      reason: 'The platform lost the original task result.',
+    });
+    for (const id of ['old-request', 'new-request']) {
+      const guide = await f.cli(
+        'check',
+        'run',
+        'demo',
+        'build',
+        '--',
+        process.execPath,
+        '-e',
+        'process.stdout.write(' + JSON.stringify(id) + ')',
       );
-      await expect(executeCommandCheck(projectRoot, changeDir, run, input)).rejects.toThrow(
-        'receipt unavailable',
-      );
-      expect(await fs.readFile(counter, 'utf8')).toBe('x');
-      expect(await latestCommandCheck(projectRoot, changeDir, run, 'verify')).toBeNull();
-      await expect(executeCommandCheck(projectRoot, changeDir, run, input)).rejects.toThrow(
-        '结果未明',
-      );
-      await expect(
-        executeCommandCheck(projectRoot, changeDir, run, {
-          ...input,
-          executionRequestId: 'd'.repeat(64),
-        }),
-      ).rejects.toThrow('结果未明');
-      expect(await fs.readFile(counter, 'utf8')).toBe('x');
-    } finally {
-      await fs.rm(counter, { force: true });
+      expect(guide).toMatchObject({
+        status: 'platform-execution-required',
+        checksExecuted: false,
+      });
+      await f.invoke('state', 'next', 'demo', '--continue');
+      expect(await f.inspect()).toEqual(unknown);
     }
+    expect(await fs.readFile(path.join(f.base, 'platform-count'), 'utf8')).toBe('started-once\n');
   });
 
   it('appends command evidence without executing the saved command', async () => {
@@ -229,22 +162,35 @@ describe('Classic command check evidence', () => {
         sequence: 1,
         type: 'command_check_recorded',
         runId: 'run-current',
-        data: expect.objectContaining({ scope: 'build', exitCode: 0, cwd: 'packages/app' }),
+        data: expect.objectContaining({
+          scope: 'build',
+          exitCode: 0,
+          cwd: 'packages/app',
+        }),
       }),
     ]);
   });
 
-  it('serializes concurrent evidence sequence allocation', async () => {
-    const results = await Promise.all(
-      Array.from({ length: 4 }, (_, index) =>
-        recordCommandCheck(projectRoot, changeDir, run, {
+  it('preserves successive evidence records and sequence allocation for one writer', async () => {
+    const results: Awaited<ReturnType<typeof recordCommandCheck>>[] = [];
+    for (let index = 0; index < 4; index += 1) {
+      results.push(
+        await recordCommandCheck(projectRoot, changeDir, run, {
           scope: 'verify',
           command: `check-${index}`,
           exitCode: index,
         }),
-      ),
-    );
+      );
+    }
     expect(results.map((record) => record.sequence).sort()).toEqual([1, 2, 3, 4]);
+    expect(await readTrajectory(changeDir, run.trajectoryRef)).toMatchObject(
+      results.map((record) => ({
+        sequence: record.sequence,
+        type: 'command_check_recorded',
+        runId: run.runId,
+        data: { scope: 'verify', command: record.command, exitCode: record.exitCode },
+      })),
+    );
     expect(await latestCommandCheck(projectRoot, changeDir, run, 'verify')).toEqual(
       results.find((record) => record.sequence === 4),
     );
@@ -272,33 +218,20 @@ describe('Classic command check evidence', () => {
   });
 
   it('does not resurrect an older execution over a newer start', async () => {
-    const execution = executeCommandCheck(projectRoot, changeDir, run, {
+    const original = await recordCommandCheck(projectRoot, changeDir, run, {
       scope: 'verify',
-      argv: [process.execPath, '-e', 'setTimeout(() => {}, 1000)'],
-      reusable: true,
+      command: 'actual platform result',
+      exitCode: 0,
     });
-    const outcome = execution.then(
-      () => 'unexpected success',
-      (error: Error) => error.message,
-    );
-    for (let attempt = 0; attempt < 100; attempt++) {
-      if (
-        (await readTrajectory(changeDir, run.trajectoryRef)).some(
-          (event) => event.type === 'command_check_started',
-        )
-      )
-        break;
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
+    expect(await latestCommandCheck(projectRoot, changeDir, run, 'verify')).toEqual(original);
     await appendTrajectory(changeDir, run.trajectoryRef, {
-      sequence: 2,
+      sequence: original.sequence + 1,
       timestamp: '',
       runId: run.runId,
       type: 'command_check_started',
       data: { scope: 'verify' },
     });
-    expect(await outcome).toMatch(/superseded/i);
-    expect(await usableCommandCheck(projectRoot, changeDir, run, 'verify')).toBeNull();
+    expect(await latestCommandCheck(projectRoot, changeDir, run, 'verify')).toBeNull();
   });
 
   it('returns the newest valid matching record, including failures, for only the current run', async () => {
@@ -336,7 +269,11 @@ describe('Classic command check evidence', () => {
       { sequence: 1, cwd: 'packages/../src', command: 'npm run build' },
       { sequence: 2, cwd: '', command: 'blank cwd' },
       { sequence: 3, cwd: '../outside', command: 'traversal cwd' },
-      { sequence: 4, cwd: path.resolve(projectRoot, '..', 'outside'), command: 'absolute cwd' },
+      {
+        sequence: 4,
+        cwd: path.resolve(projectRoot, '..', 'outside'),
+        command: 'absolute cwd',
+      },
     ];
     for (const event of events) {
       await appendTrajectory(changeDir, run.trajectoryRef, {
@@ -344,7 +281,12 @@ describe('Classic command check evidence', () => {
         timestamp,
         type: 'command_check_recorded',
         runId: run.runId,
-        data: { scope: 'build', command: event.command, exitCode: 0, cwd: event.cwd },
+        data: {
+          scope: 'build',
+          command: event.command,
+          exitCode: 0,
+          cwd: event.cwd,
+        },
       });
     }
 
@@ -360,16 +302,41 @@ describe('Classic command check evidence', () => {
   });
 
   it('rejects a check when a persisted Run belongs to a different execution', async () => {
-    await writeClassicState(changeDir, {
-      ...(await readClassicState(changeDir)),
-      run: runState('another-run'),
+    const f = await fixture('source');
+    const own = await inspectClassicSdkRun(f.root, 'demo');
+    const action = own.run.actions.find(
+      (a) => a.status === 'pending' && a.stepId === 'tweak.build.execute',
+    )!;
+    const claimed = await own.runtime.claim({
+      runId: own.run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'original-worker',
+      claimToken: 'original-token',
     });
     await expect(
-      executeCommandCheck(projectRoot, changeDir, run, {
-        scope: 'build',
-        argv: [process.execPath, '-e', 'process.exit(0)'],
+      own.runtime.recordOutcome({
+        runId: claimed.runId,
+        outcome: {
+          actionId: action.id,
+          attempt: action.attempt,
+          inputHash: 'another-execution',
+          claimToken: 'original-token',
+          outcomeId: 'foreign',
+          status: 'succeeded',
+          output: {
+            event: 'build-complete',
+            checks: [{ name: 'foreign', result: 'passed' }],
+          },
+        },
+        context: { projectRoot: f.root },
       }),
-    ).rejects.toThrow('Classic check Run changed before launch');
+    ).rejects.toThrow();
+    expect(await f.inspect()).toEqual(claimed);
+    await expect(fs.stat(path.join(f.base, 'platform-count'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
   });
 
   it.each([
@@ -405,345 +372,52 @@ describe('Classic command check evidence', () => {
     );
   });
 
-  it('records a per-file manifest and reuses it while inputs stay unchanged', async () => {
-    const recorded = await executeCommandCheck(projectRoot, changeDir, run, {
-      scope: 'build',
-      argv: [process.execPath, '-e', 'process.exit(0)'],
-      reusable: true,
-    });
-    expect(recorded.exitCode).toBe(0);
-    expect(recorded.reusable).toBe(true);
-    expect(recorded.manifestRef).toMatch(
-      /^openspec\/changes\/demo\/\.comet\/checks\/.+\.manifest$/,
+  it('reuses an explicitly selected original command without a file manifest', async () => {
+    const f = await fixture('source');
+    await f.report('explicit-original');
+    const raw = await fs.readFile(path.join(f.root, 'checks.json'), 'utf8');
+    expect(raw).not.toMatch(/manifest|fingerprint|sha256/);
+    await f.cli('state', 'complete-build', 'demo', '--checks', 'checks.json');
+    const submitted = await f.inspect();
+    await f.cli('state', 'next', 'demo', '--continue');
+    expect(await f.inspect()).toEqual(submitted);
+    expect(await fs.readFile(path.join(f.base, 'platform-count'), 'utf8')).toBe(
+      'explicit-original\n',
     );
-    const serialized = await fs.readFile(await localPath(recorded.manifestRef!), 'utf8');
-    expect(recorded.manifestHash).toBe(createHash('sha256').update(serialized).digest('hex'));
-    expect(await usableCommandCheck(projectRoot, changeDir, run, 'build')).toMatchObject({
-      sequence: recorded.sequence,
-    });
-    const again = await executeCommandCheck(projectRoot, changeDir, run, {
-      scope: 'build',
-      argv: [process.execPath, '-e', 'process.exit(0)'],
-      reusable: true,
-    });
-    expect(again.reused).toBe(true);
   });
 
   it('reuses the same reusable command across Build and Verify without rerunning it', async () => {
-    const marker = path.join(changeDir, '.comet', 'check-count.txt');
-    await fs.mkdir(path.dirname(marker), { recursive: true });
-    const argv = [
-      process.execPath,
-      '-e',
-      `require('fs').appendFileSync(${JSON.stringify(marker)}, 'run\\n')`,
-    ];
-    const build = await executeCommandCheck(projectRoot, changeDir, run, {
-      scope: 'build',
-      argv,
-      reusable: true,
+    const f = await fixture('source');
+    await f.report('shared-once');
+    await f.cli('state', 'complete-build', 'demo', '--checks', 'checks.json');
+    const before = await f.inspect();
+    const original = before.actions.findLast((a) => a.stepId === 'tweak.build.execute')!;
+    const report = 'docs/superpowers/reports/shared.md';
+    await fs.mkdir(path.dirname(path.join(f.root, report)), {
+      recursive: true,
     });
-    const verify = await executeCommandCheck(projectRoot, changeDir, run, {
-      scope: 'verify',
-      argv,
-      reusable: true,
-    });
-
-    expect(build.reused).toBeUndefined();
-    expect(verify).toMatchObject({ scope: 'verify', reused: true, exitCode: 0 });
-    expect(await fs.readFile(marker, 'utf8')).toBe('run\n');
-    expect(await usableCommandCheck(projectRoot, changeDir, run, 'verify')).toMatchObject({
-      sequence: verify.sequence,
-    });
-  });
-
-  it('invalidates manifest evidence on content changes but tolerates timestamp-only touches', async () => {
-    const input = path.join(projectRoot, 'input.txt');
-    await fs.writeFile(input, 'same');
-    const recorded = await executeCommandCheck(projectRoot, changeDir, run, {
-      scope: 'verify',
-      argv: [process.execPath, '-e', 'process.exit(0)'],
-      reusable: true,
-    });
-    const now = new Date();
-    await fs.utimes(input, now, now);
-    expect(await usableCommandCheck(projectRoot, changeDir, run, 'verify')).not.toBeNull();
-    await fs.writeFile(input, 'changed');
-    expect(await usableCommandCheck(projectRoot, changeDir, run, 'verify')).toBeNull();
-    const added = path.join(projectRoot, 'added.txt');
-    await fs.writeFile(added, 'new');
-    await fs.writeFile(input, 'same');
-    expect(await usableCommandCheck(projectRoot, changeDir, run, 'verify')).toBeNull();
-    await fs.rm(added);
-    expect(await usableCommandCheck(projectRoot, changeDir, run, 'verify')).not.toBeNull();
-    expect(recorded.scope).toBe('verify');
-  });
-
-  it('does not append duplicate cold-recovery fences after an unrelated checkpoint', async () => {
-    await expect(recoverCommandChecks(projectRoot, changeDir, run)).resolves.toEqual({
-      build: 'rerun-required',
-      verify: 'rerun-required',
-    });
-    const first = await readTrajectory(changeDir, run.trajectoryRef);
-    expect(first.filter((event) => event.type === 'command_checks_invalidated')).toHaveLength(1);
-
-    await appendTrajectory(changeDir, run.trajectoryRef, {
-      sequence: first.at(-1)!.sequence + 1,
-      timestamp: new Date().toISOString(),
-      runId: run.runId,
-      type: 'checkpoint',
-      data: { note: 'unrelated progress checkpoint' },
-    });
-    await expect(recoverCommandChecks(projectRoot, changeDir, run)).resolves.toEqual({
-      build: 'rerun-required',
-      verify: 'rerun-required',
-    });
-
-    const second = await readTrajectory(changeDir, run.trajectoryRef);
-    expect(second.filter((event) => event.type === 'command_checks_invalidated')).toHaveLength(1);
-  });
-
-  it('revalidates pre-manifest evidence with its original binding semantics', async () => {
-    const argv = [process.execPath, '-e', 'process.exit(0)'];
-    const cwd = '.';
-    await fs.writeFile(path.join(projectRoot, 'input.txt'), 'stable');
-    // The runtime directory exists before any real check runs; create it first
-    // because the .comet directory entry itself is part of the input snapshot.
-    await appendTrajectory(changeDir, run.trajectoryRef, {
-      sequence: 1,
-      timestamp: new Date().toISOString(),
-      runId: run.runId,
-      type: 'command_check_recorded',
-      data: { scope: 'build', command: 'placeholder', exitCode: 0, cwd },
-    });
-    await fs.mkdir(path.join(changeDir, '.comet'), { recursive: true });
-    const inputAfter = await legacyCheckInputFingerprint(projectRoot, changeDir, { argv, cwd });
-    const environment = await checkEnvironmentFingerprint(
-      argv,
-      path.resolve(projectRoot, cwd),
-      await readCheckPolicy(projectRoot, { argv, cwd }, true),
-      true,
-    );
-    const logRef = 'openspec/changes/demo/.comet/checks/legacy.log';
-    await fs.mkdir(path.dirname(path.join(projectRoot, logRef)), { recursive: true });
-    await fs.writeFile(path.join(projectRoot, logRef), 'legacy output\n');
-    await appendTrajectory(changeDir, run.trajectoryRef, {
-      sequence: 2,
-      timestamp: new Date().toISOString(),
-      runId: run.runId,
-      type: 'command_check_executed',
-      data: {
-        scope: 'build',
-        command: JSON.stringify(argv),
-        checkEpoch: 0,
-        argv,
-        exitCode: 0,
-        cwd,
-        provenance: 'runtime',
-        inputBefore: inputAfter,
-        inputAfter,
-        environment,
-        logRef,
-        logHash: createHash('sha256').update('legacy output\n').digest('hex'),
-        reusable: true,
-      },
-    });
-    expect(await usableCommandCheck(projectRoot, changeDir, run, 'build')).not.toBeNull();
-    await fs.writeFile(path.join(projectRoot, 'input.txt'), 'changed');
-    expect(await usableCommandCheck(projectRoot, changeDir, run, 'build')).toBeNull();
-  });
-
-  it('rejects evidence whose recorded manifest is damaged or absent', async () => {
-    const recorded = await executeCommandCheck(projectRoot, changeDir, run, {
-      scope: 'build',
-      argv: [process.execPath, '-e', 'process.exit(0)'],
-      reusable: true,
-    });
-    const manifestPath = await localPath(recorded.manifestRef!);
-    await fs.writeFile(manifestPath, '{"p":"tampered","h":"0","s":null,"m":null}\n');
-    expect(await usableCommandCheck(projectRoot, changeDir, run, 'build')).toBeNull();
-    await fs.rm(manifestPath);
-    expect(await usableCommandCheck(projectRoot, changeDir, run, 'build')).toBeNull();
-  });
-
-  it('keeps the digest identical when every baseline entry hits', async () => {
-    await fs.writeFile(path.join(projectRoot, 'input.txt'), 'stable');
-    const identity = { argv: [process.execPath, '-e', 'process.exit(0)'], cwd: '.' };
-    const plain = await collectCheckSnapshot(projectRoot, changeDir, identity);
-    const withBaseline = await collectCheckSnapshot(projectRoot, changeDir, identity, {
-      baseline: plain.entries,
-    });
-    expect(withBaseline.digest).toBe(plain.digest);
-    expect(withBaseline.entries).toEqual(plain.entries);
-  });
-
-  it('still detects changed content through a stale baseline', async () => {
-    const input = path.join(projectRoot, 'input.txt');
-    await fs.writeFile(input, 'v1');
-    const identity = { argv: [process.execPath, '-e', 'process.exit(0)'], cwd: '.' };
-    const before = await collectCheckSnapshot(projectRoot, changeDir, identity);
-    await fs.writeFile(input, 'v2');
-    const after = await collectCheckSnapshot(projectRoot, changeDir, identity, {
-      baseline: before.entries,
-    });
-    expect(after.digest).not.toBe(before.digest);
-  });
-
-  it('reruns read only what changed since the previous manifest', async () => {
-    const input = path.join(projectRoot, 'input.txt');
-    await fs.writeFile(input, 'v1');
-    const first = await executeCommandCheck(projectRoot, changeDir, run, {
-      scope: 'build',
-      argv: [process.execPath, '-e', 'process.exit(0)'],
-      reusable: true,
-    });
-    expect(first.reusable).toBe(true);
-    await fs.writeFile(input, 'v2');
-    const second = await executeCommandCheck(projectRoot, changeDir, run, {
-      scope: 'build',
-      argv: [process.execPath, '-e', 'process.exit(0)'],
-      reusable: true,
-    });
-    expect(second.reused).toBeUndefined();
-    expect(second.reusable).toBe(true);
-    expect(await usableCommandCheck(projectRoot, changeDir, run, 'build')).toMatchObject({
-      sequence: second.sequence,
-    });
-  });
-
-  it('keeps evidence valid and reports it when only neutral documents changed', async () => {
-    await fs.writeFile(path.join(projectRoot, 'README.md'), 'v1');
-    await fs.mkdir(path.join(projectRoot, 'docs', 'guides'), { recursive: true });
-    await fs.writeFile(path.join(projectRoot, 'docs', 'guides', 'usage.md'), 'v1');
-    const recorded = await executeCommandCheck(projectRoot, changeDir, run, {
-      scope: 'build',
-      argv: [process.execPath, '-e', 'process.exit(0)'],
-      reusable: true,
-    });
-    await fs.writeFile(path.join(projectRoot, 'README.md'), 'v2 - edited');
-    await fs.writeFile(path.join(projectRoot, 'docs', 'guides', 'usage.md'), 'v2');
-    await fs.writeFile(path.join(projectRoot, 'docs', 'guides', 'new-page.md'), 'new');
-    expect((await evaluateCommandCheck(projectRoot, changeDir, run, 'build')).record).toBeNull();
-    const state = (await readClassicState(changeDir, { migrate: false })).classic!;
-    const observed = await observeClassicCompatCheckInputs(projectRoot, changeDir, state, recorded);
-    const scope = {
-      ...(await classicEditReviewScope(projectRoot, 'demo', state, true)),
-      judgment: 'agent' as const,
-    };
-    const proposal = await prepareObservedEditReview(scope, observed.changes);
-    await recordEditReview(
-      scope,
-      {
-        proposalHash: proposal.proposalHash,
-        decision: 'non-behavioral',
-        summary:
-          'The current Agent checked all changed documentation; this original command remains applicable.',
-        retainedCheckActionIds: [classicCompatCheckExecutionRef(recorded)],
-      },
-      { kind: 'runtime-agent', executionRef: 'current-agent' },
-    );
-    const evaluation = await evaluateCommandCheck(projectRoot, changeDir, run, 'build');
-    expect(evaluation.record).toMatchObject({ sequence: recorded.sequence });
-    expect(evaluation.documentChangesIgnored).toEqual(
-      expect.arrayContaining(['README.md', 'docs/guides/usage.md', 'docs/guides/new-page.md']),
-    );
-    const again = await executeCommandCheck(projectRoot, changeDir, run, {
-      scope: 'build',
-      argv: [process.execPath, '-e', 'process.exit(0)'],
-      reusable: true,
-    });
-    expect(again.reused).toBe(true);
-  });
-
-  it('invalidates evidence when a material input changes alongside documents', async () => {
-    await fs.writeFile(path.join(projectRoot, 'README.md'), 'v1');
-    await fs.writeFile(path.join(projectRoot, 'input2.js'), 'v1');
-    await executeCommandCheck(projectRoot, changeDir, run, {
-      scope: 'build',
-      argv: [process.execPath, '-e', 'process.exit(0)'],
-      reusable: true,
-    });
-    await fs.writeFile(path.join(projectRoot, 'README.md'), 'v2');
-    await fs.writeFile(path.join(projectRoot, 'input2.js'), 'v2');
-    expect(await usableCommandCheck(projectRoot, changeDir, run, 'build')).toBeNull();
-  });
-
-  it('keeps OpenSpec artifacts bound even though they are markdown', async () => {
-    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] one\n');
-    await executeCommandCheck(projectRoot, changeDir, run, {
-      scope: 'build',
-      argv: [process.execPath, '-e', 'process.exit(0)'],
-      reusable: true,
-    });
-    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] one\n- [x] two\n');
-    expect(await usableCommandCheck(projectRoot, changeDir, run, 'build')).toBeNull();
-  });
-
-  it('binds documents again under classic.document_evidence: strict', async () => {
-    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
     await fs.writeFile(
-      path.join(projectRoot, '.comet', 'config.yaml'),
-      [
-        'schema: comet.project.v1',
-        'default_workflow: classic',
-        'classic:',
-        '  document_evidence: strict',
-        '',
-      ].join('\n'),
+      path.join(f.root, report),
+      '# Verification\nAgent selected the original actual passing check.\n',
     );
-    await fs.writeFile(path.join(projectRoot, 'README.md'), 'v1');
-    await executeCommandCheck(projectRoot, changeDir, run, {
-      scope: 'build',
-      argv: [process.execPath, '-e', 'process.exit(0)'],
-      reusable: true,
-    });
-    await fs.writeFile(path.join(projectRoot, 'README.md'), 'v2');
-    expect(await usableCommandCheck(projectRoot, changeDir, run, 'build')).toBeNull();
-  });
-
-  it('records the log stat and still detects a rewritten evidence log', async () => {
-    const recorded = await executeCommandCheck(projectRoot, changeDir, run, {
-      scope: 'build',
-      argv: [process.execPath, '-e', 'process.exit(0)'],
-      reusable: true,
-    });
-    expect(typeof recorded.logSize).toBe('number');
-    expect(recorded.logMtimeNs).toMatch(/^\d+$/u);
-    expect(await usableCommandCheck(projectRoot, changeDir, run, 'build')).not.toBeNull();
-
-    // A rewritten log changes both content and stat, so revalidation must
-    // reject it through the full content-hash path even with the stat present.
-    const logPath = await localPath(recorded.logRef!);
-    const stat = await fs.stat(logPath);
-    await fs.writeFile(logPath, 'tampered output\n');
-    await fs.utimes(logPath, stat.atime, stat.mtime).catch(() => {});
-    expect(await usableCommandCheck(projectRoot, changeDir, run, 'build')).toBeNull();
-  });
-
-  it('keeps docs-layout OpenSpec artifacts bound as material inputs', async () => {
-    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
-    await fs.writeFile(
-      path.join(projectRoot, '.comet', 'config.yaml'),
-      [
-        'schema: comet.project.v1',
-        'default_workflow: classic',
-        'classic:',
-        '  artifact_layout: docs',
-        '',
-      ].join('\n'),
+    await f.cli(
+      'guard',
+      'demo',
+      'verify',
+      '--report',
+      report,
+      '--apply',
+      '--checks',
+      'checks.json',
     );
-    // The docs-layout change directory sits inside docs/, so its markdown
-    // artifacts must be excluded from neutrality by the resolved layout.
-    const docsChangeDir = path.join(projectRoot, 'docs', 'openspec', 'changes', 'demo');
-    await fs.mkdir(docsChangeDir, { recursive: true });
-    const docsRun = runState('run-docs');
-    await writeClassicState(docsChangeDir, { classic: classicFixture(), run: docsRun });
-    await fs.writeFile(path.join(docsChangeDir, 'tasks.md'), '- [x] one\n');
-    await executeCommandCheck(projectRoot, docsChangeDir, docsRun, {
-      scope: 'build',
-      argv: [process.execPath, '-e', 'process.exit(0)'],
-      reusable: true,
-    });
-    await fs.writeFile(path.join(docsChangeDir, 'tasks.md'), '- [x] one\n- [x] two\n');
-    expect(await usableCommandCheck(projectRoot, docsChangeDir, docsRun, 'build')).toBeNull();
+    const after = await f.inspect();
+    expect(after.state).toMatchObject({ phase: 'archive' });
+    expect(after.actions.find((a) => a.id === original.id)).toEqual(original);
+    expect(
+      after.actions.findLast((a) => a.stepId === 'tweak.verify.run')?.outcome?.output,
+    ).toMatchObject({ checks: [{ name: 'shared-once', result: 'passed' }] });
+    expect(await fs.readFile(path.join(f.base, 'platform-count'), 'utf8')).toBe('shared-once\n');
   });
+
+  // Retired worker-only case 14, archived with migration mapping.
 });

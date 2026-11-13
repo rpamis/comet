@@ -9,7 +9,7 @@ import type { NativeProjectPaths } from './native-types.js';
 
 const REGISTRY_REF = 'native/runner-input-artifacts.json';
 const MAX_ARTIFACTS = 256;
-const MAX_INPUT_BYTES = 8 * 1024 * 1024;
+const MAX_INPUT_BYTES = Number.MAX_SAFE_INTEGER;
 interface RunnerInputArtifact {
   path: string;
   digest: string;
@@ -38,7 +38,7 @@ async function readRegistry(projectRoot: string): Promise<RunnerInputArtifact[]>
     const read = await readProtectedProjectFile(
       await resolveWorkspaceRuntimeRoot(projectRoot),
       REGISTRY_REF,
-      256 * 1024,
+      Number.MAX_SAFE_INTEGER,
       {
         label: 'Native Runner input registry',
       },

@@ -1,0 +1,100 @@
+diff --git a/test/domains/comet-classic/classic-command-checks.test.ts b/test/domains/comet-classic/classic-command-checks.test.ts
+index 0970a1ad..8d166a62 100644
+--- a/test/domains/comet-classic/classic-command-checks.test.ts
++++ b/test/domains/comet-classic/classic-command-checks.test.ts
+@@ -171,17 +171,26 @@ describe('Classic command check evidence', () => {
+     ]);
+   });
+ 
+-  it('serializes concurrent evidence sequence allocation', async () => {
+-    const results = await Promise.all(
+-      Array.from({ length: 4 }, (_, index) =>
+-        recordCommandCheck(projectRoot, changeDir, run, {
++  it('preserves successive evidence records and sequence allocation for one writer', async () => {
++    const results: Awaited<ReturnType<typeof recordCommandCheck>>[] = [];
++    for (let index = 0; index < 4; index += 1) {
++      results.push(
++        await recordCommandCheck(projectRoot, changeDir, run, {
+           scope: 'verify',
+           command: `check-${index}`,
+           exitCode: index,
+         }),
+-      ),
+-    );
++      );
++    }
+     expect(results.map((record) => record.sequence).sort()).toEqual([1, 2, 3, 4]);
++    expect(await readTrajectory(changeDir, run.trajectoryRef)).toMatchObject(
++      results.map((record) => ({
++        sequence: record.sequence,
++        type: 'command_check_recorded',
++        runId: run.runId,
++        data: { scope: 'verify', command: record.command, exitCode: record.exitCode },
++      })),
++    );
+     expect(await latestCommandCheck(projectRoot, changeDir, run, 'verify')).toEqual(
+       results.find((record) => record.sequence === 4),
+     );
+diff --git a/test/domains/comet-classic/classic-state-config.test.ts b/test/domains/comet-classic/classic-state-config.test.ts
+index 4543dc44..12a1dcbb 100644
+--- a/test/domains/comet-classic/classic-state-config.test.ts
++++ b/test/domains/comet-classic/classic-state-config.test.ts
+@@ -97,11 +97,11 @@ describe('Classic atomic configuration', () => {
+     expect(await fs.readFile(stateFile(), 'utf8')).toBe(before);
+   });
+ 
+-  it('serializes concurrent updates without dropping unrelated fields', async () => {
+-    const results = await Promise.all([
+-      cli('state', 'set', 'demo', 'build_mode', 'executing-plans', 'tdd_mode', 'direct'),
+-      cli('state', 'set', 'demo', 'review_mode', 'thorough', 'verify_mode', 'full'),
+-    ]);
++  it('preserves unrelated fields across successive updates by one writer', async () => {
++    const results = [
++      await cli('state', 'set', 'demo', 'build_mode', 'executing-plans', 'tdd_mode', 'direct'),
++      await cli('state', 'set', 'demo', 'review_mode', 'thorough', 'verify_mode', 'full'),
++    ];
+     for (const result of results) expect(result.exitCode, result.stderr).toBe(0);
+     expect(parse(await fs.readFile(stateFile(), 'utf8'))).toMatchObject({
+       build_mode: 'executing-plans',
+@@ -154,7 +154,7 @@ describe('Classic atomic configuration', () => {
+     expect(await fs.readFile(stateFile(), 'utf8')).toBe(before);
+   });
+ 
+-  it('lists stable tasks and serializes completion without losing another task update', async () => {
++  it('lists stable tasks and preserves previous completions for one writer', async () => {
+     const taskFile = path.join(root, 'openspec/changes/demo/tasks.md');
+     await fs.writeFile(taskFile, '- [ ] one\n- [ ] two\n');
+     const assigned = await cli('state', 'tasks', 'demo', '--assign-ids', '--json');
+@@ -173,15 +173,27 @@ describe('Classic atomic configuration', () => {
+       stateFile(),
+       (await fs.readFile(stateFile(), 'utf8')).replace('phase: open', 'phase: build'),
+     );
+-    const completed = await Promise.all(
+-      tasks.map((task: { id: string }) =>
+-        cli('state', 'task-complete', 'demo', task.id, '--expect', revision, '--json'),
+-      ),
+-    );
++    const completed = [];
++    for (const task of tasks as { id: string }[]) {
++      completed.push(
++        await cli('state', 'task-complete', 'demo', task.id, '--expect', revision, '--json'),
++      );
++      const current = JSON.parse((await cli('state', 'tasks', 'demo', '--json')).stdout!).data;
++      expect(current.tasks.map((item: { id: string }) => item.id)).toEqual(
++        tasks.map((item: { id: string }) => item.id),
++      );
++      expect(current.tasks.map((item: { completed: boolean }) => item.completed)).toEqual(
++        tasks.map((_: unknown, index: number) => index < completed.length),
++      );
++    }
+     for (const result of completed) expect(result.exitCode, result.stdout).toBe(0);
+     const listing = JSON.parse((await cli('state', 'tasks', 'demo', '--json')).stdout!).data;
+     expect(listing.progress).toEqual({ total: 2, completed: 2 });
+     expect(listing.revision).toBe(revision);
++    const completedSource = await fs.readFile(taskFile, 'utf8');
++    const repeated = await cli('state', 'task-complete', 'demo', tasks[0].id, '--json');
++    expect(repeated.exitCode, repeated.stdout).toBe(0);
++    expect(await fs.readFile(taskFile, 'utf8')).toBe(completedSource);
+     const renamed = (await fs.readFile(taskFile, 'utf8')).replace('one', 'changed');
+     await fs.writeFile(taskFile, renamed);
+     const stale = await cli('state', 'task-complete', 'demo', 'missing-task', '--expect', revision);

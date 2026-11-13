@@ -100,7 +100,7 @@ export function createApplicationHook(
       let activeRuns = 0;
       const visit = async (current: WorkflowRun) => {
         if (seen.has(current.runId)) throw new Error('子流程归属循环');
-        // 历史完成数不等于当前执行宽度；取消后仍未确认停止的领取继续占用预算。
+        // 历史完成数不等于当前执行宽度；Runtime 能力尚未收尾时仍算活跃。
         const active =
           ['running', 'waiting'].includes(current.status) ||
           current.actions.some(

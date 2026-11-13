@@ -1,0 +1,1745 @@
+{
+  "protocolVersion": 1,
+  "schemaVersion": 1,
+  "runId": "published-completed-invalid",
+  "revision": 11,
+  "workflow": {
+    "id": "comet-native",
+    "version": "4",
+    "hash": "a4e64ffbd76a550331a69bca1a149bcae73b6fabe8117152be4bfc1abf28d8eb"
+  },
+  "definitionHashes": {
+    "[\"comet-native\",\"4\"]": "a4e64ffbd76a550331a69bca1a149bcae73b6fabe8117152be4bfc1abf28d8eb"
+  },
+  "initialStateHash": "441345a3b53a3fb7ea4e68992b2bf01c3ca87c0cd6f0f0bab372ec2c77309230",
+  "input": {
+    "artifactRootRef": "docs",
+    "name": "published-completed-invalid",
+    "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+  },
+  "state": {
+    "schema": "comet.native.v4",
+    "name": "published-completed-invalid",
+    "language": "en",
+    "phase": "build",
+    "status": "active",
+    "state_version": 3,
+    "brief": "brief.md",
+    "document_constraints_version": 3,
+    "shape_confirmation_hash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+    "spec_changes": [
+      {
+        "capability": "workflow",
+        "operation": "create",
+        "source": "specs/workflow/spec.md"
+      }
+    ],
+    "workspace": {
+      "isolation": "current",
+      "change_branch": null,
+      "target_branch": null,
+      "finish": null
+    },
+    "loop": {
+      "stage": "building",
+      "goal_cycle": 1,
+      "iteration": 1,
+      "attempt": 0,
+      "retry_epoch": 0,
+      "failed_iteration_count": 0,
+      "no_progress_count": 0,
+      "execution_failure_count": 0,
+      "previous_unresolved_ids": [],
+      "next_action": "submit-builder-candidate"
+    },
+    "acceptance": [
+      {
+        "id": "A1",
+        "source": "brief.md",
+        "text": "The original Build business Run resumes.",
+        "result": "pending",
+        "reason": null
+      }
+    ],
+    "builder_handoff": null,
+    "blockers": [],
+    "verification": null,
+    "history": [],
+    "history_overflow": {
+      "dropped_entries": 0,
+      "first_dropped_at": null,
+      "last_dropped_at": null,
+      "outcome_counts": {
+        "pass": 0,
+        "fail": 0,
+        "blocked": 0,
+        "execution-error": 0,
+        "recovery": 0
+      }
+    },
+    "verification_result": "pending",
+    "verification_report": null,
+    "archived": false,
+    "created_at": "2026-11-10T23:26:31.210Z"
+  },
+  "status": "running",
+  "sequence": 6,
+  "actions": [
+    {
+      "protocolVersion": 1,
+      "id": "published-completed-invalid:1",
+      "runId": "published-completed-invalid",
+      "stepId": "shape.prepare",
+      "type": "call_tool",
+      "ref": "native-shape-prepare",
+      "attempt": 1,
+      "input": {
+        "input": {
+          "artifactRootRef": "docs",
+          "name": "published-completed-invalid",
+          "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+        },
+        "outputs": {}
+      },
+      "inputHash": "67e5b858b6feb4ebe9cdd756314d22580bba8b56cac8d21104119174b025a8f2",
+      "status": "succeeded",
+      "retry": "manual",
+      "requiredCapabilities": [],
+      "receipts": [
+        {
+          "outcomeId": "SIMULATED-AGENT-OUTCOME-published-completed-invalid:1",
+          "hash": "1641a812b46dc71dc6ebfa5993938c0f2bd6ff00cf847d9d888a89cac224090d"
+        }
+      ],
+      "reconciliations": [],
+      "claim": {
+        "executorId": "actual-pure-proposal",
+        "token": "SIMULATED-CLAIM-published-completed-invalid:1",
+        "sessionId": "actual-pure-proposal"
+      },
+      "executionOrigin": {
+        "workflow": {
+          "id": "comet-native",
+          "version": "3",
+          "hash": "2ad17ce994b28ee081494a62e7f68eeae671bf8cc9c7af893940a5920db43dbd"
+        }
+      },
+      "outcome": {
+        "actionId": "published-completed-invalid:1",
+        "attempt": 1,
+        "claimToken": "SIMULATED-CLAIM-published-completed-invalid:1",
+        "inputHash": "67e5b858b6feb4ebe9cdd756314d22580bba8b56cac8d21104119174b025a8f2",
+        "outcomeId": "SIMULATED-AGENT-OUTCOME-published-completed-invalid:1",
+        "output": {
+          "acceptance": [
+            {
+              "id": "A1",
+              "source": "brief.md",
+              "text": "The original Build business Run resumes."
+            }
+          ],
+          "children": null,
+          "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+          "semanticSnapshot": {
+            "artifacts": [
+              {
+                "auxiliary": [],
+                "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                "source": "brief.md"
+              },
+              {
+                "auxiliary": [],
+                "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                "source": "specs/workflow/spec.md"
+              }
+            ],
+            "schema": "comet.native.shape-semantics.v1"
+          },
+          "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+          "specChanges": [
+            {
+              "capability": "workflow",
+              "operation": "create",
+              "source": "specs/workflow/spec.md"
+            }
+          ]
+        },
+        "status": "succeeded"
+      }
+    },
+    {
+      "protocolVersion": 1,
+      "id": "published-completed-invalid:3",
+      "runId": "published-completed-invalid",
+      "stepId": "shape.revalidate",
+      "type": "call_tool",
+      "ref": "native-shape-revalidate",
+      "attempt": 1,
+      "input": {
+        "input": {
+          "artifactRootRef": "docs",
+          "name": "published-completed-invalid",
+          "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+        },
+        "outputs": {
+          "shape.prepare": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "The original Build business Run resumes."
+              }
+            ],
+            "children": null,
+            "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+            "semanticSnapshot": {
+              "artifacts": [
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                  "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                  "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                  "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                  "source": "brief.md"
+                },
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                  "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                  "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                  "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                  "source": "specs/workflow/spec.md"
+                }
+              ],
+              "schema": "comet.native.shape-semantics.v1"
+            },
+            "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+            "specChanges": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ]
+          },
+          "shape.confirm": {
+            "choice": "approved",
+            "proposal": {
+              "input": {
+                "artifactRootRef": "docs",
+                "name": "published-completed-invalid",
+                "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+              },
+              "outputs": {
+                "shape.prepare": {
+                  "acceptance": [
+                    {
+                      "id": "A1",
+                      "source": "brief.md",
+                      "text": "The original Build business Run resumes."
+                    }
+                  ],
+                  "children": null,
+                  "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+                  "semanticSnapshot": {
+                    "artifacts": [
+                      {
+                        "auxiliary": [],
+                        "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                        "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                        "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                        "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                        "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                        "source": "brief.md"
+                      },
+                      {
+                        "auxiliary": [],
+                        "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                        "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                        "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                        "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                        "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ],
+                    "schema": "comet.native.shape-semantics.v1"
+                  },
+                  "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+                  "specChanges": [
+                    {
+                      "capability": "workflow",
+                      "operation": "create",
+                      "source": "specs/workflow/spec.md"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "inputHash": "eec941dbc535bc6cab29b3830b68323e1fe45fad2809b8a8707190961cb02335",
+      "status": "succeeded",
+      "retry": "manual",
+      "requiredCapabilities": [],
+      "receipts": [
+        {
+          "outcomeId": "SIMULATED-AGENT-OUTCOME-published-completed-invalid:3",
+          "hash": "41e9aea50e9de0cf191d6e9194874561a867b22280101eb4b7c05733adde9fc1"
+        }
+      ],
+      "reconciliations": [],
+      "claim": {
+        "executorId": "actual-pure-proposal",
+        "token": "SIMULATED-CLAIM-published-completed-invalid:3",
+        "sessionId": "actual-pure-proposal"
+      },
+      "executionOrigin": {
+        "workflow": {
+          "id": "comet-native",
+          "version": "3",
+          "hash": "2ad17ce994b28ee081494a62e7f68eeae671bf8cc9c7af893940a5920db43dbd"
+        }
+      },
+      "outcome": {
+        "actionId": "published-completed-invalid:3",
+        "attempt": 1,
+        "claimToken": "SIMULATED-CLAIM-published-completed-invalid:3",
+        "inputHash": "eec941dbc535bc6cab29b3830b68323e1fe45fad2809b8a8707190961cb02335",
+        "outcomeId": "SIMULATED-AGENT-OUTCOME-published-completed-invalid:3",
+        "output": {
+          "acceptance": [
+            {
+              "id": "A1",
+              "source": "brief.md",
+              "text": "The original Build business Run resumes."
+            }
+          ],
+          "children": null,
+          "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+          "semanticSnapshot": {
+            "artifacts": [
+              {
+                "auxiliary": [],
+                "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                "source": "brief.md"
+              },
+              {
+                "auxiliary": [],
+                "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                "source": "specs/workflow/spec.md"
+              }
+            ],
+            "schema": "comet.native.shape-semantics.v1"
+          },
+          "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+          "specChanges": [
+            {
+              "capability": "workflow",
+              "operation": "create",
+              "source": "specs/workflow/spec.md"
+            }
+          ]
+        },
+        "status": "succeeded"
+      }
+    },
+    {
+      "protocolVersion": 1,
+      "id": "published-completed-invalid:4",
+      "runId": "published-completed-invalid",
+      "stepId": "build.builder",
+      "type": "handoff",
+      "ref": "native-builder",
+      "attempt": 1,
+      "input": {
+        "input": {
+          "artifactRootRef": "docs",
+          "name": "published-completed-invalid",
+          "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+        },
+        "outputs": {
+          "shape.prepare": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "The original Build business Run resumes."
+              }
+            ],
+            "children": null,
+            "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+            "semanticSnapshot": {
+              "artifacts": [
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                  "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                  "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                  "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                  "source": "brief.md"
+                },
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                  "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                  "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                  "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                  "source": "specs/workflow/spec.md"
+                }
+              ],
+              "schema": "comet.native.shape-semantics.v1"
+            },
+            "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+            "specChanges": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ]
+          },
+          "shape.confirm": {
+            "choice": "approved",
+            "proposal": {
+              "input": {
+                "artifactRootRef": "docs",
+                "name": "published-completed-invalid",
+                "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+              },
+              "outputs": {
+                "shape.prepare": {
+                  "acceptance": [
+                    {
+                      "id": "A1",
+                      "source": "brief.md",
+                      "text": "The original Build business Run resumes."
+                    }
+                  ],
+                  "children": null,
+                  "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+                  "semanticSnapshot": {
+                    "artifacts": [
+                      {
+                        "auxiliary": [],
+                        "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                        "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                        "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                        "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                        "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                        "source": "brief.md"
+                      },
+                      {
+                        "auxiliary": [],
+                        "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                        "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                        "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                        "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                        "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ],
+                    "schema": "comet.native.shape-semantics.v1"
+                  },
+                  "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+                  "specChanges": [
+                    {
+                      "capability": "workflow",
+                      "operation": "create",
+                      "source": "specs/workflow/spec.md"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "shape.revalidate": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "The original Build business Run resumes."
+              }
+            ],
+            "children": null,
+            "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+            "semanticSnapshot": {
+              "artifacts": [
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                  "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                  "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                  "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                  "source": "brief.md"
+                },
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                  "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                  "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                  "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                  "source": "specs/workflow/spec.md"
+                }
+              ],
+              "schema": "comet.native.shape-semantics.v1"
+            },
+            "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+            "specChanges": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ]
+          }
+        }
+      },
+      "inputHash": "65e7703fc78d4a26982d577e0a1589637d1da779654989abfb70b7fb0e7aef1e",
+      "status": "succeeded",
+      "retry": "manual",
+      "requiredCapabilities": [],
+      "receipts": [
+        {
+          "outcomeId": "SIMULATED-AGENT-OUTCOME-published-completed-invalid:4",
+          "hash": "a34fe52e97e4d6ba179c3bc52b35011a87629cb6dc959ac6b7e3b0b938e0608a"
+        }
+      ],
+      "reconciliations": [],
+      "claim": {
+        "executorId": "SIMULATED-BUILDER",
+        "token": "SIMULATED-CLAIM-published-completed-invalid:4",
+        "sessionId": "SIMULATED-BUILDER"
+      },
+      "executionOrigin": {
+        "workflow": {
+          "id": "comet-native",
+          "version": "3",
+          "hash": "2ad17ce994b28ee081494a62e7f68eeae671bf8cc9c7af893940a5920db43dbd"
+        }
+      },
+      "outcome": {
+        "actionId": "published-completed-invalid:4",
+        "attempt": 1,
+        "claimToken": "SIMULATED-CLAIM-published-completed-invalid:4",
+        "inputHash": "65e7703fc78d4a26982d577e0a1589637d1da779654989abfb70b7fb0e7aef1e",
+        "outcomeId": "SIMULATED-AGENT-OUTCOME-published-completed-invalid:4",
+        "output": {
+          "response": {
+            "checks": [
+              {
+                "argv": [
+                  "-e",
+                  "const fs=require('node:fs');fs.appendFileSync(process.argv[1],'once\\n');process.stdout.write('actual-legacy-check-completed\\n')",
+                  "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\actual-node-count"
+                ],
+                "cwdRef": ".",
+                "executable": "D:\\nodejs\\node.exe",
+                "id": "once",
+                "name": "Current Build check",
+                "repeatable": true,
+                "timeoutMs": 15000
+              }
+            ],
+            "kind": "request-checks"
+          }
+        },
+        "status": "succeeded"
+      }
+    },
+    {
+      "protocolVersion": 1,
+      "id": "published-completed-invalid:5",
+      "runId": "published-completed-invalid",
+      "stepId": "build.checks",
+      "type": "call_tool",
+      "ref": "native-build-checks",
+      "attempt": 1,
+      "input": {
+        "input": {
+          "artifactRootRef": "docs",
+          "name": "published-completed-invalid",
+          "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+        },
+        "outputs": {
+          "shape.prepare": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "The original Build business Run resumes."
+              }
+            ],
+            "children": null,
+            "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+            "semanticSnapshot": {
+              "artifacts": [
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                  "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                  "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                  "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                  "source": "brief.md"
+                },
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                  "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                  "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                  "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                  "source": "specs/workflow/spec.md"
+                }
+              ],
+              "schema": "comet.native.shape-semantics.v1"
+            },
+            "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+            "specChanges": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ]
+          },
+          "shape.confirm": {
+            "choice": "approved",
+            "proposal": {
+              "input": {
+                "artifactRootRef": "docs",
+                "name": "published-completed-invalid",
+                "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+              },
+              "outputs": {
+                "shape.prepare": {
+                  "acceptance": [
+                    {
+                      "id": "A1",
+                      "source": "brief.md",
+                      "text": "The original Build business Run resumes."
+                    }
+                  ],
+                  "children": null,
+                  "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+                  "semanticSnapshot": {
+                    "artifacts": [
+                      {
+                        "auxiliary": [],
+                        "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                        "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                        "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                        "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                        "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                        "source": "brief.md"
+                      },
+                      {
+                        "auxiliary": [],
+                        "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                        "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                        "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                        "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                        "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ],
+                    "schema": "comet.native.shape-semantics.v1"
+                  },
+                  "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+                  "specChanges": [
+                    {
+                      "capability": "workflow",
+                      "operation": "create",
+                      "source": "specs/workflow/spec.md"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "shape.revalidate": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "The original Build business Run resumes."
+              }
+            ],
+            "children": null,
+            "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+            "semanticSnapshot": {
+              "artifacts": [
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                  "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                  "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                  "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                  "source": "brief.md"
+                },
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                  "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                  "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                  "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                  "source": "specs/workflow/spec.md"
+                }
+              ],
+              "schema": "comet.native.shape-semantics.v1"
+            },
+            "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+            "specChanges": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ]
+          },
+          "build.builder": {
+            "response": {
+              "checks": [
+                {
+                  "argv": [
+                    "-e",
+                    "const fs=require('node:fs');fs.appendFileSync(process.argv[1],'once\\n');process.stdout.write('actual-legacy-check-completed\\n')",
+                    "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\actual-node-count"
+                  ],
+                  "cwdRef": ".",
+                  "executable": "D:\\nodejs\\node.exe",
+                  "id": "once",
+                  "name": "Current Build check",
+                  "repeatable": true,
+                  "timeoutMs": 15000
+                }
+              ],
+              "kind": "request-checks"
+            }
+          }
+        },
+        "activation": {
+          "checks": [
+            {
+              "argv": [
+                "-e",
+                "const fs=require('node:fs');fs.appendFileSync(process.argv[1],'once\\n');process.stdout.write('actual-legacy-check-completed\\n')",
+                "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\actual-node-count"
+              ],
+              "cwdRef": ".",
+              "executable": "D:\\nodejs\\node.exe",
+              "id": "once",
+              "name": "Current Build check",
+              "repeatable": true,
+              "timeoutMs": 15000
+            }
+          ]
+        }
+      },
+      "inputHash": "e7b192b27bd97ebb63bcf1f9694c1fe291014aaa91f6d2312427a45094de774b",
+      "status": "cancelled",
+      "retry": "manual",
+      "requiredCapabilities": [],
+      "receipts": [],
+      "reconciliations": [],
+      "claim": {
+        "executorId": "comet-native-checks",
+        "token": "SIMULATED-CLAIM-published-completed-invalid:5",
+        "sessionId": "comet-native-checks"
+      },
+      "executionOrigin": {
+        "workflow": {
+          "id": "comet-native",
+          "version": "3",
+          "hash": "2ad17ce994b28ee081494a62e7f68eeae671bf8cc9c7af893940a5920db43dbd"
+        }
+      },
+      "reason": "旧检查调度已移交 Agent 平台；原进程结果未确认，不代表已经停止或通过。"
+    },
+    {
+      "protocolVersion": 1,
+      "id": "published-completed-invalid:6",
+      "runId": "published-completed-invalid",
+      "stepId": "build.builder",
+      "type": "handoff",
+      "ref": "native-builder",
+      "attempt": 1,
+      "input": {
+        "input": {
+          "artifactRootRef": "docs",
+          "name": "published-completed-invalid",
+          "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+        },
+        "outputs": {
+          "shape.prepare": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "The original Build business Run resumes."
+              }
+            ],
+            "children": null,
+            "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+            "semanticSnapshot": {
+              "artifacts": [
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                  "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                  "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                  "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                  "source": "brief.md"
+                },
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                  "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                  "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                  "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                  "source": "specs/workflow/spec.md"
+                }
+              ],
+              "schema": "comet.native.shape-semantics.v1"
+            },
+            "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+            "specChanges": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ]
+          },
+          "shape.confirm": {
+            "choice": "approved",
+            "proposal": {
+              "input": {
+                "artifactRootRef": "docs",
+                "name": "published-completed-invalid",
+                "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+              },
+              "outputs": {
+                "shape.prepare": {
+                  "acceptance": [
+                    {
+                      "id": "A1",
+                      "source": "brief.md",
+                      "text": "The original Build business Run resumes."
+                    }
+                  ],
+                  "children": null,
+                  "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+                  "semanticSnapshot": {
+                    "artifacts": [
+                      {
+                        "auxiliary": [],
+                        "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                        "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                        "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                        "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                        "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                        "source": "brief.md"
+                      },
+                      {
+                        "auxiliary": [],
+                        "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                        "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                        "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                        "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                        "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ],
+                    "schema": "comet.native.shape-semantics.v1"
+                  },
+                  "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+                  "specChanges": [
+                    {
+                      "capability": "workflow",
+                      "operation": "create",
+                      "source": "specs/workflow/spec.md"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "inputHash": "eec941dbc535bc6cab29b3830b68323e1fe45fad2809b8a8707190961cb02335",
+      "status": "pending",
+      "retry": "manual",
+      "requiredCapabilities": [],
+      "receipts": [],
+      "reconciliations": []
+    }
+  ],
+  "actionContexts": {
+    "published-completed-invalid:1": {
+      "sequence": 1,
+      "results": {}
+    },
+    "published-completed-invalid:3": {
+      "sequence": 3,
+      "results": {
+        "shape.prepare": {
+          "sequence": 1,
+          "value": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "The original Build business Run resumes."
+              }
+            ],
+            "children": null,
+            "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+            "semanticSnapshot": {
+              "artifacts": [
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                  "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                  "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                  "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                  "source": "brief.md"
+                },
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                  "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                  "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                  "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                  "source": "specs/workflow/spec.md"
+                }
+              ],
+              "schema": "comet.native.shape-semantics.v1"
+            },
+            "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+            "specChanges": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ]
+          }
+        },
+        "shape.confirm": {
+          "sequence": 2,
+          "value": {
+            "choice": "approved",
+            "proposal": {
+              "input": {
+                "artifactRootRef": "docs",
+                "name": "published-completed-invalid",
+                "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+              },
+              "outputs": {
+                "shape.prepare": {
+                  "acceptance": [
+                    {
+                      "id": "A1",
+                      "source": "brief.md",
+                      "text": "The original Build business Run resumes."
+                    }
+                  ],
+                  "children": null,
+                  "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+                  "semanticSnapshot": {
+                    "artifacts": [
+                      {
+                        "auxiliary": [],
+                        "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                        "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                        "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                        "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                        "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                        "source": "brief.md"
+                      },
+                      {
+                        "auxiliary": [],
+                        "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                        "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                        "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                        "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                        "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ],
+                    "schema": "comet.native.shape-semantics.v1"
+                  },
+                  "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+                  "specChanges": [
+                    {
+                      "capability": "workflow",
+                      "operation": "create",
+                      "source": "specs/workflow/spec.md"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "published-completed-invalid:4": {
+      "sequence": 4,
+      "results": {
+        "shape.prepare": {
+          "sequence": 1,
+          "value": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "The original Build business Run resumes."
+              }
+            ],
+            "children": null,
+            "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+            "semanticSnapshot": {
+              "artifacts": [
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                  "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                  "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                  "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                  "source": "brief.md"
+                },
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                  "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                  "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                  "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                  "source": "specs/workflow/spec.md"
+                }
+              ],
+              "schema": "comet.native.shape-semantics.v1"
+            },
+            "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+            "specChanges": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ]
+          }
+        },
+        "shape.confirm": {
+          "sequence": 2,
+          "value": {
+            "choice": "approved",
+            "proposal": {
+              "input": {
+                "artifactRootRef": "docs",
+                "name": "published-completed-invalid",
+                "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+              },
+              "outputs": {
+                "shape.prepare": {
+                  "acceptance": [
+                    {
+                      "id": "A1",
+                      "source": "brief.md",
+                      "text": "The original Build business Run resumes."
+                    }
+                  ],
+                  "children": null,
+                  "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+                  "semanticSnapshot": {
+                    "artifacts": [
+                      {
+                        "auxiliary": [],
+                        "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                        "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                        "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                        "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                        "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                        "source": "brief.md"
+                      },
+                      {
+                        "auxiliary": [],
+                        "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                        "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                        "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                        "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                        "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ],
+                    "schema": "comet.native.shape-semantics.v1"
+                  },
+                  "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+                  "specChanges": [
+                    {
+                      "capability": "workflow",
+                      "operation": "create",
+                      "source": "specs/workflow/spec.md"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "shape.revalidate": {
+          "sequence": 3,
+          "value": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "The original Build business Run resumes."
+              }
+            ],
+            "children": null,
+            "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+            "semanticSnapshot": {
+              "artifacts": [
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                  "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                  "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                  "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                  "source": "brief.md"
+                },
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                  "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                  "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                  "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                  "source": "specs/workflow/spec.md"
+                }
+              ],
+              "schema": "comet.native.shape-semantics.v1"
+            },
+            "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+            "specChanges": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "published-completed-invalid:5": {
+      "sequence": 5,
+      "results": {
+        "shape.prepare": {
+          "sequence": 1,
+          "value": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "The original Build business Run resumes."
+              }
+            ],
+            "children": null,
+            "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+            "semanticSnapshot": {
+              "artifacts": [
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                  "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                  "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                  "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                  "source": "brief.md"
+                },
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                  "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                  "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                  "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                  "source": "specs/workflow/spec.md"
+                }
+              ],
+              "schema": "comet.native.shape-semantics.v1"
+            },
+            "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+            "specChanges": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ]
+          }
+        },
+        "shape.confirm": {
+          "sequence": 2,
+          "value": {
+            "choice": "approved",
+            "proposal": {
+              "input": {
+                "artifactRootRef": "docs",
+                "name": "published-completed-invalid",
+                "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+              },
+              "outputs": {
+                "shape.prepare": {
+                  "acceptance": [
+                    {
+                      "id": "A1",
+                      "source": "brief.md",
+                      "text": "The original Build business Run resumes."
+                    }
+                  ],
+                  "children": null,
+                  "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+                  "semanticSnapshot": {
+                    "artifacts": [
+                      {
+                        "auxiliary": [],
+                        "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                        "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                        "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                        "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                        "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                        "source": "brief.md"
+                      },
+                      {
+                        "auxiliary": [],
+                        "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                        "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                        "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                        "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                        "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ],
+                    "schema": "comet.native.shape-semantics.v1"
+                  },
+                  "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+                  "specChanges": [
+                    {
+                      "capability": "workflow",
+                      "operation": "create",
+                      "source": "specs/workflow/spec.md"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "shape.revalidate": {
+          "sequence": 3,
+          "value": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "The original Build business Run resumes."
+              }
+            ],
+            "children": null,
+            "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+            "semanticSnapshot": {
+              "artifacts": [
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                  "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                  "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                  "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                  "source": "brief.md"
+                },
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                  "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                  "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                  "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                  "source": "specs/workflow/spec.md"
+                }
+              ],
+              "schema": "comet.native.shape-semantics.v1"
+            },
+            "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+            "specChanges": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ]
+          }
+        },
+        "build.builder": {
+          "sequence": 4,
+          "value": {
+            "response": {
+              "checks": [
+                {
+                  "argv": [
+                    "-e",
+                    "const fs=require('node:fs');fs.appendFileSync(process.argv[1],'once\\n');process.stdout.write('actual-legacy-check-completed\\n')",
+                    "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\actual-node-count"
+                  ],
+                  "cwdRef": ".",
+                  "executable": "D:\\nodejs\\node.exe",
+                  "id": "once",
+                  "name": "Current Build check",
+                  "repeatable": true,
+                  "timeoutMs": 15000
+                }
+              ],
+              "kind": "request-checks"
+            }
+          }
+        }
+      }
+    },
+    "published-completed-invalid:6": {
+      "sequence": 6,
+      "results": {
+        "shape.prepare": {
+          "sequence": 1,
+          "value": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "The original Build business Run resumes."
+              }
+            ],
+            "children": null,
+            "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+            "semanticSnapshot": {
+              "artifacts": [
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                  "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                  "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                  "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                  "source": "brief.md"
+                },
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                  "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                  "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                  "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                  "source": "specs/workflow/spec.md"
+                }
+              ],
+              "schema": "comet.native.shape-semantics.v1"
+            },
+            "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+            "specChanges": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ]
+          }
+        },
+        "shape.confirm": {
+          "sequence": 2,
+          "value": {
+            "choice": "approved",
+            "proposal": {
+              "input": {
+                "artifactRootRef": "docs",
+                "name": "published-completed-invalid",
+                "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+              },
+              "outputs": {
+                "shape.prepare": {
+                  "acceptance": [
+                    {
+                      "id": "A1",
+                      "source": "brief.md",
+                      "text": "The original Build business Run resumes."
+                    }
+                  ],
+                  "children": null,
+                  "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+                  "semanticSnapshot": {
+                    "artifacts": [
+                      {
+                        "auxiliary": [],
+                        "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                        "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                        "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                        "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                        "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                        "source": "brief.md"
+                      },
+                      {
+                        "auxiliary": [],
+                        "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                        "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                        "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                        "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                        "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                        "source": "specs/workflow/spec.md"
+                      }
+                    ],
+                    "schema": "comet.native.shape-semantics.v1"
+                  },
+                  "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+                  "specChanges": [
+                    {
+                      "capability": "workflow",
+                      "operation": "create",
+                      "source": "specs/workflow/spec.md"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "waits": [
+    {
+      "id": "published-completed-invalid:2",
+      "stepId": "shape.confirm",
+      "sequence": 2,
+      "status": "resolved",
+      "proposal": {
+        "input": {
+          "artifactRootRef": "docs",
+          "name": "published-completed-invalid",
+          "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+        },
+        "outputs": {
+          "shape.prepare": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "The original Build business Run resumes."
+              }
+            ],
+            "children": null,
+            "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+            "semanticSnapshot": {
+              "artifacts": [
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                  "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                  "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                  "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                  "source": "brief.md"
+                },
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                  "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                  "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                  "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                  "source": "specs/workflow/spec.md"
+                }
+              ],
+              "schema": "comet.native.shape-semantics.v1"
+            },
+            "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+            "specChanges": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ]
+          }
+        }
+      },
+      "proposalHash": "885a7a3847ef17985333a27d1513643671c0af1b86f37b5f703375e3558db2e7",
+      "choices": [
+        "approved",
+        "rejected"
+      ],
+      "results": {
+        "shape.prepare": {
+          "sequence": 1,
+          "value": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "The original Build business Run resumes."
+              }
+            ],
+            "children": null,
+            "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+            "semanticSnapshot": {
+              "artifacts": [
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                  "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                  "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                  "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                  "source": "brief.md"
+                },
+                {
+                  "auxiliary": [],
+                  "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                  "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                  "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                  "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                  "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                  "source": "specs/workflow/spec.md"
+                }
+              ],
+              "schema": "comet.native.shape-semantics.v1"
+            },
+            "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+            "specChanges": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ]
+          }
+        }
+      },
+      "decision": {
+        "id": "SIMULATED-USER-APPROVED-SHAPE",
+        "choice": "approved",
+        "proposalHash": "885a7a3847ef17985333a27d1513643671c0af1b86f37b5f703375e3558db2e7",
+        "reason": "SIMULATED USER approval only for the isolated protocol fixture"
+      }
+    }
+  ],
+  "ready": [],
+  "joins": {},
+  "outputs": {
+    "shape.prepare": {
+      "sequence": 1,
+      "value": {
+        "acceptance": [
+          {
+            "id": "A1",
+            "source": "brief.md",
+            "text": "The original Build business Run resumes."
+          }
+        ],
+        "children": null,
+        "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+        "semanticSnapshot": {
+          "artifacts": [
+            {
+              "auxiliary": [],
+              "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+              "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+              "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+              "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+              "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+              "source": "brief.md"
+            },
+            {
+              "auxiliary": [],
+              "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+              "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+              "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+              "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+              "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+              "source": "specs/workflow/spec.md"
+            }
+          ],
+          "schema": "comet.native.shape-semantics.v1"
+        },
+        "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+        "specChanges": [
+          {
+            "capability": "workflow",
+            "operation": "create",
+            "source": "specs/workflow/spec.md"
+          }
+        ]
+      }
+    },
+    "shape.confirm": {
+      "sequence": 2,
+      "value": {
+        "choice": "approved",
+        "proposal": {
+          "input": {
+            "artifactRootRef": "docs",
+            "name": "published-completed-invalid",
+            "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\project"
+          },
+          "outputs": {
+            "shape.prepare": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "The original Build business Run resumes."
+                }
+              ],
+              "children": null,
+              "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+              "semanticSnapshot": {
+                "artifacts": [
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+                    "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+                    "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+                    "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+                    "source": "brief.md"
+                  },
+                  {
+                    "auxiliary": [],
+                    "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+                    "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+                    "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+                    "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+                    "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+                    "source": "specs/workflow/spec.md"
+                  }
+                ],
+                "schema": "comet.native.shape-semantics.v1"
+              },
+              "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+              "specChanges": [
+                {
+                  "capability": "workflow",
+                  "operation": "create",
+                  "source": "specs/workflow/spec.md"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "shape.revalidate": {
+      "sequence": 3,
+      "value": {
+        "acceptance": [
+          {
+            "id": "A1",
+            "source": "brief.md",
+            "text": "The original Build business Run resumes."
+          }
+        ],
+        "children": null,
+        "formalHash": "1566ef05dc0a35367c79a0a7d8c8fb8004b5612d3bd7470e2ff35f168132d3d2",
+        "semanticSnapshot": {
+          "artifacts": [
+            {
+              "auxiliary": [],
+              "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+              "contentHash": "f54140156eba112504d43600f24e4a36e8ec65ff9369fdaad1056f3ffa668d88",
+              "contractHash": "b8cb5cf068fa238d9e4c07cefb5133d273d0cf39dc6146ea7c3573e2b0306c29",
+              "inputHash": "fee3895524b1ba9eddab17741e1b4026a3bd6ddefadbe245a29cf8318faf32da",
+              "legacyFingerprint": "17e862e1f36d7dd2c5863456a6e55773f93f3c3aad4497055906c4a216b1abbe",
+              "source": "brief.md"
+            },
+            {
+              "auxiliary": [],
+              "commentsHash": "cda738d4fb7d0dbdff20df1cd09b859740e0671de31bcf78b8ddc8ff818dab92",
+              "contentHash": "de9b740464346615aac07536eb20d4ce6c95bc4885c3f1e43f449a30ce8c2e8f",
+              "contractHash": "e8f85bfe544d1b9ac04e9f4470531d35b34a8fc2bfce1d85595f4ac7c47cec80",
+              "inputHash": "d124d9a0604b53c078ae70f56a30e2f7b1d94c2ad08baeb305e642a4060aed18",
+              "legacyFingerprint": "80a7d54f52f661dfe5ced9358c55d11ef8b2129da9699dcfb7b99413404571c6",
+              "source": "specs/workflow/spec.md"
+            }
+          ],
+          "schema": "comet.native.shape-semantics.v1"
+        },
+        "shapeConfirmationHash": "0a318867bdc94c27ac4207197dd17cb1e111a9bad9413c33be76a8087556c378",
+        "specChanges": [
+          {
+            "capability": "workflow",
+            "operation": "create",
+            "source": "specs/workflow/spec.md"
+          }
+        ]
+      }
+    },
+    "build.builder": {
+      "sequence": 4,
+      "value": {
+        "response": {
+          "checks": [
+            {
+              "argv": [
+                "-e",
+                "const fs=require('node:fs');fs.appendFileSync(process.argv[1],'once\\n');process.stdout.write('actual-legacy-check-completed\\n')",
+                "C:\\Users\\BENYM\\AppData\\Local\\Temp\\native-052-545-completed-invalid-10QQmP\\actual-node-count"
+              ],
+              "cwdRef": ".",
+              "executable": "D:\\nodejs\\node.exe",
+              "id": "once",
+              "name": "Current Build check",
+              "repeatable": true,
+              "timeoutMs": 15000
+            }
+          ],
+          "kind": "request-checks"
+        }
+      }
+    }
+  },
+  "children": [],
+  "lineage": []
+}

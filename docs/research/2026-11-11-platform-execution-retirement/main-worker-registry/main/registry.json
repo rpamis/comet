@@ -1,0 +1,195 @@
+{
+  "cases": [
+    {
+      "id": "native-299-real-integration-parent-verify",
+      "behavior": "真实 Child 分支串行集成后才解锁依赖，父级最终验收覆盖组合候选",
+      "status": "covered",
+      "reason": "SDK 和 Compat 真实 Git 链路支持父级最终 Verify；不能把子项全部通过当父级通过。",
+      "coverageLayer": "SDK and Compat",
+      "evidence": [
+        "https://github.com/rpamis/comet/issues/299"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "gates the parent on real child merges and starts dependents from the integrated HEAD",
+          "requiredNames": [
+            "gates the parent on real child merges and starts dependents from the integrated HEAD"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "repairs failed Supervisor Children and serializes integration after a definition upgrade|handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(",
+          "requiredNames": [
+            "repairs failed Supervisor Children and serializes integration after a definition upgrade",
+            "handles parent repair, delivery, and cleanup after Supervisor DAG restart ("
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "撤下契约内容 hash、复制正文和内容编辑触发的自动撤销/重验。保留原真实 Git 合并、依赖调度、历史不可重写、工作区与父级最终验收；旧父级失败后通过明确的方案修订动作重新确认，保留失败预算。原测试完整归档，现有正反向断言和新业务流程共同覆盖有效契约。",
+        "authorization": "report:2026-11-09-agent-managed-workflow-simplification",
+        "record": "docs/research/2026-11-09-agent-managed-workflow-simplification.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-children.test.ts",
+            "namePattern": "gates the parent on real child merges and starts dependents from the integrated HEAD",
+            "requiredNames": [
+              "gates the parent on real child merges and starts dependents from the integrated HEAD"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "repairs failed Supervisor Children and serializes integration after a definition upgrade|handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(",
+            "requiredNames": [
+              "repairs failed Supervisor Children and serializes integration after a definition upgrade",
+              "handles parent repair, delivery, and cleanup after Supervisor DAG restart ("
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-agent-supervisor-business.test.ts",
+            "namePattern": "^(?:completes Agent-selected Supervisor work through the Native business entry via source|completes Agent-selected Supervisor work through the Native business entry via generated)$",
+            "requiredNames": [
+              "completes Agent-selected Supervisor work through the Native business entry via source",
+              "completes Agent-selected Supervisor work through the Native business entry via generated"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-document-handoff-removal-registry.json",
+            "sha256": "5ac2afae31044dd356191d8b6f9236abd342836b1ce362681dd4ec5321f065a2"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-document-handoff-removal-tests.json",
+            "sha256": "7a0ddadb3a3de832ebed21abebc4a70d1905021d2c773dbb81afc3e375cca66a"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-document-handoff-removal-mapping.json",
+            "sha256": "5668bf2eac7774983d9d2dce38bea3d2a6385f852c12b861c3f81f37b4cc819d"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-document-handoff-removal-patch.patch",
+            "sha256": "c29b71cbea1fe3288357ee3b880017d057627b8f7d0f72b0228c1fc6188b3a37"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-v4-compact-steps-original-run-recovery",
+      "behavior": "新v4合并纯内部Action，旧v4与其原有兼容定义仍沿原Action和批准恢复。",
+      "sources": [
+        "report:2026-11-10-runtime-cost-cleanup"
+      ],
+      "coverageLevel": "runtime",
+      "reproduction": "冻结基线原v4定义，新应用不再生成两个内部步骤；旧Run停在Shape或Supervisor验收结果revalidate的pending/unknown后重新选择应用继续。",
+      "expected": "新v4无shape.revalidate/verify.revalidate；旧图和7个已支持变体仍精确匹配；保留原Run/Action/批准和已集成Child，仅生成一次parent delivery。",
+      "forbidden": "把旧Run强换新图、WORKFLOW_CHANGED、重跑子任务/merge、未批准直接交付或当前Shape读取上一轮事实。",
+      "rootCause": "纯数据转换另建Action增加持久化往返；删新图步骤时必须保留原应用定义和处理器的恢复入口。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-definition-selection.test.ts",
+          "namePattern": "omits internal result-transfer Actions from new v4|continues the original v4 Shape Action|retains the original v4 compatibility definition",
+          "requiredNames": [
+            "omits internal result-transfer Actions from new v4 while selecting the original v4 definition",
+            "continues the original v4 Shape Action after compact definitions ship (pending)",
+            "continues the original v4 Shape Action after compact definitions ship (unknown)",
+            "retains the original v4 compatibility definition +0 after internal step removal",
+            "retains the original v4 compatibility definition 1 after internal step removal",
+            "retains the original v4 compatibility definition 2 after internal step removal",
+            "retains the original v4 compatibility definition 3 after internal step removal",
+            "retains the original v4 compatibility definition 4 after internal step removal",
+            "retains the original v4 compatibility definition 5 after internal step removal",
+            "retains the original v4 compatibility definition 6 after internal step removal"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "continues the original v4 Supervisor accepted-result Action after compact definitions ship",
+          "requiredNames": [
+            "continues the original v4 Supervisor accepted-result Action after compact definitions ship (pending)",
+            "continues the original v4 Supervisor accepted-result Action after compact definitions ship (unknown)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-unreadable-report",
+      "sources": [
+        "report:2026-10-27-manual-workflow-recovery"
+      ],
+      "behavior": "验证报告无法正常读取时状态准确说明阻塞。",
+      "coverageLevel": "runtime",
+      "reproduction": "将验证报告路径替换成目录，旧只读检查忽略错误并显示可归档。",
+      "expected": "报告实际读取错误，保留当前 Run 和文件。",
+      "forbidden": "提供归档命令或隐瞒读取失败。",
+      "rootCause": "候选检查将非漂移的文件系统错误转换成空结果。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "reports a non-file verification path without offering Archive or changing the Run",
+          "requiredNames": [
+            "reports a non-file verification path without offering Archive or changing the Run"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "已完成Run的阅读视图不再决定Archive推进；只读诊断报告路径类型警告且保留目录原文、原批准和归档收据。执行期必需报告失败仍按旧协议拒绝。",
+        "authorization": "report:2026-11-10-runtime-remaining-failures",
+        "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "preserves the completed Run and warns when its archived report view is not a file",
+            "requiredNames": [
+              "preserves the completed Run and warns when its archived report view is not a file (version=1)",
+              "preserves the completed Run and warns when its archived report view is not a file (version=3)"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/registry.json",
+            "sha256": "e6d702047aec141307700160678ed08b49244c8bc35c2f5f128018648206ed06"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/tests.json",
+            "sha256": "a3efabe9ea2def260224301a176b44f5948a4d9f9910c1a7ea2be0fc49ee087d"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/mapping.json",
+            "sha256": "3a5e285a24256e181f3bda43825826fb6010cbf77491f723bbdf081910793df2"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/patch.patch",
+            "sha256": "238e8ab4e60fa6cadae98a3e3a041574eb70bc5a10f01de7d578625d87ececcf"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-optional-archived-view-path-warning",
+      "behavior": "已完成归档的阅读视图被目录占用时，所有协议只读返回报告未就绪提示且不跟随或覆盖目录。",
+      "sources": [
+        "report:2026-11-10-runtime-remaining-failures"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "公开Archive前把verification.md替换为带用户文件的目录。",
+      "expected": "原Run、批准与归档receipt完成，目录原文保留，返回warning。",
+      "forbidden": "完成归档后以阅读view类型错误伪报CLI失败；读写该目录外部内容。",
+      "rootCause": "完成Run后的阅读视图诊断将路径类型错误重新抛出，导致已提交归档伪报失败。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "preserves the completed Run and warns when its archived report view is not a file",
+          "requiredNames": [
+            "preserves the completed Run and warns when its archived report view is not a file (version=1)",
+            "preserves the completed Run and warns when its archived report view is not a file (version=3)"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -131,7 +131,13 @@ describe('development agent rules', () => {
       fs.readFile(path.join(repositoryRoot, 'platform/AGENTS.md'), 'utf8'),
     ]);
 
-    for (const marker of ['纯模型', '兼容门面', '锁内预留 → 锁外执行 → 锁内提交']) {
+    for (const marker of [
+      '纯模型',
+      '兼容门面',
+      '普通开发、测试和命令由 Agent 平台工具执行',
+      '每个 workspace 只有一个写入者',
+      '普通流程不创建文件锁、协调锁或锁恢复协议',
+    ]) {
       expect(native).toContain(marker);
     }
     expect(entry).toContain('selection 数据契约');

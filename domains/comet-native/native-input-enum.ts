@@ -19,7 +19,7 @@ export const NATIVE_ACCEPTANCE_REVIEW_STATUSES = [
   'known-fail',
 ] as const;
 
-export const NATIVE_VERIFIER_RESPONSE_KINDS = ['final-result', 'request-checks'] as const;
+export const NATIVE_VERIFIER_RESPONSE_KINDS = ['final-result'] as const;
 
 export const NATIVE_RUNNER_INPUT_KINDS = [
   'builder-handoff',

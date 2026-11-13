@@ -1,0 +1,30 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "comet",
+  "version": "0.5.3",
+  "description": "Comet 是一个面向 Agent 的可恢复长程任务工作流与 Skill 平台，帮助你从需求推进到实现、验收和归档，并持续积累个人记忆与项目知识。",
+  "author": {
+    "name": "benym"
+  },
+  "homepage": "https://github.com/rpamis/comet",
+  "repository": "https://github.com/rpamis/comet",
+  "license": "MIT",
+  "extensions": {
+    "com.openai": {
+      "requires_local_executor": true,
+      "hooks": [],
+      "interface": {
+        "displayName": "Comet",
+        "shortDescription": "可恢复长程任务工作流与 Skill 平台",
+        "longDescription": "Comet 是一个面向 Agent 的可恢复长程任务工作流与 Skill 平台，帮助你把想法推进为有明确需求、实现、验收和归档记录的结果。任务状态保存在项目中，换会话或中断后可以继续。\n\nNative 工作流：确认需求后，由 Agent 自主选择计划、实现、测试和审查方法，Comet 负责状态检查、验收与可恢复归档。\nClassic 工作流：保留 OpenSpec 与 Superpowers 的完整阶段流程，适合需要明确方法和阶段约束的开发任务。\nComet Any 与 SDK：把已有 Skill、工具、用户确认和验收步骤组合成可运行、可恢复的工作流。\n个人记忆与项目知识：保留协作偏好、项目结构和经过验证的经验，减少重复交代与探索。\nComet Eval：使用 Rubric、Pass@k 和 Pass^k 记录评估证据，比较 Skill 与完整工作流的表现；仅在用户明确要求时启动。\nDashboard：从 Codex 侧栏或会话面板查看项目、工作流进度、变更详情、产物和评估记录。\n\n插件包含 Comet Skill、工作流 Guard、本地 Dashboard 和配套 CLI npm 安装包，首次启用时自动安装 CLI，已有同版或更高版本可直接复用。需要 Node.js 与 npm，依赖安装需要联网及 npm 全局目录写权限。Classic 依赖沿用项目配置，Hook 需要审阅并信任。",
+        "developerName": "benym",
+        "category": "Developer Tools",
+        "capabilities": ["Read", "Write", "Interactive"],
+        "websiteURL": "https://github.com/rpamis/comet",
+        "logo": "./assets/comet-logo.png",
+        "composerIcon": "./assets/comet-logo.png",
+        "defaultPrompt": ["使用 Comet 处理当前项目的需求。", "恢复当前 Comet 工作流。"]
+      }
+    }
+  }
+}

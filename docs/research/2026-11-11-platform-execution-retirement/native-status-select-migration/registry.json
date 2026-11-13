@@ -1,0 +1,51 @@
+{
+  "sourceCatalog": [
+    {
+      "file": "config/workflow-regressions.json",
+      "sha256": "1330e732285d706fa1aaae7f34ac93764321463fe0df8ff4b68156a95217947f"
+    },
+    {
+      "file": "config/historical-workflow-regressions.json",
+      "sha256": "fb090b0be6071526ceefa05fde3d4c7059fb20ed00b283dc2ebfbc484a87b70f"
+    }
+  ],
+  "method": "Incremental cases plus frozen historical issues[].cases overlaid by catalog.historicalTestMigrations; terminal supersededBy tests are effective targets",
+  "relatedEffectiveTargets": [
+    {
+      "id": "native-285-archive-context-bounds",
+      "issue": 285,
+      "test": {
+        "file": "test/domains/comet-native/native-portable-status.test.ts",
+        "namePattern": "keeps the default projection compact and pages typed details by state version",
+        "requiredNames": [
+          "keeps the default projection compact and pages typed details by state version"
+        ]
+      }
+    },
+    {
+      "id": "native-314-status-bounds",
+      "issue": 314,
+      "test": {
+        "file": "test/domains/comet-native/native-portable-status.test.ts",
+        "namePattern": "keeps Supervisor default status compact and paginates diagnostic history",
+        "requiredNames": [
+          "keeps Supervisor default status compact and paginates diagnostic history"
+        ]
+      }
+    },
+    {
+      "id": "native-314-32-child-scale",
+      "issue": 314,
+      "test": {
+        "file": "test/domains/comet-native/native-portable-status.test.ts",
+        "namePattern": "bounds 32-child named Supervisor status without reading unrelated change state",
+        "requiredNames": [
+          "bounds 32-child named Supervisor status without reading unrelated change state"
+        ]
+      }
+    }
+  ],
+  "affectedEffectiveTargets": [],
+  "appendRequired": false,
+  "reason": "All three effective historical targets select unchanged compact/paging/32-child bodies; none select the changed declarations; Native select command has no registry reference."
+}

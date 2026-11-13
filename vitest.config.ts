@@ -21,7 +21,7 @@ export default defineConfig({
     ],
     coverage: {
       reporter: ['text', 'lcov'],
-      include: ['app/**/*.ts', 'domains/**/*.ts', 'platform/**/*.ts'],
+      include: ['app/**/*.ts', 'domains/**/*.ts', 'platform/**/*.ts', 'plugin/**/*.ts'],
       exclude: [
         // Classic runtime behavior is generated to .mjs and exercised through subprocess smoke tests.
         'domains/comet-classic/**',

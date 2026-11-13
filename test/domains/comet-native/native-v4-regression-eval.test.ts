@@ -1,14 +1,16 @@
+import '../../helpers/isolated-agent-home.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { execFileSync, spawnSync } from 'node:child_process';
 
 import {
   defaultProjectConfig,
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
-import { readNativeLocalExecution } from '../../../domains/comet-native/native-local-execution.js';
+
 import {
   ensureNativeDirectories,
   nativePreferredChangeRuntimeDir,
@@ -19,8 +21,6 @@ import {
   confirmNativePortableSkillCoordinatedPass,
   createNativePortableChange,
   dispatchNativePortableVerifier,
-  executeNativePortableCheckPlan,
-  nativeLocalExecutionFile,
   nativePortableChangeDir,
   readNativePortableChange,
   submitNativePortableBuilderCandidate,
@@ -41,13 +41,20 @@ function passedReview(reviewerExecutionRef: string) {
   };
 }
 
-describe('Native v4 verification-loop regression eval', () => {
+describe('Native v4 deterministic verification-loop regression', () => {
   let root: string;
   let paths: NativeProjectPaths;
 
   beforeEach(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-v4-regression-'));
-    await fs.mkdir(path.join(root, '.git'));
+    for (const args of [
+      ['init'],
+      ['config', 'user.name', 'SIMULATED Fixture'],
+      ['config', 'user.email', 'fixture@example.invalid'],
+      ['config', 'commit.gpgsign', 'false'],
+      ['commit', '--allow-empty', '-m', 'SIMULATED fixture baseline'],
+    ])
+      execFileSync('git', args, { cwd: root, stdio: 'ignore' });
     await writeProjectConfig(root, defaultProjectConfig('docs', 'en'));
     paths = await nativeProjectPaths(root, 'docs');
     await ensureNativeDirectories(paths);
@@ -84,23 +91,6 @@ process.stderr.write('e'.repeat(size));
     return JSON.parse(
       await fs.readFile(path.join(paths.workspaceRuntimeRoot, 'check-counts.json'), 'utf8'),
     ) as Record<string, number>;
-  }
-
-  function outputPlan(id: string, bytesPerStream: number) {
-    return {
-      id,
-      name: `${id} output check`,
-      executable: process.execPath,
-      argv: [
-        './check-output.mjs',
-        path.join(paths.workspaceRuntimeRoot, 'check-counts.json'),
-        id,
-        String(bytesPerStream),
-      ],
-      cwdRef: '.',
-      timeoutMs: 10_000,
-      repeatable: true,
-    };
   }
 
   it('requires independent full-coverage verification, loops repairs, and archives without legacy artifacts or rechecks', async () => {
@@ -147,15 +137,9 @@ Ship a command whose output remains valid at every supported diagnostic size.
     });
     await expect(archiveNativePortableChange({ paths, name })).rejects.toThrow('not archive-ready');
 
-    const firstChecks = await executeNativePortableCheckPlan({
-      paths,
-      name,
-      plans: [outputPlan('candidate-1-check', 0)],
-    });
     await dispatchNativePortableVerifier({
       paths,
       name,
-      checks: firstChecks.checks,
       verifierExecutionId: 'verifier-incomplete',
     });
 
@@ -163,7 +147,6 @@ Ship a command whose output remains valid at every supported diagnostic size.
       submitNativePortableVerifierResult({
         paths,
         name,
-        checks: firstChecks.checks,
         maxVerifyFailures: 5,
         envelope: runner.envelopeVerifierResponse({
           candidateId: 'candidate-1',
@@ -177,7 +160,13 @@ Ship a command whose output remains valid at every supported diagnostic size.
               iteration: 1,
               attempt: 1,
               verdict: 'pass',
-              acceptance: [{ id: 'A1', result: 'passed', reason: 'Observed the command succeed.' }],
+              acceptance: [
+                {
+                  id: 'A1',
+                  result: 'passed',
+                  reason: 'Observed the command succeed.',
+                },
+              ],
               risks: [],
               summary: 'Pass claimed with incomplete coverage.',
             },
@@ -199,7 +188,6 @@ Ship a command whose output remains valid at every supported diagnostic size.
     const failed = await submitNativePortableVerifierResult({
       paths,
       name,
-      checks: firstChecks.checks,
       maxVerifyFailures: 5,
       envelope: runner.envelopeVerifierResponse({
         candidateId: 'candidate-1',
@@ -215,7 +203,11 @@ Ship a command whose output remains valid at every supported diagnostic size.
             verdict: 'fail',
             acceptance: [
               { id: 'A1', result: 'passed', reason: 'Long output completed.' },
-              { id: 'A2', result: 'failed', reason: 'The Archive behavior still needs repair.' },
+              {
+                id: 'A2',
+                result: 'failed',
+                reason: 'The Archive behavior still needs repair.',
+              },
             ],
             risks: [],
             summary: 'One acceptance criterion remains unresolved.',
@@ -233,6 +225,41 @@ Ship a command whose output remains valid at every supported diagnostic size.
       fs.readFile(path.join(nativePortableChangeDir(paths, name), 'verification.md'), 'utf8'),
     ).resolves.toContain('Result: **Failed**');
 
+    const byteSizes = new Map([
+      ['stdout-stderr-4k', 4 * 1024],
+      ['stdout-stderr-64k', 64 * 1024],
+      ['stdout-stderr-long', 256 * 1024],
+    ]);
+    const agentReports = [];
+    await fs.mkdir(path.join(paths.workspaceRuntimeRoot, 'agent-check-logs'), {
+      recursive: true,
+    });
+    for (const [label, size] of byteSizes) {
+      const ran = spawnSync(
+        process.execPath,
+        [
+          path.join(root, 'check-output.mjs'),
+          path.join(paths.workspaceRuntimeRoot, 'check-counts.json'),
+          label,
+          String(size),
+        ],
+        { cwd: root, maxBuffer: 2 * 1024 * 1024 },
+      );
+      expect(ran.status).toBe(0);
+      expect(ran.stdout.length).toBe(size);
+      expect(ran.stderr.length).toBe(size);
+      const log = path.join(paths.workspaceRuntimeRoot, 'agent-check-logs', label + '.log');
+      await fs.writeFile(log, Buffer.concat([ran.stdout, ran.stderr]));
+      expect((await fs.stat(log)).size).toBe(size * 2);
+      agentReports.push({
+        name: label,
+        result: 'passed' as const,
+        note: 'SIMULATED Agent executed a real ordinary Node check; full logs remain on disk',
+      });
+    }
+    expect(await readCounters()).toEqual(
+      Object.fromEntries([...byteSizes.keys()].map((id) => [id, 1])),
+    );
     await submitNativePortableBuilderCandidate({
       paths,
       name,
@@ -246,72 +273,17 @@ Ship a command whose output remains valid at every supported diagnostic size.
         addressedAcceptanceIds: ['A1', 'A2'],
         acceptanceReview: fixtureAcceptanceReview(['A1', 'A2']),
         review: passedReview('reviewer-repair-2'),
+        checks: agentReports,
       },
     });
-    const byteSizes = new Map([
-      ['stdout-stderr-4k', 4 * 1024],
-      ['stdout-stderr-64k', 64 * 1024],
-      ['stdout-stderr-long', 256 * 1024],
-    ]);
-    const finalPlans = [...byteSizes].map(([id, size]) => outputPlan(id, size));
-    const finalChecks = await executeNativePortableCheckPlan({
-      paths,
-      name,
-      plans: finalPlans,
-    });
-    expect(finalChecks.checks).toHaveLength(3);
-    expect(finalChecks.checks.every(({ status }) => status === 'passed')).toBe(true);
-
-    const localBeforeArchive = await readNativeLocalExecution(
-      nativeLocalExecutionFile(paths, name),
-    );
-    expect(localBeforeArchive?.execution).toMatchObject({
-      stage: 'checking',
-      actor: 'runtime',
-      status: 'completed',
-    });
-    expect(
-      localBeforeArchive?.checks.map(({ id, status, executionCount }) => ({
-        id,
-        status,
-        executionCount,
-      })),
-    ).toEqual([...byteSizes.keys()].map((id) => ({ id, status: 'passed', executionCount: 1 })));
-    for (const check of localBeforeArchive?.checks ?? []) {
-      const bytesPerStream = byteSizes.get(check.id)!;
-      const log = path.join(
-        path.dirname(nativeLocalExecutionFile(paths, name)),
-        ...check.log.split('/'),
-      );
-      expect((await fs.stat(log)).size).toBe(bytesPerStream * 2);
-    }
-    expect(await readCounters()).toEqual({
-      'candidate-1-check': 1,
-      'stdout-stderr-4k': 1,
-      'stdout-stderr-64k': 1,
-      'stdout-stderr-long': 1,
-    });
-    const reusedChecks = await executeNativePortableCheckPlan({ paths, name, plans: finalPlans });
-    expect(reusedChecks.checks.map(({ id, status }) => ({ id, status }))).toEqual(
-      finalChecks.checks.map(({ id, status }) => ({ id, status })),
-    );
-    expect(await readCounters()).toEqual({
-      'candidate-1-check': 1,
-      'stdout-stderr-4k': 1,
-      'stdout-stderr-64k': 1,
-      'stdout-stderr-long': 1,
-    });
-
     await dispatchNativePortableVerifier({
       paths,
       name,
-      checks: finalChecks.checks,
       verifierExecutionId: 'verifier-complete',
     });
     const passed = await submitNativePortableVerifierResult({
       paths,
       name,
-      checks: finalChecks.checks,
       maxVerifyFailures: 5,
       envelope: runner.envelopeVerifierResponse({
         candidateId: 'candidate-2',
@@ -326,11 +298,20 @@ Ship a command whose output remains valid at every supported diagnostic size.
             attempt: 1,
             verdict: 'pass',
             acceptance: [
-              { id: 'A1', result: 'passed', reason: 'All three long-output checks passed.' },
-              { id: 'A2', result: 'passed', reason: 'Archive no longer reruns verification.' },
+              {
+                id: 'A1',
+                result: 'passed',
+                reason: 'All three long-output checks passed.',
+              },
+              {
+                id: 'A2',
+                result: 'passed',
+                reason: 'Archive no longer reruns verification.',
+              },
             ],
             risks: [],
-            summary: 'Every acceptance criterion and Runtime-owned check passed.',
+            summary:
+              'SIMULATED independent reviewer checked all acceptance criteria and real platform check logs.',
           },
         },
       }),
@@ -346,12 +327,23 @@ Ship a command whose output remains valid at every supported diagnostic size.
         next_action: 'confirm-skill-coordinated-pass',
       },
     });
-    expect(
-      passed.state.verification?.checks.map(({ id, duration_ms }) => ({ id, duration_ms })),
-    ).toEqual(finalChecks.checks.map(({ id, duration_ms }) => ({ id, duration_ms })));
+    expect(passed.state.verification!.checks).toEqual([]);
+    expect(passed.state.verification!.reported_checks).toEqual(
+      passed.state.builder_handoff!.checks,
+    );
+    expect(passed.state.verification!.reported_checks).toHaveLength(3);
+    expect(JSON.stringify(passed.state)).not.toContain('o'.repeat(4096));
     await expectNoLegacyVerificationArtifacts();
 
-    const confirmed = await confirmNativePortableSkillCoordinatedPass({ paths, name });
+    // SIMULATED USER explicitly accepts the current independently reviewed result.
+    const confirmed = await confirmNativePortableSkillCoordinatedPass({
+      paths,
+      name,
+      expectedContinuation: {
+        stateVersion: passed.state.state_version,
+        action: 'accept-result',
+      },
+    });
     expect(confirmed).toMatchObject({
       phase: 'archive',
       loop: { stage: 'archive-ready', iteration: 2, attempt: 1 },
@@ -366,9 +358,12 @@ Ship a command whose output remains valid at every supported diagnostic size.
       'specs',
       'verification.md',
     ]);
-    await expect(fs.stat(nativePreferredChangeRuntimeDir(paths, name))).rejects.toMatchObject({
-      code: 'ENOENT',
+    const retainedRuntime = await fs.readdir(nativePreferredChangeRuntimeDir(paths, name), {
+      recursive: true,
     });
+    expect(retainedRuntime.map(String).join('\n')).not.toMatch(
+      /(?:^|[\\/])state\.json|check-logs|snapshot|manifest/iu,
+    );
     await expectNoLegacyVerificationArtifacts();
   });
 });

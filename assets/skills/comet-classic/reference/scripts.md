@@ -27,8 +27,10 @@ comet state sync-plan <change-name>
 comet state delivery <change-name>
 comet state delivery <change-name> --verify
 comet state delivery <change-name> --file <json-path>
-comet check run <change-name> <build|verify> --local -- <program> [args...]
-comet check rerun <change-name> <build|verify>
+comet state complete-build <change-name> --checks <checks-json-file>
+comet guard <change-name> verify --report <report-ref> --apply --checks <checks-json-file>
+# Compat: record the actual platform result without executing command text.
+comet state record-check <change-name> <build|verify> --command "<actual command>" --exit-code <actual exit code>
 comet guard <change-name> <phase> --apply
 comet handoff <change-name> design --write
 comet archive <change-name>
@@ -44,7 +46,7 @@ Query only information still missing for the current action. Putting multiple `c
 
 Task reads, stable IDs, completion, and checkpoints support SDK and Compat. They do not advance the SDK Run or replace checks, phase approval, or complete-build. The same tasks.md remains completion authority. Continue from the current Run after coordination updates without querying again just to discover the next step.
 
-checkpoint input requires schemaVersion:1 and taskIds/revision/stage/sessionId/evidence/unresolved/reviewRounds; reads return `{checkpoint, stale}`. Runtime validates the data and generates Markdown. See context-recovery.md for JSON. task-complete automatically synchronizes legacy-plan tasks with established comet-task ID mappings. Use sync-plan for a separate update; planSync mapping-required requires completing mappings, not reimplementing tasks.
+checkpoint input requires schemaVersion:1 and taskIds/stage/sessionId/evidence/unresolved/reviewRounds; reads return `{checkpoint, stale}`. Runtime validates the data and generates Markdown. See context-recovery.md for JSON. task-complete automatically synchronizes legacy-plan tasks with established comet-task ID mappings. Use sync-plan for a separate update; planSync mapping-required requires completing mappings, not reimplementing tasks.
 
 delivery input includes action (local|push|pr), targetBranch, and optional remote, commit, and prUrl; see comet-archive for examples. Normal entry and delivery reads do not access the network. Only `state delivery <change-name> --verify` checks remote and PR state read-only, returning `{delivery, verification}`. A successful record write does not prove delivery success. Stop for unavailable commands, rejected operations, or inconsistent records; do not bypass checks by editing internal state.
 
@@ -74,44 +76,9 @@ comet state transition <change-name> preset-escalate
 
 Archive through `comet archive <change-name>`. OpenSpec first moves the change into a date-prefixed archive directory; Comet then records state. Update pre-archive confirmation through `archive-confirm` or `archive-reopen`. Do not manually run the `archived` transition outside the archive procedure.
 
-## Check Evidence and Input Declarations
+## Check Commands and Result Reuse
 
-Check evidence reuses by "input scope": the default inputs are working-tree file contents. Commits, staging, ticking tasks.md checkboxes, and environment variable changes no longer invalidate evidence by default; when a build or test actually reads such information, declare the binding through `.comet/check-policy.json`.
-
-The same full command recorded with `--local` (matching argv, cwd, inputs, and environment) can be reused across Build and Verify. Runtime binds the existing evidence to the current phase and returns `reused=true`; do not rerun it merely because the phase name changed. An explicit failure, manual declaration, stale record, or cwd mismatch is reported with its recovery command before any detected build command is considered.
-
-After a Runtime-recorded command fails or is interrupted while snapshotting inputs or launching, use `comet check rerun <change-name> <build|verify>`. Runtime persists argv, cwd, timeout, and reuse tier before execution, so an interrupted attempt retries unchanged instead of running another auto-detected build or reconstructing shell syntax. Guard keeps showing a fresh `comet check run` template only for manual legacy records that have no Runtime argv.
-
-When guard reports evidence as not reusable, it prints the invalidation reason and the changed file list (`Why:`, `Changed inputs:`, `Relevance scope:`). Use that list to decide which command to rerun instead of rerunning everything.
-
-`--incremental` records phase-local evidence: guard previews accept it for quick confirmation, while `--apply` still requires one full rerun of the complete command before advancing the phase. The caller chooses the incremental command (for example, running only related tests); incremental evidence always requires a rerun after cold recovery.
-
-```bash
-comet check run <change-name> build --local -- <program> [args...]
-comet check run <change-name> verify --local --incremental -- <program> [args...]
-```
-
-`.comet/check-policy.json` declares an input scope per command. In the v2 format each command is scoped independently and only the entry matching `argv` and `cwd` applies; editing or adding other entries does not affect this command's existing evidence. `files` accepts literal paths and the `*`, `?`, and `**` wildcards; newly added matching files are picked up automatically without changing the declaration. When a build rewrites files inside its input area, declare those artifacts with `outputs`; Runtime excludes them from that command's input snapshot so the command does not invalidate itself:
-
-```json
-{
-  "version": 2,
-  "commands": [
-    {
-      "argv": ["pnpm", "build"],
-      "cwd": ".",
-      "files": ["src/**", "package.json", "tsconfig.json"],
-      "outputs": ["dist/**"],
-      "git": "all"
-    },
-    { "argv": ["vitest", "run"], "cwd": ".", "files": ["src/**", "test/**"] }
-  ]
-}
-```
-
-Omitted fields keep the defaults: `git` defaults to `none` (no HEAD or index binding), `env` binds no variables (the resolved executable path and its file identity plus the Node version always bind, so switching Node versions still invalidates evidence), and `taskCheckboxes` defaults to `ignore` (ticking tasks does not invalidate evidence; task text changes still do). Declare `git: "all"` when build artifacts embed a commit SHA, list variable names in `env` when the result depends on them, and declare `taskCheckboxes: "include"` when completion marks themselves affect the check result. The older v1 single-command format remains valid and keeps its original semantics.
-
-An entry's `cwd` also declares where that command's evidence belongs. By default the guard reuses only evidence whose cwd matches its own invocation directory; a command matched by a v2 entry may record evidence in the entry's declared `cwd` instead. When a build or verification entry point lives in a subdirectory, declare the command as actually executed (for example `{ "argv": ["npm", "run", "build"], "cwd": "ui/frontend" }`), record it with `--cwd ui/frontend`, and a guard invoked from the project root reuses it. Undeclared commands still require evidence from the guard's invocation directory.
+Follow [ordinary commands and checks](../../comet/reference/platform-execution.md): use platform tools, inspect original tasks and side effects, judge result applicability, and submit actual reports. Comet does not repeat checks or maintain ordinary-command content snapshots, process supervision, or recovery. Guard and status do not start builds or tests.
 
 ## Resolving the Next Step
 
@@ -120,6 +87,8 @@ After the phase Guard advances phase, follow auto-transition.md and prefer `agen
 ```bash
 comet state next <change-name>
 ```
+
+Plain `state next` only reads the next step. When the response gives `comet state next <change-name> --continue --json`, execute that business command. CLI submits accepted artifacts and actual check receipts in the original Run and continues recorded commands and approved internal steps. The Agent need not fill SDK Actions, claim tokens, or evidence digests. Missing selected commands, Agent work, user decisions, real failures, and unknown executions return the current next step. Submitting an original check receipt does not execute its command again.
 
 Output includes `NEXT: auto|manual|done|delivery`, `SKILL: <skill-name>` (omitted for `done`), and `HINT` (only for `manual`). `auto_transition: false` returns `manual`: it prevents automatic invocation of the next Skill without changing the phase already advanced. `delivery` means the change is archived: finish delivery from the delivery summary instead of advancing phases.
 
@@ -131,15 +100,21 @@ Run all archive steps with:
 comet archive <change-name>
 ```
 
+## Shared phase entry
+
+After entry returns layout, follow [artifact layout](classic-layout.md) to bind the `<classic-*>` logical roots. Reuse the protocol when it is already loaded and its binding remains valid in this session. Use the Comet adapter for OpenSpec CLI calls and these logical roots for file paths, without an extra root show.
+
+When edits need an impact judgement or continuation points to content judgement, read and follow [edit continuation](../../comet/reference/edit-review.md). The current Agent handles changes in the original Run, retains valid approvals and checks, and adds only affected evidence. User confirmations, implementation methods, TDD, reviews, and fixed-application requirements still follow the current phase's instructions.
+
 ## Task Context and Artifact Language
 
-At task completion, prefer [Task learning completion](../../comet/reference/task-learning.md): prepare one learning file and use `comet task --complete --learning-file <file>` to submit personal observations, project lessons, pending review decisions, and actual-use feedback together. The separate save, review, and completion commands later in this section remain available for immediate saves, individual corrections, and older versions; do not repeat them when using a learning file.
+At task completion, first check for submittable content using [Task learning completion](../../comet/reference/task-learning.md). When there are personal observations, project lessons, pending review decisions, or actual-use feedback, prefer `comet task --complete --learning-file <file>` to submit them together. Otherwise, do not create an empty learning file; complete with the actual check results. The separate commands later in this section remain available for immediate saves, individual corrections, and older versions; do not repeat them when using a learning file.
 
 Every OpenSpec and Superpowers artifact must use the configured Comet artifact language, a normalized language ID: `en` or `zh-CN`. For an existing change, prefer `configuration.language` from the current valid entry. Only if entry omits it, read `language` in the actual state file through `comet state get <name> language`. When neither state filename exists, read `classic.language` from project `.comet/config.yaml`, then global `~/.comet/config.yaml`. Use the current user request's language only when neither is configured. Explicitly include the resolved language in prompts or ARGUMENTS sent to external OpenSpec/Superpowers Skills.
 
 When a claim response includes `data.contextDelivery`, read `data.context[].text` and start work without repeating `contextRequest`. Use `data.contextActions.expand`, `restore`, and `complete` for full text, recovery, and learning submission respectively. New Agents use their own session IDs. Empty or unavailable retrieval does not block the task.
 
-Without automatic delivery, on first entering a phase, handing work to a new Agent, or restoring context, retrieve task context once using the current `agent.continuation.contextRequest`. For a claimed SDK Action, prefer that Action's `contextRequest` in `data.continuation.current.actions[]`. This protocol covers full, hotfix and tweak in SDK and Compat, including direct stage Skill invocation. Ordinary status reads, waiting for an existing task and uninterrupted work within a phase do not require another retrieval.
+Without automatic delivery, retrieve task context using the current `agent.continuation.contextRequest`; for a claimed SDK Action, prefer that Action's `contextRequest`. When the same session has verifiable delivery records and the full text remains in context, keep its session ID across phase changes and use `--context-mode incremental` to retrieve newly applicable content. Phase-specific rules still need loading. Use a full snapshot for a new Agent, compressed or restored context, or incomplete delivery records. This protocol covers full, hotfix, tweak, SDK, Compat, and standalone phase entry. Ordinary status reads, waiting for an existing task, and uninterrupted work within a phase do not require another retrieval.
 
 Without a request descriptor, bind the actual workspace, read the current `phase`, and run `comet task <project-root> --task "<original user request>" --phase "<phase>" --session "<stable receiving session id>" --context-mode snapshot --json`. Recover a missing task goal from the current proposal, specs and task scope. Keep the current Agent's session ID across phase changes; a new Agent uses its own ID, never the dispatcher's or another Action owner's ID. A restored Agent keeps its original ID and requests a snapshot so earlier delivery records do not suppress the restored context.
 
@@ -163,8 +138,8 @@ The same title updates the existing entry. `--evidence` binds project files that
 
 Before task completion, the Agent performs a separate project learning check:
 
-1. Run `comet knowledge review <project-root> --workflow classic --change <change-id> --json` and process only this change's pending reviews.
-2. Using the returned `recordFields` and source evidence, the Agent writes actions and submits them with `--id <id> --file <actions.json>`. Submit `[]` when there is no reusable lesson. The user does not write JSON. Confirm `submission.status` is `applied`; `accepted` means the actions were received.
+1. If there is no qualifying observation, reusable lesson, or known pending review, declare `no-observation` without calling review or creating an empty actions file. Run `comet knowledge review <project-root> --workflow classic --change <change-id> --json` only when the current completion response or an existing receipt indicates pending reviews for this change.
+2. For pending reviews, write actions from the returned `recordFields` and source evidence, then submit with `--id <id> --file <actions.json>`. An actual review with no reusable conclusion may submit `[]`. The user does not write JSON. Confirm `submission.status` is `applied`; `accepted` means received. Process only this change; pending reviews newly reported by a later completion response still follow this rule.
 3. After saving project lessons, pass `--project-learning-check submitted --memory <returned slug>` to completion; separate multiple receipts with commas. Pass `no-observation` if there is no reusable lesson, or `not-run` if no check occurred.
 4. Report project learning complete only when `projectLearning.submissionVerified` is `true` and both `pendingHostReviewCount` and `pendingReflectionCount` are `0`. Otherwise follow `nextActions` and report unfinished work. Learning failures do not block completed development work.
 

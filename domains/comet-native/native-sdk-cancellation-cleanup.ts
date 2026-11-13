@@ -6,12 +6,11 @@ import {
   clearCometCurrentSelectionIf,
   readCometCurrentSelection,
 } from '../workflow-contract/current-selection.js';
-import { withNativeMutationLock } from './native-mutation-lock.js';
+import { withNativeMutation } from './native-mutation.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
-import { terminateNativeSdkCheckExecutions } from './native-sdk-check-execution.js';
 
-/** 取消 CAS 和投影锁释放后调用；确认原执行静止再在 mutation lock 内释放选择。 */
+/** 取消 CAS 提交后调用；沿原业务事务边界释放选择，平台负责执行取消。 */
 export async function settleNativeSdkCancellation(options: {
   projectRoot: string;
   run: WorkflowRun;
@@ -30,7 +29,6 @@ export async function settleNativeSdkCancellation(options: {
     )
       return;
   }
-  await terminateNativeSdkCheckExecutions(options);
   const cancellation = await inspectNativeSdkCancellation(options);
   if (!cancellation?.quiescent) return;
   if (!cancellation.cleanupRequired) {
@@ -40,7 +38,7 @@ export async function settleNativeSdkCancellation(options: {
   const input = options.run.input as { artifactRootRef?: unknown } | null;
   if (typeof input?.artifactRootRef !== 'string') return;
   const paths = await nativeProjectPaths(options.projectRoot, input.artifactRootRef);
-  await withNativeMutationLock(paths, `release cancelled change ${options.run.runId}`, async () => {
+  await withNativeMutation(paths, async () => {
     const selected = await readCometCurrentSelection(options.projectRoot);
     if (selected.status !== 'selected' || selected.selection.change !== options.run.runId) return;
     const owner = await readSdkChangeOwner(options.projectRoot, 'native', options.run.runId);
@@ -58,14 +56,14 @@ export async function settleNativeSdkCancellation(options: {
       );
   }).catch((error: unknown) => {
     throw new Error(
-      `Native cancellation is committed but current selection release remains pending. Run comet native doctor --json to inspect the root mutation lock owner, age, and repair conditions, then retry comet native doctor ${options.run.runId} --repair. ${error instanceof Error ? error.message : String(error)}`,
+      `Native cancellation is committed but current selection release remains pending. Inspect the unfinished workspace transaction with comet native doctor --json, then retry comet native doctor ${options.run.runId} --repair. ${error instanceof Error ? error.message : String(error)}`,
       { cause: error },
     );
   });
   await closeNativeSdkHistory(options);
 }
 
-/** 在 Archive 共用锁内提交取消；投影和停止执行仍由提交后的生命周期负责。 */
+/** 提交取消前核对原 Archive 事务和任务；checkpoint 与选择清理由提交后的生命周期负责。 */
 export async function commitNativeSdkCancellation(options: {
   projectRoot: string;
   store: RuntimeStore<WorkflowRun>;
@@ -80,9 +78,8 @@ export async function commitNativeSdkCancellation(options: {
   if (typeof input?.artifactRootRef !== 'string')
     throw new Error('Native cancellation commit requires its artifact root');
   const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef);
-  return withNativeMutationLock(
+  return withNativeMutation(
     paths,
-    `cancel SDK Native change ${runId}`,
     async () => {
       const current = await store.read(runId);
       if (current && current.status !== 'cancelled') {

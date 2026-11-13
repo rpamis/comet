@@ -47,7 +47,7 @@ async function containsLegacyManagedResumeBlock(
     const instruction = await resolveProtectedProjectInstructionPath(projectRoot, relativeFile);
     if (!instruction.exists) return false;
     const source = (
-      await readProtectedProjectFile(projectRoot, instruction.relative, 4 * 1024 * 1024, {
+      await readProtectedProjectFile(projectRoot, instruction.relative, Number.MAX_SAFE_INTEGER, {
         label: `${instruction.relative} legacy resume evidence`,
       })
     ).bytes.toString('utf8');

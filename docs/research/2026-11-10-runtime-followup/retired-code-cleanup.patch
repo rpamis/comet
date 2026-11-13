@@ -1,0 +1,3820 @@
+diff --git a/test/domains/comet-native/native-change.test.ts b/test/domains/comet-native/native-change.test.ts
+index c1f237ad..7955ce62 100644
+--- a/test/domains/comet-native/native-change.test.ts
++++ b/test/domains/comet-native/native-change.test.ts
+@@ -352,34 +352,6 @@ describe('Native change store', () => {
+     });
+   });
+ 
+-  it.skip('fails at change creation when the baseline snapshot is incomplete', async () => {
+-    const config = defaultProjectConfig('.');
+-    config.native.snapshot.max_total_bytes = 5 * 1024 * 1024;
+-    await writeProjectConfig(projectRoot, config);
+-    await fs.writeFile(
+-      path.join(projectRoot, 'oversized-baseline.bin'),
+-      Buffer.alloc(5 * 1024 * 1024 + 1, 0x61),
+-    );
+-
+-    await expect(
+-      createNativeChange({
+-        paths,
+-        name: 'incomplete-baseline',
+-        language: 'en',
+-        verificationProtocol: 'legacy-v1',
+-      }),
+-    ).rejects.toMatchObject({
+-      name: 'NativeBaselineIncompleteError',
+-      code: 'native-baseline-incomplete',
+-      omittedCount: 1,
+-      samplePaths: ['oversized-baseline.bin'],
+-      sampleTruncated: false,
+-    });
+-    await expect(
+-      fs.access(path.join(paths.changesDir, 'incomplete-baseline')),
+-    ).rejects.toMatchObject({ code: 'ENOENT' });
+-  });
+-
+   it('creates a complete baseline for a file larger than the legacy per-file limit', async () => {
+     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+     await fs.writeFile(
+@@ -410,49 +382,6 @@ describe('Native change store', () => {
+     });
+   });
+ 
+-  it.skip('creates a complete baseline after the project raises the total snapshot budget', async () => {
+-    const config = defaultProjectConfig('.');
+-    config.native.snapshot.max_total_bytes = 1024;
+-    await writeProjectConfig(projectRoot, config);
+-    await fs.writeFile(path.join(projectRoot, 'dataset.bin'), Buffer.alloc(1025, 0x61));
+-
+-    await expect(
+-      createNativeChange({
+-        paths,
+-        name: 'budget-too-small',
+-        language: 'en',
+-        verificationProtocol: 'legacy-v1',
+-      }),
+-    ).rejects.toMatchObject({
+-      name: 'NativeBaselineIncompleteError',
+-      effectiveLimits: expect.objectContaining({
+-        maxFileBytes: 1024,
+-        maxTotalBytes: 1024,
+-      }),
+-    });
+-
+-    config.native.snapshot.max_total_bytes = 2048;
+-    await writeProjectConfig(projectRoot, config);
+-    const state = await createNativeChange({
+-      paths,
+-      name: 'budget-raised',
+-      language: 'en',
+-      verificationProtocol: 'legacy-v1',
+-    });
+-
+-    expect(await readNativeBaselineManifest(paths, state.name)).toMatchObject({
+-      complete: true,
+-      limits: {
+-        maxFiles: 10_000,
+-        maxFileBytes: 2048,
+-        maxTotalBytes: 2048,
+-        maxManifestBytes: expect.any(Number),
+-        maxDurationMs: 60_000,
+-      },
+-      entries: [expect.objectContaining({ path: 'dataset.bin', size: 1025 })],
+-    });
+-  });
+-
+   it('reads older v3 state without an approval hash and canonicalizes it to null', async () => {
+     const state = await createNativeChange({
+       paths,
+diff --git a/test/domains/comet-native/native-check.test.ts b/test/domains/comet-native/native-check.test.ts
+index 3bb3618e..87804b04 100644
+--- a/test/domains/comet-native/native-check.test.ts
++++ b/test/domains/comet-native/native-check.test.ts
+@@ -4,40 +4,10 @@ import path from 'node:path';
+ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+ 
+ import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+-import {
+-  createNativeChange,
+-  nativeChangeDir,
+-  readNativeChange,
+-} from '../../../domains/comet-native/native-change.js';
+ import {
+   defaultProjectConfig,
+   writeProjectConfig,
+ } from '../../../domains/comet-native/native-config.js';
+-import { readNativeVerificationEvidence } from '../../../domains/comet-native/native-evidence-storage.js';
+-import { readNativeVerificationReceipt } from '../../../domains/comet-native/native-evidence-storage.js';
+-import {
+-  nativeChangeRuntimeDir,
+-  nativeProjectPaths,
+-} from '../../../domains/comet-native/native-paths.js';
+-import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
+-
+-const brief = `# Outcome
+-Keep the focused source valid.
+-# Scope
+-Update the declared implementation.
+-# Non-goals
+-No unrelated refactor.
+-# Acceptance examples
+-- The source passes the built-in whitespace check.
+-# Constraints and invariants
+-Do not mutate workflow state while checking.
+-# Decisions
+-Use the built-in Native check.
+-# Open questions
+-None.
+-# Verification expectations
+-Run comet native check.
+-`;
+ 
+ interface JsonEnvelope {
+   command: string | null;
+@@ -51,330 +21,20 @@ function json(result: Awaited<ReturnType<typeof runNativeCli>>): JsonEnvelope {
+   return JSON.parse(result.stdout!) as JsonEnvelope;
+ }
+ 
+-// `check` remains a legacy-compatible public command while Runtime-owned
+-// verification uses the internal executor directly.
+ describe('Native check public seam (legacy)', () => {
+   let projectRoot: string;
+   const name = 'safe-check';
+   const projectArgs = () => ['--project-root', projectRoot] as const;
+ 
+-  function runtimeDir(
+-    paths: Awaited<ReturnType<typeof nativeProjectPaths>>,
+-    changeDir: string,
+-  ): string {
+-    return nativeChangeRuntimeDir(paths, path.basename(changeDir));
+-  }
+-
+   beforeEach(async () => {
+     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-check-cli-'));
+     await writeProjectConfig(projectRoot, defaultProjectConfig('docs', 'en'));
+-    await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const value = 1;\n');
+   });
+ 
+   afterEach(async () => {
+     await fs.rm(projectRoot, { recursive: true, force: true });
+   });
+ 
+-  async function prepareVerifyChange(
+-    changeName = name,
+-    implementation = 'export const value = 2;\n',
+-  ): Promise<{
+-    paths: Awaited<ReturnType<typeof nativeProjectPaths>>;
+-    changeDir: string;
+-  }> {
+-    const paths = await nativeProjectPaths(projectRoot, 'docs');
+-    await createNativeChange({
+-      paths,
+-      name: changeName,
+-      language: 'en',
+-      verificationProtocol: 'legacy-v1',
+-    });
+-    const changeDir = nativeChangeDir(paths, changeName);
+-    await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
+-    await fs.mkdir(path.join(changeDir, 'specs', changeName), { recursive: true });
+-    await fs.writeFile(
+-      path.join(changeDir, 'specs', changeName, 'spec.md'),
+-      '# Safe check\nThe implementation must remain valid.\n',
+-    );
+-    const shaped = await runNativeCli([
+-      'next',
+-      changeName,
+-      '--summary',
+-      'Requirements are ready',
+-      '--confirmed',
+-      '--json',
+-      ...projectArgs(),
+-    ]);
+-    expect(shaped.exitCode, shaped.stderr).toBe(0);
+-    await fs.writeFile(path.join(projectRoot, 'feature.ts'), implementation);
+-    const built = await runNativeCli([
+-      'next',
+-      changeName,
+-      '--summary',
+-      'Implementation is ready',
+-      '--artifact',
+-      'feature.ts',
+-      '--json',
+-      ...projectArgs(),
+-    ]);
+-    expect(built.exitCode, built.stderr).toBe(0);
+-    await expect(readNativeChange(paths, changeName)).resolves.toMatchObject({
+-      phase: 'verify',
+-      implementation_scope: expect.stringMatching(
+-        /^runtime\/evidence\/scopes\/[a-f0-9]{64}\.json$/u,
+-      ),
+-    });
+-    return { paths, changeDir };
+-  }
+-
+-  it.skip('runs the internal scoped check through a whitelist-only CLI projection', async () => {
+-    const { paths, changeDir } = await prepareVerifyChange();
+-    const stateBefore = await fs.readFile(path.join(changeDir, 'comet-state.yaml'), 'utf8');
+-    const runBefore = await fs.readFile(
+-      path.join(runtimeDir(paths, changeDir), 'run-state.json'),
+-      'utf8',
+-    );
+-    const trajectoryBefore = await fs.readFile(
+-      path.join(runtimeDir(paths, changeDir), 'trajectory.jsonl'),
+-      'utf8',
+-    );
+-
+-    const checked = json(await runNativeCli(['check', name, '--json', ...projectArgs()]));
+-    expect(checked).toMatchObject({
+-      command: 'check',
+-      exitCode: 0,
+-      data: {
+-        status: 'passed',
+-        stale: false,
+-        issues: [],
+-        issuesTruncated: false,
+-        counts: {
+-          filesSelected: 1,
+-          filesScanned: 1,
+-          binaryFilesSkipped: 0,
+-          issueCount: 0,
+-          recordedIssueCount: 0,
+-        },
+-      },
+-    });
+-    expect(Object.keys(checked.data!).sort()).toEqual(
+-      [
+-        'checker',
+-        'counts',
+-        'endedAt',
+-        'hash',
+-        'issues',
+-        'issuesTruncated',
+-        'ref',
+-        'sourceRevision',
+-        'stale',
+-        'staleReasons',
+-        'startedAt',
+-        'status',
+-      ].sort(),
+-    );
+-    const firstRef = checked.data!.ref as string;
+-    const firstReceipt = await readNativeVerificationReceipt(paths, name, firstRef);
+-    expect(firstReceipt).toMatchObject({
+-      schema: 'comet.native.verification-receipt.v3',
+-      kind: 'static-inspection',
+-      status: 'passed',
+-    });
+-
+-    const checkReceiptDirectory = path.join(
+-      runtimeDir(paths, changeDir),
+-      'evidence',
+-      'check-receipts',
+-    );
+-    const typedReceiptDirectory = path.join(runtimeDir(paths, changeDir), 'evidence', 'receipts');
+-    const countFiles = async (directory: string): Promise<number> =>
+-      (await fs.readdir(directory)).length;
+-    const checkReceiptCount = await countFiles(checkReceiptDirectory);
+-    const typedReceiptCount = await countFiles(typedReceiptDirectory);
+-    const repeated = json(await runNativeCli(['check', name, '--json', ...projectArgs()]));
+-    expect(repeated).toMatchObject({ exitCode: 0, data: { status: 'passed', ref: firstRef } });
+-    expect(await countFiles(checkReceiptDirectory)).toBe(checkReceiptCount);
+-    expect(await countFiles(typedReceiptDirectory)).toBe(typedReceiptCount);
+-
+-    await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const value = 3;\n');
+-    const changed = json(await runNativeCli(['check', name, '--json', ...projectArgs()]));
+-    expect(changed).toMatchObject({
+-      exitCode: 1,
+-      data: { status: 'failed', stale: true },
+-    });
+-    expect(changed.data!.ref).not.toBe(firstRef);
+-
+-    const serializedProjection = JSON.stringify(checked.data);
+-    expect(serializedProjection).not.toContain(projectRoot);
+-    expect(serializedProjection).not.toContain('diff');
+-    expect(serializedProjection).not.toContain('argv');
+-    expect(serializedProjection).not.toContain('executable');
+-    expect(serializedProjection).not.toContain('stdout');
+-    expect(serializedProjection).not.toContain('stderr');
+-    expect(await fs.readFile(path.join(changeDir, 'comet-state.yaml'), 'utf8')).toBe(stateBefore);
+-    expect(
+-      await fs.readFile(path.join(runtimeDir(paths, changeDir), 'run-state.json'), 'utf8'),
+-    ).toBe(runBefore);
+-    expect(
+-      await fs.readFile(path.join(runtimeDir(paths, changeDir), 'trajectory.jsonl'), 'utf8'),
+-    ).toBe(trajectoryBefore);
+-  });
+-
+-  it.skip('runs and binds a fresh required check when Verify passes', async () => {
+-    const { paths, changeDir } = await prepareVerifyChange();
+-    await fs.writeFile(
+-      path.join(changeDir, 'verification.md'),
+-      await nativeVerificationFixtureReport({ paths, name }),
+-    );
+-
+-    const verified = json(
+-      await runNativeCli([
+-        'next',
+-        name,
+-        '--summary',
+-        'Verification passed with a bound receipt.',
+-        '--result',
+-        'pass',
+-        '--report',
+-        'verification.md',
+-        '--json',
+-        ...projectArgs(),
+-      ]),
+-    );
+-    expect(verified).toMatchObject({ exitCode: 0, data: { change: { phase: 'archive' } } });
+-    const state = await readNativeChange(paths, name);
+-    const envelope = await readNativeVerificationEvidence(
+-      paths,
+-      name,
+-      state.verification_evidence!,
+-    );
+-    expect(envelope.requiredReceiptRefs).toEqual([
+-      expect.stringMatching(/^runtime\/evidence\/receipts\/[a-f0-9]{64}\.json$/u),
+-    ]);
+-  });
+-
+-  it.skip('validates the Verify report before running the automatic required check', async () => {
+-    const { paths, changeDir } = await prepareVerifyChange();
+-    await fs.writeFile(path.join(changeDir, 'verification.md'), '# Conclusion\nPass.\n');
+-    const checkReceiptDirectory = path.join(
+-      runtimeDir(paths, changeDir),
+-      'evidence',
+-      'check-receipts',
+-    );
+-    const countReceipts = async (): Promise<number> => {
+-      try {
+-        return (await fs.readdir(checkReceiptDirectory)).length;
+-      } catch (error) {
+-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 0;
+-        throw error;
+-      }
+-    };
+-    const before = await countReceipts();
+-
+-    const rejected = json(
+-      await runNativeCli([
+-        'next',
+-        name,
+-        '--summary',
+-        'Reject malformed verification before checking.',
+-        '--result',
+-        'pass',
+-        '--report',
+-        'verification.md',
+-        '--json',
+-        ...projectArgs(),
+-      ]),
+-    );
+-    expect(rejected).toMatchObject({
+-      exitCode: 64,
+-      error: { code: 'usage', message: expect.stringContaining('内容证明检查已移除') },
+-    });
+-    expect(rejected.error?.message).toContain('Missing verification section: Acceptance evidence');
+-    expect(await countReceipts()).toBe(before);
+-    await expect(readNativeChange(paths, name)).resolves.toMatchObject({
+-      phase: 'verify',
+-      verification_evidence: null,
+-    });
+-  });
+-
+-  it.skip('returns CLI exit 1 and persists bounded text issues without changing workflow state', async () => {
+-    const { paths, changeDir } = await prepareVerifyChange(
+-      name,
+-      'export const value = 3; \n<<<<<<< HEAD\n=======\n>>>>>>> branch\n',
+-    );
+-    const before = await readNativeChange(paths, name);
+-    const trajectoryBefore = await fs.readFile(
+-      path.join(runtimeDir(paths, changeDir), 'trajectory.jsonl'),
+-      'utf8',
+-    );
+-    const result = json(await runNativeCli(['check', name, '--json', ...projectArgs()]));
+-
+-    expect(result).toMatchObject({
+-      command: 'check',
+-      exitCode: 1,
+-      data: {
+-        status: 'failed',
+-        stale: false,
+-        staleReasons: [],
+-        issues: [
+-          { path: 'feature.ts', line: 1, kind: 'trailing-whitespace' },
+-          { path: 'feature.ts', line: 2, kind: 'conflict-marker' },
+-          { path: 'feature.ts', line: 3, kind: 'conflict-marker' },
+-          { path: 'feature.ts', line: 4, kind: 'conflict-marker' },
+-        ],
+-        sourceRevision: before.revision,
+-      },
+-    });
+-    expect(result.error).toBeUndefined();
+-    const receipt = await readNativeVerificationReceipt(paths, name, result.data!.ref as string);
+-    expect(receipt).toMatchObject({
+-      kind: 'static-inspection',
+-      status: 'failed',
+-    });
+-    await expect(readNativeChange(paths, name)).resolves.toEqual(before);
+-    expect(
+-      await fs.readFile(path.join(runtimeDir(paths, changeDir), 'trajectory.jsonl'), 'utf8'),
+-    ).toBe(trajectoryBefore);
+-  });
+-
+-  it.skip('rejects non-Verify use and any attempt to supply a command or path', async () => {
+-    const shapeName = 'shape-check';
+-    const paths = await nativeProjectPaths(projectRoot, 'docs');
+-    await createNativeChange({
+-      paths,
+-      name: shapeName,
+-      language: 'en',
+-      verificationProtocol: 'legacy-v1',
+-    });
+-    const shape = json(await runNativeCli(['check', shapeName, '--json', ...projectArgs()]));
+-    expect(shape).toMatchObject({ exitCode: 65, error: { code: 'invalid-data' } });
+-
+-    const { changeDir } = await prepareVerifyChange();
+-    const receiptDirectory = path.join(runtimeDir(paths, changeDir), 'evidence', 'check-receipts');
+-    const countReceipts = async (): Promise<number> => {
+-      try {
+-        return (await fs.readdir(receiptDirectory)).length;
+-      } catch (error) {
+-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 0;
+-        throw error;
+-      }
+-    };
+-    const beforeCount = await countReceipts();
+-    for (const extras of [
+-      ['git', 'diff', '--check'],
+-      ['--command', 'git'],
+-      ['--path', 'feature.ts'],
+-      ['--staged'],
+-      ['--timeout', '99'],
+-    ]) {
+-      const rejected = json(
+-        await runNativeCli(['check', name, ...extras, '--json', ...projectArgs()]),
+-      );
+-      expect(rejected).toMatchObject({ exitCode: 64, error: { code: 'usage' } });
+-    }
+-    expect(await countReceipts()).toBe(beforeCount);
+-  });
+-
+   it('rejects the retired legacy content-proof check command', async () => {
+     const result = json(await runNativeCli(['check', name, '--json', ...projectArgs()]));
+     expect(result).toMatchObject({
+diff --git a/test/domains/comet-native/native-phase1-matrix.test.ts b/test/domains/comet-native/native-phase1-matrix.test.ts
+index 6f8a2998..f77b4391 100644
+--- a/test/domains/comet-native/native-phase1-matrix.test.ts
++++ b/test/domains/comet-native/native-phase1-matrix.test.ts
+@@ -3,51 +3,20 @@ import { execFileSync } from 'node:child_process';
+ import os from 'os';
+ import path from 'path';
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+-
+-import {
+-  archiveNativeChange,
+-  recoverArchiveTransaction,
+-} from '../../../domains/comet-native/native-archive.js';
+ import {
+   createNativeChange,
+   nativeChangeDir,
+-  readNativeChange,
+-  writeNativeChange,
+ } from '../../../domains/comet-native/native-change.js';
+ import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+ import { inspectNativeChangeConflicts } from '../../../domains/comet-native/native-conflict-inspection.js';
+ import { readProjectConfig } from '../../../domains/comet-native/native-config.js';
+ import { doctorNativeProject } from '../../../domains/comet-native/native-doctor.js';
+-import { sha256File } from '../../../domains/comet-native/native-hash.js';
+ import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+ import {
+   moveNativeRoot,
+   recoverNativeRootMove,
+ } from '../../../domains/comet-native/native-root-move.js';
+-import type {
+-  NativeProjectPaths,
+-  NativeSpecChange,
+-} from '../../../domains/comet-native/native-types.js';
+-import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
+-import { readyNativeArchivePreflight } from '../../helpers/native-archive.js';
+-
+-const BRIEF = `# Outcome
+-Ship sentence counting.
+-# Scope
+-Add one CLI capability.
+-# Non-goals
+-No language detection.
+-# Acceptance examples
+-- Three terminated sentences return three.
+-# Constraints and invariants
+-Keep existing word counting compatible.
+-# Decisions
+-Use punctuation terminators.
+-# Open questions
+-None.
+-# Verification expectations
+-Run focused tests.
+-`;
++import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+ 
+ interface JsonEnvelope {
+   exitCode: number;
+@@ -72,126 +41,6 @@ async function initialize(projectRoot: string, artifactRoot = '.'): Promise<Nati
+   return nativeProjectPaths(projectRoot, artifactRoot);
+ }
+ 
+-async function prepareChange(options: {
+-  projectRoot: string;
+-  paths: NativeProjectPaths;
+-  name: string;
+-  specChange: NativeSpecChange;
+-  proposed: string;
+-  failVerificationFirst?: boolean;
+-}): Promise<void> {
+-  const rootArgs = ['--project-root', options.projectRoot] as const;
+-  await createNativeChange({
+-    paths: options.paths,
+-    name: options.name,
+-    language: 'en',
+-    verificationProtocol: 'legacy-v1',
+-  });
+-  const changeDir = nativeChangeDir(options.paths, options.name);
+-  await fs.writeFile(path.join(changeDir, 'brief.md'), BRIEF);
+-  if (options.specChange.source) {
+-    const source = path.join(changeDir, options.specChange.source);
+-    await fs.mkdir(path.dirname(source), { recursive: true });
+-    await fs.writeFile(source, options.proposed);
+-  }
+-  await writeNativeChange(options.paths, {
+-    ...(await readNativeChange(options.paths, options.name)),
+-    spec_changes: [options.specChange],
+-  });
+-
+-  expect(
+-    (
+-      await runNativeCli([
+-        'next',
+-        options.name,
+-        '--summary',
+-        'Requirements and complete target spec are ready',
+-        '--confirmed',
+-        ...rootArgs,
+-      ])
+-    ).exitCode,
+-  ).toBe(0);
+-  const implementation = `${options.name}.ts`;
+-  await fs.writeFile(
+-    path.join(options.projectRoot, implementation),
+-    'export const ready = true;\n',
+-  );
+-  expect(
+-    (
+-      await runNativeCli([
+-        'next',
+-        options.name,
+-        '--summary',
+-        'Implementation completed',
+-        '--artifact',
+-        implementation,
+-        ...rootArgs,
+-      ])
+-    ).exitCode,
+-  ).toBe(0);
+-
+-  const report = path.join(changeDir, 'verification.md');
+-  if (options.failVerificationFirst) {
+-    await fs.writeFile(
+-      report,
+-      await nativeVerificationFixtureReport({
+-        paths: options.paths,
+-        name: options.name,
+-        evidenceRefs: [implementation],
+-        conclusion: 'Fail',
+-      }),
+-    );
+-    const failed = await runNativeCli([
+-      'next',
+-      options.name,
+-      '--summary',
+-      'A focused test failed',
+-      '--result',
+-      'fail',
+-      '--report',
+-      'verification.md',
+-      ...rootArgs,
+-    ]);
+-    expect(failed.exitCode, failed.stderr).toBe(0);
+-    expect((await readNativeChange(options.paths, options.name)).phase).toBe('build');
+-    expect(
+-      (
+-        await runNativeCli([
+-          'next',
+-          options.name,
+-          '--summary',
+-          'Repaired the failed behavior',
+-          '--artifact',
+-          implementation,
+-          ...rootArgs,
+-        ])
+-      ).exitCode,
+-    ).toBe(0);
+-  }
+-
+-  await fs.writeFile(
+-    report,
+-    await nativeVerificationFixtureReport({
+-      paths: options.paths,
+-      name: options.name,
+-      evidenceRefs: [implementation],
+-    }),
+-  );
+-  const passed = await runNativeCli([
+-    'next',
+-    options.name,
+-    '--summary',
+-    'All focused verification passed',
+-    '--result',
+-    'pass',
+-    '--report',
+-    'verification.md',
+-    ...rootArgs,
+-  ]);
+-  expect(passed.exitCode, passed.stderr).toBe(0);
+-  expect((await readNativeChange(options.paths, options.name)).phase).toBe('archive');
+-}
+-
+ describe('Comet Native Phase 1 behavior matrix', () => {
+   const projects: string[] = [];
+ 
+@@ -229,193 +78,6 @@ describe('Comet Native Phase 1 behavior matrix', () => {
+     }
+   });
+ 
+-  it.skip('returns Verify failure to Build and blocks concurrent overlapping changes at archive', async () => {
+-    const projectRoot = await project();
+-    const paths = await initialize(projectRoot, 'docs');
+-    const canonical = path.join(paths.specsDir, 'sentence-counting', 'spec.md');
+-    await fs.mkdir(path.dirname(canonical), { recursive: true });
+-    await fs.writeFile(canonical, '# Sentence counting\nOriginal behavior.\n');
+-    const baseHash = await sha256File(canonical);
+-
+-    await prepareChange({
+-      projectRoot,
+-      paths,
+-      name: 'first-sentence-change',
+-      specChange: {
+-        capability: 'sentence-counting',
+-        operation: 'replace',
+-        source: 'specs/sentence-counting/spec.md',
+-        base_hash: baseHash,
+-      },
+-      proposed: '# Sentence counting\nFirst target behavior.\n',
+-      failVerificationFirst: true,
+-    });
+-    await prepareChange({
+-      projectRoot,
+-      paths,
+-      name: 'second-sentence-change',
+-      specChange: {
+-        capability: 'sentence-counting',
+-        operation: 'replace',
+-        source: 'specs/sentence-counting/spec.md',
+-        base_hash: baseHash,
+-      },
+-      proposed: '# Sentence counting\nSecond target behavior.\n',
+-    });
+-    await expect(
+-      inspectNativeChangeConflicts(paths, 'first-sentence-change'),
+-    ).resolves.toMatchObject({
+-      definiteConflictCount: 1,
+-      findingCodes: ['native-change-conflict'],
+-    });
+-    const first = json(
+-      await runNativeCli([
+-        'archive',
+-        'first-sentence-change',
+-        '--dry-run',
+-        '--json',
+-        '--project-root',
+-        projectRoot,
+-      ]),
+-    );
+-    const second = json(
+-      await runNativeCli([
+-        'archive',
+-        'second-sentence-change',
+-        '--dry-run',
+-        '--json',
+-        '--project-root',
+-        projectRoot,
+-      ]),
+-    );
+-    expect(first).toMatchObject({
+-      exitCode: 0,
+-      data: {
+-        ready: false,
+-        findingCodes: expect.arrayContaining(['native-change-conflict']),
+-      },
+-    });
+-    expect(second).toMatchObject({
+-      exitCode: 0,
+-      data: {
+-        ready: false,
+-        findingCodes: expect.arrayContaining(['native-change-conflict']),
+-      },
+-    });
+-    const blockedCommit = json(
+-      await runNativeCli([
+-        'archive',
+-        'first-sentence-change',
+-        '--expect-preflight',
+-        (first.data as { preflightHash: string }).preflightHash,
+-        '--json',
+-        '--project-root',
+-        projectRoot,
+-      ]),
+-    );
+-    expect(blockedCommit).toMatchObject({ exitCode: 73, error: { code: 'conflict' } });
+-    expect(await fs.readFile(canonical, 'utf8')).toContain('Original behavior');
+-  }, 120_000);
+-
+-  it.skip('continues and rolls back interrupted archive transactions deterministically', async () => {
+-    const projectRoot = await project();
+-    const paths = await initialize(projectRoot);
+-
+-    await prepareChange({
+-      projectRoot,
+-      paths,
+-      name: 'continue-archive',
+-      specChange: {
+-        capability: 'continue-capability',
+-        operation: 'create',
+-        source: 'specs/continue-capability/spec.md',
+-        base_hash: null,
+-      },
+-      proposed: '# Continue capability\nTarget behavior.\n',
+-    });
+-    let continueTransaction = '';
+-    const continueNow = new Date();
+-    const continuePreflightHash = await readyNativeArchivePreflight({
+-      paths,
+-      name: 'continue-archive',
+-      now: continueNow,
+-    });
+-    await expect(
+-      archiveNativeChange({
+-        paths,
+-        name: 'continue-archive',
+-        expectedPreflightHash: continuePreflightHash,
+-        now: continueNow,
+-        hooks: {
+-          afterPrepared(journal) {
+-            continueTransaction = journal.id;
+-          },
+-          afterOperation(_operation, completed) {
+-            if (completed === 1) throw new Error('interrupt continue archive');
+-          },
+-        },
+-      }),
+-    ).rejects.toThrow('interrupt continue archive');
+-    expect(
+-      (
+-        await recoverArchiveTransaction({
+-          paths,
+-          transactionId: continueTransaction,
+-          strategy: 'continue',
+-        })
+-      ).status,
+-    ).toBe('committed');
+-
+-    await prepareChange({
+-      projectRoot,
+-      paths,
+-      name: 'rollback-archive',
+-      specChange: {
+-        capability: 'rollback-capability',
+-        operation: 'create',
+-        source: 'specs/rollback-capability/spec.md',
+-        base_hash: null,
+-      },
+-      proposed: '# Rollback capability\nTarget behavior.\n',
+-    });
+-    let rollbackTransaction = '';
+-    const rollbackNow = new Date();
+-    const rollbackPreflightHash = await readyNativeArchivePreflight({
+-      paths,
+-      name: 'rollback-archive',
+-      now: rollbackNow,
+-    });
+-    await expect(
+-      archiveNativeChange({
+-        paths,
+-        name: 'rollback-archive',
+-        expectedPreflightHash: rollbackPreflightHash,
+-        now: rollbackNow,
+-        hooks: {
+-          afterPrepared(journal) {
+-            rollbackTransaction = journal.id;
+-          },
+-          afterOperation(_operation, completed) {
+-            if (completed === 1) throw new Error('interrupt rollback archive');
+-          },
+-        },
+-      }),
+-    ).rejects.toThrow('interrupt rollback archive');
+-    expect(
+-      (
+-        await recoverArchiveTransaction({
+-          paths,
+-          transactionId: rollbackTransaction,
+-          strategy: 'rollback',
+-        })
+-      ).status,
+-    ).toBe('rolled-back');
+-    expect((await readNativeChange(paths, 'rollback-archive')).phase).toBe('archive');
+-    await expect(
+-      fs.access(path.join(paths.specsDir, 'rollback-capability', 'spec.md')),
+-    ).rejects.toMatchObject({ code: 'ENOENT' });
+-  }, 120_000);
+-
+   it('continues and rolls back interrupted artifact-root moves from pending config', async () => {
+     const projectRoot = await project();
+     const paths = await initialize(projectRoot);
+diff --git a/test/domains/comet-native/native-receipt-fence.test.ts b/test/domains/comet-native/native-receipt-fence.test.ts
+index dadde51b..7b1032c4 100644
+--- a/test/domains/comet-native/native-receipt-fence.test.ts
++++ b/test/domains/comet-native/native-receipt-fence.test.ts
+@@ -1,240 +1,34 @@
+-import { execFileSync } from 'node:child_process';
+ import { promises as fs } from 'node:fs';
+ import os from 'node:os';
+ import path from 'node:path';
+ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+-
+-import { prepareNativeBuildEvidence } from '../../../domains/comet-native/native-build-evidence.js';
+-import {
+-  createNativeChange,
+-  nativeChangeDir,
+-  writeNativeChange,
+-} from '../../../domains/comet-native/native-change.js';
+ import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+ import {
+   defaultProjectConfig,
+   writeProjectConfig,
+ } from '../../../domains/comet-native/native-config.js';
+-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+-import type {
+-  NativeChangeState,
+-  NativeProjectPaths,
+-} from '../../../domains/comet-native/native-types.js';
+-import { loadNativeVerificationReceiptContext } from '../../../domains/comet-native/native-verification-receipt-runtime.js';
+-
+-const brief = `# Outcome
+-Protect automated verification from stale implementation scopes.
+-# Scope
+-Bind verification commands to the Build snapshot.
+-# Non-goals
+-No unrelated workflow changes.
+-# Acceptance examples
+-- A stale scope stops before executing the command.
+-# Constraints and invariants
+-Return an Agent-actionable recovery command.
+-# Decisions
+-Keep the full workspace fence.
+-# Open questions
+-None.
+-# Verification expectations
+-Run the focused receipt test.
+-`;
+-
+ interface JsonEnvelope {
+   command: string | null;
+   exitCode: number;
+   data?: unknown;
+   error?: { code: string; message: string };
+ }
+-
+ function json(result: Awaited<ReturnType<typeof runNativeCli>>): JsonEnvelope {
+   expect(result.stdout).toBeTruthy();
+   return JSON.parse(result.stdout!) as JsonEnvelope;
+ }
+-
+-// Receipt/snapshot fences were removed from the v4 public Native path. Their
+-// replacement is covered by native-portable-runtime and native-v4-regression-eval.
+ describe('Native verification receipt fence recovery (legacy)', () => {
+   let projectRoot: string;
+-  let paths: NativeProjectPaths;
+-  let state: NativeChangeState;
+-  let acceptanceId: string;
+-
+   beforeEach(async () => {
+     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-receipt-fence-'));
+-    execFileSync('git', ['init'], { cwd: projectRoot, stdio: 'ignore' });
+-    execFileSync('git', ['config', 'user.email', 'native@example.test'], { cwd: projectRoot });
+-    execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: projectRoot });
+     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+-    paths = await nativeProjectPaths(projectRoot, '.');
+-    await Promise.all([
+-      fs.writeFile(path.join(projectRoot, '.gitignore'), 'node_modules/\n.cache/\n'),
+-      fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const value = 1;\n'),
+-    ]);
+-    execFileSync('git', ['add', '.gitignore', 'feature.ts'], { cwd: projectRoot });
+-    execFileSync('git', ['commit', '-m', 'initial'], { cwd: projectRoot, stdio: 'ignore' });
+-
+-    const created = await createNativeChange({
+-      paths,
+-      verificationProtocol: 'legacy-v1',
+-      name: 'receipt-fence',
+-      language: 'en',
+-      now: new Date('2026-08-04T00:00:00.000Z'),
+-    });
+-    await fs.writeFile(path.join(nativeChangeDir(paths, created.name), 'brief.md'), brief);
+-    await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const value = 2;\n');
+-    const build = await prepareNativeBuildEvidence({
+-      paths,
+-      state: { ...created, phase: 'build', approval: 'implicit' },
+-      artifactRefs: ['feature.ts'],
+-      now: new Date('2026-08-04T00:05:00.000Z'),
+-    });
+-    state = await writeNativeChange(paths, {
+-      ...created,
+-      phase: 'verify',
+-      approval: 'implicit',
+-      implementation_scope: build.scopeRef,
+-    });
+-    acceptanceId = (await loadNativeVerificationReceiptContext(paths, state)).acceptanceIds[0]!;
+-    await fs.appendFile(path.join(projectRoot, '.gitignore'), 'coverage/\n');
+   });
+-
+   afterEach(async () => {
+     await fs.rm(projectRoot, { recursive: true, force: true });
+   });
+-
+-  it.skip('stops before command execution and returns a bounded self-healing recovery payload', async () => {
+-    const sentinel = path.join(projectRoot, 'receipt-command-ran.txt');
+-    const result = json(
+-      await runNativeCli([
+-        'receipt',
+-        'automated',
+-        state.name,
+-        '--acceptance',
+-        acceptanceId,
+-        '--json',
+-        '--project-root',
+-        projectRoot,
+-        '--',
+-        process.execPath,
+-        '-e',
+-        `require('node:fs').writeFileSync(${JSON.stringify(sentinel)}, 'ran')`,
+-      ]),
+-    );
+-
+-    expect(result).toMatchObject({
+-      command: 'receipt',
+-      exitCode: 65,
+-      data: {
+-        reason: 'implementation-scope-stale',
+-        commandExecuted: false,
+-        changedPaths: [{ path: '.gitignore', kind: 'modified' }],
+-        changedPathCount: 1,
+-        changedPathsTruncated: false,
+-        requiredAction: 'return-to-build-and-refresh-implementation-scope',
+-        nextCommand:
+-          'comet native next receipt-fence --summary "Implementation changed after Build; return to Build and refresh scope"',
+-        requiresUserDecision: false,
+-      },
+-      error: {
+-        code: 'implementation-scope-stale',
+-        message: expect.stringContaining('stopped before command execution'),
+-      },
+-    });
+-    await expect(fs.access(sentinel)).rejects.toMatchObject({ code: 'ENOENT' });
+-  });
+-
+-  it.skip('routes receipt refresh to Build scope recovery instead of reporting a clean no-op', async () => {
+-    const result = json(
+-      await runNativeCli([
+-        'receipt',
+-        'refresh',
+-        state.name,
+-        '--json',
+-        '--project-root',
+-        projectRoot,
+-      ]),
+-    );
+-
+-    expect(result).toMatchObject({
+-      command: 'receipt',
+-      exitCode: 65,
+-      data: {
+-        reason: 'implementation-scope-stale',
+-        commandExecuted: false,
+-        changedPaths: [{ path: '.gitignore', kind: 'modified' }],
+-        requiredAction: 'return-to-build-and-refresh-implementation-scope',
+-        requiresUserDecision: false,
+-      },
+-      error: { code: 'implementation-scope-stale' },
+-    });
+-  });
+-
+-  it.skip('keeps the post-command fence and reports files changed by the verification command', async () => {
+-    await fs.writeFile(path.join(projectRoot, '.gitignore'), 'node_modules/\n.cache/\n');
+-    const feature = path.join(projectRoot, 'feature.ts');
+-    const result = json(
+-      await runNativeCli([
+-        'receipt',
+-        'automated',
+-        state.name,
+-        '--acceptance',
+-        acceptanceId,
+-        '--json',
+-        '--project-root',
+-        projectRoot,
+-        '--',
+-        process.execPath,
+-        '-e',
+-        `require('node:fs').writeFileSync(${JSON.stringify(feature)}, 'export const value = 3;\\n')`,
+-      ]),
+-    );
+-
+-    expect(result).toMatchObject({
+-      exitCode: 1,
+-      data: {
+-        receipt: { status: 'blocked' },
+-        recovery: {
+-          reason: 'implementation-changed-during-command',
+-          commandExecuted: true,
+-          changedPaths: [{ path: 'feature.ts', kind: 'modified' }],
+-          requiredAction: 'return-to-build-and-refresh-implementation-scope',
+-          requiresUserDecision: false,
+-        },
+-      },
+-    });
+-  });
+-
+-  it.skip('allows verification commands to write ignored cache files', async () => {
+-    await fs.writeFile(path.join(projectRoot, '.gitignore'), 'node_modules/\n.cache/\n');
+-    const cache = path.join(projectRoot, '.cache', 'result.txt');
+-    const result = json(
+-      await runNativeCli([
+-        'receipt',
+-        'automated',
+-        state.name,
+-        '--acceptance',
+-        acceptanceId,
+-        '--json',
+-        '--project-root',
+-        projectRoot,
+-        '--',
+-        process.execPath,
+-        '-e',
+-        `require('node:fs').mkdirSync(${JSON.stringify(path.dirname(cache))}, {recursive:true}); require('node:fs').writeFileSync(${JSON.stringify(cache)}, 'cache')`,
+-      ]),
+-    );
+-
+-    expect(result).toMatchObject({
+-      exitCode: 0,
+-      data: { receipt: { status: 'passed' } },
+-    });
+-    expect((result.data as { recovery?: unknown }).recovery).toBeUndefined();
+-  });
+-
+   it('rejects the retired receipt command at the public boundary', async () => {
+     const result = json(
+-      await runNativeCli(['receipt', state.name, '--json', '--project-root', projectRoot]),
++      await runNativeCli(['receipt', 'receipt-fence', '--json', '--project-root', projectRoot]),
+     );
+     expect(result).toMatchObject({
+       command: 'receipt',
+diff --git a/test/domains/comet-native/native-wave-b-cli.test.ts b/test/domains/comet-native/native-wave-b-cli.test.ts
+index 92bd6d60..add93ec0 100644
+--- a/test/domains/comet-native/native-wave-b-cli.test.ts
++++ b/test/domains/comet-native/native-wave-b-cli.test.ts
+@@ -1,205 +1,32 @@
+-import { promises as fs } from 'fs';
+-import { execFileSync } from 'node:child_process';
+-import os from 'os';
+-import path from 'path';
++import { promises as fs } from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
+ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+-
+ import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+-import { createNativeChange } from '../../../domains/comet-native/native-change.js';
+ import {
+   defaultProjectConfig,
+   writeProjectConfig,
+ } from '../../../domains/comet-native/native-config.js';
+-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+-
+ interface JsonEnvelope {
+   command: string | null;
+   exitCode: number;
+-  data?: Record<string, unknown>;
++  data?: unknown;
+   error?: { code: string; message: string };
+ }
+-
+ function json(result: Awaited<ReturnType<typeof runNativeCli>>): JsonEnvelope {
+   expect(result.stdout).toBeTruthy();
+   return JSON.parse(result.stdout!) as JsonEnvelope;
+ }
+-
+-// Beta17 Wave-B checkpoint/finding envelopes are retained only for legacy-read-only
+-// compatibility. The v4 CLI contract is covered by native-cli-v4-surface.test.ts.
+ describe('Native Wave B CLI contract (legacy)', () => {
+   let projectRoot: string;
+   const projectArgs = () => ['--project-root', projectRoot] as const;
+-
+   beforeEach(async () => {
+     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-wave-b-cli-'));
+-    execFileSync('git', ['init'], { cwd: projectRoot, stdio: 'ignore' });
+     await writeProjectConfig(projectRoot, defaultProjectConfig('docs', 'en'));
+-    const paths = await nativeProjectPaths(projectRoot, 'docs');
+-    await createNativeChange({
+-      paths,
+-      name: 'cold-resume',
+-      language: 'en',
+-      verificationProtocol: 'legacy-v1',
+-    });
+   });
+-
+   afterEach(async () => {
+     await fs.rm(projectRoot, { recursive: true, force: true });
+   });
+-
+-  it.skip('keeps one envelope and returns the same continuation shape from mutations and status', async () => {
+-    const checkpoint = json(
+-      await runNativeCli([
+-        'checkpoint',
+-        'cold-resume',
+-        '--summary',
+-        'Parser work is complete',
+-        '--next-action',
+-        'Fill the remaining brief decisions',
+-        '--expect-revision',
+-        '1',
+-        '--json',
+-        ...projectArgs(),
+-      ]),
+-    );
+-    expect(Object.keys(checkpoint).sort()).toEqual(['command', 'data', 'exitCode']);
+-    expect(checkpoint).toMatchObject({
+-      command: 'checkpoint',
+-      exitCode: 0,
+-      data: {
+-        change: { phase: 'shape', revision: 2 },
+-        checkpoint: {
+-          manifestRef: expect.stringMatching(/^runtime\/checkpoints\/manifests\//u),
+-        },
+-        expectedRevision: 1,
+-        previousRevision: 1,
+-        revision: 2,
+-        outcome: 'recorded',
+-        continuation: {
+-          schema: 'comet.native.continuation.v1',
+-          skill: 'comet-native',
+-          change: 'cold-resume',
+-          phase: 'shape',
+-          revision: 2,
+-          disposition: 'continue',
+-          action: 'work-phase',
+-          command: null,
+-          requiresUserDecision: false,
+-        },
+-      },
+-    });
+-
+-    const status = json(await runNativeCli(['status', 'cold-resume', '--json', ...projectArgs()]));
+-    expect(status.data).toMatchObject({
+-      revision: 2,
+-      inspection: { freshness: 'fresh' },
+-      checkpoint: { summary: 'Parser work is complete' },
+-      detailsCommand: 'comet native status cold-resume --details',
+-      continuation: checkpoint.data!.continuation,
+-    });
+-    expect(status.data).not.toHaveProperty('findings');
+-    expect(status.data).not.toHaveProperty('checkpointDetails');
+-  });
+-
+-  it.skip('puts bounded finding and manifest details behind status --details', async () => {
+-    const details = json(
+-      await runNativeCli(['status', 'cold-resume', '--details', '--json', ...projectArgs()]),
+-    );
+-    expect(details.data).toMatchObject({
+-      findings: expect.any(Array),
+-      checkpointDetails: null,
+-      budgets: { maxFindings: 50, maxCheckpointArtifacts: 128 },
+-    });
+-    const invalid = json(await runNativeCli(['status', '--details', '--json', ...projectArgs()]));
+-    expect(invalid).toMatchObject({
+-      command: 'status',
+-      exitCode: 64,
+-      error: { code: 'usage', message: 'status --details requires a change name' },
+-    });
+-  });
+-
+-  it.skip('returns revision conflicts with exit 73 and decision findings with stable fields', async () => {
+-    await runNativeCli([
+-      'checkpoint',
+-      'cold-resume',
+-      '--summary',
+-      'First checkpoint',
+-      '--next-action',
+-      'Continue',
+-      '--expect-revision',
+-      '1',
+-      ...projectArgs(),
+-    ]);
+-    const conflict = json(
+-      await runNativeCli([
+-        'checkpoint',
+-        'cold-resume',
+-        '--summary',
+-        'Different checkpoint',
+-        '--next-action',
+-        'Continue elsewhere',
+-        '--expect-revision',
+-        '1',
+-        '--json',
+-        ...projectArgs(),
+-      ]),
+-    );
+-    expect(conflict).toMatchObject({
+-      command: 'checkpoint',
+-      exitCode: 73,
+-      data: {
+-        change: 'cold-resume',
+-        expectedRevision: 1,
+-        actualRevision: 2,
+-        outcome: 'revision-conflict',
+-      },
+-      error: { code: 'conflict' },
+-    });
+-
+-    const paths = await nativeProjectPaths(projectRoot, 'docs');
+-    const briefFile = path.join(paths.changesDir, 'cold-resume', 'brief.md');
+-    const source = await fs.readFile(briefFile, 'utf8');
+-    await fs.writeFile(
+-      briefFile,
+-      source
+-        .replace('# Outcome\n', '# Outcome\nA clear outcome.\n')
+-        .replace('# Scope\n', '# Scope\nA bounded scope.\n')
+-        .replace('# Non-goals\n', '# Non-goals\nNo unrelated work.\n')
+-        .replace('# Acceptance examples\n', '# Acceptance examples\n- It works.\n')
+-        .replace('# Open questions\n', '# Open questions\n- [blocking] Which behavior?\n'),
+-    );
+-    const blocked = json(
+-      await runNativeCli([
+-        'next',
+-        'cold-resume',
+-        '--summary',
+-        'Try to proceed',
+-        '--json',
+-        ...projectArgs(),
+-      ]),
+-    );
+-    expect(blocked).toMatchObject({
+-      exitCode: 65,
+-      data: {
+-        findings: [
+-          {
+-            code: 'brief-blocking-question',
+-            severity: 'error',
+-            path: 'docs/comet/changes/cold-resume/brief.md',
+-            requiredAction: 'answer-blocking-question',
+-            retryCommand: 'comet native next cold-resume --summary "<summary>"',
+-            repairCommand: null,
+-            requiresUserDecision: true,
+-          },
+-        ],
+-        continuation: {
+-          disposition: 'await-user',
+-          requiresUserDecision: true,
+-        },
+-      },
+-    });
+-  });
+-
+   it('rejects the retired checkpoint command instead of invoking the v4 Runtime', async () => {
+     const result = json(
+       await runNativeCli(['checkpoint', 'cold-resume', '--json', ...projectArgs()]),
+diff --git a/domains/comet-native/native-checkpoint-command.ts b/domains/comet-native/native-checkpoint-command.ts
+deleted file mode 100644
+index 1661be8a..00000000
+--- a/domains/comet-native/native-checkpoint-command.ts
++++ /dev/null
+@@ -1,44 +0,0 @@
+-import { inspectNativeStatus } from './native-diagnostics.js';
+-import { checkpointNativeChange } from './native-progress-checkpoint.js';
+-import {
+-  assertNoArguments,
+-  configuredPaths,
+-  NativeUsageError,
+-  requiredPositional,
+-  revisionOption,
+-  success,
+-  takeMany,
+-  takeOption,
+-  type DispatchResult,
+-} from './native-cli-shared.js';
+-
+-export async function nativeCheckpointCommand(
+-  args: string[],
+-  projectRoot: string,
+-): Promise<DispatchResult> {
+-  const name = requiredPositional(args, 'change name');
+-  const summary = takeOption(args, '--summary');
+-  if (!summary) throw new NativeUsageError('--summary is required');
+-  const nextAction = takeOption(args, '--next-action');
+-  if (!nextAction) throw new NativeUsageError('--next-action is required');
+-  const artifacts = takeMany(args, '--artifact');
+-  const expectedRevision = revisionOption(args);
+-  assertNoArguments(args);
+-  const { config, paths } = await configuredPaths(projectRoot);
+-  const result = await checkpointNativeChange({
+-    paths,
+-    name,
+-    summary,
+-    nextAction,
+-    artifacts,
+-    expectedRevision,
+-  });
+-  const status = await inspectNativeStatus(paths, name, {
+-    clarificationMode: config.native.clarification_mode,
+-    maxVerifyFailures: config.native.max_verify_failures,
+-  });
+-  return success('checkpoint', {
+-    ...result,
+-    continuation: status.continuation,
+-  });
+-}
+diff --git a/domains/comet-native/native-receipt-command.ts b/domains/comet-native/native-receipt-command.ts
+deleted file mode 100644
+index fdd738d3..00000000
+--- a/domains/comet-native/native-receipt-command.ts
++++ /dev/null
+@@ -1,146 +0,0 @@
+-import {
+-  issueNativeAutomatedCheckReceipt,
+-  issueNativeManualEvidenceReceipt,
+-  MAX_NATIVE_AUTOMATED_COMMAND_TIMEOUT_MS,
+-} from './native-verification-receipt-runtime.js';
+-import { refreshNativeVerificationReceipts } from './native-receipt-refresh.js';
+-import {
+-  assertNoArguments,
+-  configuredPaths,
+-  NativeUsageError,
+-  requiredPositional,
+-  success,
+-  takeFlag,
+-  takeMany,
+-  takeOption,
+-  type DispatchResult,
+-} from './native-cli-shared.js';
+-
+-export async function nativeReceiptCommand(
+-  args: string[],
+-  projectRoot: string,
+-): Promise<DispatchResult> {
+-  const subcommand = requiredPositional(args, 'receipt subcommand');
+-  const name = requiredPositional(args, 'change name');
+-  const { paths } = await configuredPaths(projectRoot);
+-  if (subcommand === 'manual') {
+-    const acceptanceIds = takeMany(args, '--acceptance');
+-    const steps = takeMany(args, '--step');
+-    const observations = takeMany(args, '--observation');
+-    assertNoArguments(args);
+-    const issued = await issueNativeManualEvidenceReceipt({
+-      paths,
+-      name,
+-      acceptanceIds,
+-      steps,
+-      observations,
+-    });
+-    return success('receipt manual', issued, `Native manual receipt: ${issued.ref}\n`);
+-  }
+-  if (subcommand === 'automated') {
+-    const separator = args.indexOf('--');
+-    if (separator < 0 || separator === args.length - 1) {
+-      throw new NativeUsageError('receipt automated requires -- <executable> [args...]');
+-    }
+-    const commandArgs = args.splice(separator + 1);
+-    args.splice(separator, 1);
+-    const acceptanceIds = takeMany(args, '--acceptance');
+-    const timeoutText = takeOption(args, '--timeout-ms');
+-    assertNoArguments(args);
+-    const timeoutMs =
+-      timeoutText === undefined
+-        ? undefined
+-        : /^[1-9]\d*$/u.test(timeoutText) &&
+-            Number.isSafeInteger(Number(timeoutText)) &&
+-            Number(timeoutText) <= MAX_NATIVE_AUTOMATED_COMMAND_TIMEOUT_MS
+-          ? Number(timeoutText)
+-          : null;
+-    if (timeoutMs === null) {
+-      throw new NativeUsageError(
+-        `--timeout-ms must be an integer from 1 through ${MAX_NATIVE_AUTOMATED_COMMAND_TIMEOUT_MS}`,
+-      );
+-    }
+-    const issued = await issueNativeAutomatedCheckReceipt({
+-      paths,
+-      name,
+-      acceptanceIds,
+-      command: commandArgs[0],
+-      args: commandArgs.slice(1),
+-      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+-    });
+-    const lines = [`Native automated receipt ${issued.receipt.status}: ${issued.ref}`];
+-    if (issued.recovery) {
+-      const changed = issued.recovery.changedPaths
+-        .map((entry) => `  ${entry.kind}: ${entry.path}`)
+-        .join('\n');
+-      lines.push('Implementation changed while the verification command was running.');
+-      if (changed) lines.push(changed);
+-      if (issued.recovery.changedPathsTruncated) {
+-        lines.push(
+-          `  ... ${issued.recovery.changedPathCount - issued.recovery.changedPaths.length} more path(s)`,
+-        );
+-      }
+-      lines.push(`Recover with: ${issued.recovery.nextCommand}`);
+-    }
+-    return {
+-      command: 'receipt automated',
+-      exitCode: issued.receipt.status === 'passed' ? 0 : 1,
+-      data: issued,
+-      text: `${lines.join('\n')}\n`,
+-    };
+-  }
+-  if (subcommand === 'refresh') {
+-    const apply = takeFlag(args, '--apply');
+-    const dryRun = takeFlag(args, '--dry-run');
+-    assertNoArguments(args);
+-    if (apply && dryRun) {
+-      throw new NativeUsageError('receipt refresh --apply and --dry-run cannot be combined');
+-    }
+-    const result = await refreshNativeVerificationReceipts({ paths, name, apply });
+-    const lines: string[] = [];
+-    if (result.refreshed.length > 0) {
+-      lines.push(`Re-issued ${result.refreshed.length} manual receipt(s) at the current revision:`);
+-      for (const item of result.refreshed) {
+-        lines.push(`  ${item.acceptanceId}: ${item.oldRef} -> ${item.newRef}`);
+-      }
+-    }
+-    if (result.requiresRerun.length > 0) {
+-      lines.push(
+-        `Re-run ${result.requiresRerun.length} stale automated receipt(s) (they cannot be re-issued without a real execution):`,
+-      );
+-      for (const item of result.requiresRerun) {
+-        const acceptances = item.acceptanceIds.join(', ');
+-        lines.push(`  [${acceptances}] ${item.command}`);
+-      }
+-    }
+-    if (result.requiresManual.length > 0) {
+-      lines.push(
+-        `Re-run manual verification for ${result.requiresManual.length} receipt(s); contract, scope, snapshot, or artifact bindings changed:`,
+-      );
+-      for (const item of result.requiresManual) {
+-        lines.push(`  [${item.acceptanceIds.join(', ')}] ${item.mismatches.join('; ')}`);
+-      }
+-    }
+-    if (result.requiresCheck.length > 0) {
+-      lines.push(
+-        `Re-run \`comet native check ${name}\` to refresh ${result.requiresCheck.length} required-check receipt(s).`,
+-      );
+-    }
+-    if (result.applied) {
+-      lines.push(`Updated acceptance evidence in ${result.verificationReport}.`);
+-    } else if (
+-      result.refreshed.length === 0 &&
+-      result.requiresRerun.length === 0 &&
+-      result.requiresManual.length === 0 &&
+-      result.requiresCheck.length === 0
+-    ) {
+-      lines.push('No stale receipts found.');
+-    } else if (!apply) {
+-      lines.push('Dry run only. Re-run with --apply to re-issue manual receipts.');
+-    } else if (result.requiresManual.length > 0) {
+-      lines.push('Fresh manual verification is required before these receipts can be refreshed.');
+-    }
+-    return success('receipt refresh', result, `${lines.join('\n')}\n`);
+-  }
+-  throw new NativeUsageError(`Unknown receipt command: ${subcommand}`);
+-}
+diff --git a/domains/comet-native/native-edit-review.ts b/domains/comet-native/native-edit-review.ts
+deleted file mode 100644
+index b6700003..00000000
+--- a/domains/comet-native/native-edit-review.ts
++++ /dev/null
+@@ -1,237 +0,0 @@
+-import { nativeEditReviewScope, nativeFormalEditReviewScope } from './native-edit-review-scope.js';
+-export { nativeEditReviewScope, nativeFormalEditReviewScope } from './native-edit-review-scope.js';
+-import {
+-  captureNativeShapeReviewAnchor,
+-  nativeShapeReviewAnchorMatches,
+-  readApprovedShapeOriginal,
+-} from './native-shape-review-evidence.js';
+-import { readNativeApprovedShapeSemanticSnapshot } from './native-portable-requirements.js';
+-import path from 'node:path';
+-import { createHash } from 'node:crypto';
+-import {
+-  proposedCometHookFileContent,
+-  type CometHookRequest,
+-} from '../../platform/process/hook-adapter.js';
+-import { readNativeBoundedTextFile } from './native-bounded-file.js';
+-import {
+-  nativeShapeArtifactSnapshot,
+-  nativeShapeArtifactContractHash,
+-} from './native-shape-semantics.js';
+-
+-import {
+-  assertEditReviewsComplete,
+-  inspectEditReviews,
+-  editReviewContinuation,
+-  type EditReviewObservation,
+-  approvedEditFingerprint,
+-  prepareEditReview,
+-  type EditReviewScope,
+-} from '../workflow-contract/edit-review.js';
+-import type { NativeProjectPaths } from './native-types.js';
+-import type { NativePortableState } from './native-portable-types.js';
+-
+-export async function inspectNativeEditReviews(
+-  paths: NativeProjectPaths,
+-  state: NativePortableState,
+-) {
+-  const scopes = [
+-    ...(state.shape_confirmation_hash ? [nativeFormalEditReviewScope(paths, state)] : []),
+-    ...(state.builder_handoff || state.phase === 'build'
+-      ? [nativeEditReviewScope(paths, state)]
+-      : []),
+-  ];
+-  return (await Promise.all(scopes.map((scope) => inspectEditReviews(scope)))).flat();
+-}
+-
+-export async function nativeEditReviewContinuation(
+-  paths: NativeProjectPaths,
+-  state: NativePortableState,
+-  reviews: readonly EditReviewObservation[],
+-  sdk = true,
+-) {
+-  const scopes = [
+-    ...(state.shape_confirmation_hash ? [nativeFormalEditReviewScope(paths, state)] : []),
+-    ...(state.builder_handoff || state.phase === 'build'
+-      ? [nativeEditReviewScope(paths, state)]
+-      : []),
+-  ];
+-  for (const scope of scopes) {
+-    const edit = await editReviewContinuation(
+-      scope,
+-      reviews.filter((review) => review.binding.candidateKey === scope.candidateKey),
+-      sdk,
+-    );
+-    if (edit) return edit;
+-  }
+-  return null;
+-}
+-
+-export async function assertNativeEditReviewsComplete(
+-  paths: NativeProjectPaths,
+-  state: NativePortableState,
+-): Promise<void> {
+-  if (state.builder_handoff) await assertEditReviewsComplete(nativeEditReviewScope(paths, state));
+-  if (state.shape_confirmation_hash)
+-    await assertEditReviewsComplete(nativeFormalEditReviewScope(paths, state));
+-}
+-
+-/** 只复核已应用的正式材料注释；原文必须来自当前 Shape 的可信快照。 */
+-export async function prepareNativeAppliedFormalReview(
+-  paths: NativeProjectPaths,
+-  state: NativePortableState,
+-  request: CometHookRequest,
+-  judgment?: 'agent',
+-) {
+-  const scope =
+-    judgment === 'agent'
+-      ? nativeFormalEditReviewScope(paths, state)
+-      : nativeEditReviewScope(paths, state);
+-  const snapshot = (await readNativeApprovedShapeSemanticSnapshot({ paths, state }))?.snapshot;
+-  if (!snapshot || !request.targets.length)
+-    throw new Error('缺少已批准的 Shape 原文，须恢复原文或修订需求');
+-  const originals = new Map<string, string>();
+-  const originalPaths: string[] = [];
+-  for (const target of request.targets) {
+-    const absolute = path.resolve(request.cwd ?? paths.projectRoot, target);
+-    const source = path
+-      .relative(path.join(paths.changesDir, state.name), absolute)
+-      .replaceAll('\\', '/');
+-    const relative = path.relative(paths.projectRoot, absolute).replaceAll('\\', '/');
+-    const approved = snapshot.artifacts.find((entry) => entry.source === source);
+-    if (!approved) throw new Error('已应用编辑不是当前已批准的正式材料');
+-    let original;
+-    try {
+-      original = await readApprovedShapeOriginal(paths, state, approved);
+-    } catch {
+-      throw new Error('已批准的原文缺失或不匹配；保留当前文件，恢复可信原文或修订 Shape');
+-    }
+-    const current = await readNativeBoundedTextFile({
+-      root: paths.projectRoot,
+-      ref: relative,
+-      maxBytes: null,
+-    });
+-    const actual = judgment === 'agent' ? null : nativeShapeArtifactSnapshot(source, current.text);
+-    if (
+-      actual &&
+-      nativeShapeArtifactContractHash({ ...actual, commentsHash: approved.commentsHash }) !==
+-        nativeShapeArtifactContractHash(approved)
+-    )
+-      throw new Error('正式需求或验收内容改变，必须通过 Shape 修订');
+-    await captureNativeShapeReviewAnchor(scope, approved, original.text, true);
+-    originals.set(relative, original.text);
+-    originalPaths.push(original.path);
+-  }
+-  const proposal = await prepareEditReview(
+-    { ...scope, formalPrefixes: ['.comet'] },
+-    request,
+-    originals,
+-  );
+-  return { proposal, originalPaths };
+-}
+-
+-/** 选择一份已修改的正式材料，由 Runtime 构造复核请求，避免要求用户手工准备 JSON。 */
+-export async function nativeAppliedFormalReviewRequest(
+-  paths: NativeProjectPaths,
+-  state: NativePortableState,
+-  judgment?: 'agent',
+-) {
+-  const snapshot = (await readNativeApprovedShapeSemanticSnapshot({ paths, state }))?.snapshot;
+-  if (!snapshot) throw new Error('缺少已批准的 Shape 快照；保留当前修改并修订需求');
+-  const scope =
+-    judgment === 'agent'
+-      ? nativeFormalEditReviewScope(paths, state)
+-      : nativeEditReviewScope(paths, state);
+-  for (const approved of snapshot.artifacts) {
+-    const absolute = path.join(paths.changesDir, state.name, approved.source);
+-    const relative = path.relative(paths.projectRoot, absolute).replaceAll('\\', '/');
+-    const current = await readNativeBoundedTextFile({
+-      root: paths.projectRoot,
+-      ref: relative,
+-      maxBytes: null,
+-    });
+-    const changed =
+-      judgment === 'agent'
+-        ? createHash('sha256').update(current.text).digest('hex') !== approved.contentHash
+-        : nativeShapeArtifactSnapshot(approved.source, current.text).commentsHash !==
+-          approved.commentsHash;
+-    if (changed) {
+-      const reviewed = await approvedEditFingerprint(scope, relative, current.text);
+-      if (reviewed && (await nativeShapeReviewAnchorMatches(scope, approved, reviewed.beforeHash)))
+-        continue;
+-      const request = {
+-        cometApplied: true,
+-        tool_name: 'Write',
+-        tool_input: { file_path: absolute, content: current.text },
+-      };
+-      return JSON.stringify(request);
+-    }
+-  }
+-  return null;
+-}
+-
+-/** 正式材料仅开放已批准契约不变的注释差异，不开放任意文档给通用复核。 */
+-export async function nativeEditReviewPreparationScope(
+-  paths: NativeProjectPaths,
+-  state: NativePortableState,
+-  request: CometHookRequest,
+-  judgment?: 'agent',
+-): Promise<EditReviewScope> {
+-  let scope: EditReviewScope = { ...nativeEditReviewScope(paths, state), judgment };
+-  const semantic = (await readNativeApprovedShapeSemanticSnapshot({ paths, state }))?.snapshot;
+-  let formal = false;
+-  for (const target of request.targets) {
+-    const absolute = path.resolve(request.cwd ?? paths.projectRoot, target);
+-    const relative = path.relative(paths.projectRoot, absolute).replaceAll('\\', '/');
+-    if (
+-      !scope.formalPrefixes.some(
+-        (prefix) => relative === prefix || relative.startsWith(prefix + '/'),
+-      )
+-    )
+-      continue;
+-    formal = true;
+-    if (judgment === 'agent') scope = nativeFormalEditReviewScope(paths, state);
+-    const source = path
+-      .relative(path.join(paths.changesDir, state.name), absolute)
+-      .replaceAll('\\', '/');
+-    const approved = semantic?.artifacts.find((entry) => entry.source === source);
+-    const writes =
+-      request.writes?.filter(
+-        (entry) => path.resolve(request.cwd ?? paths.projectRoot, entry.path) === absolute,
+-      ) ?? [];
+-    if (!approved || writes.length !== 1)
+-      throw new Error('正式材料缺少已批准语义快照或完整差异，必须通过 Shape 修订');
+-    const before = await readNativeBoundedTextFile({
+-      root: paths.projectRoot,
+-      ref: relative,
+-      ...(judgment === 'agent' ? { maxBytes: null } : {}),
+-    });
+-    const after = proposedCometHookFileContent(writes[0], before.text);
+-    if (after === null) throw new Error('无法完整重建正式材料差异');
+-    if (judgment === 'agent') {
+-      const original = await readApprovedShapeOriginal(paths, state, approved);
+-      if (before.text !== original.text) {
+-        const review = await approvedEditFingerprint(scope, relative, before.text);
+-        if (!review || !(await nativeShapeReviewAnchorMatches(scope, approved, review.beforeHash)))
+-          throw new Error('正式材料的判断起点未获确认；先处理当前差异');
+-      }
+-      await captureNativeShapeReviewAnchor(scope, approved, original.text, true);
+-      continue;
+-    }
+-    const previous = nativeShapeArtifactSnapshot(source, before.text);
+-    if (previous.commentsHash !== approved.commentsHash) {
+-      const review = await approvedEditFingerprint(scope, relative, before.text);
+-      if (!review || !(await nativeShapeReviewAnchorMatches(scope, approved, review.beforeHash)))
+-        throw new Error('正式注释的复核起点尚未获批；先恢复原批准注释，再准备完整差异');
+-    }
+-    await captureNativeShapeReviewAnchor(scope, approved, before.text);
+-    for (const text of [before.text, after]) {
+-      const current = nativeShapeArtifactSnapshot(source, text);
+-      if (
+-        nativeShapeArtifactContractHash({ ...current, commentsHash: approved.commentsHash }) !==
+-        nativeShapeArtifactContractHash(approved)
+-      )
+-        throw new Error('正式需求或验收内容改变，必须通过 Shape 修订，不能以注释复核代替确认');
+-    }
+-  }
+-  return formal ? { ...scope, formalPrefixes: ['.comet'] } : scope;
+-}
+diff --git a/domains/comet-classic/classic-edit-review.ts b/domains/comet-classic/classic-edit-review.ts
+deleted file mode 100644
+index d88bbae2..00000000
+--- a/domains/comet-classic/classic-edit-review.ts
++++ /dev/null
+@@ -1,746 +0,0 @@
+-import path from 'node:path';
+-import { createHash } from 'node:crypto';
+-import { promises as fs } from 'node:fs';
+-import {
+-  assertEditReviewsComplete,
+-  isCheckInputRetained,
+-  areObservedEditsNonBehavioral,
+-  listApprovedEditOriginalsForEvidence,
+-  type EditReviewScope,
+-} from '../workflow-contract/edit-review.js';
+-import {
+-  resolveWorkspaceRuntimeRootSync,
+-  resolveWorkspaceRuntimeRoot,
+-} from '../workflow-contract/workspace-runtime.js';
+-import { resolveClassicLayout } from './classic-layout.js';
+-import { resolveClassicChangeDirectory } from './classic-paths.js';
+-import { classicProtectedDocumentPrefixes } from './classic-neutral-documents.js';
+-import type { ClassicState } from './classic-state.js';
+-import {
+-  readClassicProjectFile,
+-  readClassicProjectBytes,
+-  classicProjectTargetExists,
+-} from './classic-protected-path.js';
+-import {
+-  hashProtectedProjectFile,
+-  ensureProtectedProjectDirectory,
+-} from '../workflow-contract/protected-project-path.js';
+-import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
+-import { collectCheckSnapshot, type CheckSnapshot } from './classic-check-snapshot.js';
+-import type { WorkflowRun } from '../engine/runtime.js';
+-import { createFileRuntimeStore, hashRuntimeValue } from '../engine/runtime.js';
+-import type { RunState } from '../engine/types.js';
+-import { readClassicState } from './classic-store.js';
+-import { readCheckIndex } from './classic-check-index.js';
+-import { readCheckPolicy } from './classic-check-policy.js';
+-import { rememberApprovedEditOriginal } from '../workflow-contract/edit-review.js';
+-import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
+-import { readWorkflowApplicationRun } from '../workflow-application/index.js';
+-import {
+-  classicSdkFormalSourceEvidence,
+-  classicSdkPresetSourceEvidence,
+-} from './classic-formal-source-evidence.js';
+-import type { RecordedCommandCheck } from './classic-command-checks.js';
+-import {
+-  checkManifestHash,
+-  parseCheckManifest,
+-  diffCheckManifests,
+-} from './classic-check-manifest.js';
+-
+-export async function classicEditReviewScope(
+-  projectRoot: string,
+-  change: string,
+-  state: ClassicState,
+-  write = false,
+-): Promise<EditReviewScope> {
+-  const layout = await resolveClassicLayout(projectRoot);
+-  // 从 Archive 的阶段序号还原 Verify 序号；下一轮 Build 或重新验收使用新的序号。
+-  const verifyEpoch =
+-    (state.checkEpoch ?? 0) -
+-    (state.phase === 'archive'
+-      ? 1 + (state.archiveConfirmation === 'confirmed' ? 1 : 0) + (state.archived ? 1 : 0)
+-      : 0);
+-  const candidateKey = createHash('sha256')
+-    .update(
+-      JSON.stringify({
+-        createdAt: state.createdAt,
+-        baseRef: state.baseRef,
+-        plan: state.plan,
+-        handoffHash: state.handoffHash,
+-        verifyEpoch,
+-        boundBranch: state.boundBranch,
+-      }),
+-    )
+-    .digest('hex');
+-  return {
+-    projectRoot: path.resolve(projectRoot),
+-    runtimeRoot: write
+-      ? await resolveWorkspaceRuntimeRoot(projectRoot)
+-      : resolveWorkspaceRuntimeRootSync(projectRoot),
+-    workflow: 'classic',
+-    change,
+-    candidateKey,
+-    formalPrefixes: [
+-      '.comet',
+-      ...classicProtectedDocumentPrefixes(projectRoot, layout),
+-      ...[state.designDoc, state.plan, state.verificationReport].filter((ref): ref is string =>
+-        Boolean(ref),
+-      ),
+-    ],
+-  };
+-}
+-
+-export async function assertClassicEditReviewsComplete(
+-  projectRoot: string,
+-  change: string,
+-  state: ClassicState,
+-): Promise<void> {
+-  await assertEditReviewsComplete(await classicEditReviewScope(projectRoot, change, state));
+-}
+-
+-/** 正式文档判断随原 change 保留；是否对应当前批准由批准收据的原始内容摘要核对。 */
+-export async function classicFormalEditReviewScope(
+-  projectRoot: string,
+-  change: string,
+-  state: ClassicState,
+-  write = false,
+-  base?: EditReviewScope,
+-  preloadedRun?: Readonly<WorkflowRun>,
+-): Promise<EditReviewScope> {
+-  const sources: string[] = [];
+-  if (
+-    state.handoffContext &&
+-    state.handoffHash &&
+-    (await classicProjectTargetExists(projectRoot, state.handoffContext, {
+-      label: 'Classic 正式来源登记',
+-      expected: 'file',
+-    }))
+-  ) {
+-    const document = JSON.parse(
+-      await readClassicProjectFile(projectRoot, state.handoffContext, {
+-        label: 'Classic 正式来源登记',
+-      }),
+-    ) as { context_hash?: string; files?: Array<{ path?: string }> };
+-    const changeRef = path.posix.dirname(
+-      path.posix.dirname(path.posix.dirname(state.handoffContext)),
+-    );
+-    if (document.context_hash === state.handoffHash && Array.isArray(document.files)) {
+-      for (const file of document.files)
+-        if (
+-          file.path &&
+-          (['proposal.md', 'design.md', 'tasks.md'].some(
+-            (name) => file.path === `${changeRef}/${name}`,
+-          ) ||
+-            (file.path.startsWith(`${changeRef}/specs/`) && file.path.endsWith('/spec.md')))
+-        )
+-          sources.push(file.path);
+-    }
+-  }
+-  const scope = base ?? (await classicEditReviewScope(projectRoot, change, state, write));
+-  const allowedFormalPaths = [
+-    ...new Set(
+-      [...sources, state.designDoc, state.plan].filter((ref): ref is string => Boolean(ref)),
+-    ),
+-  ];
+-  if (!allowedFormalPaths.length && state.workflow === 'full')
+-    return {
+-      ...scope,
+-      candidateKey: `formal:${state.createdAt}`,
+-      judgment: 'agent',
+-      approvedSources: {},
+-      allowedFormalPaths,
+-    };
+-  let run = preloadedRun;
+-  if (!run) {
+-    const owner = await readSdkChangeOwner(projectRoot, 'classic', change, { readOnly: true });
+-    if (owner) {
+-      run =
+-        (['classic-full', 'classic-hotfix', 'classic-tweak'].includes(owner.application)
+-          ? await createFileRuntimeStore<WorkflowRun>({
+-              rootDir: path.join(scope.runtimeRoot, 'sdk-runs', 'classic'),
+-            }).read(owner.runId)
+-          : await readWorkflowApplicationRun(projectRoot, owner.application, owner.runId)) ??
+-        undefined;
+-      if (!run || run.runId !== owner.runId)
+-        throw new Error('正式材料判断缺少当前 SDK Run，不能降级使用旧批准');
+-    }
+-  }
+-  const approvedSources: Record<string, string> = run
+-    ? classicSdkFormalSourceEvidence(run, sources)
+-    : state.handoffHash
+-      ? Object.fromEntries(sources.map((ref) => [ref, state.handoffHash!]))
+-      : {};
+-  const preset = run ? classicSdkPresetSourceEvidence(run) : null;
+-  if (preset) {
+-    const originalScope = { ...scope, candidateKey: `formal:${state.createdAt}` };
+-    for (const original of await listApprovedEditOriginalsForEvidence(
+-      originalScope,
+-      preset.evidenceHash,
+-    )) {
+-      if (!original.file.startsWith(`${preset.ref}/`))
+-        throw new Error('Preset 正式来源不属于当前 change');
+-      approvedSources[original.file] = preset.identity;
+-      if (!allowedFormalPaths.includes(original.file)) allowedFormalPaths.push(original.file);
+-    }
+-  }
+-  if (!run && state.workflow !== 'full' && state.phase !== 'open') {
+-    const { directory } = await resolveClassicChangeDirectory(change, projectRoot);
+-    const projection = await readClassicState(directory, { migrate: false });
+-    if (projection.run) {
+-      const accepted = (await readCheckIndex(directory, projection.run.trajectoryRef)).events
+-        .slice()
+-        .reverse()
+-        .find(
+-          (entry) =>
+-            entry.runId === projection.run!.runId &&
+-            entry.type === 'state_transitioned' &&
+-            entry.data?.event === 'open-complete' &&
+-            entry.data.source === 'comet-guard',
+-        );
+-      const data = accepted?.data;
+-      if (
+-        data &&
+-        Number(data.formalSourceIteration) <= projection.run.iteration &&
+-        Number(data.formalSourceEpoch) <= (state.checkEpoch ?? 0) &&
+-        data.formalSources &&
+-        typeof data.formalSources === 'object'
+-      ) {
+-        const prefix = path.relative(projectRoot, directory).replaceAll('\\', '/') + '/';
+-        for (const [ref, evidence] of Object.entries(data.formalSources)) {
+-          if (
+-            !ref.startsWith(prefix) ||
+-            typeof evidence !== 'string' ||
+-            !/^[a-f0-9]{64}$/u.test(evidence)
+-          )
+-            throw new Error('Compat Open 原文来源不属于当前 change');
+-          approvedSources[ref] = evidence;
+-          if (!allowedFormalPaths.includes(ref)) allowedFormalPaths.push(ref);
+-        }
+-      }
+-    }
+-  }
+-  if (!run && state.workflow === 'full' && ['verify', 'archive'].includes(state.phase)) {
+-    const { directory } = await resolveClassicChangeDirectory(change, projectRoot);
+-    const projection = await readClassicState(directory, { migrate: false });
+-    if (projection.run) {
+-      const accepted = (await readCheckIndex(directory, projection.run.trajectoryRef)).events
+-        .slice()
+-        .reverse()
+-        .find(
+-          (entry) =>
+-            entry.type === 'state_transitioned' &&
+-            entry.runId === projection.run!.runId &&
+-            entry.data?.event === 'build-complete' &&
+-            entry.data.source === 'comet-guard',
+-        );
+-      const data = accepted?.data;
+-      if (
+-        data &&
+-        Number(data.formalSourceIteration) <= projection.run.iteration &&
+-        Number(data.formalSourceEpoch) <= (state.checkEpoch ?? 0) &&
+-        data.formalSourceHandoff === state.handoffHash &&
+-        data.formalSources &&
+-        typeof data.formalSources === 'object'
+-      ) {
+-        for (const [ref, evidence] of Object.entries(data.formalSources))
+-          if (
+-            (ref === state.plan || ref === state.designDoc) &&
+-            typeof evidence === 'string' &&
+-            /^[a-f0-9]{64}$/u.test(evidence)
+-          )
+-            approvedSources[ref] = evidence;
+-      }
+-    }
+-  }
+-  return {
+-    ...scope,
+-    candidateKey: `formal:${state.createdAt}`,
+-    judgment: 'agent',
+-    approvedSources,
+-    allowedFormalPaths,
+-  };
+-}
+-
+-/** 只在真实 Open 或 Build 阶段提交时保存原文；对象本身不赋予接受权限。 */
+-export async function rememberClassicCompatFormalSources(
+-  projectRoot: string,
+-  change: string,
+-  state: ClassicState,
+-  run: RunState,
+-  check?: RecordedCommandCheck,
+-  refs?: readonly string[],
+-) {
+-  const scope = await classicEditReviewScope(projectRoot, change, state, true);
+-  scope.candidateKey = `formal:${state.createdAt}`;
+-  const formalSources: Record<string, string> = {};
+-  for (const ref of [...new Set(refs ?? [state.plan, state.designDoc])]) {
+-    if (!ref) continue;
+-    if (
+-      !check &&
+-      !(await classicProjectTargetExists(projectRoot, ref, {
+-        label: 'Classic Open 正式来源',
+-        expected: 'file',
+-      }))
+-    )
+-      continue;
+-    const source = await readClassicProjectFile(projectRoot, ref, {
+-      label: `Classic 正式原文 ${ref}`,
+-      maxBytes: Number.MAX_SAFE_INTEGER,
+-    });
+-    const rawHash = createHash('sha256').update(source).digest('hex');
+-    const evidence = hashRuntimeValue([
+-      check ? 'classic-formal-build-v1' : 'classic-formal-open-v1',
+-      run.runId,
+-      run.iteration + 1,
+-      check?.sequence ?? null,
+-      ref,
+-      rawHash,
+-      state.handoffHash,
+-    ]);
+-    await rememberApprovedEditOriginal(scope, ref, source, rawHash, evidence);
+-    formalSources[ref] = evidence;
+-  }
+-  return {
+-    formalSourceIteration: run.iteration + 1,
+-    formalSourceEpoch: state.checkEpoch ?? 0,
+-    formalSourceHandoff: state.handoffHash,
+-    formalSources,
+-  };
+-}
+-
+-/** Compat 使用真实检查 Action；更早的无 Action 记录使用原轨迹事件身份。 */
+-export function classicCompatCheckExecutionRef(record: RecordedCommandCheck) {
+-  return (
+-    record.action?.id ?? `classic-check:${record.runId}:${record.sequence}:${record.timestamp}`
+-  );
+-}
+-
+-export async function observeClassicCompatCheckInputs(
+-  projectRoot: string,
+-  changeDir: string,
+-  state: ClassicState,
+-  check: RecordedCommandCheck,
+-  baseline?: { manifestRef: string; manifestHash: string },
+-) {
+-  const manifestRef = baseline?.manifestRef ?? check.manifestRef;
+-  const manifestHash = baseline?.manifestHash ?? check.manifestHash;
+-  if (!manifestRef || !manifestHash || !check.argv?.length)
+-    throw new Error(
+-      '旧检查缺少逐文件输入记录；保留原成果，通过原检查建立新记录，不能从当前文件补造旧快照',
+-    );
+-  const source = await readClassicProjectFile(projectRoot, manifestRef, {
+-    label: 'Classic 原检查输入清单',
+-    maxBytes: Number.MAX_SAFE_INTEGER,
+-  });
+-  if (checkManifestHash(source) !== manifestHash) throw new Error('Classic 原检查输入清单已变化');
+-  const before = parseCheckManifest(source);
+-  const current = await collectCheckSnapshot(
+-    projectRoot,
+-    changeDir,
+-    { argv: check.argv, cwd: check.cwd },
+-    { verificationReport: state.verificationReport },
+-  );
+-  const diff = diffCheckManifests(before, current.entries);
+-  const left = new Map(before.map((entry) => [entry.p, entry.h]));
+-  const right = new Map(current.entries.map((entry) => [entry.p, entry.h]));
+-  const changes = [];
+-  const gitChanges = [];
+-  for (const ref of [...diff.added, ...diff.changed, ...diff.removed]) {
+-    if (ref.startsWith('\0git:')) {
+-      gitChanges.push({
+-        path: ref,
+-        beforeHash: left.get(ref) ?? 'missing',
+-        afterHash: right.get(ref) ?? 'missing',
+-      });
+-      continue;
+-    }
+-    let afterHash = 'missing';
+-    try {
+-      afterHash = (
+-        await hashProtectedProjectFile(projectRoot, ref, { label: 'Classic 当前变化文件' })
+-      ).digest;
+-    } catch (error) {
+-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+-    }
+-    if (!right.has(ref) && afterHash !== 'missing') continue;
+-    changes.push({
+-      path: ref,
+-      beforeHash: left.get(ref) ?? 'missing',
+-      afterHash,
+-      afterInputHash: right.get(ref),
+-    });
+-  }
+-  const root = await ensureProtectedProjectDirectory(
+-    await resolveWorkspaceRuntimeRoot(projectRoot),
+-    'classic/input-observations',
+-    { label: 'Classic 输入观察' },
+-  );
+-  const currentRef = path.join(root, `${checkManifestHash(current.manifest)}.manifest`);
+-  try {
+-    await atomicWriteContainedText(currentRef, current.manifest, {
+-      containedRoot: root,
+-      exclusive: true,
+-    });
+-  } catch (error) {
+-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+-    if (
+-      checkManifestHash(await fs.readFile(currentRef, 'utf8')) !==
+-      checkManifestHash(current.manifest)
+-    )
+-      throw new Error('已保存的 Classic 输入观察已变化', { cause: error });
+-  }
+-  return {
+-    sourceActionId: classicCompatCheckExecutionRef(check),
+-    beforeRef: manifestRef,
+-    currentRef,
+-    changes,
+-    gitChanges,
+-    ...(state.phase === 'archive' && !state.archived
+-      ? {
+-          refreshInputTemplate: {
+-            expectedCheckEpoch: state.checkEpoch ?? 0,
+-            sourceActionId: classicCompatCheckExecutionRef(check),
+-            observationHash: checkManifestHash(current.manifest),
+-            reportSha256: state.verificationReport
+-              ? (
+-                  await hashProtectedProjectFile(projectRoot, state.verificationReport, {
+-                    label: 'Classic 原报告',
+-                  })
+-                ).digest
+-              : null,
+-            summary: '<当前 Agent 说明仅补原检查且保留接受结果的依据>',
+-          },
+-        }
+-      : {}),
+-  };
+-}
+-
+-/** 保留完整观察收据；重新读取的内容相同即可继续，mtime 只用于采样。 */
+-export async function classicCheckObservationMatches(
+-  projectRoot: string,
+-  observation: { currentRef: string; currentManifestHash: string },
+-  expectedHash: string,
+-) {
+-  if (observation.currentManifestHash === expectedHash) return true;
+-  if (!/^[a-f0-9]{64}$/u.test(expectedHash)) return false;
+-  const runtimeRoot = await resolveWorkspaceRuntimeRoot(projectRoot);
+-  const original = await readClassicProjectFile(
+-    projectRoot,
+-    path.join(runtimeRoot, 'classic/input-observations', `${expectedHash}.manifest`),
+-    { label: 'Classic 已绑定的输入观察', maxBytes: Number.MAX_SAFE_INTEGER },
+-  );
+-  const current = await readClassicProjectFile(projectRoot, observation.currentRef, {
+-    label: 'Classic 当前输入观察',
+-    maxBytes: Number.MAX_SAFE_INTEGER,
+-  });
+-  if (
+-    checkManifestHash(original) !== expectedHash ||
+-    checkManifestHash(current) !== observation.currentManifestHash
+-  )
+-    throw new Error('Classic 输入观察收据已变化');
+-  const diff = diffCheckManifests(parseCheckManifest(original), parseCheckManifest(current));
+-  return !diff.added.length && !diff.removed.length && !diff.changed.length;
+-}
+-
+-/** 观察最近一次真实检查之后的文件变化；显式 Git 依赖另行展示。 */
+-export async function observeClassicCheckInputs(
+-  projectRoot: string,
+-  run: Readonly<WorkflowRun>,
+-  options: { actionId?: string; snapshot?: CheckSnapshot } = {},
+-) {
+-  const action = run.actions
+-    .slice()
+-    .reverse()
+-    .find(
+-      (entry) =>
+-        entry.ref === 'classic-check' &&
+-        (!options.actionId || entry.id === options.actionId) &&
+-        (entry.outcome?.output as { manifestRef?: unknown } | undefined)?.manifestRef,
+-    );
+-  if (!action) throw new Error('当前 Run 没有检查输入清单；沿用原检查建立记录后再判断变化');
+-  const output = action.outcome!.output as {
+-    manifestRef: string;
+-    manifestHash: string;
+-    inputAfter: string;
+-    argv: string[];
+-    cwd: string;
+-  };
+-  const state = run.state as unknown as ClassicState;
+-  const current =
+-    options.snapshot ??
+-    (await collectCheckSnapshot(
+-      projectRoot,
+-      path.resolve(projectRoot, (run.input as { changeDir: string }).changeDir),
+-      { argv: output.argv, cwd: output.cwd },
+-      { verificationReport: state.verificationReport },
+-    ));
+-  let source: string;
+-  try {
+-    source = await readClassicProjectFile(projectRoot, output.manifestRef, {
+-      label: 'Classic 原输入清单',
+-      maxBytes: Number.MAX_SAFE_INTEGER,
+-    });
+-  } catch (error) {
+-    if (
+-      (error as NodeJS.ErrnoException).code !== 'ENOENT' ||
+-      current.digest !== output.inputAfter ||
+-      checkManifestHash(current.manifest) !== output.manifestHash
+-    )
+-      throw error;
+-    // 便携恢复缺少本机清单时，只能重建与原收据两个摘要均一致的输入。
+-    source = current.manifest;
+-  }
+-  if (checkManifestHash(source) !== output.manifestHash)
+-    throw new Error('Classic 原输入清单已变化');
+-  const before = parseCheckManifest(source),
+-    diff = diffCheckManifests(before, current.entries);
+-  const left = new Map(before.map((entry) => [entry.p, entry.h])),
+-    right = new Map(current.entries.map((entry) => [entry.p, entry.h]));
+-  const changedPaths = [...diff.added, ...diff.changed, ...diff.removed];
+-  const gitChanges = changedPaths
+-    .filter((ref) => ref.startsWith('\0git:'))
+-    .map((ref) => ({
+-      path: ref,
+-      beforeHash: left.get(ref) ?? 'missing',
+-      afterHash: right.get(ref) ?? 'missing',
+-    }));
+-  const changes = [];
+-  for (const ref of changedPaths.filter((entry) => !entry.startsWith('\0git:'))) {
+-    let afterHash = 'missing';
+-    try {
+-      afterHash = (
+-        await hashProtectedProjectFile(projectRoot, ref, { label: 'Classic 当前原始文件' })
+-      ).digest;
+-    } catch (error) {
+-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+-    }
+-    if (!right.has(ref) && afterHash !== 'missing') continue; // 新声明的检查输出仍在磁盘，不是删除输入文件。
+-    changes.push({
+-      path: ref,
+-      beforeHash: left.get(ref) ?? 'missing',
+-      afterHash,
+-      afterInputHash: right.get(ref),
+-    });
+-  }
+-  const root = await ensureProtectedProjectDirectory(
+-    await resolveWorkspaceRuntimeRoot(projectRoot),
+-    'classic/input-observations',
+-    { label: 'Classic 输入观察' },
+-  );
+-  const currentRef = path.join(root, `${checkManifestHash(current.manifest)}.manifest`);
+-  try {
+-    await atomicWriteContainedText(currentRef, current.manifest, {
+-      containedRoot: root,
+-      exclusive: true,
+-    });
+-  } catch (error) {
+-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+-    if (
+-      checkManifestHash(await fs.readFile(currentRef, 'utf8')) !==
+-      checkManifestHash(current.manifest)
+-    )
+-      throw new Error('Classic 已保存的输入观察内容已变化', { cause: error });
+-  }
+-  const approval = [...run.waits]
+-    .reverse()
+-    .find(
+-      (wait) =>
+-        wait.stepId === `${state.workflow}.archive.confirm` &&
+-        wait.status === 'resolved' &&
+-        ['local', 'push', 'pr'].includes(wait.decision?.choice ?? ''),
+-    );
+-  const pending = run.actions.filter((entry) => entry.status === 'pending');
+-  return {
+-    sourceActionId: action.id,
+-    beforeRef: output.manifestRef,
+-    currentRef,
+-    currentManifestHash: checkManifestHash(current.manifest),
+-    changes,
+-    gitChanges,
+-    ...(state.phase === 'archive' &&
+-    approval &&
+-    pending.length === 1 &&
+-    ['archive.preflight', 'archive.execute'].some(
+-      (step) => pending[0].stepId === `${state.workflow}.${step}`,
+-    )
+-      ? {
+-          refreshInputTemplate: {
+-            expectedRevision: run.revision,
+-            archiveActionId: pending[0].id,
+-            approvalWaitId: approval.id,
+-            proposalHash: approval.proposalHash,
+-            reportSha256: run.evidenceWaits
+-              ?.slice()
+-              .reverse()
+-              .find(
+-                (wait) =>
+-                  wait.stepId === `${state.workflow}.verify.report.evidence` &&
+-                  wait.status === 'resolved',
+-              )?.receipt?.contentHash,
+-            sourceActionId: action.id,
+-            observationHash: checkManifestHash(current.manifest),
+-            summary: '<当前 Agent 说明仅补跑原 Verify 检查且保留原结论与批准的依据>',
+-          },
+-        }
+-      : {}),
+-  };
+-}
+-
+-export async function observeClassicSdkAcceptedCandidateInputs(
+-  projectRoot: string,
+-  run: Readonly<WorkflowRun>,
+-  snapshot?: CheckSnapshot,
+-) {
+-  const state = run.state as unknown as ClassicState;
+-  const receipt = [...(run.evidenceWaits ?? [])]
+-    .reverse()
+-    .find(
+-      (wait) =>
+-        wait.stepId === `${state.workflow}.verify.check.evidence` && wait.status === 'resolved',
+-    )?.receipt;
+-  const action = [...run.actions].reverse().find((entry) => {
+-    const output = entry.outcome?.output as
+-      { receiptRef?: string; contentHash?: string } | undefined;
+-    return (
+-      entry.stepId === `${state.workflow}.verify.check` &&
+-      entry.status === 'succeeded' &&
+-      entry.claim?.executorId === 'comet-classic-check' &&
+-      output?.receiptRef === receipt?.ref &&
+-      output?.contentHash === receipt?.contentHash
+-    );
+-  });
+-  if (!receipt || !action) throw new Error('原接受结果的检查收据缺失，不能用补检查替代原验收');
+-  return observeClassicCheckInputs(projectRoot, run, { actionId: action.id, snapshot });
+-}
+-
+-export async function assertClassicSdkAcceptedCandidateInputs(
+-  projectRoot: string,
+-  run: Readonly<WorkflowRun>,
+-  snapshot?: CheckSnapshot,
+-) {
+-  const state = run.state as unknown as ClassicState;
+-  const observation = await observeClassicSdkAcceptedCandidateInputs(projectRoot, run, snapshot);
+-  const change = path.posix.basename((run.input as { changeDir: string }).changeDir);
+-  const scope = await classicEditReviewScope(projectRoot, change, state);
+-  const scopes = [
+-    scope,
+-    await classicFormalEditReviewScope(projectRoot, change, state, false, scope, run),
+-  ];
+-  for (const scope of scopes) await assertEditReviewsComplete(scope);
+-  if (!(await areObservedEditsNonBehavioral(scopes, observation.changes)))
+-    throw new Error(
+-      '当前内容与原已接受候选不一致；由当前 Agent 只判断新增变化，不能用补检查替代原验收',
+-    );
+-}
+-
+-/** 只消费明确列出原检查 Action 的 Agent 判断，不从文档类型推断检查无关。 */
+-export async function classicCheckInputsRetained(
+-  projectRoot: string,
+-  change: string,
+-  state: ClassicState,
+-  actionId: string,
+-  previous: { manifestRef?: unknown; manifestHash?: unknown },
+-  currentManifest: string,
+-  run?: Readonly<WorkflowRun>,
+-): Promise<boolean> {
+-  if (typeof previous.manifestRef !== 'string' || typeof previous.manifestHash !== 'string')
+-    return false;
+-  let source: string;
+-  try {
+-    source = await readClassicProjectFile(projectRoot, previous.manifestRef, {
+-      label: 'Classic 原检查输入清单',
+-      maxBytes: Number.MAX_SAFE_INTEGER,
+-    });
+-  } catch (error) {
+-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+-    throw error;
+-  }
+-  if (checkManifestHash(source) !== previous.manifestHash)
+-    throw new Error('Classic 原检查输入清单已变化');
+-  const before = parseCheckManifest(source),
+-    after = parseCheckManifest(currentManifest);
+-  const diff = diffCheckManifests(before, after);
+-  const old = new Map(before.map((entry) => [entry.p, entry.h]));
+-  const current = new Map(after.map((entry) => [entry.p, entry.h]));
+-  const changes = [...diff.added, ...diff.removed, ...diff.changed].map((ref) => ({
+-    path: ref,
+-    beforeHash: old.get(ref) ?? 'missing',
+-    afterHash: current.get(ref) ?? 'missing',
+-  }));
+-  // 回到 Build 后旧报告留作历史；只排除同一 Run 真正验收且字节未变的 Runtime 输出。
+-  if (run && state.phase === 'build') {
+-    const command = run.commands
+-      ?.slice()
+-      .reverse()
+-      .find((entry) => entry.name === 'continue-build');
+-    const sequence = command ? run.actionContexts[command.actionId]?.sequence : undefined;
+-    const report =
+-      sequence === undefined
+-        ? undefined
+-        : run.evidenceWaits
+-            ?.slice()
+-            .reverse()
+-            .find(
+-              (wait) =>
+-                wait.stepId === `${state.workflow}.verify.report.evidence` &&
+-                wait.sequence < sequence,
+-            );
+-    const receipt = report?.status === 'resolved' ? report.receipt : undefined;
+-    const output = run.actions.find((entry) => entry.id === actionId)?.outcome?.output as
+-      { argv?: string[]; cwd?: string } | undefined;
+-    const entry = receipt
+-      ? changes.find((entry) => entry.path === receipt.ref && entry.beforeHash === 'missing')
+-      : undefined;
+-    if (
+-      entry &&
+-      receipt &&
+-      output?.argv &&
+-      output.cwd !== undefined &&
+-      (await readCheckPolicy(projectRoot, { argv: output.argv, cwd: output.cwd })).files ===
+-        undefined
+-    ) {
+-      const bytes = await readClassicProjectBytes(projectRoot, receipt.ref, {
+-        label: 'Classic 原验收报告输出',
+-        maxBytes: Number.MAX_SAFE_INTEGER,
+-      });
+-      const raw = createHash('sha256').update(bytes).digest('hex');
+-      const hashes = [
+-        raw,
+-        ...['sha1', 'sha256'].map(
+-          (algorithm) =>
+-            `git:${createHash(algorithm).update(`blob ${bytes.length}\0`).update(bytes).digest('hex')}`,
+-        ),
+-      ];
+-      if (raw === receipt.contentHash && hashes.includes(entry.afterHash))
+-        entry.beforeHash = entry.afterHash;
+-    }
+-  }
+-  // Verify 声明报告后，旧 Build 输入会移除该输出；实际字节未变不构成项目内容变化。
+-  for (const entry of changes) {
+-    if (entry.afterHash !== 'missing' || entry.path !== state.verificationReport) continue;
+-    try {
+-      const bytes = await readClassicProjectBytes(projectRoot, entry.path, {
+-        label: 'Classic 报告输入观察',
+-        maxBytes: Number.MAX_SAFE_INTEGER,
+-      });
+-      const hashes = [
+-        createHash('sha256').update(bytes).digest('hex'),
+-        ...['sha1', 'sha256'].map(
+-          (algorithm) =>
+-            `git:${createHash(algorithm).update(`blob ${bytes.length}\0`).update(bytes).digest('hex')}`,
+-        ),
+-      ];
+-      if (hashes.includes(entry.beforeHash)) entry.afterHash = entry.beforeHash;
+-      else entry.afterHash = hashes[0];
+-    } catch (error) {
+-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+-    }
+-  }
+-  const scope = await classicEditReviewScope(projectRoot, change, state);
+-  return isCheckInputRetained(
+-    scope,
+-    actionId,
+-    changes.filter((entry) => entry.beforeHash !== entry.afterHash),
+-    [await classicFormalEditReviewScope(projectRoot, change, state, false, scope, run)],
+-  );
+-}
+diff --git a/domains/comet-native/native-edit-review-scope.ts b/domains/comet-native/native-edit-review-scope.ts
+deleted file mode 100644
+index 72cb611a..00000000
+--- a/domains/comet-native/native-edit-review-scope.ts
++++ /dev/null
+@@ -1,47 +0,0 @@
+-import path from 'node:path';
+-import type { EditReviewScope } from '../workflow-contract/edit-review.js';
+-import type { NativeProjectPaths } from './native-types.js';
+-import type { NativePortableState } from './native-portable-types.js';
+-
+-export function nativeEditReviewScope(
+-  paths: NativeProjectPaths,
+-  state: NativePortableState,
+-): EditReviewScope {
+-  const candidateKey =
+-    state.builder_handoff?.candidate_id ??
+-    (state.phase === 'build' && state.shape_confirmation_hash
+-      ? `shape:${state.shape_confirmation_hash}:${state.loop.iteration}`
+-      : null);
+-  if (!candidateKey) throw new Error('Native 内容判断需要已批准 Shape 或当前候选');
+-  return editReviewScope(paths, state, candidateKey);
+-}
+-
+-function editReviewScope(
+-  paths: NativeProjectPaths,
+-  state: NativePortableState,
+-  candidateKey: string,
+-): EditReviewScope {
+-  return {
+-    projectRoot: paths.projectRoot,
+-    runtimeRoot: paths.workspaceRuntimeRoot,
+-    workflow: 'native',
+-    change: state.name,
+-    candidateKey,
+-    formalPrefixes: [
+-      '.comet',
+-      path.relative(paths.projectRoot, paths.nativeRoot).replaceAll('\\', '/'),
+-    ],
+-  };
+-}
+-
+-/** 正式材料跟随同一次 Shape 批准，独立于实现候选和执行轮次。 */
+-export function nativeFormalEditReviewScope(
+-  paths: NativeProjectPaths,
+-  state: NativePortableState,
+-): EditReviewScope {
+-  if (!state.shape_confirmation_hash) throw new Error('正式材料判断需要已批准 Shape');
+-  return {
+-    ...editReviewScope(paths, state, `formal:${state.shape_confirmation_hash}`),
+-    judgment: 'agent',
+-  };
+-}
+diff --git a/domains/comet-native/native-receipt-refresh.ts b/domains/comet-native/native-receipt-refresh.ts
+deleted file mode 100644
+index c2df4213..00000000
+--- a/domains/comet-native/native-receipt-refresh.ts
++++ /dev/null
+@@ -1,349 +0,0 @@
+-import path from 'node:path';
+-
+-import {
+-  NATIVE_ACCEPTANCE_EVIDENCE_END_MARKER,
+-  NATIVE_ACCEPTANCE_EVIDENCE_START_MARKER,
+-  parseNativeVerificationMachineBlock,
+-  serializeNativeVerificationMachineBlock,
+-  type NativeAcceptanceEvidenceEntry,
+-} from './native-acceptance.js';
+-import { atomicWriteText } from './native-atomic-file.js';
+-import { nativeChangeDir, readNativeChange } from './native-change.js';
+-import { readNativeBoundedTextFile } from './native-bounded-file.js';
+-import {
+-  readNativeVerificationEvidence,
+-  readNativeVerificationReceipt,
+-} from './native-evidence-storage.js';
+-import type { NativeProjectPaths } from './native-types.js';
+-import {
+-  assertNativeReceiptScopeCurrent,
+-  compareNativeReceiptBindings,
+-  issueNativeManualEvidenceReceipt,
+-  loadNativeVerificationReceiptContext,
+-} from './native-verification-receipt-runtime.js';
+-import type { NativeVerificationReceipt } from './native-verification-receipt.js';
+-import type { NativeAcceptanceTraceEntry } from './native-verification-evidence.js';
+-
+-/**
+- * A manual-evidence receipt whose bindings diverge from the current revision
+- * and can be safely re-issued in place. {@link refreshNativeVerificationReceipts}
+- * re-issues these automatically under `--apply`.
+- */
+-export interface NativeReceiptRefreshManualItem {
+-  oldRef: string;
+-  acceptanceIds: string[];
+-}
+-
+-/**
+- * An automated-check receipt that is stale. Automated receipts cannot be
+- * silently re-issued because they attest to a real command execution; the Agent
+- * must re-run the recorded command to produce fresh evidence. This entry
+- * carries the original command so the Agent can re-run it directly.
+- */
+-export interface NativeReceiptRefreshRerunItem {
+-  oldRef: string;
+-  acceptanceIds: string[];
+-  command: string;
+-  timeoutMs: number;
+-}
+-
+-/** A manual receipt whose contract/scope/artifact binding changed and needs a new observation. */
+-export interface NativeReceiptRefreshManualRequiredItem {
+-  oldRef: string;
+-  acceptanceIds: string[];
+-  mismatches: string[];
+-}
+-
+-/**
+- * A required-check (static-inspection) receipt that is stale. These are
+- * produced by `comet native check` and re-issued automatically by `next
+- * --result pass`, so a refresh reports them as a hint rather than re-issuing.
+- */
+-export interface NativeReceiptRefreshCheckItem {
+-  oldRef: string;
+-}
+-
+-export interface NativeReceiptRefreshResult {
+-  /** Manual receipts re-issued under `--apply` (old ref -> new ref, per acceptance). */
+-  refreshed: { acceptanceId: string; oldRef: string; newRef: string }[];
+-  /** Automated receipts that must be re-run; empty unless stale automated receipts exist. */
+-  requiresRerun: NativeReceiptRefreshRerunItem[];
+-  /** Manual receipts that cannot be re-issued because their non-revision bindings changed. */
+-  requiresManual: NativeReceiptRefreshManualRequiredItem[];
+-  /** Required-check receipts that must be re-produced via `comet native check`. */
+-  requiresCheck: NativeReceiptRefreshCheckItem[];
+-  /** True when `--apply` was used and verification.md was rewritten. */
+-  applied: boolean;
+-  /** Relative ref of the verification report updated under `--apply`. */
+-  verificationReport: string | null;
+-}
+-
+-const NATIVE_RECEIPT_REFRESH_STEP_PREFIX = 'Native receipt re-issued after revision bump';
+-
+-export function isManualReceiptRefreshSafe(comparison: {
+-  ok: boolean;
+-  mismatches: readonly string[];
+-}): boolean {
+-  return (
+-    !comparison.ok &&
+-    comparison.mismatches.length === 1 &&
+-    comparison.mismatches[0]?.startsWith('sourceRevision: ') === true
+-  );
+-}
+-
+-function formatAutomatedCommand(receipt: NativeVerificationReceipt): string {
+-  if (receipt.kind !== 'automated-check') return '<unknown automated receipt>';
+-  const parts = [receipt.evidence.executable, ...receipt.evidence.args];
+-  return parts.map((part) => (/\s/u.test(part) ? JSON.stringify(part) : part)).join(' ');
+-}
+-
+-function describeManualStep(revision: number): string {
+-  return `${NATIVE_RECEIPT_REFRESH_STEP_PREFIX} to revision ${revision}`;
+-}
+-
+-function describeManualObservation(): string {
+-  return 'Manual evidence re-issued via `comet native receipt refresh` to restore revision binding.';
+-}
+-
+-/**
+- * Inspect — and optionally repair — stale verification receipts bound to an
+- * older revision than the current state.
+- *
+- * The revision-bound receipt model intentionally invalidates any receipt whose
+- * `sourceRevision` differs from the current state revision (a tamper-resistance
+- * guarantee). But ordinary state writes (checkpoints, spec refresh, advancing
+- * phases) bump the revision, which can leave previously-issued receipts stale.
+- * This function lets an Agent recover on its own: under `--apply` it re-issues
+- * manual-evidence receipts whose only mismatch is the source revision at the
+- * current revision and rewrites the acceptance-evidence block in
+- * `verification.md`, while reporting receipts that require fresh evidence.
+- * An implementation scope that changed after Build is a different recovery
+- * class and fails before receipt inspection with the exact command for
+- * returning to Build and re-freezing the scope.
+- *
+- * Returns a structured report so the Agent can drive recovery programmatically
+- * rather than parsing prose.
+- */
+-export async function refreshNativeVerificationReceipts(options: {
+-  paths: NativeProjectPaths;
+-  name: string;
+-  apply: boolean;
+-}): Promise<NativeReceiptRefreshResult> {
+-  const state = await readNativeChange(options.paths, options.name);
+-  if (state.phase !== 'verify') {
+-    throw new Error(
+-      `Native receipt refresh requires Verify, got ${state.phase} for ${options.name}`,
+-    );
+-  }
+-  const context = state.implementation_scope
+-    ? await loadNativeVerificationReceiptContext(options.paths, state)
+-    : null;
+-  if (context) {
+-    await assertNativeReceiptScopeCurrent({ paths: options.paths, state, context });
+-  }
+-  if (!state.verification_evidence) {
+-    // No envelope yet: nothing has been verified, so there is nothing to refresh.
+-    return {
+-      refreshed: [],
+-      requiresRerun: [],
+-      requiresManual: [],
+-      requiresCheck: [],
+-      applied: false,
+-      verificationReport: null,
+-    };
+-  }
+-  if (!context) {
+-    throw new Error('Native receipt refresh requires an implementation scope');
+-  }
+-  const envelope = await readNativeVerificationEvidence(
+-    options.paths,
+-    options.name,
+-    state.verification_evidence,
+-  );
+-
+-  const manualItems: NativeReceiptRefreshManualItem[] = [];
+-  const manualRequiredItems: NativeReceiptRefreshManualRequiredItem[] = [];
+-  const rerunItems: NativeReceiptRefreshRerunItem[] = [];
+-  const checkItems: NativeReceiptRefreshCheckItem[] = [];
+-  // Track which refs are fresh so the entry reconstruction can preserve them.
+-  const staleRefs = new Set<string>();
+-
+-  const allRefs = [...new Set([...envelope.requiredReceiptRefs, ...envelope.receiptRefs])];
+-  for (const ref of allRefs) {
+-    const receipt = await readNativeVerificationReceipt(options.paths, options.name, ref);
+-    const comparison = compareNativeReceiptBindings(receipt, context.bindings);
+-    if (comparison.ok) continue;
+-    staleRefs.add(ref);
+-    if (receipt.kind === 'manual-evidence') {
+-      const item = { oldRef: ref, acceptanceIds: [...receipt.acceptanceIds] };
+-      if (isManualReceiptRefreshSafe(comparison)) {
+-        manualItems.push(item);
+-      } else {
+-        manualRequiredItems.push({ ...item, mismatches: comparison.mismatches });
+-      }
+-    } else if (receipt.kind === 'automated-check') {
+-      rerunItems.push({
+-        oldRef: ref,
+-        acceptanceIds: [...receipt.acceptanceIds],
+-        command: formatAutomatedCommand(receipt),
+-        timeoutMs: receipt.evidence.timeoutMs,
+-      });
+-    } else if (receipt.kind === 'static-inspection') {
+-      checkItems.push({ oldRef: ref });
+-    }
+-  }
+-
+-  // When there are stale automated receipts, never auto-apply: the Agent must
+-  // re-run those commands to produce honest evidence. Surface the report so it
+-  // can do exactly that.
+-  const canAutoApply =
+-    options.apply &&
+-    rerunItems.length === 0 &&
+-    manualRequiredItems.length === 0 &&
+-    manualItems.length > 0;
+-  if (!canAutoApply) {
+-    return {
+-      refreshed: [],
+-      requiresRerun: rerunItems,
+-      requiresManual: manualRequiredItems,
+-      requiresCheck: checkItems,
+-      applied: false,
+-      verificationReport: state.verification_report,
+-    };
+-  }
+-
+-  // Re-issue a single manual receipt covering every stale-manual acceptance so
+-  // the evidence block stays compact and the binding is uniform at the current
+-  // revision. Issue per acceptance-id set to map old->new precisely.
+-  const refreshed: NativeReceiptRefreshResult['refreshed'] = [];
+-  const newRefByAcceptance = new Map<string, string>();
+-  // Group stale manual receipts by their acceptance-id set to re-issue faithfully.
+-  const groupsByKey = new Map<string, string[]>();
+-  for (const item of manualItems) {
+-    const key = [...item.acceptanceIds].sort().join('\n');
+-    const bucket = groupsByKey.get(key);
+-    if (bucket) {
+-      bucket.push(item.oldRef);
+-    } else {
+-      groupsByKey.set(key, [item.oldRef]);
+-    }
+-  }
+-  for (const [acceptanceKey, oldRefs] of groupsByKey) {
+-    const acceptanceIds = acceptanceKey.split('\n');
+-    const issued = await issueNativeManualEvidenceReceipt({
+-      paths: options.paths,
+-      name: options.name,
+-      acceptanceIds,
+-      steps: [describeManualStep(state.revision)],
+-      observations: [describeManualObservation()],
+-    });
+-    for (const acceptanceId of acceptanceIds) {
+-      newRefByAcceptance.set(acceptanceId, issued.ref);
+-    }
+-    for (const oldRef of oldRefs) {
+-      // Map each old ref to the new one for the first acceptance it carried.
+-      const primaryAcceptanceId = manualItems.find((item) => item.oldRef === oldRef)
+-        ?.acceptanceIds[0];
+-      if (primaryAcceptanceId) {
+-        refreshed.push({ acceptanceId: primaryAcceptanceId, oldRef, newRef: issued.ref });
+-      }
+-    }
+-  }
+-
+-  // Rebuild the acceptance-evidence entries from the trace, substituting stale
+-  // manual refs with the freshly issued ones while preserving fresh refs.
+-  const reportRef = state.verification_report;
+-  if (!reportRef) {
+-    throw new Error(
+-      `Native receipt refresh cannot rewrite verification report: ${options.name} has no report ref`,
+-    );
+-  }
+-  const changeDir = nativeChangeDir(options.paths, options.name);
+-  const report = await readNativeBoundedTextFile({ root: changeDir, ref: reportRef });
+-  const existingEntries = parseNativeVerificationMachineBlock(report.text);
+-  const newEntries = rebuildAcceptanceEvidenceEntries(
+-    envelope.acceptanceTrace.entries,
+-    existingEntries,
+-    staleRefs,
+-    newRefByAcceptance,
+-  );
+-  const block = serializeNativeVerificationMachineBlock(newEntries);
+-  const updatedReport = replaceAcceptanceEvidenceBlock(report.text, block);
+-  await atomicWriteText(path.join(changeDir, ...reportRef.split('/')), updatedReport);
+-
+-  return {
+-    refreshed,
+-    requiresRerun: [],
+-    requiresManual: [],
+-    requiresCheck: checkItems,
+-    applied: true,
+-    verificationReport: reportRef,
+-  };
+-}
+-
+-/**
+- * Rebuild acceptance-evidence entries by swapping stale manual receipt refs for
+- * the freshly issued ones. Fresh (non-stale) refs are preserved verbatim so
+- * unrelated evidence is not invalidated.
+- */
+-function rebuildAcceptanceEvidenceEntries(
+-  traceEntries: readonly NativeAcceptanceTraceEntry[],
+-  existingEntries: readonly NativeAcceptanceEvidenceEntry[],
+-  staleRefs: ReadonlySet<string>,
+-  newRefByAcceptance: ReadonlyMap<string, string>,
+-): NativeAcceptanceEvidenceEntry[] {
+-  const entriesByAcceptance = new Map<string, NativeAcceptanceEvidenceEntry>();
+-  for (const entry of existingEntries) {
+-    entriesByAcceptance.set(entry.acceptance_id, entry);
+-  }
+-  const rebuilt: NativeAcceptanceEvidenceEntry[] = [];
+-  for (const trace of traceEntries) {
+-    const existing = entriesByAcceptance.get(trace.acceptanceId);
+-    if (!existing) continue;
+-    if (trace.status === 'failed') {
+-      // Failed entries are not refreshed here; keep as-is.
+-      rebuilt.push(existing);
+-      continue;
+-    }
+-    const preservedRefs = existing.evidence_refs.filter((ref) => !staleRefs.has(ref));
+-    const newRef = newRefByAcceptance.get(trace.acceptanceId);
+-    const evidenceRefs = newRef !== undefined ? [...preservedRefs, newRef] : preservedRefs;
+-    if (evidenceRefs.length === 0) {
+-      // No evidence to reference after refresh; keep the original entry so the
+-      // problem surfaces in the next `next` attempt rather than silently dropping.
+-      rebuilt.push(existing);
+-      continue;
+-    }
+-    const entry: NativeAcceptanceEvidenceEntry = {
+-      acceptance_id: existing.acceptance_id,
+-      status: existing.status,
+-      evidence_refs: [...new Set(evidenceRefs)].sort(),
+-    };
+-    if (existing.skipped_reason !== undefined) {
+-      entry.skipped_reason = existing.skipped_reason;
+-    }
+-    rebuilt.push(entry);
+-  }
+-  return rebuilt;
+-}
+-
+-/**
+- * Replace the marker-delimited acceptance-evidence machine block in a
+- * verification report while leaving all surrounding markdown (required H1
+- * sections, prose) untouched.
+- */
+-export function replaceAcceptanceEvidenceBlock(markdown: string, newBlock: string): string {
+-  const startIndex = markdown.indexOf(NATIVE_ACCEPTANCE_EVIDENCE_START_MARKER);
+-  if (startIndex < 0) {
+-    throw new Error('Native verification report is missing the acceptance-evidence start marker');
+-  }
+-  const endIndex = markdown.indexOf(NATIVE_ACCEPTANCE_EVIDENCE_END_MARKER, startIndex);
+-  if (endIndex < 0) {
+-    throw new Error('Native verification report is missing the acceptance-evidence end marker');
+-  }
+-  const before = markdown.slice(0, startIndex);
+-  const after = markdown.slice(endIndex + NATIVE_ACCEPTANCE_EVIDENCE_END_MARKER.length);
+-  // The serialized block already contains both markers; keep the surrounding
+-  // line structure stable by anchoring on the marker positions.
+-  return `${before}${newBlock}${after}`;
+-}
+diff --git a/test/domains/comet-native/native-checkpoint-command.test.ts b/test/domains/comet-native/native-checkpoint-command.test.ts
+deleted file mode 100644
+index 57672b6d..00000000
+--- a/test/domains/comet-native/native-checkpoint-command.test.ts
++++ /dev/null
+@@ -1,63 +0,0 @@
+-import { promises as fs } from 'node:fs';
+-import os from 'node:os';
+-import path from 'node:path';
+-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+-
+-const checkpointNativeChange = vi.hoisted(() => vi.fn());
+-const inspectNativeStatus = vi.hoisted(() => vi.fn());
+-
+-vi.mock('../../../domains/comet-native/native-progress-checkpoint.js', () => ({
+-  checkpointNativeChange,
+-}));
+-vi.mock('../../../domains/comet-native/native-diagnostics.js', () => ({ inspectNativeStatus }));
+-
+-import { nativeCheckpointCommand } from '../../../domains/comet-native/native-checkpoint-command.js';
+-import {
+-  defaultProjectConfig,
+-  writeProjectConfig,
+-} from '../../../domains/comet-native/native-config.js';
+-
+-describe('Native checkpoint command argument branches', () => {
+-  let projectRoot: string;
+-
+-  beforeEach(async () => {
+-    projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-checkpoint-command-'));
+-    await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
+-    checkpointNativeChange.mockReset();
+-    inspectNativeStatus.mockReset();
+-  });
+-
+-  afterEach(async () => {
+-    await fs.rm(projectRoot, { recursive: true, force: true });
+-  });
+-
+-  it('requires both summary and next action', async () => {
+-    await expect(nativeCheckpointCommand(['demo'], projectRoot)).rejects.toThrow(
+-      '--summary is required',
+-    );
+-    await expect(
+-      nativeCheckpointCommand(['demo', '--summary', 'checkpoint'], projectRoot),
+-    ).rejects.toThrow('--next-action is required');
+-  });
+-
+-  it('dispatches a valid checkpoint and includes continuation status', async () => {
+-    checkpointNativeChange.mockResolvedValue({ revision: 4, phase: 'build' });
+-    inspectNativeStatus.mockResolvedValue({ continuation: { kind: 'build' } });
+-
+-    await expect(
+-      nativeCheckpointCommand(
+-        ['demo', '--summary', 'checkpoint', '--next-action', 'continue', '--artifact', 'src.ts'],
+-        projectRoot,
+-      ),
+-    ).resolves.toMatchObject({ command: 'checkpoint', exitCode: 0 });
+-    expect(checkpointNativeChange).toHaveBeenCalledWith(
+-      expect.objectContaining({
+-        name: 'demo',
+-        summary: 'checkpoint',
+-        nextAction: 'continue',
+-        artifacts: ['src.ts'],
+-        expectedRevision: undefined,
+-      }),
+-    );
+-  });
+-});
+diff --git a/test/domains/comet-native/native-receipt-refresh.test.ts b/test/domains/comet-native/native-receipt-refresh.test.ts
+deleted file mode 100644
+index 8c5d7a83..00000000
+--- a/test/domains/comet-native/native-receipt-refresh.test.ts
++++ /dev/null
+@@ -1,531 +0,0 @@
+-import { promises as fs } from 'node:fs';
+-import os from 'node:os';
+-import path from 'node:path';
+-import { stringify as stringifyYaml } from 'yaml';
+-import { afterEach, describe, expect, it } from 'vitest';
+-
+-import { parseNativeVerificationMachineBlock } from '../../../domains/comet-native/native-acceptance.js';
+-import { replaceAcceptanceEvidenceBlock } from '../../../domains/comet-native/native-receipt-refresh.js';
+-import { atomicWriteText } from '../../../domains/comet-native/native-atomic-file.js';
+-import { prepareNativeBuildEvidence } from '../../../domains/comet-native/native-build-evidence.js';
+-import {
+-  createNativeChange,
+-  nativeChangeDir,
+-  nativeChangeDocument,
+-  NATIVE_CHANGE_STATE_FILE,
+-} from '../../../domains/comet-native/native-change.js';
+-import { collectNativeContractFiles } from '../../../domains/comet-native/native-contract-files.js';
+-import {
+-  readNativeImplementationScopeBundle,
+-  readNativeVerificationReceipt,
+-  writeNativeVerificationReceipt,
+-} from '../../../domains/comet-native/native-evidence-storage.js';
+-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+-import type {
+-  NativeChangeState,
+-  NativeProjectPaths,
+-} from '../../../domains/comet-native/native-types.js';
+-import {
+-  isManualReceiptRefreshSafe,
+-  refreshNativeVerificationReceipts,
+-} from '../../../domains/comet-native/native-receipt-refresh.js';
+-import {
+-  inspectNativeVerificationEvidence,
+-  prepareNativeVerificationEvidence,
+-  NativeVerificationReceiptBindingError,
+-} from '../../../domains/comet-native/native-verification-runtime.js';
+-import { persistNativeStaticInspectionReceipt } from '../../../domains/comet-native/native-verification-receipt-runtime.js';
+-import {
+-  buildNativeVerificationReceipt,
+-  nativeArtifactBindingHash,
+-  type NativeVerificationReceiptBindings,
+-} from '../../../domains/comet-native/native-verification-receipt.js';
+-import { buildNativeCheckReceipt } from '../../../domains/comet-native/native-check-receipt-model.js';
+-import {
+-  readNativeCheckReceipt,
+-  writeNativeCheckReceipt,
+-} from '../../../domains/comet-native/native-check-receipt-storage.js';
+-import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
+-
+-const brief = `# Outcome
+-Ship the focused behavior.
+-# Scope
+-Update one implementation file.
+-# Non-goals
+-No unrelated changes.
+-# Acceptance examples
+-- The focused behavior works.
+-- The focused result remains observable.
+-# Constraints and invariants
+-Keep callers stable.
+-# Decisions
+-Use the current module.
+-# Open questions
+-None.
+-# Verification expectations
+-Run the focused check.
+-`;
+-
+-/**
+- * Write a Native change state to disk without bumping the revision. The CAS
+- * primitives always increment revision, which would re-stale receipts we just
+- * issued; this helper writes the document verbatim so a test can pin the exact
+- * revision that receipts were bound to.
+- */
+-async function writeStateVerbatim(stateFile: string, state: NativeChangeState): Promise<void> {
+-  await atomicWriteText(stateFile, stringifyYaml(nativeChangeDocument(state)));
+-}
+-
+-describe('Native receipt refresh', () => {
+-  let projectRoot: string;
+-  let paths: NativeProjectPaths;
+-  let changeDir: string;
+-  let stateFile: string;
+-  let verifyState: NativeChangeState;
+-  let acceptanceIds: string[];
+-  let requiredReceiptRef: string;
+-
+-  afterEach(async () => {
+-    if (projectRoot) await fs.rm(projectRoot, { recursive: true, force: true });
+-  });
+-
+-  async function currentBindings(
+-    state: NativeChangeState,
+-  ): Promise<NativeVerificationReceiptBindings> {
+-    const [scope, contract] = await Promise.all([
+-      readNativeImplementationScopeBundle(paths, state.name, state.implementation_scope!),
+-      collectNativeContractFiles({
+-        changeDir,
+-        briefRef: state.brief,
+-        specChanges: state.spec_changes,
+-      }),
+-    ]);
+-    return {
+-      change: state.name,
+-      sourceRevision: state.revision,
+-      contractHash: contract.contract.contractHash,
+-      scopeHash: scope.scope.scopeHash,
+-      snapshotHash: scope.scope.currentProjectionHash,
+-      artifactHash: nativeArtifactBindingHash(scope.scope.declaredArtifacts),
+-    };
+-  }
+-
+-  async function writeManualReceiptAtRevision(
+-    state: NativeChangeState,
+-    revision: number,
+-    ids: readonly string[],
+-  ): Promise<string> {
+-    const current = await currentBindings(state);
+-    return writeNativeVerificationReceipt({
+-      paths,
+-      name: state.name,
+-      receipt: buildNativeVerificationReceipt({
+-        kind: 'manual-evidence',
+-        role: 'acceptance-evidence',
+-        status: 'passed',
+-        bindings: { ...current, sourceRevision: revision },
+-        acceptanceIds: [...ids],
+-        actor: 'runtime-test',
+-        issuedAt: '2026-07-17T01:20:00.000Z',
+-        evidence: {
+-          steps: ['Execute the focused acceptance check.'],
+-          observations: ['The focused behavior matched the contract.'],
+-        },
+-      }),
+-    });
+-  }
+-
+-  async function writeAutomatedReceiptAtRevision(
+-    state: NativeChangeState,
+-    revision: number,
+-    ids: readonly string[],
+-  ): Promise<string> {
+-    const current = await currentBindings(state);
+-    const bindings: NativeVerificationReceiptBindings = { ...current, sourceRevision: revision };
+-    return writeNativeVerificationReceipt({
+-      paths,
+-      name: state.name,
+-      receipt: buildNativeVerificationReceipt({
+-        kind: 'automated-check',
+-        role: 'acceptance-evidence',
+-        status: 'passed',
+-        bindings,
+-        acceptanceIds: [...ids],
+-        actor: 'native-runtime:command:node',
+-        issuedAt: '2026-07-17T01:20:00.000Z',
+-        evidence: {
+-          executable: 'node',
+-          args: ['--test', 'focused.test.ts'],
+-          cwd: '.',
+-          exitCode: 0,
+-          signal: null,
+-          timedOut: false,
+-          timeoutMs: 120_000,
+-          startedAt: '2026-07-17T01:19:59.000Z',
+-          endedAt: '2026-07-17T01:20:00.000Z',
+-          worktree: { provider: 'none', root: '.', beforeCommit: null, afterCommit: null },
+-          afterFence: {
+-            snapshotHash: bindings.snapshotHash,
+-            scopeHash: bindings.scopeHash,
+-            matched: true,
+-          },
+-          outputHash: '0'.repeat(64),
+-          outputSummary: 'ok',
+-          outputTruncated: false,
+-        },
+-      }),
+-    });
+-  }
+-
+-  async function writeRequiredCheckReceipt(state: NativeChangeState): Promise<string> {
+-    const scope = await readNativeImplementationScopeBundle(
+-      paths,
+-      state.name,
+-      state.implementation_scope!,
+-    );
+-    const contract = await collectNativeContractFiles({
+-      changeDir,
+-      briefRef: state.brief,
+-      specChanges: state.spec_changes,
+-    });
+-    const selected = scope.scope.changes.filter((change) => change.after !== null);
+-    const checkRef = await writeNativeCheckReceipt({
+-      paths,
+-      name: state.name,
+-      receipt: buildNativeCheckReceipt({
+-        change: state.name,
+-        sourceRevision: state.revision,
+-        status: 'passed',
+-        startedAt: '2026-07-17T01:30:00.000Z',
+-        endedAt: '2026-07-17T01:30:01.000Z',
+-        contract: {
+-          expectedHash: contract.contract.contractHash,
+-          beforeHash: contract.contract.contractHash,
+-          afterHash: contract.contract.contractHash,
+-        },
+-        implementation: {
+-          scopeHash: scope.scope.scopeHash,
+-          expectedSnapshotHash: scope.scope.currentProjectionHash,
+-          beforeSnapshotHash: scope.scope.currentProjectionHash,
+-          afterSnapshotHash: scope.scope.currentProjectionHash,
+-        },
+-        counts: {
+-          filesSelected: selected.length,
+-          filesScanned: selected.length,
+-          binaryFilesSkipped: 0,
+-          bytesScanned: selected.reduce((total, change) => total + change.after!.size, 0),
+-          issueCount: 0,
+-          recordedIssueCount: 0,
+-        },
+-        issues: [],
+-        issuesTruncated: false,
+-        stale: false,
+-        staleReasons: [],
+-      }),
+-    });
+-    return (
+-      await persistNativeStaticInspectionReceipt({
+-        paths,
+-        state,
+-        checkReceipt: await readNativeCheckReceipt(paths, state.name, checkRef),
+-        checkReceiptRef: checkRef,
+-      })
+-    ).ref;
+-  }
+-
+-  /**
+-   * Seed a verify-phase fixture, then finalize it with a manual acceptance
+-   * receipt bound to {@link acceptanceRevision}. The acceptance receipt, the
+-   * required-check receipt, the verification report, the evidence envelope, and
+-   * the on-disk state are all pinned to {@link acceptanceRevision}, so the
+-   * fixture is internally consistent (fresh) when acceptanceRevision equals
+-   * verifyState.revision.
+-   */
+-  async function seedFixtureWithAcceptanceRevision(acceptanceRevision: number): Promise<string> {
+-    projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-receipt-refresh-'));
+-    await fs.mkdir(path.join(projectRoot, 'src'), { recursive: true });
+-    await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 1;\n');
+-    paths = await nativeProjectPaths(projectRoot, '.');
+-    const created = await createNativeChange({
+-      paths,
+-      name: 'receipt-refresh',
+-      language: 'en',
+-      now: new Date('2026-07-17T00:00:00.000Z'),
+-    });
+-    changeDir = nativeChangeDir(paths, created.name);
+-    await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
+-    const buildState: NativeChangeState = { ...created, phase: 'build', approval: 'implicit' };
+-    await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 2;\n');
+-    const build = await prepareNativeBuildEvidence({
+-      paths,
+-      state: buildState,
+-      artifactRefs: ['src/feature.ts'],
+-      now: new Date('2026-07-17T01:00:00.000Z'),
+-    });
+-    verifyState = {
+-      ...buildState,
+-      phase: 'verify',
+-      revision: buildState.revision + 1,
+-      implementation_scope: build.scopeRef as NativeChangeState['implementation_scope'],
+-      partial_allowance: null,
+-    };
+-    stateFile = path.join(changeDir, NATIVE_CHANGE_STATE_FILE);
+-    // Pin the on-disk revision verbatim so the acceptance receipt (issued below
+-    // at acceptanceRevision) stays consistent with the state we finally persist.
+-    await writeStateVerbatim(stateFile, verifyState);
+-    const contract = await collectNativeContractFiles({
+-      changeDir,
+-      briefRef: verifyState.brief,
+-      specChanges: verifyState.spec_changes,
+-    });
+-    acceptanceIds = contract.contract.acceptance.map((criterion) => criterion.id);
+-    const acceptanceRef = await writeManualReceiptAtRevision(
+-      verifyState,
+-      acceptanceRevision,
+-      acceptanceIds,
+-    );
+-    requiredReceiptRef = await writeRequiredCheckReceipt(verifyState);
+-    await fs.writeFile(
+-      path.join(changeDir, 'verification.md'),
+-      await nativeVerificationFixtureReport({
+-        paths,
+-        name: verifyState.name,
+-        evidenceRefs: [acceptanceRef],
+-      }),
+-    );
+-    const preparation = await prepareNativeVerificationEvidence({
+-      paths,
+-      state: verifyState,
+-      result: 'pass',
+-      reportRef: 'verification.md',
+-      receiptRef: requiredReceiptRef,
+-      now: new Date('2026-07-17T02:00:00.000Z'),
+-    });
+-    verifyState = {
+-      ...verifyState,
+-      verification_result: 'pass',
+-      verification_report: 'verification.md',
+-      verification_evidence: preparation.evidenceRef as NativeChangeState['verification_evidence'],
+-    };
+-    await writeStateVerbatim(stateFile, verifyState);
+-    return acceptanceRef;
+-  }
+-
+-  async function replaceAcceptanceReceiptInReport(
+-    acceptanceRef: string,
+-    boundRevision: number,
+-    kind: 'manual' | 'automated',
+-  ): Promise<void> {
+-    const newRef =
+-      kind === 'manual'
+-        ? await writeManualReceiptAtRevision(verifyState, boundRevision, acceptanceIds)
+-        : await writeAutomatedReceiptAtRevision(verifyState, boundRevision, acceptanceIds);
+-    await fs.writeFile(
+-      path.join(changeDir, 'verification.md'),
+-      await nativeVerificationFixtureReport({
+-        paths,
+-        name: verifyState.name,
+-        evidenceRefs: [newRef],
+-      }),
+-    );
+-    void acceptanceRef;
+-    const preparation = await prepareNativeVerificationEvidence({
+-      paths,
+-      state: verifyState,
+-      result: 'pass',
+-      reportRef: 'verification.md',
+-      receiptRef: requiredReceiptRef,
+-      now: new Date('2026-07-17T02:30:00.000Z'),
+-    });
+-    verifyState = {
+-      ...verifyState,
+-      verification_evidence: preparation.evidenceRef as NativeChangeState['verification_evidence'],
+-    };
+-    await writeStateVerbatim(stateFile, verifyState);
+-  }
+-
+-  /**
+-   * Bump the on-disk state revision without re-issuing receipts. This models the
+-   * real staleness trigger: a state write (checkpoint, spec refresh, phase
+-   * advance) increments the revision, which leaves every receipt bound to the
+-   * previous revision stale while the evidence envelope stays on disk.
+-   */
+-  async function bumpStateRevision(): Promise<void> {
+-    verifyState = { ...verifyState, revision: verifyState.revision + 1 };
+-    await writeStateVerbatim(stateFile, verifyState);
+-  }
+-
+-  it('only allows automatic manual refresh for a sourceRevision-only mismatch', () => {
+-    expect(
+-      isManualReceiptRefreshSafe({
+-        ok: false,
+-        mismatches: ['sourceRevision: expected 3, got 2'],
+-      }),
+-    ).toBe(true);
+-    expect(
+-      isManualReceiptRefreshSafe({
+-        ok: false,
+-        mismatches: [
+-          'sourceRevision: expected 3, got 2',
+-          'contractHash: expected "new", got "old"',
+-        ],
+-      }),
+-    ).toBe(false);
+-    expect(
+-      isManualReceiptRefreshSafe({
+-        ok: false,
+-        mismatches: ['contractHash: expected "new", got "old"'],
+-      }),
+-    ).toBe(false);
+-  });
+-
+-  it('reports no stale receipts when everything is current', async () => {
+-    await seedFixtureWithAcceptanceRevision(2);
+-    const result = await refreshNativeVerificationReceipts({
+-      paths,
+-      name: verifyState.name,
+-      apply: false,
+-    });
+-    expect(result).toMatchObject({
+-      refreshed: [],
+-      requiresRerun: [],
+-      requiresCheck: [],
+-      applied: false,
+-    });
+-  });
+-
+-  it('returns a no-op when Verify has no evidence envelope yet', async () => {
+-    projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-receipt-refresh-empty-'));
+-    paths = await nativeProjectPaths(projectRoot, '.');
+-    const created = await createNativeChange({
+-      paths,
+-      name: 'receipt-refresh-empty',
+-      language: 'en',
+-      now: new Date('2026-07-17T00:00:00.000Z'),
+-    });
+-    verifyState = { ...created, phase: 'verify' };
+-    stateFile = path.join(nativeChangeDir(paths, verifyState.name), NATIVE_CHANGE_STATE_FILE);
+-    await writeStateVerbatim(stateFile, verifyState);
+-
+-    await expect(
+-      refreshNativeVerificationReceipts({ paths, name: verifyState.name, apply: true }),
+-    ).resolves.toMatchObject({
+-      refreshed: [],
+-      requiresRerun: [],
+-      requiresManual: [],
+-      requiresCheck: [],
+-      applied: false,
+-      verificationReport: null,
+-    });
+-  });
+-
+-  it('refuses to rewrite stale receipts when the verification report reference is missing', async () => {
+-    await seedFixtureWithAcceptanceRevision(2);
+-    await bumpStateRevision();
+-    await writeStateVerbatim(stateFile, { ...verifyState, verification_report: null });
+-
+-    await expect(
+-      refreshNativeVerificationReceipts({ paths, name: verifyState.name, apply: true }),
+-    ).rejects.toThrow('has no report ref');
+-  });
+-
+-  it('reports stale manual receipts on dry-run without touching files', async () => {
+-    await seedFixtureWithAcceptanceRevision(2);
+-    await bumpStateRevision();
+-    const before = await fs.readFile(path.join(changeDir, 'verification.md'), 'utf8');
+-
+-    const result = await refreshNativeVerificationReceipts({
+-      paths,
+-      name: verifyState.name,
+-      apply: false,
+-    });
+-    expect(result.applied).toBe(false);
+-    expect(result.refreshed).toEqual([]);
+-    expect(result.requiresRerun).toEqual([]);
+-    const after = await fs.readFile(path.join(changeDir, 'verification.md'), 'utf8');
+-    expect(after).toBe(before);
+-  });
+-
+-  it('re-issues stale manual receipts under --apply and rewrites verification.md', async () => {
+-    await seedFixtureWithAcceptanceRevision(2);
+-    await bumpStateRevision();
+-
+-    const result = await refreshNativeVerificationReceipts({
+-      paths,
+-      name: verifyState.name,
+-      apply: true,
+-    });
+-    expect(result.applied).toBe(true);
+-    expect(result.refreshed.length).toBeGreaterThan(0);
+-    expect(result.verificationReport).toBe('verification.md');
+-    for (const item of result.refreshed) {
+-      expect(item.newRef).not.toBe(item.oldRef);
+-      const reissued = await readNativeVerificationReceipt(paths, verifyState.name, item.newRef);
+-      expect(reissued.bindings.sourceRevision).toBe(verifyState.revision);
+-    }
+-    const updated = await fs.readFile(path.join(changeDir, 'verification.md'), 'utf8');
+-    const entries = parseNativeVerificationMachineBlock(updated);
+-    const freshRefs = new Set(result.refreshed.map((item) => item.newRef));
+-    for (const entry of entries) {
+-      expect(entry.evidence_refs.some((ref) => freshRefs.has(ref))).toBe(true);
+-    }
+-  });
+-
+-  it('reports stale automated receipts as requiring rerun and never silently re-issues them', async () => {
+-    await seedFixtureWithAcceptanceRevision(2);
+-    // Swap the fresh manual receipt for an automated one, then bump the revision
+-    // so the automated receipt becomes stale.
+-    await replaceAcceptanceReceiptInReport('unused', 2, 'automated');
+-    await bumpStateRevision();
+-
+-    const result = await refreshNativeVerificationReceipts({
+-      paths,
+-      name: verifyState.name,
+-      apply: true,
+-    });
+-    expect(result.applied).toBe(false);
+-    expect(result.refreshed).toEqual([]);
+-    expect(result.requiresRerun.length).toBe(1);
+-    expect(result.requiresRerun[0].command).toContain('node');
+-  });
+-
+-  it('refuses to refresh outside the verify phase', async () => {
+-    await seedFixtureWithAcceptanceRevision(2);
+-    await writeStateVerbatim(stateFile, { ...verifyState, phase: 'build' });
+-    await expect(
+-      refreshNativeVerificationReceipts({ paths, name: verifyState.name, apply: false }),
+-    ).rejects.toThrow(/requires Verify, got build/u);
+-  });
+-
+-  it('exposes per-receipt mismatch diagnostics via the verification-receipt-binding-mismatch finding', async () => {
+-    await seedFixtureWithAcceptanceRevision(2);
+-    await bumpStateRevision();
+-    // The A-block error path: a stale sourceRevision surfaces a structured
+-    // binding-mismatch finding rather than an opaque exit-65 throw.
+-    const preparation = await inspectNativeVerificationEvidence({
+-      paths,
+-      state: verifyState,
+-      result: 'pass',
+-      reportRef: 'verification.md',
+-      receiptRef: requiredReceiptRef,
+-    });
+-    expect(preparation.ready).toBe(false);
+-    expect(preparation.findingCodes).toContain('verification-receipt-binding-mismatch');
+-    expect(preparation.receiptBindingFailures?.length).toBeGreaterThan(0);
+-    const failure = preparation.receiptBindingFailures![0];
+-    expect(failure.mismatches.some((m) => m.includes('sourceRevision'))).toBe(true);
+-    expect(NativeVerificationReceiptBindingError).toBeDefined();
+-  });
+-
+-  it('rejects reports without both acceptance-evidence markers', () => {
+-    expect(() => replaceAcceptanceEvidenceBlock('plain report', 'new block')).toThrow(
+-      'missing the acceptance-evidence start marker',
+-    );
+-    expect(() =>
+-      replaceAcceptanceEvidenceBlock(
+-        '<!-- comet-native:acceptance-evidence:start -->',
+-        'new block',
+-      ),
+-    ).toThrow('missing the acceptance-evidence end marker');
+-  });
+-});
+diff --git a/test/domains/comet-native/native-command-modules.test.ts b/test/domains/comet-native/native-command-modules.test.ts
+index 978adffb..98b9b08e 100644
+--- a/test/domains/comet-native/native-command-modules.test.ts
++++ b/test/domains/comet-native/native-command-modules.test.ts
+@@ -1,234 +1,21 @@
+ import { promises as fs } from 'node:fs';
+ import os from 'node:os';
+ import path from 'node:path';
+-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+-
+-const mocks = vi.hoisted(() => ({
+-  issueManual: vi.fn(),
+-  issueAutomated: vi.fn(),
+-  refresh: vi.fn(),
+-}));
+-
+-vi.mock('../../../domains/comet-native/native-verification-receipt-runtime.js', () => ({
+-  issueNativeManualEvidenceReceipt: mocks.issueManual,
+-  issueNativeAutomatedCheckReceipt: mocks.issueAutomated,
+-  MAX_NATIVE_AUTOMATED_COMMAND_TIMEOUT_MS: 60 * 60 * 1_000,
+-}));
+-
+-vi.mock('../../../domains/comet-native/native-receipt-refresh.js', () => ({
+-  refreshNativeVerificationReceipts: mocks.refresh,
+-}));
+-
++import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+ import {
+   defaultProjectConfig,
+   writeProjectConfig,
+ } from '../../../domains/comet-native/native-config.js';
+-import { nativeReceiptCommand } from '../../../domains/comet-native/native-receipt-command.js';
+ import { nativeSpecCommand } from '../../../domains/comet-native/native-spec-command.js';
+-
+ describe('Native command modules', () => {
+   let projectRoot: string;
+-
+   beforeEach(async () => {
+     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-command-modules-'));
+     await writeProjectConfig(projectRoot, defaultProjectConfig('docs', 'en'));
+-    mocks.issueManual.mockReset();
+-    mocks.issueAutomated.mockReset();
+-    mocks.refresh.mockReset();
+   });
+-
+   afterEach(async () => {
+     await fs.rm(projectRoot, { recursive: true, force: true });
+   });
+-
+-  it('passes repeated manual receipt options to the issuance runtime', async () => {
+-    mocks.issueManual.mockResolvedValue({ ref: 'manual-ref' });
+-
+-    const result = await nativeReceiptCommand(
+-      [
+-        'manual',
+-        'demo-change',
+-        '--acceptance',
+-        'acceptance-a',
+-        '--acceptance',
+-        'acceptance-b',
+-        '--step',
+-        'Run the check',
+-        '--observation',
+-        'The check passed',
+-      ],
+-      projectRoot,
+-    );
+-
+-    expect(result).toEqual({
+-      command: 'receipt manual',
+-      exitCode: 0,
+-      data: { ref: 'manual-ref' },
+-      text: 'Native manual receipt: manual-ref\n',
+-    });
+-    expect(mocks.issueManual).toHaveBeenCalledWith(
+-      expect.objectContaining({
+-        name: 'demo-change',
+-        acceptanceIds: ['acceptance-a', 'acceptance-b'],
+-        steps: ['Run the check'],
+-        observations: ['The check passed'],
+-      }),
+-    );
+-  });
+-
+-  it.each([
+-    ['passed', 0],
+-    ['failed', 1],
+-  ] as const)(
+-    'returns the automated receipt status as the command exit code (%s)',
+-    async (status, exitCode) => {
+-      mocks.issueAutomated.mockResolvedValue({
+-        ref: `automated-${status}`,
+-        receipt: { status },
+-      });
+-
+-      const result = await nativeReceiptCommand(
+-        [
+-          'automated',
+-          'demo-change',
+-          '--acceptance',
+-          'acceptance-a',
+-          '--timeout-ms',
+-          '1200',
+-          '--',
+-          'node',
+-          '-e',
+-          'process.exit(0)',
+-        ],
+-        projectRoot,
+-      );
+-
+-      expect(result).toMatchObject({
+-        command: 'receipt automated',
+-        exitCode,
+-        data: { ref: `automated-${status}` },
+-        text: `Native automated receipt ${status}: automated-${status}\n`,
+-      });
+-      expect(mocks.issueAutomated).toHaveBeenCalledWith(
+-        expect.objectContaining({
+-          name: 'demo-change',
+-          acceptanceIds: ['acceptance-a'],
+-          command: 'node',
+-          args: ['-e', 'process.exit(0)'],
+-          timeoutMs: 1200,
+-        }),
+-      );
+-    },
+-  );
+-
+-  it('rejects incomplete automated receipt commands and invalid timeouts', async () => {
+-    await expect(
+-      nativeReceiptCommand(
+-        ['automated', 'demo-change', '--acceptance', 'acceptance-a'],
+-        projectRoot,
+-      ),
+-    ).rejects.toThrow('receipt automated requires -- <executable> [args...]');
+-    await expect(
+-      nativeReceiptCommand(
+-        [
+-          'automated',
+-          'demo-change',
+-          '--acceptance',
+-          'acceptance-a',
+-          '--timeout-ms',
+-          '0',
+-          '--',
+-          'node',
+-        ],
+-        projectRoot,
+-      ),
+-    ).rejects.toThrow('--timeout-ms must be an integer');
+-  });
+-
+-  it('renders every receipt refresh report section and the applied outcome', async () => {
+-    mocks.refresh.mockResolvedValue({
+-      refreshed: [{ acceptanceId: 'acceptance-a', oldRef: 'old-a', newRef: 'new-a' }],
+-      requiresRerun: [
+-        {
+-          oldRef: 'old-b',
+-          acceptanceIds: ['acceptance-b', 'acceptance-c'],
+-          command: 'node "script with spaces.mjs"',
+-          timeoutMs: 1200,
+-        },
+-      ],
+-      requiresManual: [
+-        {
+-          oldRef: 'old-d',
+-          acceptanceIds: ['acceptance-d'],
+-          mismatches: ['contractHash: expected new, got old'],
+-        },
+-      ],
+-      requiresCheck: [{ oldRef: 'old-check' }],
+-      applied: true,
+-      verificationReport: 'verification.md',
+-    });
+-
+-    const result = await nativeReceiptCommand(['refresh', 'demo-change', '--apply'], projectRoot);
+-
+-    expect(result.text).toContain('Re-issued 1 manual receipt(s)');
+-    expect(result.text).toContain('acceptance-a: old-a -> new-a');
+-    expect(result.text).toContain('Re-run 1 stale automated receipt(s)');
+-    expect(result.text).toContain('[acceptance-b, acceptance-c] node "script with spaces.mjs"');
+-    expect(result.text).toContain('Re-run manual verification for 1 receipt(s)');
+-    expect(result.text).toContain('[acceptance-d] contractHash: expected new, got old');
+-    expect(result.text).toContain('Re-run `comet native check demo-change`');
+-    expect(result.text).toContain('Updated acceptance evidence in verification.md.');
+-    expect(mocks.refresh).toHaveBeenCalledWith({
+-      paths: expect.any(Object),
+-      name: 'demo-change',
+-      apply: true,
+-    });
+-  });
+-
+-  it('explains why apply cannot refresh receipts that need fresh manual evidence', async () => {
+-    mocks.refresh.mockResolvedValue({
+-      refreshed: [],
+-      requiresRerun: [],
+-      requiresManual: [
+-        {
+-          oldRef: 'old-manual',
+-          acceptanceIds: ['acceptance-a'],
+-          mismatches: ['contractHash: expected new, got old'],
+-        },
+-      ],
+-      requiresCheck: [],
+-      applied: false,
+-      verificationReport: 'verification.md',
+-    });
+-
+-    const result = await nativeReceiptCommand(['refresh', 'demo-change', '--apply'], projectRoot);
+-
+-    expect(result.text).toContain('Fresh manual verification is required');
+-  });
+-
+-  it('reports a clean refresh and rejects conflicting refresh flags', async () => {
+-    mocks.refresh.mockResolvedValue({
+-      refreshed: [],
+-      requiresRerun: [],
+-      requiresManual: [],
+-      requiresCheck: [],
+-      applied: false,
+-      verificationReport: null,
+-    });
+-
+-    await expect(
+-      nativeReceiptCommand(['refresh', 'demo-change', '--dry-run'], projectRoot),
+-    ).resolves.toMatchObject({
+-      text: 'No stale receipts found.\n',
+-    });
+-    await expect(
+-      nativeReceiptCommand(['refresh', 'demo-change', '--apply', '--dry-run'], projectRoot),
+-    ).rejects.toThrow('cannot be combined');
+-    await expect(nativeReceiptCommand(['unknown', 'demo-change'], projectRoot)).rejects.toThrow(
+-      'Unknown receipt command',
+-    );
+-  });
+-
+   it('rejects retired Native spec mutation variants', async () => {
+     await expect(
+       nativeSpecCommand(
+diff --git a/test/domains/comet-native/native-verifier-context.test.ts b/test/domains/comet-native/native-verifier-context.test.ts
+index ec4a44d3..10282bf3 100644
+--- a/test/domains/comet-native/native-verifier-context.test.ts
++++ b/test/domains/comet-native/native-verifier-context.test.ts
+@@ -1,16 +1,6 @@
+ import { afterEach, expect, it } from 'vitest';
+ import { promises as fs } from 'node:fs';
+-import path from 'node:path';
+-import { execFileSync } from 'node:child_process';
+-import { ensureCliBuilt } from '../../helpers/ensure-cli-built.js';
+ import { nativeVerificationFixture } from '../../helpers/native-verification-fixture.js';
+-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+-import {
+-  prepareEditReview,
+-  recordEditReview,
+-} from '../../../domains/workflow-contract/edit-review.js';
+-import { nativeFormalEditReviewScope } from '../../../domains/comet-native/native-edit-review.js';
+-import { runNativeEditReviewCommand } from '../../../domains/comet-native/native-edit-review-command.js';
+ import { projectNativeSdkContinuation } from '../../../domains/comet-native/native-sdk-continuation.js';
+ import type { WorkflowRun, RuntimeValue } from '../../../domains/engine/runtime.js';
+ import type { NativePortableState } from '../../../domains/comet-native/native-portable-types.js';
+diff --git a/test/domains/comet-classic/classic-handoff-windows.test.ts b/test/domains/comet-classic/classic-handoff-windows.test.ts
+index ef944234..c30eee07 100644
+--- a/test/domains/comet-classic/classic-handoff-windows.test.ts
++++ b/test/domains/comet-classic/classic-handoff-windows.test.ts
+@@ -8,25 +8,11 @@ import {
+ const memory = vi.hoisted(() => ({
+   files: new Map<string, string>(),
+   specs: [] as string[],
+-  originals: [] as string[],
+ }));
+ vi.mock('../../../domains/comet-classic/classic-store.js', async (importOriginal) => ({
+   ...(await importOriginal<typeof import('../../../domains/comet-classic/classic-store.js')>()),
+   readClassicState: async () => ({ classic: { workflow: 'full', phase: 'design' } }),
+ }));
+-vi.mock('../../../domains/comet-classic/classic-edit-review.js', async (importOriginal) => ({
+-  ...(await importOriginal<
+-    typeof import('../../../domains/comet-classic/classic-edit-review.js')
+-  >()),
+-  classicFormalEditReviewScope: async () => ({ workflow: 'classic', change: 'demo' }),
+-}));
+-vi.mock('../../../domains/workflow-contract/edit-review.js', async (importOriginal) => ({
+-  ...(await importOriginal<typeof import('../../../domains/workflow-contract/edit-review.js')>()),
+-  readApprovedEditOriginalForEvidence: async () => null,
+-  rememberApprovedEditOriginal: async (_scope: unknown, file: string) => {
+-    memory.originals.push(file);
+-  },
+-}));
+ vi.mock('path', async () => {
+   const { win32 } = await vi.importActual<typeof import('node:path')>('node:path');
+   return { ...win32, default: win32 };
+@@ -65,7 +51,6 @@ vi.mock(
+ beforeEach(() => {
+   memory.files.clear();
+   memory.specs = [];
+-  memory.originals = [];
+ });
+ 
+ describe('Classic beta handoff Windows paths', () => {
+@@ -95,6 +80,5 @@ describe('Classic beta handoff Windows paths', () => {
+     expect(markdown).toContain('## Requirement: Windows acceptance');
+     expect(markdown).toContain('### Scenario: Login succeeds');
+     expect(markdown).not.toContain('No delta spec files found.');
+-    expect(memory.originals).toEqual([]);
+   });
+ });

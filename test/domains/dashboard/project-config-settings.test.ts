@@ -41,6 +41,40 @@ describe('Dashboard project config settings', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
+  it('round-trips Supervisor parallel children and retains the limit from an older settings client', async () => {
+    const loaded = await collectDashboardProjectConfigSettings(projectRoot);
+    expect(loaded.native.maxParallelChildren).toBe(2);
+    const saved = await updateDashboardProjectConfigSettings(projectRoot, {
+      expectedRevision: loaded.revision,
+      config: { ...loaded, native: { ...loaded.native, maxParallelChildren: 4 } },
+    });
+    expect(saved.native.maxParallelChildren).toBe(4);
+    expect(await fs.readFile(path.join(projectRoot, '.comet/config.yaml'), 'utf8')).toContain(
+      'max_parallel_children: 4',
+    );
+    const { maxParallelChildren: _limit, ...olderNative } = saved.native;
+    const olderSaved = await updateDashboardProjectConfigSettings(projectRoot, {
+      expectedRevision: saved.revision,
+      config: { ...saved, native: olderNative },
+    });
+    expect(olderSaved.native.maxParallelChildren).toBe(4);
+  });
+
+  it.each([0, -1, 1.5, '4', null, true])(
+    'rejects an invalid Supervisor limit %s without writing settings',
+    async (limit) => {
+      const loaded = await collectDashboardProjectConfigSettings(projectRoot);
+      const before = await fs.readFile(path.join(projectRoot, '.comet/config.yaml'), 'utf8');
+      await expect(
+        updateDashboardProjectConfigSettings(projectRoot, {
+          expectedRevision: loaded.revision,
+          config: { ...loaded, native: { ...loaded.native, maxParallelChildren: limit } },
+        }),
+      ).rejects.toThrow('native.maxParallelChildren');
+      expect(await fs.readFile(path.join(projectRoot, '.comet/config.yaml'), 'utf8')).toBe(before);
+    },
+  );
+
   it('loads a structured view and saves managed values without dropping unknown fields', async () => {
     const loaded = await collectDashboardProjectConfigSettings(projectRoot);
     expect(loaded).toMatchObject({
@@ -114,6 +148,38 @@ describe('Dashboard project config settings', () => {
     await expect(update).rejects.toMatchObject<Partial<DashboardProjectConfigError>>({
       statusCode: 409,
     });
+  });
+
+  it('loads the default walkthrough and persists both switch values without discarding user comments', async () => {
+    const file = path.join(projectRoot, '.comet/config.yaml');
+    await fs.appendFile(file, '# Team extension note\nteam: enabled # inline note\n');
+    let loaded = await collectDashboardProjectConfigSettings(projectRoot);
+    expect(loaded).toMatchObject({ changeWalkthrough: true });
+    for (const enabled of [false, true]) {
+      if (enabled) {
+        const { changeWalkthrough: _omitted, ...legacyConfig } = loaded;
+        loaded = await updateDashboardProjectConfigSettings(projectRoot, {
+          expectedRevision: loaded.revision,
+          config: legacyConfig,
+        });
+        expect(loaded.changeWalkthrough).toBe(false);
+      }
+      loaded = await updateDashboardProjectConfigSettings(projectRoot, {
+        expectedRevision: loaded.revision,
+        config: { ...loaded, changeWalkthrough: enabled },
+      });
+      expect(loaded).toMatchObject({ changeWalkthrough: enabled });
+      const source = await fs.readFile(file, 'utf8');
+      expect(parseWorkflowProjectConfigDocument(source).change_walkthrough).toBe(enabled);
+      expect(source).toContain('Team extension note');
+      expect(source).toContain('inline note');
+    }
+    await expect(
+      updateDashboardProjectConfigSettings(projectRoot, {
+        expectedRevision: loaded.revision,
+        config: { ...loaded, changeWalkthrough: 'false' },
+      }),
+    ).rejects.toMatchObject({ statusCode: 400 });
   });
 
   it('loads and saves additional local knowledge include patterns', async () => {

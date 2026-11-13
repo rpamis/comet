@@ -1,0 +1,171 @@
+{
+  "package": "@rpamis/comet@0.5.0",
+  "steps": [
+    {
+      "entry": "0.5.0",
+      "args": [
+        "state",
+        "init",
+        "example",
+        "tweak",
+        "--isolation",
+        "current",
+        "--json"
+      ],
+      "status": 0,
+      "exitCode": 0,
+      "summary": "\u001b[32mInitialized: openspec/changes/example (workflow=tweak, runtime=sdk)\u001b[0m"
+    },
+    {
+      "entry": "0.5.0",
+      "args": [
+        "guard",
+        "example",
+        "open",
+        "--json"
+      ],
+      "status": 0,
+      "exitCode": 0,
+      "summary": "ALL CHECKS PASSED — approval required before applying",
+      "issues": []
+    },
+    {
+      "entry": "0.5.0",
+      "args": [
+        "guard",
+        "example",
+        "open",
+        "--apply",
+        "--approval-hash",
+        "847f6e1d3026e5a5bd390c5af50ec245b8336a5f2e601854ca57bb07ee3dda6d",
+        "--json"
+      ],
+      "status": 0,
+      "exitCode": 0,
+      "summary": "ALL CHECKS PASSED — phase=build",
+      "issues": []
+    },
+    {
+      "entry": "0.5.0",
+      "args": [
+        "guard",
+        "example",
+        "build",
+        "--apply",
+        "--json",
+        "--",
+        "D:\\nodejs\\node.exe",
+        "-e",
+        "process.exit(0)"
+      ],
+      "status": 0,
+      "exitCode": 0,
+      "summary": "ALL CHECKS PASSED — phase=verify",
+      "issues": []
+    },
+    {
+      "entry": "0.5.0",
+      "args": [
+        "guard",
+        "example",
+        "verify",
+        "--report",
+        "docs/superpowers/reports/verify.md",
+        "--apply",
+        "--json",
+        "--",
+        "D:\\nodejs\\node.exe",
+        "-e",
+        "process.exit(0)"
+      ],
+      "status": 0,
+      "exitCode": 0,
+      "summary": "ALL CHECKS PASSED — phase=archive",
+      "issues": []
+    },
+    {
+      "entry": "0.5.0",
+      "args": [
+        "state",
+        "next",
+        "example",
+        "--details",
+        "--json"
+      ],
+      "status": 0,
+      "exitCode": 0,
+      "summary": "NEXT: auto"
+    },
+    {
+      "entry": "candidate",
+      "args": [
+        "state",
+        "propose-archive",
+        "example",
+        "--summary",
+        "Fixture user authorizes local delivery.",
+        "--json"
+      ],
+      "status": 0,
+      "exitCode": 0,
+      "summary": "Archive proposal recorded for example; user decision is pending."
+    },
+    {
+      "entry": "candidate",
+      "args": [
+        "state",
+        "decide-archive",
+        "example",
+        "--proposal-hash",
+        "cd58d57cac5604fdc39d4996878347f2eb71d78c507ecb8c9f19ad7b6901029f",
+        "--choice",
+        "local",
+        "--json"
+      ],
+      "status": 0,
+      "exitCode": 0,
+      "summary": "NEXT: command"
+    },
+    {
+      "entry": "candidate",
+      "args": [
+        "guard",
+        "example",
+        "archive",
+        "--apply",
+        "--json"
+      ],
+      "status": 0,
+      "exitCode": 0,
+      "summary": "ALL CHECKS PASSED — phase=archive",
+      "issues": []
+    },
+    {
+      "entry": "candidate",
+      "args": [
+        "state",
+        "complete-delivery",
+        "example",
+        "--commit",
+        "dcfe99e3c8c6543d7c28b9c0531c0da0ecc5724f",
+        "--json"
+      ],
+      "status": 0,
+      "exitCode": 0,
+      "summary": "Archive delivery recorded for example."
+    }
+  ],
+  "before": {
+    "workflow": {
+      "id": "comet-classic-tweak",
+      "version": "1",
+      "hash": "1582038427604f76d30376f9f4ae4ffc1a6068d125e15c5cd2f163239165e775"
+    },
+    "step": "tweak.archive.prepare"
+  },
+  "done": "done",
+  "archiveExecutions": 1,
+  "parked": "# Parked Native work\nPreserve this draft without delivery.\n",
+  "gitStatus": "?? .comet/runtime\n?? docs/comet/",
+  "success": true
+}

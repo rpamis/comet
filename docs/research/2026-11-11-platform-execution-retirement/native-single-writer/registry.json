@@ -1,0 +1,483 @@
+{
+  "cases": [
+    {
+      "id": "native-project-lock-stopped-owner-repair",
+      "behavior": "未知归属的项目锁即使已经存放很久，普通 doctor --repair 也不能删除；明确停止确认与精确令牌可恢复。",
+      "coverageLevel": "public-cli",
+      "reproduction": "创建另一台机器的旧 archive.lock 后运行公开 doctor --repair。旧实现按年龄删除该锁。",
+      "expected": "保留原锁并输出持有者、路径和带精确令牌的恢复命令；确认停止后执行该命令恢复。",
+      "forbidden": "以年龄替代持有者停止事实，或清除令牌未绑定的记录。",
+      "rootCause": "旧版项目锁修复把超过十五分钟的未知持有者视为可接管，缺少精确停止确认。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-command-recovery.test.ts",
+          "namePattern": "requires the exact stopped-owner decision for an aged unknown project lock",
+          "requiredNames": [
+            "requires the exact stopped-owner decision for an aged unknown project lock and executes its emitted recovery command"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-10-25-native-incremental-recovery"
+      ]
+    },
+    {
+      "id": "native-project-lock-owner-token-guards",
+      "behavior": "活跃持有者和已被替换的锁记录不能被旧恢复决定清除，损坏记录恢复时保留原字节。",
+      "coverageLevel": "public-cli",
+      "reproduction": "分别对活跃锁提交停止确认、在诊断后替换锁字节，再执行旧令牌的公开恢复命令。",
+      "expected": "拒绝活跃或已替换记录，最新损坏记录经精确确认后隔离保存。",
+      "forbidden": "删除活跃锁、旧令牌删除替换者或丢失损坏现场。",
+      "rootCause": "恢复必须同时核对持有者存活、文件身份、内容与本次确认，不能复用过期观察。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-command-recovery.test.ts",
+          "namePattern": "preserves a live project lock|rejects a replaced lock token",
+          "requiredNames": [
+            "preserves a live project lock even when its exact token is submitted with stopped-owner confirmation",
+            "rejects a replaced lock token and preserves malformed lock bytes when explicit recovery quarantines them"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-10-25-native-incremental-recovery"
+      ]
+    },
+    {
+      "id": "native-coordinator-claim-recovery",
+      "behavior": "Native 协调票据持有者未知时，doctor 能发现并用精确命令恢复，恢复不再申请被该票据阻塞的协调锁。",
+      "coverageLevel": "public-cli",
+      "reproduction": "在 Native .coordinator 中遗留另一台机器的旧 claim。旧 doctor 不检查票据，可能报告健康而后续命令无法获得协调锁。",
+      "expected": "公开诊断给出该票据与精确恢复命令，执行后可重新获取正常 Native 锁。",
+      "forbidden": "未发现票据、对同一协调锁自锁或删除活跃票据。",
+      "rootCause": "原项目锁检查只枚举 .lock 文件，遗漏实际参与排队的 .claim 文件。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-command-recovery.test.ts",
+          "namePattern": "recovers an unknown Native coordinator claim",
+          "requiredNames": [
+            "recovers an unknown Native coordinator claim through the exact emitted command without acquiring the blocked coordinator"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-10-25-native-incremental-recovery"
+      ]
+    },
+    {
+      "id": "native-sdk-store-writer-lock-recovery",
+      "behavior": "SDK Run 写入锁阻塞时，公开 runtime dispatch 和 doctor 给出同一精确恢复路径，恢复不改变 Run 历史。",
+      "coverageLevel": "public-cli",
+      "reproduction": "真实 Native Run 的 .write.lock 遗留损坏字节，领取 Action 超时。旧 doctor 只检查投影锁并错误报告健康。",
+      "expected": "错误响应和 doctor 识别真实写锁，执行精确恢复命令后解除阻塞且原 Run 不变。",
+      "forbidden": "诊断为健康、只处理投影锁、绕过未知写入或重置 Run。",
+      "rootCause": "锁诊断和修复只覆盖投影文件，没有覆盖实际 RuntimeStore 写入锁。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+          "namePattern": "diagnoses and repairs the original SDK store writer lock",
+          "requiredNames": [
+            "Native SDK read-only projection lock diagnostics diagnoses and repairs the original SDK store writer lock without changing Run history"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-10-25-native-incremental-recovery"
+      ]
+    },
+    {
+      "id": "native-sdk-projection-recovery-command",
+      "behavior": "公开 doctor 为未知投影锁输出可直接执行的精确恢复命令并保留原 Run。",
+      "coverageLevel": "public-cli",
+      "reproduction": "真实 Native change 的投影锁损坏后运行公开 doctor，按其 recoveryArgs 恢复。",
+      "expected": "给出停止前提与精确令牌，恢复后 Run 历史相同，重复诊断健康。",
+      "forbidden": "缺少结构化命令、错误令牌或恢复时覆盖原 Run。",
+      "rootCause": "原诊断只有部分字符串提示，CLI 续行没有共同可执行的恢复结构。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+          "namePattern": "executes the public recovery command for the exact uncertain lock",
+          "requiredNames": [
+            "Native SDK read-only projection lock diagnostics executes the public recovery command for the exact uncertain lock and preserves the original Run"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-10-25-native-incremental-recovery"
+      ]
+    },
+    {
+      "id": "native-standalone-recovery-protocol",
+      "behavior": "独立 Native doctor bundle 与聚合 Runtime 一样输出可执行的恢复协议。",
+      "coverageLevel": "public-cli",
+      "reproduction": "直接运行真实 doctor bundle 诊断未知锁，原独立入口只有 findings，没有聚合 Runtime 新增的 recovery。",
+      "expected": "独立命令输出恢复原因、路径与精确命令；执行该命令成功解除原阻塞。",
+      "forbidden": "只有源码或聚合入口通过，实际 CLI 使用的独立 bundle 仍缺少恢复命令。",
+      "rootCause": "聚合 Native CLI 与独立脚本使用不同渲染入口，恢复投影只接入了前者。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-command-recovery.test.ts",
+          "namePattern": "executes the exact recovery command emitted by the standalone doctor bundle",
+          "requiredNames": [
+            "executes the exact recovery command emitted by the standalone doctor bundle"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-10-25-native-incremental-recovery"
+      ]
+    },
+    {
+      "id": "native-nonregular-lock-diagnostics",
+      "behavior": "目录占据 Native 锁路径时报告具体阻塞，不返回健康或生成自动删除命令。",
+      "coverageLevel": "public-cli",
+      "reproduction": "在真实 Native 项目的锁目录创建 interrupted.lock 目录后运行 doctor，原扫描跳过非文件项并报告健康。",
+      "expected": "doctor 报告原冲突路径和手动处理前提，recoveryArgs 为 null，保留原目录。",
+      "forbidden": "漏报路径占用、传递空令牌进行自动修复，或删除非普通锁记录。",
+      "rootCause": "项目锁扫描只观察普通文件，没有将占据相同名称的目录和链接视为阻塞。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-command-recovery.test.ts",
+          "namePattern": "reports a directory occupying a project lock path without advertising deletion as lock repair",
+          "requiredNames": [
+            "reports a directory occupying a project lock path without advertising deletion as lock repair"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-10-25-native-incremental-recovery"
+      ]
+    },
+    {
+      "id": "native-cancellation-pending-cleanup-diagnostic",
+      "sources": [
+        "https://github.com/rpamis/comet/actions/runs/40459417300/job/122040653049"
+      ],
+      "behavior": "取消状态的诊断同时保留未完成清理和未知项目锁的恢复信息。",
+      "coverageLevel": "public-cli",
+      "reproduction": "旧 doctor 在遇到未知根锁时提前返回，丢失 sdk-cancellation-cleanup-pending。",
+      "expected": "未清理时报告清理与锁；原取消已清理时具名检查成功，全局检查仍报告其他锁。",
+      "forbidden": "把未完成清理标为完成，或移除其他流程仍持有的锁。",
+      "rootCause": "项目锁的提前返回没有组合具名取消 Run 的诊断。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-cancellation.test.ts",
+          "namePattern": "reports pending selection cleanup and the retained root lock age gate instead of declaring cancellation complete",
+          "requiredNames": [
+            "Native cancellation lifecycle reports pending selection cleanup and the retained root lock age gate instead of declaring cancellation complete"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t09-native-short-lock",
+      "sources": [
+        "report:2026-11-08-native-classic-overdesign-audit"
+      ],
+      "behavior": "Native lock fast paths must preserve replacement owner identity.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Native lock fast paths must preserve replacement owner identity.",
+      "forbidden": "Exposing partial lock metadata, overlapping new and legacy holders, losing exact release or weakening unknown-owner recovery checks.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-lock-concurrency.test.ts",
+          "namePattern": "prevents an old owner release from removing a replacement owner",
+          "requiredNames": [
+            "Native lock process concurrency prevents an old owner release from removing a replacement owner"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-lock.test.ts",
+          "namePattern": "publishes complete metadata before exposing an uncontended lock",
+          "requiredNames": [
+            "Native operation locks publishes complete metadata before exposing an uncontended lock"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-lock.test.ts",
+          "namePattern": "keeps the coordinated writer usable when atomic hard links are unsupported",
+          "requiredNames": [
+            "Native operation locks keeps the coordinated writer usable when atomic hard links are unsupported"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-lock.test.ts",
+          "namePattern": "coordinates release after a competing claim has already disappeared",
+          "requiredNames": [
+            "Native operation locks coordinates release after a competing claim has already disappeared"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-lock.test.ts",
+          "namePattern": "retries fresh changing acquire observations within the original mutation wait",
+          "requiredNames": [
+            "Native operation locks retries fresh changing acquire observations within the original mutation wait"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-lock.test.ts",
+          "namePattern": "retries fresh changing diagnosis observations within the original mutation wait",
+          "requiredNames": [
+            "Native operation locks retries fresh changing diagnosis observations within the original mutation wait"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-lock.test.ts",
+          "namePattern": "bounds continuously changing lock observations without entering the mutation",
+          "requiredNames": [
+            "Native operation locks bounds continuously changing lock observations without entering the mutation"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "Retire explicitly removed PID/orphan/coordinator policies; preserve exclusion, actual stop evidence, original outcomes and explicit retry without historical process inference.",
+        "authorization": "report:2026-11-09-runtime-pid-removal",
+        "record": "docs/research/2026-11-09-runtime-pid-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/platform/fs/lock-without-pid.test.ts",
+            "namePattern": "^(?:releases the transaction after the writer exits without a PID lookup or doctor repair|retires a confirmed legacy operation without binding its PID to the replacement|serializes writers without probing or persisting a process identity|serializes independent processes without process ownership records)$",
+            "requiredNames": [
+              "releases the transaction after the writer exits without a PID lookup or doctor repair",
+              "retires a confirmed legacy operation without binding its PID to the replacement",
+              "serializes writers without probing or persisting a process identity",
+              "serializes independent processes without process ownership records"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-lock-without-pid.test.ts",
+            "namePattern": "^(?:keeps Native mutation exclusion without binding a PID or probing a thread|keeps ordinary lock acquisition outside a running Native recovery section)$",
+            "requiredNames": [
+              "keeps Native mutation exclusion without binding a PID or probing a thread",
+              "keeps ordinary lock acquisition outside a running Native recovery section"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-lock.test.ts",
+            "namePattern": "^(?:Native operation locks does not release a lock whose ownership changed|Native operation locks serializes live mutation contenders so the later command can recheck state)$",
+            "requiredNames": [
+              "Native operation locks does not release a lock whose ownership changed",
+              "Native operation locks serializes live mutation contenders so the later command can recheck state"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/registry.json",
+            "sha256": "cd525ad933feaca15abaebbaa79527d0f7db2b6561855d55744a6523b481c68b"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/tests.patch",
+            "sha256": "729be0c5e84760f5f030667e5936e059fb713adfa29e39b2671550dc308d95df"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/mapping.json",
+            "sha256": "2b263e7005367fcb2b73a57afd96bf1723dacc7039ca0e8f1daa5af4b8c1109b"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/tests.json",
+            "sha256": "6f6f8ef360c9ed4feb44be79e2eaf98ec04fe068887e53e3df92b19d0837d63b"
+          }
+        }
+      }
+    },
+    {
+      "id": "runtime-pid-free-lock-recovery",
+      "behavior": "Native/Classic workflow locks release without persistent PID or process-identity binding; legacy retirement preserves actual exclusion.",
+      "coverageLevel": "runtime",
+      "reproduction": "Use an original-format owner record and a real child holding the shared lock. Interrupt the child and retry; also exercise independent processes and confirmed legacy retirement.",
+      "expected": "Release on process exit, serialize live writers, preserve a foreign owner and the original operation error, and never probe or persist PID identity.",
+      "forbidden": "Enter a held transaction, overwrite a live legacy operation, or require a PID/age/thread rebind for new locks.",
+      "rootCause": "The original lock protocol coupled ownership and recovery to PID and creation-identity probes.",
+      "tests": [
+        {
+          "file": "test/platform/fs/lock-without-pid.test.ts",
+          "namePattern": "^(?:releases the transaction after the writer exits without a PID lookup or doctor repair|retires a confirmed legacy operation without binding its PID to the replacement|preserves the original operation error when lock cleanup also fails|serializes writers without probing or persisting a process identity|serializes independent processes without process ownership records)$",
+          "requiredNames": [
+            "releases the transaction after the writer exits without a PID lookup or doctor repair",
+            "retires a confirmed legacy operation without binding its PID to the replacement",
+            "preserves the original operation error when lock cleanup also fails",
+            "serializes writers without probing or persisting a process identity",
+            "serializes independent processes without process ownership records"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-lock-without-pid.test.ts",
+          "namePattern": "^(?:keeps Native mutation exclusion without binding a PID or probing a thread|keeps ordinary lock acquisition outside a running Native recovery section)$",
+          "requiredNames": [
+            "keeps Native mutation exclusion without binding a PID or probing a thread",
+            "keeps ordinary lock acquisition outside a running Native recovery section"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-11-09-runtime-pid-removal"
+      ]
+    },
+    {
+      "id": "native-legacy-recovery-meta-lock-doctor",
+      "sources": [
+        "report:2026-11-09-runtime-core-commit-review"
+      ],
+      "behavior": "Public Native doctor diagnoses and recovers the legacy recovery meta-lock.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Create a Native project, leave a legacy .recovery.lock, inspect doctor, reject another token, then explicitly repair and create a change.",
+      "expected": "Both source and generated CLI recover only the confirmed exact record; active recovery remains exclusive.",
+      "forbidden": "An invisible blocking meta-lock, incorrect-token removal, or removal during an active transaction.",
+      "rootCause": "Project lock discovery explicitly excluded .recovery.lock.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-lock-without-pid.test.ts",
+          "namePattern": "^(?:recovers the legacy meta-lock through public source doctor before creating a change|recovers the legacy meta-lock through public bundle doctor before creating a change|diagnoses and explicitly retires an interrupted legacy recovery lock|does not retire a recovery lock while its original transaction is active)$",
+          "requiredNames": [
+            "recovers the legacy meta-lock through public source doctor before creating a change",
+            "recovers the legacy meta-lock through public bundle doctor before creating a change",
+            "diagnoses and explicitly retires an interrupted legacy recovery lock",
+            "does not retire a recovery lock while its original transaction is active"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-root-move-released-sqlite-sidecars",
+      "behavior": "Native 正常 SQLite 协调文件不阻塞 root move，真实操作锁仍阻塞。",
+      "sources": [
+        "report:2026-11-10-runtime-remaining-failures"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "在隔离项目公开 init 后直接 root move；旧 bundle 返回73，doctor却健康。",
+      "expected": "公开迁移成功，SQLite文件保留，中断恢复沿原事务继续。",
+      "forbidden": "把正常SQLite数据库当未知锁；忽略真实未释放的.lock元数据。",
+      "rootCause": "root move枚举锁目录时未区分持久数据库与持有者元数据。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-root-move.test.ts",
+          "namePattern": "moves an initialized root through the generated Runtime while SQLite coordination files persist|moves \\. to docs with file-by-file hash equivalence|moves docs to artifacts/native with file-by-file hash equivalence|serializes root moves with archive operations through the global lock|refuses to copy any unresolved operation lock into the destination root",
+          "requiredNames": [
+            "Native artifact root moves moves an initialized root through the generated Runtime while SQLite coordination files persist",
+            "Native artifact root moves moves . to docs with file-by-file hash equivalence",
+            "Native artifact root moves moves docs to artifacts/native with file-by-file hash equivalence",
+            "Native artifact root moves serializes root moves with archive operations through the global lock",
+            "Native artifact root moves refuses to copy any unresolved operation lock into the destination root"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-doctor-no-implicit-unknown-owner-confirmation",
+      "behavior": "普通Doctor修复不能推断未知锁原执行已停止。",
+      "sources": [
+        "report:2026-11-10-runtime-remaining-failures"
+      ],
+      "coverageLevel": "runtime",
+      "reproduction": "写入无活跃SQLite lease的legacy未知锁，执行ordinary doctor --repair，再按精确token明确确认。",
+      "expected": "ordinary修复保留原文，未确认拒绝；精确停止确认后恢复；活跃lease始终拒绝。",
+      "forbidden": "将普通repair或文件年龄作为停止确认，自动删除未知锁。",
+      "rootCause": "兼容takeover入口把allowAgedUnknown转换成confirmedOwnerStopped=true。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-doctor.test.ts",
+          "namePattern": "preserves active and unknown locks until the exact stopped owner is confirmed",
+          "requiredNames": [
+            "Native doctor preserves active and unknown locks until the exact stopped owner is confirmed"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-malformed-lock-preserves-repair-evidence",
+      "behavior": "精确确认损坏锁后隔离保存原字节，旧token不能删替换者。",
+      "sources": [
+        "report:2026-11-10-runtime-remaining-failures"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "诊断损坏元数据后替换字节；先执行旧命令，再执行新token恢复。",
+      "expected": "旧token拒绝，当前损坏记录保存为.repaired且锁解除。",
+      "forbidden": "丢失损坏现场、删除活跃锁或旧token删新记录。",
+      "rootCause": "SQLite修复沿用了直接unlink，丢失原Native隔离保存契约。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-command-recovery.test.ts",
+          "namePattern": "rejects a replaced lock token and preserves malformed lock bytes when explicit recovery quarantines them|preserves a live project lock even when its exact token is submitted with stopped-owner confirmation",
+          "requiredNames": [
+            "rejects a replaced lock token and preserves malformed lock bytes when explicit recovery quarantines them",
+            "preserves a live project lock even when its exact token is submitted with stopped-owner confirmation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-incomplete-trajectory-status-recovery",
+      "sources": [
+        "report:2026-11-09-runtime-core-commit-review"
+      ],
+      "behavior": "A partial final trajectory line blocks status continuation until exact tail recovery.",
+      "coverageLevel": "runtime",
+      "reproduction": "Interrupt a real transition before trajectory append, append partial JSON and query status and doctor.",
+      "expected": "Status reports the incomplete tail; doctor preserves complete events and continues the original transition exactly once.",
+      "forbidden": "A next command through an incomplete trajectory or truncation of valid events.",
+      "rootCause": "Removal of content diagnostics also removed the independent trajectory completeness check.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+          "namePattern": "^(?:Native transition recovery doctor atomically removes only an incomplete final trajectory line before continuing)$",
+          "requiredNames": [
+            "Native transition recovery doctor atomically removes only an incomplete final trajectory line before continuing"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-invalid-middle-trajectory-doctor",
+      "sources": [
+        "report:2026-11-09-runtime-core-commit-review"
+      ],
+      "behavior": "A malformed middle trajectory line remains a blocking diagnostic and is never truncated.",
+      "coverageLevel": "runtime",
+      "reproduction": "Append bad middle JSON followed by a partial tail to an actual Native trajectory and run repair.",
+      "expected": "Doctor reports trajectory-invalid, status gives the actual error without a next command, and original bytes remain.",
+      "forbidden": "A healthy diagnosis, suggested advance, or truncation past a malformed middle event.",
+      "rootCause": "Legacy status was reduced to a migration projection and doctor skipped invalid trajectory inspections.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+          "namePattern": "^(?:Native transition recovery never truncates a malformed middle trajectory line)$",
+          "requiredNames": [
+            "Native transition recovery never truncates a malformed middle trajectory line"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-missing-trajectory-runtime-diagnostics",
+      "behavior": "本机legacy日志目录丢失时仍报告原change迁移指引；存在的中间坏JSON不被当作无日志。",
+      "sources": [
+        "report:2026-11-10-runtime-remaining-failures"
+      ],
+      "coverageLevel": "runtime",
+      "reproduction": "创建legacy change后移除整个本机change Runtime目录，读取只读status；旧源码在读取trajectory父链时抛ENOENT。",
+      "expected": "原change仍可发现且返回迁移指引；已有损坏历史仍拒绝自动截断。",
+      "forbidden": "目录缺失让全项目诊断抛错，或吞掉存在日志中的损坏内容。",
+      "rootCause": "轨迹读取只处理文件缺失，没有处理已丢失的Runtime父目录。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-diagnostics.test.ts",
+          "namePattern": "keeps a change discoverable when its whole local Runtime is missing",
+          "requiredNames": [
+            "Native status diagnostics keeps a change discoverable when its whole local Runtime is missing"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+          "namePattern": "never truncates a malformed middle trajectory line",
+          "requiredNames": [
+            "Native transition recovery never truncates a malformed middle trajectory line"
+          ]
+        }
+      ]
+    }
+  ]
+}

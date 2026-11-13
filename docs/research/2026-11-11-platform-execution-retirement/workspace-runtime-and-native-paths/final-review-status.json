@@ -1,0 +1,21 @@
+{
+  "reviewAxis": "Spec",
+  "scope": "57 workspace old declarations plus full NativePaths 16 declarations",
+  "planApproved": true,
+  "productBusinessBlockerRemaining": false,
+  "earlierBlockedDeclaration": "workspace-runtime.test.ts:31",
+  "resolution": "The earlier audit map preserved the chronology of the Classic delivery receipt import omission. Root applied the thin explicit importer, actual root source-API tests passed26/0, and this worker then ran current built public CLI on both authentic published052 receipt fixture materializations:2/0. Those later results resolve the earlier map's blocked-business-gap status; the old RED is retained.",
+  "preservedBusinessEvidence": [
+    "NativePaths22 plus strengthened namespace17: Temp actual39/0",
+    "Current product Classic receipt9 plus namespace17: root actual26/0",
+    "Current built public Doctor import for project-local and Git-common authentic old receipt bytes:2/0, original authorization/receipt/commit/HEAD preserved, repeat no-op",
+    "Earlier actual9/0 published Archive WAL/full business import evidence reused by individual mapping; not rerun or described as this round's full-suite result"
+  ],
+  "retirementExecutionConditions": [
+    "Freeze original complete text and declaration maps",
+    "Apply two-case append operations with expectedEntry CAS and preserve all original fields/source/chains",
+    "Run schema/evidence validation and exact new selectors after repository patch integration",
+    "Keep actual transition/Archive WAL/SDKcheckpoint and business write locks; do not restore the old workspace copier/PID/meta-lock/fingerprint memoization protocol"
+  ],
+  "notExecuted": ["Eval", "full suite", "new package/install validation"]
+}

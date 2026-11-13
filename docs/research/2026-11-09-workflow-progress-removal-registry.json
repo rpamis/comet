@@ -1,0 +1,34 @@
+{
+  "schema": "comet.workflow.migration-originals.v1",
+  "base": "5426c4cbb3569e749ce8050888517f93b8437f5d",
+  "cases": [
+    {
+      "id": "native-242-budget-progress",
+      "behavior": "交替或增大未满足集合不算进展，停滞/预算耗尽停止",
+      "status": "covered",
+      "reason": "候选代码变动不能清除无进展与全局失败预算。",
+      "coverageLayer": "SDK and Compat",
+      "evidence": [
+        "https://github.com/rpamis/comet/issues/242"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-loop-runtime.test.ts",
+          "namePattern": "counts alternating and increased unresolved sets as no progress, but resets on a strict subset|stops alternating unresolved sets after three non-progressive results|explains a budget-exhausted stop without calling it a no-progress loop",
+          "requiredNames": [
+            "counts alternating and increased unresolved sets as no progress, but resets on a strict subset",
+            "stops alternating unresolved sets after three non-progressive results",
+            "explains a budget-exhausted stop without calling it a no-progress loop"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-config.test.ts",
+          "namePattern": "round-trips a custom Native completion-loop budget",
+          "requiredNames": [
+            "round-trips a custom Native completion-loop budget"
+          ]
+        }
+      ]
+    }
+  ]
+}

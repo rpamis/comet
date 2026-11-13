@@ -1,0 +1,76 @@
+diff --git a/domains/comet-native/native-runner-input.ts b/domains/comet-native/native-runner-input.ts
+index cf070ffb..74dbad5e 100644
+--- a/domains/comet-native/native-runner-input.ts
++++ b/domains/comet-native/native-runner-input.ts
+@@ -1,3 +1,4 @@
++import { nativeEnumText, NATIVE_VERIFIER_VERDICTS } from './native-input-enum.js';
+ import { assertNativeSupervisorVerifierWorkspace } from './native-supervisor-workspace.js';
+ import { randomUUID } from 'node:crypto';
+ import { readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
+@@ -134,6 +135,8 @@ export function parseNativeRunnerInput(value: unknown): NativeRunnerInput {
+     if (input.acceptance_review !== undefined)
+       parseNativeBuilderAcceptanceReview(input.acceptance_review);
+   }
++  if (input.kind === 'supervisor-verifier-result')
++    nativeEnumText(input.verdict, NATIVE_VERIFIER_VERDICTS, 'Native Supervisor Verifier verdict');
+   if (input.kind.startsWith('supervisor-')) {
+     text(input.child, 'Child');
+     if (!['supervisor-integrate', 'supervisor-retry-builder'].includes(input.kind))
+@@ -151,7 +154,7 @@ export async function readNativeRunnerInput(file: string, projectRoot = process.
+   const read = await readFileRaceSafe(resolve(projectRoot, file), Number.MAX_SAFE_INTEGER, {
+     label: 'Native platform result',
+   });
+-  return parseNativeRunnerInput(JSON.parse(read.bytes.toString('utf8')));
++  return parseNativeRunnerInput(JSON.parse(read.bytes.toString('utf8').replace(/^\uFEFF/u, '')));
+ }
+ export async function validateNativeRunnerInputBoundary(options: {
+   paths: NativeProjectPaths;
+@@ -243,8 +246,7 @@ export async function applyNativeRunnerInput(options: {
+           !evidence ||
+           typeof evidence.summary !== 'string' ||
+           !Array.isArray(evidence.checks) ||
+-          evidence.checks.some((value) => typeof value !== 'string') ||
+-          !['pass', 'fail', 'blocked'].includes(String(input.verdict))
++          evidence.checks.some((value) => typeof value !== 'string')
+         )
+           throw new Error('Submit the original Verifier task and actual acceptance/check reports');
+         assertNativeSupervisorVerifierWorkspace(
+diff --git a/domains/comet-native/native-cancel-command.ts b/domains/comet-native/native-cancel-command.ts
+index 2415189c..112eb6af 100644
+--- a/domains/comet-native/native-cancel-command.ts
++++ b/domains/comet-native/native-cancel-command.ts
+@@ -80,6 +80,7 @@ export async function nativeCancelCommand(
+     change: name,
+     runId: cancelled.runId,
+     cancelled: true,
++    ...(run.status === 'cancelled' ? { alreadyCancelled: true } : {}),
+     status:
+       (await inspectNativeSdkCancellation({ projectRoot, run: cancelled }))?.status ?? 'cancelled',
+     reason: cancelled.reason,
+diff --git a/domains/comet-native/native-builder-acceptance-review.ts b/domains/comet-native/native-builder-acceptance-review.ts
+index 004997c8..e7a5f753 100644
+--- a/domains/comet-native/native-builder-acceptance-review.ts
++++ b/domains/comet-native/native-builder-acceptance-review.ts
+@@ -64,19 +64,20 @@ export function parseNativeBuilderAcceptanceReview(
+       ids.push(id);
+       if (known && !known.has(id)) unknownIds.push({ index, id });
+     }
++    const detail = id && known?.has(id) ? label + ' (' + id + ')' : label;
+     const status = read(() =>
+       nativeEnumText(row.status, NATIVE_ACCEPTANCE_REVIEW_STATUSES, `${label}.status`),
+     );
+     let evidence: string[] | undefined;
+     if (!Array.isArray(row.evidence))
+       errors.push(
+-        `${label}.evidence must be an array of concrete strings of at most 4000 characters; received ${typeof row.evidence}`,
++        `${detail}.evidence must be an array of concrete strings of at most 4000 characters; received ${typeof row.evidence}`,
+       );
+     else
+       evidence = row.evidence
+         .map((item, i) => read(() => text(item, `${label}.evidence[${i}]`)))
+         .filter((item): item is string => item !== undefined);
+-    const note = read(() => text(row.note, `${label}.note`));
++    const note = read(() => text(row.note, `${detail}.note`));
+     return id && status && evidence && note ? [{ id, status, evidence, note }] : [];
+   });
+   if (acceptance && !errors.length) {

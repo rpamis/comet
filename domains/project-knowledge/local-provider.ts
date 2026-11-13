@@ -8,7 +8,10 @@ import {
   runWithHookReadCache,
   runWithoutHookReadCache,
 } from '../../platform/process/hook-read-cache.js';
-import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
+import {
+  readProtectedProjectFile,
+  withProtectedProjectReadScope,
+} from '../workflow-contract/protected-project-path.js';
 import { knowledgeDocumentKindRank } from './corpus.js';
 import type { ProjectKnowledgeIndexStatus } from './index-store.js';
 import { ProjectKnowledgeLocalStore } from './local-store.js';
@@ -217,7 +220,27 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
   }
 
   public async query(request: ProjectKnowledgeQueryRequest): Promise<ProjectKnowledgeQueryResult> {
-    return request.kind === 'search' || request.kind === 'expand'
+    if (request.kind === 'search')
+      return runWithoutHookReadCache(async () => {
+        try {
+          return await withProtectedProjectReadScope(() => this.queryInternal(request));
+        } catch {
+          const diagnostic = {
+            code: 'local-document',
+            message: '来源在本次读取期间不可用，不会参与本次召回。',
+          };
+          this.reportDiagnostic?.(diagnostic);
+          return {
+            kind: 'search',
+            results: [],
+            hits: [],
+            records: [],
+            truncated: false,
+            diagnostics: [diagnostic],
+          };
+        }
+      });
+    return request.kind === 'expand'
       ? runWithoutHookReadCache(() => this.queryInternal(request))
       : this.queryInternal(request);
   }

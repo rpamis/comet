@@ -1,0 +1,10 @@
+{
+  "retired": [
+    {
+      "file": "test/domains/comet-native/native-doctor.test.ts",
+      "name": "reports malformed user-authored state and artifacts without modifying them",
+      "source": "\n\n  it('reports malformed user-authored state and artifacts without modifying them', async () => {\n    const state = await createNativeChange({\n      paths,\n      name: 'incomplete-change',\n      language: 'en',\n      verificationProtocol: 'legacy-v1',\n    });\n    const briefFile = path.join(nativeChangeDir(paths, state.name), 'brief.md');\n    const briefBefore = await fs.readFile(briefFile, 'utf8');\n    const result = await doctorNativeProject({ paths, repair: true });\n\n    expect(result.healthy).toBe(false);\n    expect(result.findings).toContainEqual(\n      expect.objectContaining({ code: 'brief-section-empty', severity: 'error' }),\n    );\n    expect(await fs.readFile(briefFile, 'utf8')).toBe(briefBefore);\n  });",
+      "reason": "Doctor no longer performs legacy brief/template semantic validation; it exposes migration state. Malformed YAML/config/path diagnostics remain active in this file, actual empty/explicit blocking brief validation remains at Native guard/artifacts boundaries."
+    }
+  ]
+}

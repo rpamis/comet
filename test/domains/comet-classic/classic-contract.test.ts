@@ -390,6 +390,7 @@ interface HandoffObservation {
   stdout: string;
   stderr: string;
   yaml: Record<string, unknown>;
+  context: string;
 }
 
 async function observeHandoff(
@@ -438,6 +439,7 @@ async function observeHandoff(
     stdout: normalizeOutput(result.stdout, root),
     stderr: normalizeOutput(result.stderr, root),
     yaml: legacyProjection(yaml),
+    context: await fs.readFile(path.join(root, String(yaml.handoff_context)), 'utf8'),
   };
 }
 
@@ -558,22 +560,31 @@ describeBash('Classic 0.3.9 differential contract', () => {
   }
 
   it('preserves design handoff generation for the full workflow', async () => {
-    // The active runtime prepends a bilingual human summary line to the
-    // handoff stderr beyond what 0.3.9 shipped. The preserved contract is the
-    // recorded machine lines ([SET]/[HANDOFF]), the exit status, the stdout
-    // hash, and the yaml state.
+    // The current handoff references formal source text directly. The frozen
+    // version writes a generated context and hash. Preserve all other state.
     const active = await observeHandoff(activeScripts, 'full');
     const reference = await observeHandoff(referenceScripts, 'full');
 
     expect(active.status).toBe(reference.status);
     expect(active.stdout).toBe(reference.stdout);
-    expect(handoffMarkerLines(active.stderr)).toEqual(handoffMarkerLines(reference.stderr));
+    const activeMarkers = handoffMarkerLines(active.stderr);
+    expect(activeMarkers).toContain('[HANDOFF] source openspec/changes/full-handoff/proposal.md');
+    expect(activeMarkers.filter((line) => !line.startsWith('[HANDOFF] source '))).toEqual(
+      handoffMarkerLines(reference.stderr),
+    );
     const activeYaml = { ...active.yaml };
     const referenceYaml = { ...reference.yaml };
-    expect(activeYaml.handoff_hash).toMatch(/^[a-f0-9]{64}$/u);
+    expect(activeYaml.handoff_hash).toBeNull();
     expect(referenceYaml.handoff_hash).toMatch(/^[a-f0-9]{64}$/u);
+    expect(activeYaml.handoff_context).toBe('openspec/changes/full-handoff/proposal.md');
+    expect(active.context).toBe('proposal\n');
+    expect(referenceYaml.handoff_context).toBe(
+      'openspec/changes/full-handoff/.comet/handoff/design-context.json',
+    );
     delete activeYaml.handoff_hash;
     delete referenceYaml.handoff_hash;
+    delete activeYaml.handoff_context;
+    delete referenceYaml.handoff_context;
     expect(activeYaml).toEqual(referenceYaml);
   });
 

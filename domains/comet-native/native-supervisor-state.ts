@@ -1,8 +1,6 @@
-import path from 'node:path';
 import { promises as fs } from 'node:fs';
-
+import path from 'node:path';
 import { atomicWriteJson } from './native-atomic-file.js';
-import { canonicalHash } from './native-canonical-hash.js';
 import {
   nativeChildrenAcceptanceValidation,
   readNativeChildrenContract,
@@ -12,7 +10,6 @@ import {
   NATIVE_SUPERVISOR_SCHEMA,
   assertCommit,
   supervisorAcceptanceScope,
-  type NativeSupervisorCheckExecutionState,
   type NativeSupervisorState,
 } from './native-supervisor-model.js';
 import type { NativeProjectPaths } from './native-types.js';
@@ -25,14 +22,12 @@ export function nativeSupervisorRuntimeDir(
     'supervisor',
   );
 }
-
 export function nativeSupervisorStateFile(
   paths: Pick<NativeProjectPaths, 'changesRuntimeDir'>,
   parent: string,
 ): string {
   return path.join(nativeSupervisorRuntimeDir(paths, parent), 'state.json');
 }
-
 function assertSupervisorState(value: unknown): asserts value is NativeSupervisorState {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('Native Supervisor state must be an object');
@@ -62,22 +57,6 @@ function assertSupervisorState(value: unknown): asserts value is NativeSuperviso
   }
   assertCommit(state.integration.targetCommit, 'Native Supervisor target commit');
   assertCommit(state.integration.headCommit, 'Native Supervisor integration head commit');
-  if (state.integration.checkExecution) {
-    const execution = state.integration.checkExecution;
-    if (
-      !execution.operationId ||
-      !execution.key ||
-      !execution.child ||
-      !['running', 'completed', 'interrupted'].includes(execution.status) ||
-      !Number.isSafeInteger(execution.ownerPid) ||
-      execution.ownerPid <= 0
-    ) {
-      throw new Error('Native Supervisor integration check execution is invalid');
-    }
-    assertCommit(execution.candidateCommit, 'Native Supervisor integration candidate commit');
-    assertCommit(execution.integrationCommit, 'Native Supervisor integration check commit');
-    assertSupervisorCheckStates(execution.checkStates, 'Native Supervisor integration');
-  }
   if (!Array.isArray(state.children)) throw new Error('Native Supervisor children are invalid');
   if (!Array.isArray(state.history)) throw new Error('Native Supervisor history is invalid');
   if (
@@ -184,12 +163,6 @@ function assertSupervisorState(value: unknown): asserts value is NativeSuperviso
       if (child.task.projectRoot !== child.projectRoot) {
         throw new Error(`Native Supervisor child ${child.name} task projectRoot is invalid`);
       }
-      if (child.task.checkExecution) {
-        assertSupervisorCheckStates(
-          child.task.checkExecution.checkStates,
-          `Native Supervisor child ${child.name}`,
-        );
-      }
       if (
         (child.task.role === 'builder' && child.status !== 'active') ||
         (child.task.role === 'verifier' && !['active', 'needs-reverify'].includes(child.status))
@@ -199,15 +172,65 @@ function assertSupervisorState(value: unknown): asserts value is NativeSuperviso
     }
   }
 }
-
 export async function readNativeSupervisorState(
   paths: Pick<NativeProjectPaths, 'changesRuntimeDir'>,
   parent: string,
-  options: { diagnostics?: boolean } = {},
+  options: {
+    diagnostics?: boolean;
+  } = {},
 ): Promise<NativeSupervisorState | null> {
   try {
     const source = await fs.readFile(nativeSupervisorStateFile(paths, parent), 'utf8');
     const parsed: unknown = JSON.parse(source);
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      Array.isArray(
+        (
+          parsed as {
+            children?: unknown;
+          }
+        ).children,
+      )
+    ) {
+      for (const child of (
+        parsed as {
+          children: Array<{
+            contractRef?: string;
+            contractHash?: string;
+            task?: {
+              contractRef?: string;
+              contractHash?: string;
+            };
+          }>;
+        }
+      ).children) {
+        if (child.contractRef === undefined && typeof child.contractHash === 'string')
+          child.contractRef = child.contractHash;
+        if (
+          child.task &&
+          child.task.contractRef === undefined &&
+          typeof child.task.contractHash === 'string'
+        )
+          child.task.contractRef = child.task.contractHash;
+      }
+    }
+    // 旧检查执行元数据只留在原文件历史中，不进入当前业务状态。
+    if (parsed && typeof parsed === 'object') {
+      const legacy = parsed as {
+        integration?: Record<string, unknown>;
+        children?: Array<{
+          task?: Record<string, unknown>;
+        }>;
+      };
+      if (legacy.integration) delete legacy.integration.checkExecution;
+      if (Array.isArray(legacy.children))
+        for (const child of legacy.children)
+          if (child.task) {
+            delete child.task.checkExecution;
+            delete child.task.checksReason;
+          }
+    }
     assertSupervisorState(parsed);
     if (
       parsed.children.some(
@@ -234,15 +257,10 @@ export async function readNativeSupervisorState(
         for (const child of parsed.children) {
           if (!document.contract.children.some(({ name }) => name === child.name)) continue;
           child.acceptanceScope = supervisorAcceptanceScope(document.contract, child.name);
-          child.contractHash = canonicalHash(
-            'comet.native.supervisor-contract.v1',
-            document.contract,
-          );
           if (child.task) {
             child.task.acceptance = structuredClone(child.acceptanceScope);
-            child.task.contractHash = child.contractHash;
+            child.task.contractRef = child.contractRef;
             child.task.verificationBoundary = 'child-scope-parent-reverifies-all';
-            child.task.checksReason = 'not-run';
           }
         }
       } catch (error) {
@@ -275,7 +293,6 @@ export async function readNativeSupervisorState(
     throw error;
   }
 }
-
 export async function assertNoActiveNativeSupervisorTasks(
   paths: Pick<NativeProjectPaths, 'changesRuntimeDir'>,
   parent: string,
@@ -287,7 +304,6 @@ export async function assertNoActiveNativeSupervisorTasks(
     );
   }
 }
-
 export async function activeNativeSupervisorTaskNames(
   paths: Pick<NativeProjectPaths, 'changesRuntimeDir'>,
   parent: string,
@@ -295,7 +311,6 @@ export async function activeNativeSupervisorTaskNames(
   const state = await readNativeSupervisorState(paths, parent, { diagnostics: true });
   return state?.children.filter(({ task }) => task !== null).map(({ name }) => name) ?? [];
 }
-
 export async function writeNativeSupervisorState(
   paths: Pick<NativeProjectPaths, 'changesRuntimeDir'>,
   state: NativeSupervisorState,
@@ -305,42 +320,4 @@ export async function writeNativeSupervisorState(
   await atomicWriteJson(nativeSupervisorStateFile(paths, state.parent), state, {
     containedRoot: paths.changesRuntimeDir,
   });
-}
-
-function assertSupervisorCheckStates(
-  states: NativeSupervisorCheckExecutionState[] | undefined,
-  label: string,
-): void {
-  if (states === undefined) return;
-  if (!Array.isArray(states) || states.length === 0) {
-    throw new Error(`${label} check states are invalid`);
-  }
-  const ids = new Set<string>();
-  for (const state of states) {
-    if (
-      !state ||
-      typeof state.id !== 'string' ||
-      !state.id ||
-      ids.has(state.id) ||
-      typeof state.name !== 'string' ||
-      !['planned', 'running', 'passed', 'failed', 'interrupted'].includes(state.status) ||
-      typeof state.repeatable !== 'boolean' ||
-      !Number.isSafeInteger(state.executionCount) ||
-      state.executionCount < 0 ||
-      !Array.isArray(state.argvDisplay) ||
-      !state.argvDisplay.every((entry) => typeof entry === 'string') ||
-      typeof state.cwdRef !== 'string' ||
-      !Number.isSafeInteger(state.durationMs) ||
-      state.durationMs < 0 ||
-      (state.exitCode !== null && !Number.isSafeInteger(state.exitCode)) ||
-      (state.signal !== null && typeof state.signal !== 'string') ||
-      typeof state.timedOut !== 'boolean' ||
-      (state.startedAt !== null && typeof state.startedAt !== 'string') ||
-      (state.completedAt !== null && typeof state.completedAt !== 'string') ||
-      (state.logRef !== null && typeof state.logRef !== 'string')
-    ) {
-      throw new Error(`${label} check state is invalid`);
-    }
-    ids.add(state.id);
-  }
 }

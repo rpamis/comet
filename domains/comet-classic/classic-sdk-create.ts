@@ -11,7 +11,7 @@ import {
   readSdkChangeOwner,
   registerSdkChangeOwner,
 } from '../workflow-contract/change-runtime-owner.js';
-import { defineClassicWorkflowApplication } from './classic-sdk-application.js';
+import { defineClassicAgentWorkflowApplication } from './classic-sdk-application.js';
 import { createClassicSdkStateStore } from './classic-sdk-state-store.js';
 import type { ClassicProfile, ClassicState } from './classic-state.js';
 import { bindClassicSdkWorkspaceBaseline } from './classic-sdk-delivery-inputs.js';
@@ -35,7 +35,7 @@ export async function createClassicSdkRun(options: {
   const input = options.recoverySourceHash
     ? initialInput
     : await bindClassicSdkWorkspaceBaseline(options.projectRoot, initialInput);
-  const application = defineClassicWorkflowApplication(options.profile);
+  const application = defineClassicAgentWorkflowApplication(options.profile);
   const persistentStore = createClassicSdkStateStore(options.projectRoot);
   const store: RuntimeStore<WorkflowRun> = {
     async read(runId) {
@@ -51,14 +51,18 @@ export async function createClassicSdkRun(options: {
     async compareAndSwap(runId, expectedRevision, next) {
       if (expectedRevision === null) {
         if (runId !== options.name) throw new Error('Classic SDK Run ID and change name differ');
-        await registerSdkChangeOwner(options.projectRoot, {
-          schema: COMET_CHANGE_OWNER_SCHEMA,
-          workflow: 'classic',
-          change: options.name,
-          format: 'sdk',
-          application: `classic-${options.profile}`,
-          runId,
-        });
+        await registerSdkChangeOwner(
+          options.projectRoot,
+          {
+            schema: COMET_CHANGE_OWNER_SCHEMA,
+            workflow: 'classic',
+            change: options.name,
+            format: 'sdk',
+            application: `classic-${options.profile}`,
+            runId,
+          },
+          { canonical: true },
+        );
       }
       return persistentStore.compareAndSwap(runId, expectedRevision, next);
     },

@@ -6,6 +6,24 @@ import {
 
 describe('Hook concrete write proposals', () => {
   it.each([
+    { tool_input: { targets: ['agent:/Main', 'proc:/server/kill', 'xd:/report'] } },
+    { tool_name: 'Write', tool_input: { path: 'agent:/Main' } },
+  ])('classifies resource-only targets as non-file events (%#)', (event) => {
+    expect(parseCometHookRequest(JSON.stringify(event))).toMatchObject({
+      intent: 'non-write',
+      targets: [],
+    });
+    expect(
+      parseCometHookRequest(
+        JSON.stringify({
+          ...event,
+          tool_input: { targets: ['agent:/Main', 'file://%broken', 'src/main.ts'] },
+        }),
+      ),
+    ).toMatchObject({ intent: 'write', targets: ['file://%broken', 'src/main.ts'] });
+  });
+
+  it.each([
     {
       tool_name: 'Edit',
       tool_input: {

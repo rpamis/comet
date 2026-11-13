@@ -1147,6 +1147,61 @@ describe('Context Director', () => {
     expect((await director.select([], { ...request, contextMode: 'snapshot' })).text).toBe('');
   });
 
+  it('deduplicates proven full profile delivery across incremental phases while restoring rules and snapshots', async () => {
+    const applications = new MemoryAgentContextApplicationStore();
+    const profile = candidate({
+      id: 'profile',
+      memoryType: 'core-profile',
+      content: '使用中文回复。',
+    });
+    const rule = candidate({
+      id: 'verify-rule',
+      memoryType: 'project-policy',
+      selectors: { phases: ['verify'] },
+    });
+    const request = {
+      task: 'Implement feature',
+      sessionId: 'same-session',
+      projectId: 'one',
+      phase: 'build',
+    };
+    expect(
+      (await new ContextDirector({ applications }).select([profile, rule], request)).coreMemory,
+    ).toEqual([profile]);
+    const incremental = await new ContextDirector({ applications }).select([profile, rule], {
+      ...request,
+      phase: 'verify',
+      contextMode: 'incremental',
+    });
+    expect(incremental.coreMemory).toEqual([]);
+    expect(incremental.activePolicies).toEqual([rule]);
+    const restored = await new ContextDirector({ applications }).select([profile, rule], {
+      ...request,
+      phase: 'verify',
+      contextMode: 'snapshot',
+    });
+    expect(restored.coreMemory).toEqual([profile]);
+    expect(restored.activePolicies).toEqual([rule]);
+    expect(
+      (
+        await new ContextDirector({ applications }).select([profile], {
+          ...request,
+          sessionId: 'new-session',
+          phase: 'verify',
+          contextMode: 'incremental',
+        })
+      ).coreMemory,
+    ).toEqual([profile]);
+    expect(
+      (
+        await new ContextDirector({ applications }).select(
+          [{ ...profile, content: '变更后的正文' }],
+          { ...request, phase: 'verify', contextMode: 'incremental' },
+        )
+      ).coreMemory,
+    ).toHaveLength(1);
+  });
+
   it('does not redeliver unchanged units and uses outcome feedback in later ranking', async () => {
     const director = new ContextDirector();
     const first = await director.select(

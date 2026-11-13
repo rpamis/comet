@@ -23,13 +23,9 @@ const FALLBACK_WORKSPACE: DashboardWorkspaceIdentity = {
 function localExecution(archived: boolean): NativeDashboardChangeListItem['localExecution'] {
   return {
     status: 'absent',
-    reason: archived ? 'archived' : 'missing',
+    reason: archived ? 'archived' : 'platform',
     stage: null,
     actor: null,
-    startedAt: null,
-    requestCheckRounds: 0,
-    checks: [],
-    recoverableFromStage: null,
   };
 }
 

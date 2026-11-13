@@ -200,7 +200,6 @@ describe('Native SDK requirements recovery', () => {
       expect(after.waits).toEqual(before.waits);
       expect(after.state).toMatchObject({
         workspace: { change_branch: 'renamed-work' },
-        shape_confirmation_hash: (before.state as NativePortableState).shape_confirmation_hash,
       });
       const repeated = await f.cli(['select', f.name, '--rebind']);
       expect(repeated.exitCode, repeated.error?.message).toBe(0);
@@ -286,11 +285,6 @@ describe('Native SDK requirements recovery', () => {
       const wait = original.waits.find(({ status }) => status === 'pending')!;
       const oldConfirmation = f.nextDecision(original, 'confirm-shape');
       await f.editRequirements();
-      const stale = await f.cli(oldConfirmation);
-      expect(stale).toMatchObject({ exitCode: 73, error: { code: 'conflict' } });
-      expect(stale.data.continuation.commandAlternatives).toMatchObject([
-        { name: 'revise-requirements' },
-      ]);
       for (const command of ['next', 'select']) {
         const status = await f.cli([command, f.name]);
         expect(status.exitCode, status.error?.message).toBe(0);
@@ -298,10 +292,16 @@ describe('Native SDK requirements recovery', () => {
           status.data.continuation.commandAlternatives.map(
             (option: { name: string }) => option.name,
           ),
-        ).toEqual(['revise-requirements']);
-        expect(status.data.continuation.commandAlternatives[0].commandArgs).toContain(
-          wait.proposalHash,
+        ).toEqual(
+          supervisor
+            ? ['multi-session', 'single-session', 'revise-requirements']
+            : ['confirm-shape', 'revise-requirements'],
         );
+        expect(
+          status.data.continuation.commandAlternatives.find(
+            ({ name }: { name: string }) => name === 'revise-requirements',
+          ).commandArgs,
+        ).toContain(wait.proposalHash);
         expect(status.data.run.revision).toBe(original.revision);
       }
       const revision = f.nextDecision(original, 'revise-requirements', wait.proposalHash);

@@ -274,12 +274,14 @@ export interface FileRuntimeStore<T extends RuntimeRecord> extends RuntimeStore<
 export interface FileRuntimeStoreOptions {
   rootDir: string;
   writerProtocol?: 'application-holder-v1';
+  /** 调用方保证同一工作区由一个 controller 串行提交；保留 revision 校验和原子发布，不获取写锁。 */
+  singleWriter?: true;
   /** 与顶层 revision 镜像的嵌套字段，例如固定应用记录的 run.revision。读取和写入都必须一致。 */
   mirroredRevisionPaths?: readonly 'run.revision'[];
 }
 
 /**
- * 使用可恢复的跨进程锁串行 CAS，以原子替换保存一个带校验值的完整 checkpoint。
+ * 默认使用跨进程锁串行 CAS；singleWriter 调用方自行串行提交。完整 checkpoint 始终原子发布。
  * 旧版本历史只在写入时迁移：先验证、发布新 authority 和格式标记，再清理已覆盖文件。
  * 不使用增量日志；checkpoint 内的业务历史仍由调用者维护。
  */
@@ -432,6 +434,12 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
       if (
         /^\..+\.tmp$/u.test(entry.name) ||
         entry.name === lockName ||
+        [
+          lockName + '.sqlite',
+          lockName + '.sqlite-journal',
+          lockName + '.sqlite-wal',
+          lockName + '.sqlite-shm',
+        ].includes(entry.name) ||
         /^\.write\.lock\.[a-f0-9-]+\.removed$/u.test(entry.name)
       )
         continue;
@@ -981,6 +989,7 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
     await syncDirectory(path.join(rootDir, compactDirectory));
     await syncDirectory(rootDir);
     try {
+      if (options.singleWriter) return await operation();
       return await withRecoverableFileLock(
         path.join(rootDir, compactRunDirectory(runId), lockName),
         operation,

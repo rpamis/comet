@@ -23,12 +23,9 @@ import type {
 } from '../project-knowledge/capability-discovery.js';
 
 const NATIVE_KNOWLEDGE_MAX_DOCUMENTS = 512;
-const NATIVE_KNOWLEDGE_MAX_DOCUMENT_BYTES = 256 * 1024;
-const NATIVE_KNOWLEDGE_MAX_TOTAL_BYTES = 8 * 1024 * 1024;
 const NATIVE_KNOWLEDGE_MAX_DISCOVERY_MS = 2_000;
 const NATIVE_KNOWLEDGE_CACHE_FILE = path.join('native', 'capability-discovery-cache.json');
 const NATIVE_KNOWLEDGE_CACHE_SCHEMA = 'comet.native.capability-cache.v1';
-const NATIVE_KNOWLEDGE_CACHE_MAX_BYTES = 512 * 1024;
 const NATIVE_KNOWLEDGE_CACHE_MAX_ENTRIES = 32;
 
 interface NativeKnowledgeSource {
@@ -97,7 +94,6 @@ async function collectNativeKnowledgeManifest(options: {
   const deadline = Date.now() + NATIVE_KNOWLEDGE_MAX_DISCOVERY_MS;
   const sources: NativeKnowledgeSource[] = [];
   let complete = true;
-  let manifestBytes = 0;
 
   const visit = async (root: string, kind: NativeKnowledgeSource['kind']): Promise<void> => {
     if (Date.now() > deadline) {
@@ -133,11 +129,6 @@ async function collectNativeKnowledgeManifest(options: {
         if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.md')) continue;
         if (!isInside(projectRoot, target)) continue;
         const stat = await fs.stat(target);
-        if (stat.size > NATIVE_KNOWLEDGE_MAX_DOCUMENT_BYTES) continue;
-        if (manifestBytes + stat.size > NATIVE_KNOWLEDGE_MAX_TOTAL_BYTES) {
-          complete = false;
-          return;
-        }
         if (Date.now() > deadline) {
           complete = false;
           return;
@@ -145,17 +136,13 @@ async function collectNativeKnowledgeManifest(options: {
         const source = relativeSource(projectRoot, target);
         let content: { bytes: Buffer };
         try {
-          content = await readProtectedProjectFile(
-            projectRoot,
-            source,
-            NATIVE_KNOWLEDGE_MAX_DOCUMENT_BYTES,
-            { label: `${kind} capability Spec` },
-          );
+          content = await readProtectedProjectFile(projectRoot, source, Number.MAX_SAFE_INTEGER, {
+            label: `${kind} capability Spec`,
+          });
         } catch {
           complete = false;
           continue;
         }
-        manifestBytes += content.bytes.length;
         sources.push({
           absolutePath: target,
           source,
@@ -236,23 +223,14 @@ class NativeCapabilityKnowledgeProvider implements ProjectKnowledgeProvider {
     }
     const diagnostics: ProjectKnowledgeDiagnostic[] = [];
     const results: Array<ProjectKnowledgeResult & { readonly score: number }> = [];
-    let totalBytes = 0;
     for (const source of this.manifest.sources) {
-      if (totalBytes + source.size > NATIVE_KNOWLEDGE_MAX_TOTAL_BYTES) {
-        diagnostics.push({
-          code: 'capability-corpus-bytes',
-          message: '能力候选语料达到总字节预算，剩余来源不会参与本次召回。',
-        });
-        break;
-      }
       try {
         const read = await readProtectedProjectFile(
           this.projectRoot,
           source.source,
-          NATIVE_KNOWLEDGE_MAX_DOCUMENT_BYTES,
+          Number.MAX_SAFE_INTEGER,
           { label: `${source.kind} capability Spec` },
         );
-        totalBytes += read.bytes.length;
         const content = read.bytes.toString('utf8');
         const score = searchScore(content, source.source, request.query.terms);
         if (score === 0) continue;
@@ -377,11 +355,10 @@ async function readCache(projectRoot: string): Promise<NativeCapabilityCacheFile
     const { bytes } = await readProtectedProjectFile(
       await resolveWorkspaceRuntimeRoot(projectRoot),
       NATIVE_KNOWLEDGE_CACHE_FILE,
-      NATIVE_KNOWLEDGE_CACHE_MAX_BYTES,
+      Number.MAX_SAFE_INTEGER,
       { label: 'Native capability discovery cache' },
     );
     const source = bytes.toString('utf8');
-    if (Buffer.byteLength(source, 'utf8') > NATIVE_KNOWLEDGE_CACHE_MAX_BYTES) return null;
     return parseCache(JSON.parse(source));
   } catch {
     return null;
@@ -438,8 +415,6 @@ export async function writeNativeCapabilityDiscoveryCache(options: {
       (entry) => !(entry.key === key && entry.fingerprint === manifest.fingerprint),
     ),
   ].slice(0, NATIVE_KNOWLEDGE_CACHE_MAX_ENTRIES);
-  const serialized = JSON.stringify({ schema: NATIVE_KNOWLEDGE_CACHE_SCHEMA, entries });
-  if (Buffer.byteLength(serialized, 'utf8') > NATIVE_KNOWLEDGE_CACHE_MAX_BYTES) return;
   const { atomicWriteJson } = await import('./native-atomic-file.js');
   await atomicWriteJson(
     path.join(await resolveWorkspaceRuntimeRoot(projectRoot), NATIVE_KNOWLEDGE_CACHE_FILE),

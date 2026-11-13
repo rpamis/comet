@@ -1,0 +1,194 @@
+{
+  "cases": [
+    {
+      "id": "native-delta-shape-materialization",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-test-pruning",
+      "record": "docs/research/2026-11-09-runtime-review-repair.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "(?:materializes a Delta target before Shape and refuses independent target edits)",
+          "requiredNames": [
+            "materializes a Delta target before Shape and refuses independent target edits"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay"
+          ],
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay)$"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "requiredNames": [
+            "Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure",
+            "Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation"
+          ],
+          "namePattern": "^(?:Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure|Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation)$"
+        }
+      ]
+    },
+    {
+      "id": "native-builder-shape-drift-recovery",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-test-pruning",
+      "record": "docs/research/2026-11-09-runtime-review-repair.zh.md",
+      "tests": [
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "(?:Native dispatch CLI presentation does not disclose a Builder failure receipt to a rejected outcome with another claim)",
+          "requiredNames": [
+            "Native dispatch CLI presentation does not disclose a Builder failure receipt to a rejected outcome with another claim"
+          ]
+        },
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "requiredNames": [
+            "Native dispatch CLI presentation diagnoses misplaced outcome fields without changing the original claim",
+            "Native dispatch CLI presentation does not disclose a Builder failure receipt to a rejected outcome with another claim"
+          ],
+          "namePattern": "^(?:Native dispatch CLI presentation diagnoses misplaced outcome fields without changing the original claim|Native dispatch CLI presentation does not disclose a Builder failure receipt to a rejected outcome with another claim)$"
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay"
+          ],
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay)$"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "requiredNames": [
+            "Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure",
+            "Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation"
+          ],
+          "namePattern": "^(?:Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure|Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation)$"
+        }
+      ]
+    },
+    {
+      "id": "native-v3-archive-report-failure",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-test-pruning",
+      "record": "docs/research/2026-11-09-runtime-review-repair.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "(?:completes v3 Archive with a missing report when view rendering fails and preserves its receipt|completes v3 Archive with a edited report when view rendering fails and preserves its receipt)",
+          "requiredNames": [
+            "completes v3 Archive with a missing report when view rendering fails and preserves its receipt",
+            "completes v3 Archive with a edited report when view rendering fails and preserves its receipt"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay"
+          ],
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay)$"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "requiredNames": [
+            "Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure",
+            "Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation"
+          ],
+          "namePattern": "^(?:Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure|Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation)$"
+        }
+      ]
+    },
+    {
+      "id": "issue-192-checks",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-test-pruning",
+      "record": "docs/research/2026-11-09-runtime-review-repair.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+          "namePattern": "executes literal argv, preserves child JSON/help flags, and records runtime provenance|persists a bound SDK Action across check start and completion",
+          "requiredNames": [
+            "executes literal argv, preserves child JSON/help flags, and records runtime provenance",
+            "persists a bound SDK Action across check start and completion"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-guard.test.ts",
+          "namePattern": "(?:preserves an explicit failed build instead of replacing it with an inferred command)",
+          "requiredNames": [
+            "preserves an explicit failed build instead of replacing it with an inferred command"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-agent-delivery-repair.test.ts",
+          "requiredNames": [
+            "repairs archived Classic v2 delivery with platform reports without replaying commands or Archive"
+          ],
+          "namePattern": "^(?:repairs archived Classic v2 delivery with platform reports without replaying commands or Archive)$"
+        }
+      ]
+    },
+    {
+      "id": "native-240-archive-freshness",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-test-pruning",
+      "record": "docs/research/2026-11-09-runtime-review-repair.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "(?:blocks tracked implementation drift at Archive preflight and offers the original Verify repair path)",
+          "requiredNames": [
+            "blocks tracked implementation drift at Archive preflight and offers the original Verify repair path"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay"
+          ],
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay)$"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "requiredNames": [
+            "Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure",
+            "Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation"
+          ],
+          "namePattern": "^(?:Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure|Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation)$"
+        }
+      ]
+    }
+  ],
+  "removed": [
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "name": "rechecks Archive documents after executor output and before committing the outcome",
+      "original": "it('rechecks Archive documents after executor output and before committing the outcome', async () => {\n    await expect(\n      awaitingArchiveApplication('memory', () => {\n        const execute = nativeSdkArchivePreflightExecutor.execute;\n        vi.spyOn(nativeSdkArchivePreflightExecutor, 'execute').mockImplementation(\n          async (action, context, run) => {\n            const output = await execute(action, context, run);\n            const paths = await nativeProjectPaths(context!.projectRoot!, 'docs');\n            const brief = path.join(paths.changesDir, 'sdk-shape', 'brief.md');\n            await fs.writeFile(\n              brief,\n              (await fs.readFile(brief, 'utf8')).replace(\n                'The selected workflow resumes.',\n                'The selected workflow changed after preflight.',\n              ),\n            );\n            return output;\n          },\n        );\n      }),\n    ).rejects.toThrow(/OUTCOME_REJECTED/u);\n  });"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "name": "does not enter Build when Shape documents change after approval",
+      "original": "it('does not enter Build when Shape documents change after approval', async () => {\n    const { root, paths, changeDir, runtime, run: prepared } = await preparedShape();\n    const wait = prepared.waits.at(-1)!;\n    const approved = await runtime.resolveWait({\n      runId: prepared.runId,\n      waitId: wait.id,\n      proposalHash: wait.proposalHash,\n      decisionId: 'shape-approved',\n      choice: 'approved',\n    });\n    const briefFile = path.join(changeDir, 'brief.md');\n    const brief = await fs.readFile(briefFile, 'utf8');\n    await fs.writeFile(\n      briefFile,\n      brief.replace('Preserve the selected workflow.', 'Preserve a different workflow.'),\n    );\n    await expect(\n      succeedLatestAction(\n        runtime,\n        approved,\n        await collectProposal(paths, approved.state as NativePortableState),\n        root,\n        'shape-stale',\n      ),\n    ).rejects.toThrow(/OUTCOME_REJECTED/);\n    const current = await runtime.inspect(approved.runId);\n    expect(current.state).toMatchObject({ phase: 'shape', status: 'await-user' });\n    expect(current.actions.some((action) => action.stepId === 'build.builder')).toBe(false);\n  });"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "name": "rejects candidate drift before v3 Archive publication after merging the revalidation Action",
+      "original": "it('rejects candidate drift before v3 Archive publication after merging the revalidation Action', async () => {\n  const prepared = await dispatchedVerifier(\n    [],\n    'sdk',\n    nativeApplication('3'),\n    true,\n    undefined,\n    async (root) => {\n      await fs.writeFile(path.join(root, 'implementation.js'), 'export const value = true;');\n    },\n  );\n  const { root, runtime, paths } = prepared;\n  const state = prepared.run.state as NativePortableState;\n  const run = await succeedLatestAction(\n    runtime,\n    prepared.run,\n    {\n      candidateId: state.builder_handoff!.candidate_id,\n      verifierExecutionRef: 'v3-drift-verifier',\n      response: {\n        kind: 'final-result',\n        result: {\n          iteration: state.loop.iteration,\n          attempt: state.loop.attempt,\n          verdict: 'pass',\n          acceptance: [{ id: 'A1', result: 'passed', reason: 'Verified original implementation.' }],\n          risks: [],\n          summary: 'Original candidate passed.',\n        },\n      },\n    },\n    root,\n    'v3-drift-result',\n    'v3-drift-verifier',\n  );\n  await fs.writeFile(path.join(root, 'implementation.js'), 'export const value = false;');\n  const wait = run.waits.at(-1)!;\n  await runtime.resolveWait({\n    runId: run.runId,\n    waitId: wait.id,\n    proposalHash: wait.proposalHash,\n    decisionId: 'v3-drift-approved',\n    choice: 'approved',\n  });\n  const archived = await runNativeCli(['archive', run.runId, '--project-root', root, '--json']);\n  expect(archived.exitCode).toBe(73);\n  expect((await runtime.inspect(run.runId)).state).toMatchObject({\n    phase: 'verify',\n    verification_result: 'pending',\n  });\n  expect(\n    await fs.stat(path.join(paths.specsDir, 'workflow', 'spec.md')).catch(() => null),\n  ).toBeNull();\n});"
+    },
+    {
+      "file": "test/app/native-runtime-dispatch.test.ts",
+      "name": "recovers a rejected Builder after formal Spec drift through the original failure receipt and reconfirms the same change",
+      "original": "it('recovers a rejected Builder after formal Spec drift through the original failure receipt and reconfirms the same change', async () => {\n    const f = await builderFixture();\n    await cli(f.root, f.requestFile);\n    const before = await inspectNativeSdkRun(f.root, f.name);\n    const spec = path.join(f.root, 'docs/comet/changes', f.name, 'specs/workflow/spec.md');\n    await fs.writeFile(spec, '# Workflow\\nThe workflow resumes and records an audit event.\\n');\n    await fs.writeFile(\n      f.requestFile,\n      JSON.stringify({\n        operation: 'record-outcome',\n        runId: f.name,\n        outcome: {\n          actionId: f.request.actionId,\n          attempt: f.request.attempt,\n          inputHash: f.request.inputHash,\n          claimToken: f.request.claimToken,\n          outcomeId: 'rejected-candidate',\n          status: 'succeeded',\n          output: {\n            summary: 'Implemented the fixture.',\n            addressedAcceptanceIds: ['A1'],\n            acceptanceReview: fixtureAcceptanceReview(['A1']),\n            checks: [],\n            knownLimits: [],\n            review: null,\n            submittedAt: new Date().toISOString(),\n            verificationChecks: [],\n          },\n        },\n      }),\n    );\n    const rejected = await runtimeDispatchCommand(\n      { application: 'native', projectRoot: f.root, request: f.requestFile },\n      { output: 'compact' },\n    );\n    expect(rejected.response.status).toBe('failed');\n    const recovery = rejected.response.recovery as {\n      code: string;\n      affectedPaths: string[];\n      request: { outcome: { actionId: string; claimToken: string; status: string } };\n      recoveryArgs: string[];\n    };\n    expect(recovery).toMatchObject({\n      code: 'shape-drift',\n      affectedPaths: [spec],\n      request: {\n        operation: 'record-outcome',\n        runId: f.name,\n        outcome: {\n          actionId: f.request.actionId,\n          claimToken: f.request.claimToken,\n          status: 'failed',\n        },\n      },\n    });\n    const rejectedRun = (await inspectNativeSdkRun(f.root, f.name)).run;\n    expect(rejectedRun.state).toEqual(before.run.state);\n    expect(rejectedRun.actions.map(({ id }) => id)).toEqual(before.run.actions.map(({ id }) => id));\n    expect(rejectedRun.actions.find(({ id }) => id === f.request.actionId)).toMatchObject({\n      status: 'running',\n      claim: { token: f.request.claimToken },\n      rejectedOutcomes: [{ code: 'OUTCOME_REJECTED' }],\n    });\n    await fs.writeFile(f.requestFile, JSON.stringify(recovery.request));\n    const previousExitCode = process.exitCode;\n    const logged = vi.spyOn(console, 'log').mockImplementation(() => undefined);\n    try {\n      await runRuntimeCli(\n        recovery.recoveryArgs\n          .slice(1)\n          .map((arg) => (arg === '<failure-outcome-request-json-file>' ? f.requestFile : arg)),\n      );\n      expect(process.exitCode, JSON.stringify(logged.mock.calls)).toBe(0);\n    } finally {\n      logged.mockRestore();\n      process.exitCode = previousExitCode;\n    }\n    const once = (await inspectNativeSdkRun(f.root, f.name)).run;\n    expect(\n      (\n        await runtimeDispatchCommand({\n          application: 'native',\n          projectRoot: f.root,\n          request: f.requestFile,\n        })\n      ).response.status,\n    ).toBe('succeeded');\n    expect((await inspectNativeSdkRun(f.root, f.name)).run).toEqual(once);\n    const status = JSON.parse(\n      (await runNativeCli(['status', f.name, '--project-root', f.root, '--json'])).stdout!,\n    );\n    const revise = status.data.continuation.commandAlternatives.find(\n      (entry: { name: string }) => entry.name === 'revise-requirements',\n    );\n    expect(revise).toBeDefined();\n    const args = revise.commandArgs\n      .slice(2)\n      .map((arg: string) =>\n        arg === '<summary>' ? 'The user explicitly requests reconfirming the edited Spec.' : arg,\n      );\n    const revised = await runNativeCli(args);\n    expect(revised.exitCode, revised.stdout || revised.stderr).toBe(0);\n    const after = await inspectNativeSdkRun(f.root, f.name);\n    expect(after.run.runId).toBe(before.run.runId);\n    expect(after.state.phase).toBe('shape');\n    expect(after.state.archived).toBe(false);\n    expect(after.run.actions.find(({ id }) => id === f.request.actionId)?.status).toBe('failed');\n  });"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-guard.test.ts",
+      "name": "lists workspace candidates instead of choosing when several packages build",
+      "original": "it('lists workspace candidates instead of choosing when several packages build', async () => {\n    const dir = await makeProject();\n    const cli = (...args: string[]) =>\n      withClassicCommandContext({ projectRoot: dir, invocationCwd: dir }, () =>\n        runClassicCli(args),\n      );\n    expect(\n      (\n        await cli(\n          'state',\n          'init',\n          'demo',\n          'hotfix',\n          '--isolation',\n          'current',\n          '--runtime',\n          'compat',\n        )\n      ).exitCode,\n    ).toBe(0);\n    const changeDir = path.join(dir, 'openspec/changes/demo');\n    const stateFile = path.join(changeDir, '.comet.yaml');\n    const state = parse(await fs.readFile(stateFile, 'utf8'));\n    await fs.writeFile(stateFile, stringify({ ...state, phase: 'build' }));\n    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] work <!-- comet-task:a -->\\n');\n    await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\\n');\n    await fs.writeFile(\n      path.join(dir, 'package.json'),\n      JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*'] }),\n    );\n    for (const name of ['app', 'lib']) {\n      await fs.mkdir(path.join(dir, 'packages', name), { recursive: true });\n      await fs.writeFile(\n        path.join(dir, 'packages', name, 'package.json'),\n        JSON.stringify({ name, scripts: { build: 'node -e \"process.exit(0)\"' } }),\n      );\n    }\n    const result = await cli('guard', 'demo', 'build');\n    expect(result.exitCode, result.stderr).toBe(1);\n    expect(result.stderr).toContain('several workspace packages declare one');\n    expect(result.stderr).toContain('packages/app, packages/lib');\n    expect(result.stderr).toContain('npm --prefix packages/app run build');\n  });"
+    }
+  ]
+}

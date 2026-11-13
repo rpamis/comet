@@ -339,7 +339,7 @@ it.each(['native', 'classic-full', 'classic-hotfix', 'classic-tweak'] as const)(
               extensions: [
                 {
                   id: 'artifact-review',
-                  afterStep: `${base.slice('classic-'.length)}.build.check.evidence`,
+                  afterStep: `${base.slice('classic-'.length)}.build.execute`,
                   skillId: binding.skillId,
                   artifactRefs: ['candidate.txt'],
                   validator: { id: 'business', version: '1' },

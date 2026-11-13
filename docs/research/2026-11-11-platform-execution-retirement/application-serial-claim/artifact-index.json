@@ -1,0 +1,26 @@
+{
+  "artifacts": [
+    {
+      "file": "docs/research/2026-11-11-platform-execution-retirement/application-serial-claim/registry.json",
+      "sha256": "43acdfe45964b0893c1dd5f76dac1075d305063228ee61e14f6392084604e570"
+    },
+    {
+      "file": "docs/research/2026-11-11-platform-execution-retirement/application-serial-claim/tests.json",
+      "sha256": "964ff067303d3590af01544f2cb683dd42586c62341831bd3c1ed2a9966dcc38"
+    },
+    {
+      "file": "docs/research/2026-11-11-platform-execution-retirement/application-serial-claim/mapping.json",
+      "sha256": "2aa5fbc2cdedd13c742e71b8947f788ea14eaada5bd788c56471ce2e24321d4c"
+    },
+    {
+      "file": "docs/research/2026-11-11-platform-execution-retirement/application-serial-claim/patch.patch",
+      "sha256": "695368d200195e2e376a4b5d847f4a0f308a8f155ab3e4d55b4d66f61d06ca02"
+    }
+  ],
+  "result": {
+    "passed": 8,
+    "failed": 0,
+    "skipped": 0
+  },
+  "effectiveCaseIds": []
+}

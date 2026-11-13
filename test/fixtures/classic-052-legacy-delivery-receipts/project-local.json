@@ -1,0 +1,69 @@
+{
+  "schema": "comet.fixture.published-classic-legacy-delivery.v1",
+  "provenance": {
+    "package": "@rpamis/comet@0.5.2",
+    "operation": "Actual @rpamis/comet@0.5.2 writeClassicDelivery + recordClassicDocumentArchive; resulting authentic receipt relocated byte-for-byte to a legacy path that the same published reader accepts.",
+    "graphOrRunForged": false,
+    "authorizationSimulation": "The fixed safe local/archive-only authorization is an explicit simulated User decision passed to the actual published public writer. Actual receipt, archive material and Git commit are produced by that writer/Git, never fabricated.",
+    "currentOriginalPublicCliRed": {
+      "status": 0,
+      "stdout": "{\"status\":\"imported\",\"imported\":[],\"preservedSource\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-legacy-receipt-red-OQ7AVW\\\\project-local\\\\.comet\\\\runtime\",\"classic\":[]}\n",
+      "stderr": ""
+    },
+    "originalRead": {
+      "delivery": {
+        "action": "archive-only",
+        "schemaVersion": 1,
+        "changeIdentity": "run:legacy-document-run",
+        "authorizationId": "d0ebaef8-6892-4498-8b60-80438dc47911"
+      },
+      "verification": {
+        "status": "complete",
+        "archiveVerified": true
+      }
+    },
+    "originalReceipt": {
+      "schemaVersion": 1,
+      "changeIdentity": "run:legacy-document-run",
+      "authorizationId": "d0ebaef8-6892-4498-8b60-80438dc47911",
+      "archiveFiles": {
+        "openspec/changes/demo/.comet/delivery.json": "59d2a6596e0ccd5c4e3724ee927400d9450d4dbda58de1012cf83b196e6bcb24",
+        "openspec/changes/demo/.comet/main-specs.json": "edbfd0512b825ffa4daeb974799528787dd5651de1ff63f5a195ecff238fb109",
+        "openspec/changes/demo/.comet.yaml": "d58221ca9418e3fff7035d2be2a28250e2ecdc089266237e20591923e0e01224",
+        "openspec/changes/demo/proposal.md": "2912f2410b78c0132b132b7b3b8ac34b9162cbc539ed8666d92e882c6edc5c73"
+      }
+    }
+  },
+  "location": "project-local",
+  "receiptRef": ".comet/classic-deliveries/c4e7ddc7485732d10dfccfc4b6b1b4fba7fe626371959dc6447b07a19db377a9.json",
+  "materials": [
+    {
+      "ref": ".comet/classic-deliveries/c4e7ddc7485732d10dfccfc4b6b1b4fba7fe626371959dc6447b07a19db377a9.json",
+      "bytesBase64": "ewogICJzY2hlbWFWZXJzaW9uIjogMSwKICAiY2hhbmdlSWRlbnRpdHkiOiAicnVuOmxlZ2FjeS1kb2N1bWVudC1ydW4iLAogICJhdXRob3JpemF0aW9uSWQiOiAiZDBlYmFlZjgtNjg5Mi00NDk4LThiNjAtODA0MzhkYzQ3OTExIiwKICAiYXJjaGl2ZUZpbGVzIjogewogICAgIm9wZW5zcGVjL2NoYW5nZXMvZGVtby8uY29tZXQvZGVsaXZlcnkuanNvbiI6ICI1OWQyYTY1OTZlMGNjZDVjNGUzNzI0ZWU5Mjc0MDBkOTQ1MGQ0ZGJkYTU4ZGUxMDEyY2Y4M2IxOTZlNmJjYjI0IiwKICAgICJvcGVuc3BlYy9jaGFuZ2VzL2RlbW8vLmNvbWV0L21haW4tc3BlY3MuanNvbiI6ICJlZGJmZDA1MTJiODI1ZmZhNGRhZWI5NzQ3OTk1Mjg3ODdkZDU2NTFkZTFmZjYzZjVhMTk1ZWNmZjIzOGZiMTA5IiwKICAgICJvcGVuc3BlYy9jaGFuZ2VzL2RlbW8vLmNvbWV0LnlhbWwiOiAiZDU4MjIxY2E5NDE4ZTNmZmY3MDM1ZDJiZTJhMjgyNTBlMmVjZGMwODkyNjYyMzdlMjA1OTE5MjNlMGUwMTIyNCIsCiAgICAib3BlbnNwZWMvY2hhbmdlcy9kZW1vL3Byb3Bvc2FsLm1kIjogIjI5MTJmMjQxMGI3OGMwMTMyYjEzMmI3YjNiOGFjMzRiOTE2MmNiYzUzOWVkODY2NmQ5MmU4ODJjNmVkYzVjNzMiCiAgfQp9Cg=="
+    },
+    {
+      "ref": ".comet/config.yaml",
+      "bytesBase64": "c2NoZW1hOiBjb21ldC5wcm9qZWN0LnYxCmRlZmF1bHRfd29ya2Zsb3c6IGNsYXNzaWMKYW1iaWVudF9yZXN1bWU6IHRydWUKY2hhbmdlX3dhbGt0aHJvdWdoOiB0cnVlCm1lbW9yeToKICBsZWFybmluZzogdHJ1ZQogIHJldHJpZXZhbDogdHJ1ZQprbm93bGVkZ2U6CiAgcHJvdmlkZXI6IGxvY2FsCm5hdGl2ZToKICBhcnRpZmFjdF9yb290OiBkb2NzCiAgbGFuZ3VhZ2U6IGVuCiAgY2xhcmlmaWNhdGlvbl9tb2RlOiBiYXRjaAogIGFyY2hpdmVfY29uZmlybWF0aW9uOiBhdXRvbWF0aWMKICBtYXhfdmVyaWZ5X2ZhaWx1cmVzOiA1CiAgc25hcHNob3Q6CiAgICBpbmNsdWRlOgogICAgICAtICIqKi8qIgogICAgZXhjbHVkZToKICAgICAgLSAuYWdlbnRzL3NraWxscy8qKgogICAgICAtIC5hbWF6b25xL3NraWxscy8qKgogICAgICAtIC5hdWdtZW50L3NraWxscy8qKgogICAgICAtIC5ib2Ivc2tpbGxzLyoqCiAgICAgIC0gLmNsYXVkZS9za2lsbHMvKioKICAgICAgLSAuY2xpbmUvc2tpbGxzLyoqCiAgICAgIC0gLmNvZGVidWRkeS9za2lsbHMvKioKICAgICAgLSAuY29kZXgvc2tpbGxzLyoqCiAgICAgIC0gLmNvbnRpbnVlL3NraWxscy8qKgogICAgICAtIC5jb3NwZWMvc2tpbGxzLyoqCiAgICAgIC0gLmNydXNoL3NraWxscy8qKgogICAgICAtIC5jdXJzb3Ivc2tpbGxzLyoqCiAgICAgIC0gLmRldmluL3NraWxscy8qKgogICAgICAtIC5kc2gvc2tpbGxzLyoqCiAgICAgIC0gLmZhY3Rvcnkvc2tpbGxzLyoqCiAgICAgIC0gLmZvcmdlL3NraWxscy8qKgogICAgICAtIC5nZW1pbmkvc2tpbGxzLyoqCiAgICAgIC0gLmdpdGh1Yi9za2lsbHMvKioKICAgICAgLSAuZ3Jvay9za2lsbHMvKioKICAgICAgLSAuaWZsb3cvc2tpbGxzLyoqCiAgICAgIC0gLmp1bmllL3NraWxscy8qKgogICAgICAtIC5raWxvY29kZS9za2lsbHMvKioKICAgICAgLSAua2ltaS1jb2RlL3NraWxscy8qKgogICAgICAtIC5raXJvL3NraWxscy8qKgogICAgICAtIC5saW5nbWEvc2tpbGxzLyoqCiAgICAgIC0gLm1pbW9jb2RlL3NraWxscy8qKgogICAgICAtIC5taW5pbWF4L3NraWxscy8qKgogICAgICAtIC5vbXAvc2tpbGxzLyoqCiAgICAgIC0gLm9wZW5jb2RlL3NraWxscy8qKgogICAgICAtIC5waS9za2lsbHMvKioKICAgICAgLSAucHJpbWUvYWdlbnQvc2tpbGxzLyoqCiAgICAgIC0gLnFvZGVyL3NraWxscy8qKgogICAgICAtIC5xd2VuL3NraWxscy8qKgogICAgICAtIC5yb28vc2tpbGxzLyoqCiAgICAgIC0gLnRyYWUtY24vc2tpbGxzLyoqCiAgICAgIC0gLnRyYWUvc2tpbGxzLyoqCiAgICAgIC0gLndpbmRzdXJmL3NraWxscy8qKgogICAgICAtIC53b3JrYnVkZHkvc2tpbGxzLyoqCiAgICAgIC0gLnpjb2RlL3NraWxscy8qKgogICAgICAtICIqKi9fX3B5Y2FjaGVfXy8qKiIKICAgICAgLSAiKiovLmNhY2hlLyoqIgogICAgICAtICIqKi8uY3h4LyoqIgogICAgICAtICIqKi8uRFNfU3RvcmUiCiAgICAgIC0gIioqLy5leHRlcm5hbE5hdGl2ZUJ1aWxkLyoqIgogICAgICAtICIqKi8uZ3JhZGxlLyoqIgogICAgICAtICIqKi8uaWRlYS8qKiIKICAgICAgLSAiKiovLm15cHlfY2FjaGUvKioiCiAgICAgIC0gIioqLy5uZXh0LyoqIgogICAgICAtICIqKi8ubm94LyoqIgogICAgICAtICIqKi8ubnV4dC8qKiIKICAgICAgLSAiKiovLm54L2NhY2hlLyoqIgogICAgICAtICIqKi8ubnljX291dHB1dC8qKiIKICAgICAgLSAiKiovLm91dHB1dC8qKiIKICAgICAgLSAiKiovLnBhcmNlbC1jYWNoZS8qKiIKICAgICAgLSAiKiovLnB5dGVzdF9jYWNoZS8qKiIKICAgICAgLSAiKiovLnJ1ZmZfY2FjaGUvKioiCiAgICAgIC0gIioqLy5zdmVsdGUta2l0LyoqIgogICAgICAtICIqKi8udG94LyoqIgogICAgICAtICIqKi8udHVyYm8vKioiCiAgICAgIC0gIioqLy52ZW52LyoqIgogICAgICAtICIqKi8udml0ZS8qKiIKICAgICAgLSAiKiovLnZzY29kZS8qKiIKICAgICAgLSAiKiovKi5sb2ciCiAgICAgIC0gIioqLyoudHNidWlsZGluZm8iCiAgICAgIC0gIioqL2J1aWxkLyoqIgogICAgICAtICIqKi9jYXB0dXJlcy8qKiIKICAgICAgLSAiKiovY21ha2UtYnVpbGQtKi8qKiIKICAgICAgLSAiKiovQ01ha2VGaWxlcy8qKiIKICAgICAgLSAiKiovY292ZXJhZ2UvKioiCiAgICAgIC0gIioqL2Rpc3QvKioiCiAgICAgIC0gIioqL2xvZ3MvKioiCiAgICAgIC0gIioqL25vZGVfbW9kdWxlcy8qKiIKICAgICAgLSAiKiovb2JqLyoqIgogICAgICAtICIqKi9vdXQvKioiCiAgICAgIC0gIioqL3RhcmdldC8qKiIKICAgICAgLSAiKiovdGVtcC8qKiIKICAgICAgLSAiKiovVGh1bWJzLmRiIgogICAgICAtICIqKi90bXAvKioiCiAgICAgIC0gIioqL3ZlbnYvKioiCiAgICBtYXhfZmlsZXM6IDEwMDAwCiAgICBtYXhfdG90YWxfYnl0ZXM6IDEwNzM3NDE4MjQKICAgIG1heF9kdXJhdGlvbl9tczogNjAwMDAKICAgIG1heF9zZWxlY3Rpb25fcmVjb3JkczogMjAwMDAKd29ya2Zsb3dzOgogIC0gY2xhc3NpYwpjbGFzc2ljOgogIGFydGlmYWN0X2xheW91dDogbGVnYWN5Cg=="
+    },
+    {
+      "ref": ".comet/runtime",
+      "bytesBase64": "eyJzY2hlbWEiOiJjb21ldC53b3Jrc3BhY2UtcnVudGltZS1taWdyYXRpb24udjEiLCJ3b3Jrc3BhY2VJZCI6ImQ1ODY5Y2I1NDdmZTFkYWZmZTJmYzdkZGZiYjQ3Yjk2N2RkYTAwMTUwMzE4NzIxYjQ4NDEzYWJhZDcxZjllMmMiLCJzb3VyY2UiOiJDOlxcVXNlcnNcXEJFTllNXFxBcHBEYXRhXFxMb2NhbFxcVGVtcFxcY2xhc3NpYy1sZWdhY3ktcmVjZWlwdC1yZWQtT1E3QVZXXFxwcm9qZWN0LWxvY2FsXFwuY29tZXRcXHJ1bnRpbWUiLCJ0YXJnZXQiOiJDOlxcVXNlcnNcXEJFTllNXFxBcHBEYXRhXFxMb2NhbFxcVGVtcFxcY2xhc3NpYy1sZWdhY3ktcmVjZWlwdC1yZWQtT1E3QVZXXFxwcm9qZWN0LWxvY2FsLWRhdGFcXHdvcmtzcGFjZXNcXGQ1ODY5Y2I1NDdmZTFkYWZmZTJmYzdkZGZiYjQ3Yjk2N2RkYTAwMTUwMzE4NzIxYjQ4NDEzYWJhZDcxZjllMmNcXHJ1bnRpbWUiLCJraW5kIjoiZGlyZWN0b3J5In0K"
+    },
+    {
+      "ref": "openspec/changes/demo/.comet/delivery.json",
+      "bytesBase64": "ewogICJhY3Rpb24iOiAiYXJjaGl2ZS1vbmx5IiwKICAic2NoZW1hVmVyc2lvbiI6IDEsCiAgImNoYW5nZUlkZW50aXR5IjogInJ1bjpsZWdhY3ktZG9jdW1lbnQtcnVuIiwKICAiYXV0aG9yaXphdGlvbklkIjogImQwZWJhZWY4LTY4OTItNDQ5OC04YjYwLTgwNDM4ZGM0NzkxMSIKfQo="
+    },
+    {
+      "ref": "openspec/changes/demo/.comet/main-specs.json",
+      "bytesBase64": "eyJzY2hlbWFWZXJzaW9uIjoxLCJmaWxlcyI6e319Cg=="
+    },
+    {
+      "ref": "openspec/changes/demo/.comet.yaml",
+      "bytesBase64": "cGhhc2U6IGFyY2hpdmUKdmVyaWZ5X3Jlc3VsdDogcGFzcwphcmNoaXZlZDogdHJ1ZQpydW5faWQ6IGxlZ2FjeS1kb2N1bWVudC1ydW4K"
+    },
+    {
+      "ref": "openspec/changes/demo/proposal.md",
+      "bytesBase64": "IyBQcm9wb3NhbApBY3R1YWwgcHVibGlzaGVkIGF1dGhvcml6YXRpb24gYW5kIHJlY2VpcHQuCg=="
+    }
+  ]
+}

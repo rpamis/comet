@@ -130,6 +130,38 @@ async function collectDoctorResults(
   return (await collectDoctorPayload(targetPath, scope)).results;
 }
 
+it('accepts a valid ZCode user Hook before and after global repair while diagnosing disabled Hooks', async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'doctor-zcode-global-'));
+  const platform = PLATFORMS.find((item) => item.id === 'zcode')!;
+  try {
+    await installManagedCometSkills(home, '.zcode');
+    await installCometHooksForPlatform(home, platform, 'global', 'native');
+    const hook = (payload: DoctorPayload) =>
+      payload.results.find((item) => item.check === 'hooks: ZCode (global)');
+    expect(hook(await collectDoctorPayload(home, 'global', home))).toMatchObject({
+      status: 'pass',
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await doctorCommand(home, { json: true, repair: true, scope: 'global', homeDir: home });
+    } finally {
+      log.mockRestore();
+    }
+    expect(hook(await collectDoctorPayload(home, 'global', home))).toMatchObject({
+      status: 'pass',
+    });
+    const file = path.join(home, '.zcode/cli/config.json');
+    const config = JSON.parse(await fs.readFile(file, 'utf8'));
+    config.hooks.enabled = false;
+    await fs.writeFile(file, JSON.stringify(config));
+    expect(hook(await collectDoctorPayload(home, 'global', home))).toMatchObject({
+      status: 'warn',
+    });
+  } finally {
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
 function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
@@ -822,51 +854,50 @@ describe('doctor command', () => {
     ).toBeUndefined();
   });
 
-  it('does not repair a project config transaction while its writer is still active', async () => {
-    await writeProjectConfig(tmpDir, defaultProjectConfig('before-live-write'));
-    let enterPublish!: () => void;
-    const publishEntered = new Promise<void>((resolve) => {
-      enterPublish = resolve;
-    });
-    let releasePublish!: () => void;
-    const publishRelease = new Promise<void>((resolve) => {
-      releasePublish = resolve;
-    });
-    const writer = writeWorkflowProjectConfig(tmpDir, defaultProjectConfig('after-live-write'), {
-      beforePublish: async () => {
-        enterPublish();
-        await publishRelease;
-      },
-    });
-    await publishEntered;
-
-    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    try {
-      await expect(
-        doctorCommand(tmpDir, {
+  it('repairs a real interrupted config transaction while ignoring legacy owner PID metadata', async () => {
+    for (const legacyOwner of [process.pid, 'retired-owner-metadata']) {
+      await writeProjectConfig(tmpDir, defaultProjectConfig('before-legacy-pid-recovery'));
+      const configPath = path.join(tmpDir, '.comet', 'config.yaml');
+      const previous = await fs.readFile(configPath, 'utf8');
+      const crashed = spawnSync(
+        process.execPath,
+        [path.resolve('test/helpers/project-config-crash-worker.mjs'), tmpDir],
+        { cwd: path.resolve('.'), encoding: 'utf8', timeout: 30000, windowsHide: true },
+      );
+      expect(crashed.status, crashed.stderr).toBe(73);
+      const journalFile = path.join(tmpDir, '.comet', 'config-write-transaction.json');
+      const fresh = JSON.parse(await fs.readFile(journalFile, 'utf8'));
+      // SIMULATED obsolete owner field on a real prepared/quarantined config WAL; business bytes are unchanged.
+      await fs.writeFile(journalFile, JSON.stringify({ ...fresh, owner_pid: legacyOwner }));
+      const originalJournal = await fs.readFile(journalFile, 'utf8');
+      await collectDoctorPayload(tmpDir);
+      expect(await fs.readFile(journalFile, 'utf8')).toBe(originalJournal);
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        await doctorCommand(tmpDir, {
           json: true,
           repair: true,
           scope: 'project',
           homeDir: tmpDir,
-        }),
-      ).rejects.toThrow(/transaction .* still active/iu);
-    } finally {
-      log.mockRestore();
-      releasePublish();
+        });
+        const repaired = JSON.parse(
+          log.mock.calls.map((call) => call.join(' ')).join('\n'),
+        ) as DoctorPayload;
+        expect(repaired.repaired).toContain('project config write transaction');
+      } finally {
+        log.mockRestore();
+      }
+      expect(await fs.readFile(configPath, 'utf8')).toBe(previous);
+      expect(fresh).not.toHaveProperty('owner_pid');
+      expect(
+        (await fs.readdir(path.join(tmpDir, '.comet'))).filter(
+          (entry) =>
+            entry.includes('config-write-transaction') ||
+            entry.endsWith('.next') ||
+            entry.endsWith('.quarantine'),
+        ),
+      ).toEqual([]);
     }
-    await writer;
-
-    await expect(
-      fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8'),
-    ).resolves.toContain('artifact_root: after-live-write');
-    expect(
-      (await fs.readdir(path.join(tmpDir, '.comet'))).filter(
-        (entry) =>
-          entry.includes('config-write-transaction') ||
-          entry.endsWith('.next') ||
-          entry.endsWith('.quarantine'),
-      ),
-    ).toEqual([]);
   });
 
   it('reports an owned Classic initialization and atomically quarantines it on rollback', async () => {
@@ -1856,6 +1887,41 @@ describe('doctor command', () => {
 
     await expect(readCometCurrentSelection(tmpDir)).resolves.toEqual({ status: 'missing' });
   });
+
+  it.each([true, false])(
+    'repairs a ZCode project selection only with a ready user Router (ready=%s)',
+    async (ready) => {
+      const platform = PLATFORMS.find((item) => item.id === 'zcode')!;
+      const home = path.join(tmpDir, 'home');
+      await installManagedCometSkills(tmpDir, '.zcode');
+      await writeProjectConfig(tmpDir, defaultProjectConfig('.'));
+      if (ready) {
+        await copyCometSkillsForPlatform(
+          home,
+          platform,
+          true,
+          'skills',
+          'global',
+          'copy',
+          'native',
+        );
+        await installCometHooksForPlatform(home, platform, 'global', 'native');
+      }
+      await writeCometCurrentSelection(tmpDir, {
+        schema: 'comet.selection.v2',
+        workflow: 'native',
+        change: 'missing-change',
+        branch: null,
+      });
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        await doctorCommand(tmpDir, { json: true, repair: true, scope: 'project', homeDir: home });
+      } finally {
+        log.mockRestore();
+      }
+      expect((await readCometCurrentSelection(tmpDir)).status).toBe(ready ? 'missing' : 'selected');
+    },
+  );
 
   it('reports a Hook JSON parse failure without rewriting the canonical config', async () => {
     const hookPath = path.join(tmpDir, '.claude', 'settings.local.json');

@@ -140,13 +140,13 @@ export async function writeWorkflowProjectConfigSource(
       throw new Error('Project config changed during final publish; successor was preserved');
     }
     if (transactionOpen) {
-      await repairWorkflowProjectConfigTransaction(root, { ownerId: transactionId });
+      await repairWorkflowProjectConfigTransaction(root);
       transactionOpen = false;
     }
   } catch (error) {
     if (transactionOpen) {
       try {
-        if (await repairWorkflowProjectConfigTransaction(root, { ownerId: transactionId })) {
+        if (await repairWorkflowProjectConfigTransaction(root)) {
           transactionOpen = false;
         }
       } catch {

@@ -1,0 +1,344 @@
+{
+  "temporary": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-partial-checkpoint-red-UqVswb",
+  "root": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-partial-checkpoint-red-UqVswb\\project",
+  "unmodifiedCurrentPublicCli": true,
+  "calls": [
+    {
+      "args": [
+        "state",
+        "init",
+        "demo",
+        "hotfix",
+        "--isolation",
+        "current"
+      ],
+      "status": 0,
+      "stdout": "{\"command\":\"state\",\"exitCode\":0,\"agent\":{\"phase\":\"open\",\"status\":\"running\",\"stateVersion\":null,\"workspace\":{\"cwd\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\"},\"continuation\":{\"kind\":\"action\",\"stepId\":\"hotfix.open\",\"actionId\":\"demo:1\",\"attempt\":1,\"inputHash\":\"0469d1efbc23d9026258b8ba6be8f05ad63e36ea99526ec4ce250af0918dba8f\",\"ref\":\"comet-hotfix\",\"schema\":\"comet.classic.continuation.v1\",\"cwd\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\",\"run\":{\"id\":\"demo\",\"revision\":1,\"status\":\"running\"},\"automatic\":true,\"contextRequest\":{\"phase\":\"open\",\"contextMode\":\"snapshot\",\"commandArgs\":[\"comet\",\"task\",\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\",\"--task\",\"<original-task>\",\"--phase\",\"open\",\"--session\",\"<receiving-session-id>\",\"--context-mode\",\"snapshot\",\"--workflow\",\"classic\",\"--change\",\"demo\",\"--json\"],\"instruction\":\"When the claim response includes contextDelivery, read context[].text without another retrieval; use contextActions.restore after context loss. Otherwise, on first entering this phase, handing off to a new Agent, or restoring context, the receiver runs this command once with its own session ID and the original task, then adds context[].text to context. Do not repeat during uninterrupted work. Pass applicable preferences and project constraints to implementers and reviewers. Load Skills using actual host capabilities; explain unavailable or incompatible choices. Delivery does not prove a Skill was loaded or followed; preferences do not replace Runtime checks or authorization. Continue with explicit instructions after empty or unavailable retrieval; do not loop on retries. Recover a missing task goal from the current proposal, specs and task scope. Give child Agents this phase, scope and request; each receiver retrieves context with its own session ID. Explain conflicts with confirmed execution, TDD or review configuration; change configuration through its existing approval flow. Do not silently replace fixed Skills or skip required reviews. Keep memory out of design handoff artifacts and approval hashes.\"},\"dispatch\":{\"commandArgs\":[\"comet\",\"runtime\",\"dispatch\",\"--application\",\"classic-hotfix\",\"--project-root\",\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\",\"--request\",\"<request-json-file>\",\"--json\"]},\"inspection\":{\"commandArgs\":[\"comet\",\"state\",\"next\",\"demo\",\"--details\",\"--json\"],\"actionInputPath\":\"data.run.actions[matching id].input\",\"instruction\":\"仅确需未给出的原始输入时读取。inputSummary 仅供宿主理解当前工作，不能替代原 Action input 提交或计算 inputHash；inputHash 始终绑定原始完整输入。\"},\"mode\":\"execute\",\"commandArgs\":null,\"requiredInputs\":[\"当前 change 的真实 OpenSpec 需求产物\"],\"skill\":\"comet-hotfix\",\"completion\":{\"commandArgs\":[\"comet\",\"guard\",\"demo\",\"open\",\"--json\"],\"requiredInputs\":[\"当前 change 的真实 OpenSpec 需求产物\"],\"instruction\":\"仅在当前 Skill 的真实工作完成且满足所列前提后提交。先完成 Open 需求产物，再预检并取得本次产物的用户批准。\"},\"instruction\":\"加载 comet-hotfix，仅完成 hotfix.open 的当前工作，并沿用本次 Run 与工作区。先完成 Open 需求产物，再预检并取得本次产物的用户批准。\",\"currentRef\":\"data.continuation.current\"},\"run\":{\"id\":\"demo\",\"revision\":1,\"status\":\"running\"}},\"data\":{\"change\":\"demo\",\"runtimeFormat\":\"sdk\",\"checksMode\":\"agent\",\"phase\":\"open\",\"nextAction\":{\"kind\":\"action\",\"stepId\":\"hotfix.open\",\"actionId\":\"demo:1\",\"attempt\":1,\"inputHash\":\"0469d1efbc23d9026258b8ba6be8f05ad63e36ea99526ec4ce250af0918dba8f\",\"ref\":\"comet-hotfix\"},\"continuation\":{\"kind\":\"action\",\"stepId\":\"hotfix.open\",\"actionId\":\"demo:1\",\"attempt\":1,\"inputHash\":\"0469d1efbc23d9026258b8ba6be8f05ad63e36ea99526ec4ce250af0918dba8f\",\"ref\":\"comet-hotfix\",\"schema\":\"comet.classic.continuation.v1\",\"cwd\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\",\"run\":{\"id\":\"demo\",\"revision\":1,\"status\":\"running\"},\"automatic\":true,\"contextRequest\":{\"phase\":\"open\",\"contextMode\":\"snapshot\",\"commandArgs\":[\"comet\",\"task\",\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\",\"--task\",\"<original-task>\",\"--phase\",\"open\",\"--session\",\"<receiving-session-id>\",\"--context-mode\",\"snapshot\",\"--workflow\",\"classic\",\"--change\",\"demo\",\"--json\"],\"instruction\":\"When the claim response includes contextDelivery, read context[].text without another retrieval; use contextActions.restore after context loss. Otherwise, on first entering this phase, handing off to a new Agent, or restoring context, the receiver runs this command once with its own session ID and the original task, then adds context[].text to context. Do not repeat during uninterrupted work. Pass applicable preferences and project constraints to implementers and reviewers. Load Skills using actual host capabilities; explain unavailable or incompatible choices. Delivery does not prove a Skill was loaded or followed; preferences do not replace Runtime checks or authorization. Continue with explicit instructions after empty or unavailable retrieval; do not loop on retries. Recover a missing task goal from the current proposal, specs and task scope. Give child Agents this phase, scope and request; each receiver retrieves context with its own session ID. Explain conflicts with confirmed execution, TDD or review configuration; change configuration through its existing approval flow. Do not silently replace fixed Skills or skip required reviews. Keep memory out of design handoff artifacts and approval hashes.\"},\"dispatch\":{\"commandArgs\":[\"comet\",\"runtime\",\"dispatch\",\"--application\",\"classic-hotfix\",\"--project-root\",\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\",\"--request\",\"<request-json-file>\",\"--json\"]},\"inspection\":{\"commandArgs\":[\"comet\",\"state\",\"next\",\"demo\",\"--details\",\"--json\"],\"actionInputPath\":\"data.run.actions[matching id].input\",\"instruction\":\"仅确需未给出的原始输入时读取。inputSummary 仅供宿主理解当前工作，不能替代原 Action input 提交或计算 inputHash；inputHash 始终绑定原始完整输入。\"},\"mode\":\"execute\",\"commandArgs\":null,\"requiredInputs\":[\"当前 change 的真实 OpenSpec 需求产物\"],\"skill\":\"comet-hotfix\",\"completion\":{\"commandArgs\":[\"comet\",\"guard\",\"demo\",\"open\",\"--json\"],\"requiredInputs\":[\"当前 change 的真实 OpenSpec 需求产物\"],\"instruction\":\"仅在当前 Skill 的真实工作完成且满足所列前提后提交。先完成 Open 需求产物，再预检并取得本次产物的用户批准。\"},\"instruction\":\"加载 comet-hotfix，仅完成 hotfix.open 的当前工作，并沿用本次 Run 与工作区。先完成 Open 需求产物，再预检并取得本次产物的用户批准。\",\"current\":{\"actions\":[{\"id\":\"demo:1\",\"stepId\":\"hotfix.open\",\"type\":\"invoke_skill\",\"ref\":\"comet-hotfix\",\"status\":\"pending\",\"attempt\":1,\"inputHash\":\"0469d1efbc23d9026258b8ba6be8f05ad63e36ea99526ec4ce250af0918dba8f\",\"requiredCapabilities\":[],\"contextRequest\":{\"phase\":\"open\",\"contextMode\":\"snapshot\",\"commandArgs\":[\"comet\",\"task\",\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\",\"--task\",\"<original-task>\",\"--phase\",\"open\",\"--session\",\"<receiving-session-id>\",\"--context-mode\",\"snapshot\",\"--workflow\",\"classic\",\"--change\",\"demo\",\"--json\"],\"instruction\":\"When the claim response includes contextDelivery, read context[].text without another retrieval; use contextActions.restore after context loss. Otherwise, on first entering this phase, handing off to a new Agent, or restoring context, the receiver runs this command once with its own session ID and the original task, then adds context[].text to context. Do not repeat during uninterrupted work. Pass applicable preferences and project constraints to implementers and reviewers. Load Skills using actual host capabilities; explain unavailable or incompatible choices. Delivery does not prove a Skill was loaded or followed; preferences do not replace Runtime checks or authorization. Continue with explicit instructions after empty or unavailable retrieval; do not loop on retries. Recover a missing task goal from the current proposal, specs and task scope. Give child Agents this phase, scope and request; each receiver retrieves context with its own session ID. Explain conflicts with confirmed execution, TDD or review configuration; change configuration through its existing approval flow. Do not silently replace fixed Skills or skip required reviews. Keep memory out of design handoff artifacts and approval hashes.\"},\"inputSummary\":{\"usage\":\"host-context-only\",\"scope\":{\"change\":\"demo\",\"changeDir\":\"openspec/changes/demo\",\"workspaceBaseline\":{\"ref\":\"b5b58c92-c8f3-43c2-921a-d20122151535\"}},\"configurationRef\":\"data.configuration\",\"artifactRefsRef\":\"data.artifactRefs\",\"taskStateRef\":\"data.taskState\",\"approvalsRef\":\"data.continuation.current.approvals\"}}],\"waits\":[],\"evidenceWaits\":[],\"approvals\":[]}},\"configuration\":{\"archiveConfirmation\":null,\"archived\":false,\"autoTransition\":true,\"baseRef\":null,\"boundBranch\":\"main\",\"branchStatus\":\"pending\",\"buildMode\":\"direct\",\"buildPause\":null,\"classicMigration\":null,\"classicProfile\":null,\"contextCompression\":\"off\",\"createdAt\":\"2026-11-11\",\"designDoc\":null,\"directOverride\":null,\"handoffContext\":null,\"handoffHash\":null,\"isolation\":\"current\",\"language\":\"en\",\"phase\":\"open\",\"plan\":null,\"reviewMode\":\"off\",\"subagentDispatch\":null,\"tddMode\":\"direct\",\"verificationReport\":null,\"verifiedAt\":null,\"verifyFailures\":0,\"verifyMode\":\"light\",\"verifyResult\":\"pending\",\"workflow\":\"hotfix\"},\"delivery\":null,\"projectRoot\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\",\"workspace\":{\"projectRoot\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\"},\"run\":{\"id\":\"demo\",\"runId\":\"demo\",\"revision\":1,\"status\":\"running\",\"actions\":[{\"id\":\"demo:1\",\"stepId\":\"hotfix.open\",\"type\":\"invoke_skill\",\"ref\":\"comet-hotfix\",\"status\":\"pending\",\"attempt\":1,\"inputHash\":\"0469d1efbc23d9026258b8ba6be8f05ad63e36ea99526ec4ce250af0918dba8f\",\"requiredCapabilities\":[]}],\"evidenceWaits\":[],\"waits\":[]},\"diagnostics\":{\"stateReadable\":true,\"executionReconciled\":true,\"storageSettled\":true,\"healthy\":true,\"issues\":[]},\"changeDir\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\\\\openspec\\\\changes\\\\demo\",\"layout\":{\"schema\":\"comet.classic-layout.v1\",\"openSpecRoot\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\\\\openspec\",\"changesRoot\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\\\\openspec\\\\changes\",\"archiveRoot\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\\\\openspec\\\\changes\\\\archive\",\"specsRoot\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\\\\openspec\\\\specs\",\"superpowersRoot\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\\\\docs\\\\superpowers\"},\"artifactRefs\":{\"change\":\"openspec/changes/demo\",\"tasks\":\"openspec/changes/demo/tasks.md\",\"designDoc\":\"openspec/changes/demo/design.md\",\"plan\":null,\"plansRoot\":\"docs/superpowers/plans\",\"handoffContext\":null},\"configurationReadiness\":{\"missingFields\":[],\"invalidFields\":[]},\"taskState\":{\"authority\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\\\\openspec\\\\changes\\\\demo\\\\tasks.md\",\"exists\":false,\"total\":0,\"completed\":0,\"needsIds\":false,\"next\":null},\"nextTask\":null,\"planMapping\":{\"status\":\"ready\",\"unmappedCount\":0},\"coordination\":{\"path\":null,\"stale\":false},\"requiredFiles\":[\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\\\\openspec\\\\changes\\\\demo\\\\tasks.md\"]},\"summary\":\"\\u001b[32mInitialized: openspec/changes/demo (workflow=hotfix, runtime=sdk)\\u001b[0m\",\"next\":{\"command\":\"/comet-hotfix\"},\"stdout\":\"\\u001b[32mInitialized: openspec/changes/demo (workflow=hotfix, runtime=sdk)\\u001b[0m\\nNEXT: /comet-hotfix\\n\"}\n",
+      "stderr": "",
+      "error": null
+    },
+    {
+      "args": [
+        "state",
+        "set",
+        "demo",
+        "language",
+        "zh-CN"
+      ],
+      "status": 0,
+      "stdout": "{\"command\":\"state\",\"exitCode\":0,\"agent\":{\"phase\":null,\"status\":null,\"stateVersion\":null,\"workspace\":{\"cwd\":null},\"continuation\":null},\"data\":{\"change\":\"demo\",\"updated\":{\"language\":\"zh-CN\"}},\"stderr\":\"\\u001b[32m[SET] language=zh-CN\\u001b[0m\"}\n",
+      "stderr": "",
+      "error": null
+    },
+    {
+      "args": [
+        "state",
+        "next",
+        "demo"
+      ],
+      "status": 0,
+      "stdout": "{\"command\":\"state\",\"exitCode\":0,\"agent\":{\"phase\":\"build\",\"status\":\"running\",\"stateVersion\":null,\"workspace\":{\"cwd\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\"},\"continuation\":{\"kind\":\"action\",\"stepId\":\"hotfix.open\",\"actionId\":\"demo:1\",\"attempt\":1,\"inputHash\":\"0469d1efbc23d9026258b8ba6be8f05ad63e36ea99526ec4ce250af0918dba8f\",\"ref\":\"comet-hotfix\",\"schema\":\"comet.classic.continuation.v1\",\"cwd\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\",\"run\":{\"id\":\"demo\",\"revision\":1,\"status\":\"running\"},\"automatic\":true,\"contextRequest\":{\"phase\":\"build\",\"contextMode\":\"snapshot\",\"commandArgs\":[\"comet\",\"task\",\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\",\"--task\",\"<original-task>\",\"--phase\",\"build\",\"--session\",\"<receiving-session-id>\",\"--context-mode\",\"snapshot\",\"--workflow\",\"classic\",\"--change\",\"demo\",\"--json\"],\"instruction\":\"领取响应已有 contextDelivery 时直接读取 context[].text，不重复检索；上下文丢失时使用 contextActions.restore。其他情况下，首次进入本阶段、交接给新 Agent 或上下文恢复后，由接收方用自己的会话标识和原始请求执行一次本命令，将返回的 context[].text 加入上下文；普通连续执行无需重复获取。将适用偏好和项目约束交给执行者与审查者。Skill 由平台按实际可用能力加载；不兼容或不可用时说明原因。已交付偏好不代表已加载或遵循 Skill；偏好不能代替 Runtime 检查或阶段授权。空结果或获取失败时沿用明确指令继续，不循环重试。 原始请求缺失时从当前 proposal、specs 和任务范围恢复目标。子代理接收本阶段、任务范围和此请求后，以自己的会话标识获取上下文。偏好与已确认的执行方式、TDD 或审查配置冲突时说明差异，配置变更仍走现有确认流程；不静默替换固定 Skill 或跳过必需审查。记忆不写入设计交接产物或批准哈希。\"},\"dispatch\":{\"commandArgs\":[\"comet\",\"runtime\",\"dispatch\",\"--application\",\"classic-hotfix\",\"--project-root\",\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\",\"--request\",\"<request-json-file>\",\"--json\"]},\"inspection\":{\"commandArgs\":[\"comet\",\"state\",\"next\",\"demo\",\"--details\",\"--json\"],\"actionInputPath\":\"data.run.actions[matching id].input\",\"instruction\":\"仅确需未给出的原始输入时读取。inputSummary 仅供宿主理解当前工作，不能替代原 Action input 提交或计算 inputHash；inputHash 始终绑定原始完整输入。\"},\"mode\":\"reconcile\",\"commandArgs\":[\"comet\",\"state\",\"propose-escalation\",\"demo\",\"--reason\",\"<scope-change>\",\"--json\"],\"requiredInputs\":[],\"skill\":\"comet-hotfix\",\"instruction\":\"Classic preset requires its accepted Open step；Propose the revised scope and obtain a fresh explicit decision.\",\"currentRef\":\"data.continuation.current\"},\"run\":{\"id\":\"demo\",\"revision\":1,\"status\":\"running\"}},\"data\":{\"change\":\"demo\",\"runtimeFormat\":\"sdk\",\"checksMode\":\"agent\",\"phase\":\"build\",\"nextAction\":{\"kind\":\"action\",\"stepId\":\"hotfix.open\",\"actionId\":\"demo:1\",\"attempt\":1,\"inputHash\":\"0469d1efbc23d9026258b8ba6be8f05ad63e36ea99526ec4ce250af0918dba8f\",\"ref\":\"comet-hotfix\"},\"continuation\":{\"kind\":\"action\",\"stepId\":\"hotfix.open\",\"actionId\":\"demo:1\",\"attempt\":1,\"inputHash\":\"0469d1efbc23d9026258b8ba6be8f05ad63e36ea99526ec4ce250af0918dba8f\",\"ref\":\"comet-hotfix\",\"schema\":\"comet.classic.continuation.v1\",\"cwd\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\",\"run\":{\"id\":\"demo\",\"revision\":1,\"status\":\"running\"},\"automatic\":true,\"contextRequest\":{\"phase\":\"build\",\"contextMode\":\"snapshot\",\"commandArgs\":[\"comet\",\"task\",\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\",\"--task\",\"<original-task>\",\"--phase\",\"build\",\"--session\",\"<receiving-session-id>\",\"--context-mode\",\"snapshot\",\"--workflow\",\"classic\",\"--change\",\"demo\",\"--json\"],\"instruction\":\"领取响应已有 contextDelivery 时直接读取 context[].text，不重复检索；上下文丢失时使用 contextActions.restore。其他情况下，首次进入本阶段、交接给新 Agent 或上下文恢复后，由接收方用自己的会话标识和原始请求执行一次本命令，将返回的 context[].text 加入上下文；普通连续执行无需重复获取。将适用偏好和项目约束交给执行者与审查者。Skill 由平台按实际可用能力加载；不兼容或不可用时说明原因。已交付偏好不代表已加载或遵循 Skill；偏好不能代替 Runtime 检查或阶段授权。空结果或获取失败时沿用明确指令继续，不循环重试。 原始请求缺失时从当前 proposal、specs 和任务范围恢复目标。子代理接收本阶段、任务范围和此请求后，以自己的会话标识获取上下文。偏好与已确认的执行方式、TDD 或审查配置冲突时说明差异，配置变更仍走现有确认流程；不静默替换固定 Skill 或跳过必需审查。记忆不写入设计交接产物或批准哈希。\"},\"dispatch\":{\"commandArgs\":[\"comet\",\"runtime\",\"dispatch\",\"--application\",\"classic-hotfix\",\"--project-root\",\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\",\"--request\",\"<request-json-file>\",\"--json\"]},\"inspection\":{\"commandArgs\":[\"comet\",\"state\",\"next\",\"demo\",\"--details\",\"--json\"],\"actionInputPath\":\"data.run.actions[matching id].input\",\"instruction\":\"仅确需未给出的原始输入时读取。inputSummary 仅供宿主理解当前工作，不能替代原 Action input 提交或计算 inputHash；inputHash 始终绑定原始完整输入。\"},\"mode\":\"reconcile\",\"commandArgs\":[\"comet\",\"state\",\"propose-escalation\",\"demo\",\"--reason\",\"<scope-change>\",\"--json\"],\"requiredInputs\":[],\"skill\":\"comet-hotfix\",\"instruction\":\"Classic preset requires its accepted Open step；Propose the revised scope and obtain a fresh explicit decision.\",\"current\":{\"actions\":[{\"id\":\"demo:1\",\"stepId\":\"hotfix.open\",\"type\":\"invoke_skill\",\"ref\":\"comet-hotfix\",\"status\":\"pending\",\"attempt\":1,\"inputHash\":\"0469d1efbc23d9026258b8ba6be8f05ad63e36ea99526ec4ce250af0918dba8f\",\"requiredCapabilities\":[],\"contextRequest\":{\"phase\":\"build\",\"contextMode\":\"snapshot\",\"commandArgs\":[\"comet\",\"task\",\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\",\"--task\",\"<original-task>\",\"--phase\",\"build\",\"--session\",\"<receiving-session-id>\",\"--context-mode\",\"snapshot\",\"--workflow\",\"classic\",\"--change\",\"demo\",\"--json\"],\"instruction\":\"领取响应已有 contextDelivery 时直接读取 context[].text，不重复检索；上下文丢失时使用 contextActions.restore。其他情况下，首次进入本阶段、交接给新 Agent 或上下文恢复后，由接收方用自己的会话标识和原始请求执行一次本命令，将返回的 context[].text 加入上下文；普通连续执行无需重复获取。将适用偏好和项目约束交给执行者与审查者。Skill 由平台按实际可用能力加载；不兼容或不可用时说明原因。已交付偏好不代表已加载或遵循 Skill；偏好不能代替 Runtime 检查或阶段授权。空结果或获取失败时沿用明确指令继续，不循环重试。 原始请求缺失时从当前 proposal、specs 和任务范围恢复目标。子代理接收本阶段、任务范围和此请求后，以自己的会话标识获取上下文。偏好与已确认的执行方式、TDD 或审查配置冲突时说明差异，配置变更仍走现有确认流程；不静默替换固定 Skill 或跳过必需审查。记忆不写入设计交接产物或批准哈希。\"},\"inputSummary\":{\"usage\":\"host-context-only\",\"scope\":{\"change\":\"demo\",\"changeDir\":\"openspec/changes/demo\",\"workspaceBaseline\":{\"ref\":\"b5b58c92-c8f3-43c2-921a-d20122151535\"}},\"configurationRef\":\"data.configuration\",\"artifactRefsRef\":\"data.artifactRefs\",\"taskStateRef\":\"data.taskState\",\"approvalsRef\":\"data.continuation.current.approvals\"}}],\"waits\":[],\"evidenceWaits\":[],\"approvals\":[]}},\"configuration\":{\"archiveConfirmation\":null,\"archived\":false,\"autoTransition\":true,\"baseRef\":null,\"boundBranch\":\"main\",\"branchStatus\":\"pending\",\"buildMode\":\"direct\",\"buildPause\":null,\"classicMigration\":null,\"classicProfile\":null,\"contextCompression\":\"off\",\"createdAt\":\"2026-11-11\",\"designDoc\":null,\"directOverride\":null,\"handoffContext\":null,\"handoffHash\":null,\"isolation\":\"current\",\"language\":\"zh-CN\",\"phase\":\"build\",\"plan\":null,\"reviewMode\":\"off\",\"subagentDispatch\":null,\"tddMode\":\"direct\",\"verificationReport\":null,\"verifiedAt\":null,\"verifyFailures\":0,\"verifyMode\":\"light\",\"verifyResult\":\"pending\",\"workflow\":\"hotfix\"},\"delivery\":null,\"projectRoot\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\",\"workspace\":{\"projectRoot\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\"},\"run\":{\"id\":\"demo\",\"runId\":\"demo\",\"revision\":1,\"status\":\"running\",\"actions\":[{\"id\":\"demo:1\",\"stepId\":\"hotfix.open\",\"type\":\"invoke_skill\",\"ref\":\"comet-hotfix\",\"status\":\"pending\",\"attempt\":1,\"inputHash\":\"0469d1efbc23d9026258b8ba6be8f05ad63e36ea99526ec4ce250af0918dba8f\",\"requiredCapabilities\":[]}],\"evidenceWaits\":[],\"waits\":[]},\"diagnostics\":{\"stateReadable\":true,\"executionReconciled\":true,\"storageSettled\":true,\"healthy\":false,\"issues\":[{\"code\":\"CLASSIC_EVIDENCE_DRIFT\",\"message\":\"Classic preset requires its accepted Open step\",\"remediation\":\"Propose the revised scope and obtain a fresh explicit decision.\",\"commandArgs\":[\"comet\",\"state\",\"propose-escalation\",\"demo\",\"--reason\",\"<scope-change>\"]}]},\"issues\":[{\"code\":\"CLASSIC_EVIDENCE_DRIFT\",\"message\":\"Classic preset requires its accepted Open step\",\"remediation\":\"Propose the revised scope and obtain a fresh explicit decision.\",\"commandArgs\":[\"comet\",\"state\",\"propose-escalation\",\"demo\",\"--reason\",\"<scope-change>\"]}],\"recoveryActions\":[{\"commandArgs\":[\"comet\",\"state\",\"propose-escalation\",\"demo\",\"--reason\",\"<scope-change>\"]}],\"changeDir\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\\\\openspec\\\\changes\\\\demo\",\"layout\":{\"schema\":\"comet.classic-layout.v1\",\"openSpecRoot\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\\\\openspec\",\"changesRoot\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\\\\openspec\\\\changes\",\"archiveRoot\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\\\\openspec\\\\changes\\\\archive\",\"specsRoot\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\\\\openspec\\\\specs\",\"superpowersRoot\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\\\\docs\\\\superpowers\"},\"artifactRefs\":{\"change\":\"openspec/changes/demo\",\"tasks\":\"openspec/changes/demo/tasks.md\",\"designDoc\":\"openspec/changes/demo/design.md\",\"plan\":null,\"plansRoot\":\"docs/superpowers/plans\",\"handoffContext\":null},\"configurationReadiness\":{\"missingFields\":[],\"invalidFields\":[]},\"taskState\":{\"authority\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\\\\openspec\\\\changes\\\\demo\\\\tasks.md\",\"exists\":false,\"total\":0,\"completed\":0,\"needsIds\":false,\"next\":null},\"nextTask\":null,\"planMapping\":{\"status\":\"ready\",\"unmappedCount\":0},\"coordination\":{\"path\":null,\"stale\":false},\"requiredFiles\":[\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\classic-partial-checkpoint-red-UqVswb\\\\project\\\\openspec\\\\changes\\\\demo\\\\tasks.md\"]},\"summary\":\"NEXT: reconcile\",\"next\":{\"command\":\"comet state propose-escalation demo --reason '<scope-change>' --json\"},\"stdout\":\"NEXT: reconcile\\nClassic preset requires its accepted Open step；Propose the revised scope and obtain a fresh explicit decision.\\nCOMMAND: comet state propose-escalation demo --reason '<scope-change>' --json\\n\"}\n",
+      "stderr": "",
+      "error": null
+    }
+  ],
+  "before": {
+    "checkpoint": {
+      "protocolVersion": 1,
+      "schemaVersion": 1,
+      "runId": "demo",
+      "revision": 2,
+      "workflow": {
+        "id": "comet-classic-hotfix",
+        "version": "2",
+        "hash": "5e0dd86793013d8f58054b9c320a5c13d086737c5bcdc2bf59bd311e7e72a1eb"
+      },
+      "definitionHashes": {
+        "[\"comet-classic-hotfix\",\"2\"]": "5e0dd86793013d8f58054b9c320a5c13d086737c5bcdc2bf59bd311e7e72a1eb"
+      },
+      "initialStateHash": "fbe70cc69899f003541291d1654771c27ac66f58d9779c9118c73b6011539184",
+      "input": {
+        "change": "demo",
+        "changeDir": "openspec/changes/demo",
+        "workspaceBaseline": {
+          "ref": "b5b58c92-c8f3-43c2-921a-d20122151535"
+        }
+      },
+      "state": {
+        "archiveConfirmation": null,
+        "archived": false,
+        "autoTransition": true,
+        "baseRef": null,
+        "boundBranch": "main",
+        "branchStatus": "pending",
+        "buildMode": "direct",
+        "buildPause": null,
+        "classicMigration": null,
+        "classicProfile": null,
+        "contextCompression": "off",
+        "createdAt": "2026-11-11",
+        "designDoc": null,
+        "directOverride": null,
+        "handoffContext": null,
+        "handoffHash": null,
+        "isolation": "current",
+        "language": "zh-CN",
+        "phase": "open",
+        "plan": null,
+        "reviewMode": "off",
+        "subagentDispatch": null,
+        "tddMode": "direct",
+        "verificationReport": null,
+        "verifiedAt": null,
+        "verifyFailures": 0,
+        "verifyMode": "light",
+        "verifyResult": "pending",
+        "workflow": "hotfix"
+      },
+      "status": "running",
+      "sequence": 1,
+      "actions": [
+        {
+          "attempt": 1,
+          "id": "demo:1",
+          "input": {
+            "input": {
+              "change": "demo",
+              "changeDir": "openspec/changes/demo",
+              "workspaceBaseline": {
+                "ref": "b5b58c92-c8f3-43c2-921a-d20122151535"
+              }
+            },
+            "outputs": {}
+          },
+          "inputHash": "0469d1efbc23d9026258b8ba6be8f05ad63e36ea99526ec4ce250af0918dba8f",
+          "protocolVersion": 1,
+          "receipts": [],
+          "reconciliations": [],
+          "ref": "comet-hotfix",
+          "requiredCapabilities": [],
+          "retry": "manual",
+          "runId": "demo",
+          "status": "pending",
+          "stepId": "hotfix.open",
+          "type": "invoke_skill"
+        }
+      ],
+      "actionContexts": {
+        "demo:1": {
+          "results": {},
+          "sequence": 1
+        }
+      },
+      "waits": [],
+      "ready": [],
+      "joins": {},
+      "outputs": {},
+      "children": [],
+      "lineage": []
+    },
+    "statePhase": "open",
+    "sourceBytesBase64": "IyBjb21ldC1leGVjdXRpb246IG1hbmFnZWQtcnVuCmNoYW5nZV9pZDogMDcxY2MwMWEtYTM3Yi00NTQxLTk0OGMtNzIxZWFmYTcwZWQ2CndvcmtmbG93OiBob3RmaXgKbGFuZ3VhZ2U6IHpoLUNOCnBoYXNlOiBvcGVuCmNvbnRleHRfY29tcHJlc3Npb246IG9mZgpidWlsZF9tb2RlOiBkaXJlY3QKYnVpbGRfcGF1c2U6IG51bGwKc3ViYWdlbnRfZGlzcGF0Y2g6IG51bGwKdGRkX21vZGU6IGRpcmVjdApyZXZpZXdfbW9kZTogb2ZmCmlzb2xhdGlvbjogY3VycmVudAp2ZXJpZnlfbW9kZTogbGlnaHQKYXV0b190cmFuc2l0aW9uOiB0cnVlCmJhc2VfcmVmOiBudWxsCmRlc2lnbl9kb2M6IG51bGwKcGxhbjogbnVsbAp2ZXJpZnlfcmVzdWx0OiBwZW5kaW5nCnZlcmlmeV9mYWlsdXJlczogMAp2ZXJpZmljYXRpb25fcmVwb3J0OiBudWxsCmJyYW5jaF9zdGF0dXM6IHBlbmRpbmcKY3JlYXRlZF9hdDogMjAyNi0xMS0xMQp2ZXJpZmllZF9hdDogbnVsbAphcmNoaXZlX2NvbmZpcm1hdGlvbjogbnVsbAphcmNoaXZlZDogZmFsc2UKYm91bmRfYnJhbmNoOiBtYWluCmRpcmVjdF9vdmVycmlkZTogbnVsbApoYW5kb2ZmX2NvbnRleHQ6IG51bGwKaGFuZG9mZl9oYXNoOiBudWxsCmNsYXNzaWNfcHJvZmlsZTogbnVsbApjbGFzc2ljX21pZ3JhdGlvbjogbnVsbApydW5fY2hlY2twb2ludDoKICBzY2hlbWE6IGNvbWV0LndvcmtmbG93LXJ1bi1jaGVja3BvaW50LnYxCiAgaGFzaDogZmVjOTI5NzkzMGQ4OGQzMTExNDFkNWU0ZjVjMTFiNzU5MGZhYzRiY2EyOTFlODc2NmUxMDA4ZDdhYjBiOTNiMwogIHJ1bjoKICAgIHByb3RvY29sVmVyc2lvbjogMQogICAgc2NoZW1hVmVyc2lvbjogMQogICAgcnVuSWQ6IGRlbW8KICAgIHJldmlzaW9uOiAxCiAgICB3b3JrZmxvdzoKICAgICAgaWQ6IGNvbWV0LWNsYXNzaWMtaG90Zml4CiAgICAgIHZlcnNpb246ICIyIgogICAgICBoYXNoOiA1ZTBkZDg2NzkzMDEzZDhmNTgwNTRiOWMzMjBhNWMxM2QwODY3MzdjNWJjZGMyYmY1OWJkMzExZTdlNzJhMWViCiAgICBkZWZpbml0aW9uSGFzaGVzOgogICAgICAnWyJjb21ldC1jbGFzc2ljLWhvdGZpeCIsIjIiXSc6IDVlMGRkODY3OTMwMTNkOGY1ODA1NGI5YzMyMGE1YzEzZDA4NjczN2M1YmNkYzJiZjU5YmQzMTFlN2U3MmExZWIKICAgIGluaXRpYWxTdGF0ZUhhc2g6IGZiZTcwY2M2OTg5OWYwMDM1NDEyOTFkMTY1NDc3MWMyN2FjNjZmNThkOTc3OWM5MTE4YzczYjYwMTE1MzkxODQKICAgIGlucHV0OgogICAgICBjaGFuZ2U6IGRlbW8KICAgICAgY2hhbmdlRGlyOiBvcGVuc3BlYy9jaGFuZ2VzL2RlbW8KICAgICAgd29ya3NwYWNlQmFzZWxpbmU6CiAgICAgICAgcmVmOiBiNWI1OGM5Mi1jOGYzLTQzYzItOTIxYS1kMjAxMjIxNTE1MzUKICAgIHN0YXRlOgogICAgICBhcmNoaXZlQ29uZmlybWF0aW9uOiBudWxsCiAgICAgIGFyY2hpdmVkOiBmYWxzZQogICAgICBhdXRvVHJhbnNpdGlvbjogdHJ1ZQogICAgICBiYXNlUmVmOiBudWxsCiAgICAgIGJvdW5kQnJhbmNoOiBtYWluCiAgICAgIGJyYW5jaFN0YXR1czogcGVuZGluZwogICAgICBidWlsZE1vZGU6IGRpcmVjdAogICAgICBidWlsZFBhdXNlOiBudWxsCiAgICAgIGNsYXNzaWNNaWdyYXRpb246IG51bGwKICAgICAgY2xhc3NpY1Byb2ZpbGU6IG51bGwKICAgICAgY29udGV4dENvbXByZXNzaW9uOiBvZmYKICAgICAgY3JlYXRlZEF0OiAyMDI2LTExLTExCiAgICAgIGRlc2lnbkRvYzogbnVsbAogICAgICBkaXJlY3RPdmVycmlkZTogbnVsbAogICAgICBoYW5kb2ZmQ29udGV4dDogbnVsbAogICAgICBoYW5kb2ZmSGFzaDogbnVsbAogICAgICBpc29sYXRpb246IGN1cnJlbnQKICAgICAgbGFuZ3VhZ2U6IHpoLUNOCiAgICAgIHBoYXNlOiBvcGVuCiAgICAgIHBsYW46IG51bGwKICAgICAgcmV2aWV3TW9kZTogb2ZmCiAgICAgIHN1YmFnZW50RGlzcGF0Y2g6IG51bGwKICAgICAgdGRkTW9kZTogZGlyZWN0CiAgICAgIHZlcmlmaWNhdGlvblJlcG9ydDogbnVsbAogICAgICB2ZXJpZmllZEF0OiBudWxsCiAgICAgIHZlcmlmeUZhaWx1cmVzOiAwCiAgICAgIHZlcmlmeU1vZGU6IGxpZ2h0CiAgICAgIHZlcmlmeVJlc3VsdDogcGVuZGluZwogICAgICB3b3JrZmxvdzogaG90Zml4CiAgICBzdGF0dXM6IHJ1bm5pbmcKICAgIHNlcXVlbmNlOiAxCiAgICBhY3Rpb25zOgogICAgICAtIGF0dGVtcHQ6IDEKICAgICAgICBpZDogZGVtbzoxCiAgICAgICAgaW5wdXQ6CiAgICAgICAgICBpbnB1dDoKICAgICAgICAgICAgY2hhbmdlOiBkZW1vCiAgICAgICAgICAgIGNoYW5nZURpcjogb3BlbnNwZWMvY2hhbmdlcy9kZW1vCiAgICAgICAgICAgIHdvcmtzcGFjZUJhc2VsaW5lOgogICAgICAgICAgICAgIHJlZjogYjViNThjOTItYzhmMy00M2MyLTkyMWEtZDIwMTIyMTUxNTM1CiAgICAgICAgICBvdXRwdXRzOiB7fQogICAgICAgIGlucHV0SGFzaDogMDQ2OWQxZWZiYzIzZDkwMjYyNThiOGJhNmJlOGYwNWFkNjNlMzZlYTk5NTI2ZWM0Y2UyNTBhZjA5MThkYmE4ZgogICAgICAgIHByb3RvY29sVmVyc2lvbjogMQogICAgICAgIHJlY2VpcHRzOiBbXQogICAgICAgIHJlY29uY2lsaWF0aW9uczogW10KICAgICAgICByZWY6IGNvbWV0LWhvdGZpeAogICAgICAgIHJlcXVpcmVkQ2FwYWJpbGl0aWVzOiBbXQogICAgICAgIHJldHJ5OiBtYW51YWwKICAgICAgICBydW5JZDogZGVtbwogICAgICAgIHN0YXR1czogcGVuZGluZwogICAgICAgIHN0ZXBJZDogaG90Zml4Lm9wZW4KICAgICAgICB0eXBlOiBpbnZva2Vfc2tpbGwKICAgIGFjdGlvbkNvbnRleHRzOgogICAgICBkZW1vOjE6CiAgICAgICAgcmVzdWx0czoge30KICAgICAgICBzZXF1ZW5jZTogMQogICAgd2FpdHM6IFtdCiAgICByZWFkeTogW10KICAgIGpvaW5zOiB7fQogICAgb3V0cHV0czoge30KICAgIGNoaWxkcmVuOiBbXQogICAgbGluZWFnZTogW10KICBzb3VyY2VSZXZpc2lvbjogMgogIHNvdXJjZUhhc2g6IDU4M2VlOWU2ZTk4ZjEyMjJkYzkxNmRjMDM4NTg2MTA3MmNmMjBmZmYwNjM4OGI5OGUwZjAzYzI2ODI2YjA5NjUK"
+  },
+  "injectedPartial": {
+    "protocolVersion": 1,
+    "schemaVersion": 1,
+    "runId": "demo",
+    "revision": 1,
+    "workflow": {
+      "id": "comet-classic-hotfix",
+      "version": "2",
+      "hash": "5e0dd86793013d8f58054b9c320a5c13d086737c5bcdc2bf59bd311e7e72a1eb"
+    },
+    "definitionHashes": {
+      "[\"comet-classic-hotfix\",\"2\"]": "5e0dd86793013d8f58054b9c320a5c13d086737c5bcdc2bf59bd311e7e72a1eb"
+    },
+    "initialStateHash": "fbe70cc69899f003541291d1654771c27ac66f58d9779c9118c73b6011539184",
+    "input": {
+      "change": "demo",
+      "changeDir": "openspec/changes/demo",
+      "workspaceBaseline": {
+        "ref": "b5b58c92-c8f3-43c2-921a-d20122151535"
+      }
+    },
+    "state": {
+      "archiveConfirmation": null,
+      "archived": false,
+      "autoTransition": true,
+      "baseRef": null,
+      "boundBranch": "main",
+      "branchStatus": "pending",
+      "buildMode": "direct",
+      "buildPause": null,
+      "classicMigration": null,
+      "classicProfile": null,
+      "contextCompression": "off",
+      "createdAt": "2026-11-11",
+      "designDoc": null,
+      "directOverride": null,
+      "handoffContext": null,
+      "handoffHash": null,
+      "isolation": "current",
+      "language": "zh-CN",
+      "phase": "build",
+      "plan": null,
+      "reviewMode": "off",
+      "subagentDispatch": null,
+      "tddMode": "direct",
+      "verificationReport": null,
+      "verifiedAt": null,
+      "verifyFailures": 0,
+      "verifyMode": "light",
+      "verifyResult": "pending",
+      "workflow": "hotfix"
+    },
+    "status": "running",
+    "sequence": 1,
+    "actions": [
+      {
+        "attempt": 1,
+        "id": "demo:1",
+        "input": {
+          "input": {
+            "change": "demo",
+            "changeDir": "openspec/changes/demo",
+            "workspaceBaseline": {
+              "ref": "b5b58c92-c8f3-43c2-921a-d20122151535"
+            }
+          },
+          "outputs": {}
+        },
+        "inputHash": "0469d1efbc23d9026258b8ba6be8f05ad63e36ea99526ec4ce250af0918dba8f",
+        "protocolVersion": 1,
+        "receipts": [],
+        "reconciliations": [],
+        "ref": "comet-hotfix",
+        "requiredCapabilities": [],
+        "retry": "manual",
+        "runId": "demo",
+        "status": "pending",
+        "stepId": "hotfix.open",
+        "type": "invoke_skill"
+      }
+    ],
+    "actionContexts": {
+      "demo:1": {
+        "results": {},
+        "sequence": 1
+      }
+    },
+    "waits": [],
+    "ready": [],
+    "joins": {},
+    "outputs": {},
+    "children": [],
+    "lineage": []
+  },
+  "after": {
+    "publicStatus": 0,
+    "statePhase": "build",
+    "runPhase": "build",
+    "sourceBytesBase64": "IyBjb21ldC1leGVjdXRpb246IG1hbmFnZWQtcnVuCmNoYW5nZV9pZDogMDcxY2MwMWEtYTM3Yi00NTQxLTk0OGMtNzIxZWFmYTcwZWQ2CndvcmtmbG93OiBob3RmaXgKbGFuZ3VhZ2U6IHpoLUNOCnBoYXNlOiBidWlsZApjb250ZXh0X2NvbXByZXNzaW9uOiBvZmYKYnVpbGRfbW9kZTogZGlyZWN0CmJ1aWxkX3BhdXNlOiBudWxsCnN1YmFnZW50X2Rpc3BhdGNoOiBudWxsCnRkZF9tb2RlOiBkaXJlY3QKcmV2aWV3X21vZGU6IG9mZgppc29sYXRpb246IGN1cnJlbnQKdmVyaWZ5X21vZGU6IGxpZ2h0CmF1dG9fdHJhbnNpdGlvbjogdHJ1ZQpiYXNlX3JlZjogbnVsbApkZXNpZ25fZG9jOiBudWxsCnBsYW46IG51bGwKdmVyaWZ5X3Jlc3VsdDogcGVuZGluZwp2ZXJpZnlfZmFpbHVyZXM6IDAKdmVyaWZpY2F0aW9uX3JlcG9ydDogbnVsbApicmFuY2hfc3RhdHVzOiBwZW5kaW5nCmNyZWF0ZWRfYXQ6IDIwMjYtMTEtMTEKdmVyaWZpZWRfYXQ6IG51bGwKYXJjaGl2ZV9jb25maXJtYXRpb246IG51bGwKYXJjaGl2ZWQ6IGZhbHNlCmJvdW5kX2JyYW5jaDogbWFpbgpkaXJlY3Rfb3ZlcnJpZGU6IG51bGwKaGFuZG9mZl9jb250ZXh0OiBudWxsCmhhbmRvZmZfaGFzaDogbnVsbApjbGFzc2ljX3Byb2ZpbGU6IG51bGwKY2xhc3NpY19taWdyYXRpb246IG51bGwKcnVuX2NoZWNrcG9pbnQ6CiAgc2NoZW1hOiBjb21ldC53b3JrZmxvdy1ydW4tY2hlY2twb2ludC52MQogIGhhc2g6IDc5ZDZjYjExNTJmZDQ1NjRkNTBkMjYzOTQ0ZDZkZGVjMWQzMGZhZjYyNjViNDAyMTQ1ZWIxNzA4MzBiZDNmNjcKICBydW46CiAgICBwcm90b2NvbFZlcnNpb246IDEKICAgIHNjaGVtYVZlcnNpb246IDEKICAgIHJ1bklkOiBkZW1vCiAgICByZXZpc2lvbjogMQogICAgd29ya2Zsb3c6CiAgICAgIGlkOiBjb21ldC1jbGFzc2ljLWhvdGZpeAogICAgICB2ZXJzaW9uOiAiMiIKICAgICAgaGFzaDogNWUwZGQ4Njc5MzAxM2Q4ZjU4MDU0YjljMzIwYTVjMTNkMDg2NzM3YzViY2RjMmJmNTliZDMxMWU3ZTcyYTFlYgogICAgZGVmaW5pdGlvbkhhc2hlczoKICAgICAgJ1siY29tZXQtY2xhc3NpYy1ob3RmaXgiLCIyIl0nOiA1ZTBkZDg2NzkzMDEzZDhmNTgwNTRiOWMzMjBhNWMxM2QwODY3MzdjNWJjZGMyYmY1OWJkMzExZTdlNzJhMWViCiAgICBpbml0aWFsU3RhdGVIYXNoOiBmYmU3MGNjNjk4OTlmMDAzNTQxMjkxZDE2NTQ3NzFjMjdhYzY2ZjU4ZDk3NzljOTExOGM3M2I2MDExNTM5MTg0CiAgICBpbnB1dDoKICAgICAgY2hhbmdlOiBkZW1vCiAgICAgIGNoYW5nZURpcjogb3BlbnNwZWMvY2hhbmdlcy9kZW1vCiAgICAgIHdvcmtzcGFjZUJhc2VsaW5lOgogICAgICAgIHJlZjogYjViNThjOTItYzhmMy00M2MyLTkyMWEtZDIwMTIyMTUxNTM1CiAgICBzdGF0ZToKICAgICAgYXJjaGl2ZUNvbmZpcm1hdGlvbjogbnVsbAogICAgICBhcmNoaXZlZDogZmFsc2UKICAgICAgYXV0b1RyYW5zaXRpb246IHRydWUKICAgICAgYmFzZVJlZjogbnVsbAogICAgICBib3VuZEJyYW5jaDogbWFpbgogICAgICBicmFuY2hTdGF0dXM6IHBlbmRpbmcKICAgICAgYnVpbGRNb2RlOiBkaXJlY3QKICAgICAgYnVpbGRQYXVzZTogbnVsbAogICAgICBjbGFzc2ljTWlncmF0aW9uOiBudWxsCiAgICAgIGNsYXNzaWNQcm9maWxlOiBudWxsCiAgICAgIGNvbnRleHRDb21wcmVzc2lvbjogb2ZmCiAgICAgIGNyZWF0ZWRBdDogMjAyNi0xMS0xMQogICAgICBkZXNpZ25Eb2M6IG51bGwKICAgICAgZGlyZWN0T3ZlcnJpZGU6IG51bGwKICAgICAgaGFuZG9mZkNvbnRleHQ6IG51bGwKICAgICAgaGFuZG9mZkhhc2g6IG51bGwKICAgICAgaXNvbGF0aW9uOiBjdXJyZW50CiAgICAgIGxhbmd1YWdlOiB6aC1DTgogICAgICBwaGFzZTogYnVpbGQKICAgICAgcGxhbjogbnVsbAogICAgICByZXZpZXdNb2RlOiBvZmYKICAgICAgc3ViYWdlbnREaXNwYXRjaDogbnVsbAogICAgICB0ZGRNb2RlOiBkaXJlY3QKICAgICAgdmVyaWZpY2F0aW9uUmVwb3J0OiBudWxsCiAgICAgIHZlcmlmaWVkQXQ6IG51bGwKICAgICAgdmVyaWZ5RmFpbHVyZXM6IDAKICAgICAgdmVyaWZ5TW9kZTogbGlnaHQKICAgICAgdmVyaWZ5UmVzdWx0OiBwZW5kaW5nCiAgICAgIHdvcmtmbG93OiBob3RmaXgKICAgIHN0YXR1czogcnVubmluZwogICAgc2VxdWVuY2U6IDEKICAgIGFjdGlvbnM6CiAgICAgIC0gYXR0ZW1wdDogMQogICAgICAgIGlkOiBkZW1vOjEKICAgICAgICBpbnB1dDoKICAgICAgICAgIGlucHV0OgogICAgICAgICAgICBjaGFuZ2U6IGRlbW8KICAgICAgICAgICAgY2hhbmdlRGlyOiBvcGVuc3BlYy9jaGFuZ2VzL2RlbW8KICAgICAgICAgICAgd29ya3NwYWNlQmFzZWxpbmU6CiAgICAgICAgICAgICAgcmVmOiBiNWI1OGM5Mi1jOGYzLTQzYzItOTIxYS1kMjAxMjIxNTE1MzUKICAgICAgICAgIG91dHB1dHM6IHt9CiAgICAgICAgaW5wdXRIYXNoOiAwNDY5ZDFlZmJjMjNkOTAyNjI1OGI4YmE2YmU4ZjA1YWQ2M2UzNmVhOTk1MjZlYzRjZTI1MGFmMDkxOGRiYThmCiAgICAgICAgcHJvdG9jb2xWZXJzaW9uOiAxCiAgICAgICAgcmVjZWlwdHM6IFtdCiAgICAgICAgcmVjb25jaWxpYXRpb25zOiBbXQogICAgICAgIHJlZjogY29tZXQtaG90Zml4CiAgICAgICAgcmVxdWlyZWRDYXBhYmlsaXRpZXM6IFtdCiAgICAgICAgcmV0cnk6IG1hbnVhbAogICAgICAgIHJ1bklkOiBkZW1vCiAgICAgICAgc3RhdHVzOiBwZW5kaW5nCiAgICAgICAgc3RlcElkOiBob3RmaXgub3BlbgogICAgICAgIHR5cGU6IGludm9rZV9za2lsbAogICAgYWN0aW9uQ29udGV4dHM6CiAgICAgIGRlbW86MToKICAgICAgICByZXN1bHRzOiB7fQogICAgICAgIHNlcXVlbmNlOiAxCiAgICB3YWl0czogW10KICAgIHJlYWR5OiBbXQogICAgam9pbnM6IHt9CiAgICBvdXRwdXRzOiB7fQogICAgY2hpbGRyZW46IFtdCiAgICBsaW5lYWdlOiBbXQogIHNvdXJjZVJldmlzaW9uOiAxCiAgc291cmNlSGFzaDogNjNlNjZjZDQzNDMyMTM4MDU1OTY1NmQ3NDQ5ZTVkMThiZGNkOTk4Njc5MGJlNDUyNjNiMzVlMzRlYjkwOTM0ZQo=",
+    "record": {
+      "protocolVersion": 1,
+      "schemaVersion": 1,
+      "runId": "demo",
+      "revision": 1,
+      "workflow": {
+        "id": "comet-classic-hotfix",
+        "version": "2",
+        "hash": "5e0dd86793013d8f58054b9c320a5c13d086737c5bcdc2bf59bd311e7e72a1eb"
+      },
+      "definitionHashes": {
+        "[\"comet-classic-hotfix\",\"2\"]": "5e0dd86793013d8f58054b9c320a5c13d086737c5bcdc2bf59bd311e7e72a1eb"
+      },
+      "initialStateHash": "fbe70cc69899f003541291d1654771c27ac66f58d9779c9118c73b6011539184",
+      "input": {
+        "change": "demo",
+        "changeDir": "openspec/changes/demo",
+        "workspaceBaseline": {
+          "ref": "b5b58c92-c8f3-43c2-921a-d20122151535"
+        }
+      },
+      "state": {
+        "archiveConfirmation": null,
+        "archived": false,
+        "autoTransition": true,
+        "baseRef": null,
+        "boundBranch": "main",
+        "branchStatus": "pending",
+        "buildMode": "direct",
+        "buildPause": null,
+        "classicMigration": null,
+        "classicProfile": null,
+        "contextCompression": "off",
+        "createdAt": "2026-11-11",
+        "designDoc": null,
+        "directOverride": null,
+        "handoffContext": null,
+        "handoffHash": null,
+        "isolation": "current",
+        "language": "zh-CN",
+        "phase": "build",
+        "plan": null,
+        "reviewMode": "off",
+        "subagentDispatch": null,
+        "tddMode": "direct",
+        "verificationReport": null,
+        "verifiedAt": null,
+        "verifyFailures": 0,
+        "verifyMode": "light",
+        "verifyResult": "pending",
+        "workflow": "hotfix"
+      },
+      "status": "running",
+      "sequence": 1,
+      "actions": [
+        {
+          "attempt": 1,
+          "id": "demo:1",
+          "input": {
+            "input": {
+              "change": "demo",
+              "changeDir": "openspec/changes/demo",
+              "workspaceBaseline": {
+                "ref": "b5b58c92-c8f3-43c2-921a-d20122151535"
+              }
+            },
+            "outputs": {}
+          },
+          "inputHash": "0469d1efbc23d9026258b8ba6be8f05ad63e36ea99526ec4ce250af0918dba8f",
+          "protocolVersion": 1,
+          "receipts": [],
+          "reconciliations": [],
+          "ref": "comet-hotfix",
+          "requiredCapabilities": [],
+          "retry": "manual",
+          "runId": "demo",
+          "status": "pending",
+          "stepId": "hotfix.open",
+          "type": "invoke_skill"
+        }
+      ],
+      "actionContexts": {
+        "demo:1": {
+          "results": {},
+          "sequence": 1
+        }
+      },
+      "waits": [],
+      "ready": [],
+      "joins": {},
+      "outputs": {},
+      "children": [],
+      "lineage": []
+    }
+  },
+  "expected": "Reject mismatching partial import before writing authoritative history or user YAML; preserve original portable Open checkpoint and approval.",
+  "red": true,
+  "notExecuted": [
+    "Eval",
+    "build",
+    "full suite"
+  ]
+}

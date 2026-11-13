@@ -1,3 +1,4 @@
+import { requireFileSymlink } from '../../helpers/file-symlink.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -502,7 +503,8 @@ describe('Eval run history and baselines', () => {
       writes.mockRestore();
     }
   });
-  it('checks every path component once and never reuses a previous symlink check', async () => {
+  it('checks every path component once and never reuses a previous symlink check', async (context) => {
+    await requireFileSymlink(context);
     const root = await report('paths', [true]);
     const canonicalProject = await fs.realpath(project);
     const inspected: string[] = [];
@@ -669,9 +671,10 @@ describe('Eval run history and baselines', () => {
     },
   );
 
-  it.each(['reports', 'report-file'])(
+  it.for(['reports', 'report-file'])(
     'rejects cross-run evidence through a %s symlink',
-    async (kind) => {
+    async (kind, context) => {
+      if (kind === 'report-file') await requireFileSymlink(context);
       const root = await report('linked', [true]);
       const other = await report('other', [true]);
       const ref = kind === 'reports' ? 'reports' : 'reports/case-0_report.json';

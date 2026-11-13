@@ -6,6 +6,7 @@
 *.css text eol=lf
 *.html text eol=lf
 *.ts text eol=lf
+*.mts text eol=lf
 *.json text eol=lf
 *.md text eol=lf
 *.yaml text eol=lf
@@ -23,3 +24,4 @@
 # Preserve historical evidence bytes and bound content hashes.
 docs/research/bugfree-retirement/** -text
 docs/research/native-builder-time-migration/** -text
+docs/research/2026-11-13-ci-selector-repair/** -text

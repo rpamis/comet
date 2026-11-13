@@ -22,7 +22,7 @@ const outcomeLabel = (outcome) =>
     overridden: t('已覆盖'),
   })[outcome] ?? t('尚无反馈');
 
-export function ContextUsagePanel({ snapshot, title, rangeLabel = t('最近 7 天') }) {
+export function ContextUsagePanel({ snapshot, title, rangeLabel = t('所有') }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState([]);
   const known = snapshot?.available === true;

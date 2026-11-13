@@ -1,0 +1,30 @@
+{
+  "agent": "claude-code",
+  "agentVersion": "2.1.318",
+  "model": "deepseek-flash[1M]",
+  "runtimeModelConfig": {
+    "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL": "deepseek-v4-flash[1M]",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME": "deepseek-v4-flash",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek-flash[1M]",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek-v4-flash[1M]",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME": "deepseek-v4-flash",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek-v4-flash[1M]",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME": "deepseek-v4-flash",
+    "ANTHROPIC_MODEL": "deepseek-flash[1M]"
+  },
+  "goalEvaluatorModel": "deepseek-flash[1M]",
+  "haikuRouteAlignment": "Both treatments use the main model for the Haiku route, matching the existing Goal executor requirement. Other source model routes are retained.",
+  "judgeEnabled": false,
+  "concurrentTasks": 4,
+  "buildTimeoutSecondsForRecoveryRuns": null,
+  "agentTimeoutPolicy": "Fixed per-task execution budgets remain enforced; model execution is not unlimited.",
+  "taskExecutionTimeoutSeconds": {
+    "feature-easy-lru_caching_to_tzoffset": 7200,
+    "data_reporting-medium-audit_event_export": 7200,
+    "product_analytics-hard-day7_retention": 7200,
+    "court-form-filling": 7200,
+    "manufacturing-codebook-normalization": 7200,
+    "paratransit-routing": 3600
+  }
+}

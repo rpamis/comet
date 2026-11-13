@@ -1,0 +1,102 @@
+{
+  "entries": [
+    {
+      "id": "registered-runtime-legacy-migration-meta-lock-confirmation",
+      "status": "passed",
+      "passed": 2,
+      "report": "D:\\Project\\Comet-runtime-review-053\\coverage\\repair-053\\exact\\registered-runtime-legacy-migration-meta-lock-confirmation.json"
+    },
+    {
+      "id": "registered-native-legacy-recovery-meta-lock-doctor",
+      "status": "passed",
+      "passed": 4,
+      "report": "D:\\Project\\Comet-runtime-review-053\\coverage\\repair-053\\exact\\registered-native-legacy-recovery-meta-lock-doctor.json"
+    },
+    {
+      "id": "registered-native-incomplete-trajectory-status-recovery",
+      "status": "passed",
+      "passed": 1,
+      "report": "D:\\Project\\Comet-runtime-review-053\\coverage\\repair-053\\exact\\registered-native-incomplete-trajectory-status-recovery.json"
+    },
+    {
+      "id": "registered-native-invalid-middle-trajectory-doctor",
+      "status": "passed",
+      "passed": 1,
+      "report": "D:\\Project\\Comet-runtime-review-053\\coverage\\repair-053\\exact\\registered-native-invalid-middle-trajectory-doctor.json"
+    },
+    {
+      "id": "registered-classic-archived-repair-checkpoint-continuation",
+      "status": "passed",
+      "passed": 1,
+      "report": "D:\\Project\\Comet-runtime-review-053\\coverage\\repair-053\\exact\\registered-classic-archived-repair-checkpoint-continuation.json"
+    },
+    {
+      "id": "registered-classic-stopped-delivery-checkpoint-continuation",
+      "status": "passed",
+      "passed": 1,
+      "report": "D:\\Project\\Comet-runtime-review-053\\coverage\\repair-053\\exact\\registered-classic-stopped-delivery-checkpoint-continuation.json"
+    },
+    {
+      "id": "registered-classic-tracked-runtime-marker-move-delivery",
+      "status": "passed",
+      "passed": 4,
+      "report": "D:\\Project\\Comet-runtime-review-053\\coverage\\repair-053\\exact\\registered-classic-tracked-runtime-marker-move-delivery.json"
+    },
+    {
+      "id": "registered-classic-legacy-delivery-input-foreign-drafts",
+      "status": "passed",
+      "passed": 1,
+      "report": "D:\\Project\\Comet-runtime-review-053\\coverage\\repair-053\\exact\\registered-classic-legacy-delivery-input-foreign-drafts.json"
+    },
+    {
+      "id": "registered-classic-absent-runtime-optional-delivery-read",
+      "status": "passed",
+      "passed": 4,
+      "report": "D:\\Project\\Comet-runtime-review-053\\coverage\\repair-053\\exact\\registered-classic-absent-runtime-optional-delivery-read.json"
+    },
+    {
+      "id": "registered-classic-v2-platform-report-delivery-repair",
+      "status": "passed",
+      "passed": 1,
+      "report": "D:\\Project\\Comet-runtime-review-053\\coverage\\repair-053\\exact\\registered-classic-v2-platform-report-delivery-repair.json"
+    },
+    {
+      "id": "registered-native-explicit-pending-shape-retarget",
+      "status": "passed",
+      "passed": 1,
+      "report": "D:\\Project\\Comet-runtime-review-053\\coverage\\repair-053\\exact\\registered-native-explicit-pending-shape-retarget.json"
+    },
+    {
+      "id": "registered-native-v4-workspace-isolation-discovery",
+      "status": "passed",
+      "passed": 2,
+      "report": "D:\\Project\\Comet-runtime-review-053\\coverage\\repair-053\\exact\\registered-native-v4-workspace-isolation-discovery.json"
+    },
+    {
+      "id": "registered-native-v4-cancellation-workspace-release",
+      "status": "passed",
+      "passed": 1,
+      "report": "D:\\Project\\Comet-runtime-review-053\\coverage\\repair-053\\exact\\registered-native-v4-cancellation-workspace-release.json"
+    },
+    {
+      "id": "registered-native-create-canonical-conflict-after-preflight",
+      "status": "passed",
+      "passed": 2,
+      "report": "D:\\Project\\Comet-runtime-review-053\\coverage\\repair-053\\exact\\registered-native-create-canonical-conflict-after-preflight.json"
+    },
+    {
+      "id": "registered-classic-archive-recovery-path-view",
+      "status": "passed",
+      "passed": 1,
+      "report": "D:\\Project\\Comet-runtime-review-053\\coverage\\repair-053\\exact\\registered-classic-archive-recovery-path-view.json"
+    },
+    {
+      "id": "registered-readonly-request-parent-directory-reuse",
+      "status": "passed",
+      "passed": 5,
+      "report": "coverage/repair-053/exact/registered-readonly-request-parent-directory-reuse.json"
+    }
+  ],
+  "passedGroups": 16,
+  "failedGroups": 0
+}

@@ -26,8 +26,76 @@ async function readChineseReference(name: string): Promise<string> {
   return fs.readFile(path.join(zhSkillRoot, 'comet-classic', 'reference', `${name}.md`), 'utf8');
 }
 
-// Approved Chinese semantics are synchronized to English; both languages retain safety contracts.
+// 中文确认后同步英文，保留两个语言版本的安全约束。
 describe('Chinese Classic efficiency contracts', () => {
+  it('skips empty learning maintenance while preserving current-change reviews and failure reporting', async () => {
+    const scripts = await readChineseReference('scripts');
+    expect(scripts).toContain('没有合格观察、可复用经验或已知待评审');
+    expect(scripts).toContain('不调用 review，不创建空动作文件');
+    expect(scripts).toContain('只处理本次 change');
+    expect(scripts).toContain('学习失败不阻断已完成的开发任务');
+    expect(scripts).toContain('没有这些内容时不创建空学习文件');
+    const learning = await fs.readFile(
+      path.join(zhSkillRoot, 'comet/reference/task-learning.md'),
+      'utf8',
+    );
+    expect(learning).toContain('不创建空学习文件');
+    expect(learning).toContain(
+      '--complete --learning-check no-observation --project-learning-check no-observation',
+    );
+    expect(learning).toContain('不能声明已经检查');
+    const english = await fs.readFile(
+      path.join(skillRoot, 'comet-classic/reference/scripts.md'),
+      'utf8',
+    );
+    expect(english).toContain('without calling review or creating an empty actions file');
+    expect(english).toContain('Process only this change');
+    const englishLearning = await fs.readFile(
+      path.join(skillRoot, 'comet/reference/task-learning.md'),
+      'utf8',
+    );
+    expect(englishLearning).toContain(
+      '--complete --learning-check no-observation --project-learning-check no-observation',
+    );
+    expect(englishLearning).toContain('do not claim they occurred');
+  });
+  it('keeps standalone stage entry pointers while sharing layout and edit-review instructions', async () => {
+    const scripts = await readChineseReference('scripts');
+    expect(scripts).toContain('## 阶段共用入口');
+    expect(scripts).toContain('TDD、审查和固定应用要求仍按当前阶段正文执行');
+    for (const phase of ['design', 'build', 'verify', 'archive']) {
+      const skill = await fs.readFile(path.join(zhSkillRoot, `comet-${phase}`, 'SKILL.md'), 'utf8');
+      expect(skill).toContain('scripts.md#阶段共用入口');
+      expect(skill).toContain('classic-layout.md');
+      expect(skill).toContain('## SDK Run 路径');
+      const english = await fs.readFile(path.join(skillRoot, `comet-${phase}`, 'SKILL.md'), 'utf8');
+      expect(english).toContain('scripts.md#shared-phase-entry');
+      expect(english).toContain('classic-layout.md');
+    }
+  });
+  it('requires retained full text for incremental phase context and restores snapshots in both languages', async () => {
+    const chinese = await readChineseReference('scripts');
+    const english = await fs.readFile(
+      path.join(skillRoot, 'comet-classic/reference/scripts.md'),
+      'utf8',
+    );
+    for (const term of [
+      '正文仍在上下文中',
+      '--context-mode incremental',
+      '阶段专用规则仍须加载',
+      '上下文压缩或恢复',
+      'snapshot 完整交付',
+    ])
+      expect(chinese).toContain(term);
+    for (const term of [
+      'full text remains in context',
+      '--context-mode incremental',
+      'Phase-specific rules still need loading',
+      'compressed or restored context',
+      'full snapshot',
+    ])
+      expect(english).toContain(term);
+  });
   it('retains per-question options and recommendations throughout clarification and confirmation', async () => {
     const decisions = await readChineseReference('decision-point');
     const presentation = section(decisions, '## 每个问题必须包含的信息', '## 各阶段需要确认什么');
@@ -212,8 +280,8 @@ describe('Chinese Classic efficiency contracts', () => {
     expect(tasks).toContain('仅补缺失检查或独立审查');
     expect(tasks).toContain('已有部分实现时仅补剩余部分');
     expect(tasks.indexOf('核对当前文件')).toBeLessThan(tasks.indexOf('comet state task-complete'));
-    expect(tasks).toContain('--expect <revision> --json');
-    expect(tasks).toContain('revision 冲突时，重新核对任务要求是否变化');
+    expect(tasks).toContain('task-complete <name> <task-id> --json');
+    expect(tasks).toContain('文件编辑不自动撤销任务完成记录');
     expect(tasks).toContain('task-complete 会根据 tasks.md 自动同步这些任务在旧计划中的状态');
     expect(tasks).toContain('comet state sync-plan <name>');
     expect(tasks).toContain('mapping-required');
@@ -229,7 +297,7 @@ describe('Chinese Classic efficiency contracts', () => {
     expect(entry).toContain('`agent.continuation`');
     expect(entry).toContain('信息仍有效时不重复 next、select 或 check');
     expect(entry).toContain('只有这些信息缺失或失效时，才运行一次入口检查');
-    expect(entry).toContain('{authority, revision, total, completed, needsIds, next}');
+    expect(entry).toContain('{authority, total, completed, needsIds, next}');
     expect(entry).toContain('{path, stale, taskIds, stage, sessionId, reviewRounds, unresolved}');
     expect(entry).toContain('{kind, reason, taskId?}');
     expect(entry).toContain('先阅读 reason，再根据 kind 完成对应步骤');
@@ -250,7 +318,7 @@ describe('Chinese Classic efficiency contracts', () => {
     expect(entry).toContain('需要完整任务和检查点时，再加 `--details`');
     expect(entry).toContain('在 taskState 中增加 tasks，在 coordination 中增加 checkpoint');
     expect(entry).toContain('comet state check <change-name> <phase> --recover --details --json');
-    expect(entry).toContain('恢复时保留计划、任务、审查记录和已用复查次数');
+    expect(entry).toContain('保留计划、任务、审查记录和原进度');
   });
 
   it('documents structured configuration gaps and bounded Native continuation consumption', async () => {
@@ -329,7 +397,6 @@ describe('Chinese Classic efficiency contracts', () => {
     expect(JSON.parse(example!)).toEqual({
       schemaVersion: 1,
       taskIds: ['task-1'],
-      revision: '<task-revision>',
       stage: 'implementing',
       sessionId: '<implementer-session-id>',
       evidence: [],
@@ -339,7 +406,7 @@ describe('Chinese Classic efficiency contracts', () => {
     expect(checkpoint).toContain('必须替换为本次实际值');
     expect(checkpoint).toContain('comet state checkpoint <change-name> --file <json-path>');
     expect(checkpoint).toContain('读取结果为 `{checkpoint, stale}`');
-    expect(checkpoint).toContain('stale 为 true 时，先核对 revision、任务范围和实际成果');
+    expect(checkpoint).toContain('stale 为 true 时，先核对任务范围和实际成果');
     expect(checkpoint).toContain('checkpoint 为空也不表示尚未实施');
     expect(checkpoint).toContain('Runtime 检查数据后生成 Markdown');
     expect(checkpoint).toContain('<classic-change-dir>/.comet/coordination.json');
@@ -1173,7 +1240,7 @@ describe('Approved English Classic efficiency contracts', () => {
     expect(tasks).toContain('Git diff');
     expect(tasks).toContain('comet state task-complete');
     expect(tasks.indexOf('Git diff')).toBeLessThan(tasks.indexOf('comet state task-complete'));
-    expect(tasks).toContain('--expect <revision> --json');
+    expect(tasks).toContain('task-complete <name> <task-id> --json');
     expect(tasks).toContain('mapping-required');
     expect(tasks).toContain('comet state sync-plan <name>');
     expect(tasks).toContain('comet-task');
@@ -1183,7 +1250,7 @@ describe('Approved English Classic efficiency contracts', () => {
   it('keeps normal entry compact and documents valid isolated coordination JSON for cold recovery', async () => {
     const recovery = await reference('context-recovery');
     expect(recovery).toContain('Run one entry check only when it is missing or no longer valid');
-    expect(recovery).toContain('{authority, revision, total, completed, needsIds, next}');
+    expect(recovery).toContain('{authority, total, completed, needsIds, next}');
     expect(recovery).toContain('{kind, reason, taskId?}');
     expect(recovery).toContain('--recover --details --json');
     expect(recovery).toContain('this adds tasks to taskState and checkpoint to coordination');
@@ -1191,7 +1258,6 @@ describe('Approved English Classic efficiency contracts', () => {
     expect(JSON.parse(checkpoint.match(/```json\s*([\s\S]*?)```/u)![1])).toEqual({
       schemaVersion: 1,
       taskIds: ['task-1'],
-      revision: '<task-revision>',
       stage: 'implementing',
       sessionId: '<implementer-session-id>',
       evidence: [],

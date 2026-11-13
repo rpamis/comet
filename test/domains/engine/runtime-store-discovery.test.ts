@@ -1,3 +1,4 @@
+import { requireFileSymlink } from '../../helpers/file-symlink.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
@@ -40,9 +41,10 @@ describe('read-only RuntimeStore discovery', () => {
     }
   });
 
-  it.each(['missing', 'conflict', 'marker', 'link'] as const)(
+  it.for(['missing', 'conflict', 'marker', 'link'] as const)(
     'fails closed on %s history metadata instead of hiding a possible owner',
-    async (kind) => {
+    async (kind, context) => {
+      if (kind === 'link') await requireFileSymlink(context);
       const store = createFileRuntimeStore({ rootDir: root });
       await store.compareAndSwap('closed', null, { runId: 'closed', revision: 1 });
       await store.closeRun('closed', 1);

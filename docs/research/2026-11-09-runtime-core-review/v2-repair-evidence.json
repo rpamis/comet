@@ -1,0 +1,781 @@
+{
+  "workflow": {
+    "id": "comet-classic-hotfix",
+    "version": "2",
+    "hash": "438c90cf60c0ee682f2c636992b4a4f0d97da50e497670253d950437d1cda8f7"
+  },
+  "canRepair": true,
+  "next": {
+    "command": "state",
+    "exitCode": 0,
+    "agent": {
+      "phase": "archive",
+      "status": "running",
+      "stateVersion": null,
+      "workspace": {
+        "cwd": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC"
+      },
+      "continuation": {
+        "kind": "action",
+        "stepId": "hotfix.archive.deliver",
+        "actionId": "example:10",
+        "attempt": 1,
+        "inputHash": "6aa76f72a2ce7a17b339279a4ecc539cfab8c78b2f3384bca3f17362e4cdcda0",
+        "ref": "comet-archive",
+        "schema": "comet.classic.continuation.v1",
+        "cwd": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC",
+        "run": {
+          "id": "example",
+          "revision": 16,
+          "status": "running"
+        },
+        "automatic": true,
+        "dispatch": {
+          "commandArgs": [
+            "comet",
+            "runtime",
+            "dispatch",
+            "--application",
+            "classic-hotfix",
+            "--project-root",
+            "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC",
+            "--request",
+            "<request-json-file>",
+            "--json"
+          ]
+        },
+        "inspection": {
+          "commandArgs": [
+            "comet",
+            "state",
+            "next",
+            "example",
+            "--details",
+            "--json"
+          ],
+          "actionInputPath": "data.run.actions[matching id].input",
+          "instruction": "仅确需未给出的原始输入时读取。inputSummary 仅供宿主理解当前工作，不能替代原 Action input 提交或计算 inputHash；inputHash 始终绑定原始完整输入。"
+        },
+        "mode": "execute",
+        "commandArgs": null,
+        "requiredInputs": [
+          "commit-sha: 使用 git rev-parse HEAD 返回的完整提交哈希，不使用短 SHA；允许从 archive.preflight.baseCommit 开始的连续单父提交"
+        ],
+        "skill": "comet-archive",
+        "completion": {
+          "commandArgs": [
+            "comet",
+            "state",
+            "complete-delivery",
+            "example",
+            "--commit",
+            "<commit-sha>",
+            "--json"
+          ],
+          "requiredInputs": [
+            "commit-sha: 使用 git rev-parse HEAD 返回的完整提交哈希，不使用短 SHA；允许从 archive.preflight.baseCommit 开始的连续单父提交"
+          ],
+          "instruction": "仅在当前 Skill 的真实工作完成且满足所列前提后提交。按当前 Action inputSummary 与 approvals 中已批准的目标完成真实归档提交及必要远端交付。修复与归档可分为多个连续单父提交；整个 baseCommit..HEAD 范围只能包含本次已验证实现和归档产物，不得夹带其他 change、合并提交或改写 Git 历史。仅补交实际结果，不再次归档。"
+        },
+        "instruction": "加载 comet-archive，仅完成 hotfix.archive.deliver 的当前工作，并沿用本次 Run 与工作区。按当前 Action inputSummary 与 approvals 中已批准的目标完成真实归档提交及必要远端交付。修复与归档可分为多个连续单父提交；整个 baseCommit..HEAD 范围只能包含本次已验证实现和归档产物，不得夹带其他 change、合并提交或改写 Git 历史。仅补交实际结果，不再次归档。",
+        "currentRef": "data.continuation.current"
+      },
+      "run": {
+        "id": "example",
+        "revision": 16,
+        "status": "running"
+      }
+    },
+    "data": {
+      "change": "example",
+      "runtimeFormat": "sdk",
+      "checksMode": "agent",
+      "phase": "archive",
+      "nextAction": {
+        "kind": "action",
+        "stepId": "hotfix.archive.deliver",
+        "actionId": "example:10",
+        "attempt": 1,
+        "inputHash": "6aa76f72a2ce7a17b339279a4ecc539cfab8c78b2f3384bca3f17362e4cdcda0",
+        "ref": "comet-archive"
+      },
+      "continuation": {
+        "kind": "action",
+        "stepId": "hotfix.archive.deliver",
+        "actionId": "example:10",
+        "attempt": 1,
+        "inputHash": "6aa76f72a2ce7a17b339279a4ecc539cfab8c78b2f3384bca3f17362e4cdcda0",
+        "ref": "comet-archive",
+        "schema": "comet.classic.continuation.v1",
+        "cwd": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC",
+        "run": {
+          "id": "example",
+          "revision": 16,
+          "status": "running"
+        },
+        "automatic": true,
+        "dispatch": {
+          "commandArgs": [
+            "comet",
+            "runtime",
+            "dispatch",
+            "--application",
+            "classic-hotfix",
+            "--project-root",
+            "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC",
+            "--request",
+            "<request-json-file>",
+            "--json"
+          ]
+        },
+        "inspection": {
+          "commandArgs": [
+            "comet",
+            "state",
+            "next",
+            "example",
+            "--details",
+            "--json"
+          ],
+          "actionInputPath": "data.run.actions[matching id].input",
+          "instruction": "仅确需未给出的原始输入时读取。inputSummary 仅供宿主理解当前工作，不能替代原 Action input 提交或计算 inputHash；inputHash 始终绑定原始完整输入。"
+        },
+        "mode": "execute",
+        "commandArgs": null,
+        "requiredInputs": [
+          "commit-sha: 使用 git rev-parse HEAD 返回的完整提交哈希，不使用短 SHA；允许从 archive.preflight.baseCommit 开始的连续单父提交"
+        ],
+        "skill": "comet-archive",
+        "completion": {
+          "commandArgs": [
+            "comet",
+            "state",
+            "complete-delivery",
+            "example",
+            "--commit",
+            "<commit-sha>",
+            "--json"
+          ],
+          "requiredInputs": [
+            "commit-sha: 使用 git rev-parse HEAD 返回的完整提交哈希，不使用短 SHA；允许从 archive.preflight.baseCommit 开始的连续单父提交"
+          ],
+          "instruction": "仅在当前 Skill 的真实工作完成且满足所列前提后提交。按当前 Action inputSummary 与 approvals 中已批准的目标完成真实归档提交及必要远端交付。修复与归档可分为多个连续单父提交；整个 baseCommit..HEAD 范围只能包含本次已验证实现和归档产物，不得夹带其他 change、合并提交或改写 Git 历史。仅补交实际结果，不再次归档。"
+        },
+        "instruction": "加载 comet-archive，仅完成 hotfix.archive.deliver 的当前工作，并沿用本次 Run 与工作区。按当前 Action inputSummary 与 approvals 中已批准的目标完成真实归档提交及必要远端交付。修复与归档可分为多个连续单父提交；整个 baseCommit..HEAD 范围只能包含本次已验证实现和归档产物，不得夹带其他 change、合并提交或改写 Git 历史。仅补交实际结果，不再次归档。",
+        "current": {
+          "actions": [
+            {
+              "id": "example:10",
+              "stepId": "hotfix.archive.deliver",
+              "type": "invoke_skill",
+              "ref": "comet-archive",
+              "status": "pending",
+              "attempt": 1,
+              "inputHash": "6aa76f72a2ce7a17b339279a4ecc539cfab8c78b2f3384bca3f17362e4cdcda0",
+              "requiredCapabilities": [],
+              "contextRequest": {
+                "phase": "archive",
+                "contextMode": "snapshot",
+                "commandArgs": [
+                  "comet",
+                  "task",
+                  "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC",
+                  "--task",
+                  "<original-task>",
+                  "--phase",
+                  "archive",
+                  "--session",
+                  "<receiving-session-id>",
+                  "--context-mode",
+                  "snapshot",
+                  "--workflow",
+                  "classic",
+                  "--change",
+                  "example",
+                  "--json"
+                ],
+                "instruction": "When the claim response includes contextDelivery, read context[].text without another retrieval; use contextActions.restore after context loss. Otherwise, on first entering this phase, handing off to a new Agent, or restoring context, the receiver runs this command once with its own session ID and the original task, then adds context[].text to context. Do not repeat during uninterrupted work. Pass applicable preferences and project constraints to implementers and reviewers. Load Skills using actual host capabilities; explain unavailable or incompatible choices. Delivery does not prove a Skill was loaded or followed; preferences do not replace Runtime checks or authorization. Continue with explicit instructions after empty or unavailable retrieval; do not loop on retries. Recover a missing task goal from the current proposal, specs and task scope. Give child Agents this phase, scope and request; each receiver retrieves context with its own session ID. Explain conflicts with confirmed execution, TDD or review configuration; change configuration through its existing approval flow. Do not silently replace fixed Skills or skip required reviews. Keep memory out of design handoff artifacts and approval hashes."
+              },
+              "inputSummary": {
+                "usage": "host-context-only",
+                "scope": {
+                  "change": "example",
+                  "changeDir": "openspec/changes/example",
+                  "workspaceBaseline": {
+                    "ref": "c6688fcc-b9a8-4e41-b731-5349a6f90f79"
+                  }
+                },
+                "configurationRef": "data.configuration",
+                "artifactRefsRef": "data.artifactRefs",
+                "taskStateRef": "data.taskState",
+                "approvalsRef": "data.continuation.current.approvals",
+                "outputs": {
+                  "hotfix.archive.preflight": {
+                    "baseCommit": "3c0a401423d9d4719636ab4f36995938c282b4de",
+                    "deliveryAction": "local",
+                    "deliveryPaths": [
+                      "checks.json",
+                      "generated/check-output.bin",
+                      "openspec-archive-fixture.mjs"
+                    ],
+                    "targetBranch": "main",
+                    "verifiedBranch": "main"
+                  },
+                  "hotfix.archive.execute": {
+                    "archiveDirectory": "openspec/changes/archive/2026-11-09-example"
+                  }
+                }
+              }
+            }
+          ],
+          "waits": [],
+          "evidenceWaits": [],
+          "approvals": [
+            {
+              "id": "example:7",
+              "stepId": "hotfix.archive.confirm",
+              "proposal": {
+                "input": {
+                  "change": "example",
+                  "changeDir": "openspec/changes/example",
+                  "workspaceBaseline": {
+                    "ref": "c6688fcc-b9a8-4e41-b731-5349a6f90f79"
+                  }
+                },
+                "outputs": {
+                  "hotfix.archive.prepare": {
+                    "summary": "Fixture user approves local delivery.",
+                    "targetBranch": "main"
+                  }
+                }
+              },
+              "proposalHash": "230251914d9a8b79d1a383e54630611c4221ab5793e45ebc4e7559efdb70c706",
+              "choices": [
+                "local",
+                "push",
+                "pr",
+                "reverify",
+                "later"
+              ],
+              "decision": {
+                "id": "classic-archive-230251914d9a8b79d1a383e54630611c4221ab5793e45ebc4e7559efdb70c706-local",
+                "choice": "local",
+                "proposalHash": "230251914d9a8b79d1a383e54630611c4221ab5793e45ebc4e7559efdb70c706"
+              }
+            }
+          ]
+        }
+      },
+      "configuration": {
+        "archiveConfirmation": "confirmed",
+        "archived": true,
+        "autoTransition": true,
+        "baseRef": "3c0a401423d9d4719636ab4f36995938c282b4de",
+        "boundBranch": "main",
+        "branchStatus": "pending",
+        "buildMode": "direct",
+        "buildPause": null,
+        "checkEpoch": 5,
+        "classicMigration": null,
+        "classicProfile": null,
+        "contextCompression": "off",
+        "createdAt": "2026-11-09",
+        "designDoc": null,
+        "directOverride": null,
+        "handoffContext": null,
+        "handoffHash": null,
+        "isolation": "current",
+        "language": "en",
+        "phase": "archive",
+        "plan": null,
+        "reviewMode": "off",
+        "subagentDispatch": null,
+        "tddMode": "direct",
+        "verificationReport": "docs/superpowers/reports/example.md",
+        "verifiedAt": "2026-11-09",
+        "verifyFailures": 0,
+        "verifyMode": "light",
+        "verifyResult": "pass",
+        "workflow": "hotfix"
+      },
+      "delivery": {
+        "delivery": {
+          "action": "local",
+          "targetBranch": "main",
+          "baseCommit": "3c0a401423d9d4719636ab4f36995938c282b4de"
+        },
+        "verification": {
+          "status": "needsVerification"
+        }
+      },
+      "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC",
+      "workspace": {
+        "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC"
+      },
+      "run": {
+        "id": "example",
+        "runId": "example",
+        "revision": 16,
+        "status": "running",
+        "actions": [
+          {
+            "id": "example:10",
+            "stepId": "hotfix.archive.deliver",
+            "type": "invoke_skill",
+            "ref": "comet-archive",
+            "status": "pending",
+            "attempt": 1,
+            "inputHash": "6aa76f72a2ce7a17b339279a4ecc539cfab8c78b2f3384bca3f17362e4cdcda0",
+            "requiredCapabilities": []
+          }
+        ],
+        "evidenceWaits": [],
+        "waits": []
+      },
+      "diagnostics": {
+        "stateReadable": true,
+        "executionReconciled": true,
+        "storageSettled": true,
+        "healthy": true,
+        "issues": []
+      },
+      "changeDir": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC\\openspec\\changes\\archive\\2026-11-09-example",
+      "layout": {
+        "schema": "comet.classic-layout.v1",
+        "openSpecRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC\\openspec",
+        "changesRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC\\openspec\\changes",
+        "archiveRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC\\openspec\\changes\\archive",
+        "specsRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC\\openspec\\specs",
+        "superpowersRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC\\docs\\superpowers"
+      },
+      "artifactRefs": {
+        "change": "openspec/changes/archive/2026-11-09-example",
+        "tasks": "openspec/changes/archive/2026-11-09-example/tasks.md",
+        "designDoc": "openspec/changes/archive/2026-11-09-example/design.md",
+        "plan": null,
+        "plansRoot": "docs/superpowers/plans",
+        "handoffContext": null
+      },
+      "configurationReadiness": {
+        "missingFields": [],
+        "invalidFields": []
+      },
+      "taskState": {
+        "authority": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC\\openspec\\changes\\archive\\2026-11-09-example\\tasks.md",
+        "exists": true,
+        "total": 1,
+        "completed": 1,
+        "needsIds": true,
+        "next": null
+      },
+      "nextTask": null,
+      "planMapping": {
+        "status": "ready",
+        "unmappedCount": 0
+      },
+      "coordination": {
+        "path": null,
+        "stale": false
+      },
+      "requiredFiles": [
+        "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC\\openspec\\changes\\archive\\2026-11-09-example\\tasks.md"
+      ]
+    },
+    "summary": "NEXT: auto",
+    "next": {
+      "command": "/comet-archive"
+    },
+    "stdout": "NEXT: auto\nSKILL: comet-archive\n"
+  },
+  "repair": {
+    "command": "state",
+    "exitCode": 70,
+    "agent": {
+      "phase": "archive",
+      "status": "running",
+      "stateVersion": null,
+      "workspace": {
+        "cwd": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC"
+      },
+      "continuation": {
+        "kind": "action",
+        "stepId": "hotfix.archive.deliver",
+        "actionId": "example:10",
+        "attempt": 1,
+        "inputHash": "6aa76f72a2ce7a17b339279a4ecc539cfab8c78b2f3384bca3f17362e4cdcda0",
+        "ref": "comet-archive",
+        "schema": "comet.classic.continuation.v1",
+        "cwd": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC",
+        "run": {
+          "id": "example",
+          "revision": 16,
+          "status": "running"
+        },
+        "automatic": true,
+        "dispatch": {
+          "commandArgs": [
+            "comet",
+            "runtime",
+            "dispatch",
+            "--application",
+            "classic-hotfix",
+            "--project-root",
+            "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC",
+            "--request",
+            "<request-json-file>",
+            "--json"
+          ]
+        },
+        "inspection": {
+          "commandArgs": [
+            "comet",
+            "state",
+            "next",
+            "example",
+            "--details",
+            "--json"
+          ],
+          "actionInputPath": "data.run.actions[matching id].input",
+          "instruction": "仅确需未给出的原始输入时读取。inputSummary 仅供宿主理解当前工作，不能替代原 Action input 提交或计算 inputHash；inputHash 始终绑定原始完整输入。"
+        },
+        "mode": "execute",
+        "commandArgs": null,
+        "requiredInputs": [
+          "commit-sha: 使用 git rev-parse HEAD 返回的完整提交哈希，不使用短 SHA；允许从 archive.preflight.baseCommit 开始的连续单父提交"
+        ],
+        "skill": "comet-archive",
+        "completion": {
+          "commandArgs": [
+            "comet",
+            "state",
+            "complete-delivery",
+            "example",
+            "--commit",
+            "<commit-sha>",
+            "--json"
+          ],
+          "requiredInputs": [
+            "commit-sha: 使用 git rev-parse HEAD 返回的完整提交哈希，不使用短 SHA；允许从 archive.preflight.baseCommit 开始的连续单父提交"
+          ],
+          "instruction": "仅在当前 Skill 的真实工作完成且满足所列前提后提交。按当前 Action inputSummary 与 approvals 中已批准的目标完成真实归档提交及必要远端交付。修复与归档可分为多个连续单父提交；整个 baseCommit..HEAD 范围只能包含本次已验证实现和归档产物，不得夹带其他 change、合并提交或改写 Git 历史。仅补交实际结果，不再次归档。"
+        },
+        "instruction": "加载 comet-archive，仅完成 hotfix.archive.deliver 的当前工作，并沿用本次 Run 与工作区。按当前 Action inputSummary 与 approvals 中已批准的目标完成真实归档提交及必要远端交付。修复与归档可分为多个连续单父提交；整个 baseCommit..HEAD 范围只能包含本次已验证实现和归档产物，不得夹带其他 change、合并提交或改写 Git 历史。仅补交实际结果，不再次归档。",
+        "currentRef": "data.continuation.current"
+      },
+      "run": {
+        "id": "example",
+        "revision": 16,
+        "status": "running"
+      }
+    },
+    "data": {
+      "issues": [
+        {
+          "code": "CLASSIC_COMMAND_FAILED",
+          "message": "Original Verify command is incomplete"
+        }
+      ],
+      "change": "example",
+      "runtimeFormat": "sdk",
+      "checksMode": "agent",
+      "phase": "archive",
+      "nextAction": {
+        "kind": "action",
+        "stepId": "hotfix.archive.deliver",
+        "actionId": "example:10",
+        "attempt": 1,
+        "inputHash": "6aa76f72a2ce7a17b339279a4ecc539cfab8c78b2f3384bca3f17362e4cdcda0",
+        "ref": "comet-archive"
+      },
+      "continuation": {
+        "kind": "action",
+        "stepId": "hotfix.archive.deliver",
+        "actionId": "example:10",
+        "attempt": 1,
+        "inputHash": "6aa76f72a2ce7a17b339279a4ecc539cfab8c78b2f3384bca3f17362e4cdcda0",
+        "ref": "comet-archive",
+        "schema": "comet.classic.continuation.v1",
+        "cwd": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC",
+        "run": {
+          "id": "example",
+          "revision": 16,
+          "status": "running"
+        },
+        "automatic": true,
+        "dispatch": {
+          "commandArgs": [
+            "comet",
+            "runtime",
+            "dispatch",
+            "--application",
+            "classic-hotfix",
+            "--project-root",
+            "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC",
+            "--request",
+            "<request-json-file>",
+            "--json"
+          ]
+        },
+        "inspection": {
+          "commandArgs": [
+            "comet",
+            "state",
+            "next",
+            "example",
+            "--details",
+            "--json"
+          ],
+          "actionInputPath": "data.run.actions[matching id].input",
+          "instruction": "仅确需未给出的原始输入时读取。inputSummary 仅供宿主理解当前工作，不能替代原 Action input 提交或计算 inputHash；inputHash 始终绑定原始完整输入。"
+        },
+        "mode": "execute",
+        "commandArgs": null,
+        "requiredInputs": [
+          "commit-sha: 使用 git rev-parse HEAD 返回的完整提交哈希，不使用短 SHA；允许从 archive.preflight.baseCommit 开始的连续单父提交"
+        ],
+        "skill": "comet-archive",
+        "completion": {
+          "commandArgs": [
+            "comet",
+            "state",
+            "complete-delivery",
+            "example",
+            "--commit",
+            "<commit-sha>",
+            "--json"
+          ],
+          "requiredInputs": [
+            "commit-sha: 使用 git rev-parse HEAD 返回的完整提交哈希，不使用短 SHA；允许从 archive.preflight.baseCommit 开始的连续单父提交"
+          ],
+          "instruction": "仅在当前 Skill 的真实工作完成且满足所列前提后提交。按当前 Action inputSummary 与 approvals 中已批准的目标完成真实归档提交及必要远端交付。修复与归档可分为多个连续单父提交；整个 baseCommit..HEAD 范围只能包含本次已验证实现和归档产物，不得夹带其他 change、合并提交或改写 Git 历史。仅补交实际结果，不再次归档。"
+        },
+        "instruction": "加载 comet-archive，仅完成 hotfix.archive.deliver 的当前工作，并沿用本次 Run 与工作区。按当前 Action inputSummary 与 approvals 中已批准的目标完成真实归档提交及必要远端交付。修复与归档可分为多个连续单父提交；整个 baseCommit..HEAD 范围只能包含本次已验证实现和归档产物，不得夹带其他 change、合并提交或改写 Git 历史。仅补交实际结果，不再次归档。",
+        "current": {
+          "actions": [
+            {
+              "id": "example:10",
+              "stepId": "hotfix.archive.deliver",
+              "type": "invoke_skill",
+              "ref": "comet-archive",
+              "status": "pending",
+              "attempt": 1,
+              "inputHash": "6aa76f72a2ce7a17b339279a4ecc539cfab8c78b2f3384bca3f17362e4cdcda0",
+              "requiredCapabilities": [],
+              "contextRequest": {
+                "phase": "archive",
+                "contextMode": "snapshot",
+                "commandArgs": [
+                  "comet",
+                  "task",
+                  "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC",
+                  "--task",
+                  "<original-task>",
+                  "--phase",
+                  "archive",
+                  "--session",
+                  "<receiving-session-id>",
+                  "--context-mode",
+                  "snapshot",
+                  "--workflow",
+                  "classic",
+                  "--change",
+                  "example",
+                  "--json"
+                ],
+                "instruction": "When the claim response includes contextDelivery, read context[].text without another retrieval; use contextActions.restore after context loss. Otherwise, on first entering this phase, handing off to a new Agent, or restoring context, the receiver runs this command once with its own session ID and the original task, then adds context[].text to context. Do not repeat during uninterrupted work. Pass applicable preferences and project constraints to implementers and reviewers. Load Skills using actual host capabilities; explain unavailable or incompatible choices. Delivery does not prove a Skill was loaded or followed; preferences do not replace Runtime checks or authorization. Continue with explicit instructions after empty or unavailable retrieval; do not loop on retries. Recover a missing task goal from the current proposal, specs and task scope. Give child Agents this phase, scope and request; each receiver retrieves context with its own session ID. Explain conflicts with confirmed execution, TDD or review configuration; change configuration through its existing approval flow. Do not silently replace fixed Skills or skip required reviews. Keep memory out of design handoff artifacts and approval hashes."
+              },
+              "inputSummary": {
+                "usage": "host-context-only",
+                "scope": {
+                  "change": "example",
+                  "changeDir": "openspec/changes/example",
+                  "workspaceBaseline": {
+                    "ref": "c6688fcc-b9a8-4e41-b731-5349a6f90f79"
+                  }
+                },
+                "configurationRef": "data.configuration",
+                "artifactRefsRef": "data.artifactRefs",
+                "taskStateRef": "data.taskState",
+                "approvalsRef": "data.continuation.current.approvals",
+                "outputs": {
+                  "hotfix.archive.preflight": {
+                    "baseCommit": "3c0a401423d9d4719636ab4f36995938c282b4de",
+                    "deliveryAction": "local",
+                    "deliveryPaths": [
+                      "checks.json",
+                      "generated/check-output.bin",
+                      "openspec-archive-fixture.mjs"
+                    ],
+                    "targetBranch": "main",
+                    "verifiedBranch": "main"
+                  },
+                  "hotfix.archive.execute": {
+                    "archiveDirectory": "openspec/changes/archive/2026-11-09-example"
+                  }
+                }
+              }
+            }
+          ],
+          "waits": [],
+          "evidenceWaits": [],
+          "approvals": [
+            {
+              "id": "example:7",
+              "stepId": "hotfix.archive.confirm",
+              "proposal": {
+                "input": {
+                  "change": "example",
+                  "changeDir": "openspec/changes/example",
+                  "workspaceBaseline": {
+                    "ref": "c6688fcc-b9a8-4e41-b731-5349a6f90f79"
+                  }
+                },
+                "outputs": {
+                  "hotfix.archive.prepare": {
+                    "summary": "Fixture user approves local delivery.",
+                    "targetBranch": "main"
+                  }
+                }
+              },
+              "proposalHash": "230251914d9a8b79d1a383e54630611c4221ab5793e45ebc4e7559efdb70c706",
+              "choices": [
+                "local",
+                "push",
+                "pr",
+                "reverify",
+                "later"
+              ],
+              "decision": {
+                "id": "classic-archive-230251914d9a8b79d1a383e54630611c4221ab5793e45ebc4e7559efdb70c706-local",
+                "choice": "local",
+                "proposalHash": "230251914d9a8b79d1a383e54630611c4221ab5793e45ebc4e7559efdb70c706"
+              }
+            }
+          ]
+        }
+      },
+      "configuration": {
+        "archiveConfirmation": "confirmed",
+        "archived": true,
+        "autoTransition": true,
+        "baseRef": "3c0a401423d9d4719636ab4f36995938c282b4de",
+        "boundBranch": "main",
+        "branchStatus": "pending",
+        "buildMode": "direct",
+        "buildPause": null,
+        "checkEpoch": 5,
+        "classicMigration": null,
+        "classicProfile": null,
+        "contextCompression": "off",
+        "createdAt": "2026-11-09",
+        "designDoc": null,
+        "directOverride": null,
+        "handoffContext": null,
+        "handoffHash": null,
+        "isolation": "current",
+        "language": "en",
+        "phase": "archive",
+        "plan": null,
+        "reviewMode": "off",
+        "subagentDispatch": null,
+        "tddMode": "direct",
+        "verificationReport": "docs/superpowers/reports/example.md",
+        "verifiedAt": "2026-11-09",
+        "verifyFailures": 0,
+        "verifyMode": "light",
+        "verifyResult": "pass",
+        "workflow": "hotfix"
+      },
+      "delivery": {
+        "delivery": {
+          "action": "local",
+          "targetBranch": "main",
+          "baseCommit": "3c0a401423d9d4719636ab4f36995938c282b4de"
+        },
+        "verification": {
+          "status": "needsVerification"
+        }
+      },
+      "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC",
+      "workspace": {
+        "projectRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC"
+      },
+      "run": {
+        "id": "example",
+        "runId": "example",
+        "revision": 16,
+        "status": "running",
+        "actions": [
+          {
+            "id": "example:10",
+            "stepId": "hotfix.archive.deliver",
+            "type": "invoke_skill",
+            "ref": "comet-archive",
+            "status": "pending",
+            "attempt": 1,
+            "inputHash": "6aa76f72a2ce7a17b339279a4ecc539cfab8c78b2f3384bca3f17362e4cdcda0",
+            "requiredCapabilities": []
+          }
+        ],
+        "evidenceWaits": [],
+        "waits": []
+      },
+      "diagnostics": {
+        "stateReadable": true,
+        "executionReconciled": true,
+        "storageSettled": true,
+        "healthy": true,
+        "issues": []
+      },
+      "changeDir": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC\\openspec\\changes\\archive\\2026-11-09-example",
+      "layout": {
+        "schema": "comet.classic-layout.v1",
+        "openSpecRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC\\openspec",
+        "changesRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC\\openspec\\changes",
+        "archiveRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC\\openspec\\changes\\archive",
+        "specsRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC\\openspec\\specs",
+        "superpowersRoot": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC\\docs\\superpowers"
+      },
+      "artifactRefs": {
+        "change": "openspec/changes/archive/2026-11-09-example",
+        "tasks": "openspec/changes/archive/2026-11-09-example/tasks.md",
+        "designDoc": "openspec/changes/archive/2026-11-09-example/design.md",
+        "plan": null,
+        "plansRoot": "docs/superpowers/plans",
+        "handoffContext": null
+      },
+      "configurationReadiness": {
+        "missingFields": [],
+        "invalidFields": []
+      },
+      "taskState": {
+        "authority": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC\\openspec\\changes\\archive\\2026-11-09-example\\tasks.md",
+        "exists": true,
+        "total": 1,
+        "completed": 1,
+        "needsIds": true,
+        "next": null
+      },
+      "nextTask": null,
+      "planMapping": {
+        "status": "ready",
+        "unmappedCount": 0
+      },
+      "coordination": {
+        "path": null,
+        "stale": false
+      },
+      "requiredFiles": [
+        "C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-agent-checks-dl4ECC\\openspec\\changes\\archive\\2026-11-09-example\\tasks.md"
+      ]
+    },
+    "summary": "\u001b[31mOriginal Verify command is incomplete\u001b[0m",
+    "next": {
+      "command": "/comet-archive"
+    },
+    "stdout": "NEXT: /comet-archive\n",
+    "stderr": "\u001b[31mOriginal Verify command is incomplete\u001b[0m"
+  },
+  "originalRunPreserved": true,
+  "archiveExecutions": 1
+}

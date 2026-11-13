@@ -1,0 +1,16 @@
+{
+  "runId": "comet-any-sdk",
+  "beforeRevision": 213,
+  "afterRevision": 214,
+  "status": "completed",
+  "archived": true,
+  "actionCount": 97,
+  "sameDomainState": true,
+  "sameDefinition": true,
+  "sameActionsAndResults": true,
+  "sameApprovals": true,
+  "stopEvidenceCount": 21,
+  "storage": "closed",
+  "portableBytes": 1968019,
+  "sameFinalizationReceipt": true
+}

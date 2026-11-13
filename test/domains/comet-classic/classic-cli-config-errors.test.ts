@@ -88,7 +88,7 @@ it('does not classify an unsafe configuration path as a validation error', async
     { invocationCwd: root },
   );
   expect(result.exitCode).toBe(70);
-  expect(result.stderr).toMatch(/symbolic|symlink|link/i);
+  expect(result.stderr).toMatch(/regular file|symbolic|symlink|link/i);
   await expect(fs.access(path.join(root, 'openspec'))).rejects.toMatchObject({ code: 'ENOENT' });
 });
 

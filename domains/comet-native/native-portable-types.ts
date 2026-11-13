@@ -1,7 +1,6 @@
 import type { RuntimeAction } from '../engine/runtime-action.js';
 
 export const NATIVE_PORTABLE_STATE_SCHEMA = 'comet.native.v4' as const;
-export const NATIVE_LOCAL_EXECUTION_SCHEMA = 'comet.native.local-execution.v4' as const;
 export const NATIVE_PORTABLE_HISTORY_LIMIT = 50 as const;
 
 export type NativePortablePhase = 'shape' | 'build' | 'verify' | 'archive';
@@ -135,6 +134,7 @@ export interface NativePortableVerificationState {
   assurance: NativePortableVerificationAssurance;
   verdict: 'pass' | 'fail' | 'blocked';
   checks: NativePortableCheckSummary[];
+  reported_checks?: NativeBuilderCheckSummary[];
   summary: NativePortableText;
   risks: NativePortableText[];
   risks_truncated: boolean;
@@ -170,8 +170,10 @@ export interface NativePortableState {
   document_constraints_version?: 1 | 2 | 3;
   shape_confirmation_hash?: string;
   /** Approved contract and explicit auxiliary fields; absent on hash-only legacy states. */
-  shape_semantic_snapshot?: import('./native-shape-semantics.js').NativeShapeSemanticSnapshot;
+  children_contract_ref?: string;
+  /** 仅保留旧 Run 原有方案引用，供已领取任务回报兼容。 */
   children_contract_hash?: string;
+  children_contract?: import('./native-children-contract.js').NativeChildrenContract;
   coordination_mode?: NativeSupervisorCoordinationMode;
   spec_changes: NativePortableSpecChange[];
   workspace: NativePortableWorkspace;
@@ -188,80 +190,6 @@ export interface NativePortableState {
   verification_report: 'verification.md' | null;
   archived: boolean;
   created_at: string;
-}
-
-export interface NativeLocalExecutionState {
-  schema: typeof NATIVE_LOCAL_EXECUTION_SCHEMA;
-  change: string;
-  basedOnStateVersion: number;
-  /** Candidate identity is local evidence metadata; absent on legacy overlays. */
-  candidateId?: string | null;
-  /** Fingerprint of the candidate, workspace inputs and tool environment. */
-  inputFingerprint?: string | null;
-  /**
-   * Gate over the same mutable inputs as the full fingerprint (HEAD, branch,
-   * dirty and untracked content, staged blob ids, ignored generated inputs,
-   * bound environment, machine identity). A matching gate proves the full
-   * fingerprint would recompute to the recorded value, so reuse skips hashing
-   * the clean tracked tree without overlooking generated inputs a check reads.
-   */
-  inputFingerprintGate?: string | null;
-  /** Fingerprint gate for candidate-owned inputs, excluding generated check inputs. */
-  candidateInputFingerprintGate?: string | null;
-  /** 原始 Builder 交接输入；旧 overlay 没有此字段。 */
-  rawInputRef?: string;
-  workspace: {
-    projectRoot: string;
-    worktreeRoot: string;
-    branch: string | null;
-    /** Host binding is required before a completed check can be reused. */
-    machineId?: string;
-  };
-  execution: null | {
-    operationId: string;
-    stage: 'building' | 'checking' | 'verifying' | 'archiving';
-    actor: 'builder' | 'runtime' | 'verifier' | null;
-    executionId: string | null;
-    status: 'running' | 'completed' | 'interrupted';
-    startedAt: string;
-    requestCheckRounds: number;
-    /**
-     * First Runtime contact from the dispatched Verifier itself. Absent until
-     * the Verifier reports startup, so a registered attempt stays
-     * distinguishable from one that actually started.
-     */
-    verifierStartedAt?: string;
-    /** Host process that owns a running Runtime operation. Optional on legacy overlays. */
-    ownerPid?: number;
-    /** Process creation identity used to avoid PID reuse. */
-    ownerIdentity?: string;
-  };
-  checks: NativeLocalCheckState[];
-}
-
-export interface NativeLocalCheckState {
-  id: string;
-  name: string;
-  operationId: string;
-  status: 'planned' | 'running' | 'passed' | 'failed' | 'interrupted';
-  repeatable: boolean;
-  timeoutMs: number;
-  executionCount: number;
-  argv: string[];
-  cwd: string;
-  exitCode: number | null;
-  startedAt: string | null;
-  completedAt: string | null;
-  log: string;
-  /** Child process lifecycle persisted before and after spawn. */
-  activeProcess?:
-    null | { status: 'starting' } | { status: 'running'; pid: number; identity?: string };
-  /** Set only by the Runtime after a real process completion. */
-  evidence?: 'runtime';
-  /** Digest tying the Runtime result fields to the captured log content. */
-  evidenceDigest?: string;
-  /** 本条真实执行各自的前后输入，保留其他检查的原来源。 */
-  rawInput?: { beforeRef: string; afterRef: string; executionRef: string };
 }
 
 export function emptyNativePortableHistoryOverflow(): NativePortableHistoryOverflow {

@@ -1,5 +1,7 @@
 # Classic SDK 执行方法
 
+按[普通命令与检查](../../comet/reference/platform-execution.md)使用平台工具执行普通命令、核对原任务与副作用、判断结果是否适用，并提交实际报告。Comet 不重复执行检查，不维护普通命令的内容快照、进程监管或恢复机制。 用户选择的方法、批准、计划和完整验收要求继续有效。
+
 仅在 `runtimeFormat: sdk` 时读取当前阶段的章节。阶段命令、Action、Wait 和输入模板以主 Skill 与最新 continuation 为准；本参考说明实际工作和完成条件。
 
 所有产物与外部 Skill 输入使用当前 configuration.language。每次阶段入口、接收新 Agent 和上下文恢复，先按 [任务上下文协议](scripts.md#任务上下文与产物语言) 使用当前 continuation 或已领取 Action 的 `contextRequest`；派发子任务时一并交付阶段、任务范围、实际工作区和有效配置。保留已有事实与有效证据。
@@ -44,6 +46,8 @@ SDK 新 change 使用 `comet-state.yaml`，历史 `.comet.yaml` 原地保留。�
 批准后完善唯一 Design Doc：已有引用优先沿用，否则使用当前 change 的 design.md；项目明确要求独立文档时，OpenSpec design.md 仅保存摘要和链接。frontmatter 仅含 `comet_change: <change-name>`、`role: technical-design`、`canonical_spec: openspec`。设计覆盖方案、取舍、风险和测试策略，正文与已批准提案一致后提交。中断后读取已保存摘要、源文件与当前 Wait，只补未完成工作。
 
 ## Build
+
+Build 的 TDD、调试和最终检查均使用平台工具，保留可复核的结果。
 
 已选配置要求的实施、TDD 或审查能力，按[宿主能力核对](../../comet/reference/host-check.md) 在开始实现前确认；已有仍有效的核对直接复用。
 
@@ -107,7 +111,7 @@ review_mode 为 standard 或 thorough 时，由独立 reviewer 对最终 diff �
 
 ## 检查复用
 
-确定性的本地检查使用主 Skill 的 Guard 命令并在 `--` 前加 `--local`。Runtime 只有在 argv、cwd、输入、环境、超时、原始收据和日志匹配时才返回 reused；Build 与 Verify 可复用同一完整命令。外部服务或不可重复检查不加该参数。恢复时沿用原执行及收据，结果未知先核对，不重发副作用。输入发生变化时由 Runtime 重跑，不能用旧对话里的通过结论替代检查。
+按[普通命令与检查](../../comet/reference/platform-execution.md)使用平台工具执行普通命令、核对原任务与副作用、判断结果是否适用，并提交实际报告。Comet 不重复执行检查，不维护普通命令的内容快照、进程监管或恢复机制。 TDD 的 RED 与局部调试照常执行。结果复用不改变用户选择的审查要求，也不代替全部验收项。
 
 ## 预设范围复核
 

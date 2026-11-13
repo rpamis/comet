@@ -6,11 +6,6 @@ import { parseDocument } from 'yaml';
 import { inspectGitWorktree, listGitWorktreeRoots } from '../../platform/paths/git-worktree.js';
 import { runGitCommand } from '../../platform/process/git.js';
 
-import { readNativeBoundedTextFile } from './native-bounded-file.js';
-import { canonicalHash } from './native-canonical-hash.js';
-import { readProjectConfig } from './native-config.js';
-import { nativeProjectPaths } from './native-paths.js';
-import { parseNativePortableState, readNativePortableState } from './native-portable-state.js';
 import {
   NATIVE_CHILDREN_SCHEMA,
   NATIVE_CHILDREN_V2_SCHEMA,
@@ -19,6 +14,17 @@ import {
   type NativeChildrenContract,
   type NativeChildrenDocument,
 } from './native-children-contract.js';
+import { readProjectConfig } from './native-config.js';
+import { nativeProjectPaths } from './native-paths.js';
+import { parseNativePortableState, readNativePortableState } from './native-portable-state.js';
+import type { NativePortablePhase, NativePortableState } from './native-portable-types.js';
+import {
+  projectNativeSupervisorChildren,
+  readNativeSupervisorState,
+  rebuildNativeSupervisorStateFromFacts,
+  writeNativeSupervisorState,
+} from './native-supervisor.js';
+import type { NativeProjectPaths } from './native-types.js';
 export {
   NATIVE_CHILDREN_FILE,
   NATIVE_CHILDREN_SCHEMA,
@@ -45,18 +51,6 @@ function samePath(left: string, right: string): boolean {
     ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
     : normalizedLeft === normalizedRight;
 }
-import {
-  projectNativeSupervisorChildren,
-  readNativeSupervisorState,
-  rebuildNativeSupervisorStateFromFacts,
-  writeNativeSupervisorState,
-} from './native-supervisor.js';
-import type {
-  NativePortableAcceptanceState,
-  NativePortablePhase,
-  NativePortableState,
-} from './native-portable-types.js';
-import type { NativeProjectPaths } from './native-types.js';
 
 export type NativeChildDerivedStatus =
   | 'pending'
@@ -84,7 +78,7 @@ export interface NativeChildStatusProjection {
 export interface NativeChildrenInspection {
   schema?: NativeChildrenContract['schema'];
   coordinationChoiceRequired?: boolean;
-  contractHash: string | null;
+  contractRef: string | null;
   confirmed: boolean;
   parentBranch: string | null;
   children: NativeChildStatusProjection[];
@@ -120,53 +114,6 @@ interface ArchivedChildState {
 interface ArchivedChildEvidence extends ArchivedChildState {
   source: WorkspaceSource;
   committedState: NativePortableState | null;
-}
-
-function decisionsSection(source: string): string | null {
-  const heading = /^#\s+(?:Decisions|决策)\s*$/imu.exec(source);
-  if (!heading || heading.index === undefined) return null;
-  const section = source.slice(heading.index + heading[0].length);
-  return section.split(/^#\s+/mu, 1)[0] ?? section;
-}
-
-/**
- * Detect an explicitly recorded Supervisor Shape before children.yaml exists.
- *
- * This intentionally requires the formal Decisions section, an explicit Supervisor Change
- * declaration, and at least two child declarations. It does not infer coordination from brief
- * length, acceptance count, or ordinary task wording.
- */
-export function hasNativeSupervisorShapeIntent(source: string): boolean {
-  const decisions = decisionsSection(source);
-  if (!decisions || !/Supervisor\s+Change/iu.test(decisions)) return false;
-  const childDeclarations = decisions.match(/^\s*[-*]\s+(?:Child\b|子任务\b|子 Change\b)/gimu);
-  const numberedChildren = decisions.match(/\bChild\s+\d+\b/giu);
-  return Math.max(childDeclarations?.length ?? 0, numberedChildren?.length ?? 0) >= 2;
-}
-
-export async function readNativeSupervisorShapeIntent(changeDir: string): Promise<boolean> {
-  try {
-    const brief = await readNativeBoundedTextFile({
-      root: changeDir,
-      ref: 'brief.md',
-      maxBytes: null,
-      includeHash: false,
-    });
-    return hasNativeSupervisorShapeIntent(brief.text);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
-    throw error;
-  }
-}
-
-export function hashNativeParentContract(options: {
-  acceptance: readonly Pick<NativePortableAcceptanceState, 'id' | 'source' | 'text'>[];
-  children: NativeChildrenContract;
-}): string {
-  return canonicalHash('comet.native.parent-contract.v1', {
-    acceptance: options.acceptance.map(({ id, source, text }) => ({ id, source, text })),
-    children: options.children,
-  });
 }
 
 async function workspaceSources(paths: NativeProjectPaths): Promise<WorkspaceSource[]> {
@@ -231,6 +178,7 @@ export async function findNativeV1SupervisorParents(options: {
       if (state.phase !== 'build' || state.status !== 'active') continue;
       const contract = await readNativeChildrenContract({
         changeDir,
+        validation: nativeChildrenAcceptanceValidation(state),
         ...(state.acceptance.length > 0
           ? { acceptanceIds: state.acceptance.map(({ id }) => id) }
           : {}),
@@ -423,18 +371,21 @@ export async function inspectNativeChildren(options: {
   state: NativePortableState;
 }): Promise<NativeChildrenInspection | null> {
   const changeDir = path.join(options.paths.changesDir, options.state.name);
-  const coordinationChoiceRequired = await readNativeSupervisorShapeIntent(changeDir);
+  // 协作由明确的 children.yaml 声明，不从 Brief 措辞猜测。
+  const coordinationChoiceRequired = false;
   let contractError: string | null = null;
   let document: NativeChildrenDocument | null;
   try {
-    document = await readNativeChildrenContract({
-      changeDir,
-      validation: nativeChildrenAcceptanceValidation(options.state),
-      ...(options.state.acceptance.length > 0
-        ? { acceptanceIds: options.state.acceptance.map(({ id }) => id) }
-        : {}),
-      policy: 'advisory',
-    });
+    document = options.state.children_contract
+      ? { contract: options.state.children_contract, size: 0, drift: null }
+      : await readNativeChildrenContract({
+          changeDir,
+          validation: nativeChildrenAcceptanceValidation(options.state),
+          ...(options.state.acceptance.length > 0
+            ? { acceptanceIds: options.state.acceptance.map(({ id }) => id) }
+            : {}),
+          policy: 'advisory',
+        });
   } catch (error) {
     contractError = `Children contract cannot be read; restore children.yaml and confirm Shape: ${(error as Error).message}`;
     document = null;
@@ -460,10 +411,10 @@ export async function inspectNativeChildren(options: {
       };
     }
     if (contractError) throw new Error(contractError);
-    return options.state.children_contract_hash
+    return options.state.children_contract_ref
       ? {
           ...(coordinationChoiceRequired ? { coordinationChoiceRequired: true } : {}),
-          contractHash: null,
+          contractRef: null,
           confirmed: false,
           parentBranch: options.state.workspace.change_branch,
           children: [],
@@ -473,7 +424,7 @@ export async function inspectNativeChildren(options: {
       : coordinationChoiceRequired
         ? {
             coordinationChoiceRequired: true,
-            contractHash: null,
+            contractRef: null,
             confirmed: false,
             parentBranch: options.state.workspace.change_branch,
             children: [],
@@ -483,15 +434,9 @@ export async function inspectNativeChildren(options: {
         : null;
   }
 
-  const contractHash = hashNativeParentContract({
-    acceptance: options.state.acceptance,
-    children: document.contract,
-  });
+  const contractRef = options.state.children_contract_ref ?? null;
   const parentBranch = options.state.workspace.change_branch;
-  const confirmed =
-    options.state.phase !== 'shape' &&
-    options.state.children_contract_hash === contractHash &&
-    !document.drift;
+  const confirmed = options.state.phase !== 'shape' && Boolean(options.state.children_contract_ref);
   if (document.contract.schema === NATIVE_CHILDREN_V2_SCHEMA) {
     let supervisor = await readNativeSupervisorState(options.paths, options.state.name, {
       diagnostics: true,
@@ -514,12 +459,12 @@ export async function inspectNativeChildren(options: {
     }
     if (supervisor) {
       const projected = projectNativeSupervisorChildren(supervisor);
-      if (options.state.children_contract_hash !== contractHash || document.drift) {
+      if (!confirmed) {
         return {
           ...projected,
           schema: document.contract.schema,
           ...(coordinationChoiceRequired ? { coordinationChoiceRequired: true } : {}),
-          contractHash,
+          contractRef,
           confirmed: false,
           readyChildren: [],
           allDone: false,
@@ -535,7 +480,7 @@ export async function inspectNativeChildren(options: {
         ...projected,
         schema: document.contract.schema,
         ...(coordinationChoiceRequired ? { coordinationChoiceRequired: true } : {}),
-        contractHash,
+        contractRef,
         confirmed: confirmed && projected.confirmed,
       };
     }
@@ -569,7 +514,7 @@ export async function inspectNativeChildren(options: {
     return {
       schema: document.contract.schema,
       ...(coordinationChoiceRequired ? { coordinationChoiceRequired: true } : {}),
-      contractHash,
+      contractRef,
       confirmed,
       parentBranch,
       children: projections,
@@ -692,7 +637,7 @@ export async function inspectNativeChildren(options: {
   return {
     schema: document.contract.schema,
     ...(coordinationChoiceRequired ? { coordinationChoiceRequired: true } : {}),
-    contractHash,
+    contractRef,
     confirmed,
     parentBranch,
     children,

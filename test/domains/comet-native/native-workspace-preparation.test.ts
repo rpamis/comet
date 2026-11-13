@@ -41,6 +41,46 @@ describe('Native workspace preparation', () => {
   let projectRoot: string;
   const sourceConfig = { native: { artifact_root: 'docs' } } as CometProjectConfig;
 
+  it('allows Parent dispatch limits to change while retaining other Native workspace bindings', async () => {
+    worktree.inspectGitWorktree.mockReturnValue({
+      isGitWorktree: true,
+      currentBranch: 'comet/resumed',
+      primaryWorktreeRoot: projectRoot,
+      currentWorktreeRoot: projectRoot,
+      isSecondaryWorktree: false,
+    });
+    const source = {
+      native: { artifact_root: 'docs', max_parallel_children: 4 },
+    } as CometProjectConfig;
+    config.readProjectConfig.mockResolvedValue({
+      native: { artifact_root: 'docs', max_parallel_children: 1 },
+    });
+    await expect(
+      prepareNativeWorkspace({
+        projectRoot,
+        name: 'resumed',
+        isolation: 'branch',
+        changeBranch: 'comet/resumed',
+        targetBranch: 'main',
+        sourceConfig: source,
+      }),
+    ).resolves.toMatchObject({ preparation: { configInitialized: false } });
+    expect(config.writeProjectConfig).not.toHaveBeenCalled();
+    config.readProjectConfig.mockResolvedValue({
+      native: { artifact_root: 'other', max_parallel_children: 1 },
+    });
+    await expect(
+      prepareNativeWorkspace({
+        projectRoot,
+        name: 'resumed',
+        isolation: 'branch',
+        changeBranch: 'comet/resumed',
+        targetBranch: 'main',
+        sourceConfig: source,
+      }),
+    ).rejects.toBeInstanceOf(NativeWorkspacePreparationError);
+  });
+
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-workspace-preparation-'));
     await fs.mkdir(path.join(projectRoot, '.git'), { recursive: true });

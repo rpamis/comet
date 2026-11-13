@@ -1,3 +1,4 @@
+import '../../helpers/isolated-agent-home.js';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -5,7 +6,6 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
-import { inspectNativeHookGuard } from '../../../domains/comet-native/native-hook-guard.js';
 import { buildNativePortableAcceptance } from '../../../domains/comet-native/native-portable-acceptance.js';
 import {
   defaultProjectConfig,
@@ -94,12 +94,21 @@ describe('Native workflow friction regressions', () => {
     return confirmed;
   }
 
-  async function useAgentDocumentReview() {
-    const config = defaultProjectConfig('docs', 'en');
-    await writeProjectConfig(root, {
-      ...config,
-      native: { ...config.native, document_writes: 'allow' },
-    });
+  async function reportedChecks(ids: string[]) {
+    // SIMULATED Agent implementation; the platform Node check actually reads the result.
+    await fs.writeFile(
+      path.join(root, 'README.md'),
+      'hello\n' + ids.map((id) => id + ': documented').join('\n') + '\n',
+    );
+    const output = execFileSync(
+      process.execPath,
+      [
+        '-e',
+        `const fs=require('node:fs'),assert=require('node:assert/strict');const text=fs.readFileSync('README.md','utf8');assert(text.includes('hello'));for(const id of ${JSON.stringify(ids)})assert(text.includes(id+': documented'));process.stdout.write('verified '+${ids.length}+' acceptance records');`,
+      ],
+      { cwd: root, encoding: 'utf8', windowsHide: true },
+    );
+    return [{ name: 'README acceptance content', result: 'passed', note: output }];
   }
 
   async function input(value: unknown) {
@@ -111,15 +120,6 @@ describe('Native workflow friction regressions', () => {
       await fs.rm(file, { force: true });
     }
   }
-
-  it('reports document repair instead of a fictitious concurrent update', async () => {
-    await fs.writeFile(path.join(changeDir, 'brief.md'), '# Outcome\nCorrect spelling.\n');
-    const rejected = await command(['next', 'tiny', '--summary', 'Prepare Shape.']);
-    expect(rejected.error?.code).toBe('document-invalid');
-    expect(rejected.exitCode).toBe(65);
-    expect(rejected.summary).not.toMatch(/updated elsewhere|another session/iu);
-    expect(rejected.error?.message).toContain('brief-section-missing');
-  });
 
   it('accepts a focused four-section brief without inventing optional material', async () => {
     await fs.writeFile(
@@ -171,266 +171,7 @@ None.
     expect(current.data?.continuation).toMatchObject({ action: 'builder-handoff' });
   });
 
-  it.each([false, true])(
-    'checks actual formal content after the Hook write instead of invalidating a write intention (changed: %s)',
-    async (changed) => {
-      await useAgentDocumentReview();
-      const confirmed = await confirm();
-      const request = { intent: 'write' as const, targets: [path.join(changeDir, 'brief.md')] };
-      expect(await inspectNativeHookGuard(root, request, 'tiny')).toMatchObject({
-        allowed: true,
-        phase: 'build',
-      });
-      await fs.writeFile(
-        path.join(changeDir, 'brief.md'),
-        changed
-          ? brief.replace('Preserve the command usage.', 'Change the command usage.')
-          : brief.replace('# Scope\n', '\n# Scope\n\n'),
-      );
-      const { runNativeEditReviewCommand } =
-        await import('../../../domains/comet-native/native-edit-review-command.js');
-      const prepared = (await runNativeEditReviewCommand({
-        projectRoot: root,
-        name: 'tiny',
-        operation: 'prepare-applied',
-        sessionId: 'current-agent',
-      })) as { proposal: { proposalHash: string } };
-      const claimed = (await runNativeEditReviewCommand({
-        projectRoot: root,
-        name: 'tiny',
-        operation: 'judge',
-        proposalHash: prepared.proposal.proposalHash,
-        sessionId: 'current-agent',
-      })) as { recordTemplate: Record<string, unknown> };
-      const file = `${root}-formal-judgment.json`;
-      try {
-        await fs.writeFile(
-          file,
-          JSON.stringify({
-            ...claimed.recordTemplate,
-            decision: changed ? 'requirements-changed' : 'non-behavioral',
-            summary: changed
-              ? 'The usage constraint changed and requires a new decision.'
-              : 'Only heading spacing changed; the original contract remains applicable.',
-          }),
-        );
-        await runNativeEditReviewCommand({
-          projectRoot: root,
-          name: 'tiny',
-          operation: 'record',
-          file,
-        });
-      } finally {
-        await fs.rm(file, { force: true });
-      }
-      const implementation = await inspectNativeHookGuard(
-        root,
-        { intent: 'write', targets: [path.join(root, 'main.js')] },
-        'tiny',
-      );
-      expect(implementation).toMatchObject({
-        allowed: !changed,
-        phase: changed ? 'shape' : 'build',
-      });
-      const current = await command(['status', 'tiny']);
-      expect(current.agent?.phase).toBe(changed ? 'shape' : 'build');
-      if (!changed) expect(current.agent?.stateVersion).toBe(confirmed.agent?.stateVersion);
-    },
-  );
-
-  it.each([
-    [
-      'main.ts',
-      'export const greeting = "hello";\n',
-      '// Explain the greeting.\nexport const greeting = "hello";\n',
-    ],
-    ['settings.json', '{"enabled":true}', '{\n  "enabled": true\n}'],
-    ['settings.yaml', 'enabled: true\n', '# Explain the setting.\nenabled: true\n'],
-    ['worker.py', 'value = 1\n', '# Explain the value.\nvalue = 1\n'],
-  ])('keeps Verify for a concrete non-behavioral edit of %s', async (file, source, proposed) => {
-    await useAgentDocumentReview();
-    await confirm();
-    const target = path.join(root, file);
-    await fs.writeFile(target, source);
-    const dispatched = await input({
-      kind: 'builder-handoff',
-      summary: 'Implemented the greeting.',
-      addressed_acceptance_ids: ['A1'],
-      acceptance_review: [
-        {
-          id: 'A1',
-          status: 'implemented-with-evidence',
-          evidence: ['The greeting is hello.'],
-          note: 'Matches A1.',
-        },
-      ],
-      checks: [],
-      verification_checks: [],
-      known_limits: [],
-    });
-    expect(dispatched.agent?.phase).toBe('verify');
-    const { parseNativeHookRequest } =
-      await import('../../../domains/comet-native/native-hook-guard.js');
-    const decision = await inspectNativeHookGuard(
-      root,
-      parseNativeHookRequest(
-        JSON.stringify({
-          tool_name: 'Edit',
-          tool_input: {
-            file_path: target,
-            old_string: source,
-            new_string: proposed,
-          },
-        }),
-      ),
-      'tiny',
-    );
-    expect(decision).toMatchObject({ allowed: true, phase: 'verify' });
-    await fs.writeFile(target, proposed);
-    const { runNativeEditReviewCommand } =
-      await import('../../../domains/comet-native/native-edit-review-command.js');
-    const { nativeProjectPaths } = await import('../../../domains/comet-native/native-paths.js');
-    const { readNativePortableChange, nativeLocalExecutionFile } =
-      await import('../../../domains/comet-native/native-portable-storage.js');
-    const { readNativeLocalExecution } =
-      await import('../../../domains/comet-native/native-local-execution.js');
-    const { assertNativePortableRawCandidate } =
-      await import('../../../domains/comet-native/native-portable-checks.js');
-    const paths = await nativeProjectPaths(root, 'docs');
-    const state = await readNativePortableChange(paths, 'tiny');
-    const local = (await readNativeLocalExecution(nativeLocalExecutionFile(paths, 'tiny')))!;
-    await expect(assertNativePortableRawCandidate(paths, state, local)).rejects.toThrow(
-      '当前 Agent',
-    );
-    const observed = (await runNativeEditReviewCommand({
-      projectRoot: root,
-      name: 'tiny',
-      operation: 'observe',
-      sessionId: 'current-agent',
-    })) as { recordTemplate: Record<string, unknown> };
-    const resultFile = `${root}-judgment.json`;
-    try {
-      await fs.writeFile(
-        resultFile,
-        JSON.stringify({
-          ...observed.recordTemplate,
-          decision: 'non-behavioral',
-          summary:
-            'The current Agent checked this exact edit against the greeting requirement; behavior is unchanged.',
-        }),
-      );
-      await runNativeEditReviewCommand({
-        projectRoot: root,
-        name: 'tiny',
-        operation: 'record',
-        file: resultFile,
-      });
-    } finally {
-      await fs.rm(resultFile, { force: true });
-    }
-    await expect(assertNativePortableRawCandidate(paths, state, local)).resolves.toBeUndefined();
-    expect(() =>
-      execFileSync(
-        process.execPath,
-        [
-          path.resolve('assets/skills/comet/scripts/comet-hook-router.mjs'),
-          '--platform',
-          'codex',
-          '--project-root',
-          root,
-        ],
-        {
-          cwd: root,
-          input: JSON.stringify({
-            tool_name: 'Edit',
-            tool_input: {
-              file_path: target,
-              old_string: source,
-              new_string: proposed,
-            },
-          }),
-          stdio: ['pipe', 'pipe', 'pipe'],
-        },
-      ),
-    ).not.toThrow();
-    expect((await command(['status', 'tiny'])).agent?.phase).toBe('verify');
-  });
-
-  it('still requires confirmation when meaningful constraints change', async () => {
-    await confirm();
-    await fs.writeFile(
-      path.join(changeDir, 'brief.md'),
-      brief.replace('Preserve the command usage.', 'Change the public command usage.'),
-    );
-    const current = await command(['next', 'tiny', '--summary', 'Continue.']);
-    expect(current.agent?.phase).toBe('shape');
-  });
-
-  it.each([false, true])(
-    'checks deferred formal edits before accepting a Verifier result (changed: %s)',
-    async (changed) => {
-      await confirm();
-      const dispatched = await input({
-        kind: 'builder-handoff',
-        summary: 'Corrected the documentation spelling.',
-        addressed_acceptance_ids: ['A1'],
-        acceptance_review: [
-          {
-            id: 'A1',
-            status: 'implemented-with-evidence',
-            evidence: ['README contains hello.'],
-            note: 'Matches the confirmed spelling.',
-          },
-        ],
-        checks: [],
-        verification_checks: [],
-        known_limits: [],
-      });
-      const packet = dispatched.data as unknown as {
-        verifierDispatch: { candidateId: string; verifierExecutionRef: string };
-        state: { loop: { iteration: number; attempt: number } };
-      };
-      expect(dispatched.agent?.phase).toBe('verify');
-      expect(
-        await inspectNativeHookGuard(
-          root,
-          { intent: 'write', targets: [path.join(changeDir, 'brief.md')] },
-          'tiny',
-        ),
-      ).toMatchObject({ allowed: true, phase: 'verify' });
-      await fs.writeFile(
-        path.join(changeDir, 'brief.md'),
-        changed
-          ? brief.replace('Preserve the command usage.', 'Change the command usage.')
-          : brief.replace('# Scope\n', '\n# Scope\n\n'),
-      );
-      const result = await input({
-        kind: 'verifier-response',
-        candidateId: packet.verifierDispatch.candidateId,
-        verifierExecutionRef: packet.verifierDispatch.verifierExecutionRef,
-        response: {
-          kind: 'final-result',
-          result: {
-            iteration: packet.state.loop.iteration,
-            attempt: packet.state.loop.attempt,
-            verdict: 'pass',
-            acceptance: [{ id: 'A1', result: 'passed', reason: 'The spelling is correct.' }],
-            risks: [],
-            summary: 'Checked the current result.',
-          },
-        },
-      });
-      const current = await command(['status', 'tiny']);
-      expect(current.agent?.phase).toBe(changed ? 'shape' : 'verify');
-      expect(result.exitCode).toBe(changed ? 65 : 0);
-      if (!changed)
-        expect(result.data?.continuation).toMatchObject({
-          action: 'confirm-skill-coordinated-pass',
-        });
-    },
-  );
-
-  it('dispatches directly after the explicit handoff plan and includes small acceptance scopes', async () => {
+  it('dispatches the accepted Builder report explicitly and includes the complete small acceptance scope', async () => {
     await confirm();
     const inputFile = `${root}-handoff.json`;
     await fs.writeFile(
@@ -447,13 +188,18 @@ None.
             note: 'Matches the confirmed spelling.',
           },
         ],
-        checks: [],
+        checks: await reportedChecks(['A1']),
         known_limits: [],
-        verification_checks: [],
       }),
     );
     try {
-      const result = await command(['next', 'tiny', '--runner-input', inputFile]);
+      const submitted = await command(['next', 'tiny', '--runner-input', inputFile]);
+      expect(submitted.exitCode).toBe(0);
+      expect(submitted.data?.continuation).toMatchObject({ action: 'dispatch-verifier' });
+      const result = await input({
+        kind: 'dispatch-verifier',
+        verifierExecutionRef: 'SIMULATED-independent-verifier',
+      });
       const packet = (
         result.data as unknown as {
           verifierDispatch: { acceptance: unknown; startupInput: unknown };
@@ -462,20 +208,27 @@ None.
       expect(result.exitCode).toBe(0);
       expect(packet).toMatchObject({
         acceptance: [{ id: 'A1', text: 'The greeting reads hello.' }],
-        startupInput: { kind: 'verifier-started' },
+        verifierExecutionRef: 'SIMULATED-independent-verifier',
+        checks: [
+          expect.objectContaining({
+            name: { text: 'README acceptance content', truncated: false },
+            result: 'passed',
+            note: { text: 'verified 1 acceptance records', truncated: false },
+          }),
+        ],
       });
     } finally {
       await fs.rm(inputFile, { force: true });
     }
   });
 
-  it('keeps the complete scope paginated when it does not fit in the task packet', async () => {
+  it('keeps all 17 confirmed acceptance items in the platform task and typed details pages', async () => {
     const examples = Array.from({ length: 17 }, (_, index) => `Behavior ${index + 1} works.`);
     await confirm(
       brief.replace('- The greeting reads hello.', examples.map((text) => `- ${text}`).join('\n')),
     );
     const ids = examples.map((_, index) => `A${index + 1}`);
-    const dispatched = await input({
+    const submitted = await input({
       kind: 'builder-handoff',
       summary: 'Implemented the confirmed scope.',
       addressed_acceptance_ids: ids,
@@ -485,31 +238,57 @@ None.
         evidence: [`README documents ${id}.`],
         note: 'Checked the corresponding behavior.',
       })),
-      checks: [],
-      verification_checks: [],
+      checks: await reportedChecks(ids),
       known_limits: [],
+    });
+    expect(submitted.exitCode).toBe(0);
+    expect(submitted.data?.continuation).toMatchObject({ action: 'dispatch-verifier' });
+    const dispatched = await input({
+      kind: 'dispatch-verifier',
+      verifierExecutionRef: 'SIMULATED-full-scope-verifier',
     });
     expect(dispatched.exitCode).toBe(0);
     const packet = (dispatched.data as unknown as { verifierDispatch: Record<string, unknown> })
       .verifierDispatch;
-    expect(packet).not.toHaveProperty('acceptance');
-    expect(packet).toMatchObject({ scopeCount: 17, scopeIds: ids });
-    expect(packet.detailsPageArgs).toEqual(expect.arrayContaining(['status', '--details']));
-  });
-
-  it.each([
-    ['soft wrap', 'Keep the command usage.', 'Keep the command\nusage.', 'build'],
-    ['code', '```text\nhello\n```', '```text\nworld\n```', 'shape'],
-    ['HTML', '<div>hello</div>', '<div>world</div>', 'shape'],
-    ['link target', '[usage](./old.md)', '[usage](./new.md)', 'shape'],
-    ['hard break', 'Keep the command\nusage.', 'Keep the command  \nusage.', 'shape'],
-    ['paragraph', 'Keep the command\nusage.', 'Keep the command\n\nusage.', 'shape'],
-    ['nested list', '- First\n  - Second', '- First\n- Second', 'shape'],
-  ])('preserves Markdown meaning for %s', async (_name, before, after, phase) => {
-    const source = brief.replace('Preserve the command usage.', before);
-    await confirm(source);
-    await fs.writeFile(path.join(changeDir, 'brief.md'), source.replace(before, after));
-    expect((await command(['next', 'tiny', '--summary', 'Continue.'])).agent?.phase).toBe(phase);
+    expect(packet.acceptance).toEqual(
+      examples.map((text, index) => expect.objectContaining({ id: ids[index], text })),
+    );
+    expect(packet).toMatchObject({
+      checks: [
+        expect.objectContaining({
+          result: 'passed',
+          note: { text: 'verified 17 acceptance records', truncated: false },
+        }),
+      ],
+    });
+    // The retired size projection no longer duplicates scopeCount/scopeIds/startupInput.
+    // Typed details pages must still preserve every original acceptance ID and text.
+    const received: Array<{ id: string; text: string }> = [];
+    let cursor: string | null = null;
+    do {
+      const page = await command([
+        'status',
+        'tiny',
+        '--details',
+        ...(cursor ? ['--cursor', cursor] : []),
+      ]);
+      expect(page.exitCode).toBe(0);
+      const details = (
+        page.data as unknown as {
+          details: {
+            items: Array<{ kind: string; value: { id: string; text: string } }>;
+            nextCursor: string | null;
+          };
+        }
+      ).details;
+      received.push(
+        ...details.items.filter((item) => item.kind === 'acceptance').map((item) => item.value),
+      );
+      cursor = details.nextCursor;
+    } while (cursor);
+    expect(received.map(({ id, text }) => ({ id, text }))).toEqual(
+      examples.map((text, index) => ({ id: ids[index], text })),
+    );
   });
 
   it.each(['A0', 'A01', 'a1', 'A1 A2', ''])(

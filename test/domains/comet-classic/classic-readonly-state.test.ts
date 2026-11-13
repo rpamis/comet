@@ -1,4 +1,4 @@
-import { readCheckIndex } from '../../../domains/comet-classic/classic-check-index.js';
+import { importClassicLegacyRuntimeData } from '../../../domains/comet-classic/classic-legacy-runtime-import.js';
 import { requireFileSymlink } from '../../helpers/file-symlink.js';
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
@@ -9,7 +9,7 @@ import { parseDocument, stringify } from 'yaml';
 import {
   readClassicState,
   writeClassicState,
-  withClassicStateLock,
+  withClassicStateMutation,
 } from '../../../domains/comet-classic/classic-store.js';
 import {
   resolveClassicRunDirectory,
@@ -100,20 +100,19 @@ describe('Classic read-only state and Archive identity', () => {
     await fs.mkdir(path.dirname(file));
     await fs.writeFile(file, '{"legacy":true}');
     await writeClassicProjectText(root, file, '{"local":true}', { label: 'local setup' });
+    // SIMULATED portable copy excludes obsolete project-local records.
+    await fs.rm(file);
     await fs.rm(resolveWorkspaceRuntimeRootSync(root), { recursive: true });
     const before = await tree(directory);
     expect(await classicProjectTargetExists(root, file, { label: 'local read' })).toBe(false);
     await expect(readClassicProjectFile(root, file, { label: 'local read' })).rejects.toMatchObject(
       { code: 'ENOENT' },
     );
-    expect(await readCheckIndex(change, '.comet/trajectory.jsonl')).toEqual({
-      maximumSequence: 0,
-      events: [],
-    });
+
     expect(await tree(directory)).toEqual(before);
   });
 
-  it('rejects different check files split across two real migration directories', async () => {
+  it('reads legacy local records without reconciling another Runtime directory', async () => {
     const local = await resolveClassicRunDirectory(change, root);
     const legacy = path.join(change, '.comet', 'checks');
     await fs.mkdir(legacy, { recursive: true });
@@ -121,10 +120,15 @@ describe('Classic read-only state and Archive identity', () => {
     await fs.mkdir(path.join(local, '.comet', 'checks'), { recursive: true });
     await fs.writeFile(path.join(local, '.comet', 'checks', 'new.log'), 'new evidence');
     const before = await tree(directory);
-    for (const file of ['old.log', 'new.log'])
-      await expect(
-        readClassicProjectFile(root, path.join(legacy, file), { label: 'split checks' }),
-      ).rejects.toThrow(/Conflicting/u);
+    expect(
+      await readClassicProjectFile(root, path.join(legacy, 'old.log'), { label: 'legacy record' }),
+    ).toBe('old evidence');
+    await expect(
+      readClassicProjectFile(root, path.join(legacy, 'new.log'), { label: 'legacy record' }),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await fs.readFile(path.join(local, '.comet/checks/new.log'), 'utf8')).toBe(
+      'new evidence',
+    );
     expect(await tree(directory)).toEqual(before);
   });
 
@@ -136,6 +140,8 @@ describe('Classic read-only state and Archive identity', () => {
     const originalTarget = path.join(local, '.comet', 'coordination.json');
     const copied = path.join(directory, 'copied-project');
     await fs.cp(root, copied, { recursive: true });
+    // SIMULATED portable copy carries formal materials, not legacy local records.
+    await fs.rm(path.join(copied, path.relative(root, file)));
     const before = await tree(directory);
     const reads = vi.spyOn(fs, 'open');
     expect(
@@ -149,56 +155,61 @@ describe('Classic read-only state and Archive identity', () => {
     expect(await tree(directory)).toEqual(before);
   });
 
-  it('rejects two real local sources and altered same-workspace fence destinations', async () => {
-    const file = path.join(change, '.comet', 'coordination.json');
+  it('does not follow destinations declared by old local migration markers', async () => {
+    const file = path.join(change, '.comet/coordination.json');
+    const foreign = path.join(directory, 'foreign-runtime/coordination.json');
     await fs.mkdir(path.dirname(file));
-    await fs.writeFile(file, '{"legacy":true}');
-    await resolveClassicRunDirectory(change, root);
-    const marker = path.join(file, '.comet-runtime-migration.json');
-    const fence = JSON.parse(await fs.readFile(marker, 'utf8'));
-    await fs.writeFile(marker, JSON.stringify({ ...fence, target: `${fence.target}-wrong` }));
+    const marker = JSON.stringify({
+      schema: 'comet.workspace-runtime-migration.v1',
+      workspaceId: 'old',
+      source: file,
+      target: foreign,
+      kind: 'file',
+    });
+    await fs.writeFile(file, marker);
     const before = await tree(directory);
-    await expect(readClassicProjectFile(root, file, { label: 'local read' })).rejects.toThrow(
-      /其他路径/u,
-    );
+    const reads = vi.spyOn(fs, 'open');
+    expect(await readClassicProjectFile(root, file, { label: 'old opaque marker' })).toBe(marker);
+    expect(reads.mock.calls.some(([target]) => String(target) === foreign)).toBe(false);
     expect(await tree(directory)).toEqual(before);
-    await fs.rm(file, { recursive: true });
-    await fs.writeFile(file, '{"legacy":true}');
-    await expect(readClassicProjectFile(root, file, { label: 'local read' })).rejects.toThrow(
-      /Conflicting/u,
-    );
   });
 
   it('rejects a symbolic link at an absolute home read target', async (context) => {
     await requireFileSymlink(context);
     const runtime = await workspaceRuntime.resolveWorkspaceRuntimeRoot(root);
+    await fs.mkdir(runtime, { recursive: true });
     const outside = path.join(directory, 'outside.json');
     await fs.writeFile(outside, 'untouched');
     const target = path.join(runtime, 'record.json');
     await fs.symlink(outside, target);
     await expect(readClassicProjectFile(root, target, { label: 'local read' })).rejects.toThrow(
-      /symbolic link|junction/u,
+      /regular file|symbolic link|junction/u,
     );
     expect(await fs.readFile(outside, 'utf8')).toBe('untouched');
   });
 
-  it('resolves legacy logical targets against the asynchronously validated workspace root', async () => {
-    const previous = resolveWorkspaceRuntimeRootSync(root);
-    const current = `${previous}-recreated`;
-    vi.spyOn(workspaceRuntime, 'resolveWorkspaceRuntimeRoot').mockResolvedValueOnce(current);
+  it('resolves an old logical reference from one captured Runtime path without migration', async () => {
+    const runtime = resolveWorkspaceRuntimeRootSync(root);
+    const resolver = vi
+      .spyOn(workspaceRuntime, 'resolveWorkspaceRuntimeRoot')
+      .mockRejectedValue(new Error('Unexpected repeated resolver'));
     expect(
-      await resolveClassicLocalTarget(root, path.join(root, '.comet', 'runtime', 'record.json')),
-    ).toEqual({ root: current, target: path.join(current, 'record.json') });
+      await resolveClassicLocalTarget(root, path.join(root, '.comet/runtime/record.json')),
+    ).toEqual({ root: runtime, target: path.join(runtime, 'record.json') });
+    expect(resolver).not.toHaveBeenCalled();
   });
 
-  it('rejects absolute home targets when the workspace identity changes during resolution', async () => {
-    const previous = resolveWorkspaceRuntimeRootSync(root);
-    vi.spyOn(workspaceRuntime, 'resolveWorkspaceRuntimeRoot').mockResolvedValueOnce(
-      `${previous}-recreated`,
-    );
-    await expect(
-      resolveClassicLocalTarget(root, path.join(previous, 'record.json')),
-    ).rejects.toThrow('workspace changed');
+  it('resolves an absolute local target once and never retargets a foreign directory', async () => {
+    const runtime = resolveWorkspaceRuntimeRootSync(root),
+      target = path.join(runtime, 'record.json');
+    const resolver = vi
+      .spyOn(workspaceRuntime, 'resolveWorkspaceRuntimeRoot')
+      .mockResolvedValue(runtime + '-foreign');
+    expect(await resolveClassicLocalTarget(root, target)).toEqual({ root: runtime, target });
+    expect(
+      await resolveClassicLocalTarget(root, path.join(runtime + '-foreign', 'record.json')),
+    ).toBeNull();
+    expect(resolver).not.toHaveBeenCalled();
   });
 
   it.each(['plain', 'legacy-commands'])(
@@ -261,7 +272,7 @@ describe('Classic read-only state and Archive identity', () => {
     expect(await tree(directory)).toEqual(before);
   });
 
-  it('rejects conflicting current and legacy owners without choosing or migrating either authority', async () => {
+  it('reads current ownership without reconciling a legacy layout', async () => {
     const relative = path.join('change-owners', 'classic', 'demo.json');
     const current = path.join(resolveWorkspaceRuntimeRootSync(root), relative);
     const legacy = path.join(root, '.comet', 'runtime', relative);
@@ -279,9 +290,9 @@ describe('Classic read-only state and Archive identity', () => {
       JSON.stringify({ ...owner, format: 'sdk', application: 'classic-full', runId: 'demo' }),
     );
     const before = await tree(directory);
-    await expect(
-      readChangeRuntimeOwner(root, 'classic', 'demo', { readOnly: true }),
-    ).rejects.toThrow(/Conflicting/u);
+    expect(await readChangeRuntimeOwner(root, 'classic', 'demo', { readOnly: true })).toEqual(
+      owner,
+    );
     expect(await tree(directory)).toEqual(before);
   });
 
@@ -335,9 +346,10 @@ describe('Classic read-only state and Archive identity', () => {
     expect(await tree(directory)).toEqual(before);
   });
 
-  it('reads an already bound home Run and accepts its legacy writer fence without mutations', async () => {
+  it('reads an explicitly imported home Run without mutating its legacy source', async () => {
     await fs.appendFile(path.join(change, '.comet.yaml'), `run_id: ${run.runId}\n`);
     await writeRunState(change, run);
+    await importClassicLegacyRuntimeData(root);
     const local = await resolveClassicRunDirectory(change, root);
     const before = await tree(directory);
     expect(await resolveClassicRunDirectoryForRead(change, root)).toBe(local);
@@ -358,19 +370,20 @@ describe('Classic read-only state and Archive identity', () => {
     expect(await tree(directory)).toEqual(before);
   });
 
-  it('rejects duplicate copied identities without rewriting either change or its binding', async () => {
+  it('reads a copied business document without scanning other changes or inventing Run history', async () => {
     await resolveClassicRunDirectory(change, root);
     const copied = path.join(root, 'openspec', 'changes', 'copied');
     await fs.mkdir(copied);
     await fs.copyFile(path.join(change, '.comet.yaml'), path.join(copied, '.comet.yaml'));
     const before = await tree(directory);
-    await expect(readClassicState(copied, { migrate: false })).rejects.toThrow(
-      /Duplicate Classic change_id/u,
-    );
+    expect(await readClassicState(copied, { migrate: false })).toMatchObject({
+      classic: { phase: 'design' },
+      run: null,
+    });
     expect(await tree(directory)).toEqual(before);
   });
 
-  it('blocks the actual Guard instead of falling back to a copied build-state identity', async () => {
+  it('blocks a copied Build document that has no approved implementation plan', async () => {
     await fs.writeFile(
       path.join(change, '.comet.yaml'),
       source.replace('phase: design', 'phase: build'),
@@ -384,7 +397,7 @@ describe('Classic read-only state and Archive identity', () => {
       await inspectClassicHookGuard(root, 'copied', { intent: 'write', targets: ['src/app.ts'] }),
     ).toMatchObject({
       allowed: false,
-      reason: expect.stringContaining('Duplicate Classic change_id'),
+      reason: expect.stringMatching(/Design|plan|设计|计划/u),
     });
     expect(await tree(directory)).toEqual(before);
   });
@@ -393,48 +406,16 @@ describe('Classic read-only state and Archive identity', () => {
     const local = await resolveClassicRunDirectory(change, root);
     await fs.writeFile(path.join(local, '.comet-state-transaction.json'), '{}');
     const before = await tree(directory);
-    await expect(readClassicState(change, { migrate: false })).rejects.toThrow(/being updated/u);
+    await expect(readClassicState(change, { migrate: false })).rejects.toThrow(
+      /transaction is incomplete/u,
+    );
     expect(await tree(directory)).toEqual(before);
   });
 
-  it('reads without mutation while its own active state lock is held', async () => {
-    await withClassicStateLock(change, async () => {
+  it('reads without mutation inside a serial state operation', async () => {
+    await withClassicStateMutation(change, async () => {
       const before = await tree(directory);
       expect((await readClassicState(change, { migrate: false })).classic?.phase).toBe('design');
-      expect(await tree(directory)).toEqual(before);
-    });
-  });
-
-  it('continues to reject another writer even in an expired state-lock async context', async () => {
-    const local = await resolveClassicRunDirectory(change, root);
-    let resume!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      resume = resolve;
-    });
-    let reading!: Promise<unknown>;
-    await withClassicStateLock(change, async () => {
-      reading = (async () => {
-        await gate;
-        return readClassicState(change, { migrate: false });
-      })();
-    });
-    await fs.writeFile(path.join(local, '.comet-state.lock'), JSON.stringify({ pid: process.pid }));
-    const before = await tree(directory);
-    resume();
-    await expect(reading).rejects.toThrow(/being updated/u);
-    expect(await tree(directory)).toEqual(before);
-  });
-
-  it('rejects a replaced lock file even while the original lock callback is still active', async () => {
-    const local = await resolveClassicRunDirectory(change, root);
-    await withClassicStateLock(change, async () => {
-      const replacement = path.join(local, 'replacement.lock');
-      const lock = path.join(local, '.comet-state.lock');
-      // 连内容也相同的替换文件仍不是本次持有的锁实例。
-      await fs.copyFile(lock, replacement);
-      await fs.rename(replacement, lock);
-      const before = await tree(directory);
-      await expect(readClassicState(change, { migrate: false })).rejects.toThrow(/lock changed/u);
       expect(await tree(directory)).toEqual(before);
     });
   });

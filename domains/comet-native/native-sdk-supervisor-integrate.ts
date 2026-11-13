@@ -6,20 +6,104 @@ import type {
   RuntimeValidator,
   WorkflowRun,
 } from '../engine/runtime.js';
-import { preflightNativeCheckPlans } from './native-check-executor.js';
+import { nativeSupervisorContractRef } from './native-children-contract.js';
 import { parseNativePortableState } from './native-portable-state.js';
-import {
-  nativeSdkCheckPlans,
-  nativeSdkSupervisorChildCheckSummaries,
-} from './native-sdk-checks.js';
-import { currentNativeSdkSupervisorPlan } from './native-sdk-supervisor-prepare.js';
+import { parseNativeReportedChecks } from './native-portable-state.js';
 import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
+import { currentNativeSdkSupervisorPlan } from './native-sdk-supervisor-prepare.js';
 import {
   nativeSupervisorChildWorktree,
   nativeSupervisorIntegrationBranch,
   nativeSupervisorIntegrationWorktree,
 } from './native-supervisor-workspace.js';
 
+/** Agent 修复原集成提交后的业务验收；不执行或恢复普通检查。 */
+export const nativeSdkSupervisorIntegrationRepairValidator: RuntimeValidator = {
+  id: 'native-supervisor-integration-repair-outcome',
+  version: '1',
+  async validate({ run, action, outcome, context }) {
+    if (outcome.status === 'failed') return { accepted: true };
+    try {
+      if (!context?.projectRoot || !action.claim?.sessionId)
+        throw new Error('Integration repair requires its actual Agent session');
+      const plan = await currentNativeSdkSupervisorPlan(run, context.projectRoot);
+      const input = (action.input as { activation?: Record<string, unknown> }).activation;
+      const output = outcome.output as {
+        summary?: unknown;
+        integrationCommit?: unknown;
+        checks?: unknown;
+      } | null;
+      const merge = run.actions.find((a) => a.id === input?.mergeActionId),
+        merged = merge?.outcome?.output as
+          { child?: unknown; integrationCommit?: unknown } | undefined;
+      const failure = run.actions.find((a) => a.id === input?.failedCheckActionId),
+        extension = run.actions.find((a) => a.id === input?.failedExtensionActionId);
+      const review = (
+        extension?.input as
+          { activation?: { reviewSource?: { actionId?: string; scope?: string } } } | undefined
+      )?.activation?.reviewSource;
+      const priorRepair = run.actions.find((a) => a.id === input?.repairActionId),
+        priorOutput = priorRepair?.outcome?.output as { integrationCommit?: unknown } | undefined;
+      const baseCommit =
+        priorRepair?.status === 'succeeded' &&
+        priorRepair.stepId === 'supervisor.child.integration-repair' &&
+        (priorRepair.input as { activation?: { mergeActionId?: unknown } }).activation
+          ?.mergeActionId === merge?.id
+          ? priorOutput?.integrationCommit
+          : merged?.integrationCommit;
+      const originalFailure =
+        failure?.status === 'failed' &&
+        failure.stepId === 'supervisor.child.integration-checks' &&
+        (failure.input as { activation?: { mergeActionId?: unknown } }).activation
+          ?.mergeActionId === merge?.id;
+      const extensionFailure =
+        extension?.stepId.startsWith('native.extension.integration.') &&
+        extension.outcome &&
+        (extension.outcome.output as { verdict?: string }).verdict === 'fail' &&
+        review?.scope === 'integration' &&
+        (review.actionId === merge?.id || review.actionId === input?.repairActionId);
+      const worktree = nativeSupervisorIntegrationWorktree(context.projectRoot, plan.state.name),
+        branch = nativeSupervisorIntegrationBranch(plan.state.name);
+      if (
+        !input ||
+        (!originalFailure && !extensionFailure) ||
+        nativeSupervisorContractRef(input, run) !== plan.state.children_contract_ref ||
+        typeof input.child !== 'string' ||
+        !plan.contract.children.some((c) => c.name === input.child) ||
+        merge?.stepId !== 'supervisor.child.integrate' ||
+        merge.status !== 'succeeded' ||
+        merged?.child !== input.child ||
+        baseCommit !== input.integrationCommit ||
+        typeof input.integrationWorktree !== 'string' ||
+        !samePath(input.integrationWorktree, worktree) ||
+        input.integrationBranch !== branch ||
+        !output ||
+        typeof output.summary !== 'string' ||
+        !output.summary.trim() ||
+        typeof output.integrationCommit !== 'string' ||
+        typeof input.integrationCommit !== 'string' ||
+        output.integrationCommit === input.integrationCommit ||
+        inspectGitWorktree(worktree).currentBranch !== branch ||
+        resolveGitRef(worktree, branch) !== output.integrationCommit ||
+        !gitWorktreeIsClean(worktree)
+      )
+        throw new Error(
+          'Integration repair does not match its original merge, failure and workspace',
+        );
+      runGitCommand(worktree, [
+        'merge-base',
+        '--is-ancestor',
+        input.integrationCommit,
+        output.integrationCommit,
+      ]);
+      if (parseNativeReportedChecks(output.checks ?? []).some((check) => check.result === 'failed'))
+        throw new Error('Resolve failed platform checks before submitting integration repair');
+      return { accepted: true };
+    } catch (error) {
+      return { accepted: false, reason: error instanceof Error ? error.message : String(error) };
+    }
+  },
+};
 async function currentIntegration(
   run: Readonly<WorkflowRun>,
   action: Readonly<RuntimeAction>,
@@ -27,13 +111,17 @@ async function currentIntegration(
 ) {
   const plan = await currentNativeSdkSupervisorPlan(run, projectRoot);
   const state = parseNativePortableState(run.state);
-  const input = (action.input as { activation?: Record<string, unknown> }).activation;
+  const input = (
+    action.input as {
+      activation?: Record<string, unknown>;
+    }
+  ).activation;
   if (
     state.phase !== 'build' ||
     !input ||
     typeof input.child !== 'string' ||
     !plan.contract.children.some(({ name }) => name === input.child) ||
-    input.contractHash !== state.children_contract_hash ||
+    nativeSupervisorContractRef(input, run) !== state.children_contract_ref ||
     typeof input.worktree !== 'string' ||
     !samePath(
       input.worktree,
@@ -43,8 +131,7 @@ async function currentIntegration(
     typeof input.candidateCommit !== 'string' ||
     resolveGitRef(input.worktree, input.branch) !== input.candidateCommit ||
     typeof input.verifierActionId !== 'string' ||
-    typeof input.verifierSessionId !== 'string' ||
-    typeof input.checkActionId !== 'string'
+    typeof input.verifierSessionId !== 'string'
   ) {
     throw new Error('Native SDK Supervisor integration lacks its verified Child candidate');
   }
@@ -59,14 +146,6 @@ async function currentIntegration(
   ) {
     throw new Error('Native SDK Supervisor integration lacks a bound passing Verifier');
   }
-  const checked = await nativeSdkSupervisorChildCheckSummaries({
-    run,
-    checkActionId: input.checkActionId,
-    projectRoot,
-  });
-  if (checked.child !== input.child || checked.candidateCommit !== input.candidateCommit) {
-    throw new Error('Native SDK Supervisor integration checks belong to another Child candidate');
-  }
   const integrationBranch = nativeSupervisorIntegrationBranch(state.name);
   const integrationWorktree = nativeSupervisorIntegrationWorktree(projectRoot, state.name);
   if (inspectGitWorktree(integrationWorktree).currentBranch !== integrationBranch) {
@@ -78,25 +157,28 @@ async function currentIntegration(
     .reverse()
     .find(
       (candidate) =>
-        candidate.stepId === 'supervisor.child.integration-checks' &&
-        candidate.status === 'succeeded',
+        ['supervisor.child.integrate', 'supervisor.child.integration-repair'].includes(
+          candidate.stepId,
+        ) && candidate.status === 'succeeded',
     );
   const prepared = run.outputs['supervisor.prepare']?.value as
-    { targetCommit?: unknown; integrationCommit?: unknown } | undefined;
+    | {
+        targetCommit?: unknown;
+        integrationCommit?: unknown;
+      }
+    | undefined;
   const expectedBaseCommit = previousCheck
-    ? (previousCheck.outcome?.output as { candidateId?: unknown } | null)?.candidateId
+    ? (
+        previousCheck.outcome?.output as {
+          integrationCommit?: unknown;
+        }
+      )?.integrationCommit
     : (prepared?.integrationCommit ?? prepared?.targetCommit);
   if (typeof expectedBaseCommit !== 'string') {
     throw new Error('Native SDK Supervisor integration lacks its checked base commit');
   }
-  const checks = nativeSdkCheckPlans({ verificationChecks: input.integrationChecks });
-  if (checks.length === 0 || checks.some(({ repeatable }) => !repeatable)) {
-    throw new Error('Native SDK Supervisor integration requires repeatable Runtime checks');
-  }
-  preflightNativeCheckPlans(input.worktree, checks);
   return { state, plan, input, integrationBranch, integrationWorktree, expectedBaseCommit };
 }
-
 /**
  * Child archive merges advance the integration head between a passed check and
  * the next merge. The advance is trusted only when it replays the recorded
@@ -132,7 +214,6 @@ function archiveChainReaches(
   }
   return cursor === toCommit;
 }
-
 async function currentIntegrationBase(
   run: Readonly<WorkflowRun>,
   action: Readonly<RuntimeAction>,
@@ -160,7 +241,9 @@ async function currentIntegrationBase(
   ) {
     throw new Error('Native SDK Supervisor integration branch changed after the prior check');
   }
-  const prepared = run.outputs['supervisor.prepare']?.value as { targetCommit?: unknown };
+  const prepared = run.outputs['supervisor.prepare']?.value as {
+    targetCommit?: unknown;
+  };
   if (typeof prepared?.targetCommit !== 'string')
     throw new Error('Native SDK Supervisor integration lacks its original target binding');
   runGitCommand(current.integrationWorktree, [
@@ -177,7 +260,6 @@ async function currentIntegrationBase(
   ]);
   return { ...current, baseCommit };
 }
-
 export const nativeSdkSupervisorIntegrateExecutor: RuntimeExecutor = {
   id: 'native-supervisor-integrate',
   capabilities: [],
@@ -242,7 +324,6 @@ export const nativeSdkSupervisorIntegrateExecutor: RuntimeExecutor = {
     };
   },
 };
-
 export const nativeSdkSupervisorIntegrateValidator: RuntimeValidator = {
   id: 'native-supervisor-integrate-outcome',
   version: '1',
@@ -279,7 +360,9 @@ export const nativeSdkSupervisorIntegrateValidator: RuntimeValidator = {
       if (!gitWorktreeIsClean(current.integrationWorktree)) {
         throw new Error('Native SDK Supervisor integration worktree changed after execution');
       }
-      const prepared = run.outputs['supervisor.prepare']?.value as { targetCommit?: unknown };
+      const prepared = run.outputs['supervisor.prepare']?.value as {
+        targetCommit?: unknown;
+      };
       const targetCommit = output.targetCommit ?? prepared.targetCommit;
       const targetMergeCommit = output.targetMergeCommit ?? output.baseCommit;
       if (targetCommit !== current.plan.targetCommit || typeof targetMergeCommit !== 'string')

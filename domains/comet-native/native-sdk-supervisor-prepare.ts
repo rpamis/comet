@@ -1,28 +1,24 @@
-import path from 'node:path';
+import { nativeSupervisorContractRef } from './native-children-contract.js';
 
-import { inspectGitWorktree, samePath } from '../../platform/paths/git-worktree.js';
-import { resolveGitRef } from '../../platform/paths/git-worktree.js';
+import { inspectGitWorktree, resolveGitRef, samePath } from '../../platform/paths/git-worktree.js';
 import type {
   RuntimeAction,
   RuntimeExecutor,
   RuntimeValidator,
   WorkflowRun,
 } from '../engine/runtime.js';
-import { hashNativeParentContract, nativeChildrenAcceptanceValidation } from './native-children.js';
-import { readNativeChildrenContract } from './native-children-contract.js';
-import { readProjectConfig } from './native-config.js';
-import { nativeProjectPaths } from './native-paths.js';
+import { DEFAULT_NATIVE_MAX_PARALLEL_CHILDREN, readProjectConfig } from './native-config.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import { nativeSupervisorRevisionWorkspace } from './native-sdk-supervisor-revision.js';
 import {
+  nativeSupervisorChildWorktree,
   nativeSupervisorIntegrationBranch,
   nativeSupervisorIntegrationWorktree,
-  nativeSupervisorChildWorktree,
   prepareNativeSupervisorChildWorkspace,
   prepareNativeSupervisorIntegrationWorkspace,
 } from './native-supervisor-workspace.js';
 
-export async function currentNativeSdkSupervisorPlan(
+export async function currentNativeSdkSupervisorContract(
   run: Readonly<WorkflowRun>,
   projectRoot: string,
 ) {
@@ -31,7 +27,7 @@ export async function currentNativeSdkSupervisorPlan(
   if (
     !['build', 'verify', 'archive'].includes(state.phase) ||
     state.name !== input.name ||
-    !state.children_contract_hash ||
+    !state.children_contract_ref ||
     typeof input.artifactRootRef !== 'string'
   ) {
     throw new Error('Native SDK Supervisor preparation lacks a confirmed child plan');
@@ -40,29 +36,35 @@ export async function currentNativeSdkSupervisorPlan(
   if (!config || config.native.artifact_root !== input.artifactRootRef) {
     throw new Error('Native SDK Supervisor project configuration changed');
   }
-  const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef);
-  const children = await readNativeChildrenContract({
-    changeDir: path.join(paths.changesDir, state.name),
-    acceptanceIds: state.acceptance.map(({ id }) => id),
-    validation: nativeChildrenAcceptanceValidation(state),
-  });
-  if (
-    !children ||
-    hashNativeParentContract({ acceptance: state.acceptance, children: children.contract }) !==
-      state.children_contract_hash
-  ) {
-    throw new Error('Native SDK Supervisor child plan changed after Shape confirmation');
-  }
+
+  const approvedProposal = (run.outputs['shape.revalidate']?.value ??
+    run.outputs['shape.prepare']?.value) as
+    | { children?: { contract?: import('./native-children-contract.js').NativeChildrenContract } }
+    | undefined;
+  const contract = state.children_contract ?? approvedProposal?.children?.contract;
+  if (!contract)
+    throw new Error(
+      'Native SDK Supervisor lacks its original approved children plan; explicitly revise requirements to confirm it',
+    );
   const targetBranch = state.workspace.change_branch ?? state.workspace.target_branch;
   if (!targetBranch) throw new Error('Native SDK Supervisor requires a bound Git target branch');
-  const targetCommit = resolveGitRef(projectRoot, targetBranch);
+  return { state, config, contract, targetBranch };
+}
+
+/** Resolve the live target only for preparation and integration that consume its commit. */
+export async function currentNativeSdkSupervisorPlan(
+  run: Readonly<WorkflowRun>,
+  projectRoot: string,
+) {
+  const plan = await currentNativeSdkSupervisorContract(run, projectRoot);
+  const targetCommit = resolveGitRef(projectRoot, plan.targetBranch);
   if (!targetCommit) throw new Error('Native SDK Supervisor target branch has no commit');
-  return { state, config, contract: children.contract, targetBranch, targetCommit };
+  return { ...plan, targetCommit };
 }
 
 function childPreparationInput(action: Readonly<RuntimeAction>): {
   child: string;
-  contractHash: string;
+  contractRef: string;
   integrationBranch: string;
   integrationWorktree: string;
   targetCommit: string;
@@ -71,14 +73,16 @@ function childPreparationInput(action: Readonly<RuntimeAction>): {
   if (
     !activation ||
     typeof activation.child !== 'string' ||
-    typeof activation.contractHash !== 'string' ||
+    typeof nativeSupervisorContractRef(activation) !== 'string' ||
     typeof activation.integrationBranch !== 'string' ||
     typeof activation.integrationWorktree !== 'string' ||
     typeof activation.targetCommit !== 'string'
   ) {
     throw new Error('Native SDK Supervisor child preparation lacks its activation');
   }
-  return activation as ReturnType<typeof childPreparationInput>;
+  return { ...activation, contractRef: nativeSupervisorContractRef(activation)! } as ReturnType<
+    typeof childPreparationInput
+  >;
 }
 
 async function currentChildPreparation(
@@ -90,7 +94,7 @@ async function currentChildPreparation(
   const input = childPreparationInput(action);
   if (
     !plan.contract.children.some(({ name }) => name === input.child) ||
-    input.contractHash !== plan.state.children_contract_hash ||
+    nativeSupervisorContractRef(input, run) !== plan.state.children_contract_ref ||
     input.integrationBranch !== nativeSupervisorIntegrationBranch(plan.state.name) ||
     !samePath(
       input.integrationWorktree,
@@ -142,12 +146,16 @@ export const nativeSdkSupervisorPrepareExecutor: RuntimeExecutor = {
     return {
       status: 'succeeded',
       output: {
-        contractHash: plan.state.children_contract_hash!,
+        contractRef: plan.state.children_contract_ref!,
         integrationBranch: prepared.binding.changeBranch!,
         integrationWorktree: prepared.projectRoot,
         targetBranch: plan.targetBranch,
         targetCommit: plan.targetCommit,
         integrationCommit: retained?.head ?? plan.targetCommit,
+        maxParallelChildren:
+          plan.state.coordination_mode === 'single-session'
+            ? 1
+            : (plan.config.native.max_parallel_children ?? DEFAULT_NATIVE_MAX_PARALLEL_CHILDREN),
       },
     };
   },
@@ -172,7 +180,7 @@ export const nativeSdkSupervisorPrepareValidator: RuntimeValidator = {
       const retained = nativeSupervisorRevisionWorkspace(run, expectedWorktree, expectedBranch);
       if (
         !output ||
-        output.contractHash !== plan.state.children_contract_hash ||
+        nativeSupervisorContractRef(output, run, action) !== plan.state.children_contract_ref ||
         output.integrationBranch !== expectedBranch ||
         typeof output.integrationWorktree !== 'string' ||
         !samePath(output.integrationWorktree, expectedWorktree) ||
@@ -235,7 +243,7 @@ export const nativeSdkSupervisorChildPrepareExecutor: RuntimeExecutor = {
       status: 'succeeded',
       output: {
         child: plan.input.child,
-        contractHash: plan.input.contractHash,
+        contractRef: plan.input.contractRef,
         worktree: prepared.projectRoot,
         branch: prepared.binding.changeBranch!,
         baseCommit: plan.input.targetCommit,
@@ -267,7 +275,7 @@ export const nativeSdkSupervisorChildPrepareValidator: RuntimeValidator = {
       if (
         !output ||
         output.child !== plan.input.child ||
-        output.contractHash !== plan.input.contractHash ||
+        nativeSupervisorContractRef(output, run) !== nativeSupervisorContractRef(plan.input, run) ||
         typeof output.worktree !== 'string' ||
         !samePath(output.worktree, worktree) ||
         output.branch !== branch ||

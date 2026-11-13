@@ -1,0 +1,493 @@
+import '../../helpers/isolated-agent-home.js';
+import { fixture } from '../../helpers/classic-platform-migration.js';
+import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
+
+import { execFile, spawnSync } from 'node:child_process';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  runClassicCli,
+  type ClassicCommandResult,
+} from '../../../domains/comet-classic/classic-cli.js';
+import { withClassicCommandContext } from '../../../domains/comet-classic/classic-command-context.js';
+import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
+
+import { ensureClassicRuntimeRun } from '../../../domains/comet-classic/classic-runtime-run.js';
+
+describe('Classic executed check evidence', () => {
+  let root: string;
+  let platformExecutions = 0;
+  let selectedReport: { key: string; code: number; stdout: string } | undefined;
+  const runtimeCli = (...args: string[]) =>
+    withClassicCommandContext({ projectRoot: root, invocationCwd: root }, () =>
+      runClassicCli(args),
+    );
+  const cli = async (...args: string[]) => {
+    if (args[0] === 'check' && args[1] === 'run') {
+      const sep = args.indexOf('--');
+      const argv = args.slice(sep + 1);
+      const before = args.slice(0, sep);
+      const cwdFlag = before.indexOf('--cwd');
+      const cwd = cwdFlag < 0 ? '.' : before[cwdFlag + 1];
+      const key = JSON.stringify([argv, cwd]);
+      let actual = selectedReport;
+      if (!before.includes('--local') || actual?.key !== key) {
+        const timeoutFlag = before.indexOf('--timeout-ms');
+        const result = spawnSync(argv[0], argv.slice(1), {
+          cwd: path.resolve(root, cwd),
+          encoding: 'utf8',
+          timeout: timeoutFlag < 0 ? 10000 : Number(before[timeoutFlag + 1]),
+          windowsHide: true,
+        });
+        actual = { key, code: result.status ?? 1, stdout: result.stdout ?? '' };
+        platformExecutions++;
+        selectedReport = actual;
+      }
+      await ensureClassicRuntimeRun(path.join(root, 'openspec/changes/demo'));
+      const recorded = await runtimeCli(
+        'state',
+        'record-check',
+        args[2],
+        args[3],
+        '--command',
+        argv.join(' '),
+        '--exit-code',
+        String(actual.code),
+        '--cwd',
+        cwd,
+      );
+      expect(recorded.exitCode, recorded.stdout ?? recorded.stderr).toBe(0);
+      return { exitCode: actual.code, stdout: actual.stdout, stderr: '' };
+    }
+    return runtimeCli(...args);
+  };
+  const generatedCli = (...args: string[]) =>
+    new Promise<ClassicCommandResult>((resolve, reject) => {
+      execFile(
+        process.execPath,
+        [path.resolve('assets/skills/comet/scripts/comet-runtime.mjs'), ...args, '--json'],
+        {
+          cwd: root,
+          encoding: 'utf8',
+          timeout: 60_000,
+          maxBuffer: 2 * 1024 * 1024,
+        },
+        (error, stdout, stderr) => {
+          if (error && (typeof error.code !== 'number' || error.killed || error.signal)) {
+            reject(error);
+            return;
+          }
+          try {
+            const result = JSON.parse(stdout) as ClassicCommandResult;
+            expect(result.exitCode, stdout + stderr).toBe(error?.code ?? 0);
+            resolve(result);
+          } catch (failure) {
+            reject(failure);
+          }
+        },
+      );
+    });
+
+  beforeEach(async () => {
+    platformExecutions = 0;
+    selectedReport = undefined;
+    root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-executed-'));
+    await prepareClassicLegacyProject(root);
+    expect((await cli('state', 'init', 'demo', 'hotfix', '--runtime', 'compat')).exitCode).toBe(0);
+    await fs.writeFile(path.join(root, 'input.txt'), 'good');
+    await fs.writeFile(
+      path.join(root, 'check.cjs'),
+      "process.exit(require('fs').readFileSync('input.txt', 'utf8') === 'good' ? 0 : 1)",
+    );
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await fs.rm(root, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
+  });
+
+  // Retired worker-only case 0: archived in originals and migration-mapping.json.
+
+  it('executes literal argv, preserves child JSON/help flags, and records runtime provenance', async () => {
+    const argv = [
+      process.execPath,
+      '-e',
+      'console.log(JSON.stringify(process.argv.slice(1)))',
+      '--',
+      '--json',
+      '--help',
+      'a & b',
+    ];
+    const result = await runtimeCli('check', 'run', 'demo', 'verify', '--json', '--', ...argv);
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout!).data).toMatchObject({
+      status: 'platform-execution-required',
+      checksExecuted: false,
+      platformCommand: { argv, cwd: root },
+    });
+    expect(platformExecutions).toBe(0);
+  });
+
+  // Retired worker-only case 2: archived in originals and migration-mapping.json.
+
+  // Retired worker-only case 3: archived in originals and migration-mapping.json.
+
+  it('does not fall back to an older success when the latest SDK Action is damaged', async () => {
+    await readyVerify();
+    await cli('check', 'run', 'demo', 'verify', '--', process.execPath, 'check.cjs');
+    await fs.writeFile(path.join(root, 'input.txt'), 'bad');
+    expect(
+      (await cli('check', 'run', 'demo', 'verify', '--', process.execPath, 'check.cjs')).exitCode,
+    ).not.toBe(0);
+    expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
+    expect(platformExecutions).toBe(2);
+  });
+
+  // Retired worker-only case 5: archived in originals and migration-mapping.json.
+
+  // Retired worker-only case 6: archived in originals and migration-mapping.json.
+
+  it.each(['bin/comet.js', 'dist/app/cli/index.js'])(
+    'preserves child flags through the public %s entry',
+    async (entry) => {
+      const argv = [
+        process.execPath,
+        '-e',
+        'console.log(process.argv.slice(1))',
+        '--',
+        '--json',
+        '--help',
+        'a & b',
+      ];
+      const result = spawnSync(
+        process.execPath,
+        [path.resolve(entry), 'check', 'run', 'demo', 'verify', '--json', '--', ...argv],
+        { cwd: root, encoding: 'utf8', windowsHide: true },
+      );
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout).data).toMatchObject({
+        status: 'platform-execution-required',
+        checksExecuted: false,
+        platformCommand: { argv },
+      });
+      expect(platformExecutions).toBe(0);
+    },
+  );
+
+  it('does not infer or execute a build when prerequisite configuration is missing', async () => {
+    await fs.writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({
+        scripts: {
+          build: "node -e \"require('fs').writeFileSync('unexpected', 'yes')\"",
+        },
+      }),
+    );
+    const result = await cli('guard', 'demo', 'build');
+    expect(result.exitCode).not.toBe(0);
+    expect(await fs.stat(path.join(root, 'unexpected')).catch(() => null)).toBeNull();
+  });
+
+  async function readyVerify() {
+    const dir = path.join(root, 'openspec', 'changes', 'demo');
+    await fs.writeFile(path.join(dir, 'tasks.md'), '- [x] implement\n');
+    await fs.writeFile(path.join(dir, 'verification-report.md'), '# Verification\nPassed\n');
+    await cli(
+      'state',
+      'set',
+      'demo',
+      'verification_report',
+      'openspec/changes/demo/verification-report.md',
+    );
+    const file = path.join(dir, '.comet.yaml');
+    await fs.writeFile(
+      file,
+      (await fs.readFile(file, 'utf8')).replace('phase: open', 'phase: verify'),
+    );
+  }
+
+  // Retired worker-only case 9: archived in originals and migration-mapping.json.
+
+  // Retired worker-only case 10: archived in originals and migration-mapping.json.
+
+  it('reuses local evidence but rejects an explicitly rerun failing check and direct transition', async () => {
+    await readyVerify();
+    expect(
+      (await cli('check', 'run', 'demo', 'verify', '--local', '--', process.execPath, 'check.cjs'))
+        .exitCode,
+    ).toBe(0);
+    expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
+    expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
+    await fs.writeFile(path.join(root, 'input.txt'), 'bad');
+    expect(
+      (await cli('check', 'run', 'demo', 'verify', '--', process.execPath, 'check.cjs')).exitCode,
+    ).not.toBe(0);
+    expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
+    expect((await cli('state', 'transition', 'demo', 'verify-pass')).exitCode).not.toBe(0);
+  });
+
+  it('keeps evidence reusable across commits, staging and task checkbox ticks', async () => {
+    const git = (...args: string[]) => spawnSync('git', args, { cwd: root, stdio: 'ignore' });
+    const dir = path.join(root, 'openspec', 'changes', 'demo');
+    await readyVerify();
+    await fs.writeFile(path.join(dir, 'tasks.md'), '- [ ] implement\n');
+    git('init');
+    git('config', 'user.email', 'test@example.com');
+    git('config', 'user.name', 'Test');
+    git('add', '-A');
+    git('commit', '-m', 'baseline');
+    expect(
+      (await cli('check', 'run', 'demo', 'verify', '--local', '--', process.execPath, 'check.cjs'))
+        .exitCode,
+    ).toBe(0);
+    git('add', '-A');
+    git('commit', '-m', 'progress');
+    await fs.writeFile(path.join(dir, 'tasks.md'), '- [x] implement\n');
+    expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
+    await fs.writeFile(path.join(root, 'input.txt'), 'bad');
+    expect(
+      (await cli('check', 'run', 'demo', 'verify', '--', process.execPath, 'check.cjs')).exitCode,
+    ).not.toBe(0);
+    expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
+    expect((await cli('state', 'transition', 'demo', 'verify-pass')).exitCode).not.toBe(0);
+  });
+
+  it('revalidates local evidence on cold recovery and returns structured context', async () => {
+    await readyVerify();
+    await cli('check', 'run', 'demo', 'verify', '--local', '--', process.execPath, 'check.cjs');
+    const before = platformExecutions;
+    const cold = spawnSync(
+      process.execPath,
+      [
+        path.resolve('assets/skills/comet/scripts/comet-runtime.mjs'),
+        'state',
+        'next',
+        'demo',
+        '--json',
+      ],
+      { cwd: root, encoding: 'utf8', windowsHide: true },
+    );
+    const result = {
+      exitCode: cold.status ?? 1,
+      stdout: cold.stdout,
+      stderr: cold.stderr,
+    };
+    expect(result.exitCode, result.stdout ?? result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout!).data).toMatchObject({
+      change: 'demo',
+      phase: 'verify',
+    });
+    expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
+    expect(platformExecutions).toBe(before);
+  });
+
+  // Retired worker-only case 14: archived in originals and migration-mapping.json.
+
+  // Retired worker-only case 15: archived in originals and migration-mapping.json.
+
+  // Retired worker-only case 16: archived in originals and migration-mapping.json.
+
+  // Retired worker-only case 17: archived in originals and migration-mapping.json.
+
+  // Retired worker-only case 18: archived in originals and migration-mapping.json.
+
+  // Retired worker-only case 19: archived in originals and migration-mapping.json.
+
+  // Retired worker-only case 20: archived in originals and migration-mapping.json.
+
+  it('records failure and timeout instead of falling back to an older success', async () => {
+    await readyVerify();
+    await cli('check', 'run', 'demo', 'verify', '--local', '--', process.execPath, 'check.cjs');
+    expect(
+      (
+        await cli(
+          'check',
+          'run',
+          'demo',
+          'verify',
+          '--local',
+          '--',
+          process.execPath,
+          '-e',
+          'process.exit(7)',
+        )
+      ).exitCode,
+    ).toBe(7);
+    expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
+    expect(
+      (
+        await cli(
+          'check',
+          'run',
+          'demo',
+          'verify',
+          '--timeout-ms',
+          '100',
+          '--',
+          process.execPath,
+          '-e',
+          'setInterval(() => {}, 1000)',
+        )
+      ).exitCode,
+    ).not.toBe(0);
+  });
+
+  it('keeps non-local evidence for previews and consumes it on the atomic phase update', async () => {
+    await readyVerify();
+    expect(
+      (await cli('check', 'run', 'demo', 'verify', '--', process.execPath, 'check.cjs')).exitCode,
+    ).toBe(0);
+    expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
+    expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
+    expect((await cli('guard', 'demo', 'verify', '--apply')).exitCode).toBe(0);
+    expect((await cli('state', 'get', 'demo', 'check_epoch')).stdout?.trim()).toBe('1');
+    expect((await cli('state', 'transition', 'demo', 'archive-reopen')).exitCode).toBe(0);
+    expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
+  });
+
+  it.each(['source', 'generated'] as const)(
+    'allows only one of two concurrent guarded phase transitions to succeed via %s',
+    async (mode) => {
+      await readyVerify();
+      const check = await cli(
+        'check',
+        'run',
+        'demo',
+        'verify',
+        '--',
+        process.execPath,
+        'check.cjs',
+      );
+      expect(check.exitCode, check.stderr).toBe(0);
+      const guard = mode === 'generated' ? generatedCli : cli;
+      const results = await Promise.all([
+        guard('guard', 'demo', 'verify', '--apply'),
+        guard('guard', 'demo', 'verify', '--apply'),
+      ]);
+      const winners = results.filter((result) => result.exitCode === 0);
+      expect(winners, JSON.stringify(results)).toHaveLength(1);
+      expect(winners[0].data).toMatchObject({
+        phase: 'archive',
+        configuration: { phase: 'archive' },
+      });
+      expect((await cli('state', 'get', 'demo', 'phase')).stdout?.trim()).toBe('archive');
+      expect((await cli('state', 'get', 'demo', 'check_epoch')).stdout?.trim()).toBe('1');
+    },
+  );
+
+  it('preserves non-local evidence if a different guard prerequisite fails', async () => {
+    await readyVerify();
+    await cli('check', 'run', 'demo', 'verify', '--', process.execPath, 'check.cjs');
+    await cli('state', 'set', 'demo', 'verification_report', 'null');
+    expect((await cli('guard', 'demo', 'verify', '--apply')).exitCode).not.toBe(0);
+    await cli(
+      'state',
+      'set',
+      'demo',
+      'verification_report',
+      'openspec/changes/demo/verification-report.md',
+    );
+    expect((await cli('guard', 'demo', 'verify', '--apply')).exitCode).toBe(0);
+  });
+
+  it('prevents manual writes to the check epoch', async () => {
+    expect((await cli('state', 'set', 'demo', 'check_epoch', '0')).exitCode).not.toBe(0);
+  });
+
+  it('does not expose older success after a failed executable launch', async () => {
+    await readyVerify();
+    expect(
+      (await cli('check', 'run', 'demo', 'verify', '--local', '--', process.execPath, 'check.cjs'))
+        .exitCode,
+    ).toBe(0);
+    expect(
+      (await cli('check', 'run', 'demo', 'verify', '--', path.join(root, 'missing-program')))
+        .exitCode,
+    ).not.toBe(0);
+    expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
+  });
+
+  // Retired worker-only case 27: archived in originals and migration-mapping.json.
+
+  it('does not rerun an interrupted check with a corrupted SDK Action binding', async () => {
+    const f = await fixture('source');
+    const original = await f.inspect();
+    const inspected = await inspectClassicSdkRun(f.root, 'demo');
+    const action = original.actions.find(
+      (a) => a.stepId === 'tweak.build.execute' && a.status === 'pending',
+    )!;
+    const claimed = await inspected.runtime.claim({
+      runId: original.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'platform-worker',
+      claimToken: 'original-claim',
+    });
+    await expect(
+      inspected.runtime.recordOutcome({
+        runId: original.runId,
+        outcome: {
+          actionId: action.id,
+          attempt: action.attempt,
+          inputHash: action.inputHash,
+          claimToken: 'wrong-claim',
+          outcomeId: 'forged',
+          status: 'succeeded',
+          output: {
+            event: 'build-complete',
+            checks: [{ name: 'forged', result: 'passed' }],
+          },
+        },
+        context: { projectRoot: f.root },
+      }),
+    ).rejects.toThrow();
+    expect(await f.inspect()).toEqual(claimed);
+    await f.invoke('state', 'next', 'demo', '--continue');
+    expect(await f.inspect()).toEqual(claimed);
+  });
+
+  it('does not rebuild after an explicit successful build check', async () => {
+    const dir = path.join(root, 'openspec', 'changes', 'demo');
+    await fs.writeFile(path.join(dir, 'tasks.md'), '- [x] implement\n');
+    await fs.writeFile(path.join(dir, 'proposal.md'), '# Proposal\n');
+    await cli('state', 'set', 'demo', 'isolation', 'current');
+    await fs.writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ scripts: { build: 'node -e "process.exit(99)"' } }),
+    );
+    const checked = await cli(
+      'check',
+      'run',
+      'demo',
+      'build',
+      '--local',
+      '--',
+      process.execPath,
+      'check.cjs',
+    );
+    expect(checked.exitCode, checked.stderr).toBe(0);
+    const guard = await cli('guard', 'demo', 'build');
+    expect(guard.exitCode, guard.stderr).toBe(0);
+    expect((await cli('guard', 'demo', 'build')).exitCode).toBe(0);
+    const reused = await cli(
+      'check',
+      'run',
+      'demo',
+      'build',
+      '--local',
+      '--json',
+      '--',
+      process.execPath,
+      'check.cjs',
+    );
+    expect(platformExecutions).toBe(1);
+  });
+});

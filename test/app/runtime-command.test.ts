@@ -15,7 +15,7 @@ import {
 import { createNativePortableState } from '../../domains/comet-native/native-portable-state.js';
 import { runNativeCli } from '../../domains/comet-native/native-cli.js';
 import { createNativePortableChange } from '../../domains/comet-native/native-portable-runtime.js';
-import { withNativeMutationLock } from '../../domains/comet-native/native-mutation-lock.js';
+import { withNativeMutation } from '../../domains/comet-native/native-mutation.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -33,8 +33,6 @@ import { parseClassicStateDocument } from '../../domains/comet-classic/classic-s
 import { runClassicCli } from '../../domains/comet-classic/classic-cli.js';
 import { prepareClassicWorkspace } from '../../domains/comet-classic/classic-workspace.js';
 import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
-import { withRecoverableFileLock } from '../../platform/fs/plugin-store.js';
-import { classicOpenEvidenceReceipt } from '../../domains/comet-classic/classic-sdk-application.js';
 import * as taskContext from '../../app/commands/comet-task-context.js';
 
 const repositoryRoot = path.resolve('.');
@@ -112,7 +110,7 @@ describe('Runtime JSON command', () => {
     return {
       operation: 'start',
       runId: change,
-      workflow: { id: 'comet-classic-full', version: '1' },
+      workflow: { id: 'comet-classic-full', version: '2' },
       input: { change, changeDir },
       initialState: projected.classic,
     };
@@ -162,6 +160,38 @@ describe('Runtime JSON command', () => {
           contextDelivery: { status: 'empty', sessionId: 'classic-receiver', phase: 'open' },
         },
       });
+      if (result.response.status !== 'succeeded') throw new Error(JSON.stringify(result.response));
+      const fullRun = result.response.data;
+      const compact = (result.cliResponse as { data: Record<string, unknown> }).data;
+      expect(fullRun.actions).toHaveLength(1);
+      expect(compact).toMatchObject({
+        runId: fullRun.runId,
+        revision: fullRun.revision,
+        status: fullRun.status,
+        workflow: fullRun.workflow,
+        configuration: { phase: 'open' },
+        run: { id: fullRun.runId },
+      });
+      for (const field of [
+        'actions',
+        'actionContexts',
+        'outputs',
+        'state',
+        'input',
+        'waits',
+        'definitionHashes',
+      ])
+        expect(compact).not.toHaveProperty(field);
+      expect(
+        (
+          compact.continuation as {
+            current: { actions: Array<{ id: string; contextRequest: { commandArgs: string[] } }> };
+          }
+        ).current.actions[0],
+      ).toMatchObject({
+        id: action.id,
+        contextRequest: { commandArgs: expect.arrayContaining(['classic-receiver']) },
+      });
       expect(collect).toHaveBeenCalledWith(
         projectRoot,
         expect.objectContaining({
@@ -176,17 +206,30 @@ describe('Runtime JSON command', () => {
         request,
         JSON.stringify({ operation: 'inspect', runId: 'classic-context' }),
       );
-      await runtimeDispatchCommand(
+      const inspected = await runtimeDispatchCommand(
         { application: 'classic-full', projectRoot, request },
         { output: 'compact' },
       );
+      expect(inspected.cliResponse).toBeUndefined();
+      expect(inspected.response.status === 'succeeded' && inspected.response.data).toEqual(fullRun);
+      await fs.writeFile(request, JSON.stringify({ operation: 'next', runId: 'classic-context' }));
+      const detailed = await runtimeDispatchCommand(
+        { application: 'classic-full', projectRoot, request, details: true },
+        { output: 'compact' },
+      );
+      expect(detailed.cliResponse).toBeUndefined();
+      expect(detailed.response.status === 'succeeded' && detailed.response.data).toEqual(fullRun);
       expect(collect).toHaveBeenCalledTimes(1);
     } finally {
       collect.mockRestore();
     }
   });
 
-  async function expectClassicRejectedWithoutWrites(request: unknown, reason: RegExp) {
+  async function expectClassicRejectedWithoutWrites(
+    request: unknown,
+    reason: RegExp,
+    targetProjectRoot = projectRoot,
+  ) {
     const requestFile = path.join(invocationCwd, `request-${++requestNumber}.json`);
     await fs.writeFile(requestFile, JSON.stringify(request));
     const writes = (
@@ -207,7 +250,7 @@ describe('Runtime JSON command', () => {
     const opens = vi.spyOn(fs, 'open');
     try {
       const result = await runtimeDispatchCommand(
-        { request: requestFile, projectRoot, application: 'classic-full' },
+        { request: requestFile, projectRoot: targetProjectRoot, application: 'classic-full' },
         { invocationCwd },
       );
       expect(result.response).toMatchObject({
@@ -523,7 +566,7 @@ describe('Runtime JSON command', () => {
       {
         operation: 'start',
         runId: 'native-change',
-        workflow: { id: 'comet-native', version: '1' },
+        workflow: { id: 'comet-native', version: '4' },
         input: { name: 'native-change', artifactRootRef: 'docs' },
         initialState: createNativePortableState({
           name: 'native-change',
@@ -537,7 +580,7 @@ describe('Runtime JSON command', () => {
     expect(started.response).toMatchObject({
       status: 'succeeded',
       data: {
-        workflow: { id: 'comet-native', version: '1' },
+        workflow: { id: 'comet-native', version: '4' },
         actions: [{ stepId: 'shape.prepare', status: 'pending' }],
       },
     });
@@ -784,7 +827,7 @@ describe('Runtime JSON command', () => {
     });
   });
 
-  it('claims a Classic SDK Action in a linked worktree when dispatched from the primary worktree', async () => {
+  it('claims a Classic SDK Action only in the explicitly selected linked worktree', async () => {
     execFileSync('git', ['init', '-b', 'main', projectRoot]);
     execFileSync('git', ['-C', projectRoot, 'config', 'user.name', 'Comet Test']);
     execFileSync('git', ['-C', projectRoot, 'config', 'user.email', 'comet@example.test']);
@@ -859,6 +902,32 @@ describe('Runtime JSON command', () => {
     if (inspected.response.status !== 'succeeded') throw new Error('Classic inspect failed');
     expect(inspected.response.data.state).toMatchObject({ autoTransition: false });
     const action = inspected.response.data.actions[0];
+    const primary = await dispatch(
+      {
+        operation: 'claim',
+        runId: 'linked-sdk',
+        expectedRevision: inspected.response.data.revision,
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        executorId: 'classic-host',
+        claimToken: 'wrong-primary-claim',
+      },
+      { application: 'classic-full', workflow: [], rootDir: undefined },
+    );
+    expect(primary.response.status).toBe('failed');
+    const stillLinked = await dispatch(
+      { operation: 'inspect', runId: 'linked-sdk' },
+      {
+        application: 'classic-full',
+        workflow: [],
+        rootDir: undefined,
+        projectRoot: prepared.projectRoot,
+      },
+    );
+    expect(stillLinked.response.status === 'succeeded' && stillLinked.response.data).toEqual(
+      inspected.response.data,
+    );
     const claimed = await dispatch(
       {
         operation: 'claim',
@@ -870,7 +939,12 @@ describe('Runtime JSON command', () => {
         executorId: 'classic-host',
         claimToken: 'linked-sdk-open',
       },
-      { application: 'classic-full', workflow: [], rootDir: undefined },
+      {
+        application: 'classic-full',
+        workflow: [],
+        rootDir: undefined,
+        projectRoot: prepared.projectRoot,
+      },
     );
     expect(claimed.exitCode, JSON.stringify(claimed.response)).toBe(0);
     expect(claimed.response).toMatchObject({
@@ -884,7 +958,7 @@ describe('Runtime JSON command', () => {
     ).toBeNull();
   });
 
-  it('claims a Native SDK Action in a linked worktree when dispatched from the primary worktree', async () => {
+  it('claims a Native SDK Action only in the explicitly selected linked worktree', async () => {
     const linkedRoot = await initializeNativeLinkedSdk('native-linked');
 
     const inspected = await dispatch(
@@ -894,6 +968,27 @@ describe('Runtime JSON command', () => {
     expect(inspected.exitCode, JSON.stringify(inspected.response)).toBe(0);
     if (inspected.response.status !== 'succeeded') throw new Error('Native inspect failed');
     const action = inspected.response.data.actions[0];
+    const primary = await dispatch(
+      {
+        operation: 'claim',
+        runId: 'native-linked',
+        expectedRevision: inspected.response.data.revision,
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        executorId: 'native-host',
+        claimToken: 'wrong-primary-claim',
+      },
+      { application: 'native', workflow: [], rootDir: undefined },
+    );
+    expect(primary.response.status).toBe('failed');
+    const stillLinked = await dispatch(
+      { operation: 'inspect', runId: 'native-linked' },
+      { application: 'native', workflow: [], rootDir: undefined, projectRoot: linkedRoot },
+    );
+    expect(stillLinked.response.status === 'succeeded' && stillLinked.response.data).toEqual(
+      inspected.response.data,
+    );
     const claimed = await dispatch(
       {
         operation: 'claim',
@@ -905,7 +1000,7 @@ describe('Runtime JSON command', () => {
         executorId: 'native-host',
         claimToken: 'native-linked-shape',
       },
-      { application: 'native', workflow: [], rootDir: undefined },
+      { application: 'native', workflow: [], rootDir: undefined, projectRoot: linkedRoot },
     );
     expect(claimed.exitCode, JSON.stringify(claimed.response)).toBe(0);
     expect(claimed.response).toMatchObject({
@@ -1060,7 +1155,7 @@ describe('Runtime JSON command', () => {
     const request = {
       operation: 'start',
       runId: 'native-change',
-      workflow: { id: 'comet-native', version: '1' },
+      workflow: { id: 'comet-native', version: '4' },
       input: { name: 'native-change', artifactRootRef: 'docs' },
       initialState: createNativePortableState({
         name: 'native-change',
@@ -1132,36 +1227,72 @@ describe('Runtime JSON command', () => {
     ).rejects.toThrow('SDK Run');
   });
 
-  it('does not reserve an SDK-owned Native change while the Native mutation lock is held', async () => {
+  it('starts a Native SDK Run through a serial mutation without replacing its existing owner or state', async () => {
     const paths = await nativeProjectPaths(projectRoot, 'docs');
-    await withNativeMutationLock(paths, 'test legacy creation', async () => {
-      const result = await dispatch(
-        {
-          operation: 'start',
-          runId: 'native-change',
-          workflow: { id: 'comet-native', version: '1' },
-          input: { name: 'native-change', artifactRootRef: 'docs' },
-          initialState: createNativePortableState({
-            name: 'native-change',
-            language: 'en',
-            createdAt: '2026-09-25T00:00:00.000Z',
-            nextAction: 'prepare-shape-confirmation',
-          }),
-        },
-        { application: 'native', workflow: [], rootDir: undefined },
-      );
-      expect(result.response).toMatchObject({ status: 'failed' });
-      await expect(
-        fs.access(
-          path.join(
-            resolveWorkspaceRuntimeRootSync(projectRoot),
-            'change-owners',
-            'native',
-            'native-change.json',
-          ),
-        ),
-      ).rejects.toMatchObject({ code: 'ENOENT' });
+    const lock = path.join(paths.runtimeDir, 'locks', 'native-change.lock');
+    const retired = 'SIMULATED obsolete lock metadata; no writer is running.\n';
+    await fs.mkdir(path.dirname(lock), { recursive: true });
+    await fs.writeFile(lock, retired);
+    const request = {
+      operation: 'start',
+      runId: 'native-change',
+      workflow: { id: 'comet-native', version: '4' },
+      input: { name: 'native-change', artifactRootRef: 'docs' },
+      initialState: createNativePortableState({
+        name: 'native-change',
+        language: 'en',
+        createdAt: '2026-09-25T00:00:00.000Z',
+        nextAction: 'prepare-shape-confirmation',
+      }),
+    };
+    const options = { application: 'native', workflow: [], rootDir: undefined };
+    const started = await withNativeMutation(paths, () => dispatch(request, options));
+    expect(started.response.status, JSON.stringify(started.response)).toBe('succeeded');
+    const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
+    const ownerFile = path.join(runtimeRoot, 'change-owners/native/native-change.json');
+    const owner = await fs.readFile(ownerFile, 'utf8');
+    expect(JSON.parse(owner)).toEqual({
+      schema: 'comet.change-owner.v1',
+      workflow: 'native',
+      change: 'native-change',
+      format: 'sdk',
+      application: 'native',
+      runId: 'native-change',
     });
+    const store = createFileRuntimeStore<WorkflowRun>({
+      rootDir: path.join(runtimeRoot, 'sdk-runs/native'),
+    });
+    const original = await store.read('native-change');
+    expect(original?.workflow.version).toBe('4');
+    const storeRoot = path.join(runtimeRoot, 'sdk-runs/native');
+    const checkpoint = (await fs.readdir(storeRoot, { recursive: true })).find(
+      (entry) => path.basename(entry) === 'checkpoint.json',
+    );
+    expect(checkpoint).toBeDefined();
+    const checkpointFile = path.join(storeRoot, checkpoint!);
+    const checkpointBytes = await fs.readFile(checkpointFile);
+    const stateFile = path.join(paths.changesDir, 'native-change', 'comet-state.yaml');
+    const stateBytes = () =>
+      fs.readFile(stateFile).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      });
+    const state = await stateBytes();
+    const repeated = await dispatch(request, options);
+    expect(repeated.response.status).toBe('succeeded');
+    if (repeated.response.status !== 'succeeded')
+      throw new Error(JSON.stringify(repeated.response));
+    expect(repeated.response.data).toEqual(original);
+    const conflict = await dispatch(
+      { ...request, input: { ...request.input, task: 'SIMULATED different task' } },
+      options,
+    );
+    expect(conflict.response).toMatchObject({ status: 'failed', error: { code: 'RUN_CONFLICT' } });
+    expect(await store.read('native-change')).toEqual(original);
+    expect(await fs.readFile(checkpointFile)).toEqual(checkpointBytes);
+    expect(await fs.readFile(ownerFile, 'utf8')).toBe(owner);
+    expect(await stateBytes()).toEqual(state);
+    expect(await fs.readFile(lock, 'utf8')).toBe(retired);
   });
 
   it('does not claim an existing legacy Native change for a new SDK Run', async () => {
@@ -1239,11 +1370,11 @@ describe('Runtime JSON command', () => {
     });
   });
 
-  it('refuses to resume an SDK-owned Native change when legacy state appears', async () => {
+  it('preserves the authoritative SDK Native Run when raw legacy state appears', async () => {
     const request = {
       operation: 'start',
       runId: 'native-change',
-      workflow: { id: 'comet-native', version: '1' },
+      workflow: { id: 'comet-native', version: '4' },
       input: { name: 'native-change', artifactRootRef: 'docs' },
       initialState: createNativePortableState({
         name: 'native-change',
@@ -1253,17 +1384,28 @@ describe('Runtime JSON command', () => {
       }),
     };
     const options = { application: 'native', workflow: [], rootDir: undefined };
-    expect((await dispatch(request, options)).response.status).toBe('succeeded');
+    const started = await dispatch(request, options);
+    expect(started.response.status).toBe('succeeded');
+    if (started.response.status !== 'succeeded') throw Error('start failed');
+    const original = started.response.data;
+    const store = createFileRuntimeStore<WorkflowRun>({
+      rootDir: path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'sdk-runs', 'native'),
+    });
     const legacyDir = path.join(projectRoot, 'docs', 'comet', 'changes', 'native-change');
     await fs.mkdir(legacyDir, { recursive: true });
     await fs.writeFile(path.join(legacyDir, 'comet-state.yaml'), 'schema: comet.native.v4\n');
-    const resumed = await dispatch(request, options);
-    expect(resumed.response).toMatchObject({ status: 'failed' });
+    const raw = await fs.readFile(path.join(legacyDir, 'comet-state.yaml'), 'utf8');
+    const rawInspection = await dispatch({ operation: 'inspect', runId: 'native-change' }, options);
+    expect(rawInspection.response).toMatchObject({ status: 'succeeded', data: original });
+    expect(await store.read('native-change')).toEqual(original);
+    expect(await fs.readFile(path.join(legacyDir, 'comet-state.yaml'), 'utf8')).toBe(raw);
     const advanced = await dispatch({ operation: 'next', runId: 'native-change' }, options);
-    expect(advanced.response).toMatchObject({ status: 'failed' });
+    expect(advanced.response).toMatchObject({ status: 'succeeded' });
+    expect(await store.read('native-change')).toEqual(original);
+    expect(advanced.response.status === 'succeeded' && advanced.response.data).toEqual(original);
   });
 
-  it('executes a Native application check through separate SDK command requests', async () => {
+  it('records an actual platform check through separate Native SDK requests and preserves approval', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('docs', 'en'));
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     await ensureNativeDirectories(paths);
@@ -1323,7 +1465,7 @@ describe('Runtime JSON command', () => {
       await builtIn({
         operation: 'start',
         runId: 'native-change',
-        workflow: { id: 'comet-native', version: '1' },
+        workflow: { id: 'comet-native', version: '4' },
         input: { name: 'native-change', artifactRootRef: 'docs' },
         initialState: createNativePortableState({
           name: 'native-change',
@@ -1349,52 +1491,57 @@ describe('Runtime JSON command', () => {
         choice: 'approved',
       }),
     );
-    run = await submit(
-      run,
-      await collectNativeSdkShapeProposal({ paths, state: run.state as NativePortableState }),
-      'shape-revalidated',
+    const shapeApproval = run.waits.find((entry) => entry.id === wait.id)!;
+    expect(run.actions.at(-1)).toMatchObject({ stepId: 'build.builder', status: 'pending' });
+    const actual = spawnSync(
+      process.execPath,
+      [
+        '-e',
+        "require('node:fs').appendFileSync('platform-count','once\\n');process.stdout.write('sdk-check-ok')",
+      ],
+      { cwd: projectRoot, encoding: 'utf8', windowsHide: true },
     );
+    expect(actual.status).toBe(0);
+    expect(actual.stdout).toBe('sdk-check-ok');
+    await fs.writeFile(path.join(projectRoot, 'platform-check.log'), actual.stdout + actual.stderr);
+    const reports = [
+      {
+        name: 'Focused check',
+        result: 'passed',
+        note: 'Actual Agent-platform Node exit 0; stdout sdk-check-ok in platform-check.log. SIMULATED Agent protocol.',
+      },
+    ];
     run = await submit(
       run,
       {
         summary: 'Implemented the workflow.',
         addressedAcceptanceIds: ['A1'],
         acceptanceReview: fixtureAcceptanceReview(['A1']),
-        checks: [],
+        checks: reports,
         knownLimits: [],
         review: null,
         submittedAt: '2026-09-25T01:00:00.000Z',
-        verificationChecks: [
-          {
-            id: 'focused',
-            name: 'Focused check',
-            executable: process.execPath,
-            argv: ['-e', 'process.stdout.write("sdk-check-ok")'],
-            cwdRef: '.',
-            timeoutMs: 5_000,
-            repeatable: true,
-          },
-        ],
       },
       'builder',
     );
-    const result = await builtIn({
+    const checked = run;
+    const unavailable = await builtIn({
       operation: 'execute',
       runId: run.runId,
       actionId: run.actions.at(-1)!.id,
       executorId: 'comet-native-checks',
     });
-    const checked = succeeded(result);
-    expect(checked.actions.at(-2)).toMatchObject({ stepId: 'verify.checks', status: 'succeeded' });
+    expect(unavailable.response.status).toBe('failed');
+    expect(succeeded(await builtIn({ operation: 'inspect', runId: run.runId }))).toEqual(checked);
+    expect(checked.actions.some((action) => action.stepId === 'verify.checks')).toBe(false);
     expect(checked.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
-    expect(checked.outputs['verify.checks']).toMatchObject({
-      value: { checks: [{ id: 'focused', status: 'passed' }] },
-    });
+    expect(checked.outputs['build.builder'].value).toMatchObject({ checks: reports });
     run = await submit(
       checked,
       {
         candidateId: (checked.state as NativePortableState).builder_handoff!.candidate_id,
         verifierExecutionRef: 'verifier-session-1',
+        checks: reports,
         response: {
           kind: 'final-result',
           result: {
@@ -1409,7 +1556,7 @@ describe('Runtime JSON command', () => {
       },
       'verifier',
     );
-    expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.report', status: 'pending' });
+    expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.confirm', status: 'pending' });
     const next = await runNativeCli([
       'next',
       'native-change',
@@ -1418,15 +1565,34 @@ describe('Runtime JSON command', () => {
       '--json',
     ]);
     expect(next.exitCode, next.stderr).toBe(0);
-    expect(JSON.parse(next.stdout!)).toMatchObject({
-      data: {
-        run: {
-          waits: expect.arrayContaining([
-            expect.objectContaining({ stepId: 'verify.confirm', status: 'pending' }),
-          ]),
-        },
-      },
-    });
+    const pending = succeeded(await builtIn({ operation: 'inspect', runId: run.runId }));
+    expect(pending.waits).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ stepId: 'verify.confirm', status: 'pending' }),
+      ]),
+    );
+    expect(pending.waits.find((entry) => entry.id === shapeApproval.id)).toEqual(shapeApproval);
+    expect(pending.outputs['archive.finalize']).toBeUndefined();
+    const approval = pending.waits.find(
+      (entry) => entry.stepId === 'verify.confirm' && entry.status === 'pending',
+    )!;
+    expect(
+      (
+        await builtIn({
+          operation: 'resolve-wait',
+          runId: run.runId,
+          waitId: approval.id,
+          proposalHash: '0'.repeat(64),
+          decisionId: 'SIMULATED-wrong-approval',
+          choice: 'approved',
+        })
+      ).response.status,
+    ).toBe('failed');
+    expect(succeeded(await builtIn({ operation: 'inspect', runId: run.runId }))).toEqual(pending);
+    expect(await fs.readFile(path.join(projectRoot, 'platform-count'), 'utf8')).toBe('once\n');
+    expect(await fs.readFile(path.join(projectRoot, 'platform-check.log'), 'utf8')).toBe(
+      'sdk-check-ok',
+    );
   });
 
   it.each(['full', 'hotfix', 'tweak'] as const)(
@@ -1449,7 +1615,7 @@ describe('Runtime JSON command', () => {
         {
           operation: 'start',
           runId: `classic-${profile}`,
-          workflow: { id: `comet-classic-${profile}`, version: '1' },
+          workflow: { id: `comet-classic-${profile}`, version: '2' },
           input: { changeDir: `openspec/changes/classic-${profile}` },
           initialState: projected.classic,
         },
@@ -1458,7 +1624,7 @@ describe('Runtime JSON command', () => {
       expect(started.response).toMatchObject({
         status: 'succeeded',
         data: {
-          workflow: { id: `comet-classic-${profile}`, version: '1' },
+          workflow: { id: `comet-classic-${profile}`, version: '2' },
           actions: [{ stepId: `${profile}.open`, status: 'pending', type: 'invoke_skill' }],
         },
       });
@@ -1561,7 +1727,7 @@ describe('Runtime JSON command', () => {
   });
 
   it.each([false, true])(
-    'rejects a linked Classic conflict before any Runtime writes (primary config=%s)',
+    'rejects an explicitly selected linked Classic conflict before any Runtime writes (primary config=%s)',
     async (configuredPrimary) => {
       execFileSync('git', ['init', '-b', 'main', projectRoot]);
       execFileSync('git', ['-C', projectRoot, 'config', 'user.name', 'Comet Test']);
@@ -1609,6 +1775,7 @@ describe('Runtime JSON command', () => {
       await expectClassicRejectedWithoutWrites(
         { operation: 'inspect', runId: 'linked-unsafe' },
         /ambiguous/u,
+        linkedRoot,
       );
       expect(await fs.readFile(ownerFile, 'utf8')).toBe(owner);
       await expect(fs.lstat(resolveWorkspaceRuntimeRootSync(projectRoot))).rejects.toMatchObject({
@@ -1694,83 +1861,88 @@ describe('Runtime JSON command', () => {
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it('does not reserve a Classic SDK owner while the change ownership lock is held', async () => {
-    const lock = path.join(
-      resolveWorkspaceRuntimeRootSync(projectRoot),
-      'change-owners',
-      'classic',
-      'classic-change.lock',
+  it('ignores retired Classic ownership lock files without replacing an existing SDK owner or Run', async () => {
+    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, '.comet/config.yaml'),
+      'schema: comet.project.v1\ndefault_workflow: classic\nworkflows: [classic]\nclassic:\n  artifact_layout: legacy\n',
     );
-    await withRecoverableFileLock(lock, async () => {
-      const projected = parseClassicStateDocument({
-        workflow: 'full',
-        phase: 'open',
-        design_doc: null,
-        plan: null,
-        build_mode: null,
-        isolation: null,
-        verify_mode: null,
-        verify_result: 'pending',
-        verified_at: null,
-        archived: false,
-      });
-      if (!projected.classic) throw new Error('Classic fixture was not projected');
-      const result = await dispatch(
-        {
-          operation: 'start',
-          runId: 'classic-change',
-          workflow: { id: 'comet-classic-full', version: '1' },
-          input: { changeDir: 'openspec/changes/classic-change' },
-          initialState: projected.classic,
-        },
-        { application: 'classic-full', workflow: [], rootDir: undefined },
-      );
-      expect(result.response).toMatchObject({
-        status: 'failed',
-        error: { message: expect.stringContaining('Timed out waiting for file lock') },
-      });
-      await expect(
-        fs.access(
-          path.join(
-            resolveWorkspaceRuntimeRootSync(projectRoot),
-            'change-owners',
-            'classic',
-            'classic-change.json',
-          ),
-        ),
-      ).rejects.toMatchObject({ code: 'ENOENT' });
+    const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
+    const ownerFile = path.join(runtimeRoot, 'change-owners/classic/classic-change.json');
+    const lock = path.join(runtimeRoot, 'change-owners/classic/classic-change.lock');
+    const retired = 'SIMULATED obsolete lock metadata; no writer is running.\n';
+    await fs.mkdir(path.dirname(lock), { recursive: true });
+    await fs.writeFile(lock, retired);
+    const request = classicStartRequest('openspec/changes/classic-change');
+    const options = { application: 'classic-full', workflow: [], rootDir: undefined };
+    const started = await dispatch(request, options);
+    expect(started.response.status, JSON.stringify(started.response)).toBe('succeeded');
+    const owner = await fs.readFile(ownerFile, 'utf8');
+    expect(JSON.parse(owner)).toEqual({
+      schema: 'comet.change-owner.v1',
+      workflow: 'classic',
+      change: 'classic-change',
+      format: 'sdk',
+      application: 'classic-full',
+      runId: 'classic-change',
     });
+    const backing = createFileRuntimeStore<WorkflowRun>({
+      rootDir: path.join(runtimeRoot, 'sdk-runs/classic'),
+    });
+    const original = await backing.read('classic-change');
+    expect(original?.workflow.version).toBe('2');
+    const repeated = await dispatch(request, options);
+    expect(repeated.response.status).toBe('succeeded');
+    if (repeated.response.status !== 'succeeded')
+      throw new Error(JSON.stringify(repeated.response));
+    expect(repeated.response.data).toEqual(original);
+    const conflicting = await dispatch(
+      { ...request, input: { ...request.input, goal: 'SIMULATED different user request' } },
+      options,
+    );
+    expect(conflicting.response).toMatchObject({
+      status: 'failed',
+      error: { code: 'RUN_CONFLICT' },
+    });
+    expect(await backing.read('classic-change')).toEqual(original);
+    expect(await fs.readFile(ownerFile, 'utf8')).toBe(owner);
+    expect(await fs.readFile(lock, 'utf8')).toBe(retired);
   });
 
-  it('does not initialize legacy Classic state while the change ownership lock is held', async () => {
+  it('initializes legacy Classic despite obsolete lock files and rejects a duplicate without replacing its owner or state', async () => {
     execFileSync('git', ['init', projectRoot]);
     await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
     await fs.writeFile(
-      path.join(projectRoot, '.comet', 'config.yaml'),
+      path.join(projectRoot, '.comet/config.yaml'),
       'schema: comet.project.v1\ndefault_workflow: classic\nworkflows: [classic]\nclassic:\n  artifact_layout: legacy\n',
     );
-    await fs.mkdir(path.join(projectRoot, 'openspec', 'changes'), { recursive: true });
-    const lock = path.join(
-      resolveWorkspaceRuntimeRootSync(projectRoot),
-      'change-owners',
-      'classic',
-      'classic-change.lock',
-    );
-    await withRecoverableFileLock(lock, async () => {
-      const result = await runClassicCli(
-        ['state', 'init', 'classic-change', 'full', '--runtime', 'compat'],
-        undefined,
-        {
-          projectRoot,
-          invocationCwd: projectRoot,
-        },
-      );
-      expect(result.exitCode).not.toBe(0);
-      expect(result.stderr).toContain('Timed out waiting for file lock');
-      await expect(
-        fs.access(path.join(projectRoot, 'openspec', 'changes', 'classic-change', '.comet.yaml')),
-      ).rejects.toMatchObject({ code: 'ENOENT' });
+    await fs.mkdir(path.join(projectRoot, 'openspec/changes'), { recursive: true });
+    const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
+    const ownerFile = path.join(runtimeRoot, 'change-owners/classic/classic-change.json');
+    const lock = path.join(runtimeRoot, 'change-owners/classic/classic-change.lock');
+    const retired = 'SIMULATED obsolete lock metadata; no writer is running.\n';
+    await fs.mkdir(path.dirname(lock), { recursive: true });
+    await fs.writeFile(lock, retired);
+    const init = () =>
+      runClassicCli(['state', 'init', 'classic-change', 'full', '--runtime', 'compat'], undefined, {
+        projectRoot,
+        invocationCwd: projectRoot,
+      });
+    const started = await init();
+    expect(started.exitCode, started.stderr).toBe(0);
+    const owner = await fs.readFile(ownerFile, 'utf8');
+    expect(JSON.parse(owner)).toEqual({
+      schema: 'comet.change-owner.v1',
+      workflow: 'classic',
+      change: 'classic-change',
+      format: 'compat',
     });
+    const file = path.join(projectRoot, 'openspec/changes/classic-change/.comet.yaml');
+    const original = await fs.readFile(file, 'utf8');
+    expect((await init()).exitCode).not.toBe(0);
+    expect(await fs.readFile(ownerFile, 'utf8')).toBe(owner);
+    expect(await fs.readFile(file, 'utf8')).toBe(original);
+    expect(await fs.readFile(lock, 'utf8')).toBe(retired);
   });
 
   it('records legacy ownership when Classic state init creates a change', async () => {
@@ -1847,127 +2019,6 @@ describe('Runtime JSON command', () => {
       workflow: 'classic',
       change: 'classic-change',
       format: 'compat',
-    });
-  });
-
-  it('reopens Classic full Open when approved artifacts drift before SDK revalidation', async () => {
-    const changeDirRef = 'openspec/changes/classic-example';
-    const changeDir = path.join(projectRoot, ...changeDirRef.split('/'));
-    await fs.mkdir(changeDir, { recursive: true });
-    for (const name of ['proposal.md', 'design.md', 'tasks.md']) {
-      await fs.writeFile(path.join(changeDir, name), `# ${name}\nReady.\n`);
-    }
-    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [ ] Build\n');
-    const projected = parseClassicStateDocument({
-      workflow: 'full',
-      phase: 'open',
-      language: 'en',
-      design_doc: null,
-      plan: null,
-      build_mode: null,
-      isolation: null,
-      verify_mode: null,
-      verify_result: 'pending',
-      verified_at: null,
-      archived: false,
-    });
-    if (!projected.classic) throw new Error('Classic fixture was not projected');
-    const builtIn = (request: unknown) =>
-      dispatch(request, { application: 'classic-full', workflow: [], rootDir: undefined });
-    const started = await builtIn({
-      operation: 'start',
-      runId: 'classic-example',
-      workflow: { id: 'comet-classic-full', version: '1' },
-      input: { change: 'classic-example', changeDir: changeDirRef },
-      initialState: projected.classic,
-    });
-    if (started.response.status !== 'succeeded') throw new Error('Classic start failed');
-    const action = started.response.data.actions[0];
-    const claimed = await builtIn({
-      operation: 'claim',
-      runId: 'classic-example',
-      actionId: action.id,
-      attempt: action.attempt,
-      inputHash: action.inputHash,
-      executorId: 'classic-host',
-      claimToken: 'classic-open-claim',
-    });
-    expect(claimed.response.status, JSON.stringify(claimed.response)).toBe('succeeded');
-    const opened = await builtIn({
-      operation: 'record-outcome',
-      runId: 'classic-example',
-      outcome: {
-        actionId: action.id,
-        attempt: action.attempt,
-        inputHash: action.inputHash,
-        claimToken: 'classic-open-claim',
-        outcomeId: 'classic-open-outcome',
-        status: 'succeeded',
-        output: { event: 'open-complete' },
-      },
-    });
-    if (opened.response.status !== 'succeeded') throw new Error('Classic Open failed');
-    const receipt = await classicOpenEvidenceReceipt(projectRoot, changeDirRef);
-    const accepted = await builtIn({
-      operation: 'record-evidence',
-      runId: 'classic-example',
-      evidenceId: opened.response.data.evidenceWaits!.at(-1)!.id,
-      kind: 'classic-open-artifacts',
-      ref: receipt.ref,
-      contentHash: receipt.contentHash,
-      submissionId: 'classic-open-evidence',
-      expectedRevision: opened.response.data.revision,
-    });
-    expect(accepted.response, JSON.stringify(accepted.response)).toMatchObject({
-      status: 'succeeded',
-      data: {
-        state: { phase: 'open' },
-        waits: [
-          {
-            stepId: 'full.open.confirm',
-            status: 'pending',
-            proposal: {
-              outputs: {
-                'full.open.evidence': { contentHash: receipt.contentHash },
-              },
-            },
-          },
-        ],
-      },
-    });
-    if (accepted.response.status !== 'succeeded') throw new Error('Open evidence failed');
-    const confirmation = accepted.response.data.waits.at(-1)!;
-    const approved = await builtIn({
-      operation: 'resolve-wait',
-      runId: 'classic-example',
-      waitId: confirmation.id,
-      proposalHash: confirmation.proposalHash,
-      decisionId: 'classic-open-approved',
-      choice: 'approved',
-    });
-    expect(approved.response).toMatchObject({
-      status: 'succeeded',
-      data: { state: { phase: 'open' } },
-    });
-    if (approved.response.status !== 'succeeded') throw new Error('Open approval failed');
-    await fs.writeFile(path.join(changeDir, 'tasks.md'), '# tasks.md\nChanged after approval.\n');
-    const revalidation = approved.response.data.actions.at(-1)!;
-    const checked = await builtIn({
-      operation: 'execute',
-      runId: 'classic-example',
-      actionId: revalidation.id,
-      executorId: 'comet-classic-open-revalidate',
-    });
-    expect(checked.response).toMatchObject({
-      status: 'succeeded',
-      data: {
-        state: { phase: 'open' },
-        actions: [
-          expect.anything(),
-          { stepId: 'full.open.revalidate', status: 'succeeded' },
-          { stepId: 'full.open', status: 'pending' },
-        ],
-      },
     });
   });
 
@@ -2283,7 +2334,7 @@ describe('Runtime through the real CLI', () => {
       JSON.stringify({
         operation: 'start',
         runId: 'native-cli-example',
-        workflow: { id: 'comet-native', version: '1' },
+        workflow: { id: 'comet-native', version: '4' },
         input: { name: 'native-cli-example', artifactRootRef: 'docs' },
         initialState: createNativePortableState({
           name: 'native-cli-example',
@@ -2308,8 +2359,14 @@ describe('Runtime through the real CLI', () => {
     expect(start.status, start.stderr).toBe(0);
     expect(JSON.parse(start.stdout)).toMatchObject({
       status: 'succeeded',
-      data: { actions: [{ stepId: 'shape.prepare', status: 'pending' }] },
+      data: {
+        runId: 'native-cli-example',
+        workflow: { id: 'comet-native', version: '4' },
+        continuation: { action: 'prepare-shape-confirmation' },
+        inspection: { request: { operation: 'inspect', runId: 'native-cli-example' } },
+      },
     });
+    expect(JSON.parse(start.stdout).data.actions).toBeUndefined();
     await fs.writeFile(
       requestFile,
       JSON.stringify({ operation: 'inspect', runId: 'native-cli-example' }),
@@ -2318,7 +2375,12 @@ describe('Runtime through the real CLI', () => {
     expect(inspected.status, inspected.stderr).toBe(0);
     expect(JSON.parse(inspected.stdout)).toMatchObject({
       status: 'succeeded',
-      data: { runId: 'native-cli-example', revision: 1 },
+      data: {
+        runId: 'native-cli-example',
+        revision: 1,
+        workflow: { id: 'comet-native', version: '4' },
+        actions: [{ stepId: 'shape.prepare', status: 'pending' }],
+      },
     });
   });
 

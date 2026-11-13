@@ -1,0 +1,1201 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Native 0.5.3 与 Native 0.4.0-rc.1 同配置评估</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --paper: #ffffff;
+        --canvas: #f3f1ec;
+        --ink: #191817;
+        --muted: #69645d;
+        --line: #cbc6bc;
+        --grid: #e8e4dc;
+        --native: #176b87;
+        --native-soft: #dcebf0;
+        --classic: #595b60;
+        --classic-soft: #e7e7e5;
+        --pass: #28745c;
+        --warn: #a5642b;
+        --fail: #a33a32;
+        --paper-font:
+          'Times New Roman', SimSun, 'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        background: var(--canvas);
+      }
+
+      body {
+        margin: 0;
+        background: var(--canvas);
+        color: var(--ink);
+        font: 15px/1.55 var(--paper-font);
+      }
+
+      main {
+        width: min(1040px, calc(100vw - 40px));
+        margin: 20px auto 52px;
+        padding: 52px 62px 64px;
+        background: var(--paper);
+        border: 1px solid #ddd8cf;
+        border-top: 2px solid var(--ink);
+      }
+
+      header.report-header {
+        max-width: 860px;
+        margin: 0 auto 34px;
+        text-align: center;
+      }
+
+      .kicker {
+        margin: 0 0 12px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(30px, 4.8vw, 48px);
+        line-height: 1.12;
+        letter-spacing: -0.025em;
+        text-wrap: balance;
+      }
+
+      .dek {
+        max-width: 760px;
+        margin: 20px auto 0;
+        color: var(--muted);
+        font-size: 16px;
+        text-wrap: pretty;
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px 18px;
+        margin-top: 20px;
+        color: var(--muted);
+        font: 12px/1.4 var(--paper-font);
+      }
+
+      .language-toggle {
+        position: fixed;
+        top: 18px;
+        right: 18px;
+        z-index: 20;
+        display: inline-flex;
+        padding: 3px;
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        box-shadow: 0 8px 28px rgba(25, 24, 23, 0.12);
+        backdrop-filter: blur(8px);
+      }
+
+      .language-toggle a {
+        padding: 6px 12px;
+        border-radius: 999px;
+        color: var(--muted);
+        font: 700 12px/1.2 var(--paper-font);
+        text-decoration: none;
+      }
+
+      .language-toggle a.is-active {
+        background: var(--ink);
+        color: #fffdf8;
+      }
+
+      section {
+        margin-top: 36px;
+      }
+
+      h2 {
+        margin: 0 0 18px;
+        padding-bottom: 7px;
+        border-bottom: 1px solid var(--ink);
+        font-size: 18px;
+        line-height: 1.25;
+      }
+
+      h3 {
+        margin: 0 0 5px;
+        font-size: 15px;
+      }
+
+      p {
+        margin: 0 0 14px;
+      }
+
+      code {
+        padding: 0.08rem 0.24rem;
+        background: #f2f0eb;
+        font: 0.92em/1.4 var(--paper-font);
+      }
+
+      .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        border-top: 1.5px solid var(--ink);
+        border-bottom: 1px solid var(--ink);
+      }
+
+      .metric {
+        min-width: 0;
+        padding: 18px 16px 16px;
+        border-right: 1px solid var(--grid);
+      }
+
+      .metric:last-child {
+        border-right: 0;
+      }
+
+      .metric-label {
+        min-height: 36px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .metric-value {
+        display: block;
+        margin-top: 7px;
+        color: var(--native);
+        font-size: clamp(25px, 3vw, 34px);
+        font-weight: 700;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .metric-context {
+        display: block;
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .figure {
+        margin-top: 22px;
+        padding-top: 14px;
+        border-top: 1.25px solid var(--ink);
+      }
+
+      .figure-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+
+      .figure-title {
+        margin: 0;
+        font-size: 15px;
+      }
+
+      .figure-note {
+        color: var(--muted);
+        font-size: 12px;
+        text-align: right;
+      }
+
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 18px;
+        margin: 0 0 18px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .legend span::before {
+        display: inline-block;
+        width: 18px;
+        height: 3px;
+        margin: 0 7px 3px 0;
+        background: var(--legend-color);
+        content: '';
+      }
+
+      .chart {
+        display: grid;
+        gap: 19px;
+      }
+
+      .chart-row {
+        display: grid;
+        grid-template-columns: 96px minmax(0, 1fr) 58px;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .chart-label {
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .bar-pair {
+        display: grid;
+        gap: 5px;
+      }
+
+      .track {
+        height: 10px;
+        background: repeating-linear-gradient(
+          to right,
+          transparent 0,
+          transparent calc(25% - 1px),
+          var(--grid) calc(25% - 1px),
+          var(--grid) 25%
+        );
+        border-left: 1px solid var(--line);
+      }
+
+      .bar {
+        width: var(--value);
+        height: 100%;
+        min-width: 2px;
+        background: var(--color);
+      }
+
+      .chart-value {
+        font: 700 12px/1.2 var(--paper-font);
+        text-align: right;
+      }
+
+      .caption {
+        margin: 14px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+        text-wrap: pretty;
+      }
+
+      .table-scroll {
+        overflow-x: auto;
+        border-top: 1.5px solid var(--ink);
+        border-bottom: 1.5px solid var(--ink);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12.5px;
+      }
+
+      th,
+      td {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--grid);
+        text-align: left;
+        vertical-align: middle;
+      }
+
+      th {
+        border-bottom: 1.25px solid var(--ink);
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      td.number,
+      th.number {
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+      }
+
+      tbody tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .score {
+        display: inline-flex;
+        min-width: 46px;
+        justify-content: center;
+        padding: 3px 8px;
+        color: white;
+        background: var(--pass);
+        font: 700 11px/1.4 var(--paper-font);
+      }
+
+      .score.partial {
+        background: var(--warn);
+      }
+
+      .score.low {
+        background: var(--fail);
+      }
+
+      .method-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0;
+        border-top: 1.5px solid var(--ink);
+        border-bottom: 1px solid var(--ink);
+      }
+
+      .method-item {
+        padding: 15px 18px;
+        border-right: 1px solid var(--grid);
+        border-bottom: 1px solid var(--grid);
+      }
+
+      .method-item:nth-child(2n) {
+        border-right: 0;
+      }
+
+      .method-item:nth-last-child(-n + 2) {
+        border-bottom: 0;
+      }
+
+      .method-item p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+
+      .callout {
+        margin-top: 24px;
+        padding: 18px 20px;
+        background: #f4f2ed;
+        border-top: 1px solid var(--ink);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .callout strong {
+        display: block;
+        margin-bottom: 5px;
+      }
+
+      .callout p {
+        margin: 0;
+        color: #44413d;
+      }
+
+      @media (max-width: 760px) {
+        main {
+          width: 100%;
+          margin: 0;
+          padding: 30px 20px 42px;
+          border-right: 0;
+          border-left: 0;
+        }
+
+        .metric-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .metric:nth-child(2) {
+          border-right: 0;
+        }
+
+        .metric:nth-child(-n + 2) {
+          border-bottom: 1px solid var(--grid);
+        }
+
+        .method-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .method-item,
+        .method-item:nth-child(2n),
+        .method-item:nth-last-child(-n + 2) {
+          border-right: 0;
+          border-bottom: 1px solid var(--grid);
+        }
+
+        .method-item:last-child {
+          border-bottom: 0;
+        }
+
+        .figure-head {
+          display: block;
+        }
+
+        .figure-note {
+          margin-top: 5px;
+          text-align: left;
+        }
+
+        .chart-row {
+          grid-template-columns: 76px minmax(0, 1fr) 50px;
+          gap: 8px;
+        }
+      }
+
+      small {
+        color: var(--muted);
+      }
+      td {
+        vertical-align: top;
+      }
+      details {
+        margin: 16px 0;
+      }
+      summary {
+        cursor: pointer;
+      }
+      code {
+        overflow-wrap: anywhere;
+      }
+      .badge-pass {
+        color: var(--pass);
+      }
+      .badge-fail {
+        color: var(--fail);
+      }
+      .badge-unknown {
+        color: var(--muted);
+      }
+      .chart-value {
+        min-width: 0;
+      }
+      .matrix-mark {
+        display: inline-block;
+        min-width: 1.4em;
+        font-weight: 700;
+      }
+      header p {
+        max-width: 75ch;
+      }
+      .missing-label {
+        display: block;
+        font: 12px sans-serif;
+        color: var(--muted);
+        text-align: center;
+        line-height: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header class="report-header">
+        <p class="kicker">COMET / NATIVE EVALUATION / 2026-11</p>
+        <h1>Native 0.5.3 与 Native 0.4.0-rc.1 同配置评估</h1>
+        <p class="dek">
+          Native 严格通过 48/48，冻结的 Native 0.4.0-rc.1 严格通过 48/48。两组沿用同一 DeepSeek
+          主模型参数与快速模型映射、同一 Agent 版本，各执行 16 题 × 3 次。缺少评分分别为 0 与 0
+          次。历史 MiMo 结果仅作参考。其中 4
+          份评分来自用户授权的准备失败补齐；原批次的失败记录保留在下方执行批次表中。
+        </p>
+      </header>
+      <section aria-labelledby="headline">
+        <h2 id="headline">核心数据</h2>
+        <div class="metric-grid">
+          <article class="metric">
+            <div class="metric-label">Native 0.5.3 strict pass@1</div>
+            <span class="metric-value">100%</span
+            ><span class="metric-context">rc.1 100%；缺少评分时不估算完整通过率</span>
+          </article>
+          <article class="metric">
+            <div class="metric-label">Native 0.5.3 pass@3</div>
+            <span class="metric-value">100%</span><span class="metric-context">rc.1 100%</span>
+          </article>
+          <article class="metric">
+            <div class="metric-label">Native 0.5.3 pass^3</div>
+            <span class="metric-value">100%</span><span class="metric-context">rc.1 100%</span>
+          </article>
+          <article class="metric">
+            <div class="metric-label">Native 0.5.3 平均累计 Agent 执行耗时</div>
+            <span class="metric-value">159.8s</span
+            ><span class="metric-context">可观测 48/48；rc.1 235.2s</span>
+          </article>
+        </div>
+      </section>
+      <section aria-labelledby="reliability">
+        <h2 id="reliability">pass@k 实验结果</h2>
+        <article class="figure">
+          <div class="figure-head">
+            <h3 class="figure-title">pass@1、pass@3 与 pass^3</h3>
+            <span class="figure-note">百分比，越高越好</span>
+          </div>
+          <div class="legend">
+            <span style="--legend-color: var(--native)">Native 0.5.3 / DeepSeek</span
+            ><span style="--legend-color: var(--classic)">Native 0.4.0-rc.1 / DeepSeek</span>
+          </div>
+          <div class="chart" role="img" aria-label="三项通过率对照">
+            <div class="chart-row">
+              <div class="chart-label">pass@1</div>
+              <div class="bar-pair">
+                <div class="track">
+                  <div class="bar" style="--value: 100%; --color: var(--native)"></div>
+                </div>
+                <div class="track">
+                  <div class="bar" style="--value: 100%; --color: var(--classic)"></div>
+                </div>
+              </div>
+              <div class="chart-value">100%<br />100%</div>
+            </div>
+            <div class="chart-row">
+              <div class="chart-label">pass@3</div>
+              <div class="bar-pair">
+                <div class="track">
+                  <div class="bar" style="--value: 100%; --color: var(--native)"></div>
+                </div>
+                <div class="track">
+                  <div class="bar" style="--value: 100%; --color: var(--classic)"></div>
+                </div>
+              </div>
+              <div class="chart-value">100%<br />100%</div>
+            </div>
+            <div class="chart-row">
+              <div class="chart-label">pass^3</div>
+              <div class="bar-pair">
+                <div class="track">
+                  <div class="bar" style="--value: 100%; --color: var(--native)"></div>
+                </div>
+                <div class="track">
+                  <div class="bar" style="--value: 100%; --color: var(--classic)"></div>
+                </div>
+              </div>
+              <div class="chart-value">100%<br />100%</div>
+            </div>
+          </div>
+          <p class="caption">
+            pass@3 是每题三次至少一次通过；pass^3 是每题三次全部通过。完整评分不足 48
+            次时，该组完整通过率显示 N/A；空条不表示
+            0%。不把缺失评分算作模型失败，也不剔除后另称完整 48 次。
+          </p>
+        </article>
+      </section>
+      <section aria-labelledby="efficiency">
+        <h2 id="efficiency">完成任务的执行效率</h2>
+        <p>
+          仅统计同一题、同一重复编号在两组都通过的 48
+          对；相同主模型参数和快速模型映射；运行窗口与流程依赖没有完全受控，不能单独把差异归因于某项特性移除。缺少原始遥测时按指标缩小可观测分母。
+        </p>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>指标</th>
+                <th>Native / DeepSeek</th>
+                <th>Native 0.4.0-rc.1 / DeepSeek</th>
+                <th>相对差异</th>
+                <th>可观测配对</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>模型启动 / 恢复次数</td>
+                <td>2.96</td>
+                <td>2.71</td>
+                <td>+9.2%</td>
+                <td>48</td>
+              </tr>
+              <tr>
+                <td>Agent 轮次</td>
+                <td>55.77</td>
+                <td>65.77</td>
+                <td>-15.2%</td>
+                <td>48</td>
+              </tr>
+              <tr>
+                <td>工具调用</td>
+                <td>53.44</td>
+                <td>86.54</td>
+                <td>-38.3%</td>
+                <td>48</td>
+              </tr>
+              <tr>
+                <td>累计 Agent 执行耗时（秒）</td>
+                <td>159.8</td>
+                <td>235.2</td>
+                <td>-32.1%</td>
+                <td>48</td>
+              </tr>
+              <tr>
+                <td>非缓存输入 Token</td>
+                <td>66,456</td>
+                <td>63,978</td>
+                <td>+3.9%</td>
+                <td>48</td>
+              </tr>
+              <tr>
+                <td>输出 Token</td>
+                <td>20,825</td>
+                <td>22,482</td>
+                <td>-7.4%</td>
+                <td>48</td>
+              </tr>
+              <tr>
+                <td>可观测 Token 总量（含缓存读取）</td>
+                <td>2,314,560</td>
+                <td>2,633,238</td>
+                <td>-12.1%</td>
+                <td>48</td>
+              </tr>
+              <tr>
+                <td>CLI 估算成本（美元）</td>
+                <td>2.016</td>
+                <td>2.631</td>
+                <td>-23.4%</td>
+                <td>48</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="caption">
+          成本来自 CLI 估算，不是供应商账单。Token 统计覆盖保存的受测 Agent 调用，完整
+          workflow（含独立子 Agent）的总量不可观测。累计 Agent 执行耗时累加每个样本全部顶层
+          result.duration_ms，包含模型调用、Agent 工具执行和续行，保留结束判断造成的额外调用；不含
+          Docker 准备和 Agent 退出后的业务验证。
+        </p>
+      </section>
+      <section aria-labelledby="models">
+        <h2 id="models">模型与 Agent 记录</h2>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>组别</th>
+                <th>实际 Agent 版本</th>
+                <th>原轨迹中的模型标签</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Native 0.5.3 · DeepSeek</td>
+                <td>2.1.318 (Claude Code)</td>
+                <td>deepseek-flash[1m], deepseek-v4-flash</td>
+              </tr>
+              <tr>
+                <td>Native 0.4.0-rc.1 · DeepSeek</td>
+                <td>2.1.318 (Claude Code)</td>
+                <td>deepseek-flash[1m], deepseek-v4-flash</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          主模型参数为 deepseek-flash[1M]，快速和默认模型映射到 deepseek-v4-flash
+          系列。不同标签保留在原始用量中，不强行合并；历史 MiMo 组不参与同配置主比较。
+        </p>
+      </section>
+      <section aria-labelledby="context">
+        <h2 id="context">可观测的峰值上下文</h2>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>组别</th>
+                <th>保存逐消息 usage 的样本</th>
+                <th>平均峰值 Token</th>
+                <th>中位峰值 Token</th>
+                <th>最大峰值 Token</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Native 0.5.3 · DeepSeek</td>
+                <td>48/48</td>
+                <td>81,231</td>
+                <td>79,334</td>
+                <td>117,752</td>
+              </tr>
+              <tr>
+                <td>Native 0.4.0-rc.1 · DeepSeek</td>
+                <td>48/48</td>
+                <td>79,422</td>
+                <td>75,900</td>
+                <td>125,940</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="caption">
+          按各组保存的逐消息 usage
+          计算峰值，并列出可观测分母。这是本批次的上下文观测值，不代表其他任务的上下文上限。
+        </p>
+      </section>
+      <section aria-labelledby="latency">
+        <h2 id="latency">累计 Agent 执行耗时</h2>
+        <article class="figure">
+          <div class="figure-head">
+            <h3 class="figure-title">累计 Agent 执行耗时的平均值与中位数</h3>
+            <span class="figure-note">秒；同一零点刻度，越低越好</span>
+          </div>
+          <div class="legend">
+            <span style="--legend-color: var(--native)">Native / DeepSeek</span
+            ><span style="--legend-color: var(--classic)">Native 0.4.0-rc.1 / DeepSeek</span>
+          </div>
+          <div class="chart" role="img" aria-label="累计 Agent 执行耗时对照">
+            <div class="chart-row">
+              <div class="chart-label">平均值</div>
+              <div class="bar-pair">
+                <div class="track">
+                  <div
+                    class="bar"
+                    style="--value: 67.92608444500893%; --color: var(--native)"
+                  ></div>
+                </div>
+                <div class="track">
+                  <div class="bar" style="--value: 100%; --color: var(--classic)"></div>
+                </div>
+              </div>
+              <div class="chart-value">159.8<br />235.2</div>
+            </div>
+            <div class="chart-row">
+              <div class="chart-label">中位数</div>
+              <div class="bar-pair">
+                <div class="track">
+                  <div
+                    class="bar"
+                    style="--value: 62.97436082749797%; --color: var(--native)"
+                  ></div>
+                </div>
+                <div class="track">
+                  <div
+                    class="bar"
+                    style="--value: 92.25787012114665%; --color: var(--classic)"
+                  ></div>
+                </div>
+              </div>
+              <div class="chart-value">148.1<br />217.0</div>
+            </div>
+          </div>
+          <p class="caption">
+            仅使用可观测的累计 result duration。耗时受模型、时段与运行环境共同影响。
+          </p>
+        </article>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>组别</th>
+                <th>可观测样本</th>
+                <th>平均（秒）</th>
+                <th>中位数（秒）</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Native 0.5.3 · DeepSeek</td>
+                <td>48/48</td>
+                <td>159.8</td>
+                <td>148.1</td>
+              </tr>
+              <tr>
+                <td>Native 0.4.0-rc.1 · DeepSeek</td>
+                <td>48/48</td>
+                <td>235.2</td>
+                <td>217.0</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section aria-labelledby="matrix">
+        <h2 id="matrix">任务级稳定性矩阵</h2>
+        <p>
+          每格依次表示 r1、r2、r3。✓ 通过，× 评分失败，? 缺少评分。2026-07 的 MiMo
+          数据仅作历史参考。
+        </p>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>任务</th>
+                <th>Native 0.5.3 · DeepSeek</th>
+                <th>Native 0.4.0-rc.1 · DeepSeek</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>comet-agent-memory-routing</code></td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+              </tr>
+              <tr>
+                <td><code>comet-api-cache-ttl</code></td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+              </tr>
+              <tr>
+                <td><code>comet-cross-file-refactor</code></td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+              </tr>
+              <tr>
+                <td><code>comet-dependency-confusion</code></td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+              </tr>
+              <tr>
+                <td><code>comet-fix-median</code></td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+              </tr>
+              <tr>
+                <td><code>comet-framework-selection</code></td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+              </tr>
+              <tr>
+                <td><code>comet-full-workflow</code></td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+              </tr>
+              <tr>
+                <td><code>comet-graph-execution-review</code></td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+              </tr>
+              <tr>
+                <td><code>comet-human-approval-flow</code></td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+              </tr>
+              <tr>
+                <td><code>comet-layered-streaming-fix</code></td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+              </tr>
+              <tr>
+                <td><code>comet-noise-distractor</code></td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+              </tr>
+              <tr>
+                <td><code>comet-observability-env-template</code></td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+              </tr>
+              <tr>
+                <td><code>comet-perf-dedupe</code></td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+              </tr>
+              <tr>
+                <td><code>comet-persistence-threading</code></td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+              </tr>
+              <tr>
+                <td><code>comet-refactor-counter</code></td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+              </tr>
+              <tr>
+                <td><code>comet-robust-config</code></td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+                <td>
+                  <span class="matrix-mark badge-pass" title="r1">✓</span>
+                  <span class="matrix-mark badge-pass" title="r2">✓</span>
+                  <span class="matrix-mark badge-pass" title="r3">✓</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section aria-labelledby="failures">
+        <h2 id="failures">失败检查与业务结果</h2>
+        <details>
+          <summary>Native 0.5.3 · DeepSeek：0 次严格失败；业务通过 48/48</summary>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>样本</th>
+                  <th>原始失败检查</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </details>
+        <details>
+          <summary>Native 0.4.0-rc.1 · DeepSeek：0 次严格失败；业务通过 48/48</summary>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>样本</th>
+                  <th>原始失败检查</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </details>
+        <p>
+          业务成绩与 workflow
+          完成分别保留。API、构建和执行器失败应结合原始日志归因，不自动解释成模型或业务能力失败。
+        </p>
+      </section>
+      <section aria-labelledby="attempts">
+        <h2 id="attempts">执行批次与缺失记录</h2>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>实验</th>
+                <th>计划项</th>
+                <th>取得评分</th>
+                <th>未取得评分</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>comet-eval-e045fc18-7b27-4dc4-a4da-96b94d973d52</code></td>
+                <td>48</td>
+                <td>44</td>
+                <td>4</td>
+              </tr>
+              <tr>
+                <td><code>comet-eval-04c215f0-3983-451f-b718-801e71d81f0b</code></td>
+                <td>4</td>
+                <td>4</td>
+                <td>0</td>
+              </tr>
+              <tr>
+                <td><code>comet-eval-bc573d77-335e-499e-b22f-18a29ca4fe54</code></td>
+                <td>48</td>
+                <td>48</td>
+                <td>0</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          补齐仅在用户明确授权后执行。原批次的准备失败保持原记录；每组中的同一题目与重复编号只取一份真实模型评分，不覆盖已有模型结果。此前第一轮
+          48 项均在 setup 阶段失败，模型运行 0 次，详见执行记录。
+        </p>
+      </section>
+      <section aria-labelledby="history">
+        <h2 id="history">原报告历史参考</h2>
+        <details>
+          <summary>展开 MiMo 历史结果（未重跑，不参与主比较）</summary>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>历史组别</th>
+                  <th>严格通过</th>
+                  <th>pass@3</th>
+                  <th>pass^3</th>
+                  <th>平均累计 Agent 执行耗时</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>历史 Native · MiMo</td>
+                  <td>46/48</td>
+                  <td>100%</td>
+                  <td>87.5%</td>
+                  <td>184.0s</td>
+                </tr>
+                <tr>
+                  <td>历史 0.4.0 Classic · MiMo</td>
+                  <td>43/48</td>
+                  <td>100%</td>
+                  <td>75%</td>
+                  <td>352.4s</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>这些数据来自 2026-07，旧 Native 是当时的协议快照，不代表本次选定的 0.4.0-rc.1。</p>
+        </details>
+      </section>
+      <section aria-labelledby="boundary">
+        <h2 id="boundary">比较边界与来源</h2>
+        <div class="method-grid">
+          <article class="method-item">
+            <h3>对齐的范围</h3>
+            <p>
+              相同 16 个业务任务 ID、每题 3 次；当前任务的业务输入与业务验证器未为 Native 改写。
+            </p>
+          </article>
+          <article class="method-item">
+            <h3>模型配置</h3>
+            <p>
+              本轮两组使用同一 DeepSeek
+              配置，包括主模型和快速模型映射；具体标签与工具版本见上表。历史 MiMo 组仅作参考。
+            </p>
+          </article>
+          <article class="method-item">
+            <h3>流程协议不同</h3>
+            <p>
+              0.5.3 验证 SDK owner、原 Run、归档 checkpoint 与终态；0.4.0-rc.1 沿用自身 Native
+              协议，保留原版的独立审查和归档要求。历史参考保留各自原始评分。
+            </p>
+          </article>
+          <article class="method-item">
+            <h3>执行条件</h3>
+            <p>
+              本次两组使用同一机器、相同 Agent 版本与模型映射；用户确认均由评估器以 auto_user
+              模拟，上限 12
+              轮。两组在不同窗口执行，保留各自流程依赖，未完全控制服务负载。历史参考来自
+              2026-07，其执行身份不能完整复原。
+            </p>
+          </article>
+          <article class="method-item">
+            <h3>全部结果保留</h3>
+            <p>
+              矩阵固定为每组计划 48 次与 16 题，不筛去低分、环境失败或 flagged
+              样本。评分缺失标为未知，不推算完整通过率。逐样本质量标记保留在附带 JSON。
+            </p>
+          </article>
+          <article class="method-item">
+            <h3>验证范围</h3>
+            <p>
+              通过表示满足这 16 题的确定性业务与流程检查，未使用 LLM
+              Judge；不能据此证明其他任务的质量相同。本任务未重新执行全仓测试、完整安装验收或独立真实桌面平台
+              Hook 验收。
+            </p>
+          </article>
+          <article class="method-item">
+            <h3>可追溯来源</h3>
+            <p>
+              <code>comet-eval-e045fc18-7b27-4dc4-a4da-96b94d973d52</code><br /><code
+                >comet-eval-bc573d77-335e-499e-b22f-18a29ca4fe54</code
+              ><br /><code>experiment_20260716_104344</code><br /><code
+                >combined_comet_workflow_full_k3_20260705_v3_rerun_failed</code
+              >
+            </p>
+          </article>
+        </div>
+        <p>
+          <a href="https://docs.comet.rpamis.com/zh/eval/comet-native-vs-040-experiment"
+            >原始报告与实验说明</a
+          >
+          · <a href="comparison-data.json">逐样本结果与遥测</a>
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

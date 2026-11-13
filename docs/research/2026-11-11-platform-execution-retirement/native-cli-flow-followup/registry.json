@@ -1,0 +1,30 @@
+{
+  "cases": [
+    {
+      "id": "native-242-gap-pagination",
+      "behavior": "Build 可分页看完整验收和上一轮缺口，不能把 checkpoint 当验收证据",
+      "status": "covered",
+      "reason": "当前 status details 和任务上下文保留缺口分页。",
+      "coverageLayer": "SDK and Compat",
+      "evidence": [
+        "https://github.com/rpamis/comet/issues/242"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-acceptance.test.ts",
+          "namePattern": "projects bounded prior verification gaps on Build acceptance pages",
+          "requiredNames": [
+            "projects bounded prior verification gaps on Build acceptance pages"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-flow-friction.test.ts",
+          "namePattern": "keeps the complete scope paginated when it does not fit in the task packet",
+          "requiredNames": [
+            "keeps the complete scope paginated when it does not fit in the task packet"
+          ]
+        }
+      ]
+    }
+  ]
+}

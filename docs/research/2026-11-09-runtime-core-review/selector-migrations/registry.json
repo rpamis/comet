@@ -1,0 +1,467 @@
+{
+  "cases": [
+    {
+      "id": "native-delta-shape-materialization",
+      "behavior": "Generate an associated capability's complete target Spec from its Delta before Shape confirmation without overwriting independent edits.",
+      "coverageLevel": "runtime",
+      "reproduction": "The Delta-only Shape fixture retained the old complete target before implementation; the identical new test failed on missing added behavior.",
+      "expected": "Generate the complete target, update a previously generated target when its receipt matches, and keep complete Specs in approval and acceptance.",
+      "forbidden": "Replacing independently edited targets, changing confirmed targets during revalidation, or treating conflicting baseline requirements as compatible.",
+      "rootCause": "Shape validated the agent-maintained target against Delta but did not materialize it through the public preparation path.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "materializes a Delta target before Shape and refuses independent target edits|does not enter Build when Shape documents change after approval",
+          "requiredNames": [
+            "materializes a Delta target before Shape and refuses independent target edits",
+            "does not enter Build when Shape documents change after approval"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-11-08-skill-execution-optimization"
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "Retire automatic document/candidate byte invalidation and command inference. Preserve real failures, original claim/Run, explicit user decisions, approved delivery and generated Runtime continuation. This does not declare the retired automatic trigger fixed.",
+        "authorization": "report:2026-11-09-test-pruning",
+        "record": "docs/research/2026-11-09-runtime-review-repair.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "(?:materializes a Delta target before Shape and refuses independent target edits)",
+            "requiredNames": [
+              "materializes a Delta target before Shape and refuses independent target edits"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+            "requiredNames": [
+              "continues Native Verify and Archive through the generated Runtime without content proof",
+              "keeps a real failed Native check failed after file edits without replay"
+            ],
+            "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay)$"
+          },
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "requiredNames": [
+              "Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure",
+              "Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation"
+            ],
+            "namePattern": "^(?:Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure|Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation)$"
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-runtime-core-review/final-retirements/registry.json",
+            "sha256": "4845b34ebd08093043da91362e1be2a4307a94cd304ab8f712767a268eafad1b"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-runtime-core-review/final-retirements/tests.json",
+            "sha256": "ae7822e0ba61e40673b283ee0589649c07e50db68f1c27ef055f30a1e9b04102"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-runtime-core-review/final-retirements/mapping.json",
+            "sha256": "9cfffeca21078a0869cafde16dbed4b825385c9ba7d8a28518bfe0ec65b7a6e3"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-runtime-core-review/final-retirements/tests.patch",
+            "sha256": "5ecd9aec68776ccd9856eab444931ecb42ea31493028f7dbf3447a9df06ee748"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-supervisor-referenced-acceptance",
+      "behavior": "Generate Supervisor acceptance text from the current catalog when child plans contain only names, dependencies and covers references.",
+      "coverageLevel": "runtime",
+      "reproduction": "A v2 children document containing covers without a copied acceptance_index failed as a summary-v2 contract before implementation.",
+      "expected": "Bind complete current acceptance text to Shape, retain the user-authored references, enforce coverage and permitted repair IDs, and retain v1 and explicit-index compatibility.",
+      "forbidden": "Inventing acceptance text, importing unauthorized Spec repair IDs, or interpreting an old approval against changed formal documents.",
+      "rootCause": "The parser required either duplicated explicit acceptance text or a summary-only plan with no covers.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "derives referenced v2 acceptance from the current catalog without copying its text|accepts a readable v2 acceptance index while retaining the v1 contract|validates v2 index text while allowing only failed Spec acceptance into repair children",
+          "requiredNames": [
+            "derives referenced v2 acceptance from the current catalog without copying its text",
+            "accepts a readable v2 acceptance index while retaining the v1 contract",
+            "validates v2 index text while allowing only failed Spec acceptance into repair children"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "confirms a Supervisor child plan and coordination mode in the same SDK Run",
+          "requiredNames": [
+            "confirms a Supervisor child plan and coordination mode in the same SDK Run",
+            "confirms a Supervisor child plan and coordination mode in the same SDK Run with referenced acceptance"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-11-08-skill-execution-optimization"
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户将拆分和语义覆盖判断交给 Agent，撤下复制验收正文的相等证明、仅失败 Spec 才能分派和强制子任务覆盖全部条目的规则；继续保留 v1/referenced-v2 读取、原 Shape 用户确认、有效 ID、依赖和完整父级验收。新业务流程包含真实集成检查失败与原工作区修复。",
+        "authorization": "report:2026-11-09-agent-managed-workflow-simplification",
+        "record": "docs/research/2026-11-09-agent-managed-workflow-simplification.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-children.test.ts",
+            "namePattern": "derives referenced v2 acceptance from the current catalog without copying its text|accepts a readable v2 acceptance index while retaining the v1 contract",
+            "requiredNames": [
+              "derives referenced v2 acceptance from the current catalog without copying its text",
+              "accepts a readable v2 acceptance index while retaining the v1 contract"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "confirms a Supervisor child plan and coordination mode in the same SDK Run",
+            "requiredNames": [
+              "confirms a Supervisor child plan and coordination mode in the same SDK Run",
+              "confirms a Supervisor child plan and coordination mode in the same SDK Run with referenced acceptance"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-agent-task-decomposition.test.ts",
+            "namePattern": "^(?:lets the Agent delegate specification acceptance before any failure while retaining parent-only criteria|reads delegated acceptance from the original parent catalog instead of requiring copied prose|retains unknown-ID and dependency-cycle checks for Agent-selected task decomposition)$",
+            "requiredNames": [
+              "lets the Agent delegate specification acceptance before any failure while retaining parent-only criteria",
+              "reads delegated acceptance from the original parent catalog instead of requiring copied prose",
+              "retains unknown-ID and dependency-cycle checks for Agent-selected task decomposition"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-agent-supervisor-business.test.ts",
+            "namePattern": "^(?:completes Agent-selected Supervisor work through the Native business entry via source|completes Agent-selected Supervisor work through the Native business entry via generated)$",
+            "requiredNames": [
+              "completes Agent-selected Supervisor work through the Native business entry via source",
+              "completes Agent-selected Supervisor work through the Native business entry via generated"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-document-handoff-removal-registry.json",
+            "sha256": "5ac2afae31044dd356191d8b6f9236abd342836b1ce362681dd4ec5321f065a2"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-document-handoff-removal-tests.json",
+            "sha256": "7a0ddadb3a3de832ebed21abebc4a70d1905021d2c773dbb81afc3e375cca66a"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-document-handoff-removal-mapping.json",
+            "sha256": "5668bf2eac7774983d9d2dce38bea3d2a6385f852c12b861c3f81f37b4cc819d"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-document-handoff-removal-patch.patch",
+            "sha256": "c29b71cbea1fe3288357ee3b880017d057627b8f7d0f72b0228c1fc6188b3a37"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-528-applied-archive-recovery",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/528"
+      ],
+      "behavior": "Specs 已应用且原 Action 为 unknown 后，生成输出变化仍可通过公开归档入口补记原结果并完成收尾，不重复写 Specs或阻塞后续 change。",
+      "coverageLevel": "runtime",
+      "reproduction": "8c8478cd 的实际 Native Runtime 在 specs-applied 后将原 Action 标记 unknown，修改 ignored 生成输出，再恢复时报候选漂移；同一输入的公开 CLI 回归固定原事务。",
+      "expected": "继续原 Action、attempt 和事务；Specs 字节及 mtime 不变，重复恢复不增加 revision，后续 change 可以创建；响应明确未重新验收当前生成输入。",
+      "forbidden": "重跑检查、重写 Specs、建立新 Run、伪造当前检查通过或永久占用 workspace。",
+      "rootCause": "恢复复用了写入前的完整实时输入绑定，没有区分已完成事务副作用与当前生成输出的验收。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^recovers an applied unknown Archive through the public CLI with generated-output changes$",
+          "requiredNames": [
+            "recovers an applied unknown Archive through the public CLI with generated-output changes"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "codex-native-apply-patch-command",
+      "sources": [
+        "report:2026-11-07-plugin-final-validation"
+      ],
+      "coverageLevel": "runtime",
+      "behavior": "Apply native Codex apply_patch events to the selected Comet change rather than allowing writes with an unparsed target.",
+      "reproduction": "Desktop 26.1103.4239.0 app-server with trusted installed 0.5.3 Hooks and deterministic local Responses wrote another Classic change through real apply_patch. The new adapter contract failed with unknown intent and no targets before the fix.",
+      "rootCause": "Native Codex passes apply_patch text in tool_input.command; the adapter recognized other patch fields but did not read this canonical field.",
+      "expected": "Decode the native command patch into target paths and proposed content, reject cross-change writes, and allow ordinary selected Build implementation writes.",
+      "forbidden": "Treat arbitrary Bash commands as patches or permit writes to another selected change because targets were lost.",
+      "tests": [
+        {
+          "file": "test/domains/comet-entry/hook-adapter.test.ts",
+          "namePattern": "reads native Codex apply_patch commands without interpreting shell commands as patches",
+          "requiredNames": [
+            "reads native Codex apply_patch commands without interpreting shell commands as patches"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-hook.test.ts",
+          "namePattern": "enforces native Codex command patches through the packaged router and preserves legitimate writes",
+          "requiredNames": [
+            "enforces native Codex command patches through the packaged router and preserves legitimate writes"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "native-codex-client-tool-execution",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#20-最终接入验证2026-11-07: Desktop 26.1103.4239.0 native app-server with the final installed 0.5.3 package and trusted user Hooks delivered SessionStart Rule context, reported a blocked PreToolUse for another Classic change without creating its file, and completed a legitimate native apply_patch file write. Deterministic loopback Responses, no real model Eval."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-174-locale",
+      "behavior": "全局语言可作为change默认，项目覆盖优先，SDK仍执行产物语言约束",
+      "status": "covered",
+      "reason": "050 仍保留该行为；使用当前入口的确定性回归。",
+      "coverageLayer": "compat-and-sdk",
+      "evidence": [
+        "test/domains/comet-classic/comet-scripts.test.ts",
+        "test/domains/comet-classic/classic-cli-arguments.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/comet-scripts.test.ts",
+          "namePattern": "falls back to the global Comet language when project config omits language|lets project language override the global Comet language",
+          "requiredNames": [
+            "falls back to the global Comet language when project config omits language",
+            "lets project language override the global Comet language"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-cli-arguments.test.ts",
+          "namePattern": "blocks Classic SDK Open when the proposal language differs from the change language",
+          "requiredNames": [
+            "blocks Classic SDK Open when the proposal language differs from the change language"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-canonical-task-authority-and-legacy-projection",
+      "behavior": "当前任务权威只按稳定 ID 完成，不按 plan 顺序/措辞误完成未来任务",
+      "status": "covered",
+      "reason": "测试覆盖 canonical 无第二账本、legacy 多余未映射项保留并报告、重排稳定 ID，以及默认 SDK 只有当前检查和映射任务完成才推进 Verify。",
+      "coverageLayer": "deterministic-contract (not real-model/platform certification)",
+      "evidence": [
+        "domains/comet-classic/classic-tasks.ts",
+        "domains/comet-classic/classic-sdk-application.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-tasks.test.ts",
+          "namePattern": "preserves and reports unmapped or extra legacy plan tasks instead of guessing completion|uses canonical plan references without a second progress ledger and preserves legacy plans",
+          "requiredNames": [
+            "preserves and reports unmapped or extra legacy plan tasks instead of guessing completion",
+            "uses canonical plan references without a second progress ledger and preserves legacy plans"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+          "namePattern": "enters Verify only after a current check and completed mapped tasks|keeps accepted Build plan authority stable across task completion, but detects changed requirements",
+          "requiredNames": [
+            "enters Verify only after a current check and completed mapped tasks",
+            "keeps accepted Build plan authority stable across task completion, but detects changed requirements"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-299-dag-contract",
+      "behavior": "确认完整父子 DAG、拒绝缺依赖/环/漂移，独立任务可并行且依赖任务只在前驱集成后ready",
+      "status": "covered",
+      "reason": "v1/v2 兼容解析与 SDK ready frontier 均保留。",
+      "coverageLayer": "SDK and Compat",
+      "evidence": [
+        "https://github.com/rpamis/comet/issues/299"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "validates the DAG and hashes only semantic parent contract changes|accepts a readable v2 acceptance index while retaining the v1 contract",
+          "requiredNames": [
+            "validates the DAG and hashes only semantic parent contract changes",
+            "accepts a readable v2 acceptance index while retaining the v1 contract"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-plan.test.ts",
+          "namePattern": "dispatches independent children first and waits for both integrations before their dependent child|rejects child facts that do not match the confirmed plan",
+          "requiredNames": [
+            "dispatches independent children first and waits for both integrations before their dependent child",
+            "rejects child facts that do not match the confirmed plan"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "撤下契约内容 hash、复制正文和内容编辑触发的自动撤销/重验。保留原真实 Git 合并、依赖调度、历史不可重写、工作区与父级最终验收；旧父级失败后通过明确的方案修订动作重新确认，保留失败预算。原测试完整归档，现有正反向断言和新业务流程共同覆盖有效契约。",
+        "authorization": "report:2026-11-09-agent-managed-workflow-simplification",
+        "record": "docs/research/2026-11-09-agent-managed-workflow-simplification.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-children.test.ts",
+            "namePattern": "validates declared dependency structure while allowing parent-only acceptance|accepts a readable v2 acceptance index while retaining the v1 contract",
+            "requiredNames": [
+              "validates declared dependency structure while allowing parent-only acceptance",
+              "accepts a readable v2 acceptance index while retaining the v1 contract"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-sdk-supervisor-plan.test.ts",
+            "namePattern": "dispatches independent children first and waits for both integrations before their dependent child|rejects child facts that do not match the confirmed plan",
+            "requiredNames": [
+              "dispatches independent children first and waits for both integrations before their dependent child",
+              "rejects child facts that do not match the confirmed plan"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-agent-task-decomposition.test.ts",
+            "namePattern": "^(?:lets the Agent delegate specification acceptance before any failure while retaining parent-only criteria|reads delegated acceptance from the original parent catalog instead of requiring copied prose|retains unknown-ID and dependency-cycle checks for Agent-selected task decomposition)$",
+            "requiredNames": [
+              "lets the Agent delegate specification acceptance before any failure while retaining parent-only criteria",
+              "reads delegated acceptance from the original parent catalog instead of requiring copied prose",
+              "retains unknown-ID and dependency-cycle checks for Agent-selected task decomposition"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-document-handoff-removal-registry.json",
+            "sha256": "5ac2afae31044dd356191d8b6f9236abd342836b1ce362681dd4ec5321f065a2"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-document-handoff-removal-tests.json",
+            "sha256": "7a0ddadb3a3de832ebed21abebc4a70d1905021d2c773dbb81afc3e375cca66a"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-document-handoff-removal-mapping.json",
+            "sha256": "5668bf2eac7774983d9d2dce38bea3d2a6385f852c12b861c3f81f37b4cc819d"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-document-handoff-removal-patch.patch",
+            "sha256": "c29b71cbea1fe3288357ee3b880017d057627b8f7d0f72b0228c1fc6188b3a37"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-314-readable-plan",
+      "behavior": "children.v2 可读summary计划并兼容v1，不能重写已integrated历史",
+      "status": "covered",
+      "reason": "支持无covers的summary格式，并保护既有集成记录。",
+      "coverageLayer": "SDK and Compat",
+      "evidence": [
+        "https://github.com/rpamis/comet/issues/314"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "parses children\\.v2 summaries without acceptance ownership fields|accepts a readable v2 acceptance index while retaining the v1 contract",
+          "requiredNames": [
+            "parses children.v2 summaries without acceptance ownership fields",
+            "accepts a readable v2 acceptance index while retaining the v1 contract"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-supervisor.test.ts",
+          "namePattern": "adds a repair child without rewriting integrated history",
+          "requiredNames": [
+            "adds a repair child without rewriting integrated history"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-372-isolated-status-error",
+      "behavior": "一个损坏/漂移worktree副本不能隐藏其余健康Native任务；推进仍严格校验。",
+      "status": "covered",
+      "reason": "0.5.0 保留此行为；所列确定性测试直接断言该契约。covered 表示已映射，不表示本次清单审计已执行。",
+      "coverageLayer": "shared-discovery",
+      "evidence": [
+        "test/domains/comet-native/native-status-discovery.test.ts",
+        "test/domains/comet-native/native-children.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-status-discovery.test.ts",
+          "namePattern": "reports an unreadable portable copy as a blocked entry instead of failing the page",
+          "requiredNames": [
+            "reports an unreadable portable copy as a blocked entry instead of failing the page"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "downgrades a drifted children copy to a confirmation prompt instead of blocking status",
+          "requiredNames": [
+            "downgrades a drifted children copy to a confirmation prompt instead of blocking status"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-430-joint-shape",
+      "behavior": "完整Supervisor Shape和协作方式可在同一绑定用户决定确认，不把单独模式选择等同批准完整方案。",
+      "status": "covered",
+      "reason": "0.5.0 保留此行为；所列确定性测试直接断言该契约。covered 表示已映射，不表示本次清单审计已执行。",
+      "coverageLayer": "sdk-and-compat",
+      "evidence": [
+        "test/domains/comet-native/native-sdk-application.test.ts",
+        "test/domains/comet-native/native-joint-shape-confirmation.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "confirms a Supervisor child plan and coordination mode in the same SDK Run",
+          "requiredNames": [
+            "confirms a Supervisor child plan and coordination mode in the same SDK Run"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-joint-shape-confirmation.test.ts",
+          "namePattern": "does not turn a mode-only reply or a missing mode into full Shape confirmation",
+          "requiredNames": [
+            "does not turn a mode-only reply or a missing mode into full Shape confirmation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-431-file-count-approval",
+      "behavior": "轻量preset仅文件数超阈值可复用明确授权，真实范围/风险变化仍要求复核。",
+      "status": "covered",
+      "reason": "0.5.0 保留此行为；所列确定性测试直接断言该契约。covered 表示已映射，不表示本次清单审计已执行。",
+      "coverageLayer": "sdk-and-skill",
+      "evidence": [
+        "test/domains/skill/sdk-flow-handoffs.test.ts",
+        "test/domains/comet-classic/classic-sdk-preset-scope.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/skill/sdk-flow-handoffs.test.ts",
+          "namePattern": "routes preset scope checks to the matching Runtime reference without repeating file-count authorization",
+          "requiredNames": [
+            "routes preset scope checks to the matching Runtime reference without repeating file-count authorization"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-preset-scope.test.ts",
+          "namePattern": "binds scope confirmation to the proposed artifacts before continuing the same preset",
+          "requiredNames": [
+            "binds scope confirmation to the proposed artifacts before continuing the same preset"
+          ]
+        }
+      ]
+    }
+  ]
+}

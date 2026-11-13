@@ -136,6 +136,8 @@ async function prepareContainedDirectoryChain(
   root: string,
   directory: string,
 ): Promise<DirectoryIdentity[]> {
+  const existing = await captureExistingContainedDirectoryChain(root, directory);
+  if (existing) return existing;
   const lexicalRoot = path.resolve(root);
   const lexicalDirectory = path.resolve(directory);
   if (!isInside(lexicalRoot, lexicalDirectory)) {
@@ -305,6 +307,76 @@ export async function atomicWriteContainedJson(
   options: ContainedAtomicWriteOptions,
 ): Promise<void> {
   await atomicWriteContainedText(file, JSON.stringify(value, null, 2) + '\n', options);
+}
+
+/** 原子发布同一文件对象的固定入口；不复制正文，也不跨受管根跟随链接。 */
+export async function atomicLinkContainedFile(
+  source: string,
+  destination: string,
+  options: ContainedAtomicWriteOptions,
+): Promise<void> {
+  const sourceChain = await captureExistingContainedDirectoryChain(
+    options.containedRoot,
+    path.dirname(source),
+  );
+  if (!sourceChain)
+    throw Object.assign(new Error('Contained link source directory is missing'), {
+      code: 'ENOENT',
+    });
+  const targetChain = await prepareContainedDirectoryChain(
+    options.containedRoot,
+    path.dirname(destination),
+  );
+  const before = await fs.lstat(source);
+  if (!before.isFile() || before.isSymbolicLink())
+    throw new Error('Contained link source must be a regular file');
+  const temporary = path.join(
+    path.dirname(destination),
+    `.${path.basename(destination)}.${randomUUID()}.tmp`,
+  );
+  try {
+    await verifyDirectoryChain(sourceChain);
+    await verifyDirectoryChain(targetChain);
+    await linkWithRetry(source, temporary);
+    await options.beforeCommit?.();
+    await verifyDirectoryChain(sourceChain);
+    await verifyDirectoryChain(targetChain);
+    const linked = await fs.lstat(temporary);
+    const current = await fs.lstat(source);
+    if (
+      !linked.isFile() ||
+      linked.isSymbolicLink() ||
+      !current.isFile() ||
+      current.isSymbolicLink() ||
+      !sameFileIdentity(before, current) ||
+      !sameFileIdentity(current, linked) ||
+      before.size !== current.size ||
+      before.mtimeMs !== current.mtimeMs
+    )
+      throw new Error('Contained link source changed before publication');
+    const destinationStat = await fs.lstat(destination).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    });
+    if (
+      destinationStat?.isFile() &&
+      !destinationStat.isSymbolicLink() &&
+      sameFileIdentity(current, destinationStat)
+    )
+      await unlinkWithRetry(temporary);
+    else await renameWithRetry(temporary, destination);
+    await syncDirectory(path.dirname(destination));
+    await verifyDirectoryChain(sourceChain);
+    await verifyDirectoryChain(targetChain);
+  } catch (error) {
+    try {
+      await verifyDirectoryChain(targetChain);
+      await fs.unlink(temporary);
+    } catch {
+      // 目录已被替换时保留临时入口，不沿可疑路径清理。
+    }
+    throw error;
+  }
 }
 
 /**

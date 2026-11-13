@@ -1,0 +1,25 @@
+{
+  "authorization": "report:2026-11-10-agent-platform-execution",
+  "cases": [],
+  "behaviorMappings": [
+    {
+      "name": "captures implementation for the first commit without including installation metadata",
+      "body": "it('captures implementation for the first commit without including installation metadata', async () => {\n  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-sdk-unborn-delivery-'));\n  temporaryRoots.push(root);\n  await fs.mkdir(path.join(root, '.comet'));\n  await fs.writeFile(\n    path.join(root, '.comet/config.yaml'),\n    'schema: comet.project.v1\\ndefault_workflow: classic\\nworkflows: [classic]\\nclassic:\\n  artifact_layout: docs\\n',\n  );\n  await fs.writeFile(path.join(root, 'source.js'), 'export const ready = true;\\n');\n  execFileSync('git', ['init', '-b', 'main'], { cwd: root });\n  const manifest = [\n    { p: 'source.js', h: 'a'.repeat(64), s: 27, m: null },\n    { p: 'node_modules/.modules.yaml', h: 'b'.repeat(64), s: 1, m: null },\n  ]\n    .map((entry) => JSON.stringify(entry))\n    .join('\\n');\n  expect(\n    await collectClassicSdkDeliveryInputs(root, manifest, { argv: [process.execPath], cwd: '.' }),\n  ).toEqual(['source.js']);\n})",
+      "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+      "classification": "retired manifest/execution fixture adapted to current delivery selection API; original business retained",
+      "rootCause": "Old test passes managed-check manifest text plus execution {argv,cwd}. Current collectClassicSdkDeliveryInputs accepts (root, run?, deliveryPaths?: readonly string[]); old third argument throws before business collection.",
+      "retired": "Per-command managed-check content manifest and execution specification arguments.",
+      "retained": "Real unborn Git repository captures source.js for first commit and excludes installation metadata. New fixture materializes actual node_modules/.modules.yaml instead of only inventing its entry in a synthetic hash manifest; explicitly selecting metadata must reject. Source and metadata bytes remain unchanged.",
+      "target": {
+        "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+        "fullName": "captures implementation for the first commit without including installation metadata",
+        "body": "it('captures implementation for the first commit without including installation metadata', async () => {\n  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-sdk-unborn-delivery-'));\n  temporaryRoots.push(root);\n  await fs.mkdir(path.join(root, '.comet'));\n  await fs.writeFile(\n    path.join(root, '.comet/config.yaml'),\n    'schema: comet.project.v1\\ndefault_workflow: classic\\nworkflows: [classic]\\nclassic:\\n  artifact_layout: docs\\n',\n  );\n  const source = 'export const ready = true;\\n';\n  const metadata = 'SIMULATED package manager installation metadata\\n';\n  await fs.writeFile(path.join(root, 'source.js'), source);\n  await fs.mkdir(path.join(root, 'node_modules'));\n  await fs.writeFile(path.join(root, 'node_modules/.modules.yaml'), metadata);\n  execFileSync('git', ['init', '-b', 'main'], { cwd: root });\n  expect(await collectClassicSdkDeliveryInputs(root)).toEqual(['source.js']);\n  await expect(\n    collectClassicSdkDeliveryInputs(root, undefined, ['source.js', 'node_modules/.modules.yaml']),\n  ).rejects.toThrow('workflow metadata or another change');\n  expect(await fs.readFile(path.join(root, 'source.js'), 'utf8')).toBe(source);\n  expect(await fs.readFile(path.join(root, 'node_modules/.modules.yaml'), 'utf8')).toBe(metadata);\n})"
+      },
+      "evidence": [
+        "coverage/classic-sdk-first-commit-current-audit.json",
+        "coverage/classic-sdk-first-commit-current-fixture-green.json"
+      ],
+      "status": "passed"
+    }
+  ]
+}

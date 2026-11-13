@@ -2910,7 +2910,7 @@ describe('update command helpers', () => {
           json: true,
           skipNpm: true,
         }),
-      ).rejects.toThrow(/symbolic link or junction/iu);
+      ).rejects.toThrow(/regular file|symbolic link.*junction/iu);
       expect(mockedInstallOpenSpec).not.toHaveBeenCalled();
       await expect(fs.readFile(path.join(outsideRoot, 'config.yaml'), 'utf8')).resolves.toBe(
         source,
@@ -2951,7 +2951,7 @@ describe('update command helpers', () => {
           json: true,
           skipNpm: true,
         }),
-      ).rejects.toThrow(/symbolic link or junction/iu);
+      ).rejects.toThrow(/regular file|symbolic link.*junction/iu);
       expect(mockedInstallOpenSpec).not.toHaveBeenCalled();
       await expect(fs.readFile(outsideConfig, 'utf8')).resolves.toBe(source);
     } finally {

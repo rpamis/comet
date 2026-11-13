@@ -1,0 +1,79 @@
+diff --git a/coverage/owned-timeout-original.ts b/test/platform/process/owned-command-termination.test.ts
+index b63b65ba..ea7fe1b9 100644
+--- a/coverage/owned-timeout-original.ts
++++ b/test/platform/process/owned-command-termination.test.ts
+@@ -20,14 +20,18 @@ const processes: ChildProcess[] = [];
+ const descendants = new Set<number>();
+ 
+ it('keeps its deadline when the owner event loop cannot run its timeout timer', async () => {
+-  const marker = path.join(directory, 'timer-late'),
++  const marker = path.join(directory, 'timer-heartbeat'),
+     started = path.join(directory, 'timer-started'),
++    blocked = path.join(directory, 'owner-blocked'),
++    resumed = path.join(directory, 'owner-resumed'),
++    result = path.join(directory, 'owner-result.json'),
+     bundle = path.join(directory, 'blocked-owner.cjs');
+-  const command =
+-    "require('node:fs').writeFileSync(process.argv[1], 'started'); setTimeout(() => require('node:fs').writeFileSync(process.argv[2], 'late'), 5500); setTimeout(() => process.exit(0), 8000)";
++  const heartbeat =
++    "setInterval(() => require('node:fs').appendFileSync(process.argv[1], 'tick\\n'), 40)";
++  const command = `const child=require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(heartbeat)},process.argv[2]],{stdio:'ignore',windowsHide:true});require('node:fs').writeFileSync(process.argv[1],JSON.stringify({command:process.pid,descendant:child.pid}));setInterval(()=>{},1000)`;
+   await build({
+     stdin: {
+-      contents: `const {runOwnedCommand}=require('./platform/process/run-owned-command.ts');runOwnedCommand(process.execPath,['-e',${JSON.stringify(command)},process.env.COMET_TEST_STARTED,process.env.COMET_TEST_MARKER],{cwd:process.env.COMET_TEST_ROOT,timeoutMs:5000}).catch(()=>{});const poll=setInterval(()=>{if(require('node:fs').existsSync(process.env.COMET_TEST_STARTED)){clearInterval(poll);Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,6000)}},25);`,
++      contents: `const fs=require('node:fs');const {runOwnedCommand}=require('./platform/process/run-owned-command.ts');let confirmed;runOwnedCommand(process.execPath,['-e',${JSON.stringify(command)},process.env.COMET_TEST_STARTED,process.env.COMET_TEST_MARKER],{cwd:process.env.COMET_TEST_ROOT,timeoutMs:5000,onTerminated:async(_instance,value)=>{confirmed=value}}).then(()=>fs.writeFileSync(process.env.COMET_TEST_RESULT,JSON.stringify({completed:true,confirmed})),error=>fs.writeFileSync(process.env.COMET_TEST_RESULT,JSON.stringify({error:error.message,confirmed})));const poll=setInterval(()=>{if(fs.existsSync(process.env.COMET_TEST_STARTED)){clearInterval(poll);fs.writeFileSync(process.env.COMET_TEST_BLOCKED,'blocked');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10000);fs.writeFileSync(process.env.COMET_TEST_RESUMED,'resumed')}},25);`,
+       resolveDir: process.cwd(),
+     },
+     outfile: bundle,
+@@ -44,6 +48,9 @@ it('keeps its deadline when the owner event loop cannot run its timeout timer',
+       COMET_TEST_ROOT: directory,
+       COMET_TEST_STARTED: started,
+       COMET_TEST_MARKER: marker,
++      COMET_TEST_BLOCKED: blocked,
++      COMET_TEST_RESUMED: resumed,
++      COMET_TEST_RESULT: result,
+     },
+   });
+   processes.push(owner);
+@@ -52,15 +59,37 @@ it('keeps its deadline when the owner event loop cannot run its timeout timer',
+     if (Date.now() > deadline) throw new Error('owned command did not start');
+     await new Promise((resolve) => setTimeout(resolve, 25));
+   }
+-  await new Promise((resolve) => setTimeout(resolve, 6500));
+-  expect(await fs.stat(marker).catch(() => null)).toBeNull();
++  const pids = JSON.parse(await fs.readFile(started, 'utf8')) as {
++    command: number;
++    descendant: number;
++  };
++  descendants.add(pids.command);
++  descendants.add(pids.descendant);
++  expect(await alive(pids.command)).toBe(true);
++  expect(await alive(pids.descendant)).toBe(true);
++  const cleanupDeadline = Date.now() + 8000;
++  while ((await alive(pids.command)) || (await alive(pids.descendant))) {
++    if (Date.now() > cleanupDeadline)
++      throw new Error('command tree survived its deadline while the owner was blocked');
++    await new Promise((resolve) => setTimeout(resolve, 25));
++  }
++  expect(await fs.readFile(blocked, 'utf8')).toBe('blocked');
++  expect(await fs.stat(resumed).catch(() => null)).toBeNull();
++  const stoppedHeartbeat = await fs.readFile(marker, 'utf8');
++  expect(stoppedHeartbeat).toContain('tick');
++  await new Promise((resolve) => setTimeout(resolve, 150));
++  expect(await fs.readFile(marker, 'utf8')).toBe(stoppedHeartbeat);
+   await Promise.race([
+     owner.exitCode !== null ? Promise.resolve() : once(owner, 'exit'),
+     new Promise((_, reject) =>
+-      setTimeout(() => reject(new Error('owner did not finish after timeout')), 5000),
++      setTimeout(() => reject(new Error('owner did not finish after timeout')), 10000),
+     ),
+   ]);
+-}, 20000);
++  expect(JSON.parse(await fs.readFile(result, 'utf8'))).toEqual({
++    error: 'timeout',
++    confirmed: true,
++  });
++}, 25000);
+ 
+ async function alive(pid: number): Promise<boolean> {
+   try {

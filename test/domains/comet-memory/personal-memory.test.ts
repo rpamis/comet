@@ -1,6 +1,11 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import {
+  diagnoseRecoverableFileLock,
+  repairRecoverableFileLock,
+} from '../../../platform/fs/recoverable-file-lock.js';
 
 import { describe, expect, it, vi } from 'vitest';
 
@@ -1149,6 +1154,40 @@ describe('PersonalMemoryService', () => {
 
   it('recovers the personal-memory lock left by a terminated process', async () => {
     await withTempRepository(async (root) => {
+      const { build } = await import('esbuild');
+      const bundle = path.join(root, 'memory-repository.cjs');
+      await build({
+        entryPoints: [path.resolve('domains/comet-memory/repository.ts')],
+        outfile: bundle,
+        bundle: true,
+        platform: 'node',
+        format: 'cjs',
+        logLevel: 'silent',
+      });
+      const child = spawnSync(
+        process.execPath,
+        [
+          '-e',
+          'const {FileMemoryRepository}=require(process.argv[1]);new FileMemoryRepository(process.argv[2]).withLock(async()=>process.exit(0));',
+          bundle,
+          root,
+        ],
+        { encoding: 'utf8', windowsHide: true },
+      );
+      expect(child.status, child.stderr).toBe(0);
+      const lock = path.join(root, '.comet/runtime/.memory.lock');
+      const metadata = JSON.parse(await readFile(lock, 'utf8'));
+      expect(metadata.protocolVersion).toBe(2);
+      expect(metadata).not.toHaveProperty('pid');
+      await expect(
+        service(root).remember({ scope: 'global', category: '沟通偏好', text: '使用中文回复' }),
+      ).resolves.toMatchObject({ text: '使用中文回复' });
+      await expect(readFile(lock, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+  });
+
+  it('requires explicit stop confirmation for a legacy personal-memory lock', async () => {
+    await withTempRepository(async (root) => {
       const runtimeRoot = path.join(root, '.comet', 'runtime');
       const lock = path.join(runtimeRoot, '.memory.lock');
       await mkdir(runtimeRoot, { recursive: true });
@@ -1158,13 +1197,22 @@ describe('PersonalMemoryService', () => {
         'utf8',
       );
 
-      await expect(
-        service(root).remember({
-          scope: 'global',
-          category: '沟通偏好',
-          text: '使用中文回复',
-        }),
-      ).resolves.toMatchObject({ text: '使用中文回复' });
+      const request = {
+        scope: 'global',
+        category: '沟通偏好',
+        text: '使用中文回复',
+      } as const;
+      await expect(service(root).remember(request)).rejects.toThrow(
+        'Legacy lock requires confirmation',
+      );
+      const diagnosis = await diagnoseRecoverableFileLock(lock);
+      expect(await repairRecoverableFileLock(lock, diagnosis.token!)).toBe('blocked');
+      expect(
+        await repairRecoverableFileLock(lock, diagnosis.token!, { confirmedOwnerStopped: true }),
+      ).toBe('removed');
+      await expect(service(root).remember(request)).resolves.toMatchObject({
+        text: '使用中文回复',
+      });
       await expect(readFile(lock, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
     });
   });
@@ -2247,6 +2295,8 @@ describe('PersonalMemoryService', () => {
           if (args[0] === 'init') initialized = true;
           if (args[0] === 'rev-parse') {
             if (args[1] === '--show-toplevel' && initialized) return { stdout: root, stderr: '' };
+            if (args[1] === '--git-path' && initialized)
+              return { stdout: '.git/info/exclude', stderr: '' };
             throw new Error('not a git repository');
           }
           if (args[0] === 'diff' || args[0] === 'ls-remote') return { stdout: '', stderr: '' };
@@ -2259,6 +2309,7 @@ describe('PersonalMemoryService', () => {
       expect(calls.map((entry) => entry[0])).toEqual([
         'rev-parse',
         'init',
+        'rev-parse',
         'rev-parse',
         'remote',
         'diff',

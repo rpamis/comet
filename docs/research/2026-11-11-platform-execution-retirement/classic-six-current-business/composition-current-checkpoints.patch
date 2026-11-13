@@ -1,0 +1,21 @@
+diff --git a/domains/comet-classic/classic-application.ts b/domains/comet-classic/classic-application.ts
+index 8363165..4cc9efd 100644
+--- a/domains/comet-classic/classic-application.ts
++++ b/domains/comet-classic/classic-application.ts
+@@ -404,7 +404,7 @@ export function createClassicApplication(
+     if (skill.adapter.sideEffect === 'external') step.retry = 'reconcile';
+   }
+   const repairTarget = (checkpoint: string) =>
+-    checkpoint.includes('.verify.') || checkpoint.includes('.build.check.')
++    checkpoint.includes('.verify.') || checkpoint.includes('.build.check.') || checkpoint.endsWith('.build.execute')
+       ? `${checkpoint.split('.')[0]}.build.${checkpoint.startsWith('full.') ? 'plan' : 'execute'}`
+       : checkpoint.includes('.build.plan.')
+         ? 'full.build.plan'
+@@ -551,6 +551,7 @@ export function createClassicApplication(
+           };
+         return resumeDomain(run, source.event);
+       }
++      if(event.kind==='action-outcome' && event.stepId.endsWith('.build.execute') && (event.outcome.output as {event?:string}|null)?.event==='escalation-requested') return resumeDomain(run,event);
+       const first = chains.get(event.stepId)?.[0];
+       if (
+         first &&

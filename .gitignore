@@ -9,6 +9,7 @@ pids
 *.pid
 *.seed
 *.pid.lock
+.comet-test-build.lock*
 
 # Coverage
 coverage
@@ -23,6 +24,9 @@ node_modules/
 
 # TypeScript cache
 *.tsbuildinfo
+
+# Local Python lint cache
+.ruff_cache/
 
 # Local temporary workspace
 .tmp/

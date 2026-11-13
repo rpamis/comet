@@ -1,0 +1,451 @@
+{
+  "cases": [
+    {
+      "id": "native-531-legacy-eperm-stop-recovery",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/531"
+      ],
+      "behavior": "旧Windows检查无进程创建身份且PID探测unknown时，原领取方已死、明确停止证明及新鲜系统枚举均匹配才允许对账。",
+      "coverageLevel": "public-cli",
+      "reproduction": "为原领取登记无identity的旧PID并模拟EPERM对应unknown；基线07bd301b即便有明确停止证明仍永久拒绝。",
+      "expected": "doctor --repair --confirmed --stopped-actions 保留原失败及候选，不重跑检查；PID存在、枚举失败或领取不匹配时继续拒绝。",
+      "forbidden": "按年龄自动接管、杀死复用PID、把原未知检查记为通过、用旧快照确认新执行停止。",
+      "rootCause": "人工停止证据仍强制裸PID探测为dead，且已绑定停止收据没有结束旧PID的unknown探测。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "reconciles legacy EPERM only with explicit stop evidence and Windows enumeration",
+          "requiredNames": [
+            "Native protocol simplification reconciles legacy EPERM only with explicit stop evidence and Windows enumeration absent",
+            "Native protocol simplification reconciles legacy EPERM only with explicit stop evidence and Windows enumeration present",
+            "Native protocol simplification reconciles legacy EPERM only with explicit stop evidence and Windows enumeration unknown"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "退休Windows PID枚举判定，两个旧present/unknown参数已是同一持锁路径。保留legacy元数据、原claim、明确停止证明、持锁拒绝、释放后沿原Action修复和候选不变；只删除一次重复执行。",
+        "authorization": "report:2026-11-10-runtime-remaining-failures",
+        "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "reconciles legacy interruptions using explicit stop evidence and the original execution lease",
+            "requiredNames": [
+              "Native protocol simplification reconciles legacy interruptions using explicit stop evidence and the original execution lease (lease=released)",
+              "Native protocol simplification reconciles legacy interruptions using explicit stop evidence and the original execution lease (lease=held)"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/registry.json",
+            "sha256": "e6d702047aec141307700160678ed08b49244c8bc35c2f5f128018648206ed06"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/tests.json",
+            "sha256": "a3efabe9ea2def260224301a176b44f5948a4d9f9910c1a7ea2be0fc49ee087d"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/mapping.json",
+            "sha256": "3a5e285a24256e181f3bda43825826fb6010cbf77491f723bbdf081910793df2"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/patch.patch",
+            "sha256": "238e8ab4e60fa6cadae98a3e3a041574eb70bc5a10f01de7d578625d87ececcf"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-next-drain-internal-actions",
+      "behavior": "一次公开 next 连续完成已授权的内部动作，在用户确认、独立验收和执行失败处停止",
+      "sources": [
+        "report:2026-11-02-native-protocol-simplification",
+        "report:2026-11-05-pr539-ci-failures"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "784694e3 的临时 SDK 项目已批准验收且待 Archive，公开 CLI next 后 Run 仍为 running；同一完成断言在旧代码失败。",
+      "expected": "原 Run 完成全部归档 Action，每项只执行一次；遇到用户 Wait 或 Verifier handoff 返回，失败检查不派发 Verifier。",
+      "forbidden": "越过用户决定、自动领取独立 Verifier、重复归档，或在失败结果后继续执行。",
+      "rootCause": "next 执行一个 Runtime 工具 Action 后立即投影并返回，后继内部动作需模型再次调度。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "drains authorized internal Archive actions through public next without repeating them \\((source|bundle)\\)",
+          "requiredNames": [
+            "Native protocol simplification drains authorized internal Archive actions through public next without repeating them (source)",
+            "Native protocol simplification drains authorized internal Archive actions through public next without repeating them (bundle)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "stops public next at result confirmation without starting Archive",
+          "requiredNames": [
+            "Native protocol simplification stops public next at result confirmation without starting Archive"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "stops public next at an independent Verifier handoff",
+          "requiredNames": [
+            "Native protocol simplification stops public next at an independent Verifier handoff"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "stops public next after failed checks without dispatching a Verifier",
+          "requiredNames": [
+            "Native protocol simplification stops public next after failed checks without dispatching a Verifier"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "preserves an unknown Verifier execution without claiming or replaying it",
+          "requiredNames": [
+            "Native protocol simplification preserves an unknown Verifier execution without claiming or replaying it"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^keeps Archive next pending on a renamed branch and resumes the original Run after restoration$",
+          "requiredNames": [
+            "keeps Archive next pending on a renamed branch and resumes the original Run after restoration"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-invalid-completed-check-recovery",
+      "behavior": "已停止的 Build 检查保存了无效 outcome 时，确认原执行停止后可沿原 Run 记录中断并恢复 Builder。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/545"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "真实执行 v3 build.checks，保留逐项日志，将持久 outcome 的计划名称替换为旧计划名称，再将原 Action 标记 unknown；旧 doctor 即使收到正确停止证据也无法收敛。",
+      "expected": "正确停止证据将旧 Action 记录为失败中断，保留原记录、日志、Run 和 Shape 批准，恢复 Builder；重复修复不重放，新的显式检查请求仍可完成。",
+      "forbidden": "未确认或错误 claim 推进、跨候选采信结果、丢弃 Run、把坏结果当通过、覆盖坏记录或自动重跑命令。",
+      "rootCause": "中断恢复和校验要求 execution.outcome 不存在，拒绝了存在但校验失败的已停止结果。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "recovers an invalid completed Build check through doctor without replay",
+          "requiredNames": [
+            "Native SDK Workflow Application recovers an invalid completed Build check through doctor without replay (source)",
+            "Native SDK Workflow Application recovers an invalid completed Build check through doctor without replay (bundle)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-invalid-completed-check-guidance",
+      "behavior": "无效完整检查结果被拒绝时，doctor 和 next 提供一致且可执行的停止确认入口与具体校验原因。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/545"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "向已停止的 build.checks 保留计划不匹配的 outcome，执行 doctor 和 next；旧输出只要求补交无法通过校验的原结果，不提供停止确认参数。",
+      "expected": "doctor 说明结果校验失败并给出 confirmed、stopped-actions 参数；next 要求原领取绑定的停止证据，执行该入口后可恢复。",
+      "forbidden": "提供 Build 阶段不可达的 Verifier refreshChecks 指引，或在缺少停止确认入口时静默重复同一无效恢复命令。",
+      "rootCause": "doctor、continuation 与恢复入口分别按 outcome 的存在性判断，没有共享结果校验结论。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "recovers an invalid completed Build check through doctor without replay",
+          "requiredNames": [
+            "Native SDK Workflow Application recovers an invalid completed Build check through doctor without replay (source)",
+            "Native SDK Workflow Application recovers an invalid completed Build check through doctor without replay (bundle)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-rejected-check-request-no-baseline",
+      "behavior": "被拒绝的检查请求不占用检查 ID 或 argv 基线；已接受计划的真实冲突仍须阻止。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/506"
+      ],
+      "coverageLevel": "runtime",
+      "reproduction": "先提交错误 attempt 下的失败 argv，再以原 claim 和同一 ID 提交正确 argv；当前分支未复现污染，新增断言固定现有保护。",
+      "expected": "拒绝记录保留，但正确计划可执行并 passed；已接受计划不能同 ID 偷换命令。",
+      "forbidden": "把被拒请求或失败收据纳入已接受命令基线，或为放行而移除真实冲突保护。",
+      "rootCause": "当前实现仅读取 succeeded 的历史 Verifier Action；报告的污染尚未复现，不能声称修改了该规则。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "Native SDK Workflow Application does not reserve a check ID or command from a rejected Verifier request",
+          "requiredNames": [
+            "Native SDK Workflow Application does not reserve a check ID or command from a rejected Verifier request"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "rejects a conflicting command reused under the same Verifier check ID",
+          "requiredNames": [
+            "Native SDK Workflow Application rejects a conflicting command reused under the same Verifier check ID"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-verifier-position-diagnostic",
+      "behavior": "Verifier 提交旧轮次时必须显示当前预期与实际 iteration/attempt，并允许原领取更正后继续。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/506"
+      ],
+      "coverageLevel": "runtime",
+      "reproduction": "当前 attempt=1 时提交 attempt=999，原错误只报 stale。",
+      "expected": "拒绝旧位置，报告 expected/received；用新 outcomeId 和当前模板可继续。",
+      "forbidden": "接受陈旧位置、丢失原领取或错误地重用被拒收据。",
+      "rootCause": "陈旧位置错误没有具体轮次和更正入口。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "Native SDK Workflow Application does not reserve a check ID or command from a rejected Verifier request",
+          "requiredNames": [
+            "Native SDK Workflow Application does not reserve a check ID or command from a rejected Verifier request"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-rejected-check-proof-original-claim-correction",
+      "behavior": "合成缺证据结果被提前拒绝后，可沿原claim补交同一次真实完整执行结果，不重跑一次性检查并保留拒绝历史",
+      "coverageLevel": "runtime",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^requires fresh verification instead of trusting a legacy check without a candidate digest$",
+          "requiredNames": [
+            "requires fresh verification instead of trusting a legacy check without a candidate digest"
+          ]
+        }
+      ],
+      "reproduction": "现代Native执行器真实执行一次后，测试返回副本删去inputSnapshot/candidateInputFingerprintGate/rawInput。旧fixture误把这种混合缺证据格式当作已发布历史并试图直接走到Archive。",
+      "expected": "OUTCOME_REJECTED且原Action保留running和拒绝收据，无Verifier或Archive；原claim以新outcomeId补交捕获的完整真实结果后才可独立验收；计数1且旧拒绝结果不可覆盖。",
+      "forbidden": "让现代validator接受缺证据成功、重建Run、重试执行器重放副作用、覆盖或删除拒绝结果。",
+      "rootCause": "原测试fixture的阶段不再符合当前校验边界；真实npm0.5.0含候选gate，合法兼容另以实际发布包seed及当前公开CLI归档核对。",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ]
+    },
+    {
+      "id": "native-repeatable-verify-plans",
+      "sources": [
+        "report:2026-11-05-native-verify-archive-cost"
+      ],
+      "behavior": "New Runs reject one-time operations before executing Verify plans.",
+      "coverageLevel": "runtime",
+      "reproduction": "Submit an actual Builder plan with repeatable false to the new definition.",
+      "expected": "Reject the plan before check execution.",
+      "forbidden": "Executing a one-time command through Verify.",
+      "rootCause": "Verification and one-time delivery operations shared the same plan contract.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native streamlined verification rejects one-time check plans before v2 verification execution)$",
+          "requiredNames": [
+            "Native streamlined verification rejects one-time check plans before v2 verification execution"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-single-result-template",
+      "sources": [
+        "report:2026-11-05-native-verify-archive-cost"
+      ],
+      "behavior": "New Run claim output presents one receipt-based result template.",
+      "coverageLevel": "runtime",
+      "reproduction": "Claim the actual v2 Verifier and project its response.",
+      "expected": "Provide resultRequest and repeatable check schema with one shared Action reference.",
+      "forbidden": "Duplicating complete result and outcome templates in ordinary claim output.",
+      "rootCause": "Compatibility and receipt-based protocols were both expanded in normal responses.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:returns one receipt result template for a claimed v2 Verifier)$",
+          "requiredNames": [
+            "returns one receipt result template for a claimed v2 Verifier"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-classic-check-plan-continuation",
+      "behavior": "Keep explicitly selected check plans and local reuse options in subsequent Native and Classic task templates.",
+      "coverageLevel": "runtime",
+      "reproduction": "The same Native reuse fixture returned placeholder plans, and the Classic continuation returned placeholder argv before the change; focused tests failed against those implementations.",
+      "expected": "Retain literal argv, cwd, timeout and previously selected repeatability/reuse settings without treating a template as a successful check.",
+      "forbidden": "Inferring cacheability for external checks or allowing an older success to mask a later failure.",
+      "rootCause": "Task templates rebuilt command placeholders instead of carrying forward the original declared plans.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "reuses a Build check only while inputs match",
+          "requiredNames": [
+            "reuses a Build check only while inputs match (edited=false)",
+            "reuses a Build check only while inputs match (edited=true)",
+            "reuses a Build check only while inputs match (edited=failed-later)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "reuses the same successful command across Build and Verify after validating its inputs and log|retains the exact external check plan without adding local reuse",
+          "requiredNames": [
+            "reuses the same successful command across Build and Verify after validating its inputs and log",
+            "retains the exact external check plan without adding local reuse"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-11-08-skill-execution-optimization"
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "撤下本案例中依赖文件/日志内容摘要、编辑证明或自动漂移的策略。保留原来源和完整旧正文；显式修订、真实失败/超时、原用户决定、检查来源及无重复副作用继续由逐项选择器执行。具体差异与保留行为见记录。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "^(?:Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution \\(edited=false\\)|Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution \\(edited=true\\)|Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution \\(edited=failed-later\\))$",
+            "requiredNames": [
+              "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=false)",
+              "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=true)",
+              "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=failed-later)"
+            ]
+          },
+          {
+            "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+            "namePattern": "^(?:Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK full Verify rounds retains the exact external check plan without adding local reuse|Classic SDK tweak Verify rounds retains the exact external check plan without adding local reuse|Classic SDK hotfix Verify rounds retains the exact external check plan without adding local reuse)$",
+            "requiredNames": [
+              "Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+              "Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+              "Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+              "Classic SDK full Verify rounds retains the exact external check plan without adding local reuse",
+              "Classic SDK tweak Verify rounds retains the exact external check plan without adding local reuse",
+              "Classic SDK hotfix Verify rounds retains the exact external check plan without adding local reuse"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-build-managed-check-reuse",
+      "sources": [
+        "report:2026-11-05-native-verify-archive-cost"
+      ],
+      "behavior": "Build can record real managed checks and Verify reuses only matching successful evidence.",
+      "coverageLevel": "runtime",
+      "reproduction": "Execute Build checks, submit a candidate, then verify unchanged inputs, edited inputs, and a later failed Build check.",
+      "expected": "Reuse unchanged successful evidence and rerun edited or superseded evidence.",
+      "forbidden": "Treat terminal summaries or superseded successes as current Runtime checks.",
+      "rootCause": "Build lacked a managed check step before candidate submission.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native v3 Build check reuse reuses a Build check only while inputs match \\(edited=false\\)|Native v3 Build check reuse reuses a Build check only while inputs match \\(edited=true\\)|Native v3 Build check reuse reuses a Build check only while inputs match \\(edited=failed-later\\))$",
+          "requiredNames": [
+            "Native v3 Build check reuse reuses a Build check only while inputs match (edited=false)",
+            "Native v3 Build check reuse reuses a Build check only while inputs match (edited=true)",
+            "Native v3 Build check reuse reuses a Build check only while inputs match (edited=failed-later)"
+          ]
+        },
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "^(?:Native dispatch CLI presentation executes managed Build checks through public receipt dispatch and resumes the Builder)$",
+          "requiredNames": [
+            "Native dispatch CLI presentation executes managed Build checks through public receipt dispatch and resumes the Builder"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "撤下本案例中依赖文件/日志内容摘要、编辑证明或自动漂移的策略。保留原来源和完整旧正文；显式修订、真实失败/超时、原用户决定、检查来源及无重复副作用继续由逐项选择器执行。具体差异与保留行为见记录。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "^(?:Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution \\(edited=false\\)|Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution \\(edited=true\\)|Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution \\(edited=failed-later\\))$",
+            "requiredNames": [
+              "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=false)",
+              "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=true)",
+              "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=failed-later)"
+            ]
+          },
+          {
+            "file": "test/app/native-runtime-dispatch.test.ts",
+            "namePattern": "^(?:Native dispatch CLI presentation executes managed Build checks through public receipt dispatch and resumes the Builder)$",
+            "requiredNames": [
+              "Native dispatch CLI presentation executes managed Build checks through public receipt dispatch and resumes the Builder"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-task-recovery-boundaries",
+      "sources": [
+        "report:2026-11-05-native-verify-archive-cost"
+      ],
+      "behavior": "Normal task advancement routes recovery only where needed and preserves already committed results.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Execute the focused real Runtime/temporary-project cases recorded in native-task-safety.json. The high-level CLI was first observed rejecting the new result option before implementation.",
+      "expected": "Skip unrelated recovery modules, support non-Git transport outside inputs, preserve committed results on subsequent failure, and reject invalid verdicts.",
+      "forbidden": "Lose a saved result or count incomplete verification as passed.",
+      "rootCause": "The workflow exposed separate submission, progression and claim operations, expanded normal protocol output and mandatory review policy.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:skips unrelated recovery handlers while the ordinary Verifier is running|keeps non-Git result transport outside candidate inputs through the high-level task path|preserves a committed Builder result when its internal check cannot start|rejects incomplete or forged high-level results without completing the original Verify task|keeps the selected independent review when the next claim omits review options|completes Archive on the returned third call after the user accepts the current result)$",
+          "requiredNames": [
+            "skips unrelated recovery handlers while the ordinary Verifier is running",
+            "keeps non-Git result transport outside candidate inputs through the high-level task path",
+            "preserves a committed Builder result when its internal check cannot start",
+            "rejects incomplete or forged high-level results without completing the original Verify task",
+            "keeps the selected independent review when the next claim omits review options",
+            "completes Archive on the returned third call after the user accepts the current result"
+          ]
+        }
+      ]
+    }
+  ]
+}

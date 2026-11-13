@@ -1,12 +1,9 @@
 import { materializeJsonValueProjection } from '../../platform/fs/json-value-pool.js';
 import {
-  resolveWorkspaceRuntimeRoot,
+  ensureWorkspaceRuntimeRoot,
   resolveWorkspaceRuntimeRootSync,
-  isWorkspaceRuntimeMigrationFence,
 } from '../workflow-contract/workspace-runtime.js';
-import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import {
-  withWorkspaceApplicationScopeLock,
   workspaceApplicationIds,
   workspaceApplicationIdentityCurrent,
   reserveWorkspaceApplicationClaims,
@@ -33,10 +30,6 @@ import {
   type WorkflowRun,
 } from '../engine/runtime.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
-import {
-  diagnoseRecoverableFileLock,
-  repairRecoverableFileLock,
-} from '../../platform/fs/recoverable-file-lock.js';
 import {
   readCometCurrentSelection,
   readHookCurrentSelection,
@@ -76,6 +69,7 @@ import {
   readWorkflowApplicationDefinition,
   validateWorkflowApplicationDefinitionPath,
   assertWorkflowApplicationDefinitionMatches,
+  matchesWorkflowApplicationDefinition,
 } from './application-definition.js';
 import {
   applyApplicationArtifactContracts,
@@ -115,6 +109,7 @@ async function rawStore(
   projectRoot: string,
   id: string,
   readOnly = false,
+  singleWriter = false,
 ): Promise<RuntimeStore<ApplicationRunRecord>> {
   const root = resolveWorkspaceRuntimeRootSync(projectRoot);
   const assertCurrentRoot = () => {
@@ -127,7 +122,7 @@ async function rawStore(
   const prepare = async () => {
     assertCurrentRoot();
     if (!readOnly) {
-      const resolved = await resolveWorkspaceRuntimeRoot(projectRoot);
+      const resolved = await ensureWorkspaceRuntimeRoot(projectRoot);
       if (resolved !== root)
         throw new RuntimeProtocolError(
           'WORKFLOW_CHANGED',
@@ -140,6 +135,7 @@ async function rawStore(
     rootDir: path.join(root, 'applications', safeId(id)),
     mirroredRevisionPaths: ['run.revision'],
     writerProtocol: 'application-holder-v1',
+    ...(singleWriter ? { singleWriter: true } : {}),
   });
   const prepareCommit = (runId: string, revision: number | null, next: ApplicationRunRecord) => {
     const publish = store.prepareCompareAndSwap!(runId, revision, next);
@@ -147,7 +143,7 @@ async function rawStore(
       assertCurrentRoot();
       if (readOnly) throw new RuntimeProtocolError('READ_ONLY_OPERATION', '应用诊断不能推进 Run');
       await prepare();
-      // 封存是可恢复的布局事务，不改变 revision；所有调用均位于应用 scope 锁内。
+      // 封存是可恢复的布局事务，不改变 revision；调用方串行提交业务操作。
       const disposition = await store.settleRun(runId);
       if (['closing', 'closed', 'reopening'].includes(disposition)) {
         const previous = await store.read(runId);
@@ -164,20 +160,7 @@ async function rawStore(
   const read = async (runId: string, projection: boolean) => {
     await prepare();
     const current = await store[projection ? 'readProjection' : 'read']!(runId);
-    if (!readOnly) return current;
-    const legacy = await inspectProtectedProjectPath(projectRoot, '.comet/runtime', {
-      label: '应用旧 Runtime 只读查询',
-    });
-    if (!legacy.exists || (await isWorkspaceRuntimeMigrationFence(legacy.target))) return current;
-    if (!(await fs.lstat(legacy.target)).isDirectory())
-      throw new RuntimeProtocolError('INVALID_RUN', '应用旧 Runtime 目录类型无效');
-    const prior = await createFileRuntimeStore<ApplicationRunRecord>({
-      rootDir: path.join(legacy.target, 'applications', safeId(id)),
-      mirroredRevisionPaths: ['run.revision'],
-    })[projection ? 'readProjection' : 'read']!(runId);
-    if (current && prior)
-      throw new RuntimeProtocolError('INVALID_RUN', '新旧应用 Runtime 同时存在，拒绝选择写入权威');
-    return current ?? prior;
+    return current;
   };
   return {
     queryScope: store.queryScope,
@@ -216,7 +199,7 @@ export async function readWorkflowApplicationStorageDisposition(
   }).readPartitionMetadata(runId);
 }
 
-/** 观测当前应用写入所需的工作区、应用和 Run 锁，不加载或推进应用。 */
+/** 只观测通用 SDK Run 的提交锁，不加载或推进应用；普通领域流程不获取此锁。 */
 export async function inspectWorkflowApplicationLocks(
   projectRoot: string,
   applicationId: string,
@@ -224,7 +207,7 @@ export async function inspectWorkflowApplicationLocks(
 ) {
   const root = resolveWorkspaceRuntimeRootSync(projectRoot);
   const id = safeId(applicationId);
-  const locks = [
+  return [
     {
       ...(await inspectFileRuntimeStoreLock(
         { rootDir: path.join(root, 'applications', id) },
@@ -233,22 +216,6 @@ export async function inspectWorkflowApplicationLocks(
       kind: 'run-store',
     },
   ];
-  for (const ref of [
-    'application-scope-locks/_workspace.lock',
-    `application-scope-locks/${id}.lock`,
-  ]) {
-    const { target } = await inspectProtectedProjectPath(root, ref, {
-      label: 'Application writer lock',
-      expected: 'file',
-    });
-    locks.push({
-      ...(await diagnoseRecoverableFileLock(target)),
-      file: target,
-      path: target,
-      kind: 'application-scope',
-    });
-  }
-  return locks;
 }
 
 export async function repairWorkflowApplicationLock(
@@ -261,20 +228,18 @@ export async function repairWorkflowApplicationLock(
   const locks = await inspectWorkflowApplicationLocks(projectRoot, applicationId, runId);
   for (const lock of locks) {
     if (lock.token === token || lock.coordinator?.some((entry) => entry.token === token)) {
-      if (lock.kind === 'run-store')
-        return repairFileRuntimeStoreLock(
-          {
-            rootDir: path.join(
-              resolveWorkspaceRuntimeRootSync(projectRoot),
-              'applications',
-              safeId(applicationId),
-            ),
-          },
-          runId,
-          token,
-          confirmedOwnerStopped,
-        );
-      return repairRecoverableFileLock(lock.file, token, { confirmedOwnerStopped });
+      return repairFileRuntimeStoreLock(
+        {
+          rootDir: path.join(
+            resolveWorkspaceRuntimeRootSync(projectRoot),
+            'applications',
+            safeId(applicationId),
+          ),
+        },
+        runId,
+        token,
+        confirmedOwnerStopped,
+      );
     }
   }
   throw new Error('Application writer lock changed; inspect its exact owner record again');
@@ -370,7 +335,11 @@ async function recordHoldsApplicationScope(record: ApplicationRunRecord): Promis
   } // 固定定义缺失时不能证明原执行没有写入范围。
 }
 
-function applicationStorageMaintenance(projectRoot: string, applicationId: string) {
+function applicationStorageMaintenance(
+  projectRoot: string,
+  applicationId: string,
+  singleWriter = false,
+) {
   const rootDir = path.join(
     resolveWorkspaceRuntimeRootSync(projectRoot),
     'applications',
@@ -380,6 +349,7 @@ function applicationStorageMaintenance(projectRoot: string, applicationId: strin
     rootDir,
     mirroredRevisionPaths: ['run.revision'],
     writerProtocol: 'application-holder-v1',
+    ...(singleWriter ? { singleWriter: true } : {}),
   });
   return createApplicationStorageIndex({
     rootDir,
@@ -402,12 +372,10 @@ export async function repairWorkflowApplicationStorageIndex(options: {
   operation: 'audit' | 'rebuild';
   expectedEpoch: string;
 }) {
-  const root = await resolveWorkspaceRuntimeRoot(options.projectRoot);
-  return withWorkspaceApplicationScopeLock(root, safeId(options.applicationId), () =>
-    applicationStorageMaintenance(options.projectRoot, options.applicationId).repair(
-      options.operation,
-      options.expectedEpoch,
-    ),
+  await ensureWorkspaceRuntimeRoot(options.projectRoot);
+  return applicationStorageMaintenance(options.projectRoot, safeId(options.applicationId)).repair(
+    options.operation,
+    options.expectedEpoch,
   );
 }
 
@@ -523,7 +491,13 @@ export async function loadWorkflowApplication(options: {
   )
     applicationError('应用规则 Rule 必须是固定包内的非空 Markdown 文件');
   const version = getCurrentVersion();
-  if (manifest.runtimeVersion !== version)
+  // 0.5.2 的固定包继续原 Run；普通执行调度由领域 Store 适配，不加载旧工厂。
+  const legacyBuiltinRun =
+    manifest.runtimeVersion === '0.5.2' &&
+    version === '0.5.3' &&
+    Boolean(options.runId) &&
+    (manifest.base === 'native' || manifest.base.startsWith('classic-'));
+  if (manifest.runtimeVersion !== version && !legacyBuiltinRun)
     applicationError(`应用要求 Runtime ${manifest.runtimeVersion}，当前是 ${version}`);
   if (!files[manifest.entrySkill] || !files[manifest.module])
     applicationError('应用入口 Skill 或执行模块缺失');
@@ -536,7 +510,7 @@ export async function loadWorkflowApplication(options: {
     id: manifest.id,
     version: manifest.version,
     base: manifest.base,
-    runtimeVersion: version,
+    runtimeVersion: manifest.runtimeVersion,
     projectRoot,
     packageRoot,
     contentHash: hashRuntimeValue({
@@ -567,7 +541,8 @@ export async function loadWorkflowApplication(options: {
     hashRuntimeValue(identity) !== hashRuntimeValue(options.expectedIdentity)
   )
     throw new RuntimeProtocolError('WORKFLOW_CHANGED', '恢复需要原固定应用包、依赖和工作区');
-  const persistent = await rawStore(projectRoot, manifest.id, options.readOnly);
+  const singleWriter = manifest.base !== 'standalone';
+  const persistent = await rawStore(projectRoot, manifest.id, options.readOnly, singleWriter);
   const assertIdentity = (record: ApplicationRunRecord) => {
     if (hashRuntimeValue(record.application) !== hashRuntimeValue(identity))
       throw new RuntimeProtocolError(
@@ -653,7 +628,15 @@ export async function loadWorkflowApplication(options: {
     applicationError('应用模块必须提供完整 SDK 工作流');
   implementation = applyApplicationArtifactContracts(implementation, { manifest, projectRoot });
   const workflows = implementation.workflows.map(defineWorkflow);
-  if (definition) assertWorkflowApplicationDefinitionMatches(definition, workflows);
+  if (definition) {
+    if (!legacyBuiltinRun) assertWorkflowApplicationDefinitionMatches(definition, workflows);
+    else if (
+      existingRun &&
+      !matchesWorkflowApplicationDefinition(definition, existingRun) &&
+      !matchesWorkflowApplicationDefinition({ ...definition, workflows }, existingRun)
+    )
+      applicationError('旧固定应用 Run 不匹配原定义或当前业务定义');
+  }
   const bindingKeys = new Set<string>();
   for (const binding of manifest.bindings) {
     const key = `${binding.workflowId}/${binding.stepId}/${binding.usage}${binding.usage === 'guidance' ? `/${binding.skillId}` : ''}`;
@@ -825,29 +808,21 @@ export async function loadWorkflowApplication(options: {
       throw new RuntimeProtocolError('READ_ONLY_OPERATION', '应用诊断不能恢复或推进 Run');
   };
   const scopeRuntimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
-  const withScopeLock = async <T>(operation: () => Promise<T>): Promise<T> => {
+  const inCurrentWorkspace = async <T>(operation: () => Promise<T>): Promise<T> => {
     if (resolveWorkspaceRuntimeRootSync(projectRoot) !== scopeRuntimeRoot)
       throw new RuntimeProtocolError(
         'WORKFLOW_CHANGED',
         '工作区身份已改变，请重新加载应用 Runtime',
       );
-    const root = await resolveWorkspaceRuntimeRoot(projectRoot);
-    try {
-      return await withWorkspaceApplicationScopeLock(root, manifest.id, operation);
-    } catch (error) {
-      if (error instanceof Error && error.message.startsWith('Timed out waiting for file lock:'))
-        throw new RuntimeProtocolError(
-          'STORE_BUSY',
-          '应用写入协调繁忙，请稍后重新读取 revision 再重试',
-        );
-      throw error;
-    }
+    await ensureWorkspaceRuntimeRoot(projectRoot);
+    return operation();
   };
   const storageRoot = path.join(scopeRuntimeRoot, 'applications', manifest.id);
   const coordinatedStore = createFileRuntimeStore<ApplicationRunRecord>({
     rootDir: storageRoot,
     mirroredRevisionPaths: ['run.revision'],
     writerProtocol: 'application-holder-v1',
+    ...(singleWriter ? { singleWriter: true } : {}),
   });
   const actionNeedsScope = (run: WorkflowRun, action: WorkflowRun['actions'][number]) =>
     action.type === 'invoke_skill' &&
@@ -885,7 +860,11 @@ export async function loadWorkflowApplication(options: {
   const readWorkspaceClaims = async (
     applicationId: string,
   ): Promise<WorkspaceApplicationClaim[]> => {
-    const records = await applicationStorageMaintenance(projectRoot, applicationId).holders();
+    const records = await applicationStorageMaintenance(
+      projectRoot,
+      applicationId,
+      applicationId === manifest.id && singleWriter,
+    ).holders();
     const claims: WorkspaceApplicationClaim[] = [];
     for (const record of records) {
       const ownerManifest =
@@ -1061,7 +1040,7 @@ export async function loadWorkflowApplication(options: {
           );
         }
       };
-      return withScopeLock(restore);
+      return inCurrentWorkspace(restore);
     },
     async compareAndSwap(runId, expectedRevision, run) {
       assertWritable();
@@ -1188,7 +1167,7 @@ export async function loadWorkflowApplication(options: {
           }
         }
       };
-      return needsCoordination ? withScopeLock(commit) : commit();
+      return needsCoordination ? inCurrentWorkspace(commit) : commit();
     },
   };
   const store = implementation.wrapStore
@@ -1236,7 +1215,8 @@ export async function loadWorkflowApplication(options: {
     },
   };
   // SDK 自身校验所有 handler、validator、executor 身份；只装载图不足以通过这里。
-  createRuntime({ ...checkedImplementation, store });
+  const runtime = createRuntime({ ...checkedImplementation, store });
+  if (legacyBuiltinRun) await runtime.inspect(options.runId!);
   return { manifest, definition, identity, implementation: checkedImplementation, skills, store };
 }
 

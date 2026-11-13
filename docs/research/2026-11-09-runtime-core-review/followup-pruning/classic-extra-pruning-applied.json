@@ -1,0 +1,190 @@
+{
+  "removed": [
+    {
+      "file": "test/domains/comet-classic/comet-scripts.test.ts",
+      "name": "blocks design exit when design doc frontmatter is missing required fields",
+      "fullName": "comet scripts blocks design exit when design doc frontmatter is missing required fields",
+      "protectedBy": [],
+      "source": "it('blocks design exit when design doc frontmatter is missing required fields', async () => {\n    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');\n    await createChange(\n      tmpDir,\n      'bad-frontmatter',\n      [\n        'workflow: full',\n        'phase: design',\n        'build_mode: null',\n        'build_pause: null',\n        'tdd_mode: null',\n        'isolation: null',\n        'verify_mode: null',\n        'design_doc: null',\n        'plan: null',\n        'verify_result: pending',\n        'verified_at: null',\n        'archived: false',\n        'auto_transition: true',\n        '',\n      ].join('\\n'),\n    );\n\n    runNode(tmpDir, handoffScript, ['bad-frontmatter', 'design', '--write']);\n\n    // Design doc with wrong comet_change\n    await writeFile(\n      path.join(tmpDir, 'docs', 'superpowers', 'specs', 'bad-design.md'),\n      [\n        '---',\n        'comet_change: wrong-change',\n        'role: technical-design',\n        'canonical_spec: openspec',\n        '---',\n        '',\n      ].join('\\n'),\n    );\n    runNode(tmpDir, stateScript, [\n      'set',\n      'bad-frontmatter',\n      'design_doc',\n      'docs/superpowers/specs/bad-design.md',\n    ]);\n\n    const result = runNode(tmpDir, guardScript, ['bad-frontmatter', 'design']);\n\n    expect(result.status).not.toBe(0);\n    expect(result.stderr).toContain('[FAIL] Design Doc frontmatter links current change');\n  })",
+      "start": 80283,
+      "end": 81692,
+      "reason": "Only asserts retired copied beta JSON/Markdown handoff format, content hash-only entry, source-byte invalidation or frontmatter template; current original-material refs and explicit full Markdown handoff have source/generated coverage.",
+      "replacement": "test/domains/comet-classic/classic-handoff.test.ts"
+    },
+    {
+      "file": "test/domains/comet-classic/comet-scripts.test.ts",
+      "name": "--hash-only fails when required files are missing",
+      "fullName": "comet scripts --hash-only fails when required files are missing",
+      "protectedBy": [],
+      "source": "it('--hash-only fails when required files are missing', async () => {\n    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');\n    const changeDir = path.join(tmpDir, 'openspec', 'changes', 'hash-missing-files');\n    await fs.mkdir(changeDir, { recursive: true });\n    await writeFile(\n      path.join(changeDir, '.comet.yaml'),\n      [\n        'workflow: full',\n        'phase: design',\n        'build_mode: null',\n        'build_pause: null',\n        'tdd_mode: null',\n        'isolation: null',\n        'verify_mode: null',\n        'design_doc: null',\n        'plan: null',\n        'verify_result: pending',\n        'verified_at: null',\n        'archived: false',\n        'auto_transition: true',\n        '',\n      ].join('\\n'),\n    );\n    await writeFile(path.join(changeDir, 'proposal.md'), 'proposal\\n');\n    // design.md and tasks.md intentionally omitted\n\n    const result = runNode(tmpDir, handoffScript, ['hash-missing-files', '--hash-only']);\n    expect(result.status).not.toBe(0);\n    expect(result.stderr).toContain('required file missing or empty');\n  })",
+      "start": 79190,
+      "end": 80278,
+      "reason": "Only asserts retired copied beta JSON/Markdown handoff format, content hash-only entry, source-byte invalidation or frontmatter template; current original-material refs and explicit full Markdown handoff have source/generated coverage.",
+      "replacement": "test/domains/comet-classic/classic-handoff.test.ts"
+    },
+    {
+      "file": "test/domains/comet-classic/comet-scripts.test.ts",
+      "name": "--hash-only fails for non-existent change",
+      "fullName": "comet scripts --hash-only fails for non-existent change",
+      "protectedBy": [],
+      "source": "it('--hash-only fails for non-existent change', async () => {\n    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');\n    const result = runNode(tmpDir, handoffScript, ['no-such-change', '--hash-only']);\n    expect(result.status).not.toBe(0);\n    expect(result.stderr).toContain('change directory not found');\n  })",
+      "start": 78850,
+      "end": 79185,
+      "reason": "Only asserts retired copied beta JSON/Markdown handoff format, content hash-only entry, source-byte invalidation or frontmatter template; current original-material refs and explicit full Markdown handoff have source/generated coverage.",
+      "replacement": "test/domains/comet-classic/classic-handoff.test.ts"
+    },
+    {
+      "file": "test/domains/comet-classic/comet-scripts.test.ts",
+      "name": "--hash-only outputs context hash without generating handoff files",
+      "fullName": "comet scripts --hash-only outputs context hash without generating handoff files",
+      "protectedBy": [],
+      "source": "it('--hash-only outputs context hash without generating handoff files', async () => {\n    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');\n    await createChange(\n      tmpDir,\n      'hash-only-test',\n      [\n        'workflow: full',\n        'phase: design',\n        'build_mode: null',\n        'build_pause: null',\n        'tdd_mode: null',\n        'isolation: null',\n        'verify_mode: null',\n        'design_doc: null',\n        'plan: null',\n        'verify_result: pending',\n        'verified_at: null',\n        'archived: false',\n        'auto_transition: true',\n        '',\n      ].join('\\n'),\n    );\n\n    // Generate a normal handoff first to get the expected hash\n    const normalResult = runNode(tmpDir, handoffScript, ['hash-only-test', 'design', '--write']);\n    expect(normalResult.status).toBe(0);\n    const normalHash = runNode(tmpDir, stateScript, ['get', 'hash-only-test', 'handoff_hash']);\n    const expectedHash = normalHash.stdout.trim();\n\n    // Remove handoff files to prove --hash-only does not regenerate them\n    const handoffDir = path.join(\n      tmpDir,\n      'openspec',\n      'changes',\n      'hash-only-test',\n      '.comet',\n      'handoff',\n    );\n    await fs.rm(handoffDir, { recursive: true, force: true });\n\n    const hashOnlyResult = runNode(tmpDir, handoffScript, ['hash-only-test', '--hash-only']);\n    expect(hashOnlyResult.status).toBe(0);\n    expect(hashOnlyResult.stdout.trim()).toBe(expectedHash);\n\n    // Confirm handoff files were NOT regenerated\n    expect(\n      await fs.access(handoffDir).then(\n        () => true,\n        () => false,\n      ),\n    ).toBe(false);\n  })",
+      "start": 77199,
+      "end": 78845,
+      "reason": "Only asserts retired copied beta JSON/Markdown handoff format, content hash-only entry, source-byte invalidation or frontmatter template; current original-material refs and explicit full Markdown handoff have source/generated coverage.",
+      "replacement": "test/domains/comet-classic/classic-handoff.test.ts"
+    },
+    {
+      "file": "test/domains/comet-classic/comet-scripts.test.ts",
+      "name": "detects OpenSpec artifacts changed after handoff was generated",
+      "fullName": "comet scripts detects OpenSpec artifacts changed after handoff was generated",
+      "protectedBy": [],
+      "source": "it('detects OpenSpec artifacts changed after handoff was generated', async () => {\n    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');\n    await createChange(\n      tmpDir,\n      'stale-handoff',\n      [\n        'workflow: full',\n        'phase: design',\n        'build_mode: null',\n        'build_pause: null',\n        'tdd_mode: null',\n        'isolation: null',\n        'verify_mode: null',\n        'design_doc: null',\n        'plan: null',\n        'verify_result: pending',\n        'verified_at: null',\n        'archived: false',\n        'auto_transition: true',\n        '',\n      ].join('\\n'),\n    );\n\n    runNode(tmpDir, handoffScript, ['stale-handoff', 'design', '--write']);\n\n    // Mutate proposal.md after handoff was generated\n    await writeFile(\n      path.join(tmpDir, 'openspec', 'changes', 'stale-handoff', 'proposal.md'),\n      'mutated proposal\\n',\n    );\n\n    const result = runNode(tmpDir, guardScript, ['stale-handoff', 'design']);\n\n    expect(result.status).not.toBe(0);\n    expect(result.stderr).toContain('[FAIL] design handoff context exists');\n    expect(result.stderr).toContain('OpenSpec artifacts changed after handoff was generated');\n  })",
+      "start": 76000,
+      "end": 77194,
+      "reason": "Only asserts retired copied beta JSON/Markdown handoff format, content hash-only entry, source-byte invalidation or frontmatter template; current original-material refs and explicit full Markdown handoff have source/generated coverage.",
+      "replacement": "test/domains/comet-classic/classic-handoff.test.ts"
+    },
+    {
+      "file": "test/domains/comet-classic/comet-scripts.test.ts",
+      "name": "rejects handoff generation when required OpenSpec artifacts are missing",
+      "fullName": "comet scripts rejects handoff generation when required OpenSpec artifacts are missing",
+      "protectedBy": [],
+      "source": "it('rejects handoff generation when required OpenSpec artifacts are missing', async () => {\n    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');\n    const changeDir = path.join(tmpDir, 'openspec', 'changes', 'missing-artifacts');\n    await fs.mkdir(changeDir, { recursive: true });\n    await writeFile(\n      path.join(changeDir, '.comet.yaml'),\n      [\n        'workflow: full',\n        'phase: design',\n        'build_mode: null',\n        'build_pause: null',\n        'tdd_mode: null',\n        'isolation: null',\n        'verify_mode: null',\n        'design_doc: null',\n        'plan: null',\n        'verify_result: pending',\n        'verified_at: null',\n        'archived: false',\n        'auto_transition: true',\n        '',\n      ].join('\\n'),\n    );\n    await writeFile(path.join(changeDir, 'proposal.md'), 'proposal\\n');\n    // design.md and tasks.md intentionally omitted\n\n    const result = runNode(tmpDir, handoffScript, ['missing-artifacts', 'design', '--write']);\n\n    expect(result.status).not.toBe(0);\n    expect(result.stderr).toContain('required OpenSpec artifact missing or empty');\n  })",
+      "start": 74867,
+      "end": 75995,
+      "reason": "Only asserts retired copied beta JSON/Markdown handoff format, content hash-only entry, source-byte invalidation or frontmatter template; current original-material refs and explicit full Markdown handoff have source/generated coverage.",
+      "replacement": "test/domains/comet-classic/classic-handoff.test.ts"
+    },
+    {
+      "file": "test/domains/comet-classic/comet-scripts.test.ts",
+      "name": "warns when --full is passed in beta mode",
+      "fullName": "comet scripts warns when --full is passed in beta mode",
+      "protectedBy": [],
+      "source": "it('warns when --full is passed in beta mode', async () => {\n    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');\n    await createChange(\n      tmpDir,\n      'beta-full-warn',\n      [\n        'workflow: full',\n        'phase: design',\n        'context_compression: beta',\n        'build_mode: null',\n        'build_pause: null',\n        'tdd_mode: null',\n        'isolation: null',\n        'verify_mode: null',\n        'design_doc: null',\n        'plan: null',\n        'verify_result: pending',\n        'verified_at: null',\n        'archived: false',\n        'auto_transition: true',\n        '',\n      ].join('\\n'),\n    );\n\n    const handoff = runNode(tmpDir, handoffScript, [\n      'beta-full-warn',\n      'design',\n      '--write',\n      '--full',\n    ]);\n\n    expect(handoff.status).toBe(0);\n    expect(handoff.stderr).toContain('--full is ignored in beta mode');\n\n    // Should still generate spec-context.* (beta files), not design-context.* (full files)\n    const contextPath = runNode(tmpDir, stateScript, [\n      'get',\n      'beta-full-warn',\n      'handoff_context',\n    ]).stdout.trim();\n    expect(contextPath).toBe('openspec/changes/beta-full-warn/.comet/handoff/spec-context.json');\n  })",
+      "start": 73637,
+      "end": 74862,
+      "reason": "Only asserts retired copied beta JSON/Markdown handoff format, content hash-only entry, source-byte invalidation or frontmatter template; current original-material refs and explicit full Markdown handoff have source/generated coverage.",
+      "replacement": "test/domains/comet-classic/classic-handoff.test.ts"
+    },
+    {
+      "file": "test/domains/comet-classic/comet-scripts.test.ts",
+      "name": "blocks beta design exit when spec-context.json is malformed JSON",
+      "fullName": "comet scripts blocks beta design exit when spec-context.json is malformed JSON",
+      "protectedBy": [],
+      "source": "it('blocks beta design exit when spec-context.json is malformed JSON', async () => {\n    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');\n    await createChange(\n      tmpDir,\n      'beta-malformed-json',\n      [\n        'workflow: full',\n        'phase: design',\n        'context_compression: beta',\n        'build_mode: null',\n        'build_pause: null',\n        'tdd_mode: null',\n        'isolation: null',\n        'verify_mode: null',\n        'design_doc: null',\n        'plan: null',\n        'verify_result: pending',\n        'verified_at: null',\n        'archived: false',\n        'auto_transition: true',\n        '',\n      ].join('\\n'),\n      '- [ ] build beta context\\n',\n    );\n    await writeFile(\n      path.join(\n        tmpDir,\n        'openspec',\n        'changes',\n        'beta-malformed-json',\n        'specs',\n        'capability',\n        'spec.md',\n      ),\n      [\n        '## ADDED Requirements',\n        '',\n        '### Requirement: Keep malformed JSON blocked',\n        '',\n        '#### Scenario: malformed JSON',\n        '- **WHEN** guard parses the projection',\n        '- **THEN** invalid JSON is rejected',\n        '',\n      ].join('\\n'),\n    );\n\n    const handoff = runNode(tmpDir, handoffScript, ['beta-malformed-json', 'design', '--write']);\n    expect(handoff.status).toBe(0);\n\n    const jsonPath = path.join(\n      tmpDir,\n      'openspec',\n      'changes',\n      'beta-malformed-json',\n      '.comet',\n      'handoff',\n      'spec-context.json',\n    );\n    await fs.appendFile(jsonPath, '\\nnot-json\\n');\n\n    await writeFile(\n      path.join(tmpDir, 'docs', 'superpowers', 'specs', 'beta-malformed-json-design.md'),\n      [\n        '---',\n        'comet_change: beta-malformed-json',\n        'role: technical-design',\n        'canonical_spec: openspec',\n        '---',\n        '',\n      ].join('\\n'),\n    );\n    runNode(tmpDir, stateScript, [\n      'set',\n      'beta-malformed-json',\n      'design_doc',\n      'docs/superpowers/specs/beta-malformed-json-design.md',\n    ]);\n\n    const result = runNode(tmpDir, guardScript, ['beta-malformed-json', 'design']);\n\n    expect(result.status).not.toBe(0);\n    expect(result.stderr).toContain('[FAIL] beta spec-context.json is structurally valid');\n    expect(result.stderr).toContain('invalid JSON');\n  })",
+      "start": 67489,
+      "end": 69799,
+      "reason": "Only asserts retired copied beta JSON/Markdown handoff format, content hash-only entry, source-byte invalidation or frontmatter template; current original-material refs and explicit full Markdown handoff have source/generated coverage.",
+      "replacement": "test/domains/comet-classic/classic-handoff.test.ts"
+    },
+    {
+      "file": "test/domains/comet-classic/comet-scripts.test.ts",
+      "name": "blocks beta design exit when spec-context.json is structurally invalid",
+      "fullName": "comet scripts blocks beta design exit when spec-context.json is structurally invalid",
+      "protectedBy": [],
+      "source": "it('blocks beta design exit when spec-context.json is structurally invalid', async () => {\n    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');\n    await createChange(\n      tmpDir,\n      'beta-bad-json',\n      [\n        'workflow: full',\n        'phase: design',\n        'context_compression: beta',\n        'build_mode: null',\n        'build_pause: null',\n        'tdd_mode: null',\n        'isolation: null',\n        'verify_mode: null',\n        'design_doc: null',\n        'plan: null',\n        'verify_result: pending',\n        'verified_at: null',\n        'archived: false',\n        'auto_transition: true',\n        '',\n      ].join('\\n'),\n      '- [ ] build beta context\\n',\n    );\n    await writeFile(\n      path.join(tmpDir, 'openspec', 'changes', 'beta-bad-json', 'specs', 'capability', 'spec.md'),\n      [\n        '## ADDED Requirements',\n        '',\n        '### Requirement: Keep headings complete',\n        '',\n        '#### Scenario: required scenario',\n        '- **WHEN** guard checks beta projection',\n        '- **THEN** it detects missing coverage',\n        '',\n      ].join('\\n'),\n    );\n\n    const handoff = runNode(tmpDir, handoffScript, ['beta-bad-json', 'design', '--write']);\n    expect(handoff.status).toBe(0);\n\n    // Corrupt the JSON by removing required fields\n    const jsonPath = path.join(\n      tmpDir,\n      'openspec',\n      'changes',\n      'beta-bad-json',\n      '.comet',\n      'handoff',\n      'spec-context.json',\n    );\n    await fs.writeFile(jsonPath, '{ \"broken\": true }\\n');\n\n    await writeFile(\n      path.join(tmpDir, 'docs', 'superpowers', 'specs', 'beta-bad-json-design.md'),\n      [\n        '---',\n        'comet_change: beta-bad-json',\n        'role: technical-design',\n        'canonical_spec: openspec',\n        '---',\n        '',\n      ].join('\\n'),\n    );\n    runNode(tmpDir, stateScript, [\n      'set',\n      'beta-bad-json',\n      'design_doc',\n      'docs/superpowers/specs/beta-bad-json-design.md',\n    ]);\n\n    const result = runNode(tmpDir, guardScript, ['beta-bad-json', 'design']);\n\n    expect(result.status).not.toBe(0);\n    expect(result.stderr).toContain('[FAIL] beta spec-context.json is structurally valid');\n  })",
+      "start": 65279,
+      "end": 67484,
+      "reason": "Only asserts retired copied beta JSON/Markdown handoff format, content hash-only entry, source-byte invalidation or frontmatter template; current original-material refs and explicit full Markdown handoff have source/generated coverage.",
+      "replacement": "test/domains/comet-classic/classic-handoff.test.ts"
+    },
+    {
+      "file": "test/domains/comet-classic/comet-scripts.test.ts",
+      "name": "generates a beta spec projection handoff with verbatim spec content",
+      "fullName": "comet scripts generates a beta spec projection handoff with verbatim spec content",
+      "protectedBy": [],
+      "source": "it('generates a beta spec projection handoff with verbatim spec content', async () => {\n    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');\n    await createChange(\n      tmpDir,\n      'beta-context',\n      [\n        'workflow: full',\n        'phase: design',\n        'context_compression: beta',\n        'build_mode: null',\n        'build_pause: null',\n        'tdd_mode: null',\n        'isolation: null',\n        'verify_mode: null',\n        'design_doc: null',\n        'plan: null',\n        'verify_result: pending',\n        'verified_at: null',\n        'archived: false',\n        'auto_transition: true',\n        '',\n      ].join('\\n'),\n      '- [ ] build beta context\\n',\n    );\n    const specContent = [\n      '## 新增需求',\n      '',\n      '### 需求: 保留验收覆盖',\n      '实现必须确保每个场景在压缩上下文中可见。',\n      '',\n      '#### 场景: beta 投影包含场景',\n      '- 当 beta handoff 生成时',\n      '- 则 场景标题出现在投影中',\n      '- 并且 中文内容完整保留',\n      '',\n    ].join('\\n');\n    await writeFile(\n      path.join(tmpDir, 'openspec', 'changes', 'beta-context', 'specs', 'capability', 'spec.md'),\n      specContent,\n    );\n\n    const handoff = runNode(tmpDir, handoffScript, ['beta-context', 'design', '--write']);\n    const contextPath = runNode(tmpDir, stateScript, [\n      'get',\n      'beta-context',\n      'handoff_context',\n    ]).stdout.trim();\n\n    expect(handoff.status).toBe(0);\n    expect(contextPath).toBe('openspec/changes/beta-context/.comet/handoff/spec-context.json');\n\n    const contextMarkdown = await fs.readFile(\n      path.join(\n        tmpDir,\n        'openspec',\n        'changes',\n        'beta-context',\n        '.comet',\n        'handoff',\n        'spec-context.md',\n      ),\n      'utf-8',\n    );\n    expect(contextMarkdown).toContain('Mode: beta');\n    expect(contextMarkdown).toContain('Generated-by: comet-handoff.sh');\n    // Verbatim projection: ALL spec content must appear (Chinese, non-keyword steps, etc.)\n    expect(contextMarkdown).toContain('### 需求: 保留验收覆盖');\n    expect(contextMarkdown).toContain('#### 场景: beta 投影包含场景');\n    expect(contextMarkdown).toContain('实现必须确保每个场景在压缩上下文中可见。');\n    expect(contextMarkdown).toContain('- 当 beta handoff 生成时');\n    expect(contextMarkdown).toContain('- 并且 中文内容完整保留');\n\n    // JSON should have files array with role field\n    const contextJson = await fs.readFile(\n      path.join(\n        tmpDir,\n        'openspec',\n        'changes',\n        'beta-context',\n        '.comet',\n        'handoff',\n        'spec-context.json',\n      ),\n      'utf-8',\n    );\n    expect(contextJson).toContain('\"role\": \"spec\"');\n    expect(contextJson).toContain('\"role\": \"supporting\"');\n\n    await writeFile(\n      path.join(tmpDir, 'docs', 'superpowers', 'specs', 'beta-design.md'),\n      [\n        '---',\n        'comet_change: beta-context',\n        'role: technical-design',\n        'canonical_spec: openspec',\n        '---',\n        '',\n      ].join('\\n'),\n    );\n    runNode(tmpDir, stateScript, [\n      'set',\n      'beta-context',\n      'design_doc',\n      'docs/superpowers/specs/beta-design.md',\n    ]);\n\n    const result = runNode(tmpDir, guardScript, ['beta-context', 'design']);\n\n    expect(result.status).toBe(0);\n    expect(result.stderr).toContain('[PASS] design handoff context exists');\n    expect(result.stderr).toContain('[PASS] design handoff markdown is traceable');\n    expect(result.stderr).toContain('[PASS] beta spec-context.json is structurally valid');\n  })",
+      "start": 61849,
+      "end": 65274,
+      "reason": "Only asserts retired copied beta JSON/Markdown handoff format, content hash-only entry, source-byte invalidation or frontmatter template; current original-material refs and explicit full Markdown handoff have source/generated coverage.",
+      "replacement": "test/domains/comet-classic/classic-handoff.test.ts"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+      "name": "invalidates a changed %s",
+      "fullNames": [
+        "Classic executed check evidence invalidates a changed package-lock.json",
+        "Classic executed check evidence invalidates a changed .comet/config.yaml",
+        "Classic executed check evidence invalidates a changed tests/acceptance.test.js"
+      ],
+      "start": 26501,
+      "end": 27261,
+      "source": "it.each(['package-lock.json', '.comet/config.yaml', 'tests/acceptance.test.js'])(\n    'invalidates a changed %s',\n    async (file) => {\n      await readyVerify();\n      const target = path.join(root, file);\n      await fs.mkdir(path.dirname(target), { recursive: true });\n      if (file !== '.comet/config.yaml') await fs.writeFile(target, 'before');\n      expect(\n        (\n          await cli(\n            'check',\n            'run',\n            'demo',\n            'verify',\n            '--local',\n            '--',\n            process.execPath,\n            'check.cjs',\n          )\n        ).exitCode,\n      ).toBe(0);\n      await fs.appendFile(target, '\\n# changed\\n');\n      expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);\n    },\n  )",
+      "protectedBy": [],
+      "reason": "Only asserts file-snapshot-driven automatic invalidation/revalidation, removed from current command checks. Actual failed commands, missing logs, wrong command/scope/Run and once-only recovery remain.",
+      "replacement": "test/domains/comet-classic/classic-agent-command-selection.test.ts"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+      "name": "includes tracked, staged, and untracked inputs in Git projects",
+      "fullName": "Classic executed check evidence includes tracked, staged, and untracked inputs in Git projects",
+      "start": 26042,
+      "end": 26496,
+      "source": "it('includes tracked, staged, and untracked inputs in Git projects', async () => {\n    spawnSync('git', ['init'], { cwd: root });\n    spawnSync('git', ['add', 'input.txt'], { cwd: root });\n    await readyVerify();\n    await cli('check', 'run', 'demo', 'verify', '--local', '--', process.execPath, 'check.cjs');\n    await fs.writeFile(path.join(root, 'new-config.json'), '{}');\n    expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);\n  })",
+      "protectedBy": [],
+      "reason": "Only asserts file-snapshot-driven automatic invalidation/revalidation, removed from current command checks. Actual failed commands, missing logs, wrong command/scope/Run and once-only recovery remain.",
+      "replacement": "test/domains/comet-classic/classic-agent-command-selection.test.ts"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+      "name": "scopes v2 policy evidence per command",
+      "fullName": "Classic executed check evidence scopes v2 policy evidence per command",
+      "protectedBy": [],
+      "source": "it('scopes v2 policy evidence per command', async () => {\n    const dir = path.join(root, 'openspec', 'changes', 'demo');\n    await readyVerify();\n    await fs.writeFile(\n      path.join(root, '.comet', 'check-policy.json'),\n      JSON.stringify({\n        version: 2,\n        commands: [\n          {\n            argv: [process.execPath, 'check.cjs'],\n            cwd: '.',\n            files: ['input.txt', 'check.cjs'],\n            taskCheckboxes: 'include',\n          },\n          { argv: [process.execPath, '-e', 'process.exit(0)'], cwd: '.', files: ['check.cjs'] },\n        ],\n      }),\n    );\n    expect(\n      (await cli('check', 'run', 'demo', 'build', '--local', '--', process.execPath, 'check.cjs'))\n        .exitCode,\n    ).toBe(0);\n    expect(\n      (\n        await cli(\n          'check',\n          'run',\n          'demo',\n          'verify',\n          '--local',\n          '--',\n          process.execPath,\n          '-e',\n          'process.exit(0)',\n        )\n      ).exitCode,\n    ).toBe(0);\n    await fs.writeFile(path.join(root, 'input.txt'), 'changed');\n    // The verify command never declared input.txt, so its evidence survives.\n    expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);\n    expect((await cli('guard', 'demo', 'build')).exitCode).not.toBe(0);\n    const recovered = await cli('state', 'check', 'demo', 'verify', '--recover', '--json');\n    expect(JSON.parse(recovered.stdout!).data.evidence.scopes).toEqual({\n      build: 'rerun-required',\n      verify: 'revalidated',\n    });\n  })",
+      "start": 16717,
+      "end": 18246,
+      "reason": "Only asserts file-snapshot-driven automatic invalidation/revalidation, removed from current command checks. Actual failed commands, missing logs, wrong command/scope/Run and once-only recovery remain.",
+      "replacement": "test/domains/comet-classic/classic-agent-command-selection.test.ts"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+      "name": "does not share a narrowed recovery snapshot with an unmatched security command",
+      "fullName": "Classic executed check evidence does not share a narrowed recovery snapshot with an unmatched security command",
+      "protectedBy": [],
+      "source": "it('does not share a narrowed recovery snapshot with an unmatched security command', async () => {\n    await fs.writeFile(\n      path.join(root, '.comet/check-policy.json'),\n      JSON.stringify({\n        version: 1,\n        argv: [process.execPath, 'check.cjs'],\n        cwd: '.',\n        files: ['input.txt', 'check.cjs'],\n        git: 'none',\n      }),\n    );\n    expect(\n      (await cli('check', 'run', 'demo', 'build', '--local', '--', process.execPath, 'check.cjs'))\n        .exitCode,\n    ).toBe(0);\n    expect(\n      (\n        await cli(\n          'check',\n          'run',\n          'demo',\n          'verify',\n          '--local',\n          '--',\n          process.execPath,\n          '-e',\n          'process.exit(0)',\n        )\n      ).exitCode,\n    ).toBe(0);\n    await fs.writeFile(path.join(root, 'security.config'), 'changed');\n    const change = path.join(root, 'openspec/changes/demo');\n    const { run } = await ensureClassicRuntimeRun(change);\n    expect(await recoverCommandChecks(root, change, run)).toEqual({\n      build: 'revalidated',\n      verify: 'rerun-required',\n    });\n  })",
+      "start": 13504,
+      "end": 14609,
+      "reason": "Only asserts file-snapshot-driven automatic invalidation/revalidation, removed from current command checks. Actual failed commands, missing logs, wrong command/scope/Run and once-only recovery remain.",
+      "replacement": "test/domains/comet-classic/classic-agent-command-selection.test.ts"
+    },
+    {
+      "file": "test/domains/comet-classic/comet-scripts-guard.test.ts",
+      "name": "detects and executes an inferred npm build from the nested invocation cwd",
+      "fullName": "comet guard recorded command-check evidence detects and executes an inferred npm build from the nested invocation cwd",
+      "start": 22650,
+      "end": 23703,
+      "source": "it('detects and executes an inferred npm build from the nested invocation cwd', async () => {\n      await createChange(tmpDir, 'nested-inferred-build', buildYaml);\n      await writeFile(\n        path.join(tmpDir, 'package.json'),\n        JSON.stringify({ scripts: { build: 'node -e \"process.exit(23)\"' } }),\n      );\n      const nested = path.join(tmpDir, 'packages', 'app');\n      await writeFile(path.join(tmpDir, '.gitignore'), 'nested-build-ran\\n');\n      await writeFile(\n        path.join(nested, 'package.json'),\n        JSON.stringify({\n          scripts: {\n            build: \"node -e \\\"require('fs').writeFileSync('nested-build-ran', 'ok')\\\"\",\n          },\n        }),\n      );\n\n      const result = runNode(nested, guardScript, ['nested-inferred-build', 'build']);\n\n      expect(result.status, result.stderr).toBe(0);\n      expect(await fs.readFile(path.join(nested, 'nested-build-ran'), 'utf8')).toBe('ok');\n      await expect(fs.access(path.join(tmpDir, 'nested-build-ran'))).rejects.toMatchObject({\n        code: 'ENOENT',\n      });\n    })",
+      "reason": "Only the retired package/workspace command inference or candidate scan; new Agent command selection covered by classic-agent-command-selection.test.ts.",
+      "replacement": "test/domains/comet-classic/classic-agent-command-selection.test.ts",
+      "protectedBy": []
+    },
+    {
+      "file": "test/domains/comet-classic/classic-guard.test.ts",
+      "name": "auto-runs the single workspace package build when the root has none",
+      "fullName": "Classic guard command auto-runs the single workspace package build when the root has none",
+      "start": 9785,
+      "end": 11390,
+      "source": "it('auto-runs the single workspace package build when the root has none', async () => {\n    const dir = await makeProject();\n    const cli = (...args: string[]) =>\n      withClassicCommandContext({ projectRoot: dir, invocationCwd: dir }, () =>\n        runClassicCli(args),\n      );\n    expect(\n      (\n        await cli(\n          'state',\n          'init',\n          'demo',\n          'hotfix',\n          '--isolation',\n          'current',\n          '--runtime',\n          'compat',\n        )\n      ).exitCode,\n    ).toBe(0);\n    const changeDir = path.join(dir, 'openspec/changes/demo');\n    const stateFile = path.join(changeDir, '.comet.yaml');\n    const state = parse(await fs.readFile(stateFile, 'utf8'));\n    await fs.writeFile(stateFile, stringify({ ...state, phase: 'build' }));\n    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] work <!-- comet-task:a -->\\n');\n    await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\\n');\n    await fs.writeFile(\n      path.join(dir, 'package.json'),\n      JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*'] }),\n    );\n    await fs.mkdir(path.join(dir, 'packages', 'app'), { recursive: true });\n    await fs.writeFile(\n      path.join(dir, 'packages', 'app', 'package.json'),\n      JSON.stringify({ name: 'app', scripts: { build: 'node -e \"process.exit(0)\"' } }),\n    );\n    const result = await cli('guard', 'demo', 'build');\n    expect(result.exitCode, result.stderr).toBe(0);\n    expect(result.stderr).toContain(\n      \"guard auto-ran the detected command 'npm --prefix packages/app run build'\",\n    );\n  })",
+      "reason": "Only the retired package/workspace command inference or candidate scan; new Agent command selection covered by classic-agent-command-selection.test.ts.",
+      "replacement": "test/domains/comet-classic/classic-agent-command-selection.test.ts",
+      "protectedBy": []
+    }
+  ],
+  "kept": "File/path symlink safety, request/Run/claim/CAS, real command failure, missing logs and mixed handoff actual artifact requirements remain; Windows EPERM not hidden.",
+  "adjusted": [
+    "classic-layout diagnostic regex only",
+    "argv/cwd ordering keeps execution behavior while forbidding the retired snapshot collector",
+    "commandless build diagnostic terminology; explicit node argv in bound-branch healing safety test"
+  ]
+}

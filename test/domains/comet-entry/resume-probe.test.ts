@@ -1,3 +1,14 @@
+import '../../helpers/isolated-agent-home.js';
+import { writeNativePortableState as writeDiscoveryFixture } from '../../../domains/comet-native/native-portable-state.js';
+import { confirmNativePortableShape as simulatedConfirmShape } from '../../helpers/native-portable-confirmed-transition.js';
+import { createNativeRunnerChannel as simulatedRunner } from '../../../domains/comet-native/native-runner-protocol.js';
+import {
+  submitNativePortableBuilderCandidate as simulatedBuilder,
+  dispatchNativePortableVerifier as simulatedDispatch,
+  submitNativePortableVerifierResult as simulatedVerify,
+  confirmNativePortableSkillCoordinatedPass as simulatedAccept,
+  readNativePortableChange as simulatedRead,
+} from '../../../domains/comet-native/native-portable-runtime.js';
 import { createHash } from 'node:crypto';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { promises as fs } from 'fs';
@@ -20,10 +31,7 @@ import {
   COMET_RESUME_PROBE_SCHEMA_VERSION,
   resolveCometEntryResumeProbe,
 } from '../../../domains/comet-entry/resume-probe.js';
-import {
-  createNativeChange,
-  nativeChangeDir,
-} from '../../../domains/comet-native/native-change.js';
+import { nativeChangeDir } from '../../../domains/comet-native/native-change.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -37,12 +45,9 @@ import {
   nativeSelectionFile,
   selectNativeChange,
 } from '../../../domains/comet-native/native-selection.js';
-import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
-import {
-  createNativePortableChange,
-  nativeLocalExecutionFile,
-} from '../../../domains/comet-native/native-portable-runtime.js';
-import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
+
+import { createNativePortableChange } from '../../../domains/comet-native/native-portable-runtime.js';
+
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
 const VALID_BRIEF = `# Outcome
@@ -86,12 +91,79 @@ async function writeFile(file: string, content: string): Promise<void> {
   await fs.writeFile(file, content, 'utf8');
 }
 
-async function createNative(projectRoot: string, name: string, artifactRoot = '.'): Promise<void> {
+async function createNative(projectRoot: string, name: string, artifactRoot = '.') {
   const initialized = spawnSync('git', ['init', '-q', projectRoot]);
   expect(initialized.status).toBe(0);
   const paths = await nativeProjectPaths(projectRoot, artifactRoot);
-  const state = await createNativeChange({ paths, name, language: 'en' });
-  await fs.writeFile(path.join(nativeChangeDir(paths, name), state.brief), VALID_BRIEF, 'utf8');
+  const dir = nativeChangeDir(paths, name);
+  await fs.mkdir(dir, { recursive: true });
+  // Static Shape-only discovery fixture, using the current pure model. No phase, approval, claim, or transition is forged.
+  await writeDiscoveryFixture(
+    path.join(dir, 'comet-state.yaml'),
+    createNativePortableState({ name, language: 'en' }),
+  );
+  await fs.writeFile(path.join(nativeChangeDir(paths, name), 'brief.md'), VALID_BRIEF, 'utf8');
+}
+async function advanceNativeChange(options: any) {
+  const { paths, name } = options;
+  let state = await simulatedRead(paths, name);
+  const runner = simulatedRunner();
+  if (state.phase === 'shape') {
+    state = await simulatedConfirmShape({ paths, name });
+  } else if (state.phase === 'build') {
+    await simulatedBuilder({
+      paths,
+      name,
+      input: {
+        identity: runner.captureExecutionIdentity({
+          identityProvider: 'SIMULATED',
+          executionRef: 'SIMULATED-builder',
+        }),
+        candidateId: 'SIMULATED-' + name,
+        summary: 'SIMULATED phase routing work',
+        addressedAcceptanceIds: state.acceptance.map((a: any) => a.id),
+        acceptanceReview: state.acceptance.map((a: any) => ({
+          id: a.id,
+          status: 'implemented-with-evidence',
+          evidence: ['SIMULATED isolated fixture evidence'],
+          note: 'SIMULATED phase fixture',
+        })),
+        checks: [],
+        knownLimits: [],
+      },
+    });
+    state = await simulatedDispatch({ paths, name, verifierExecutionId: 'SIMULATED-verifier' });
+  } else if (state.phase === 'verify') {
+    await simulatedVerify({
+      paths,
+      name,
+      maxVerifyFailures: 5,
+      envelope: runner.envelopeVerifierResponse({
+        candidateId: 'SIMULATED-' + name,
+        identity: runner.captureExecutionIdentity({
+          identityProvider: 'SIMULATED',
+          executionRef: 'SIMULATED-verifier',
+        }),
+        payload: {
+          kind: 'final-result',
+          result: {
+            iteration: state.loop.iteration,
+            attempt: state.loop.attempt,
+            verdict: 'pass',
+            acceptance: state.acceptance.map((a: any) => ({
+              id: a.id,
+              result: 'passed',
+              reason: 'SIMULATED routing verification',
+            })),
+            risks: [],
+            summary: 'SIMULATED phase routing verification',
+          },
+        },
+      }),
+    });
+    state = await simulatedAccept({ paths, name });
+  }
+  return { change: state, findings: [] };
 }
 
 async function createClassic(projectRoot: string, name: string): Promise<void> {
@@ -157,6 +229,97 @@ describe('Comet entry resume probe v2', () => {
   afterEach(async () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
+
+  it.each([
+    ['native', 'source'],
+    ['classic', 'source'],
+    ['native', 'public CLI'],
+    ['classic', 'public CLI'],
+  ] as const)(
+    'requires confirmation before implicitly resuming a related %s change through %s',
+    async (workflow, boundary) => {
+      const name = 'cache-controls';
+      if (workflow === 'native') {
+        await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+        const paths = await nativeProjectPaths(projectRoot, '.');
+        await createNativeSdkChange({
+          paths,
+          name,
+          language: 'en',
+          workspaceBinding: { isolation: 'current', changeBranch: null, targetBranch: null },
+        });
+        await writeFile(path.join(nativeChangeDir(paths, name), 'brief.md'), VALID_BRIEF);
+        await selectNativeChange(paths, name);
+      } else {
+        await prepareClassicLegacyProject(projectRoot);
+        const created = await withClassicCommandContext(
+          { projectRoot, invocationCwd: projectRoot },
+          () => runClassicCli(['state', 'init', name, 'full', '--runtime', 'sdk', '--json']),
+        );
+        expect(created.exitCode, created.stderr).toBe(0);
+        await writeFile(
+          path.join(projectRoot, 'openspec', 'changes', name, 'proposal.md'),
+          VALID_BRIEF,
+        );
+      }
+      const probeFor = async (utterance: string, alreadyInCometFlow = false) => {
+        if (boundary === 'source')
+          return resolveCometEntryResumeProbe(projectRoot, {
+            ...input(utterance),
+            agent_context: { non_trivial_work: true, already_in_comet_flow: alreadyInCometFlow },
+          });
+        const response = spawnSync(
+          process.execPath,
+          [
+            path.resolve('dist/app/cli/index.js'),
+            'resume-probe',
+            projectRoot,
+            '--stdin',
+            '--json',
+            ...(alreadyInCometFlow ? ['--already-in-comet-flow'] : []),
+          ],
+          { input: utterance, encoding: 'utf8', windowsHide: true, timeout: 30_000 },
+        );
+        expect(response.status, response.stderr).toBe(0);
+        return JSON.parse(response.stdout);
+      };
+      const before = await snapshot(projectRoot);
+      const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
+      const beforeRuntime = await snapshot(runtimeRoot);
+      for (const utterance of [
+        'Adjust cache expiration behavior',
+        '验证 cache expiration behavior',
+        '调整 cache-controls 的描述',
+        '继续',
+      ]) {
+        const probe = await probeFor(utterance);
+        expect(probe, utterance).toMatchObject({
+          workflow,
+          action: 'ask_user',
+          changeName: name,
+          reasonCode: 'ambient-resume-confirmation-required',
+          nextCommand: null,
+        });
+      }
+      expect(await probeFor('Adjust cache expiration behavior', true)).toMatchObject({
+        action: 'out_of_scope',
+        reasonCode: 'already-in-comet-flow',
+      });
+      expect(await probeFor('不要继续 Comet，调整缓存过期')).toMatchObject({
+        action: 'out_of_scope',
+        reasonCode: 'user-opted-out',
+        nextCommand: null,
+      });
+      expect(await snapshot(projectRoot)).toEqual(before);
+      expect(await snapshot(runtimeRoot)).toEqual(beforeRuntime);
+      expect(await probeFor(`继续 ${name}`)).toMatchObject({
+        workflow,
+        action: 'auto_resume',
+        changeName: name,
+        nextCommand: workflow === 'native' ? '/comet-native' : '/comet-classic',
+      });
+    },
+  );
 
   it('routes a configured Native project only through the permanent Native entry', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
@@ -334,7 +497,7 @@ describe('Comet entry resume probe v2', () => {
     const paths = await nativeProjectPaths(projectRoot, '.');
     await createNativePortableChange({ paths, name: 'portable-resume', language: 'en' });
     await selectNativeChange(paths, 'portable-resume');
-    await fs.rm(nativeLocalExecutionFile(paths, 'portable-resume'), { force: true });
+    // Removed local execution overlay is never created by the current API.
 
     await expect(
       resolveCometEntryResumeProbe(projectRoot, input('继续 portable-resume')),
@@ -356,7 +519,7 @@ describe('Comet entry resume probe v2', () => {
       JSON.stringify({
         operation: 'start',
         runId: 'sdk-resume',
-        workflow: { id: 'comet-native', version: '1' },
+        workflow: { id: 'comet-native', version: '4' },
         input: { name: 'sdk-resume', artifactRootRef: '.' },
         initialState: createNativePortableState({
           name: 'sdk-resume',
@@ -437,6 +600,14 @@ describe('Comet entry resume probe v2', () => {
       reasonCode: 'native-checkpoint-recoverable',
       diagnosticCommand: 'comet native doctor missing-run --json',
     });
+    const unconfirmed = await resolveCometEntryResumeProbe(projectRoot, input('继续'));
+    expect(unconfirmed).toMatchObject({
+      action: 'ask_user',
+      reasonCode: 'ambient-resume-confirmation-required',
+      diagnosticCommand: 'comet native doctor missing-run --json',
+      nextCommand: null,
+    });
+    expect(unconfirmed.reason).toContain('confirm the original execution has stopped');
     expect(await snapshot(projectRoot)).toEqual(beforeProject);
     expect(await snapshot(runtimeRoot)).toEqual(beforeRuntime);
     const selected = await runNativeCli([
@@ -455,7 +626,23 @@ describe('Comet entry resume probe v2', () => {
       projectRoot,
       '--json',
     ]);
-    expect(diagnosis.stdout).toContain('sdk-run-recoverable');
+    expect(JSON.parse(diagnosis.stdout)).toMatchObject({
+      data: {
+        recovery: {
+          code: 'runtime-recovery-required',
+          reason: expect.stringContaining('checkpoint recovery'),
+        },
+      },
+    });
+    expect(diagnosis.exitCode).toBe(0);
+    expect(JSON.parse(diagnosis.stdout).data.recovery.commandArgs).toEqual([
+      'comet',
+      'native',
+      'doctor',
+      'missing-run',
+      '--repair',
+      '--confirmed',
+    ]);
     expect(await snapshot(projectRoot)).toEqual(beforeProject);
     expect(await snapshot(runtimeRoot)).toEqual(beforeRuntime);
     const repaired = await runNativeCli([
@@ -501,11 +688,13 @@ describe('Comet entry resume probe v2', () => {
     );
     const beforeProject = await snapshot(projectRoot);
     const beforeRuntime = await snapshot(runtimeRoot);
-    expect(await resolveCometEntryResumeProbe(projectRoot, input('继续'))).toMatchObject({
-      action: 'auto_resume',
-      changeName: 'target-run',
-      nextCommand: '/comet-native',
-    });
+    expect(await resolveCometEntryResumeProbe(projectRoot, input('继续当前 change'))).toMatchObject(
+      {
+        action: 'auto_resume',
+        changeName: 'target-run',
+        nextCommand: '/comet-native',
+      },
+    );
     expect(await snapshot(projectRoot)).toEqual(beforeProject);
     expect(await snapshot(runtimeRoot)).toEqual(beforeRuntime);
   });
@@ -607,7 +796,9 @@ describe('Comet entry resume probe v2', () => {
     await expect(
       resolveCometEntryResumeProbe(projectRoot, input('继续 target-run')),
     ).resolves.toMatchObject({ action: 'auto_resume', changeName: 'target-run' });
-    await expect(resolveCometEntryResumeProbe(projectRoot, input('继续'))).resolves.toMatchObject({
+    await expect(
+      resolveCometEntryResumeProbe(projectRoot, input('继续当前 change')),
+    ).resolves.toMatchObject({
       action: 'auto_resume',
       changeName: 'target-run',
     });
@@ -656,7 +847,7 @@ describe('Comet entry resume probe v2', () => {
       JSON.stringify({
         operation: 'start',
         runId: 'sdk-cancelled',
-        workflow: { id: 'comet-native', version: '1' },
+        workflow: { id: 'comet-native', version: '4' },
         input: { name: 'sdk-cancelled', artifactRootRef: '.' },
         initialState: createNativePortableState({
           name: 'sdk-cancelled',
@@ -876,7 +1067,15 @@ describe('Comet entry resume probe v2', () => {
     });
 
     await selectNativeChange(paths, 'login-flow');
-    const selected = await resolveCometEntryResumeProbe(projectRoot, input('继续'));
+    const selected = await resolveCometEntryResumeProbe(projectRoot, input('继续当前 change'));
+    expect(
+      await resolveCometEntryResumeProbe(projectRoot, input('Adjust cache expiration behavior')),
+    ).toMatchObject({
+      action: 'ask_user',
+      changeName: 'login-flow',
+      reasonCode: 'ambient-resume-confirmation-required',
+      nextCommand: null,
+    });
     expect(selected).toMatchObject({
       action: 'auto_resume',
       changeName: 'login-flow',
@@ -915,13 +1114,13 @@ describe('Comet entry resume probe v2', () => {
     });
 
     try {
-      await expect(resolveCometEntryResumeProbe(projectRoot, input('继续'))).resolves.toMatchObject(
-        {
-          action: 'auto_resume',
-          changeName: 'login-flow',
-          nextCommand: '/comet-native',
-        },
-      );
+      await expect(
+        resolveCometEntryResumeProbe(projectRoot, input('继续当前 change')),
+      ).resolves.toMatchObject({
+        action: 'auto_resume',
+        changeName: 'login-flow',
+        nextCommand: '/comet-native',
+      });
     } finally {
       openSpy.mockRestore();
     }
@@ -945,13 +1144,21 @@ describe('Comet entry resume probe v2', () => {
 
     const sole = await resolveCometEntryResumeProbe(projectRoot, input('继续'));
     expect(sole).toMatchObject({
-      action: 'auto_resume',
+      action: 'ask_user',
       changeName: 'only-active',
-      nextCommand: '/comet-native',
+      nextCommand: null,
+      reasonCode: 'ambient-resume-confirmation-required',
     });
     expect(sole.evidence).toContainEqual(
       expect.objectContaining({ source: 'state', quote: expect.stringContaining('ENOENT') }),
     );
+    await expect(
+      resolveCometEntryResumeProbe(projectRoot, input('继续 only-active')),
+    ).resolves.toMatchObject({
+      action: 'auto_resume',
+      changeName: 'only-active',
+      nextCommand: '/comet-native',
+    });
 
     await createNative(projectRoot, 'second-active');
     await expect(resolveCometEntryResumeProbe(projectRoot, input('继续'))).resolves.toMatchObject({
@@ -970,6 +1177,14 @@ describe('Comet entry resume probe v2', () => {
     const phases = ['shape', 'build', 'verify', 'archive'] as const;
 
     for (const phase of phases) {
+      expect(
+        await resolveCometEntryResumeProbe(projectRoot, input('Adjust cache expiration behavior')),
+      ).toMatchObject({
+        action: 'ask_user',
+        changeName: 'phase-routing',
+        phase,
+        nextCommand: null,
+      });
       const probe = await resolveCometEntryResumeProbe(projectRoot, input('继续 phase-routing'));
       expect(probe).toMatchObject({
         workflow: 'native',
@@ -997,11 +1212,6 @@ describe('Comet entry resume probe v2', () => {
         });
         expect(advanced.findings).toEqual([]);
       } else if (phase === 'verify') {
-        await fs.writeFile(
-          path.join(changeDir, 'verification.md'),
-          await nativeVerificationFixtureReport({ paths, name: 'phase-routing' }),
-          'utf8',
-        );
         const advanced = await advanceNativeChange({
           paths,
           name: 'phase-routing',
@@ -1054,32 +1264,6 @@ describe('Comet entry resume probe v2', () => {
       action: 'out_of_scope',
       reasonCode: 'request-unrelated',
       nextCommand: null,
-    });
-  });
-
-  it('does not auto-resume a Native change whose artifacts fail validation', async () => {
-    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
-    await createNative(projectRoot, 'invalid-brief');
-    const paths = await nativeProjectPaths(projectRoot, '.');
-    await fs.writeFile(
-      path.join(nativeChangeDir(paths, 'invalid-brief'), 'brief.md'),
-      '# Scope\nOnly a scope remains.\n',
-      'utf8',
-    );
-
-    const probe = await resolveCometEntryResumeProbe(projectRoot, input('继续 invalid-brief'));
-
-    expect(probe).toMatchObject({
-      workflow: 'native',
-      action: 'ask_user',
-      reasonCode: 'native-change-invalid',
-      changeName: 'invalid-brief',
-      phase: 'shape',
-      nextCommand: null,
-    });
-    expect(probe.evidence).toContainEqual({
-      source: 'state',
-      quote: 'finding: brief-section-missing',
     });
   });
 

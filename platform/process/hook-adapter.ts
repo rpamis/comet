@@ -222,7 +222,7 @@ function collectTargets(input: Record<string, unknown>, args: unknown): string[]
     }
   }
   if (typeof args === 'string') targets.push(...patchTargets(args));
-  return normalizeCometHookTargets(targets);
+  return targets;
 }
 
 function collectWriteProposals(args: unknown): CometHookWriteProposal[] {
@@ -328,8 +328,17 @@ export function parseCometHookRequest(source: string, filePath?: string): CometH
   if (!isRecord(input)) return { intent: 'unknown', targets: [], toolName: null };
 
   const toolName = readToolName(input);
-  const args = readToolArguments(input);
-  const targets = collectTargets(input, args);
+  const rawArgs = readToolArguments(input);
+  // Codex 原生 apply_patch Hook 使用 command 传递补丁；其他工具的 command 保持原意。
+  const args =
+    toolName &&
+    normalizedToolName(toolName) === 'applypatch' &&
+    isRecord(rawArgs) &&
+    typeof rawArgs.command === 'string'
+      ? { ...rawArgs, patch: rawArgs.command }
+      : rawArgs;
+  const rawTargets = collectTargets(input, args);
+  const targets = normalizeCometHookTargets(rawTargets);
   const writes = collectWriteProposals(args);
   const rawWorkingDirectory = readWorkingDirectory(input);
   const cwd = rawWorkingDirectory ? path.resolve(rawWorkingDirectory) : undefined;
@@ -342,6 +351,16 @@ export function parseCometHookRequest(source: string, filePath?: string): CometH
       targets: [],
       toolName: null,
       ...(task ? { task } : {}),
+      ...(cwd ? { cwd } : {}),
+      ...(rawCwd ? { rawCwd } : {}),
+      ...(sessionId ? { sessionId } : {}),
+    };
+  }
+  if (rawTargets.length > 0 && targets.length === 0) {
+    return {
+      intent: 'non-write',
+      targets,
+      toolName,
       ...(cwd ? { cwd } : {}),
       ...(rawCwd ? { rawCwd } : {}),
       ...(sessionId ? { sessionId } : {}),
@@ -415,6 +434,7 @@ export async function readCometHookRequest(
 export function renderCometHookDecision(
   platformId: string,
   decision: CometHookAdapterDecision,
+  options: { denialOutput?: 'exit-code' | 'json' } = {},
 ): CometHookProcessOutput {
   if (!COMET_HOOK_PLATFORM_IDS.has(platformId)) {
     return {
@@ -435,7 +455,10 @@ export function renderCometHookDecision(
       stderr: decision.diagnostic ? `${decision.diagnostic}\n` : '',
     };
   }
-  if (platformId === 'dsh' && !decision.allowed) {
+  if (
+    !decision.allowed &&
+    (platformId === 'dsh' || (platformId === 'codex' && options.denialOutput === 'json'))
+  ) {
     return {
       exitCode: 0,
       stdout: `${JSON.stringify({

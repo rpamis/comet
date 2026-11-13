@@ -343,59 +343,73 @@ def validate_archive(name, profile):
     successful = [a for a in run.get("actions", []) if a.get("status") == "succeeded"]
     cursor = iter(a.get("stepId") for a in successful)
     for step in required_steps(profile):
+        if run["workflow"]["version"] == "2" and step in {f"{profile}.build.check", f"{profile}.verify.check"}:
+            continue
         if not any(observed == step for observed in cursor):
             raise ValueError(f"{name}: missing ordered successful {step}")
-    verification = next(a for a in reversed(successful) if a["stepId"] == f"{profile}.verify.check")
-    evidence = verification.get("outcome", {}).get("output", {})
-    inputs = evidence.get("deliveryInputs", {})
-    if (
-        "wordcount.py" not in inputs
-        or not any(Path(ref).name.startswith("test_") for ref in inputs)
-        or any(ref.startswith(f"{CHANGES.as_posix()}/{PARKED}/") for ref in inputs)
-    ):
-        raise ValueError(f"{name}: verification must bind source/tests, not the parked change")
-    manifest = node(
-        "dist/domains/comet-classic/classic-protected-path.js",
-        "process.stdout.write(JSON.stringify(await api.readClassicProjectFile("
-        'process.argv[1],process.argv[2],{label:"eval verify manifest"})));',
-        str(WORKSPACE),
-        evidence.get("manifestRef", ""),
-    )
-    if hashlib.sha256(manifest.encode()).hexdigest() != evidence.get("manifestHash"):
-        raise ValueError(f"{name}: accepted verify manifest was changed")
-    parked_hash = (
-        "git:"
-        + subprocess.run(
-            ["git", "hash-object", "--stdin"],
-            input=PARKED_PROPOSAL.encode(),
-            cwd=WORKSPACE,
-            capture_output=True,
-            check=True,
-            timeout=10,
-        )
-        .stdout.decode("ascii")
-        .strip()
-    )
-    if not any(
-        entry.get("p") == f"{CHANGES.as_posix()}/{PARKED}/proposal.md"
-        and entry.get("h") == parked_hash
-        for entry in (json.loads(line) for line in manifest.splitlines() if line)
-    ):
-        # 保留完整输入清单的历史证明；范围检查另需绑定可信脚本及原执行日志。
-        log = node(
+    if run["workflow"]["version"] == "2":
+        for step in ("build.execute", "verify.run"):
+            action = next(a for a in reversed(successful) if a["stepId"] == f"{profile}.{step}")
+            reports = action["outcome"]["output"].get("checks", [])
+            if not reports or any(r.get("result") != "passed" or not r.get("note") for r in reports):
+                raise ValueError(f"{name}: missing actual platform check reports for {step}")
+        # This independent business oracle also checks the unrelated proposal.
+        validate_parked()
+        result = subprocess.run([COEXISTENCE_PYTHON, "-I", "verify_coexistence.py"], cwd=WORKSPACE, capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            raise ValueError(f"{name}: independent coexistence oracle failed: {result.stdout}{result.stderr}")
+    else:
+        verification = next(a for a in reversed(successful) if a["stepId"] == f"{profile}.verify.check")
+        evidence = verification.get("outcome", {}).get("output", {})
+        inputs = evidence.get("deliveryInputs", {})
+        if (
+            "wordcount.py" not in inputs
+            or not any(Path(ref).name.startswith("test_") for ref in inputs)
+            or any(ref.startswith(f"{CHANGES.as_posix()}/{PARKED}/") for ref in inputs)
+        ):
+            raise ValueError(f"{name}: verification must bind source/tests, not the parked change")
+        manifest = node(
             "dist/domains/comet-classic/classic-protected-path.js",
-            "process.stdout.write(JSON.stringify(await api.readClassicProjectFile(process.argv[1],process.argv[2],{label:'eval coexistence log'})));",
+            "process.stdout.write(JSON.stringify(await api.readClassicProjectFile("
+            'process.argv[1],process.argv[2],{label:"eval verify manifest"})));',
             str(WORKSPACE),
-            evidence.get("receiptRef", ""),
+            evidence.get("manifestRef", ""),
         )
-        script = node(
-            "dist/domains/comet-classic/classic-protected-path.js",
-            "process.stdout.write(JSON.stringify(await api.readClassicProjectFile(process.argv[1],process.argv[2],{label:'eval coexistence helper'})));",
-            str(WORKSPACE),
-            "verify_coexistence.py",
-        ).encode()
-        context = json.loads((WORKSPACE / "_test_context.json").read_text())
-        assert_scoped_coexistence(manifest, evidence, context, log, script)
+        if hashlib.sha256(manifest.encode()).hexdigest() != evidence.get("manifestHash"):
+            raise ValueError(f"{name}: accepted verify manifest was changed")
+        parked_hash = (
+            "git:"
+            + subprocess.run(
+                ["git", "hash-object", "--stdin"],
+                input=PARKED_PROPOSAL.encode(),
+                cwd=WORKSPACE,
+                capture_output=True,
+                check=True,
+                timeout=10,
+            )
+            .stdout.decode("ascii")
+            .strip()
+        )
+        if not any(
+            entry.get("p") == f"{CHANGES.as_posix()}/{PARKED}/proposal.md"
+            and entry.get("h") == parked_hash
+            for entry in (json.loads(line) for line in manifest.splitlines() if line)
+        ):
+            # 保留完整输入清单的历史证明；范围检查另需绑定可信脚本及原执行日志。
+            log = node(
+                "dist/domains/comet-classic/classic-protected-path.js",
+                "process.stdout.write(JSON.stringify(await api.readClassicProjectFile(process.argv[1],process.argv[2],{label:'eval coexistence log'})));",
+                str(WORKSPACE),
+                evidence.get("receiptRef", ""),
+            )
+            script = node(
+                "dist/domains/comet-classic/classic-protected-path.js",
+                "process.stdout.write(JSON.stringify(await api.readClassicProjectFile(process.argv[1],process.argv[2],{label:'eval coexistence helper'})));",
+                str(WORKSPACE),
+                "verify_coexistence.py",
+            ).encode()
+            context = json.loads((WORKSPACE / "_test_context.json").read_text())
+            assert_scoped_coexistence(manifest, evidence, context, log, script)
     archive = next(a for a in reversed(successful) if a["stepId"] == f"{profile}.archive.execute")
     if archive.get("outcome", {}).get("output", {}).get("archiveDirectory") != (
         directory.relative_to(WORKSPACE).as_posix()

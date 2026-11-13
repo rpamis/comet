@@ -33,7 +33,8 @@ export async function projectCometHooksFromInstalledScope(
   const owners = await resolveCanonicalSkillRootOwners(sourceBaseDir, sourceScope);
 
   for (const { platform, canonicalSkillsDir } of owners) {
-    if (!platform.supportsHooks || !platform.hookFormat) continue;
+    if (!platform.supportsHooks || !platform.hookFormat || platform.supportsProjectHooks === false)
+      continue;
 
     const installedRouter = path.join(
       sourceBaseDir,

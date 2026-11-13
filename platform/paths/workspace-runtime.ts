@@ -59,7 +59,6 @@ function computeWorkspaceIdentity(projectRoot: string): {
       gitDirectory = canonicalExistingPath(dotGit);
       gitGeneration = directoryGeneration(lstatSync(gitDirectory, { bigint: true }));
     } else if (stat.isFile()) {
-      if (stat.size > 16 * 1024) throw new Error(`工作区 .git 文件过大：${dotGit}`);
       const match = /^gitdir: (.+)\r?\n?$/u.exec(readFileSync(dotGit, 'utf8'));
       if (!match) throw new Error(`工作区 .git 文件格式无效：${dotGit}`);
       gitDirectory = canonicalExistingPath(path.resolve(root, match[1].trim()));
@@ -112,7 +111,9 @@ export function resolveWorkspaceRuntimeLocation(projectRoot: string): WorkspaceR
       relativeData !== '..' &&
       !relativeData.startsWith(`..${path.sep}`))
   )
-    throw new Error('用户级 Runtime 数据根不能位于当前工作区内');
+    throw new Error(
+      `用户级 Runtime 数据根不能位于当前工作区内：${dataRoot}；工作区：${identity.projectRoot}`,
+    );
   const workspaceRoot = path.join(dataRoot, 'workspaces', identity.workspaceId);
   return {
     ...identity,

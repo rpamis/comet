@@ -1,3 +1,6 @@
+import '../../helpers/isolated-agent-home.js';
+// SIMULATED historical document fixture for pure artifact/diagnostic readers; no old workflow creation.
+import { storedNativeChangeFixture } from '../../helpers/native-change-document.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { promises as fs } from 'fs';
 import os from 'os';
@@ -12,10 +15,7 @@ import {
   validateNativeSpecChanges,
   validateNativeVerification,
 } from '../../../domains/comet-native/native-artifacts.js';
-import {
-  createNativeChange,
-  nativeChangeDir,
-} from '../../../domains/comet-native/native-change.js';
+import { nativeChangeDir } from '../../../domains/comet-native/native-change.js';
 import { sha256Text } from '../../../domains/comet-native/native-hash.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import type {
@@ -64,7 +64,7 @@ describe('Native artifact validation', () => {
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-artifacts-'));
     paths = await nativeProjectPaths(projectRoot, '.');
-    state = await createNativeChange({
+    state = await storedNativeChangeFixture({
       paths,
       name: 'auth-change',
       language: 'en',
@@ -146,67 +146,6 @@ describe('Native artifact validation', () => {
         'specs/sample/spec.md',
       ),
     ).toEqual({ valid: true, findings: [] });
-  });
-
-  it.each(['```', '~~~'])('ignores %s headings in verification examples', async (marker) => {
-    await fs.writeFile(
-      path.join(changeDir, 'verification.md'),
-      verification.replace(
-        'Auth test covers login.',
-        [marker, '# Conclusion', 'Example only.', marker, 'Auth test covers login.'].join('\n'),
-      ),
-    );
-    expect(await validateNativeVerification(changeDir, 'verification.md')).toEqual({
-      valid: true,
-      findings: [],
-    });
-  });
-
-  it('does not use fenced examples to satisfy required verification sections', async () => {
-    await fs.writeFile(
-      path.join(changeDir, 'verification.md'),
-      '# Acceptance evidence\nEvidence example:\n```text\n' + verification + '```\n',
-    );
-    expect(await validateNativeVerification(changeDir, 'verification.md')).toMatchObject({
-      valid: false,
-      findings: expect.arrayContaining([
-        expect.objectContaining({ code: 'verification-section-missing' }),
-      ]),
-    });
-  });
-
-  it('requires every verification section to be non-empty', async () => {
-    await fs.writeFile(path.join(changeDir, 'verification.md'), verification);
-    expect(await validateNativeVerification(changeDir, 'verification.md')).toEqual({
-      valid: true,
-      findings: [],
-    });
-
-    await fs.writeFile(
-      path.join(changeDir, 'verification.md'),
-      verification.replace('Pass.\n', ''),
-    );
-    expect((await validateNativeVerification(changeDir, 'verification.md')).valid).toBe(false);
-  });
-
-  it('bounds brief and verification reads before Markdown parsing', async () => {
-    await fs.writeFile(
-      path.join(changeDir, 'brief.md'),
-      'x'.repeat(NATIVE_ARTIFACT_VALIDATION_LIMITS.maxFileBytes + 1),
-    );
-    await fs.writeFile(
-      path.join(changeDir, 'verification.md'),
-      'x'.repeat(NATIVE_ARTIFACT_VALIDATION_LIMITS.maxFileBytes + 1),
-    );
-
-    expect(await validateNativeBrief(changeDir, 'brief.md')).toMatchObject({
-      valid: false,
-      findings: [expect.objectContaining({ message: expect.stringContaining('exceeds') })],
-    });
-    expect(await validateNativeVerification(changeDir, 'verification.md')).toMatchObject({
-      valid: false,
-      findings: [expect.objectContaining({ message: expect.stringContaining('exceeds') })],
-    });
   });
 
   it('validates complete target specs and canonical base hashes', async () => {

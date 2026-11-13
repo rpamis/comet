@@ -1,19 +1,10 @@
-import { continueNativeCheckpointLocked } from './native-checkpoint-journal.js';
 import { continueNativeTransitionLocked } from './native-transition-journal.js';
 import type { NativeProjectPaths } from './native-types.js';
 
-/**
- * Settles every change-local write-ahead journal before a new state mutation.
- *
- * The caller must hold the project mutation lock and the change transition
- * lock. Transition recovery remains first for compatibility with the existing
- * phase WAL; a pending progress checkpoint is then completed before the caller
- * reads the revision it intends to mutate.
- */
+/** 完成原业务转换 WAL；不恢复旧 progress 内容快照或其摘要清单。 */
 export async function settleNativeChangeJournalsLocked(
   paths: NativeProjectPaths,
   name: string,
 ): Promise<void> {
   await continueNativeTransitionLocked(paths, name);
-  await continueNativeCheckpointLocked(paths, name);
 }

@@ -1,0 +1,151 @@
+{
+  "cases": [
+    {
+      "id": "native-handoff-typed-result-template",
+      "behavior": "领取响应提供可直接填写业务字段的收据模板及可选检查结构，公开 CLI 接受并保持重复提交幂等",
+      "coverageLevel": "public-cli",
+      "expected": "Builder 的默认检查为空但完整可选结构可见；保留 receipt 并填写实际业务结果即可完成原 Action，重复提交不重复推进",
+      "forbidden": "要求模型手工拼写身份哈希、凭空添加默认检查、取消收据绑定或重复产生 Action",
+      "rootCause": "resultRequest.output 是字符串提示，实际业务模板藏在另一套完整协议中；空检查列表没有展示可选字段结构",
+      "tests": [
+        {
+          "file": "test/app/native-bugfree-cli.test.ts",
+          "namePattern": "submits the typed receipt template through the public CLI without rebuilding identity fields",
+          "requiredNames": [
+            "submits the typed receipt template through the public CLI without rebuilding identity fields"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "native-real-model-typed-result-efficiency",
+          "status": "pending",
+          "evidence": [
+            "用户明确停止本轮 Eval；保留原始记录，不启动新一轮。确定性测试不能证明真实模型耗时或执行器完整链路改善。"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-11-04-native-bugfree-protocol-stall"
+      ],
+      "reproduction": "c3d0e82f 的已停止 Eval 暴露问题；相同确定性案例先红后绿，详见 docs/research/2026-11-04-native-bugfree-protocol-stall.zh.md。",
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户明确要求移除 bugfree 模式。模式专用行为改验收入口已移除且旧策略不可推进；仍适用于普通 Native 的原始请求、收据和正式编辑复核继续执行相应断言。原来源、行为和选择器不改写，旧测试正文见移除前实现补丁。",
+        "authorization": "report:2026-11-05-bugfree-retirement",
+        "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/app/native-verification-cli.test.ts",
+            "namePattern": "^submits the typed receipt template through the public CLI without rebuilding identity fields$",
+            "requiredNames": [
+              "submits the typed receipt template through the public CLI without rebuilding identity fields"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/bugfree-retirement/regression-registry-before-removal.json",
+            "sha256": "cf33bdfcd50e42f0af102b31db54edc10559c0a2c340f3ab845833da16000680"
+          },
+          "patch": {
+            "file": "docs/research/bugfree-retirement/implementation-before-removal.patch",
+            "sha256": "674851450fac08bf987017fe9fa6a4b5df8a5f9879636b97918f7d30f428c44f"
+          },
+          "mapping": {
+            "file": "docs/research/bugfree-retirement/case-migrations.json",
+            "sha256": "b96fcd93e5c6cc251e4e594e378ce604899f9d11d1e4dae993e16f0f8131c463"
+          },
+          "tests": {
+            "file": "docs/research/bugfree-retirement/test-snapshots.json",
+            "sha256": "0dec6a1a5a6d519139f6df20862463f1fa6976f7e7e285ccb8ee9ab805f3a44a"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-original-request-review",
+      "behavior": "保存原始 task 并要求独立验收在同一结果中核对，阻止缺项、冲突或疑问的 pass，保留旧 Run 兼容",
+      "coverageLevel": "public-cli",
+      "expected": "standard 与 bugfree 保存原始文本，交接提供来源；缺少或不一致的核对不通过，aligned 的真实领取正常通过",
+      "forbidden": "只凭新 Spec 省略原始请求、让冲突声明通过、伪造旧 Run 原文、增加审查 Agent 或重跑全部检查",
+      "rootCause": "--task 仅用于检索，原始请求未进入 Run；结果只有生成的验收项结论",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "binds the original task and rejects a passing review that omits or contradicts it in standard",
+          "requiredNames": [
+            "binds the original task and rejects a passing review that omits or contradicts it in standard"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "binds the original task and rejects a passing review that omits or contradicts it in bugfree",
+          "requiredNames": [
+            "binds the original task and rejects a passing review that omits or contradicts it in bugfree"
+          ]
+        },
+        {
+          "file": "test/app/native-bugfree-cli.test.ts",
+          "namePattern": "submits the typed receipt template through the public CLI without rebuilding identity fields",
+          "requiredNames": [
+            "submits the typed receipt template through the public CLI without rebuilding identity fields"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "native-real-model-original-request-alignment",
+          "status": "pending",
+          "evidence": [
+            "本次仅获修复授权；真实模型、评分容器或配对运行未启动。既有 3/14 和失败记录保留，不能用确定性测试证明语义或耗时改善。"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-11-04-native-original-request-verification"
+      ],
+      "reproduction": "基线 5759f156 的失败样本及确定性红绿测试见 docs/research/2026-11-04-native-original-request-verification.zh.md；没有启动新的 Eval。",
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "用户明确要求移除 bugfree 模式。模式专用行为改验收入口已移除且旧策略不可推进；仍适用于普通 Native 的原始请求、收据和正式编辑复核继续执行相应断言。原来源、行为和选择器不改写，旧测试正文见移除前实现补丁。",
+        "authorization": "report:2026-11-05-bugfree-retirement",
+        "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-verifier-context.test.ts",
+            "namePattern": "^binds the original task and rejects a passing review that omits or contradicts it$",
+            "requiredNames": [
+              "binds the original task and rejects a passing review that omits or contradicts it"
+            ]
+          },
+          {
+            "file": "test/app/native-verification-cli.test.ts",
+            "namePattern": "^submits the typed receipt template through the public CLI without rebuilding identity fields$",
+            "requiredNames": [
+              "submits the typed receipt template through the public CLI without rebuilding identity fields"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/bugfree-retirement/regression-registry-before-removal.json",
+            "sha256": "cf33bdfcd50e42f0af102b31db54edc10559c0a2c340f3ab845833da16000680"
+          },
+          "patch": {
+            "file": "docs/research/bugfree-retirement/implementation-before-removal.patch",
+            "sha256": "674851450fac08bf987017fe9fa6a4b5df8a5f9879636b97918f7d30f428c44f"
+          },
+          "mapping": {
+            "file": "docs/research/bugfree-retirement/case-migrations.json",
+            "sha256": "b96fcd93e5c6cc251e4e594e378ce604899f9d11d1e4dae993e16f0f8131c463"
+          },
+          "tests": {
+            "file": "docs/research/bugfree-retirement/test-snapshots.json",
+            "sha256": "0dec6a1a5a6d519139f6df20862463f1fa6976f7e7e285ccb8ee9ab805f3a44a"
+          }
+        }
+      }
+    }
+  ]
+}

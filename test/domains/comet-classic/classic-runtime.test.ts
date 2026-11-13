@@ -136,9 +136,11 @@ describe('Classic runtime CLI adapter', () => {
       expect(guarded.status, guarded.stderr).toBe(0);
       expect(guarded.stderr).toContain('ALL CHECKS PASSED');
 
-      const handoff = run(handoffScript, ['nested-layout', '--hash-only']);
+      const transitioned = run(stateScript, ['transition', 'nested-layout', 'open-complete']);
+      expect(transitioned.status, transitioned.stderr).toBe(0);
+      const handoff = run(handoffScript, ['nested-layout', 'design', '--write']);
       expect(handoff.status, handoff.stderr).toBe(0);
-      expect(handoff.stdout.trim()).toMatch(/^[a-f0-9]{64}$/u);
+      expect(handoff.stdout + handoff.stderr).toContain('proposal.md');
 
       const probeInput = JSON.stringify({
         schema_version: 'comet.resume_probe.v1',
@@ -151,7 +153,7 @@ describe('Classic runtime CLI adapter', () => {
       expect(JSON.parse(probe.stdout)).toMatchObject({
         action: 'auto_resume',
         changeName: 'nested-layout',
-        phase: 'open',
+        phase: 'design',
       });
 
       const alternateRoot =

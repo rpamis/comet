@@ -1,9 +1,4 @@
-import {
-  defaultProjectConfig,
-  mergeNativeSnapshotExcludes,
-  readProjectConfig,
-  writeProjectConfig,
-} from './native-config.js';
+import { defaultProjectConfig, readProjectConfig, writeProjectConfig } from './native-config.js';
 import { ensureCometProjectGitignore } from '../workflow-contract/project-gitignore.js';
 import {
   ensureNativeDirectories,
@@ -43,10 +38,6 @@ export async function nativeInitCommand(
         native: {
           ...existing.native,
           language,
-          snapshot: {
-            ...existing.native.snapshot,
-            exclude: mergeNativeSnapshotExcludes(existing.native.snapshot.exclude),
-          },
         },
       }
     : defaultProjectConfig(artifactRoot, language);

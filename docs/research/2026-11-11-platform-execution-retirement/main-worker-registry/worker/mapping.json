@@ -1,0 +1,371 @@
+{
+  "cases": [
+    {
+      "id": "native-531-legacy-eperm-stop-recovery",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/README.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^(?:exposes Agent tasks and acceptance without any managed-check executor or refresh command|does not ship retired Native execution and snapshot implementations)$",
+          "requiredNames": [
+            "exposes Agent tasks and acceptance without any managed-check executor or refresh command",
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-published-business-upgrade.test.ts",
+          "namePattern": "^(?:automatically resumes published v3 'verify-checks-claimed-not-executed' with original business history)$",
+          "requiredNames": [
+            "automatically resumes published v3 'verify-checks-claimed-not-executed' with original business history"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-next-drain-internal-actions",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/README.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "drains authorized internal Archive actions through public next without repeating them \\((source|bundle)\\)",
+          "requiredNames": [
+            "Native protocol simplification drains authorized internal Archive actions through public next without repeating them (source)",
+            "Native protocol simplification drains authorized internal Archive actions through public next without repeating them (bundle)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "stops public next at result confirmation without starting Archive",
+          "requiredNames": [
+            "Native protocol simplification stops public next at result confirmation without starting Archive"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "stops public next at an independent Verifier handoff",
+          "requiredNames": [
+            "Native protocol simplification stops public next at an independent Verifier handoff"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "preserves an unknown Verifier execution without claiming or replaying it",
+          "requiredNames": [
+            "Native protocol simplification preserves an unknown Verifier execution without claiming or replaying it"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^keeps Archive next pending on a renamed branch and resumes the original Run after restoration$",
+          "requiredNames": [
+            "keeps Archive next pending on a renamed branch and resumes the original Run after restoration"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-verification-business.test.ts",
+          "namePattern": "^(?:never upgrades a real failed platform check to pass and retains it with the accepted failed report)$",
+          "requiredNames": [
+            "never upgrades a real failed platform check to pass and retains it with the accepted failed report"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-invalid-completed-check-recovery",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/README.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-published-build-frontier.test.ts",
+          "namePattern": "^(?:continues published 0\\.5\\.2 Build checks pending at the original Builder without a stop receipt or fabricated candidate|continues published 0\\.5\\.2 Build checks claimed at the original Builder without a stop receipt or fabricated candidate)$",
+          "requiredNames": [
+            "continues published 0.5.2 Build checks pending at the original Builder without a stop receipt or fabricated candidate",
+            "continues published 0.5.2 Build checks claimed at the original Builder without a stop receipt or fabricated candidate"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-invalid-completed-check-guidance",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/README.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-published-build-frontier.test.ts",
+          "namePattern": "^(?:continues published 0\\.5\\.2 Build checks pending at the original Builder without a stop receipt or fabricated candidate|continues published 0\\.5\\.2 Build checks claimed at the original Builder without a stop receipt or fabricated candidate)$",
+          "requiredNames": [
+            "continues published 0.5.2 Build checks pending at the original Builder without a stop receipt or fabricated candidate",
+            "continues published 0.5.2 Build checks claimed at the original Builder without a stop receipt or fabricated candidate"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-rejected-check-request-no-baseline",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/README.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^(?:exposes Agent tasks and acceptance without any managed-check executor or refresh command|does not ship retired Native execution and snapshot implementations)$",
+          "requiredNames": [
+            "exposes Agent tasks and acceptance without any managed-check executor or refresh command",
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-verifier-position-diagnostic",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/README.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:diagnoses a stale Verifier iteration and attempt and preserves correction on the original claim)$",
+          "requiredNames": [
+            "diagnoses a stale Verifier iteration and attempt and preserves correction on the original claim"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-rejected-check-proof-original-claim-correction",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/README.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects a foreign Verifier candidate and accepts correction on the original claim)$",
+          "requiredNames": [
+            "rejects a foreign Verifier candidate and accepts correction on the original claim"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-repeatable-verify-plans",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/README.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^(?:exposes Agent tasks and acceptance without any managed-check executor or refresh command|does not ship retired Native execution and snapshot implementations)$",
+          "requiredNames": [
+            "exposes Agent tasks and acceptance without any managed-check executor or refresh command",
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-single-result-template",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/README.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:omits unused recovery and failure templates for a healthy v3 Verifier)$",
+          "requiredNames": [
+            "omits unused recovery and failure templates for a healthy v3 Verifier"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-classic-check-plan-continuation",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/README.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "^(?:Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK full Verify rounds retains the exact external check plan without adding local reuse|Classic SDK tweak Verify rounds retains the exact external check plan without adding local reuse|Classic SDK hotfix Verify rounds retains the exact external check plan without adding local reuse)$",
+          "requiredNames": [
+            "Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+            "Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+            "Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+            "Classic SDK full Verify rounds retains the exact external check plan without adding local reuse",
+            "Classic SDK tweak Verify rounds retains the exact external check plan without adding local reuse",
+            "Classic SDK hotfix Verify rounds retains the exact external check plan without adding local reuse"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^(?:exposes Agent tasks and acceptance without any managed-check executor or refresh command|does not ship retired Native execution and snapshot implementations)$",
+          "requiredNames": [
+            "exposes Agent tasks and acceptance without any managed-check executor or refresh command",
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-build-managed-check-reuse",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/README.md",
+      "tests": [
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "^(?:Native dispatch CLI presentation executes managed Build checks through public receipt dispatch and resumes the Builder)$",
+          "requiredNames": [
+            "Native dispatch CLI presentation executes managed Build checks through public receipt dispatch and resumes the Builder"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-platform-execution-retirement.test.ts",
+          "namePattern": "^(?:exposes Agent tasks and acceptance without any managed-check executor or refresh command|does not ship retired Native execution and snapshot implementations)$",
+          "requiredNames": [
+            "exposes Agent tasks and acceptance without any managed-check executor or refresh command",
+            "does not ship retired Native execution and snapshot implementations"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-task-recovery-boundaries",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/main-worker-registry/worker/README.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:skips unrelated recovery handlers while the ordinary Verifier is running|keeps non-Git result transport outside candidate inputs through the high-level task path|rejects incomplete or forged high-level results without completing the original Verify task|keeps the selected independent review when the next claim omits review options|completes Archive on the returned third call after the user accepts the current result)$",
+          "requiredNames": [
+            "skips unrelated recovery handlers while the ordinary Verifier is running",
+            "keeps non-Git result transport outside candidate inputs through the high-level task path",
+            "rejects incomplete or forged high-level results without completing the original Verify task",
+            "keeps the selected independent review when the next claim omits review options",
+            "completes Archive on the returned third call after the user accepts the current result"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native SDK Workflow Application records a claimed Builder handoff as a candidate before scheduling acceptance|Native SDK v3 checkpoint and report boundaries commits acceptance without report Actions and retries a failed view without changing the decision)$",
+          "requiredNames": [
+            "Native SDK Workflow Application records a claimed Builder handoff as a candidate before scheduling acceptance",
+            "Native SDK v3 checkpoint and report boundaries commits acceptance without report Actions and retries a failed view without changing the decision"
+          ]
+        }
+      ]
+    }
+  ],
+  "behaviorSlices": [
+    {
+      "id": "native-531-legacy-eperm-stop-recovery",
+      "removedNames": [
+        "Native protocol simplification reconciles legacy interruptions using explicit stop evidence and the original execution lease (lease=released)",
+        "Native protocol simplification reconciles legacy interruptions using explicit stop evidence and the original execution lease (lease=held)"
+      ],
+      "reason": "Retire the Comet-owned legacy process identity, execution lease and explicit stop-evidence reconciliation protocol. Preserve original provenance; a real published claimed check remains historical business data without replay or a fabricated stop/pass.",
+      "preserveOtherLinks": true
+    },
+    {
+      "id": "native-next-drain-internal-actions",
+      "removedNames": [
+        "Native protocol simplification stops public next after failed checks without dispatching a Verifier"
+      ],
+      "reason": "Replace only the removed managed-check failure dispatch branch. Retain every original user Wait, independent handoff, unknown task and single Archive progression selector; actual failed platform reports still cannot become an accepted pass.",
+      "preserveOtherLinks": true
+    },
+    {
+      "id": "native-invalid-completed-check-recovery",
+      "removedNames": [
+        "Native SDK Workflow Application recovers an invalid completed Build check through doctor without replay (source)",
+        "Native SDK Workflow Application recovers an invalid completed Build check through doctor without replay (bundle)"
+      ],
+      "reason": "Retire only the invalid-completed Comet-check sidecar validator and stopped-actions/confirmed stop-repair handshake from Issue545. Actual published 0.5.2 pending and claimed Build frontiers preserve the original approved Run, Action/input/claim/history and resume Builder without running checks, inventing a candidate, or asking for stop evidence. The original completed-invalid process experiment was not rerun and is not claimed fixed.",
+      "preserveOtherLinks": true
+    },
+    {
+      "id": "native-invalid-completed-check-guidance",
+      "removedNames": [
+        "Native SDK Workflow Application recovers an invalid completed Build check through doctor without replay (source)",
+        "Native SDK Workflow Application recovers an invalid completed Build check through doctor without replay (bundle)"
+      ],
+      "reason": "Retire only the invalid-completed Comet-check sidecar validator and stopped-actions/confirmed stop-repair handshake from Issue545. Actual published 0.5.2 pending and claimed Build frontiers preserve the original approved Run, Action/input/claim/history and resume Builder without running checks, inventing a candidate, or asking for stop evidence. The original completed-invalid process experiment was not rerun and is not claimed fixed.",
+      "preserveOtherLinks": true
+    },
+    {
+      "id": "native-rejected-check-request-no-baseline",
+      "removedNames": [
+        "Native SDK Workflow Application does not reserve a check ID or command from a rejected Verifier request",
+        "Native SDK Workflow Application rejects a conflicting command reused under the same Verifier check ID"
+      ],
+      "reason": "Retire Comet requested-check ID/argv baseline reservation and conflicting-plan validation. Preserve original ID, sources and complete rejected-request assertions as retired mechanism; do not introduce another command cache or claim that arbitrary modern plans still use this protocol.",
+      "preserveOtherLinks": true
+    },
+    {
+      "id": "native-verifier-position-diagnostic",
+      "removedNames": [
+        "Native SDK Workflow Application does not reserve a check ID or command from a rejected Verifier request"
+      ],
+      "reason": "Move the active expected/received iteration and attempt diagnostic, immutable rejection ledger and original-claim correction to a current final-result report. Only requested-check ID/command reservation is retired; original business rejection and new-outcome correction remain.",
+      "preserveOtherLinks": true
+    },
+    {
+      "id": "native-rejected-check-proof-original-claim-correction",
+      "removedNames": [
+        "requires fresh verification instead of trusting a legacy check without a candidate digest"
+      ],
+      "reason": "Move original-claim correction, retained rejectedOutcomes and immutable outcome IDs to the current candidate-bound Verifier report. Retire only managed checker digest/receipt-specific proof and validator-specific OUTCOME_REJECTED code; do not replay a checker or replace original task history.",
+      "preserveOtherLinks": true
+    },
+    {
+      "id": "native-repeatable-verify-plans",
+      "removedNames": [
+        "Native streamlined verification rejects one-time check plans before v2 verification execution"
+      ],
+      "reason": "Retire Comet managed Verify command plans and their one-time/repeatable plan admission rule. Ordinary command execution is owned by the Agent platform; preserve original case/source and assertions without a replacement plan runner.",
+      "preserveOtherLinks": true
+    },
+    {
+      "id": "native-single-result-template",
+      "removedNames": [
+        "returns one receipt result template for a claimed v2 Verifier"
+      ],
+      "reason": "Move the single receipt/resultRequest and one shared Action reference assertions to the existing current-factory v4 Verifier presentation. The title retains historical v3 wording; only old v2 factory selection and checkRequestTemplate.repeatable are retired.",
+      "preserveOtherLinks": true
+    },
+    {
+      "id": "native-classic-check-plan-continuation",
+      "removedNames": [
+        "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=false)",
+        "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=true)",
+        "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=failed-later)"
+      ],
+      "reason": "Replace only this Native managed Build-check plan/reusedFrom slice with the explicitly absent Native executor contract. Keep every existing Classic selector unchanged; the Agent reports actual platform results rather than using a Comet execution cache.",
+      "preserveOtherLinks": true
+    },
+    {
+      "id": "native-build-managed-check-reuse",
+      "removedNames": [
+        "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=false)",
+        "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=true)",
+        "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=failed-later)"
+      ],
+      "reason": "Retire this Native managed Build/Verify reuse, candidate fingerprint and execution-receipt slice. Preserve the original ID/source and the separate app selector until its own migration; this append does not change any other file link.",
+      "preserveOtherLinks": true
+    },
+    {
+      "id": "native-task-recovery-boundaries",
+      "removedNames": [
+        "preserves a committed Builder result when its internal check cannot start"
+      ],
+      "reason": "Replace only the now unreachable internal-check-start failure slice. Preserve the committed Builder candidate and accepted-result durability through current business assertions, and retain every unrelated task/recovery selector. Do not claim that the removed checker-start failure still exists.",
+      "preserveOtherLinks": true
+    }
+  ]
+}

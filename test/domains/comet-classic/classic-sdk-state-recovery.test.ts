@@ -16,6 +16,7 @@ import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { withClassicCommandContext } from '../../../domains/comet-classic/classic-command-context.js';
 import {
   classicOpenEvidenceReceipt,
+  defineClassicAgentWorkflowApplication,
   defineClassicWorkflowApplication,
 } from '../../../domains/comet-classic/classic-sdk-application.js';
 import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
@@ -61,7 +62,9 @@ async function fixture(custom = false) {
         runtimeVersion: '0.4.5',
       }
     : undefined;
-  const application = defineClassicWorkflowApplication('hotfix');
+  const application = custom
+    ? defineClassicWorkflowApplication('hotfix')
+    : defineClassicAgentWorkflowApplication('hotfix');
   const store = createClassicSdkStateStore(root, { identity });
   const runtime = createRuntime({
     ...application,
@@ -137,7 +140,7 @@ async function fixture(custom = false) {
 }
 
 describe('Classic trusted checkpoint recovery', () => {
-  it.each(['run', 'projection', 'runtime'])(
+  it.each(['run', 'runtime'])(
     'recovers missing %s at the original revision without replaying Open',
     async (missing) => {
       const f = await fixture();
@@ -155,7 +158,7 @@ describe('Classic trusted checkpoint recovery', () => {
       const restored = await createClassicSdkStateStore(f.root).read(f.name);
       expect(restored).toEqual(saved);
       expect(await createClassicSdkStateStore(f.root).read(f.name)).toEqual(restored);
-      expect(JSON.parse(await fs.readFile(f.markerFile, 'utf8')).revision).toBe(saved!.revision);
+      await expect(fs.access(f.markerFile)).rejects.toMatchObject({ code: 'ENOENT' });
       expect(await f.raw.compareAndSwap(f.name, 1, { ...saved!, revision: 2 })).toBe(false);
       expect((await f.cli('next', f.name)).exitCode).toBe(0);
     },
@@ -196,6 +199,7 @@ describe('Classic trusted checkpoint recovery', () => {
         evidenceId: run.evidenceWaits![0].id,
         kind: 'classic-open-artifacts',
         ...(await classicOpenEvidenceReceipt(f.root, 'openspec/changes/demo')),
+        contentHash: action.inputHash,
         submissionId: 'open-evidence',
         expectedRevision: run.revision,
         context: { requestId: 'open-evidence', projectRoot: f.root },
@@ -209,8 +213,11 @@ describe('Classic trusted checkpoint recovery', () => {
         roots.push(backup);
         await fs.rename(path.join(f.root, '.git'), backup);
         execFileSync('git', ['init', '-b', 'main'], { cwd: f.root, stdio: 'ignore' });
-        await expect(f.store.read(f.name)).rejects.toThrow('workspace identity changed');
-        await expect(f.store.readProjection!(f.name)).rejects.toThrow('workspace identity changed');
+        expect(await f.store.read(f.name)).toEqual(original);
+        expect(await f.store.readProjection!(f.name)).toMatchObject({
+          runId: f.name,
+          revision: original!.revision,
+        });
         await expect(
           f.store.compareAndSwap(f.name, original!.revision, {
             ...original!,
@@ -242,8 +249,11 @@ describe('Classic trusted checkpoint recovery', () => {
     roots.push(backup);
     await fs.rename(path.join(f.root, '.git'), backup);
     execFileSync('git', ['init', '-b', 'main'], { cwd: f.root, stdio: 'ignore' });
-    await expect(f.store.read(f.name)).rejects.toThrow('workspace identity changed');
-    await expect(f.store.readProjection!(f.name)).rejects.toThrow('workspace identity changed');
+    expect(await f.store.read(f.name)).toEqual(original);
+    expect(await f.store.readProjection!(f.name)).toMatchObject({
+      runId: f.name,
+      revision: original!.revision,
+    });
     const recovered = await createClassicSdkStateStore(f.root).read(f.name);
     expect(recovered!.revision).toBe(claimed.revision);
     expect(recovered!.actions[0]).toMatchObject({
@@ -261,11 +271,11 @@ describe('Classic trusted checkpoint recovery', () => {
   });
 
   it.each(['read', 'readProjection'] as const)(
-    'rejects Git identity replacement during %s without rewriting the original store',
+    'reads the original bound history without writes through %s after Git metadata changes',
     async (operation) => {
       const f = await fixture();
       const original = await f.raw.read(f.name);
-      const originalMarker = await fs.readFile(f.markerFile, 'utf8');
+      const originalMarker = await fs.readFile(f.markerFile, 'utf8').catch(() => null);
       const originalDocument = await fs.readFile(f.stateFile, 'utf8');
       const backup = `${f.root}-git-backup`;
       roots.push(backup);
@@ -286,10 +296,13 @@ describe('Classic trusted checkpoint recovery', () => {
           readProjection: readThenReplaceIdentity,
         },
       });
-      await expect(store[operation]!(f.name)).rejects.toThrow('workspace identity changed');
+      expect(await store[operation]!(f.name)).toMatchObject({
+        runId: f.name,
+        revision: original!.revision,
+      });
       expect(replaced).toBe(true);
       expect(await f.raw.read(f.name)).toEqual(original);
-      expect(await fs.readFile(f.markerFile, 'utf8')).toBe(originalMarker);
+      expect(await fs.readFile(f.markerFile, 'utf8').catch(() => null)).toBe(originalMarker);
       expect(await fs.readFile(f.stateFile, 'utf8')).toBe(originalDocument);
     },
   );
@@ -310,10 +323,15 @@ describe('Classic trusted checkpoint recovery', () => {
           state: parseClassicStateDocument(document).classic,
         });
       const restored = await createClassicSdkStateStore(f.root).read(f.name);
-      expect(restored!.revision).toBe(f.run.revision + 1);
+      expect(restored!.revision).toBe(document.run_checkpoint.run.revision + (partial ? 0 : 1));
       expect(restored!.state).toMatchObject({ reviewMode: 'thorough' });
       expect(restored!.actions).toEqual(document.run_checkpoint.run.actions);
-      expect(await f.raw.compareAndSwap(f.name, 1, { ...restored!, revision: 2 })).toBe(false);
+      expect(
+        await f.raw.compareAndSwap(f.name, restored!.revision + 1, {
+          ...restored!,
+          revision: restored!.revision + 2,
+        }),
+      ).toBe(false);
       expect(await createClassicSdkStateStore(f.root).read(f.name)).toEqual(restored);
     },
   );
@@ -322,7 +340,6 @@ describe('Classic trusted checkpoint recovery', () => {
     const f = await fixture();
     const saved = await f.checkpoint();
     await f.loseRun();
-    await fs.rm(f.markerFile);
     const interrupted = createClassicSdkStateStore(f.root, {
       store: {
         ...f.raw,
@@ -335,46 +352,36 @@ describe('Classic trusted checkpoint recovery', () => {
     await expect(interrupted.read(f.name)).rejects.toThrow(/projection interruption/);
     expect(await f.raw.read(f.name)).toEqual(saved);
     expect(await createClassicSdkStateStore(f.root).read(f.name)).toEqual(saved);
-    expect(JSON.parse(await fs.readFile(f.markerFile, 'utf8')).revision).toBe(saved!.revision);
+    await expect(fs.access(f.markerFile)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it.each([
-    'checkpoint',
-    'source-revision',
-    'marker',
-    'future-marker',
-    'state',
-    'branch',
-    'partial',
-  ])('rejects %s drift without replacing history or user files', async (damage) => {
-    const f = await fixture();
-    if (damage === 'branch')
-      execFileSync('git', ['symbolic-ref', 'HEAD', 'refs/heads/other'], { cwd: f.root });
-    else if (damage.includes('marker')) {
-      const marker = JSON.parse(await fs.readFile(f.markerFile, 'utf8'));
-      if (damage === 'future-marker') marker.revision += 1;
-      else marker.state.language = 'en';
-      await fs.writeFile(f.markerFile, JSON.stringify(marker));
-    } else if (damage !== 'partial') {
-      const document = parse(await fs.readFile(f.stateFile, 'utf8'));
-      if (damage === 'checkpoint') document.run_checkpoint.hash = '0'.repeat(64);
-      else if (damage === 'source-revision') document.run_checkpoint.sourceRevision += 20;
-      else document.phase = 'build';
-      await fs.writeFile(f.stateFile, CLASSIC_MANAGED_RUN_MARKER + stringify(document));
-    }
-    await f.loseRun();
-    if (damage === 'partial')
-      await f.raw.compareAndSwap(f.name, null, {
-        ...(await f.checkpoint())!,
-        revision: 1,
-        state: { ...(f.run.state as object), phase: 'build' },
-      });
-    const before = await fs.readFile(f.stateFile, 'utf8');
-    const original = await f.raw.read(f.name);
-    await expect(createClassicSdkStateStore(f.root).read(f.name)).rejects.toThrow();
-    expect(await f.raw.read(f.name)).toEqual(original);
-    expect(await fs.readFile(f.stateFile, 'utf8')).toBe(before);
-  });
+  it.each(['checkpoint', 'source-revision', 'state', 'branch', 'partial'])(
+    'rejects %s drift without replacing history or user files',
+    async (damage) => {
+      const f = await fixture();
+      if (damage === 'branch')
+        execFileSync('git', ['symbolic-ref', 'HEAD', 'refs/heads/other'], { cwd: f.root });
+      else if (damage !== 'partial') {
+        const document = parse(await fs.readFile(f.stateFile, 'utf8'));
+        if (damage === 'checkpoint') document.run_checkpoint.hash = '0'.repeat(64);
+        else if (damage === 'source-revision') document.run_checkpoint.sourceRevision += 20;
+        else document.phase = 'build';
+        await fs.writeFile(f.stateFile, CLASSIC_MANAGED_RUN_MARKER + stringify(document));
+      }
+      await f.loseRun();
+      if (damage === 'partial')
+        await f.raw.compareAndSwap(f.name, null, {
+          ...(await f.checkpoint())!,
+          revision: 1,
+          state: { ...(f.run.state as object), phase: 'build' },
+        });
+      const before = await fs.readFile(f.stateFile, 'utf8');
+      const original = await f.raw.read(f.name);
+      await expect(createClassicSdkStateStore(f.root).read(f.name)).rejects.toThrow();
+      expect(await f.raw.read(f.name)).toEqual(original);
+      expect(await fs.readFile(f.stateFile, 'utf8')).toBe(before);
+    },
+  );
 
   it('requires the original fixed application and preserves its custom checkpoint identity', async () => {
     const f = await fixture(true);

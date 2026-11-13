@@ -1,0 +1,58 @@
+{
+  "cases": [
+    {
+      "id": "owned-command-timeout-independent-deadline",
+      "behavior": "原调用方事件循环堵塞时，自有监管器仍在时限后停止命令。",
+      "sources": [
+        "report:2026-11-10-runtime-cost-cleanup"
+      ],
+      "coverageLevel": "runtime",
+      "reproduction": "真实子进程执行5秒时限检查，原调用方堵塞6秒，检查计划在5.5秒写入late；基线Windows等待原调用方而留下late文件。",
+      "expected": "监管器独立守住截止时间，不产生late文件，原调用方恢复后仍可完成停止。",
+      "forbidden": "只延长等待、修改时限或把原调用方堵塞视为允许检查继续执行。",
+      "rootCause": "Windows监管器只保留身份等待原调用方确认，未独立停止已到期命令。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-owner-recovery.test.ts",
+          "namePattern": "keeps its deadline when the owner event loop cannot run its timeout timer",
+          "requiredNames": [
+            "Native check owner recovery keeps its deadline when the owner event loop cannot run its timeout timer"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "authorization": "report:2026-11-10-agent-platform-execution",
+        "record": "docs/research/2026-11-11-platform-execution-test-migration.zh.md",
+        "tests": [
+          {
+            "file": "test/platform/process/owned-command-termination.test.ts",
+            "namePattern": "^keeps its deadline when the owner event loop cannot run its timeout timer$",
+            "requiredNames": [
+              "keeps its deadline when the owner event loop cannot run its timeout timer"
+            ]
+          }
+        ],
+        "reason": "Move the actual CLI-owned deadline assertion to its process adapter; Eval and downloads still require cleanup when their owner event loop is blocked.",
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/registry.json",
+            "sha256": "f6e11aff96db32de6017d5884e7374889648ae33af2489be1501ac5beb3fdc76"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/tests.json",
+            "sha256": "8b011ae4a9bfd38f4de0239b809cba2fc43cd530ed20144ab68221ff965be215"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/mapping.json",
+            "sha256": "09c933bbb435cd447be26ed094e514ed44279bd93038d4b676c2d070fb0d2561"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-11-platform-execution-retirement/tests.patch",
+            "sha256": "5aafdbc7d0587c7262eb44852a72b5c6ac42448777fa060a88bf01dab6b2c859"
+          }
+        }
+      }
+    }
+  ]
+}

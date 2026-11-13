@@ -263,7 +263,16 @@ describe('Native Archive command stop boundaries', () => {
       });
       expect(projected.continuation.mode).toBe('reconcile');
       expect(projected.activeActions![0]).not.toHaveProperty('retryRequest');
-      expect(projected.activeActions![0]).toHaveProperty('outcomeRequest');
+      expect(projected.activeActions![0]).toHaveProperty('resultRequest');
+      const request = (projected.activeActions![0] as { resultRequest: { receipt: string } })
+        .resultRequest;
+      expect(JSON.parse(Buffer.from(request.receipt, 'base64url').toString('utf8'))).toEqual({
+        runId: current.run.runId,
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        claimToken: action.claim.token,
+      });
     },
   );
 
@@ -364,15 +373,10 @@ describe('Native Archive command stop boundaries', () => {
           attempt: running.attempt,
           inputHash: running.inputHash,
           claim: running.claim,
-          outcomeRequest: {
+          resultRequest: {
             operation: 'record-outcome',
-            runId: current.run.runId,
-            outcome: {
-              actionId: running.id,
-              attempt: running.attempt,
-              inputHash: running.inputHash,
-              claimToken: running.claim.token,
-            },
+            receipt: expect.any(String),
+            result: { status: '<succeeded|failed>' },
           },
         },
       ],
@@ -381,6 +385,16 @@ describe('Native Archive command stop boundaries', () => {
         commandArgs: null,
         userCommunication: { agentInstruction: expect.stringContaining('original claimed task') },
       },
+    });
+    const request = (
+      result.data as { activeActions: Array<{ resultRequest: { receipt: string } }> }
+    ).activeActions[0].resultRequest;
+    expect(JSON.parse(Buffer.from(request.receipt, 'base64url').toString('utf8'))).toEqual({
+      runId: current.run.runId,
+      actionId: running.id,
+      attempt: running.attempt,
+      inputHash: running.inputHash,
+      claimToken: running.claim.token,
     });
     expect(current.run.actions.at(-1)).toEqual(running);
   });

@@ -1,7 +1,7 @@
-import type { NativePortableState } from './native-portable-types.js';
-import { taskContextRequest } from '../workflow-contract/task-context.js';
-import type { WorkflowRun, RuntimeValue } from '../engine/runtime.js';
 import path from 'node:path';
+import type { RuntimeValue, WorkflowRun } from '../engine/runtime.js';
+import { taskContextRequest } from '../workflow-contract/task-context.js';
+import type { NativePortableState } from './native-portable-types.js';
 
 /** 把用户的旧报告当成待核对的输入，而非新候选的验证结论。 */
 export function nativeUserEditedReportContext(
@@ -68,7 +68,6 @@ export function nativeBuilderRepairContext(
   return {
     schema: 'comet.native.repair-context.v1',
     previousCandidateId,
-    shapeConfirmationHash: state.shape_confirmation_hash ?? null,
     unresolvedAcceptanceIds: state.loop.previous_unresolved_ids,
     previousVerifierActionId: verifier?.id ?? null,
     previousChecks: [...checks.values()],

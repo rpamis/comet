@@ -9,7 +9,7 @@ const number = (value) =>
     : new Intl.NumberFormat(getDashboardLocale(), { maximumFractionDigits: 1 }).format(value);
 const percent = (value) => (value == null ? '—' : `${number(value * 100)}%`);
 
-export function RuntimeCommandInsights({ data, rangeLabel = t('最近 7 天') }) {
+export function RuntimeCommandInsights({ data, rangeLabel = t('所有') }) {
   const [order, setOrder] = useState('time');
   const rows = [...(data.hotspots ?? [])]
     .sort((a, b) => (order === 'time' ? b.totalDurationMs - a.totalDurationMs : b.count - a.count))

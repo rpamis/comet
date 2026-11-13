@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import { execFileSync } from 'child_process';
 import os from 'os';
 import path from 'path';
+import { requireFileSymlink } from '../../helpers/file-symlink.js';
 
 import {
   assertClassicLayoutReadable,
@@ -223,7 +224,7 @@ describe('Classic artifact layout', () => {
       await directoryLink(outside, path.join(root, 'docs'));
     }
 
-    await expect(assertClassicLayoutWritable(root)).rejects.toThrow(/symbolic link or junction/u);
+    await expect(assertClassicLayoutWritable(root)).rejects.toThrow(/symbolic link.*junction/u);
     await expect(fs.readFile(path.join(outside, 'keep.txt'), 'utf8')).resolves.toBe('keep\n');
   });
 
@@ -237,7 +238,7 @@ describe('Classic artifact layout', () => {
     );
     await directoryLink(outside, path.join(root, '.comet'));
 
-    await expect(readClassicArtifactLayout(root)).rejects.toThrow(/symbolic link or junction/u);
+    await expect(readClassicArtifactLayout(root)).rejects.toThrow(/symbolic link.*junction/u);
   });
 
   it('discovers a project from a nested Classic artifact directory', async () => {
@@ -356,9 +357,10 @@ describe('Classic project discovery boundaries', () => {
     },
   );
 
-  it.each(['.comet', '.comet/config.yaml'])(
+  it.for(['.comet', '.comet/config.yaml'])(
     'rejects a dangling %s link instead of selecting a parent project',
-    async (relative) => {
+    async (relative, context) => {
+      if (relative === '.comet/config.yaml') await requireFileSymlink(context);
       const parent = await project();
       const child = path.join(parent, 'child');
       const nested = path.join(child, 'src');
@@ -369,7 +371,9 @@ describe('Classic project discovery boundaries', () => {
       if (relative === '.comet') await directoryLink(target, link);
       else await fs.symlink(target, link, 'file');
 
-      await expect(discoverClassicProject(nested)).rejects.toThrow(/symbolic link or junction/u);
+      await expect(discoverClassicProject(nested)).rejects.toThrow(
+        relative === '.comet/config.yaml' ? /regular file/u : /symbolic link.*junction/u,
+      );
     },
   );
 
@@ -452,6 +456,6 @@ describe('Classic project discovery boundaries', () => {
     await fs.writeFile(path.join(outside, 'config.yaml'), 'schema: comet.project.v1\n');
     await directoryLink(outside, path.join(child, '.comet'));
 
-    await expect(discoverClassicProject(child)).rejects.toThrow(/symbolic link or junction/u);
+    await expect(discoverClassicProject(child)).rejects.toThrow(/symbolic link.*junction/u);
   });
 });

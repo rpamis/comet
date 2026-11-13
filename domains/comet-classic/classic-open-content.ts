@@ -1,6 +1,5 @@
 import path from 'node:path';
 
-import { classicDocumentLanguageMismatch } from './classic-document-language.js';
 import { classicProjectTargetExists, readClassicProjectFile } from './classic-protected-path.js';
 import { parseClassicTasks } from './classic-tasks.js';
 
@@ -22,8 +21,7 @@ export async function classicOpenContentProblem(
     const source = await readClassicProjectFile(projectRoot, file, {
       label: `Classic Open ${filename}`,
     });
-    const languageIssue = classicDocumentLanguageMismatch(source, language, file);
-    if (languageIssue) return languageIssue;
+    if (!source.trim()) return filename + ' is empty';
     if (filename === 'tasks.md' && parseClassicTasks(source).length === 0) {
       return 'tasks.md has no task';
     }

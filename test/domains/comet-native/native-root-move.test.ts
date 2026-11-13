@@ -1,3 +1,4 @@
+import '../../helpers/isolated-agent-home.js';
 import { promises as fs } from 'fs';
 import { execFileSync } from 'node:child_process';
 import os from 'os';
@@ -5,22 +6,23 @@ import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  DEFAULT_NATIVE_SNAPSHOT_CONFIG,
   defaultProjectConfig,
   readProjectConfig,
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
-import { createNativeChange } from '../../../domains/comet-native/native-change.js';
+import { createNativePortableChange } from '../../../domains/comet-native/native-portable-runtime.js';
+import { writeNativeWorkspaceIdentity } from '../../../domains/comet-native/native-workspace.js';
 import { createNativeSdkChange } from '../../../domains/comet-native/native-sdk-create.js';
 import { sha256File } from '../../../domains/comet-native/native-hash.js';
-import { acquireNativeLock, releaseNativeLock } from '../../../domains/comet-native/native-lock.js';
+
 import {
   nativeChangeRuntimeDir,
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
 import { moveNativeRoot } from '../../../domains/comet-native/native-root-move.js';
+import * as pathsModule from '../../../domains/comet-native/native-paths.js';
 import { runNativeCliDetailed } from '../../../domains/comet-native/native-cli.js';
-import * as nativeLock from '../../../domains/comet-native/native-lock.js';
+
 import { readNativeTransaction } from '../../../domains/comet-native/native-transaction.js';
 import {
   assertNativeWorkspaceBinding,
@@ -28,7 +30,32 @@ import {
   readNativeWorkspaceIdentity,
   setNativeWorkspaceFinish,
 } from '../../../domains/comet-native/native-workspace.js';
-import { seedNativeRoot } from '../../helpers/native-root.js';
+import { seedNativeRoot as seedNativeRootData } from '../../helpers/native-root.js';
+
+// Use current Portable creation; the retained sidecar API records actual Git identity for root-move compatibility.
+async function createPortableWithWorkspace(
+  options: Parameters<typeof createNativePortableChange>[0],
+) {
+  const state = await createNativePortableChange(options);
+  await writeNativeWorkspaceIdentity({
+    paths: options.paths,
+    name: options.name,
+    revision: state.state_version,
+    ...(options.workspaceBinding ? { binding: options.workspaceBinding } : {}),
+  });
+  return state;
+}
+
+// The binary root-move sentinel is ordinary payload, not a malformed active change.
+async function seedNativeRoot(project: string, artifactRoot: string) {
+  const root = await seedNativeRootData(project, artifactRoot);
+  await fs.mkdir(path.join(root, 'payloads'), { recursive: true });
+  await fs.rename(
+    path.join(root, 'changes', 'active-change'),
+    path.join(root, 'payloads', 'active-change'),
+  );
+  return root;
+}
 
 describe('Native artifact root moves', () => {
   let projectRoot: string;
@@ -41,6 +68,55 @@ describe('Native artifact root moves', () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     await fs.rm(projectRoot, { recursive: true, force: true });
+  });
+
+  it('moves an initialized root through the generated Runtime without creating lock files', async () => {
+    const entry = path.resolve('assets/skills/comet-native/scripts/comet-native-runtime.mjs');
+    const command = (...args: string[]) =>
+      JSON.parse(
+        execFileSync(process.execPath, [entry, ...args, '--project-root', projectRoot, '--json'], {
+          encoding: 'utf8',
+          windowsHide: true,
+        }),
+      );
+    expect(command('init', '--root', 'docs', '--language', 'en').exitCode).toBe(0);
+    const paths = await nativeProjectPaths(projectRoot, 'docs', { readOnly: true });
+    expect(command('root', 'move', 'artifacts/native').exitCode).toBe(0);
+    expect((await readProjectConfig(projectRoot))?.native.artifact_root).toBe('artifacts/native');
+    await expect(fs.access(path.join(projectRoot, 'docs/comet'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    expect((await fs.stat(path.join(projectRoot, 'artifacts/native/comet'))).isDirectory()).toBe(
+      true,
+    );
+    await expect(fs.access(path.join(paths.runtimeDir, 'locks'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    expect(command('doctor').data).toMatchObject({
+      healthy: true,
+      transactions: [],
+      workspaceFinishes: [],
+      changes: [],
+    });
+  });
+
+  it('audits historical transactions even when the active transaction directory is absent', async () => {
+    await seedNativeRoot(projectRoot, 'docs');
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    const history = path.join(
+      paths.runtimeDir,
+      'transaction-history',
+      'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+    );
+    await fs.mkdir(history, { recursive: true });
+    await fs.writeFile(path.join(history, 'transaction.json'), '{}');
+    await fs.rm(paths.transactionsDir, { recursive: true, force: true });
+    await expect(moveNativeRoot({ projectRoot, toArtifactRoot: 'artifacts' })).rejects.toThrow();
+    expect((await readProjectConfig(projectRoot))?.native.artifact_root).toBe('docs');
+    expect((await readProjectConfig(projectRoot))?.native.pending_root_move).toBeUndefined();
+    await expect(fs.access(path.join(projectRoot, 'artifacts/comet'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
   });
 
   it('rejects SDK root moves before changing documents or configuration and preserves continuation', async () => {
@@ -78,14 +154,14 @@ describe('Native artifact root moves', () => {
       projectRoot,
       '--json',
     ]);
-    expect(next.dispatch.error?.code).toBe('document-invalid');
+    expect(next.dispatch.error?.code).toBe('invalid-data');
     expect((await readProjectConfig(projectRoot))?.native.pending_root_move).toBeUndefined();
     await expect(fs.access(path.join(projectRoot, 'artifacts/comet'))).rejects.toThrow();
   });
 
   it('rechecks the branch after CLI root resolution before writing a root-move transaction', async () => {
     await seedNativeRoot(projectRoot, 'docs');
-    await fs.rm(path.join(projectRoot, 'docs/comet/changes/active-change'), {
+    await fs.rm(path.join(projectRoot, 'docs/comet/payloads/active-change'), {
       recursive: true,
       force: true,
     });
@@ -100,7 +176,7 @@ describe('Native artifact root moves', () => {
       encoding: 'utf8',
     }).trim();
     const paths = await nativeProjectPaths(projectRoot, 'docs');
-    await createNativeChange({
+    await createPortableWithWorkspace({
       paths,
       name: 'branch-fence',
       language: 'en',
@@ -110,15 +186,18 @@ describe('Native artifact root moves', () => {
         targetBranch: branch,
       },
     });
-    const acquire = nativeLock.acquireNativeLock;
-    vi.spyOn(nativeLock, 'acquireNativeLock').mockImplementation(async (...args) => {
-      if (args[1] === 'root-move') {
-        execFileSync('git', ['checkout', '-b', 'changed-before-lock'], {
+    const resolve = pathsModule.nativeProjectPaths;
+    let changed = false;
+    vi.spyOn(pathsModule, 'nativeProjectPaths').mockImplementation(async (...args) => {
+      const resolved = await resolve(...args);
+      if (!changed) {
+        changed = true;
+        execFileSync('git', ['checkout', '-b', 'changed-after-root-resolution'], {
           cwd: projectRoot,
           stdio: 'ignore',
         });
       }
-      return acquire(...args);
+      return resolved;
     });
     const result = await runNativeCliDetailed(
       ['root', 'move', 'artifacts/native', '--json', '--project-root', projectRoot],
@@ -143,16 +222,16 @@ describe('Native artifact root moves', () => {
     const config = await readProjectConfig(projectRoot);
     config!.native.clarification_mode = 'batch';
     config!.native.archive_confirmation = 'required';
+    config!.native.max_parallel_children = 4;
     await writeProjectConfig(projectRoot, config!);
     const sourcePaths = await nativeProjectPaths(projectRoot, from);
-    await createNativeChange({
+    await createPortableWithWorkspace({
       paths: sourcePaths,
       name: 'identity-change',
       language: 'en',
-      verificationProtocol: 'legacy-v1',
     });
     const sourceSpec = path.join(source, 'specs', 'word-count', 'spec.md');
-    const sourceBinary = path.join(source, 'changes', 'active-change', 'payload.bin');
+    const sourceBinary = path.join(source, 'payloads', 'active-change', 'payload.bin');
     const expected = [await sha256File(sourceSpec), await sha256File(sourceBinary)];
 
     const result = await moveNativeRoot({
@@ -185,7 +264,7 @@ describe('Native artifact root moves', () => {
         clarification_mode: 'batch',
         archive_confirmation: 'required',
         max_verify_failures: 5,
-        snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+        max_parallel_children: 4,
       },
     });
     const workspace = await readNativeWorkspaceIdentity(destinationPaths, 'identity-change');
@@ -195,7 +274,9 @@ describe('Native artifact root moves', () => {
     ).resolves.toEqual({ state: 'aligned', findingCodes: [], driftComponents: [] });
     expect([
       await sha256File(path.join(destinationPaths.specsDir, 'word-count', 'spec.md')),
-      await sha256File(path.join(destinationPaths.changesDir, 'active-change', 'payload.bin')),
+      await sha256File(
+        path.join(destinationPaths.nativeRoot, 'payloads', 'active-change', 'payload.bin'),
+      ),
     ]).toEqual(expected);
     await expect(fs.access(source)).rejects.toMatchObject({ code: 'ENOENT' });
     expect(await readNativeTransaction(destinationPaths, result.transactionId)).toMatchObject({
@@ -206,7 +287,7 @@ describe('Native artifact root moves', () => {
 
   it('preserves v3 branch and finishing bindings while refreshing moved root identities', async () => {
     await seedNativeRoot(projectRoot, 'docs');
-    await fs.rm(path.join(projectRoot, 'docs/comet/changes/active-change'), {
+    await fs.rm(path.join(projectRoot, 'docs/comet/payloads/active-change'), {
       recursive: true,
       force: true,
     });
@@ -223,7 +304,7 @@ describe('Native artifact root moves', () => {
       encoding: 'utf8',
     }).trim();
     const sourcePaths = await nativeProjectPaths(projectRoot, 'docs');
-    await createNativeChange({
+    await createPortableWithWorkspace({
       paths: sourcePaths,
       name: 'bound-change',
       language: 'en',
@@ -255,7 +336,7 @@ describe('Native artifact root moves', () => {
 
   it('stops before moving a root that contains an invalid workspace binding', async () => {
     await seedNativeRoot(projectRoot, 'docs');
-    await fs.rm(path.join(projectRoot, 'docs/comet/changes/active-change'), {
+    await fs.rm(path.join(projectRoot, 'docs/comet/payloads/active-change'), {
       recursive: true,
       force: true,
     });
@@ -272,7 +353,7 @@ describe('Native artifact root moves', () => {
       encoding: 'utf8',
     }).trim();
     const paths = await nativeProjectPaths(projectRoot, 'docs');
-    await createNativeChange({
+    await createPortableWithWorkspace({
       paths,
       name: 'invalid-binding',
       language: 'en',
@@ -307,7 +388,7 @@ describe('Native artifact root moves', () => {
 
   it('refreshes a valid v3 binding even when the change schema needs a newer runtime', async () => {
     await seedNativeRoot(projectRoot, 'docs');
-    await fs.rm(path.join(projectRoot, 'docs/comet/changes/active-change'), {
+    await fs.rm(path.join(projectRoot, 'docs/comet/payloads/active-change'), {
       recursive: true,
       force: true,
     });
@@ -324,7 +405,7 @@ describe('Native artifact root moves', () => {
       encoding: 'utf8',
     }).trim();
     const sourcePaths = await nativeProjectPaths(projectRoot, 'docs');
-    await createNativeChange({
+    await createPortableWithWorkspace({
       paths: sourcePaths,
       name: 'future-bound-change',
       language: 'en',
@@ -340,8 +421,8 @@ describe('Native artifact root moves', () => {
     await fs.writeFile(
       stateFile,
       state
-        .replace('schema: comet.native.v3', 'schema: comet.native.v4')
-        .replace('minimum_runtime_version: 3', 'minimum_runtime_version: 4'),
+        .replace('schema: comet.native.v4', 'schema: comet.native.v999')
+        .replace('minimum_runtime_version: 4', 'minimum_runtime_version: 999'),
     );
 
     await moveNativeRoot({ projectRoot, toArtifactRoot: 'artifacts/native' });
@@ -365,7 +446,7 @@ describe('Native artifact root moves', () => {
     ['legacy workspace v2', true],
   ])('moves documents without requiring another worktree Runtime (%s)', async (_label, legacy) => {
     await seedNativeRoot(projectRoot, 'docs');
-    await fs.rm(path.join(projectRoot, 'docs/comet/changes/active-change'), {
+    await fs.rm(path.join(projectRoot, 'docs/comet/payloads/active-change'), {
       recursive: true,
       force: true,
     });
@@ -382,7 +463,7 @@ describe('Native artifact root moves', () => {
       encoding: 'utf8',
     }).trim();
     const paths = await nativeProjectPaths(projectRoot, 'docs');
-    await createNativeChange({
+    await createPortableWithWorkspace({
       paths,
       name: 'foreign-change',
       language: 'en',
@@ -562,46 +643,5 @@ describe('Native artifact root moves', () => {
         'utf8',
       ),
     ).toBe('count words\n');
-  });
-
-  it('serializes root moves with archive operations through the global lock', async () => {
-    await seedNativeRoot(projectRoot, '.');
-    const paths = await nativeProjectPaths(projectRoot, '.');
-    const archiveGlobalLock = await acquireNativeLock(paths, 'root-move', 'archive active-change');
-    try {
-      await expect(moveNativeRoot({ projectRoot, toArtifactRoot: 'docs' })).rejects.toThrow(
-        /already held/u,
-      );
-    } finally {
-      await releaseNativeLock(archiveGlobalLock);
-    }
-  });
-
-  it('refuses to copy any unresolved operation lock into the destination root', async () => {
-    await seedNativeRoot(projectRoot, '.');
-    const paths = await nativeProjectPaths(projectRoot, '.');
-    const staleArchiveLock = await acquireNativeLock(
-      paths,
-      'archive',
-      'archive interrupted-change',
-    );
-    try {
-      await expect(moveNativeRoot({ projectRoot, toArtifactRoot: 'docs' })).rejects.toThrow(
-        'must be diagnosed before moving',
-      );
-      expect((await readProjectConfig(projectRoot))?.native).toEqual({
-        artifact_root: '.',
-        language: 'en',
-        clarification_mode: 'batch',
-        archive_confirmation: 'automatic',
-        max_verify_failures: 5,
-        snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
-      });
-      await expect(fs.access(path.join(projectRoot, 'docs', 'comet'))).rejects.toMatchObject({
-        code: 'ENOENT',
-      });
-    } finally {
-      await releaseNativeLock(staleArchiveLock);
-    }
   });
 });

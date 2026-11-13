@@ -1,0 +1,41 @@
+diff --git a/domains/comet-native/native-sdk-report.ts b/domains/comet-native/native-sdk-report.ts
+index 37ee01ec..b6912bbf 100644
+--- a/domains/comet-native/native-sdk-report.ts
++++ b/domains/comet-native/native-sdk-report.ts
+@@ -7,6 +7,7 @@ import {
+   inspectProtectedProjectPath,
+   readProtectedProjectFile,
+ } from '../workflow-contract/protected-project-path.js';
++import { ensureWorkspaceRuntimeRoot } from '../workflow-contract/workspace-runtime.js';
+ import { atomicWriteText } from './native-atomic-file.js';
+ import { nativeProjectPaths } from './native-paths.js';
+ import { parseNativePortableState } from './native-portable-state.js';
+@@ -56,6 +57,7 @@ export async function writeNativeSdkVerificationReport(options: {
+   if (original?.bytes.equals(Buffer.from(rendered))) return {};
+   let preservedReportRef: string | undefined;
+   if (original) {
++    await ensureWorkspaceRuntimeRoot(paths.projectRoot);
+     const directory = nativeSdkPreservedReportsRef(options.runId);
+     await ensureProtectedProjectDirectory(paths.workspaceRuntimeRoot, directory, {
+       label: 'Native preserved report',
+diff --git a/test/domains/comet-entry/resume-probe.test.ts b/test/domains/comet-entry/resume-probe.test.ts
+index df248393..1df4c61d 100644
+--- a/test/domains/comet-entry/resume-probe.test.ts
++++ b/test/domains/comet-entry/resume-probe.test.ts
+@@ -535,7 +535,15 @@ describe('Comet entry resume probe v2', () => {
+         },
+       },
+     });
+-    expect(diagnosis.stdout).toContain('doctor missing-run --repair --confirmed');
++    expect(diagnosis.exitCode).toBe(0);
++    expect(JSON.parse(diagnosis.stdout).data.recovery.commandArgs).toEqual([
++      'comet',
++      'native',
++      'doctor',
++      'missing-run',
++      '--repair',
++      '--confirmed',
++    ]);
+     expect(await snapshot(projectRoot)).toEqual(beforeProject);
+     expect(await snapshot(runtimeRoot)).toEqual(beforeRuntime);
+     const repaired = await runNativeCli([

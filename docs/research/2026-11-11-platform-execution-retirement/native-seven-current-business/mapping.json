@@ -1,0 +1,1983 @@
+{
+  "cases": [
+    {
+      "id": "native-archive-rejected-apply-recovery",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/app/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:rejects retired native content-proof commands without creating workflow state|rejects retired classic content-proof commands without creating workflow state|rejects retired Native snapshot proof through the generated command bundle)$",
+          "requiredNames": [
+            "rejects retired native content-proof commands without creating workflow state",
+            "rejects retired classic content-proof commands without creating workflow state",
+            "rejects retired Native snapshot proof through the generated command bundle"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:keeps Agent edit judgment and actual workflow authorization in skills-zh|keeps Agent edit judgment and actual workflow authorization in skills)$",
+          "requiredNames": [
+            "keeps Agent edit judgment and actual workflow authorization in skills-zh",
+            "keeps Agent edit judgment and actual workflow authorization in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "^(?:Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay)$",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-transient-snapshot-preserves-acceptance",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/app/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:rejects retired native content-proof commands without creating workflow state|rejects retired classic content-proof commands without creating workflow state|rejects retired Native snapshot proof through the generated command bundle)$",
+          "requiredNames": [
+            "rejects retired native content-proof commands without creating workflow state",
+            "rejects retired classic content-proof commands without creating workflow state",
+            "rejects retired Native snapshot proof through the generated command bundle"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:keeps Agent edit judgment and actual workflow authorization in skills-zh|keeps Agent edit judgment and actual workflow authorization in skills)$",
+          "requiredNames": [
+            "keeps Agent edit judgment and actual workflow authorization in skills-zh",
+            "keeps Agent edit judgment and actual workflow authorization in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "^(?:Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay)$",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-declared-check-outputs",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/app/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:rejects retired native content-proof commands without creating workflow state|rejects retired classic content-proof commands without creating workflow state|rejects retired Native snapshot proof through the generated command bundle)$",
+          "requiredNames": [
+            "rejects retired native content-proof commands without creating workflow state",
+            "rejects retired classic content-proof commands without creating workflow state",
+            "rejects retired Native snapshot proof through the generated command bundle"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:keeps Agent edit judgment and actual workflow authorization in skills-zh|keeps Agent edit judgment and actual workflow authorization in skills)$",
+          "requiredNames": [
+            "keeps Agent edit judgment and actual workflow authorization in skills-zh",
+            "keeps Agent edit judgment and actual workflow authorization in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "^(?:Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay)$",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-509-environment-archive",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/app/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:rejects retired native content-proof commands without creating workflow state|rejects retired classic content-proof commands without creating workflow state|rejects retired Native snapshot proof through the generated command bundle)$",
+          "requiredNames": [
+            "rejects retired native content-proof commands without creating workflow state",
+            "rejects retired classic content-proof commands without creating workflow state",
+            "rejects retired Native snapshot proof through the generated command bundle"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:keeps Agent edit judgment and actual workflow authorization in skills-zh|keeps Agent edit judgment and actual workflow authorization in skills)$",
+          "requiredNames": [
+            "keeps Agent edit judgment and actual workflow authorization in skills-zh",
+            "keeps Agent edit judgment and actual workflow authorization in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "^(?:Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay)$",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-dirty-gitlink-archive",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/app/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:rejects retired native content-proof commands without creating workflow state|rejects retired classic content-proof commands without creating workflow state|rejects retired Native snapshot proof through the generated command bundle)$",
+          "requiredNames": [
+            "rejects retired native content-proof commands without creating workflow state",
+            "rejects retired classic content-proof commands without creating workflow state",
+            "rejects retired Native snapshot proof through the generated command bundle"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:keeps Agent edit judgment and actual workflow authorization in skills-zh|keeps Agent edit judgment and actual workflow authorization in skills)$",
+          "requiredNames": [
+            "keeps Agent edit judgment and actual workflow authorization in skills-zh",
+            "keeps Agent edit judgment and actual workflow authorization in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "^(?:Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay)$",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-applied-comment",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/app/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:rejects retired native content-proof commands without creating workflow state|rejects retired classic content-proof commands without creating workflow state|rejects retired Native snapshot proof through the generated command bundle)$",
+          "requiredNames": [
+            "rejects retired native content-proof commands without creating workflow state",
+            "rejects retired classic content-proof commands without creating workflow state",
+            "rejects retired Native snapshot proof through the generated command bundle"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:keeps Agent edit judgment and actual workflow authorization in skills-zh|keeps Agent edit judgment and actual workflow authorization in skills)$",
+          "requiredNames": [
+            "keeps Agent edit judgment and actual workflow authorization in skills-zh",
+            "keeps Agent edit judgment and actual workflow authorization in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "^(?:Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay)$",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-repeat-edit",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/app/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:rejects retired native content-proof commands without creating workflow state|rejects retired classic content-proof commands without creating workflow state|rejects retired Native snapshot proof through the generated command bundle)$",
+          "requiredNames": [
+            "rejects retired native content-proof commands without creating workflow state",
+            "rejects retired classic content-proof commands without creating workflow state",
+            "rejects retired Native snapshot proof through the generated command bundle"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:keeps Agent edit judgment and actual workflow authorization in skills-zh|keeps Agent edit judgment and actual workflow authorization in skills)$",
+          "requiredNames": [
+            "keeps Agent edit judgment and actual workflow authorization in skills-zh",
+            "keeps Agent edit judgment and actual workflow authorization in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "^(?:Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay)$",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-large-crlf",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/app/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:rejects retired native content-proof commands without creating workflow state|rejects retired classic content-proof commands without creating workflow state|rejects retired Native snapshot proof through the generated command bundle)$",
+          "requiredNames": [
+            "rejects retired native content-proof commands without creating workflow state",
+            "rejects retired classic content-proof commands without creating workflow state",
+            "rejects retired Native snapshot proof through the generated command bundle"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:keeps Agent edit judgment and actual workflow authorization in skills-zh|keeps Agent edit judgment and actual workflow authorization in skills)$",
+          "requiredNames": [
+            "keeps Agent edit judgment and actual workflow authorization in skills-zh",
+            "keeps Agent edit judgment and actual workflow authorization in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "^(?:Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay)$",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-compat-edit",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/app/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:rejects retired native content-proof commands without creating workflow state|rejects retired classic content-proof commands without creating workflow state|rejects retired Native snapshot proof through the generated command bundle)$",
+          "requiredNames": [
+            "rejects retired native content-proof commands without creating workflow state",
+            "rejects retired classic content-proof commands without creating workflow state",
+            "rejects retired Native snapshot proof through the generated command bundle"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:keeps Agent edit judgment and actual workflow authorization in skills-zh|keeps Agent edit judgment and actual workflow authorization in skills)$",
+          "requiredNames": [
+            "keeps Agent edit judgment and actual workflow authorization in skills-zh",
+            "keeps Agent edit judgment and actual workflow authorization in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "^(?:Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay)$",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-build-edit",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/app/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:rejects retired native content-proof commands without creating workflow state|rejects retired classic content-proof commands without creating workflow state|rejects retired Native snapshot proof through the generated command bundle)$",
+          "requiredNames": [
+            "rejects retired native content-proof commands without creating workflow state",
+            "rejects retired classic content-proof commands without creating workflow state",
+            "rejects retired Native snapshot proof through the generated command bundle"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:keeps Agent edit judgment and actual workflow authorization in skills-zh|keeps Agent edit judgment and actual workflow authorization in skills)$",
+          "requiredNames": [
+            "keeps Agent edit judgment and actual workflow authorization in skills-zh",
+            "keeps Agent edit judgment and actual workflow authorization in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "^(?:Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay)$",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-archive-ready",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/app/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:rejects retired native content-proof commands without creating workflow state|rejects retired classic content-proof commands without creating workflow state|rejects retired Native snapshot proof through the generated command bundle)$",
+          "requiredNames": [
+            "rejects retired native content-proof commands without creating workflow state",
+            "rejects retired classic content-proof commands without creating workflow state",
+            "rejects retired Native snapshot proof through the generated command bundle"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:keeps Agent edit judgment and actual workflow authorization in skills-zh|keeps Agent edit judgment and actual workflow authorization in skills)$",
+          "requiredNames": [
+            "keeps Agent edit judgment and actual workflow authorization in skills-zh",
+            "keeps Agent edit judgment and actual workflow authorization in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "^(?:Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay)$",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-archive-report-edit",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/app/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:rejects retired native content-proof commands without creating workflow state|rejects retired classic content-proof commands without creating workflow state|rejects retired Native snapshot proof through the generated command bundle)$",
+          "requiredNames": [
+            "rejects retired native content-proof commands without creating workflow state",
+            "rejects retired classic content-proof commands without creating workflow state",
+            "rejects retired Native snapshot proof through the generated command bundle"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:keeps Agent edit judgment and actual workflow authorization in skills-zh|keeps Agent edit judgment and actual workflow authorization in skills)$",
+          "requiredNames": [
+            "keeps Agent edit judgment and actual workflow authorization in skills-zh",
+            "keeps Agent edit judgment and actual workflow authorization in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "^(?:Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay)$",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-archive-requirements-edit",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/app/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:rejects retired native content-proof commands without creating workflow state|rejects retired classic content-proof commands without creating workflow state|rejects retired Native snapshot proof through the generated command bundle)$",
+          "requiredNames": [
+            "rejects retired native content-proof commands without creating workflow state",
+            "rejects retired classic content-proof commands without creating workflow state",
+            "rejects retired Native snapshot proof through the generated command bundle"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:keeps Agent edit judgment and actual workflow authorization in skills-zh|keeps Agent edit judgment and actual workflow authorization in skills)$",
+          "requiredNames": [
+            "keeps Agent edit judgment and actual workflow authorization in skills-zh",
+            "keeps Agent edit judgment and actual workflow authorization in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "^(?:Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay)$",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-archive-formal-comment",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/app/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:rejects retired native content-proof commands without creating workflow state|rejects retired classic content-proof commands without creating workflow state|rejects retired Native snapshot proof through the generated command bundle)$",
+          "requiredNames": [
+            "rejects retired native content-proof commands without creating workflow state",
+            "rejects retired classic content-proof commands without creating workflow state",
+            "rejects retired Native snapshot proof through the generated command bundle"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:keeps Agent edit judgment and actual workflow authorization in skills-zh|keeps Agent edit judgment and actual workflow authorization in skills)$",
+          "requiredNames": [
+            "keeps Agent edit judgment and actual workflow authorization in skills-zh",
+            "keeps Agent edit judgment and actual workflow authorization in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "^(?:Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay)$",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-reviewed-requirements",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/app/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:rejects retired native content-proof commands without creating workflow state|rejects retired classic content-proof commands without creating workflow state|rejects retired Native snapshot proof through the generated command bundle)$",
+          "requiredNames": [
+            "rejects retired native content-proof commands without creating workflow state",
+            "rejects retired classic content-proof commands without creating workflow state",
+            "rejects retired Native snapshot proof through the generated command bundle"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:keeps Agent edit judgment and actual workflow authorization in skills-zh|keeps Agent edit judgment and actual workflow authorization in skills)$",
+          "requiredNames": [
+            "keeps Agent edit judgment and actual workflow authorization in skills-zh",
+            "keeps Agent edit judgment and actual workflow authorization in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "^(?:Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay)$",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-missing-shape-fingerprint-recovery",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/app/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:rejects retired native content-proof commands without creating workflow state|rejects retired classic content-proof commands without creating workflow state|rejects retired Native snapshot proof through the generated command bundle)$",
+          "requiredNames": [
+            "rejects retired native content-proof commands without creating workflow state",
+            "rejects retired classic content-proof commands without creating workflow state",
+            "rejects retired Native snapshot proof through the generated command bundle"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:keeps Agent edit judgment and actual workflow authorization in skills-zh|keeps Agent edit judgment and actual workflow authorization in skills)$",
+          "requiredNames": [
+            "keeps Agent edit judgment and actual workflow authorization in skills-zh",
+            "keeps Agent edit judgment and actual workflow authorization in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "^(?:Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay)$",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-formal-requirements-judgment-route",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/app/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:rejects retired native content-proof commands without creating workflow state|rejects retired classic content-proof commands without creating workflow state|rejects retired Native snapshot proof through the generated command bundle)$",
+          "requiredNames": [
+            "rejects retired native content-proof commands without creating workflow state",
+            "rejects retired classic content-proof commands without creating workflow state",
+            "rejects retired Native snapshot proof through the generated command bundle"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:keeps Agent edit judgment and actual workflow authorization in skills-zh|keeps Agent edit judgment and actual workflow authorization in skills)$",
+          "requiredNames": [
+            "keeps Agent edit judgment and actual workflow authorization in skills-zh",
+            "keeps Agent edit judgment and actual workflow authorization in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "^(?:Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay)$",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-528-recovery-original-evidence-guards",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/app/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:rejects retired native content-proof commands without creating workflow state|rejects retired classic content-proof commands without creating workflow state|rejects retired Native snapshot proof through the generated command bundle)$",
+          "requiredNames": [
+            "rejects retired native content-proof commands without creating workflow state",
+            "rejects retired classic content-proof commands without creating workflow state",
+            "rejects retired Native snapshot proof through the generated command bundle"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:keeps Agent edit judgment and actual workflow authorization in skills-zh|keeps Agent edit judgment and actual workflow authorization in skills)$",
+          "requiredNames": [
+            "keeps Agent edit judgment and actual workflow authorization in skills-zh",
+            "keeps Agent edit judgment and actual workflow authorization in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "^(?:Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay)$",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-528-legacy-archive-recovery",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/app/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:rejects retired native content-proof commands without creating workflow state|rejects retired classic content-proof commands without creating workflow state|rejects retired Native snapshot proof through the generated command bundle)$",
+          "requiredNames": [
+            "rejects retired native content-proof commands without creating workflow state",
+            "rejects retired classic content-proof commands without creating workflow state",
+            "rejects retired Native snapshot proof through the generated command bundle"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:keeps Agent edit judgment and actual workflow authorization in skills-zh|keeps Agent edit judgment and actual workflow authorization in skills)$",
+          "requiredNames": [
+            "keeps Agent edit judgment and actual workflow authorization in skills-zh",
+            "keeps Agent edit judgment and actual workflow authorization in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "^(?:Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay)$",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-shared-input-observation",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/app/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:rejects retired native content-proof commands without creating workflow state|rejects retired classic content-proof commands without creating workflow state|rejects retired Native snapshot proof through the generated command bundle)$",
+          "requiredNames": [
+            "rejects retired native content-proof commands without creating workflow state",
+            "rejects retired classic content-proof commands without creating workflow state",
+            "rejects retired Native snapshot proof through the generated command bundle"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-content-proof-removal.test.ts",
+          "namePattern": "^(?:keeps Agent edit judgment and actual workflow authorization in skills-zh|keeps Agent edit judgment and actual workflow authorization in skills)$",
+          "requiredNames": [
+            "keeps Agent edit judgment and actual workflow authorization in skills-zh",
+            "keeps Agent edit judgment and actual workflow authorization in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session)$",
+          "requiredNames": [
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:rejects incomplete or forged high-level results without completing the original Verify task)$",
+          "requiredNames": [
+            "rejects incomplete or forged high-level results without completing the original Verify task"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:keeps the selected independent review when the next claim omits review options)$",
+          "requiredNames": [
+            "keeps the selected independent review when the next claim omits review options"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "^(?:Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay)$",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path runs one final check, accepts a trusted complete Verifier result, and writes the report"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions|recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions|recovers an applied unknown Archive without replay after material edits and rejects foreign transactions|recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions)$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after implementation edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after material edits and rejects foreign transactions",
+            "recovers an applied unknown Archive without replay after transaction edits and rejects foreign transactions"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-portable-archive-written-cursor-recovery",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-portable-delta-rebase-input-binding",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration applies an Agent-selected Delta to current canonical text and rejects a missing target|Native portable delta integration explicitly rebases a passed Delta and returns only that requested change to Verify|Native portable delta integration explicitly rebases an already applied Delta with an independent canonical addition|Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration applies an Agent-selected Delta to current canonical text and rejects a missing target",
+            "Native portable delta integration explicitly rebases a passed Delta and returns only that requested change to Verify",
+            "Native portable delta integration explicitly rebases an already applied Delta with an independent canonical addition",
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-portable-archive-explicit-revert-recovery",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration applies an Agent-selected Delta to current canonical text and rejects a missing target|Native portable delta integration explicitly rebases a passed Delta and returns only that requested change to Verify|Native portable delta integration explicitly rebases an already applied Delta with an independent canonical addition|Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration applies an Agent-selected Delta to current canonical text and rejects a missing target",
+            "Native portable delta integration explicitly rebases a passed Delta and returns only that requested change to Verify",
+            "Native portable delta integration explicitly rebases an already applied Delta with an independent canonical addition",
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-portable-delta-conflict-diagnostic",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration applies an Agent-selected Delta to current canonical text and rejects a missing target|Native portable delta integration explicitly rebases a passed Delta and returns only that requested change to Verify|Native portable delta integration explicitly rebases an already applied Delta with an independent canonical addition|Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration applies an Agent-selected Delta to current canonical text and rejects a missing target",
+            "Native portable delta integration explicitly rebases a passed Delta and returns only that requested change to Verify",
+            "Native portable delta integration explicitly rebases an already applied Delta with an independent canonical addition",
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-supervisor-recovery-execution-workspace",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-supervisor.test.ts",
+          "namePattern": "^(?:Native Supervisor v2 state advances a parent without a mandatory review and keeps verification in its integration workspace)$",
+          "requiredNames": [
+            "Native Supervisor v2 state advances a parent without a mandatory review and keeps verification in its integration workspace"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-prepared-delta-preserves-independent-canonical-edit",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "resumes a prepared Delta transaction without overwriting an independent canonical addition",
+          "requiredNames": [
+            "Native portable delta integration resumes a prepared Delta transaction without overwriting an independent canonical addition"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-299-real-integration-parent-verify",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "^(?:continues the approved v1 parent from actual merged Child archives at its explicit root)$",
+          "requiredNames": [
+            "continues the approved v1 parent from actual merged Child archives at its explicit root"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-supervisor-current-delivery-boundaries.test.ts",
+          "namePattern": "^(?:keeps the parent Builder unavailable until the original dependent Child graph is integrated)$",
+          "requiredNames": [
+            "keeps the parent Builder unavailable until the original dependent Child graph is integrated"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-supervisor-current-delivery-boundaries.test.ts",
+          "namePattern": "^(?:preserves real Supervisor delivery and all cleanup targets through the current public CLI: complete)$",
+          "requiredNames": [
+            "preserves real Supervisor delivery and all cleanup targets through the current public CLI: complete"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-supervisor-business.test.ts",
+          "namePattern": "^(?:completes Agent-selected Supervisor work through the Native business entry via source|completes Agent-selected Supervisor work through the Native business entry via generated)$",
+          "requiredNames": [
+            "completes Agent-selected Supervisor work through the Native business entry via source",
+            "completes Agent-selected Supervisor work through the Native business entry via generated"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(normal\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(partial-recovery\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(branch-lock-recovery\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(delivery-recovery\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(delivery-ref-lock\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(target-drift\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(child-builder-failure\\)|Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(parent-builder-failure\\))$",
+          "requiredNames": [
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (normal)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (partial-recovery)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (branch-lock-recovery)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (delivery-recovery)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (delivery-ref-lock)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (target-drift)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (child-builder-failure)",
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (parent-builder-failure)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-application.test.ts",
+          "namePattern": "^(?:binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate)$",
+          "requiredNames": [
+            "binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-314-integration-target-fence",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-supervisor.test.ts",
+          "namePattern": "^(?:serially merges a verified commit into integration while protecting target)$",
+          "requiredNames": [
+            "serially merges a verified commit into integration while protecting target"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-supervisor-current-delivery-boundaries.test.ts",
+          "namePattern": "^(?:preserves real Supervisor delivery and all cleanup targets through the current public CLI: complete)$",
+          "requiredNames": [
+            "preserves real Supervisor delivery and all cleanup targets through the current public CLI: complete"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-supervisor-current-delivery-boundaries.test.ts",
+          "namePattern": "^(?:preserves real Supervisor delivery and all cleanup targets through the current public CLI: target-drift)$",
+          "requiredNames": [
+            "preserves real Supervisor delivery and all cleanup targets through the current public CLI: target-drift"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-supervisor-current-delivery-boundaries.test.ts",
+          "namePattern": "^(?:preserves real Supervisor delivery and all cleanup targets through the current public CLI: wrong-child-branch)$",
+          "requiredNames": [
+            "preserves real Supervisor delivery and all cleanup targets through the current public CLI: wrong-child-branch"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(",
+          "requiredNames": [
+            "handles parent repair, delivery, and cleanup after Supervisor DAG restart ("
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-314-parent-evidence",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-supervisor-current-delivery-boundaries.test.ts",
+          "namePattern": "^(?:preserves real Supervisor delivery and all cleanup targets through the current public CLI: complete)$",
+          "requiredNames": [
+            "preserves real Supervisor delivery and all cleanup targets through the current public CLI: complete"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-application.test.ts",
+          "namePattern": "binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate",
+          "requiredNames": [
+            "binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-422-pregit-supervisor",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-seven-current-business/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "binds a Supervisor Shape to Git that was initialized after the change was created|refuses to bind a pre-Git Supervisor Shape from a dirty Git baseline|refuses to bind a pre-Git Supervisor Shape while a child task is active",
+          "requiredNames": [
+            "binds a Supervisor Shape to Git that was initialized after the change was created",
+            "refuses to bind a pre-Git Supervisor Shape from a dirty Git baseline",
+            "refuses to bind a pre-Git Supervisor Shape while a child task is active"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -3,13 +3,14 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const SOURCE_PATTERN = /^(?:app|domains|platform|scripts|test)\/.*\.(?:cjs|js|jsx|mjs|ts|tsx)$/u;
+const SOURCE_PATTERN =
+  /^(?:app|domains|platform|plugin|scripts|test)\/.*\.(?:cjs|js|jsx|mjs|ts|tsx)$/u;
 const FORMAT_PATTERN =
-  /^(?:\.claude\/rules\/|\.github\/|app\/|config\/|domains\/|platform\/|scripts\/|test\/)|^(?:AGENTS|CLAUDE)\.md$|^(?:build\.js|package\.json|tsconfig\.json|vitest\.config\.ts)$/u;
+  /^(?:\.claude\/rules\/|\.github\/|app\/|config\/|domains\/|platform\/|plugin\/|scripts\/|test\/)|^(?:AGENTS|CLAUDE)\.md$|^(?:build\.js|package\.json|tsconfig\.json|vitest\.config\.ts)$/u;
 const RUNTIME_SOURCE_PATTERN =
   /^(?:domains\/(?:comet-classic|comet-entry|comet-native|workflow-contract)\/.*\.(?:ts|tsx)|platform\/process\/hook-adapter\.ts|scripts\/build\/build-(?:classic|entry|native)-runtime\.mjs|assets\/skills\/(?:comet|comet-native)\/scripts\/.*\.mjs)$/u;
 const AGENT_RULE_PATTERN =
-  /^(?:(?:AGENTS|CLAUDE)\.md|\.claude\/rules\/.*\.md|(?:app|assets|docs|eval|platform|test|domains\/[^/]+|scripts\/release)\/AGENTS\.md)$/u;
+  /^(?:(?:AGENTS|CLAUDE)\.md|\.claude\/rules\/.*\.md|(?:app|assets|docs|eval|platform|plugin|test|domains\/[^/]+|scripts\/release)\/AGENTS\.md)$/u;
 
 function normalizeFile(file) {
   return file.replaceAll('\\', '/').replace(/^\.\//u, '');
@@ -65,7 +66,7 @@ export function planChangedVerification(changedFiles) {
       'Source, test, script, or repository layout changed.',
     );
   }
-  if (files.some((file) => /^(?:app|domains|platform|test)\/.*\.(?:ts|tsx)$/u.test(file))) {
+  if (files.some((file) => /^(?:app|domains|platform|plugin|test)\/.*\.(?:ts|tsx)$/u.test(file))) {
     add('typecheck', 'pnpm', ['exec', 'tsc', '--noEmit'], 'TypeScript source or tests changed.');
   }
   if (files.some((file) => FORMAT_PATTERN.test(file))) {
@@ -88,6 +89,15 @@ export function planChangedVerification(changedFiles) {
     );
   }
 
+  for (const platform of ['codex', 'dsh']) {
+    if (files.some((file) => file.startsWith(`plugin/${platform}/`)))
+      add(
+        `plugin:${platform}`,
+        'pnpm',
+        ['exec', 'vitest', 'run', `test/scripts/${platform}-plugin-build.test.ts`],
+        `Plugin ${platform} source or template changed.`,
+      );
+  }
   const domainNames = new Set();
   let appChanged = false;
   let platformChanged = false;

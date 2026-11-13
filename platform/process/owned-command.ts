@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Readable } from 'node:stream';
 
 import { commandInvocation } from './spawn-command.js';
+import { registerTerminationPreparation } from './terminate-process-tree.js';
 
 /** 独立监管器持有时限；原调用方退出后，IPC 断连仍会终止整个检查进程组。 */
 const SUPERVISOR = String.raw`
@@ -12,8 +13,22 @@ let started = false;
 let stopping = false;
 let terminating = false;
 let child;
+let commandStop;
 const ownerConfirmsTermination = process.argv[2] === 'confirm-termination';
 const send = (message) => { if (process.connected) process.send(message, () => {}); };
+const killTree = (pid) => {
+  const systemRoot = process.env.SystemRoot || process.env.WINDIR || 'C:\\Windows';
+  return spawn(path.win32.join(systemRoot, 'System32', 'taskkill.exe'), ['/pid', String(pid), '/t', '/f'], { stdio: 'ignore', windowsHide: true });
+};
+const stopCommand = () => commandStop ??= new Promise((resolve) => {
+  if (!child?.pid || child.exitCode !== null || child.signalCode !== null) { resolve(); return; }
+  const killer = killTree(child.pid);
+  const fallback = () => child?.kill('SIGKILL');
+  const finish = () => { clearTimeout(timer); resolve(); };
+  killer.once('error', () => { fallback(); finish(); });
+  const timer = setTimeout(() => { killer.kill('SIGKILL'); fallback(); }, 2000);
+  killer.once('close', finish);
+});
 const terminate = () => {
   if (terminating) return;
   terminating = true;
@@ -21,8 +36,7 @@ const terminate = () => {
     try { process.kill(-process.pid, 'SIGKILL'); } catch {}
     process.exit(1);
   }
-  const systemRoot = process.env.SystemRoot || process.env.WINDIR || 'C:\\Windows';
-  const killer = spawn(path.win32.join(systemRoot, 'System32', 'taskkill.exe'), ['/pid', String(process.pid), '/t', '/f'], { stdio: 'ignore', windowsHide: true });
+  const killer = killTree(process.pid);
   killer.on('error', () => { child?.kill('SIGKILL'); process.exit(1); });
   setTimeout(() => { killer.kill('SIGKILL'); child?.kill('SIGKILL'); process.exit(1); }, 2000);
 };
@@ -30,10 +44,12 @@ const stop = (reason) => {
   if (stopping) return;
   stopping = true;
   if (reason !== 'completed') send({ type: 'interrupted', reason });
-  // Eval 的 owner 必须在监管器仍存活时确认 taskkill；不要同时自杀造成竞态。
-  if (process.platform === 'win32' && ownerConfirmsTermination && process.connected) {
+  // 原调用方必须在监管器仍存活时确认 taskkill；不要同时退出造成竞态。
+  if (ownerConfirmsTermination && process.connected) {
+    // 先守住命令时限，监管器继续存活以供原调用方核对整树停止。
+    if (reason === 'timeout' && process.platform === 'win32') stopCommand();
     // 调用方仍在线时给系统整树核对留出期限；断连仍立即清理，不能先退出丢失原 PID 身份。
-    setTimeout(terminate, 30000);
+    setTimeout(terminate, reason === 'timeout' && process.platform !== 'win32' ? 250 : 30000);
     return;
   }
   terminate();
@@ -46,6 +62,11 @@ process.on('disconnect', () => { if (stopping) terminate(); else stop('owner-exi
 process.on('SIGTERM', () => stop('cancelled'));
 process.on('SIGINT', () => stop('cancelled'));
 process.on('message', (message) => {
+  if (message.type === 'prepare-termination') {
+    if (!stopping) { stopping = true; setTimeout(terminate, 30000); }
+    void stopCommand().then(() => send({ type: 'termination-ready' }));
+    return;
+  }
   if (started || stopping || message.type !== 'start') return;
   started = true;
   const timer = message.timeoutMs === null ? undefined : setTimeout(() => stop('timeout'), message.timeoutMs);
@@ -118,6 +139,39 @@ export function spawnOwnedCommand(
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     },
   ) as ChildProcessByStdio<null, Readable, Readable>;
+  if (options.confirmTermination && process.platform === 'win32') {
+    let preparation: Promise<void> | undefined;
+    registerTerminationPreparation(
+      child,
+      () =>
+        (preparation ??= new Promise<void>((resolve) => {
+          if (!child.connected) {
+            resolve();
+            return;
+          }
+          const finish = () => {
+            clearTimeout(timer);
+            child.off('message', onMessage);
+            child.off('error', finish);
+            child.off('close', finish);
+            child.off('disconnect', finish);
+            resolve();
+          };
+          const onMessage = (message: unknown) => {
+            if ((message as { type?: unknown } | null)?.type === 'termination-ready') finish();
+          };
+          // 监管器的清理工具最多等待 2 秒；通信失败后仍由调用方尝试整树确认。
+          const timer = setTimeout(finish, 3000);
+          child.on('message', onMessage);
+          child.once('error', finish);
+          child.once('close', finish);
+          child.once('disconnect', finish);
+          child.send!({ type: 'prepare-termination' }, (error) => {
+            if (error) finish();
+          });
+        })),
+    );
+  }
   const ready = new Promise<void>((resolve, reject) => {
     const cleanup = () => {
       child.off('message', onMessage);

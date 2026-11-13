@@ -1,0 +1,119 @@
+diff --git a/test/domains/comet-native/native-parallel-worktree.test.ts b/test/domains/comet-native/native-parallel-worktree.test.ts
+index 06373249..dbb7f280 100644
+--- a/test/domains/comet-native/native-parallel-worktree.test.ts
++++ b/test/domains/comet-native/native-parallel-worktree.test.ts
+@@ -15,6 +15,7 @@ interface NativeEnvelope {
+   exitCode: number;
+   data?: {
+     phase?: string;
++    stateVersion?: number;
+     preparation?: { projectRoot?: string };
+     change?: { phase?: string };
+     state?: {
+@@ -347,6 +348,32 @@ describe('Native parallel linked-worktree Runtime', () => {
+     }
+     await fs.writeFile(path.join(editedWorktree.root, BUSINESS_SOURCE), userSource);
+ 
++    const current = await runNativeCommand('status', [editedWorktree.name], editedWorktree.root);
++    assertCompleted(current, 'read the original revision frontier');
++    expect(current.data?.phase).toBe('verify');
++    expect(current.data?.stateVersion).toBeTypeOf('number');
++    const stateFile = (worktree: { root: string; name: string }) =>
++      path.join(worktree.root, 'docs/comet/changes', worktree.name, 'comet-state.yaml');
++    const beforeDecision = await Promise.all(
++      worktrees.map((worktree) => fs.readFile(stateFile(worktree))),
++    );
++    const unbound = await runNativeCommand(
++      'next',
++      [
++        editedWorktree.name,
++        '--revise-implementation',
++        '--summary',
++        'SIMULATED user changes the implementation',
++      ],
++      editedWorktree.root,
++    );
++    expect(unbound.exitCode, unbound.stdout).toBe(64);
++    expect(unbound.error?.message).toContain(
++      'User decisions require --expected-state-version and --expected-action',
++    );
++    expect(
++      await Promise.all(worktrees.map((worktree) => fs.readFile(stateFile(worktree)))),
++    ).toEqual(beforeDecision);
+     assertCompleted(
+       await runNativeCommand(
+         'next',
+@@ -354,7 +381,11 @@ describe('Native parallel linked-worktree Runtime', () => {
+           editedWorktree.name,
+           '--revise-implementation',
+           '--summary',
+-          'Confirmed business value revision',
++          'SIMULATED user requests the business value revision',
++          '--expected-state-version',
++          String(current.data!.stateVersion),
++          '--expected-action',
++          'revise-implementation',
+         ],
+         editedWorktree.root,
+       ),
+@@ -370,6 +401,10 @@ describe('Native parallel linked-worktree Runtime', () => {
+     expect(editedStatus.data?.phase).toBe('build');
+     expect(editedStatus.data?.continuation?.disposition).not.toBe('blocked');
+     expect(untouchedStatus.data?.phase).toBe('verify');
++    expect(await fs.readFile(stateFile(untouchedWorktree))).toEqual(beforeDecision[1]);
++    expect(resolveWorkspaceRuntimeRootSync(editedWorktree.root)).not.toBe(
++      resolveWorkspaceRuntimeRootSync(untouchedWorktree.root),
++    );
+     await expect(
+       fs.readFile(path.join(untouchedWorktree.root, BUSINESS_SOURCE), 'utf8'),
+     ).resolves.toBe('export const value = "parallel-beta-implementation";\n');
+diff --git a/test/domains/comet-native/native-document-constraints.test.ts b/test/domains/comet-native/native-document-constraints.test.ts
+index f2d7f3f5..f104fc4f 100644
+--- a/test/domains/comet-native/native-document-constraints.test.ts
++++ b/test/domains/comet-native/native-document-constraints.test.ts
+@@ -168,12 +168,31 @@ describe('Native document constraints', () => {
+       force: true,
+     });
+     await writeSpec('replacement-capability');
++    const pending = await readNativePortableChange(paths, 'retarget-change');
++    const stateFile = path.join(changeDir, 'comet-state.yaml');
++    const pendingBytes = await fs.readFile(stateFile);
++    await expect(
++      nativeNextCommand(
++        [
++          'retarget-change',
++          '--revise-requirements',
++          '--summary',
++          'SIMULATED user changes the unapproved target',
++        ],
++        projectRoot,
++      ),
++    ).rejects.toThrow('User decisions require --expected-state-version and --expected-action');
++    expect(await fs.readFile(stateFile)).toEqual(pendingBytes);
+     const revision = await nativeNextCommand(
+       [
+         'retarget-change',
+         '--revise-requirements',
+         '--summary',
+-        'Replace the proposed target before approval',
++        'SIMULATED user replaces the proposed target before approval',
++        '--expected-state-version',
++        String(pending.state_version),
++        '--expected-action',
++        'revise-requirements',
+       ],
+       projectRoot,
+     );
+@@ -184,6 +203,12 @@ describe('Native document constraints', () => {
+     );
+     expect(retargeted.exitCode).toBe(0);
+     const prepared = await readNativePortableChange(paths, 'retarget-change');
++    await expect(
++      fs.access(path.join(changeDir, 'specs/original-capability')),
++    ).rejects.toMatchObject({ code: 'ENOENT' });
++    expect(
++      await fs.readFile(path.join(changeDir, 'specs/replacement-capability/spec.md'), 'utf8'),
++    ).toContain('The replacement-capability behavior is complete.');
+     expect(prepared).toMatchObject({
+       phase: 'shape',
+       status: 'await-user',

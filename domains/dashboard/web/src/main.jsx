@@ -64,6 +64,8 @@ import {
   EditOutlined,
   FileTextOutlined,
   FlagOutlined,
+  ExpandOutlined,
+  CompressOutlined,
   InfoCircleOutlined,
   MenuFoldOutlined,
   MenuOutlined,
@@ -3131,9 +3133,11 @@ function ArtifactDrawer({ artifact, embedded = false, onClose }) {
   const dashboardLanguage = useDashboardLanguage();
   const { message: messageApi } = AntApp.useApp();
   const [loadState, setLoadState] = useState({ status: 'idle' });
-  const { fullscreen: requestedFullscreen, requestClose } = useDashboardModalState(
-    Boolean(artifact),
-  );
+  const {
+    fullscreen: requestedFullscreen,
+    toggleFullscreen,
+    requestClose,
+  } = useDashboardModalState(Boolean(artifact));
   const fullscreen = !embedded && requestedFullscreen;
   const [toc, setToc] = useState([]);
   const [activeTocId, setActiveTocId] = useState('');
@@ -3185,7 +3189,7 @@ function ArtifactDrawer({ artifact, embedded = false, onClose }) {
     const content = preview?.exists
       ? useStructuredPreview
         ? preview.content?.trimEnd() || ''
-        : `${preview.content?.trimEnd() || t('这个产物是空文件。')}${preview.truncated ? t('\n\n> 内容过长，已截取前 256KB。') : ''}`
+        : preview.content?.trimEnd() || t('这个产物是空文件。')
       : preview
         ? t('尚未生成 {0}。', [artifact.name])
         : t(
@@ -3208,9 +3212,6 @@ function ArtifactDrawer({ artifact, embedded = false, onClose }) {
               : await renderYamlTable(content, {
                   schema: isNativeStatePreview ? 'native-state' : undefined,
                 });
-            if (preview.truncated) {
-              html += t('<p><em>内容过长，已截取前 256KB。</em></p>');
-            }
           }
         } else {
           html = await renderMarkdown(content);
@@ -3359,15 +3360,32 @@ function ArtifactDrawer({ artifact, embedded = false, onClose }) {
               </div>
             )}
           </div>
-          <button
-            type="button"
-            className="dashboard-artifact-preview-close grid size-8 shrink-0 place-items-center rounded-lg text-fg-2 hover:bg-surface"
-            onClick={onClose}
-            aria-label={t('关闭产物预览')}
-            title={t('关闭产物预览')}
-          >
-            <CloseOutlined aria-hidden="true" />
-          </button>
+          {embedded ? (
+            <button
+              type="button"
+              className="dashboard-artifact-preview-close grid size-8 shrink-0 place-items-center rounded-lg text-fg-2 hover:bg-surface"
+              onClick={onClose}
+              aria-label={t('关闭产物预览')}
+              title={t('关闭产物预览')}
+            >
+              <CloseOutlined aria-hidden="true" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="dashboard-artifact-preview-expand grid size-8 shrink-0 place-items-center rounded-lg text-fg-2 hover:bg-surface"
+              onClick={toggleFullscreen}
+              aria-label={fullscreen ? t('退出全屏') : t('全屏展示')}
+              title={fullscreen ? t('退出全屏') : t('全屏展示')}
+              aria-pressed={fullscreen}
+            >
+              {fullscreen ? (
+                <CompressOutlined style={{ fontSize: 18 }} aria-hidden="true" />
+              ) : (
+                <ExpandOutlined style={{ fontSize: 18 }} aria-hidden="true" />
+              )}
+            </button>
+          )}
         </header>
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {fullscreen && toc.length > 0 && (
@@ -4717,7 +4735,8 @@ async function copyText(text) {
 
 const dashboardRoot = document.getElementById('root');
 const embeddedDashboardBuild = globalThis.__COMET_DASHBOARD_EMBED__ === true;
-if (dashboardRoot && !embeddedDashboardBuild) createRoot(dashboardRoot).render(<App />);
+if (dashboardRoot && !embeddedDashboardBuild && !globalThis.__COMET_DASHBOARD_MCP__)
+  createRoot(dashboardRoot).render(<App />);
 function AntSidebar({
   embedded = false,
   update,
@@ -4891,7 +4910,11 @@ function AntSidebar({
         <div className="dashboard-sidebar-content flex h-full flex-col">
           <div className="dashboard-sidebar-brand flex items-center gap-2">
             <img
-              src={embedded ? '/assets/dashboard-website-demo/favicon.png' : '/favicon.png'}
+              src={
+                embedded
+                  ? '/assets/dashboard-website-demo/favicon.png'
+                  : (globalThis.__COMET_DASHBOARD_LOGO__ ?? '/favicon.png')
+              }
               alt="Comet"
               className="size-7 rounded-[7px]"
             />
@@ -4981,7 +5004,7 @@ function ContextUsageCenter({
   const [timeSelection, setTimeSelection] = useDashboardViewState(
     `${demo ? 'demo' : projectId}:context-usage`,
     'timeRange',
-    { preset: '7d' },
+    { preset: 'all' },
   );
   const timeRange = useMemo(
     () => resolveObservabilityRange(timeSelection),
@@ -5438,6 +5461,7 @@ function toCometConfigDraft(data) {
     defaultWorkflow: data.defaultWorkflow,
     workflows: [...data.workflows],
     ambientResume: data.ambientResume,
+    changeWalkthrough: data.changeWalkthrough ?? true,
     hookAllowPaths: data.hookAllowPaths.join('\n'),
     knowledge: {
       provider: data.knowledge?.provider ?? 'local',
@@ -5448,6 +5472,7 @@ function toCometConfigDraft(data) {
     native: {
       ...data.native,
       maxVerifyFailures: String(data.native.maxVerifyFailures),
+      maxParallelChildren: String(data.native.maxParallelChildren ?? 2),
     },
     classic: { ...data.classic },
   };
@@ -5488,6 +5513,11 @@ function CometConfigSettings({ data, readOnly = false, onSave }) {
       return;
     }
     const maxVerifyFailures = Number(draft.native.maxVerifyFailures);
+    const maxParallelChildren = Number(draft.native.maxParallelChildren);
+    if (!Number.isSafeInteger(maxParallelChildren) || maxParallelChildren <= 0) {
+      setSaveError(t('Supervisor 子任务并发上限必须是正整数。'));
+      return;
+    }
     if (!Number.isSafeInteger(maxVerifyFailures) || maxVerifyFailures <= 0) {
       setSaveError(t('Verify 失败上限必须是正整数。'));
       return;
@@ -5513,6 +5543,7 @@ function CometConfigSettings({ data, readOnly = false, onSave }) {
         defaultWorkflow: draft.defaultWorkflow,
         workflows: draft.workflows,
         ambientResume: draft.ambientResume,
+        changeWalkthrough: draft.changeWalkthrough,
         hookAllowPaths: draft.hookAllowPaths
           .split(/\r?\n/u)
           .map((item) => item.trim())
@@ -5523,7 +5554,7 @@ function CometConfigSettings({ data, readOnly = false, onSave }) {
           maxFileMb,
           maxTotalMb,
         },
-        native: { ...draft.native, maxVerifyFailures },
+        native: { ...draft.native, maxVerifyFailures, maxParallelChildren },
         classic: draft.classic,
       });
     } catch (error) {
@@ -5600,6 +5631,24 @@ function CometConfigSettings({ data, readOnly = false, onSave }) {
             checked={draft.ambientResume}
             aria-label={t('切换环境感知恢复')}
             onChange={(ambientResume) => setDraft((current) => ({ ...current, ambientResume }))}
+          />
+        </div>
+        <div className="dashboard-memory-setting">
+          <div className="dashboard-memory-setting-copy">
+            <strong>{t('变更说明')}</strong>
+            <span>
+              {t(
+                '为 Native 和 Classic 生成可直接打开的 HTML 变更说明；开启后会增加讲解内容的 token 消耗',
+              )}
+            </span>
+          </div>
+          <Switch
+            checked={draft.changeWalkthrough}
+            size="small"
+            aria-label={t('切换变更说明')}
+            onChange={(changeWalkthrough) =>
+              setDraft((current) => ({ ...current, changeWalkthrough }))
+            }
           />
         </div>
         <div className="dashboard-memory-setting dashboard-memory-setting-stack">
@@ -5750,6 +5799,19 @@ function CometConfigSettings({ data, readOnly = false, onSave }) {
               { value: 'required', label: t('需要确认') },
             ]}
             onChange={(value) => setNative('archiveConfirmation', value)}
+          />
+        </div>
+        <div className="dashboard-memory-setting">
+          <div className="dashboard-memory-setting-copy">
+            <strong>{t('Supervisor 子任务并发上限')}</strong>
+            <span>{t('默认 2；单会话固定为 1。调整从下一轮派发生效，不中断已派发的子任务。')}</span>
+          </div>
+          <Input
+            className="dashboard-config-control"
+            inputMode="numeric"
+            value={draft.native.maxParallelChildren}
+            aria-label={t('Native Supervisor 子任务并发上限')}
+            onChange={(event) => setNative('maxParallelChildren', event.target.value)}
           />
         </div>
         <div className="dashboard-memory-setting">

@@ -7,11 +7,9 @@ import {
 } from '../../platform/paths/git-worktree.js';
 import { runGitCommand } from '../../platform/process/git.js';
 import type { NativeChildrenContract } from './native-children-contract.js';
-import { readProjectConfig } from './native-config.js';
-import { withNativeMutationLock } from './native-mutation-lock.js';
-import type { NativePortableState } from './native-portable-types.js';
+import { DEFAULT_NATIVE_MAX_PARALLEL_CHILDREN, readProjectConfig } from './native-config.js';
+import { withNativeMutation } from './native-mutation.js';
 import {
-  assertCommit,
   cloneState,
   createNativeSupervisorState,
   createNativeSupervisorTask,
@@ -88,142 +86,104 @@ export async function dispatchNativeSupervisorReadyTasks(options: {
   parent: string;
   maxParallel?: number;
 }): Promise<{ state: NativeSupervisorState; tasks: NativeSupervisorTask[] }> {
-  return withNativeMutationLock(
-    options.paths,
-    `dispatch Native Supervisor children ${options.parent}`,
-    async () => {
-      const state = await readNativeSupervisorState(options.paths, options.parent);
-      if (!state) throw new Error(`Native Supervisor state is missing for ${options.parent}`);
-      const maxParallel = options.maxParallel ?? 2;
-      if (!Number.isSafeInteger(maxParallel) || maxParallel < 1) {
-        throw new Error('Native Supervisor maxParallel must be a positive integer');
-      }
-      const activeTasks = state.children.filter(({ task }) => task !== null).length;
-      const capacity = Math.max(0, maxParallel - activeTasks);
-      if (capacity === 0) return { state, tasks: [] };
-      const sourceConfig = await readProjectConfig(options.paths.projectRoot);
-      let next = state;
-      const tasks: NativeSupervisorTask[] = [];
-      let stateChanged = false;
-      for (const child of state.children) {
-        if (tasks.length >= capacity) break;
-        if (child.task !== null) continue;
-        const reverify = child.status === 'needs-reverify' && child.candidateCommit !== null;
-        if (child.status !== 'ready' && !reverify) continue;
-        let workspace: PreparedNativeWorkspace;
-        try {
-          workspace = await prepareNativeSupervisorChildWorkspace({
-            projectRoot: options.paths.projectRoot,
-            parent: state.parent,
-            child: child.name,
-            targetBranch: state.integration.branch,
-            sourceConfig,
-          });
-          if (!reverify) {
-            refreshNativeSupervisorBuilderWorkspace(
-              workspace.projectRoot,
-              `comet/supervisor/${state.parent}/${child.name}`,
-              state.integration.headCommit,
-            );
-          } else {
-            assertNativeSupervisorVerifierWorkspace(
-              workspace.projectRoot,
-              `comet/supervisor/${state.parent}/${child.name}`,
-              child.candidateCommit!,
-            );
-          }
-        } catch (error) {
-          const blocked = cloneState(next);
-          const blockedChild = blocked.children.find(({ name }) => name === child.name);
-          if (blockedChild) {
-            blockedChild.blocker = (error as Error).message;
-            recordEvent(blocked, {
-              kind: 'task-blocked',
-              child: child.name,
-              runId: null,
-              summary: blockedChild.blocker,
-            });
-            blocked.stateVersion += 1;
-            next = blocked;
-            stateChanged = true;
-          }
-          continue;
-        }
-        const created = createNativeSupervisorTask(next, {
-          role: reverify ? 'verifier' : 'builder',
+  return withNativeMutation(options.paths, async () => {
+    const state = await readNativeSupervisorState(options.paths, options.parent);
+    if (!state) throw new Error(`Native Supervisor state is missing for ${options.parent}`);
+    const sourceConfig = await readProjectConfig(options.paths.projectRoot);
+    const maxParallel =
+      options.maxParallel ??
+      sourceConfig?.native.max_parallel_children ??
+      DEFAULT_NATIVE_MAX_PARALLEL_CHILDREN;
+    if (!Number.isSafeInteger(maxParallel) || maxParallel < 1) {
+      throw new Error('Native Supervisor maxParallel must be a positive integer');
+    }
+    const activeTasks = state.children.filter(({ task }) => task !== null).length;
+    const capacity = Math.max(0, maxParallel - activeTasks);
+    if (capacity === 0) return { state, tasks: [] };
+    let next = state;
+    const tasks: NativeSupervisorTask[] = [];
+    let stateChanged = false;
+    for (const child of state.children) {
+      if (tasks.length >= capacity) break;
+      if (child.task !== null) continue;
+      const reverify = child.status === 'needs-reverify' && child.candidateCommit !== null;
+      if (child.status !== 'ready' && !reverify) continue;
+      let workspace: PreparedNativeWorkspace;
+      try {
+        workspace = await prepareNativeSupervisorChildWorkspace({
+          projectRoot: options.paths.projectRoot,
+          parent: state.parent,
           child: child.name,
-          projectRoot: workspace.projectRoot,
-          runId: randomUUID(),
+          targetBranch: state.integration.branch,
+          sourceConfig,
         });
-        next = created.state;
-        tasks.push(created.task);
+        if (!reverify) {
+          refreshNativeSupervisorBuilderWorkspace(
+            workspace.projectRoot,
+            `comet/supervisor/${state.parent}/${child.name}`,
+            state.integration.headCommit,
+          );
+        } else {
+          assertNativeSupervisorVerifierWorkspace(
+            workspace.projectRoot,
+            `comet/supervisor/${state.parent}/${child.name}`,
+            child.candidateCommit!,
+          );
+        }
+      } catch (error) {
+        const blocked = cloneState(next);
+        const blockedChild = blocked.children.find(({ name }) => name === child.name);
+        if (blockedChild) {
+          blockedChild.blocker = (error as Error).message;
+          recordEvent(blocked, {
+            kind: 'task-blocked',
+            child: child.name,
+            runId: null,
+            summary: blockedChild.blocker,
+          });
+          blocked.stateVersion += 1;
+          next = blocked;
+          stateChanged = true;
+        }
+        continue;
       }
-      if (tasks.length > 0 || stateChanged) await writeNativeSupervisorState(options.paths, next);
-      return { state: next, tasks };
-    },
-  );
+      const created = createNativeSupervisorTask(next, {
+        role: reverify ? 'verifier' : 'builder',
+        child: child.name,
+        projectRoot: workspace.projectRoot,
+        runId: randomUUID(),
+      });
+      next = created.state;
+      tasks.push(created.task);
+    }
+    if (tasks.length > 0 || stateChanged) await writeNativeSupervisorState(options.paths, next);
+    return { state: next, tasks };
+  });
 }
 
-export function recordNativeSupervisorFinalVerification(
-  state: NativeSupervisorState,
-  options: {
-    status: 'passed' | 'failed' | 'incomplete';
-    summary: string;
-    headCommit: string;
-    layers: NonNullable<NativeSupervisorState['finalVerification']['layers']>;
-  },
-): NativeSupervisorState {
-  assertCommit(options.headCommit, 'Native Supervisor final verification head commit');
-  if (options.summary.trim().length === 0) {
-    throw new Error('Native Supervisor final verification summary must not be empty');
-  }
-  const next = cloneState(state);
-  if (options.headCommit !== next.integration.headCommit) {
-    throw new Error('Native Supervisor final verification head is stale');
-  }
-  if (options.status === 'passed') {
-    if (next.children.some(({ status }) => status !== 'integrated')) {
-      throw new Error(
-        'Native Supervisor cannot pass final verification before all children integrate',
-      );
-    }
-    if (options.layers.parentChecks.length === 0) {
-      throw new Error('Native Supervisor parent verification requires executed parent checks');
-    }
-    if (
-      options.layers.childVerification !== 'complete' ||
-      options.layers.parentIntegration !== 'complete' ||
-      options.layers.incomplete.length > 0
-    ) {
-      throw new Error('Native Supervisor final verification evidence is incomplete');
-    }
-  }
-  next.finalVerification = {
-    status: options.status,
-    summary: options.summary,
-    layers: {
-      childVerification: options.layers.childVerification,
-      parentIntegration: options.layers.parentIntegration,
-      parentChecks: [...options.layers.parentChecks],
-      notRerun: [...options.layers.notRerun],
-      incomplete: [...options.layers.incomplete],
-    },
-  };
-  next.stateVersion += 1;
-  return next;
-}
-
-/**
- * Record a final verification against the actual integration workspace HEAD.
- * Parent-level review fixes may legitimately advance that branch after the
- * final Child integration, but only a clean forward descendant can become the
- * verified delivery commit.
- */
-export function advanceNativeSupervisorFinalVerificationHead(
+export function advanceNativeSupervisorIntegrationHead(
   state: NativeSupervisorState,
 ): NativeSupervisorState {
   const workspaceHead = assertNativeSupervisorIntegrationWorkspace(state);
-  if (workspaceHead === state.integration.headCommit) return state;
+  const targetCommit = resolveGitRef(state.integration.worktree, state.integration.targetBranch);
+  if (!targetCommit) throw new Error('Native Supervisor target branch has no commit');
+  try {
+    runGitCommand(state.integration.worktree, [
+      'merge-base',
+      '--is-ancestor',
+      targetCommit,
+      workspaceHead,
+    ]);
+  } catch {
+    throw new Error(
+      'Native Supervisor target branch drift requires Agent integration and fresh verification',
+    );
+  }
+  if (
+    workspaceHead === state.integration.headCommit &&
+    targetCommit === state.integration.targetCommit
+  )
+    return state;
   try {
     runGitCommand(state.integration.worktree, [
       'merge-base',
@@ -238,6 +198,7 @@ export function advanceNativeSupervisorFinalVerificationHead(
   }
   const reconciled = cloneState(state);
   reconciled.integration.headCommit = workspaceHead;
+  reconciled.integration.targetCommit = targetCommit;
   recordEvent(reconciled, {
     kind: 'integration-head-reconciled',
     child: null,
@@ -246,44 +207,4 @@ export function advanceNativeSupervisorFinalVerificationHead(
   });
   reconciled.stateVersion += 1;
   return reconciled;
-}
-
-/** Recover the Supervisor half of a final result already persisted in Portable State. */
-export function recordNativeSupervisorPortableFinalVerification(
-  state: NativeSupervisorState,
-  portable: NativePortableState,
-): NativeSupervisorState {
-  const verification = portable.verification;
-  if (verification === null || portable.verification_result === 'pending') {
-    throw new Error('Native Supervisor final verification has no persisted Portable result');
-  }
-  const headCommit = assertNativeSupervisorIntegrationWorkspace(state);
-  const childVerification = state.children.every(
-    ({ status, verification: childEvidence }) =>
-      (status === 'integrated' || status === 'archived') && childEvidence !== null,
-  );
-  const parentIntegration =
-    verification.checks.length > 0 &&
-    verification.checks.every(({ status }) => status === 'passed');
-  return recordNativeSupervisorFinalVerification(state, {
-    status:
-      portable.verification_result === 'pass'
-        ? 'passed'
-        : portable.verification_result === 'blocked'
-          ? 'incomplete'
-          : 'failed',
-    summary: verification.summary.text,
-    headCommit,
-    layers: {
-      childVerification: childVerification ? 'complete' : 'incomplete',
-      parentIntegration: parentIntegration ? 'complete' : 'incomplete',
-      parentChecks: verification.checks.map(({ name }) => name.text),
-      notRerun: state.children.flatMap(
-        ({ verification: childEvidence }) => childEvidence?.checks ?? [],
-      ),
-      incomplete: verification.checks
-        .filter(({ status }) => status !== 'passed')
-        .map(({ name }) => name.text),
-    },
-  });
 }

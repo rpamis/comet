@@ -1,5 +1,4 @@
 import type {
-  NativeLocalExecutionState,
   NativePortableAcceptanceResult,
   NativePortableBlockerState,
   NativePortableCheckSummary,
@@ -21,16 +20,14 @@ export const NATIVE_DASHBOARD_SCHEMA = 'comet.dashboard.native.v2' as const;
 export const NATIVE_DASHBOARD_LIMITS = Object.freeze({
   maxChanges: 32,
   maxArtifactPreviews: 8,
-  maxArtifactPreviewBytes: 48 * 1024,
   maxCapabilities: 8,
-  maxSerializedBytes: 16 * 1024 * 1024,
 });
 
 export type NativeDashboardMigrationStatus =
   'none' | 'required' | 'failed' | 'legacy-read-only' | 'invalid';
 
 export type NativeDashboardLocalExecutionReason =
-  'current' | 'idle' | 'missing' | 'version-mismatch' | 'invalid' | 'archived';
+  'current' | 'idle' | 'platform' | 'invalid' | 'archived';
 
 export interface NativeDashboardArtifactPreview {
   key: string;
@@ -68,23 +65,11 @@ export interface NativeDashboardLoopSummary {
   actor: 'builder' | 'runtime' | 'verifier' | null;
 }
 
-export interface NativeDashboardLocalCheckSummary {
-  id: string;
-  status: 'planned' | 'running' | 'passed' | 'failed' | 'interrupted';
-  startedAt: string | null;
-  completedAt: string | null;
-  logAvailable: boolean;
-}
-
 export interface NativeDashboardLocalExecutionSummary {
   status: 'running' | 'interrupted' | 'absent';
   reason: NativeDashboardLocalExecutionReason;
-  stage: 'building' | 'checking' | 'verifying' | 'archiving' | null;
+  stage: 'building' | 'verifying' | 'archiving' | null;
   actor: 'builder' | 'runtime' | 'verifier' | null;
-  startedAt: string | null;
-  requestCheckRounds: number;
-  checks: NativeDashboardLocalCheckSummary[];
-  recoverableFromStage: NativePortableState['loop']['stage'] | null;
 }
 
 export interface NativeDashboardSpecSummary {
@@ -223,8 +208,6 @@ export interface NativeDashboardPortableInput {
   archiveName?: string;
   archivedAt?: string | null;
   artifacts?: NativeDashboardArtifactPreview[];
-  localExecution?: NativeLocalExecutionState | null;
-  localExecutionReason?: NativeDashboardLocalExecutionReason;
   localExecutionSummary?: NativeDashboardLocalExecutionSummary;
   locator?: string;
   workspace?: DashboardWorkspaceIdentity;
@@ -270,49 +253,27 @@ function specSummary(specChanges: NativePortableSpecChange[]): NativeDashboardSp
   };
 }
 
-function localExecutionSummary(
-  state: NativePortableState,
-  local: NativeLocalExecutionState | null | undefined,
-  reason: NativeDashboardLocalExecutionReason | undefined,
-): NativeDashboardLocalExecutionSummary {
-  const matches =
-    local?.change === state.name && local.basedOnStateVersion === state.state_version
-      ? local
-      : null;
-  const execution = matches?.execution ?? null;
-  const activeExecution = execution?.status === 'completed' ? null : execution;
-  const liveStatus =
-    activeExecution?.status === 'running' || activeExecution?.status === 'interrupted'
-      ? activeExecution.status
-      : 'absent';
-  const resolvedReason =
-    state.archived || state.status === 'done'
-      ? 'archived'
-      : (reason ?? (activeExecution ? 'current' : matches ? 'idle' : 'missing'));
+/** 只展示业务任务，不观测 OS 进程，也不从旧本机检查文件重建执行。 */
+function localExecutionSummary(state: NativePortableState): NativeDashboardLocalExecutionSummary {
+  const action = state.verifier_action;
+  const current = action && ['pending', 'running', 'unknown'].includes(action.status);
   return {
-    status: liveStatus,
-    reason: resolvedReason,
-    stage: activeExecution?.stage ?? null,
-    actor: activeExecution?.actor ?? null,
-    startedAt: activeExecution?.startedAt ?? null,
-    requestCheckRounds: activeExecution?.requestCheckRounds ?? 0,
-    checks: (matches?.checks ?? []).map((check) => ({
-      id: check.id,
-      status: check.status,
-      startedAt: check.startedAt,
-      completedAt: check.completedAt,
-      logAvailable: check.log.length > 0,
-    })),
-    recoverableFromStage:
-      execution || state.archived || state.status === 'done' ? null : state.loop.stage,
+    status: current
+      ? action.status === 'running'
+        ? 'running'
+        : action.status === 'unknown'
+          ? 'interrupted'
+          : 'absent'
+      : 'absent',
+    reason: state.archived ? 'archived' : current ? 'current' : 'platform',
+    stage: current ? 'verifying' : null,
+    actor: current ? 'verifier' : null,
   };
 }
 
 function identity(input: NativeDashboardPortableInput): NativeDashboardChangeIdentity {
   const { state } = input;
-  const localExecution =
-    input.localExecutionSummary ??
-    localExecutionSummary(state, input.localExecution, input.localExecutionReason);
+  const localExecution = input.localExecutionSummary ?? localExecutionSummary(state);
   return {
     workflow: 'native',
     locator: input.locator ?? `${input.status}:${input.archiveName ?? ''}:${state.name}`,
@@ -446,10 +407,5 @@ export function adaptNativeDashboardProjection(input: {
     changesTruncated: totalChangeCount > visible.length,
     changes: visible,
   };
-  if (
-    Buffer.byteLength(JSON.stringify(result), 'utf8') > NATIVE_DASHBOARD_LIMITS.maxSerializedBytes
-  ) {
-    throw new Error('Native Dashboard projection exceeds its serialized output budget');
-  }
   return result;
 }

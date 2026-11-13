@@ -248,7 +248,10 @@ describe('Classic Chinese Skill SDK routing', () => {
       'comet state continue-plan <change-name> --proposal-hash <proposalHash>',
     );
     expect(build).toContain('comet state complete-build <change-name>');
-    expect(build).toContain('comet guard <change-name> build --apply -- <program> [args...]');
+    expect(build).toContain(
+      'comet state complete-build <change-name> --session <builder-execution-ref> --checks <checks-json-file>',
+    );
+    expect(build).not.toContain('--apply -- <program>');
     expect(build).toContain('以下旧 Runtime 步骤仅用于 `runtimeFormat: compat`');
   });
 
@@ -261,7 +264,7 @@ describe('Classic Chinese Skill SDK routing', () => {
     );
     expect(verify).toContain('comet guard <change-name> verify --report <report-ref>');
     expect(verify).toContain(
-      'comet guard <change-name> verify --report <report-ref> --apply -- <program> [args...]',
+      'comet guard <change-name> verify --report <report-ref> --apply --checks <checks-json-file>',
     );
     expect(verify).toContain('以下旧 Runtime 步骤仅用于 `runtimeFormat: compat`');
   });
@@ -288,7 +291,10 @@ describe('Classic Chinese Skill SDK routing', () => {
       );
       expect(skill).toContain('comet state next <change-name> --json');
       expect(skill).toContain('comet guard <change-name> open --apply');
-      expect(skill).toContain('comet guard <change-name> build --apply -- <program> [args...]');
+      expect(skill).toContain(
+        'comet state complete-build <change-name> --session <builder-execution-ref> --checks <checks-json-file>',
+      );
+      expect(skill).not.toContain('--apply -- <program>');
       expect(skill).toContain('comet state propose-escalation <change-name> --reason');
       expect(skill).toContain(
         'comet state decide-escalation <change-name> --proposal-hash <proposalHash> --choice <continue|upgrade>',
@@ -333,11 +339,13 @@ describe('Classic SDK continuation handoffs in both languages', () => {
       expect(sdk).toContain('`agent.continuation` / `data.nextAction`');
       if (_language === 'Chinese') {
         expect(sdk).toContain('不要求 full Design Doc 或完整计划');
-        expect(sdk).toContain('仅在需要诊断时运行');
+        expect(sdk).toContain('只有冷恢复、外部状态变化或缺少必要信息时');
         expect(sdk).not.toContain('每次推进后以 `comet state next');
       } else {
         expect(sdk).toContain('Do not require a full Design Doc or implementation plan');
-        expect(sdk).toContain('preview only when diagnosis is needed');
+        expect(sdk).toContain(
+          'only on a cold resume, after external state changes, or when necessary information is missing',
+        );
         expect(sdk).not.toContain('After every advance, read');
       }
     },

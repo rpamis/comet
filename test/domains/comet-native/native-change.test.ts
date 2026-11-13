@@ -5,7 +5,6 @@ import path from 'path';
 import { stringify } from 'yaml';
 
 import {
-  DEFAULT_NATIVE_SNAPSHOT_CONFIG,
   defaultProjectConfig,
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
@@ -13,7 +12,6 @@ import {
   assertCapabilityId,
   assertNativeName,
   compareAndSwapNativeChange,
-  createNativeChange,
   inspectNativeChangeValue,
   listNativeChanges,
   NativeChangeRevisionConflictError,
@@ -29,7 +27,8 @@ import {
   nativePreferredChangeRuntimeDir,
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
-import { readNativeBaselineManifest } from '../../../domains/comet-native/native-snapshot.js';
+import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+import { inspectNativeSdkRun } from '../../../domains/comet-native/native-runtime-ownership.js';
 import {
   NATIVE_CHANGE_SCHEMA,
   NATIVE_LEGACY_CHANGE_SCHEMA,
@@ -61,6 +60,22 @@ function validNativeChangeValue(patch: Record<string, unknown> = {}): Record<str
     approved_contract_hash: null,
     ...patch,
   };
+}
+
+// 仅为存储与 parser 测试写入旧业务文档，不执行或模拟旧 Runtime。
+async function createStoredChangeFixture(options: {
+  paths: NativeProjectPaths;
+  name: string;
+  language: string;
+  verificationProtocol?: string;
+}) {
+  const state = parseNativeChangeValue(
+    validNativeChangeValue({ name: options.name, language: options.language }),
+  );
+  const dir = path.join(options.paths.changesDir, state.name);
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, 'comet-state.yaml'), stringify(nativeChangeDocument(state)));
+  return state;
 }
 
 describe('Native change store', () => {
@@ -314,147 +329,37 @@ describe('Native change store', () => {
   });
 
   it('creates the visible Native change layout without claiming Shape is complete', async () => {
-    const state = await createNativeChange({
-      paths,
-      name: 'add-authentication',
-      language: 'zh-CN',
-      now: new Date('2026-07-14T00:00:00Z'),
-    });
-
-    expect(state).toMatchObject({
-      schema: NATIVE_CHANGE_SCHEMA,
-      minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
-      revision: 1,
-      verification_protocol: 'legacy-v1',
-      phase: 'shape',
-      approval: null,
-      approved_contract_hash: null,
-      verification_result: 'pending',
-      created_at: '2026-07-14',
-    });
-    expect(state).not.toHaveProperty('confirmation_required');
-    expect(await readNativeChange(paths, state.name)).toEqual(state);
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.', 'zh-CN'));
+    const result = await runNativeCli([
+      'new',
+      'add-authentication',
+      '--project-root',
+      projectRoot,
+      '--json',
+    ]);
+    expect(result.exitCode, result.stderr).toBe(0);
+    const { run, state } = await inspectNativeSdkRun(projectRoot, 'add-authentication');
+    expect(run.workflow.version).toBe('4');
+    expect(state.phase).toBe('shape');
+    expect(run.waits.every((wait) => wait.status !== 'resolved')).toBe(true);
+    expect(
+      await fs.readFile(path.join(paths.changesDir, 'add-authentication/brief.md'), 'utf8'),
+    ).toContain('# 目标');
     await expect(
-      fs.access(path.join(paths.changesDir, state.name, 'comet-state.yaml')),
+      fs.access(path.join(paths.changesDir, 'add-authentication/comet-state.yaml')),
     ).resolves.toBeUndefined();
     await expect(
-      fs.access(path.join(paths.changesDir, state.name, 'change.yaml')),
+      fs.access(path.join(paths.changesDir, 'add-authentication/change.yaml')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
-    expect(await fs.stat(path.join(paths.changesDir, state.name, 'specs'))).toBeDefined();
-    expect(
-      await fs.stat(path.join(nativePreferredChangeRuntimeDir(paths, state.name), 'checkpoints')),
-    ).toBeDefined();
-    expect(await readNativeBaselineManifest(paths, state.name)).toMatchObject({
-      schema: 'comet.native.content-snapshot.v1',
-      origin: 'change-created',
-      complete: true,
-      entries: [],
-    });
-  });
-
-  it.skip('fails at change creation when the baseline snapshot is incomplete', async () => {
-    const config = defaultProjectConfig('.');
-    config.native.snapshot.max_total_bytes = 5 * 1024 * 1024;
-    await writeProjectConfig(projectRoot, config);
-    await fs.writeFile(
-      path.join(projectRoot, 'oversized-baseline.bin'),
-      Buffer.alloc(5 * 1024 * 1024 + 1, 0x61),
-    );
-
     await expect(
-      createNativeChange({
-        paths,
-        name: 'incomplete-baseline',
-        language: 'en',
-        verificationProtocol: 'legacy-v1',
-      }),
-    ).rejects.toMatchObject({
-      name: 'NativeBaselineIncompleteError',
-      code: 'native-baseline-incomplete',
-      omittedCount: 1,
-      samplePaths: ['oversized-baseline.bin'],
-      sampleTruncated: false,
-    });
-    await expect(
-      fs.access(path.join(paths.changesDir, 'incomplete-baseline')),
-    ).rejects.toMatchObject({ code: 'ENOENT' });
-  });
-
-  it('creates a complete baseline for a file larger than the legacy per-file limit', async () => {
-    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
-    await fs.writeFile(
-      path.join(projectRoot, 'large-baseline.bin'),
-      Buffer.alloc(5 * 1024 * 1024 + 1, 0x61),
-    );
-
-    const state = await createNativeChange({
-      paths,
-      name: 'large-baseline',
-      language: 'en',
-      verificationProtocol: 'legacy-v1',
-    });
-
-    expect(await readNativeBaselineManifest(paths, state.name)).toMatchObject({
-      complete: true,
-      policy: {
-        schema: 'comet.native.snapshot-policy.v1',
-        include: ['**/*'],
-        exclude: DEFAULT_NATIVE_SNAPSHOT_CONFIG.exclude,
-      },
-      entries: [
-        expect.objectContaining({
-          path: 'large-baseline.bin',
-          size: 5 * 1024 * 1024 + 1,
-        }),
-      ],
-    });
-  });
-
-  it.skip('creates a complete baseline after the project raises the total snapshot budget', async () => {
-    const config = defaultProjectConfig('.');
-    config.native.snapshot.max_total_bytes = 1024;
-    await writeProjectConfig(projectRoot, config);
-    await fs.writeFile(path.join(projectRoot, 'dataset.bin'), Buffer.alloc(1025, 0x61));
-
-    await expect(
-      createNativeChange({
-        paths,
-        name: 'budget-too-small',
-        language: 'en',
-        verificationProtocol: 'legacy-v1',
-      }),
-    ).rejects.toMatchObject({
-      name: 'NativeBaselineIncompleteError',
-      effectiveLimits: expect.objectContaining({
-        maxFileBytes: 1024,
-        maxTotalBytes: 1024,
-      }),
-    });
-
-    config.native.snapshot.max_total_bytes = 2048;
-    await writeProjectConfig(projectRoot, config);
-    const state = await createNativeChange({
-      paths,
-      name: 'budget-raised',
-      language: 'en',
-      verificationProtocol: 'legacy-v1',
-    });
-
-    expect(await readNativeBaselineManifest(paths, state.name)).toMatchObject({
-      complete: true,
-      limits: {
-        maxFiles: 10_000,
-        maxFileBytes: 2048,
-        maxTotalBytes: 2048,
-        maxManifestBytes: expect.any(Number),
-        maxDurationMs: 60_000,
-      },
-      entries: [expect.objectContaining({ path: 'dataset.bin', size: 1025 })],
-    });
+      fs.stat(path.join(paths.changesDir, 'add-authentication/specs')),
+    ).resolves.toBeDefined();
+    const runtime = await fs.readdir(paths.workspaceRuntimeRoot, { recursive: true });
+    expect(runtime.some((name) => /snapshot|baseline|local-execution/.test(name))).toBe(false);
   });
 
   it('reads older v3 state without an approval hash and canonicalizes it to null', async () => {
-    const state = await createNativeChange({
+    const state = await createStoredChangeFixture({
       paths,
       name: 'legacy-v3-state',
       language: 'en',
@@ -475,7 +380,7 @@ describe('Native change store', () => {
   });
 
   it('round-trips create, replace, and remove spec operations', async () => {
-    const state = await createNativeChange({
+    const state = await createStoredChangeFixture({
       paths,
       name: 'update-auth',
       language: 'en',
@@ -502,7 +407,7 @@ describe('Native change store', () => {
   });
 
   it('reads an oversized valid change document without an arbitrary size limit', async () => {
-    const state = await createNativeChange({
+    const state = await createStoredChangeFixture({
       paths,
       name: 'oversized-change',
       language: 'en',
@@ -526,7 +431,7 @@ describe('Native change store', () => {
   });
 
   it('rejects a stale change write instead of silently overwriting a newer revision', async () => {
-    const created = await createNativeChange({
+    const created = await createStoredChangeFixture({
       paths,
       name: 'revision-conflict',
       language: 'en',
@@ -548,8 +453,8 @@ describe('Native change store', () => {
     });
   });
 
-  it('allows only one competing writer to advance the same revision', async () => {
-    const created = await createNativeChange({
+  it('allows only the first serial writer to advance the same revision', async () => {
+    const created = await createStoredChangeFixture({
       paths,
       name: 'concurrent-cas',
       language: 'en',
@@ -557,10 +462,20 @@ describe('Native change store', () => {
     });
     const left = { ...structuredClone(created), approval: 'implicit' as const };
     const right = { ...structuredClone(created), approval: 'confirmed' as const };
-    const results = await Promise.allSettled([
+    const first = await Promise.allSettled([
       compareAndSwapNativeChange(paths, left, created.revision),
+    ]);
+    const file = path.join(paths.changesDir, created.name, 'comet-state.yaml');
+    const afterFirst = await fs.readFile(file, 'utf8');
+    const second = await Promise.allSettled([
       compareAndSwapNativeChange(paths, right, created.revision),
     ]);
+    const results = [...first, ...second];
+    expect(first[0].status).toBe('fulfilled');
+    expect(second[0].status).toBe('rejected');
+    if (second[0].status === 'rejected')
+      expect(second[0].reason).toBeInstanceOf(NativeChangeRevisionConflictError);
+    expect(await fs.readFile(file, 'utf8')).toBe(afterFirst);
 
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
     expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
@@ -568,13 +483,13 @@ describe('Native change store', () => {
   });
 
   it('lists multiple active changes in name order', async () => {
-    await createNativeChange({
+    await createStoredChangeFixture({
       paths,
       name: 'zeta-change',
       language: 'en',
       verificationProtocol: 'legacy-v1',
     });
-    await createNativeChange({
+    await createStoredChangeFixture({
       paths,
       name: 'alpha-change',
       language: 'en',
@@ -592,7 +507,7 @@ describe('Native change store', () => {
     ['bad date', { created_at: '2026-02-31' }],
     ['bad name', { name: '../escape' }],
   ])('rejects %s', async (_label, patch) => {
-    const state = await createNativeChange({
+    const state = await createStoredChangeFixture({
       paths,
       name: 'strict-change',
       language: 'en',
@@ -605,7 +520,7 @@ describe('Native change store', () => {
   });
 
   it('requires field-specific change-relative content-addressed evidence refs', async () => {
-    const state = await createNativeChange({
+    const state = await createStoredChangeFixture({
       paths,
       name: 'strict-evidence',
       language: 'en',
@@ -649,7 +564,7 @@ describe('Native change store', () => {
   });
 
   it('rejects duplicate capabilities and path traversal sources', async () => {
-    const state = await createNativeChange({
+    const state = await createStoredChangeFixture({
       paths,
       name: 'strict-specs',
       language: 'en',

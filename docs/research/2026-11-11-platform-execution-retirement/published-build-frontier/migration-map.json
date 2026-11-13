@@ -1,0 +1,61 @@
+{
+  "source": "https://github.com/rpamis/comet/issues/545",
+  "originalCaseIds": [
+    "native-invalid-completed-check-recovery",
+    "native-invalid-completed-check-guidance"
+  ],
+  "originalWorkerTemplate": "Native SDK Workflow Application recovers an invalid completed Build check through doctor without replay (%s)",
+  "currentSelector": {
+    "file": "test/domains/comet-native/native-published-build-frontier.test.ts",
+    "namePattern": "^continues published 0\\.5\\.2 Build checks (?:pending|claimed) at the original Builder without a stop receipt or fabricated candidate$",
+    "requiredNames": [
+      "continues published 0.5.2 Build checks pending at the original Builder without a stop receipt or fabricated candidate",
+      "continues published 0.5.2 Build checks claimed at the original Builder without a stop receipt or fabricated candidate"
+    ]
+  },
+  "provenance": {
+    "package": "@rpamis/comet@0.5.2",
+    "actualFactory": "defineNativeWorkflowApplication(3)",
+    "graphUnmodified": true,
+    "simulatedMessages": "User approval/Agent Builder request are marked SIMULATED in actual published Runtime API requests.",
+    "executorsRegistered": 0,
+    "managedCheckExecution": false
+  },
+  "originalRootRedEvidence": [
+    "frozen-pending.json",
+    "frozen-claimed.json",
+    "protocol-requests.json",
+    "current-pending-red.json",
+    "current-claimed-red.json",
+    "summary.json"
+  ],
+  "sameOriginalRootGreenEvidence": "green.json",
+  "portableRegressionGreenEvidence": "repository-ready-materialized-result.json",
+  "preserved": [
+    "runId and input",
+    "all original Shape Wait proposals/decisions",
+    "original Action IDs/input/inputHash/claim/outcome/rejectedOutcomes/receipts",
+    "state history and original Shape confirmation",
+    "no Builder candidate invented",
+    "no old process stop/pass inferred",
+    "repeat next identical persisted Run"
+  ],
+  "expected": [
+    "Build phase retained; one pending build.builder",
+    "no verify.verifier and builder_handoff=null",
+    "legacy check Action cancelled with original claim and no fabricated outcome/executionStop",
+    "native next returns builder-handoff; doctor healthy without --stopped-actions",
+    "no old check command executed"
+  ],
+  "retired": [
+    "Comet managed checker execution/retry/sidecar outcome validation",
+    "PID/creation identity/lease/stop evidence and stopped-actions handshake",
+    "old checker invalid completed outcome repair and confirmed stop receipt guidance"
+  ],
+  "limits": [
+    "This did not execute the original reported stopped command or produce an invalid completed execution sidecar. That exact old worker defect is explicitly retired, not claimed repaired by this probe.",
+    "Original-root RED and GREEN use identical raw frozen roots/bytes. Repository-ready tests explicitly materialize the same immutable Run and business files into fresh test storage through public SDK APIs, omitting only original machine Runtime layout binding. No Run input/claim/hash is rewritten.",
+    "Initial repository-ready attempt stopped in build-helper setup because the isolated test directory lacked app; no test was run. Final candidate only requires an existing built public CLI, then actual 2/0 passed.",
+    "No model Eval/full suite/new package installation executed."
+  ]
+}

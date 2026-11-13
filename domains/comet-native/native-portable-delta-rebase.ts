@@ -1,34 +1,28 @@
 import path from 'node:path';
-import { createHash } from 'node:crypto';
-import { captureNativePortableRebasedCandidateInputs } from './native-portable-checks.js';
+import { atomicWriteText } from './native-atomic-file.js';
+import { readNativeBoundedTextFile } from './native-bounded-file.js';
+import {
+  nativeChildrenAcceptanceValidation,
+  readNativeChildrenContract,
+} from './native-children.js';
+import {
+  mergeNativeDeltaAgainstCurrent,
+  parseNativeDelta,
+  renderNativeDelta,
+} from './native-delta-spec.js';
+import { withNativeMutation } from './native-mutation.js';
+import { sameNativePortableAcceptance } from './native-portable-acceptance.js';
 import {
   discoverNativePortableSpecChanges,
   readNativePortableAcceptance,
-  nativePortableShapeConfirmationHash,
 } from './native-portable-requirements.js';
 import {
   nativePortableChangeDir,
   readNativePortableChange,
   writePortableMutation,
 } from './native-portable-storage.js';
-import { readNativeBoundedTextFile } from './native-bounded-file.js';
-import {
-  inspectNativeTotalSpec,
-  mergeNativeDeltaAgainstCurrent,
-  nativeLegacySectionHash,
-  nativeTotalSpecHash,
-  parseNativeDelta,
-  renderNativeDelta,
-} from './native-delta-spec.js';
-import { atomicWriteText } from './native-atomic-file.js';
-import { sameNativePortableAcceptance } from './native-portable-acceptance.js';
-import {
-  nativeChildrenAcceptanceValidation,
-  readNativeChildrenContract,
-} from './native-children.js';
 import { returnNativePortableStateToFinalVerificationLocked } from './native-portable-transitions.js';
-import { withNativeMutationLock } from './native-mutation-lock.js';
-import type { NativePortableState, NativePortableSpecChange } from './native-portable-types.js';
+import type { NativePortableSpecChange, NativePortableState } from './native-portable-types.js';
 import type { NativeProjectPaths } from './native-types.js';
 
 /** 重合并已确认 Delta 并绑定新输入；调用者须持有 Native mutation lock。 */
@@ -75,51 +69,23 @@ export async function rebaseNativePortableDeltasLocked(options: {
       currentMarkdown: canonicalText,
       delta,
     });
-    if (!merged.rebased) continue;
-
-    const currentSpec = inspectNativeTotalSpec(canonicalText);
-    const currentRequirementHashes = Object.fromEntries(
-      currentSpec.requirements.map((requirement) => [
-        requirement.id,
-        nativeTotalSpecHash(requirement.raw),
-      ]),
-    );
-    const rebasedIndependentRequirements =
-      delta.independent_requirements === undefined
-        ? undefined
-        : Object.fromEntries(
-            Object.keys(delta.independent_requirements).flatMap((id) => {
-              const requirement = currentSpec.requirements.find((candidate) => candidate.id === id);
-              return requirement ? [[id, nativeTotalSpecHash(requirement.raw)]] : [];
-            }),
-          );
-    const rebasedDelta = {
-      ...delta,
-      base_hash: nativeTotalSpecHash(canonicalText),
-      base_version: delta.base_version + 1,
-      legacy_hash: nativeLegacySectionHash(canonicalText),
-      base_requirements: currentRequirementHashes,
-      ...(rebasedIndependentRequirements === undefined
-        ? {}
-        : { independent_requirements: rebasedIndependentRequirements }),
-    };
     const source = await readNativeBoundedTextFile({
       root: changeRoot,
       ref: spec.source,
       maxBytes: null,
       includeHash: false,
     });
+    if (source.text === merged.markdown) continue;
     pending.push({
       index,
       spec,
       originalDeltaText: deltaText.text,
       originalSourceText: source.text,
-      deltaText: renderNativeDelta(rebasedDelta),
+      deltaText: renderNativeDelta({ ...delta, base_version: delta.base_version + 1 }),
       sourceText: merged.markdown,
     });
     nextSpecChanges[index] = {
       ...spec,
-      base_hash: rebasedDelta.base_hash,
     };
     capabilities.push(spec.capability);
   }
@@ -154,7 +120,7 @@ export async function rebaseNativePortableDeltasLocked(options: {
         'Native delta rebase changed the confirmed acceptance scope; explicit Shape confirmation is required',
       );
     }
-    const children = await readNativeChildrenContract({
+    await readNativeChildrenContract({
       changeDir: changeRoot,
       acceptanceIds: shape.acceptance.map(({ id }) => id),
       validation: nativeChildrenAcceptanceValidation({
@@ -162,36 +128,6 @@ export async function rebaseNativePortableDeltasLocked(options: {
         acceptance: shape.acceptance,
       }),
     });
-    const rawInputRef = await captureNativePortableRebasedCandidateInputs(
-      options.paths,
-      options.state,
-      pending.flatMap(({ spec }) => [
-        path
-          .relative(
-            options.paths.projectRoot,
-            path.join(options.paths.specsDir, spec.capability, 'spec.md'),
-          )
-          .replaceAll('\\', '/'),
-        ...[spec.source!, spec.delta_source!].map((ref) =>
-          path
-            .relative(options.paths.projectRoot, path.join(changeRoot, ref))
-            .replaceAll('\\', '/'),
-        ),
-      ]),
-      Object.fromEntries(
-        pending.flatMap((entry) =>
-          [
-            [entry.spec.source!, entry.originalSourceText],
-            [entry.spec.delta_source!, entry.originalDeltaText],
-          ].map(([ref, text]) => [
-            path
-              .relative(options.paths.projectRoot, path.join(changeRoot, ref))
-              .replaceAll('\\', '/'),
-            createHash('sha256').update(text).digest('hex'),
-          ]),
-        ),
-      ),
-    );
     const state = await writePortableMutation({
       paths: options.paths,
       previous: options.state,
@@ -199,17 +135,6 @@ export async function rebaseNativePortableDeltasLocked(options: {
         ...options.state,
         state_version: options.state.state_version + 1,
         spec_changes: nextSpecChanges,
-        ...(rawInputRef && options.state.builder_handoff
-          ? {
-              builder_handoff: { ...options.state.builder_handoff, raw_input_ref: rawInputRef },
-            }
-          : {}),
-        ...(shape.semanticSnapshot ? { shape_semantic_snapshot: shape.semanticSnapshot } : {}),
-        shape_confirmation_hash: nativePortableShapeConfirmationHash({
-          formalHash: shape.formalHash,
-          childrenHash: children?.hash ?? null,
-          coordinationMode: options.state.coordination_mode,
-        }),
       },
     });
     stateWritten = true;
@@ -239,20 +164,16 @@ export async function rebaseNativePortableDeltas(options: {
   name: string;
   reason?: string;
 }): Promise<NativePortableState> {
-  return withNativeMutationLock(
-    options.paths,
-    `rebase portable deltas ${options.name}`,
-    async () => {
-      const state = await readNativePortableChange(options.paths, options.name);
-      const result = await rebaseNativePortableDeltasLocked({ paths: options.paths, state });
-      if (!result.rebased) return state;
-      return returnNativePortableStateToFinalVerificationLocked({
-        paths: options.paths,
-        state: result.state,
-        reason:
-          options.reason ??
-          'Native canonical Spec changed independently; the delta was re-based before fresh verification.',
-      });
-    },
-  );
+  return withNativeMutation(options.paths, async () => {
+    const state = await readNativePortableChange(options.paths, options.name);
+    const result = await rebaseNativePortableDeltasLocked({ paths: options.paths, state });
+    if (!result.rebased) return state;
+    return returnNativePortableStateToFinalVerificationLocked({
+      paths: options.paths,
+      state: result.state,
+      reason:
+        options.reason ??
+        'Native canonical Spec changed independently; the delta was re-based before fresh verification.',
+    });
+  });
 }

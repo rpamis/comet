@@ -94,11 +94,11 @@ describe('shared Comet current selection', () => {
     await expect(readCometCurrentSelection(root)).rejects.toThrow('native, classic or application');
   });
 
-  it('bounds and regular-file checks the shared selection before parsing', async () => {
+  it('rejects malformed large content and nonregular shared selection files', async () => {
     const file = cometCurrentSelectionFile(root);
     await fs.mkdir(path.dirname(file), { recursive: true });
     await fs.writeFile(file, Buffer.alloc(16 * 1024 + 1, 0x61));
-    await expect(readCometCurrentSelection(root)).rejects.toThrow('exceeds 16384 bytes');
+    await expect(readCometCurrentSelection(root)).rejects.toThrow('invalid JSON');
 
     await fs.rm(file);
     await fs.mkdir(file);
@@ -138,7 +138,7 @@ describe('shared Comet current selection', () => {
     },
   );
 
-  it('never returns content read past the byte limit when the file is swapped for a bigger one mid-read', async () => {
+  it('reads one complete selection when replaced by a larger valid file mid-read', async () => {
     const file = cometCurrentSelectionFile(root);
     await fs.mkdir(path.dirname(file), { recursive: true });
     await fs.writeFile(
@@ -172,18 +172,10 @@ describe('shared Comet current selection', () => {
 
     const result = await pending.catch((error: unknown) => error as Error);
     if (result instanceof Error) {
-      // Depending on where the swap lands relative to the pre-open lstat,
-      // the read is rejected either for size or because the file identity
-      // changed between checkpoints. Both refuse the oversized content.
-      expect(result.message).toMatch(/exceeds 16384 bytes|changed while (opening|reading)/);
+      expect(result.message).toMatch(/changed while (opening|reading)/);
     } else {
-      // If the open/read happened to land on the swapped-in file entirely
-      // (rather than racing mid-read), that is fine too, as long as it was
-      // still rejected for size rather than silently accepted.
-      expect(result).not.toMatchObject({
-        status: 'selected',
-        selection: { change: oversizedChange },
-      });
+      expect(result.status).toBe('selected');
+      expect(['small-before-swap', oversizedChange]).toContain(result.selection?.change);
     }
   });
 

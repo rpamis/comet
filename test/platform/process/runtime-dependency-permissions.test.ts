@@ -1,3 +1,4 @@
+import { requireFileSymlink } from '../../helpers/file-symlink.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -129,7 +130,8 @@ it('rejects a wide dependency symlink and a mismatched package identity', () => 
   expect(() => runtimeDependencyPermissions(sdk)).toThrow(/包名不匹配/);
 });
 
-it('rejects a dependency manifest redirected outside its package', () => {
+it('rejects a dependency manifest redirected outside its package', async (context) => {
+  await requireFileSymlink(context);
   const { root, sdk } = fixture();
   manifest(sdk, { name: 'sdk', dependencies: { dep: '1' } });
   const dep = path.join(sdk, 'node_modules/dep');
@@ -142,7 +144,12 @@ it('rejects a dependency manifest redirected outside its package', () => {
 
 it('round-trips spaces, commas, quotes and Windows backslashes in NODE_OPTIONS', () => {
   const { root } = fixture();
-  const file = path.join(root, 'C:\\Program Files\\odd "comma, package\\');
+  const file = path.join(
+    root,
+    process.platform === 'win32'
+      ? 'Program Files/comma, package/file.txt'
+      : 'C:\\Program Files\\odd "comma, package\\',
+  );
   write(file, 'allowed');
   const secret = path.join(root, 'secret');
   write(secret, 'denied');

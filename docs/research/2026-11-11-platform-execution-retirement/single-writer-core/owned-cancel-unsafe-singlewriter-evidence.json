@@ -1,0 +1,12 @@
+{
+  "boundary": "deterministic SDK Promise executor only; no Eval/model/container started",
+  "misuse": "singleWriter:true used with two concurrent controllers",
+  "cancelledStatus": "cancelled",
+  "completionError": null,
+  "actualStatus": "completed",
+  "actualActionStatus": "succeeded",
+  "sourceRoutes": [
+    "domains/workflow-creation/creator.ts creator.evaluate awaits runWorkflowApplicationEval",
+    "app/commands/creator.ts creatorDispatchCommand permits cancel"
+  ]
+}

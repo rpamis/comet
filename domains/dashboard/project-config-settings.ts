@@ -3,6 +3,7 @@ import path from 'path';
 import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
 import {
   DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG,
+  DEFAULT_WORKFLOW_NATIVE_MAX_PARALLEL_CHILDREN,
   defaultWorkflowProjectConfig,
   mergeWorkflowProjectConfigDocument,
   parseWorkflowProjectConfigDocument,
@@ -39,6 +40,7 @@ export interface DashboardNativeConfigSettings {
   clarificationMode: 'sequential' | 'batch';
   archiveConfirmation: 'automatic' | 'required';
   maxVerifyFailures: number;
+  maxParallelChildren?: number;
 }
 
 export interface DashboardClassicConfigSettings {
@@ -63,6 +65,7 @@ export interface DashboardProjectConfigSettings {
   defaultWorkflow: CometProjectWorkflow;
   workflows: CometProjectWorkflow[];
   ambientResume: boolean;
+  changeWalkthrough: boolean;
   hookAllowPaths: string[];
   knowledge: DashboardKnowledgeConfigSettings;
   native: DashboardNativeConfigSettings;
@@ -71,8 +74,12 @@ export interface DashboardProjectConfigSettings {
 
 interface DashboardProjectConfigUpdate {
   expectedRevision: string;
-  config: Omit<DashboardProjectConfigSettings, 'path' | 'revision' | 'schema' | 'knowledge'> & {
+  config: Omit<
+    DashboardProjectConfigSettings,
+    'path' | 'revision' | 'schema' | 'knowledge' | 'changeWalkthrough'
+  > & {
     knowledge?: DashboardKnowledgeConfigSettings;
+    changeWalkthrough?: boolean;
   };
 }
 
@@ -170,6 +177,9 @@ function parseUpdate(value: unknown): DashboardProjectConfigUpdate {
       defaultWorkflow,
       workflows,
       ambientResume: requiredBoolean(config.ambientResume, 'ambientResume'),
+      ...(config.changeWalkthrough === undefined
+        ? {}
+        : { changeWalkthrough: requiredBoolean(config.changeWalkthrough, 'changeWalkthrough') }),
       hookAllowPaths: relativePathList(config.hookAllowPaths),
       ...(knowledgeValue === undefined
         ? {}
@@ -202,6 +212,14 @@ function parseUpdate(value: unknown): DashboardProjectConfigUpdate {
           'native.archiveConfirmation',
         ),
         maxVerifyFailures: positiveInteger(native.maxVerifyFailures, 'native.maxVerifyFailures'),
+        ...(native.maxParallelChildren === undefined
+          ? {}
+          : {
+              maxParallelChildren: positiveInteger(
+                native.maxParallelChildren,
+                'native.maxParallelChildren',
+              ),
+            }),
       },
       classic: {
         artifactLayout: enumValue(
@@ -235,6 +253,8 @@ function nativeSettings(config: WorkflowProjectConfig): DashboardNativeConfigSet
     clarificationMode: native.clarification_mode,
     archiveConfirmation: native.archive_confirmation,
     maxVerifyFailures: native.max_verify_failures,
+    maxParallelChildren:
+      native.max_parallel_children ?? DEFAULT_WORKFLOW_NATIVE_MAX_PARALLEL_CHILDREN,
   };
 }
 
@@ -259,6 +279,7 @@ function toDashboardSettings(
     defaultWorkflow: config.default_workflow,
     workflows: [...(config.workflows ?? [config.default_workflow])],
     ambientResume: config.ambient_resume,
+    changeWalkthrough: config.change_walkthrough ?? true,
     hookAllowPaths: [...(config.hook?.allow_paths ?? [])],
     knowledge: dashboardKnowledgeSettings(config),
     native: nativeSettings(config),
@@ -296,6 +317,10 @@ function nextNativeConfig(
     clarification_mode: input.clarificationMode,
     archive_confirmation: input.archiveConfirmation,
     max_verify_failures: input.maxVerifyFailures,
+    max_parallel_children:
+      input.maxParallelChildren ??
+      fallback.max_parallel_children ??
+      DEFAULT_WORKFLOW_NATIVE_MAX_PARALLEL_CHILDREN,
   };
 }
 
@@ -363,6 +388,7 @@ export async function updateDashboardProjectConfigSettings(
     default_workflow: update.config.defaultWorkflow,
     workflows: update.config.workflows,
     ambient_resume: update.config.ambientResume,
+    change_walkthrough: update.config.changeWalkthrough ?? current.change_walkthrough ?? true,
     hook: { allow_paths: update.config.hookAllowPaths },
     knowledge: nextKnowledgeConfig(current.knowledge, update.config.knowledge),
     native: nextNativeConfig(current.native, update.config.native),
@@ -374,7 +400,7 @@ export async function updateDashboardProjectConfigSettings(
     const merged = mergeWorkflowProjectConfigDocument(document.value, next);
     const language =
       next.native?.language === 'zh-CN' || next.classic?.language === 'zh-CN' ? 'zh-CN' : 'en';
-    output = renderStructuredProjectConfig(merged, language);
+    output = renderStructuredProjectConfig(merged, language, snapshot.source);
     parseWorkflowProjectConfigDocument(output);
   } catch (error) {
     throw new DashboardProjectConfigError((error as Error).message, 400);

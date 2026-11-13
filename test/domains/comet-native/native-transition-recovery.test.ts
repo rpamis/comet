@@ -1,1684 +1,776 @@
-import { promises as fs } from 'fs';
-import os from 'os';
-import path from 'path';
-import { stringify } from 'yaml';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-
-import { NATIVE_RUN_STORAGE } from '../../../domains/engine/storage-layout.js';
-import { archiveNativeChange } from '../../../domains/comet-native/native-archive.js';
-import { inspectNativeArchivePreflight } from '../../../domains/comet-native/native-archive-inspection.js';
+import '../../helpers/isolated-agent-home.js';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, expect, it, vi } from 'vitest';
+import { loadPreparedNativeTransition } from '../../helpers/native-change-document.js';
 import {
-  createNativeChange,
-  nativeChangeDir,
-  readNativeChange,
-} from '../../../domains/comet-native/native-change.js';
-import { inspectNativeStatus } from '../../../domains/comet-native/native-diagnostics.js';
-import { doctorNativeProject } from '../../../domains/comet-native/native-doctor.js';
-import { sha256Text } from '../../../domains/comet-native/native-hash.js';
-import {
-  nativeChangeRuntimeDir,
   nativeProjectPaths,
-  nativeRuntimeRefFile,
+  nativeChangeRuntimeDir,
 } from '../../../domains/comet-native/native-paths.js';
 import {
-  readNativeCheckpoint as readCheckpoint,
-  readNativeRunState as readRunStateAt,
-  readNativeTrajectory as readTrajectory,
-  writeNativeRunState as writeRunStateAt,
-} from '../../../domains/comet-native/native-run-store.js';
-import {
-  inspectPendingNativeSchemaMigration,
-  migrateNativeChange,
-  nativeSchemaMigrationJournalFile,
-} from '../../../domains/comet-native/native-schema-migration.js';
-import {
-  nativeBaselineManifestFile,
-  readNativeBaselineManifest,
-} from '../../../domains/comet-native/native-snapshot.js';
+  defaultProjectConfig,
+  writeProjectConfig,
+} from '../../../domains/comet-native/native-config.js';
 import {
   continueNativeTransition,
   inspectPendingNativeTransition,
-  inspectPendingNativeTransitionSchema,
-  inspectNativeTransitionJournalValue,
   nativeTransitionJournalFile,
 } from '../../../domains/comet-native/native-transition-journal.js';
-import { appendNativeTrajectoryEvent } from '../../../domains/comet-native/native-trajectory.js';
-import { repairNativeTrajectoryTail } from '../../../domains/comet-native/native-trajectory-recovery.js';
-import type {
-  NativeChangeState,
-  NativeProjectPaths,
-  NativeSchemaMigrationHooks,
-  NativeTransitionHooks,
-  NativeTransitionJournal,
-} from '../../../domains/comet-native/native-types.js';
-import { advanceNativeChange } from '../../helpers/native-confirmed-transition.js';
-import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
-import { readyNativeArchivePreflight } from '../../helpers/native-archive.js';
+import { readNativeChange } from '../../../domains/comet-native/native-change.js';
 import {
-  NATIVE_CHANGE_SCHEMA,
-  NATIVE_LEGACY_CHANGE_SCHEMA,
-  NATIVE_LEGACY_TRANSITION_SCHEMA,
-  NATIVE_RUNTIME_PROTOCOL_VERSION,
-  NATIVE_TRANSITION_SCHEMA,
-  NATIVE_V2_CHANGE_SCHEMA,
-  NATIVE_V2_TRANSITION_SCHEMA,
-} from '../../../domains/comet-native/native-types.js';
-
-const brief = `# Outcome
-Ship the feature.
-# Scope
-One capability.
-# Non-goals
-No migration.
-# Acceptance examples
-- The feature works.
-# Constraints and invariants
-Keep compatibility.
-# Decisions
-Use existing APIs.
-# Open questions
-
-# Verification expectations
-Run focused tests.
-`;
-
-function legacyState(state: NativeChangeState): Record<string, unknown> {
-  const legacy: Record<string, unknown> = { ...state };
-  delete legacy.minimum_runtime_version;
-  delete legacy.revision;
-  delete legacy.verification_protocol;
-  delete legacy.operation;
-  delete legacy.approved_contract_hash;
-  delete legacy.implementation_scope;
-  delete legacy.verification_evidence;
-  delete legacy.partial_allowance;
-  return { ...legacy, schema: NATIVE_LEGACY_CHANGE_SCHEMA };
-}
-
-function legacyTransition(journal: NativeTransitionJournal): Record<string, unknown> {
-  const legacy: Record<string, unknown> = { ...journal };
-  delete legacy.minimum_runtime_version;
-  delete legacy.revision;
-  delete legacy.operation;
-  return {
-    ...legacy,
-    schema: NATIVE_LEGACY_TRANSITION_SCHEMA,
-    previousState: legacyState(journal.previousState),
-    nextState: legacyState(journal.nextState),
-  };
-}
-
-function v2State(state: NativeChangeState): Record<string, unknown> {
-  const previous: Record<string, unknown> = { ...state };
-  delete previous.verification_protocol;
-  delete previous.approved_contract_hash;
-  delete previous.implementation_scope;
-  delete previous.verification_evidence;
-  delete previous.partial_allowance;
-  return {
-    ...previous,
-    schema: NATIVE_V2_CHANGE_SCHEMA,
-    minimum_runtime_version: 2,
-  };
-}
-
-function v2Transition(journal: NativeTransitionJournal): Record<string, unknown> {
-  const previous: Record<string, unknown> = {
-    ...journal,
-    schema: NATIVE_V2_TRANSITION_SCHEMA,
-    minimum_runtime_version: 2,
-    previousState: v2State(journal.previousState),
-    nextState: v2State(journal.nextState),
-  };
-  delete previous.operation;
-  return previous;
-}
-
-function transitionForGeneration(
-  journal: NativeTransitionJournal,
-  generation: 'v1' | 'v2' | 'v3',
-): Record<string, unknown> {
-  return structuredClone(
-    generation === 'v1'
-      ? legacyTransition(journal)
-      : generation === 'v2'
-        ? v2Transition(journal)
-        : journal,
-  ) as Record<string, unknown>;
-}
-
-describe('Native transition recovery', () => {
-  let projectRoot: string;
-  let paths: NativeProjectPaths;
-  let changeDir: string;
-  let runtimeDir: string;
-
-  beforeEach(async () => {
-    projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-transition-recovery-'));
-    paths = await nativeProjectPaths(projectRoot, '.');
-    const state = await createNativeChange({
-      paths,
-      name: 'recover-transition',
-      language: 'en',
-      verificationProtocol: 'legacy-v1',
-    });
-    changeDir = nativeChangeDir(paths, state.name);
-    runtimeDir = nativeChangeRuntimeDir(paths, state.name);
-    await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
-  });
-
-  afterEach(async () => {
-    await fs.rm(projectRoot, { recursive: true, force: true });
-  });
-
-  it('evaluates an oversized transition journal through schema validation, not a byte cap', async () => {
-    await fs.writeFile(
-      nativeTransitionJournalFile(paths, 'recover-transition'),
-      'x'.repeat(600 * 1024),
-    );
-
-    await expect(inspectPendingNativeTransitionSchema(paths, 'recover-transition')).rejects.toThrow(
-      'Unexpected token',
-    );
-  });
-
-  it.each<{
-    label: string;
-    hooks: NativeTransitionHooks;
-  }>([
-    {
-      label: 'prepared journal',
-      hooks: {
-        afterPrepared: () => {
-          throw new Error('interrupt after prepared');
-        },
-      },
-    },
-    {
-      label: 'Run state write',
-      hooks: {
-        afterRunStateWritten: () => {
-          throw new Error('interrupt after Run state');
-        },
-      },
-    },
-    {
-      label: 'change state write',
-      hooks: {
-        afterChangeStateWritten: () => {
-          throw new Error('interrupt after change state');
-        },
-      },
-    },
-  ])('continues after an interruption at $label', async ({ hooks }) => {
-    await expect(
-      advanceNativeChange({
-        paths,
-        name: 'recover-transition',
-        evidence: { summary: 'shape is ready' },
-        runId: () => 'recoverable-run',
-        now: new Date('2026-07-15T00:00:00Z'),
-        hooks,
-      }),
-    ).rejects.toThrow('interrupt');
-    expect(await fs.stat(nativeTransitionJournalFile(paths, 'recover-transition'))).toBeDefined();
-
-    const recovered = await continueNativeTransition(paths, 'recover-transition');
-    expect(recovered).toMatchObject({ phase: 'build', revision: 2 });
-    expect(await readNativeChange(paths, 'recover-transition')).toMatchObject({
-      phase: 'build',
-      revision: 2,
-    });
-    const run = await readRunStateAt(runtimeDir);
-    expect(run?.currentStep).toBe('build');
-    const events = await readTrajectory(runtimeDir, run!.trajectoryRef);
-    expect(events.filter((event) => event.type === 'state_transitioned')).toHaveLength(1);
-    expect(await readCheckpoint(runtimeDir, run!.checkpointRef)).toMatchObject({
-      runId: 'recoverable-run',
-      stateVersion: 1,
-    });
-    await expect(
-      fs.access(nativeTransitionJournalFile(paths, 'recover-transition')),
-    ).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
-  });
-
-  it.each(['v1', 'v2', 'v3'] as const)(
-    'fails closed on a %s transition journal whose next Run is still waiting',
-    async (generation) => {
-      await expect(
-        advanceNativeChange({
-          paths,
-          name: 'recover-transition',
-          evidence: { summary: 'prepare corrupt Run journal' },
-          runId: () => `corrupt-${generation}-run`,
-          transitionId: () => `corrupt-${generation}-transition`,
-          hooks: {
-            afterPrepared: () => {
-              throw new Error('seed corrupt transition');
-            },
-          },
-        }),
-      ).rejects.toThrow('seed corrupt transition');
-      const currentJournal = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
-      const stateAtCrash = await readNativeChange(paths, 'recover-transition');
-      const changeFile = path.join(changeDir, 'comet-state.yaml');
-      const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
-      const journal = transitionForGeneration(currentJournal, generation);
-      Object.assign(journal.nextRun as Record<string, unknown>, {
-        status: 'waiting',
-        pending: 'corrupt-action',
-      });
-      if (generation === 'v1') {
-        await fs.writeFile(changeFile, stringify(legacyState(stateAtCrash)));
-      } else if (generation === 'v2') {
-        await fs.writeFile(changeFile, stringify(v2State(stateAtCrash)));
-      }
-      await fs.writeFile(transitionFile, JSON.stringify(journal, null, 2) + '\n');
-      const [changeBefore, transitionBefore] = await Promise.all([
-        fs.readFile(changeFile, 'utf8'),
-        fs.readFile(transitionFile, 'utf8'),
-      ]);
-
-      await expect(
-        inspectPendingNativeTransitionSchema(paths, 'recover-transition'),
-      ).rejects.toThrow(/status must be running/iu);
-      if (generation === 'v3') {
-        await expect(continueNativeTransition(paths, 'recover-transition')).rejects.toThrow(
-          /status must be running/iu,
-        );
-      } else {
-        await expect(migrateNativeChange({ paths, name: 'recover-transition' })).rejects.toThrow(
-          /status must be running/iu,
-        );
-      }
-      expect(await fs.readFile(changeFile, 'utf8')).toBe(changeBefore);
-      expect(await fs.readFile(transitionFile, 'utf8')).toBe(transitionBefore);
-      expect(await readRunStateAt(runtimeDir)).toBeNull();
-      await expect(fs.access(path.join(runtimeDir, 'schema-migration.json'))).rejects.toMatchObject(
-        { code: 'ENOENT' },
-      );
-    },
-  );
-
-  it.each(['v1', 'v2', 'v3'] as const)(
-    'rejects %s non-first-hop Run identity, ref, retry, and iteration tampering',
-    async (generation) => {
-      await advanceNativeChange({
-        paths,
-        name: 'recover-transition',
-        evidence: { summary: 'shape ready for invariant matrix' },
-        runId: () => `matrix-${generation}-run`,
-      });
-      await fs.writeFile(
-        path.join(projectRoot, 'matrix-feature.ts'),
-        'export const ready = true;\n',
-      );
-      await expect(
-        advanceNativeChange({
-          paths,
-          name: 'recover-transition',
-          evidence: { summary: 'build ready', artifacts: ['matrix-feature.ts'] },
-          hooks: {
-            afterPrepared: () => {
-              throw new Error('seed non-first transition');
-            },
-          },
-        }),
-      ).rejects.toThrow('seed non-first transition');
-      const current = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
-      expect(current.previousRun).not.toBeNull();
-
-      const mutations: Array<{
-        label: string;
-        apply: (journal: Record<string, unknown>) => void;
-      }> = [
-        {
-          label: 'waiting next Run',
-          apply: (journal) =>
-            Object.assign(journal.nextRun as Record<string, unknown>, {
-              status: 'waiting',
-              pending: 'corrupt-action',
-            }),
-        },
-        {
-          label: 'pending next Run action',
-          apply: (journal) => {
-            (journal.nextRun as Record<string, unknown>).pending = 'corrupt-action';
-          },
-        },
-        {
-          label: 'iteration reuse',
-          apply: (journal) => {
-            const previous = journal.previousRun as Record<string, unknown>;
-            (journal.nextRun as Record<string, unknown>).iteration = previous.iteration;
-          },
-        },
-        {
-          label: 'run identity',
-          apply: (journal) => {
-            (journal.nextRun as Record<string, unknown>).runId = 'different-run';
-          },
-        },
-        {
-          label: 'runtime metadata',
-          apply: (journal) => {
-            (journal.nextRun as Record<string, unknown>).skillHash = 'f'.repeat(64);
-          },
-        },
-        {
-          label: 'context ref',
-          apply: (journal) => {
-            (journal.nextRun as Record<string, unknown>).contextRef = 'runtime/other-context.md';
-          },
-        },
-        {
-          label: 'trajectory ref',
-          apply: (journal) => {
-            (journal.nextRun as Record<string, unknown>).trajectoryRef =
-              'runtime/other-trajectory.jsonl';
-          },
-        },
-        {
-          label: 'retry counters',
-          apply: (journal) => {
-            (journal.nextRun as Record<string, unknown>).retries = { corrupt: 1 };
-          },
-        },
-        {
-          label: 'previous phase',
-          apply: (journal) => {
-            (journal.previousRun as Record<string, unknown>).currentStep = 'verify';
-          },
-        },
-        {
-          label: 'waiting previous Run',
-          apply: (journal) =>
-            Object.assign(journal.previousRun as Record<string, unknown>, {
-              status: 'waiting',
-              pending: 'corrupt-action',
-            }),
-        },
-      ];
-
-      for (const mutation of mutations) {
-        const journal = transitionForGeneration(current, generation);
-        mutation.apply(journal);
-        expect(
-          () => inspectNativeTransitionJournalValue(journal, 'recover-transition'),
-          mutation.label,
-        ).toThrow(/Native transition journal/iu);
-      }
-    },
-  );
-
-  it.each(['v1', 'v2', 'v3'] as const)(
-    'rejects %s first-hop Run metadata, iteration, retry, and previous-run tampering',
-    async (generation) => {
-      await expect(
-        advanceNativeChange({
-          paths,
-          name: 'recover-transition',
-          evidence: { summary: 'shape ready for first-hop matrix' },
-          runId: () => `first-hop-${generation}-run`,
-          hooks: {
-            afterPrepared: () => {
-              throw new Error('seed first-hop transition');
-            },
-          },
-        }),
-      ).rejects.toThrow('seed first-hop transition');
-      const current = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
-      expect(current.previousRun).toBeNull();
-
-      const mutations: Array<{
-        label: string;
-        apply: (journal: Record<string, unknown>) => void;
-      }> = [
-        {
-          label: 'first pending action',
-          apply: (journal) => {
-            (journal.nextRun as Record<string, unknown>).pending = 'corrupt-action';
-          },
-        },
-        {
-          label: 'first iteration skip',
-          apply: (journal) => {
-            (journal.nextRun as Record<string, unknown>).iteration = 2;
-          },
-        },
-        {
-          label: 'first retries',
-          apply: (journal) => {
-            (journal.nextRun as Record<string, unknown>).retries = { corrupt: 1 };
-          },
-        },
-        {
-          label: 'first runtime metadata',
-          apply: (journal) => {
-            (journal.nextRun as Record<string, unknown>).skill = 'other-runtime';
-          },
-        },
-        {
-          label: 'first storage ref',
-          apply: (journal) => {
-            (journal.nextRun as Record<string, unknown>).checkpointRef =
-              'runtime/checkpoints/other.json';
-          },
-        },
-        {
-          label: 'first previous state run id',
-          apply: (journal) => {
-            (journal.previousState as Record<string, unknown>).run_id = (
-              journal.nextRun as Record<string, unknown>
-            ).runId;
-          },
-        },
-        {
-          label: 'unexpected previous Run',
-          apply: (journal) => {
-            journal.previousRun = {
-              ...(journal.nextRun as Record<string, unknown>),
-              currentStep: 'shape',
-              iteration: 0,
-            };
-          },
-        },
-      ];
-
-      for (const mutation of mutations) {
-        const journal = transitionForGeneration(current, generation);
-        mutation.apply(journal);
-        expect(
-          () => inspectNativeTransitionJournalValue(journal, 'recover-transition'),
-          mutation.label,
-        ).toThrow(/Native transition journal/iu);
-      }
-    },
-  );
-
-  it.each(['v1', 'v2', 'v3'] as const)(
-    'rejects %s non-adjacent phases and non-canonical event evidence',
-    async (generation) => {
-      await expect(
-        advanceNativeChange({
-          paths,
-          name: 'recover-transition',
-          evidence: { summary: 'shape ready for semantic matrix' },
-          runId: () => `semantics-${generation}-run`,
-          hooks: {
-            afterPrepared: () => {
-              throw new Error('seed semantic transition');
-            },
-          },
-        }),
-      ).rejects.toThrow('seed semantic transition');
-      const current = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
-      const mutations: Array<{
-        label: string;
-        apply: (journal: Record<string, unknown>) => void;
-      }> = [
-        {
-          label: 'Shape skips Build',
-          apply: (journal) => {
-            (journal.nextState as Record<string, unknown>).phase = 'verify';
-            (journal.nextRun as Record<string, unknown>).currentStep = 'verify';
-            (journal.eventData as Record<string, unknown>).nextPhase = 'verify';
-          },
-        },
-        {
-          label: 'event has an unknown key',
-          apply: (journal) => {
-            (journal.eventData as Record<string, unknown>).extra = true;
-          },
-        },
-        {
-          label: 'event omits a canonical key',
-          apply: (journal) => {
-            delete (journal.eventData as Record<string, unknown>).summary;
-          },
-        },
-        {
-          label: 'event contains unredacted credentials',
-          apply: (journal) => {
-            (journal.eventData as Record<string, unknown>).summary =
-              'Transition used api_key=raw-transition-secret';
-          },
-        },
-        {
-          label: 'event exceeds its text budget',
-          apply: (journal) => {
-            (journal.eventData as Record<string, unknown>).summary = 'x'.repeat(4_097);
-          },
-        },
-        {
-          label: 'event evidence hash diverges',
-          apply: (journal) => {
-            (journal.eventData as Record<string, unknown>).evidenceHash = 'f'.repeat(64);
-          },
-        },
-        {
-          label: 'event phase diverges',
-          apply: (journal) => {
-            (journal.eventData as Record<string, unknown>).previousPhase = 'build';
-          },
-        },
-        {
-          label: 'Shape claims verification evidence',
-          apply: (journal) => {
-            (journal.eventData as Record<string, unknown>).verificationResult = 'pass';
-          },
-        },
-        {
-          label: 'Shape claims build artifacts',
-          apply: (journal) => {
-            (journal.eventData as Record<string, unknown>).artifacts = ['unexpected.ts'];
-          },
-        },
-      ];
-
-      for (const mutation of mutations) {
-        const journal = transitionForGeneration(current, generation);
-        mutation.apply(journal);
-        expect(
-          () => inspectNativeTransitionJournalValue(journal, 'recover-transition'),
-          mutation.label,
-        ).toThrow(/Native transition journal/iu);
-      }
-    },
-  );
-
-  it('requires a typed v3 operation and does not let spec-rebase bypass advance semantics', async () => {
-    await expect(
-      advanceNativeChange({
-        paths,
-        name: 'recover-transition',
-        evidence: { summary: 'shape ready for typed operation checks' },
-        hooks: {
-          afterPrepared: () => {
-            throw new Error('seed typed operation transition');
-          },
-        },
-      }),
-    ).rejects.toThrow('seed typed operation transition');
-    const current = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
-    const missing = structuredClone(current) as unknown as Record<string, unknown>;
-    delete missing.operation;
-    expect(() => inspectNativeTransitionJournalValue(missing, 'recover-transition')).toThrow(
-      /operation is invalid/iu,
-    );
-    const spoofed = structuredClone(current);
-    spoofed.operation = 'spec-rebase';
-    expect(() => inspectNativeTransitionJournalValue(spoofed, 'recover-transition')).toThrow(
-      /spec rebase semantics are invalid/iu,
-    );
-  });
-
-  it.each(['v1', 'v2'] as const)(
-    'deterministically migrates an old %s spec-rebase journal into the typed operation',
-    async (generation) => {
-      await advanceNativeChange({
-        paths,
-        name: 'recover-transition',
-        evidence: { summary: 'shape ready before old rebase' },
-        runId: () => `old-${generation}-rebase-run`,
-      });
-      await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const ready = true;\n');
-      await expect(
-        advanceNativeChange({
-          paths,
-          name: 'recover-transition',
-          evidence: { summary: 'seed source journal', artifacts: ['feature.ts'] },
-          hooks: {
-            afterPrepared: () => {
-              throw new Error('seed old spec rebase');
-            },
-          },
-        }),
-      ).rejects.toThrow('seed old spec rebase');
-      const current = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
-      const summary = 'Refresh the old spec base';
-      const legacyHash = sha256Text(`spec-rebase:${current.change}:${summary}`);
-      const rebase = structuredClone(current);
-      rebase.operation = 'spec-rebase';
-      rebase.evidenceHash = legacyHash;
-      rebase.nextState.phase = 'build';
-      rebase.nextState.verification_result = 'pending';
-      rebase.nextState.verification_report = null;
-      rebase.nextState.implementation_scope = null;
-      rebase.nextState.verification_evidence = null;
-      rebase.nextState.partial_allowance = null;
-      rebase.nextRun.currentStep = 'build';
-      rebase.eventData = {
-        previousPhase: 'build',
-        nextPhase: 'build',
-        evidenceHash: legacyHash,
-        summary,
-        artifacts: [],
-        noCodeReason: null,
-        verificationResult: null,
-      };
-      const old = transitionForGeneration(rebase, generation);
-      old.eventData = {
-        previousPhase: 'build',
-        nextPhase: 'build',
-        evidenceHash: legacyHash,
-        summary,
-        reason: 'spec-rebase',
-      };
-      const state = await readNativeChange(paths, 'recover-transition');
-      await fs.writeFile(
-        path.join(changeDir, 'comet-state.yaml'),
-        stringify(generation === 'v1' ? legacyState(state) : v2State(state)),
-      );
-      await fs.writeFile(
-        nativeTransitionJournalFile(paths, 'recover-transition'),
-        JSON.stringify(old, null, 2) + '\n',
-      );
-
-      await migrateNativeChange({ paths, name: 'recover-transition' });
-      const migrated = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
-      expect(migrated).toMatchObject({
-        operation: 'spec-rebase',
-        previousState: { phase: 'build' },
-        nextState: {
-          phase: 'build',
-          verification_result: 'pending',
-          verification_report: null,
-          implementation_scope: null,
-          verification_evidence: null,
-          partial_allowance: null,
-        },
-      });
-      expect(migrated.evidenceHash).not.toBe(legacyHash);
-      await continueNativeTransition(paths, 'recover-transition');
-      const run = (await readRunStateAt(runtimeDir))!;
-      const event = (await readTrajectory(runtimeDir, run.trajectoryRef)).at(-1)!;
-      expect(event).toMatchObject({
-        type: 'state_transitioned',
-        data: {
-          previousPhase: 'build',
-          nextPhase: 'build',
-          summary,
-          artifacts: [],
-          noCodeReason: null,
-          verificationResult: null,
-          transitionId: current.id,
-        },
-      });
-      expect(Object.keys(event.data).sort()).toEqual(
-        [
-          'artifacts',
-          'evidenceHash',
-          'nextPhase',
-          'noCodeReason',
-          'previousPhase',
-          'summary',
-          'transitionId',
-          'verificationResult',
-        ].sort(),
-      );
-    },
-  );
-
-  it('preserves a pending journal when the same-revision change content diverges', async () => {
-    await expect(
-      advanceNativeChange({
-        paths,
-        name: 'recover-transition',
-        evidence: { summary: 'seed change CAS recovery' },
-        hooks: {
-          afterPrepared: () => {
-            throw new Error('seed pending change CAS');
-          },
-        },
-      }),
-    ).rejects.toThrow('seed pending change CAS');
-    const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
-    const changeFile = path.join(changeDir, 'comet-state.yaml');
-    const current = await readNativeChange(paths, 'recover-transition');
-    await fs.writeFile(changeFile, stringify({ ...current, approval: 'confirmed' }));
-    const [changeBefore, journalBefore] = await Promise.all([
-      fs.readFile(changeFile, 'utf8'),
-      fs.readFile(transitionFile, 'utf8'),
-    ]);
-
-    await expect(continueNativeTransition(paths, 'recover-transition')).rejects.toThrow(
-      /change content changed/iu,
-    );
-    expect(await fs.readFile(changeFile, 'utf8')).toBe(changeBefore);
-    expect(await fs.readFile(transitionFile, 'utf8')).toBe(journalBefore);
-    expect(await readRunStateAt(runtimeDir)).toBeNull();
-  });
-
-  it('preserves a pending journal when a different valid Run is present', async () => {
-    await expect(
-      advanceNativeChange({
-        paths,
-        name: 'recover-transition',
-        evidence: { summary: 'seed Run CAS recovery' },
-        hooks: {
-          afterPrepared: () => {
-            throw new Error('seed pending Run CAS');
-          },
-        },
-      }),
-    ).rejects.toThrow('seed pending Run CAS');
-    const journal = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
-    const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
-    await writeRunStateAt(runtimeDir, { ...journal.nextRun, runId: 'other-valid-run' });
-    const [changeBefore, journalBefore] = await Promise.all([
-      fs.readFile(path.join(changeDir, 'comet-state.yaml'), 'utf8'),
-      fs.readFile(transitionFile, 'utf8'),
-    ]);
-
-    await expect(continueNativeTransition(paths, 'recover-transition')).rejects.toThrow(
-      /Run content changed/iu,
-    );
-    expect(await fs.readFile(path.join(changeDir, 'comet-state.yaml'), 'utf8')).toBe(changeBefore);
-    expect(await fs.readFile(transitionFile, 'utf8')).toBe(journalBefore);
-    expect(await readRunStateAt(runtimeDir)).toMatchObject({
-      runId: 'other-valid-run',
-    });
-  });
-
-  it('rejects an existing transition event whose full content does not match the journal', async () => {
-    await expect(
-      advanceNativeChange({
-        paths,
-        name: 'recover-transition',
-        evidence: { summary: 'seed trajectory collision' },
-        transitionId: () => '55555555-6666-4777-8888-999999999999',
-        hooks: {
-          afterPrepared: () => {
-            throw new Error('seed pending trajectory collision');
-          },
-        },
-      }),
-    ).rejects.toThrow('seed pending trajectory collision');
-    const journal = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
-    await appendNativeTrajectoryEvent({
-      changeDir: runtimeDir,
-      run: journal.nextRun,
-      type: 'run_started',
-      data: {
-        runtime: 'comet-native',
-        phase: journal.previousState.phase,
-        transitionId: journal.id,
-      },
-      now: new Date(journal.createdAt),
-    });
-    await appendNativeTrajectoryEvent({
-      changeDir: runtimeDir,
-      run: journal.nextRun,
-      type: 'state_transitioned',
-      data: { ...journal.eventData, summary: 'tampered summary', transitionId: journal.id },
-      now: new Date(journal.createdAt),
-    });
-    const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
-    const journalBefore = await fs.readFile(transitionFile, 'utf8');
-
-    await expect(continueNativeTransition(paths, 'recover-transition')).rejects.toThrow(
-      /trajectory event changed/iu,
-    );
-    expect(await fs.readFile(transitionFile, 'utf8')).toBe(journalBefore);
-    expect(await readRunStateAt(runtimeDir)).toBeNull();
-    expect((await readNativeChange(paths, 'recover-transition')).phase).toBe('shape');
-  });
-
-  it.each<{
-    label: string;
-    hooks: NativeTransitionHooks;
-    prewriteEvents?: boolean;
-  }>([
-    {
-      label: 'prepared journal',
-      hooks: {
-        afterPrepared: () => {
-          throw new Error('legacy interruption after prepared');
-        },
-      },
-    },
-    {
-      label: 'Run state write',
-      hooks: {
-        afterRunStateWritten: () => {
-          throw new Error('legacy interruption after Run state');
-        },
-      },
-    },
-    {
-      label: 'change state write',
-      hooks: {
-        afterChangeStateWritten: () => {
-          throw new Error('legacy interruption after change state');
-        },
-      },
-    },
-    {
-      label: 'trajectory event write',
-      hooks: {
-        afterChangeStateWritten: () => {
-          throw new Error('legacy interruption before seeded trajectory events');
-        },
-      },
-      prewriteEvents: true,
-    },
-  ])(
-    'doctor migrates and exactly-once continues a v1 transition interrupted at $label',
-    async ({ hooks, prewriteEvents }) => {
-      const capabilityDir = path.join(changeDir, 'specs', 'character-counting');
-      await fs.mkdir(capabilityDir, { recursive: true });
-      await fs.writeFile(
-        path.join(capabilityDir, 'spec.md'),
-        '# Character counting\nCount every input character.\n',
-      );
-      await expect(
-        advanceNativeChange({
-          paths,
-          name: 'recover-transition',
-          evidence: { summary: 'Shape was complete before the process stopped' },
-          runId: () => 'native-recovery-eval-run',
-          transitionId: () => '11111111-2222-4333-8444-555555555555',
-          now: new Date('2026-07-15T00:00:00.000Z'),
-          hooks,
-        }),
-      ).rejects.toThrow('legacy interruption');
-
-      const currentJournal = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
-      expect(currentJournal).toMatchObject({
-        schema: NATIVE_TRANSITION_SCHEMA,
-        minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
-        revision: 1,
-      });
-      const preservedEvents: string[] = [];
-      if (prewriteEvents) {
-        const started = await appendNativeTrajectoryEvent({
-          changeDir: runtimeDir,
-          run: currentJournal.nextRun,
-          type: 'run_started',
-          data: {
-            runtime: 'comet-native',
-            phase: currentJournal.previousState.phase,
-            transitionId: currentJournal.id,
-          },
-          now: new Date(currentJournal.createdAt),
-        });
-        const transitioned = await appendNativeTrajectoryEvent({
-          changeDir: runtimeDir,
-          run: currentJournal.nextRun,
-          type: 'state_transitioned',
-          data: { ...currentJournal.eventData, transitionId: currentJournal.id },
-          now: new Date(currentJournal.createdAt),
-        });
-        preservedEvents.push(JSON.stringify(started), JSON.stringify(transitioned));
-      }
-
-      const stateAtCrash = await readNativeChange(paths, 'recover-transition');
-      const changeFile = path.join(changeDir, 'comet-state.yaml');
-      const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
-      const legacyJournal = legacyTransition(currentJournal);
-      const legacyNextRun = legacyJournal.nextRun as Record<string, unknown>;
-      legacyNextRun.skillVersion = '1';
-      legacyNextRun.skillHash = sha256Text('comet-native-runtime:v1');
-      await fs.writeFile(changeFile, stringify(legacyState(stateAtCrash)));
-      await fs.writeFile(transitionFile, JSON.stringify(legacyJournal, null, 2) + '\n');
-      await fs.rm(nativeBaselineManifestFile(paths, 'recover-transition'), { force: true });
-      const [changeBefore, transitionBefore] = await Promise.all([
-        fs.readFile(changeFile, 'utf8'),
-        fs.readFile(transitionFile, 'utf8'),
-      ]);
-
-      expect(await inspectNativeStatus(paths, 'recover-transition')).toMatchObject({
-        schema: NATIVE_LEGACY_CHANGE_SCHEMA,
-        migrationRequired: true,
-        nextCommand: null,
-      });
-      await expect(
-        advanceNativeChange({
-          paths,
-          name: 'recover-transition',
-          evidence: { summary: 'must fail closed before doctor migration' },
-        }),
-      ).rejects.toThrow('run comet native doctor recover-transition --repair before mutating it');
-      const inspected = await doctorNativeProject({ paths, name: 'recover-transition' });
-      expect(inspected.findings).toContainEqual(
-        expect.objectContaining({ code: 'schema-migration-required', repair: 'migrate' }),
-      );
-      expect(inspected.findings).not.toContainEqual(
-        expect.objectContaining({ code: 'transition-invalid' }),
-      );
-      expect(await fs.readFile(changeFile, 'utf8')).toBe(changeBefore);
-      expect(await fs.readFile(transitionFile, 'utf8')).toBe(transitionBefore);
-
-      const repaired = await doctorNativeProject({
-        paths,
-        name: 'recover-transition',
-        repair: true,
-        recoveryStrategy: 'continue',
-      });
-      expect(repaired.findings).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ code: 'schema-migrated', severity: 'info' }),
-          expect.objectContaining({ code: 'transition-recovered', severity: 'info' }),
-        ]),
-      );
-      expect(await readNativeChange(paths, 'recover-transition')).toMatchObject({
-        schema: NATIVE_CHANGE_SCHEMA,
-        minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
-        revision: 2,
-        phase: 'build',
-        run_id: 'native-recovery-eval-run',
-      });
-      expect(await readNativeBaselineManifest(paths, 'recover-transition')).toMatchObject({
-        origin: 'legacy-migration',
-      });
-      await expect(fs.access(transitionFile)).rejects.toMatchObject({ code: 'ENOENT' });
-
-      const events = await readTrajectory(runtimeDir, currentJournal.nextRun.trajectoryRef);
-      expect(
-        events.filter(
-          (event) => event.type === 'run_started' && event.data.transitionId === currentJournal.id,
-        ),
-      ).toHaveLength(1);
-      expect(
-        events.filter(
-          (event) =>
-            event.type === 'state_transitioned' && event.data.transitionId === currentJournal.id,
-        ),
-      ).toHaveLength(1);
-      expect(
-        events.filter((event) => preservedEvents.includes(JSON.stringify(event))),
-      ).toHaveLength(preservedEvents.length);
-
-      await doctorNativeProject({
-        paths,
-        name: 'recover-transition',
-        repair: true,
-        recoveryStrategy: 'continue',
-      });
-      expect((await readNativeChange(paths, 'recover-transition')).revision).toBe(2);
-      const replayedEvents = await readTrajectory(runtimeDir, currentJournal.nextRun.trajectoryRef);
-      expect(replayedEvents).toEqual(events);
-    },
-  );
-
-  it('migrates and continues a directly persisted v2 transition exactly once', async () => {
-    await expect(
-      advanceNativeChange({
-        paths,
-        name: 'recover-transition',
-        evidence: { summary: 'shape was ready under v2' },
-        runId: () => 'v2-transition-run',
-        transitionId: () => '22222222-3333-4444-8555-666666666666',
-        now: new Date('2026-07-17T04:00:00.000Z'),
-        hooks: {
-          afterPrepared: () => {
-            throw new Error('interrupt v2 transition');
-          },
-        },
-      }),
-    ).rejects.toThrow('interrupt v2 transition');
-    const currentJournal = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
-    const changeFile = path.join(changeDir, 'comet-state.yaml');
-    const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
-    await fs.writeFile(
-      changeFile,
-      stringify(v2State(await readNativeChange(paths, 'recover-transition'))),
-    );
-    await fs.writeFile(
-      transitionFile,
-      JSON.stringify(v2Transition(currentJournal), null, 2) + '\n',
-    );
-
-    expect(await inspectNativeStatus(paths, 'recover-transition')).toMatchObject({
-      schema: NATIVE_V2_CHANGE_SCHEMA,
-      migrationRequired: true,
-      nextCommand: null,
-    });
-    const repaired = await doctorNativeProject({
-      paths,
-      name: 'recover-transition',
-      repair: true,
-      recoveryStrategy: 'continue',
-    });
-    expect(repaired.findings).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: 'schema-migrated', severity: 'info' }),
-        expect.objectContaining({ code: 'transition-recovered', severity: 'info' }),
-      ]),
-    );
-    expect(await readNativeChange(paths, 'recover-transition')).toMatchObject({
-      schema: NATIVE_CHANGE_SCHEMA,
-      phase: 'build',
-      revision: 2,
-      implementation_scope: null,
-      verification_evidence: null,
-      partial_allowance: null,
-    });
-    const run = (await readRunStateAt(runtimeDir))!;
-    expect(run).toMatchObject({ runId: 'v2-transition-run', currentStep: 'build' });
-    const events = await readTrajectory(runtimeDir, run.trajectoryRef);
-    expect(
-      events.filter(
-        (event) =>
-          event.type === 'state_transitioned' && event.data.transitionId === currentJournal.id,
-      ),
-    ).toHaveLength(1);
-    await expect(fs.access(transitionFile)).rejects.toMatchObject({ code: 'ENOENT' });
-  });
-
-  it('recovers a v1 transition migration interrupted after writing the v2 journal', async () => {
-    await expect(
-      advanceNativeChange({
-        paths,
-        name: 'recover-transition',
-        evidence: { summary: 'shape ready before migration interruption' },
-        runId: () => 'transition-migration-run',
-        transitionId: () => '44444444-5555-4666-8777-888888888888',
-        hooks: {
-          afterPrepared: () => {
-            throw new Error('seed pending transition');
-          },
-        },
-      }),
-    ).rejects.toThrow('seed pending transition');
-    const currentJournal = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
-    const changeFile = path.join(changeDir, 'comet-state.yaml');
-    const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
-    await fs.writeFile(
-      changeFile,
-      stringify(legacyState(await readNativeChange(paths, 'recover-transition'))),
-    );
-    await fs.writeFile(
-      transitionFile,
-      JSON.stringify(legacyTransition(currentJournal), null, 2) + '\n',
-    );
-
-    await expect(
-      migrateNativeChange({
-        paths,
-        name: 'recover-transition',
-        id: () => 'interrupted-transition-migration',
-        hooks: {
-          afterTransitionWritten: () => {
-            throw new Error('interrupt after v2 transition write');
-          },
-        },
-      }),
-    ).rejects.toThrow('interrupt after v2 transition write');
-    expect(await inspectPendingNativeSchemaMigration(paths, 'recover-transition')).toMatchObject({
-      fromSchema: NATIVE_LEGACY_CHANGE_SCHEMA,
-      toSchema: NATIVE_V2_CHANGE_SCHEMA,
-      transition: {
-        nextJournal: { schema: NATIVE_V2_TRANSITION_SCHEMA },
-      },
-    });
-
-    await migrateNativeChange({ paths, name: 'recover-transition' });
-    await continueNativeTransition(paths, 'recover-transition');
-    expect(await readNativeChange(paths, 'recover-transition')).toMatchObject({
-      schema: NATIVE_CHANGE_SCHEMA,
-      phase: 'build',
-      revision: 2,
-    });
-    const run = (await readRunStateAt(runtimeDir))!;
-    expect(
-      (await readTrajectory(runtimeDir, run.trajectoryRef)).filter(
-        (event) =>
-          event.type === 'state_transitioned' && event.data.transitionId === currentJournal.id,
-      ),
-    ).toHaveLength(1);
-  });
-
-  it('supersedes a durable v2 Archive transition through the schema-migration journal', async () => {
-    await advanceNativeChange({
-      paths,
-      name: 'recover-transition',
-      evidence: { summary: 'shape ready' },
-      runId: () => 'v2-archive-transition-run',
-    });
-    await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const ready = true;\n');
-    await advanceNativeChange({
-      paths,
-      name: 'recover-transition',
-      evidence: { summary: 'build ready', artifacts: ['feature.ts'] },
-    });
-    await fs.writeFile(
-      path.join(changeDir, 'verification.md'),
-      await nativeVerificationFixtureReport({
-        paths,
-        name: 'recover-transition',
-        evidenceRefs: ['feature.ts'],
-      }),
-    );
-    await expect(
-      advanceNativeChange({
-        paths,
-        name: 'recover-transition',
-        evidence: {
-          summary: 'verification passed under v2',
-          verificationResult: 'pass',
-          verificationReport: 'verification.md',
-        },
-        transitionId: () => '33333333-4444-4555-8666-777777777777',
-        now: new Date('2026-07-17T05:00:00.000Z'),
-        hooks: {
-          afterChangeStateWritten: () => {
-            throw new Error('interrupt after archive state');
-          },
-        },
-      }),
-    ).rejects.toThrow('interrupt after archive state');
-    const currentJournal = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
-    await appendNativeTrajectoryEvent({
-      changeDir: runtimeDir,
-      run: currentJournal.nextRun,
-      type: 'state_transitioned',
-      data: { ...currentJournal.eventData, transitionId: currentJournal.id },
-      now: new Date(currentJournal.createdAt),
-    });
-
-    const changeFile = path.join(changeDir, 'comet-state.yaml');
-    const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
-    await fs.writeFile(
-      changeFile,
-      stringify(v2State(await readNativeChange(paths, 'recover-transition'))),
-    );
-    await fs.writeFile(
-      transitionFile,
-      JSON.stringify(v2Transition(currentJournal), null, 2) + '\n',
-    );
-
-    await doctorNativeProject({
-      paths,
-      name: 'recover-transition',
-      repair: true,
-      recoveryStrategy: 'continue',
-    });
-    const state = await readNativeChange(paths, 'recover-transition');
-    expect(state).toMatchObject({
-      phase: 'build',
-      revision: currentJournal.nextState.revision + 1,
-      verification_result: 'pending',
-      verification_report: null,
-      implementation_scope: null,
-      verification_evidence: null,
-      partial_allowance: null,
-    });
-    const run = (await readRunStateAt(runtimeDir))!;
-    expect(run).toMatchObject({
-      currentStep: 'build',
-      iteration: currentJournal.nextRun.iteration + 1,
-      pending: null,
-      status: 'running',
-    });
-    const events = await readTrajectory(runtimeDir, run.trajectoryRef);
-    expect(
-      events.filter(
-        (event) =>
-          event.type === 'state_transitioned' && event.data.transitionId === currentJournal.id,
-      ),
-    ).toHaveLength(1);
-    expect(
-      events.filter(
-        (event) =>
-          event.type === 'state_migrated' &&
-          event.data.supersededTransitionId === currentJournal.id &&
-          event.data.previousPhase === 'archive' &&
-          event.data.nextPhase === 'build',
-      ),
-    ).toHaveLength(1);
-    await expect(fs.access(transitionFile)).rejects.toMatchObject({ code: 'ENOENT' });
-    expect(await readCheckpoint(runtimeDir, run.checkpointRef)).toMatchObject({
-      runId: run.runId,
-      stateVersion: run.iteration,
-      trajectoryOffset: events.length,
-    });
-    const status = await inspectNativeStatus(paths, 'recover-transition', { details: true });
-    expect((status.findings ?? []).map((finding) => finding.code)).not.toEqual(
-      expect.arrayContaining(['run-phase-mismatch', 'checkpoint-mismatch', 'trajectory-invalid']),
-    );
-  });
-
-  it.each<{
-    label: string;
-    slug: string;
-    hook: keyof NativeSchemaMigrationHooks;
-  }>([
-    { label: 'prepared plan', slug: 'prepared', hook: 'afterPrepared' },
-    { label: 'state write', slug: 'state', hook: 'afterStateWritten' },
-    { label: 'Run write', slug: 'run', hook: 'afterRunStateWritten' },
-    { label: 'migration event', slug: 'event', hook: 'afterTrajectoryWritten' },
-    { label: 'checkpoint', slug: 'checkpoint', hook: 'afterCheckpointWritten' },
-    {
-      label: 'source transition removal',
-      slug: 'transition',
-      hook: 'afterTransitionSuperseded',
-    },
-  ])(
-    'recovers a pending v2 Archive supersede interrupted after $label exactly once',
-    async ({ slug, hook }) => {
-      await advanceNativeChange({
-        paths,
-        name: 'recover-transition',
-        evidence: { summary: 'shape ready for supersede recovery' },
-        runId: () => `supersede-${slug}-run`,
-      });
-      await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const ready = true;\n');
-      await advanceNativeChange({
-        paths,
-        name: 'recover-transition',
-        evidence: { summary: 'build ready for supersede recovery', artifacts: ['feature.ts'] },
-      });
-      await fs.writeFile(
-        path.join(changeDir, 'verification.md'),
-        await nativeVerificationFixtureReport({
-          paths,
-          name: 'recover-transition',
-          evidenceRefs: ['feature.ts'],
-        }),
-      );
-      await expect(
-        advanceNativeChange({
-          paths,
-          name: 'recover-transition',
-          evidence: {
-            summary: 'verification passed before supersede recovery',
-            verificationResult: 'pass',
-            verificationReport: 'verification.md',
-          },
-          transitionId: () => `superseded-${slug}-transition`,
-          now: new Date('2026-07-17T06:00:00.000Z'),
-          hooks: {
-            afterChangeStateWritten: () => {
-              throw new Error('seed durable Archive transition');
-            },
-          },
-        }),
-      ).rejects.toThrow('seed durable Archive transition');
-      const pending = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
-      await appendNativeTrajectoryEvent({
-        changeDir: runtimeDir,
-        run: pending.nextRun,
-        type: 'state_transitioned',
-        data: { ...pending.eventData, transitionId: pending.id },
-        now: new Date(pending.createdAt),
-      });
-      const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
-      await fs.writeFile(
-        path.join(changeDir, 'comet-state.yaml'),
-        stringify(v2State(await readNativeChange(paths, 'recover-transition'))),
-      );
-      await fs.writeFile(transitionFile, JSON.stringify(v2Transition(pending), null, 2) + '\n');
-      const hooks = {
-        [hook]: () => {
-          throw new Error(`interrupt supersede after ${slug}`);
-        },
-      } as NativeSchemaMigrationHooks;
-
-      await expect(
-        migrateNativeChange({
-          paths,
-          name: 'recover-transition',
-          id: () => `supersede-migration-${slug}`,
-          now: new Date('2026-07-17T06:01:00.000Z'),
-          hooks,
-        }),
-      ).rejects.toThrow(`interrupt supersede after ${slug}`);
-      expect(await inspectPendingNativeSchemaMigration(paths, 'recover-transition')).toMatchObject({
-        transitionSupersede: {
-          transitionId: pending.id,
-          eventData: { reason: 'implementation-scope-required' },
-        },
-      });
-
-      const recovered = await migrateNativeChange({ paths, name: 'recover-transition' });
-      expect(recovered).toMatchObject({
-        phase: 'build',
-        verification_result: 'pending',
-        verification_report: null,
-      });
-      const run = (await readRunStateAt(runtimeDir))!;
-      const events = await readTrajectory(runtimeDir, run.trajectoryRef);
-      expect(
-        events.filter(
-          (event) => event.type === 'state_transitioned' && event.data.transitionId === pending.id,
-        ),
-      ).toHaveLength(1);
-      expect(
-        events.filter(
-          (event) =>
-            event.type === 'state_migrated' &&
-            event.data.migrationId === `supersede-migration-${slug}` &&
-            event.data.supersededTransitionId === pending.id,
-        ),
-      ).toHaveLength(1);
-      await expect(fs.access(transitionFile)).rejects.toMatchObject({ code: 'ENOENT' });
-      await expect(
-        fs.access(nativeSchemaMigrationJournalFile(paths, 'recover-transition')),
-      ).rejects.toMatchObject({ code: 'ENOENT' });
-      expect(await readCheckpoint(runtimeDir, run.checkpointRef)).toMatchObject({
-        runId: run.runId,
-        stateVersion: run.iteration,
-      });
-    },
-  );
-
-  it('serializes concurrent transitions for the same change', async () => {
-    let markPrepared!: () => void;
-    let releaseFirst!: () => void;
-    const prepared = new Promise<void>((resolve) => {
-      markPrepared = resolve;
-    });
-    const blocked = new Promise<void>((resolve) => {
-      releaseFirst = resolve;
-    });
-    const first = advanceNativeChange({
-      paths,
-      name: 'recover-transition',
-      evidence: { summary: 'first shape transition' },
-      hooks: {
-        afterPrepared: async () => {
-          markPrepared();
-          await blocked;
-        },
-      },
-    });
-    await prepared;
-
-    const second = advanceNativeChange({
-      paths,
-      name: 'recover-transition',
-      evidence: { summary: 'concurrent shape transition' },
-    });
-    const secondResult = await second.then(
-      (value) => ({ status: 'fulfilled' as const, value }),
-      (error: unknown) => ({ status: 'rejected' as const, error }),
-    );
-    releaseFirst();
-    const firstResult = await first.then(
-      (value) => ({ status: 'fulfilled' as const, value }),
-      (error: unknown) => ({ status: 'rejected' as const, error }),
-    );
-
-    expect(firstResult).toMatchObject({
-      status: 'fulfilled',
-      value: { change: { phase: 'build' } },
-    });
-    expect(secondResult).toMatchObject({ status: 'rejected' });
-    expect((secondResult as { error: Error }).error.message).toContain('lock is already held');
-  });
-
-  it('writes the prepared journal before the first trajectory event', async () => {
-    await expect(
-      advanceNativeChange({
-        paths,
-        name: 'recover-transition',
-        evidence: { summary: 'shape is ready' },
-        hooks: {
-          afterPrepared: () => {
-            throw new Error('inspect journal-first ordering');
-          },
-        },
-      }),
-    ).rejects.toThrow('inspect journal-first ordering');
-
-    const journal = await inspectPendingNativeTransition(paths, 'recover-transition');
-    expect(journal).not.toBeNull();
-    expect(await readTrajectory(runtimeDir, journal!.nextRun.trajectoryRef)).toEqual([]);
-    await continueNativeTransition(paths, 'recover-transition');
-    const events = await readTrajectory(runtimeDir, journal!.nextRun.trajectoryRef);
-    expect(events.map((event) => event.type)).toEqual(['run_started', 'state_transitioned']);
-  });
-
-  it('doctor atomically removes only an incomplete final trajectory line before continuing', async () => {
-    await expect(
-      advanceNativeChange({
-        paths,
-        name: 'recover-transition',
-        evidence: { summary: 'shape is ready' },
-        runId: () => 'tail-recovery-run',
-        transitionId: () => 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
-        hooks: {
-          afterChangeStateWritten: () => {
-            throw new Error('crash before trajectory append completed');
-          },
-        },
-      }),
-    ).rejects.toThrow('crash before trajectory append completed');
-    const stateFile = path.join(changeDir, 'comet-state.yaml');
-    const runFile = nativeRuntimeRefFile(runtimeDir, NATIVE_RUN_STORAGE.stateRef);
-    const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
-    const trajectoryFile = nativeRuntimeRefFile(runtimeDir, NATIVE_RUN_STORAGE.trajectoryRef);
-    await fs.appendFile(trajectoryFile, '{"sequence":1');
-    const before = await Promise.all([
-      fs.readFile(stateFile, 'utf8'),
-      fs.readFile(runFile, 'utf8'),
-      fs.readFile(transitionFile, 'utf8'),
-      fs.readFile(trajectoryFile, 'utf8'),
-    ]);
-
-    expect(await inspectNativeStatus(paths, 'recover-transition')).toMatchObject({
-      nextCommand: null,
-    });
-    await expect(
-      advanceNativeChange({
-        paths,
-        name: 'recover-transition',
-        evidence: { summary: 'must not write through a broken trajectory tail' },
-      }),
-    ).rejects.toThrow('incomplete final line');
-    expect(
-      await Promise.all([
-        fs.readFile(stateFile, 'utf8'),
-        fs.readFile(runFile, 'utf8'),
-        fs.readFile(transitionFile, 'utf8'),
-        fs.readFile(trajectoryFile, 'utf8'),
-      ]),
-    ).toEqual(before);
-
-    const inspected = await doctorNativeProject({ paths, name: 'recover-transition' });
-    expect(inspected.findings).toContainEqual(
-      expect.objectContaining({
-        code: 'trajectory-tail-incomplete',
-        repair: 'truncate-tail',
-      }),
-    );
-    expect(await fs.readFile(trajectoryFile, 'utf8')).toBe('{"sequence":1');
-
-    const repaired = await doctorNativeProject({
-      paths,
-      name: 'recover-transition',
-      repair: true,
-      recoveryStrategy: 'continue',
-    });
-    expect(repaired.findings).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: 'trajectory-tail-repaired', severity: 'info' }),
-        expect.objectContaining({ code: 'transition-recovered', severity: 'info' }),
-      ]),
-    );
-    const events = await readTrajectory(runtimeDir, NATIVE_RUN_STORAGE.trajectoryRef);
-    expect(events.map((event) => event.type)).toEqual(['run_started', 'state_transitioned']);
-    expect((await readNativeChange(paths, 'recover-transition')).revision).toBe(2);
-  });
-
-  it('never truncates a malformed middle trajectory line', async () => {
-    await advanceNativeChange({
-      paths,
-      name: 'recover-transition',
-      evidence: { summary: 'shape is ready' },
-      runId: () => 'middle-corruption-run',
-    });
-    const trajectoryFile = nativeRuntimeRefFile(runtimeDir, NATIVE_RUN_STORAGE.trajectoryRef);
-    await fs.appendFile(trajectoryFile, '{not-json}\n{"sequence":');
-    const before = await fs.readFile(trajectoryFile, 'utf8');
-
-    await expect(
-      advanceNativeChange({
-        paths,
-        name: 'recover-transition',
-        evidence: { summary: 'must fail before mutation' },
-      }),
-    ).rejects.toThrow('Native trajectory is invalid');
-    const repaired = await doctorNativeProject({
-      paths,
-      name: 'recover-transition',
-      repair: true,
-    });
-    expect(repaired.findings).toContainEqual(
-      expect.objectContaining({ code: 'trajectory-invalid', severity: 'error' }),
-    );
-    expect(repaired.findings).not.toContainEqual(
-      expect.objectContaining({ code: 'trajectory-tail-repaired' }),
-    );
-    expect(await fs.readFile(trajectoryFile, 'utf8')).toBe(before);
-    expect(await inspectNativeStatus(paths, 'recover-transition')).toMatchObject({
-      nextCommand: null,
-    });
-  });
-
-  it('refuses to overwrite trajectory events appended after tail inspection', async () => {
-    await advanceNativeChange({
-      paths,
-      name: 'recover-transition',
-      evidence: { summary: 'shape is ready' },
-      runId: () => 'trajectory-cas-run',
-    });
-    const trajectoryFile = nativeRuntimeRefFile(runtimeDir, NATIVE_RUN_STORAGE.trajectoryRef);
-    const withoutNewline = (await fs.readFile(trajectoryFile, 'utf8')).trimEnd();
-    await fs.writeFile(trajectoryFile, withoutNewline);
-    const appended =
-      '\n' +
-      JSON.stringify({
-        sequence: 3,
-        timestamp: '2026-07-17T00:00:00.000Z',
-        type: 'checkpoint_written',
-        runId: 'trajectory-cas-run',
-        data: { source: 'concurrent-writer' },
-      }) +
-      '\n';
-    await expect(
-      repairNativeTrajectoryTail(paths, 'recover-transition', {
-        beforeCommit: () => fs.appendFile(trajectoryFile, appended),
-      }),
-    ).rejects.toThrow('changed while preparing tail repair');
-    expect(await fs.readFile(trajectoryFile, 'utf8')).toBe(withoutNewline + appended);
-  });
-
-  it('requires explicit doctor takeover before continuing stale transition locks', async () => {
-    await expect(
-      advanceNativeChange({
-        paths,
-        name: 'recover-transition',
-        evidence: { summary: 'shape is ready' },
-        hooks: {
-          afterPrepared: () => {
-            throw new Error('simulate a stopped transition process');
-          },
-        },
-      }),
-    ).rejects.toThrow('simulate a stopped transition process');
-
-    const lockFile = path.join(paths.locksDir, 'transition-recover-transition.lock');
-    const rootLockFile = path.join(paths.locksDir, 'root-move.lock');
-    const staleOwner = {
-      id: 'stale-transition-owner',
-      pid: 2_147_483_647,
-      hostname: os.hostname(),
-      createdAt: '2026-07-15T00:00:00.000Z',
-      operation: 'advance recover-transition',
-    };
-    await Promise.all([
-      fs.writeFile(lockFile, JSON.stringify(staleOwner)),
-      fs.writeFile(rootLockFile, JSON.stringify({ ...staleOwner, id: 'stale-root-owner' })),
-    ]);
-
-    await expect(continueNativeTransition(paths, 'recover-transition')).rejects.toThrow(
-      /already held/u,
-    );
-    await expect(fs.access(lockFile)).resolves.toBeUndefined();
-    await expect(fs.access(rootLockFile)).rejects.toMatchObject({ code: 'ENOENT' });
-
-    const repaired = await doctorNativeProject({
-      paths,
-      name: 'recover-transition',
-      repair: true,
-      recoveryStrategy: 'continue',
-    });
-    expect(repaired.findings).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: 'stale-recovery-lock-removed', severity: 'info' }),
-        expect.objectContaining({ code: 'transition-recovered', severity: 'info' }),
-      ]),
-    );
-    expect((await readNativeChange(paths, 'recover-transition')).phase).toBe('build');
-    await Promise.all(
-      [lockFile, rootLockFile].map((file) =>
-        expect(fs.access(file)).rejects.toMatchObject({ code: 'ENOENT' }),
-      ),
-    );
-  });
-
-  it('requires pending Verify recovery before archive preview and commit', async () => {
-    await advanceNativeChange({
-      paths,
-      name: 'recover-transition',
-      evidence: { summary: 'shape is ready' },
-    });
-    await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const feature = true;\n');
-    await advanceNativeChange({
-      paths,
-      name: 'recover-transition',
-      evidence: { summary: 'build is ready', artifacts: ['feature.ts'] },
-    });
-    await fs.writeFile(
-      path.join(changeDir, 'verification.md'),
-      await nativeVerificationFixtureReport({
-        paths,
-        name: 'recover-transition',
-        evidenceRefs: ['feature.ts'],
-      }),
-    );
-    await expect(
-      advanceNativeChange({
-        paths,
-        name: 'recover-transition',
-        evidence: {
-          summary: 'verification passed',
-          verificationResult: 'pass',
-          verificationReport: 'verification.md',
-        },
-        hooks: {
-          afterRunStateWritten: () => {
-            throw new Error('interrupt before archive');
-          },
-        },
-      }),
-    ).rejects.toThrow('interrupt before archive');
-
-    const now = new Date('2026-07-15T00:00:00Z');
-    await expect(
-      inspectNativeArchivePreflight({ paths, name: 'recover-transition', now }),
-    ).resolves.toMatchObject({
-      ready: false,
-      findingCodes: expect.arrayContaining(['pending-journal']),
-    });
-
-    await continueNativeTransition(paths, 'recover-transition');
-    const expectedPreflightHash = await readyNativeArchivePreflight({
-      paths,
-      name: 'recover-transition',
-      now,
-    });
-    const archived = await archiveNativeChange({
-      paths,
-      name: 'recover-transition',
-      expectedPreflightHash,
-      now,
-    });
-    expect(archived.archiveDir).toContain('2026-07-15-recover-transition');
-  });
+  readNativeRunState,
+  readNativeTrajectory,
+  readNativeCheckpoint,
+} from '../../../domains/comet-native/native-run-store.js';
+const roots: string[] = [];
+afterEach(async () => {
+  vi.unstubAllEnvs();
+  for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true });
 });
+async function fixture() {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'native-transition-business-'));
+  roots.push(home);
+  vi.stubEnv('COMET_DATA_DIR', path.join(home, 'data'));
+  const project = path.join(home, 'project');
+  await fs.mkdir(project);
+  await writeProjectConfig(project, defaultProjectConfig('.', 'en'));
+  const paths = await nativeProjectPaths(project, '.');
+  const frozen = await loadPreparedNativeTransition(paths);
+  const name = frozen.name,
+    dir = nativeChangeRuntimeDir(paths, name);
+  return {
+    home,
+    project,
+    paths,
+    frozen,
+    name,
+    dir,
+    wal: nativeTransitionJournalFile(paths, name),
+  };
+}
+it('continues original published prepared WAL exactly once without rebuilding the old creator', async () => {
+  const f = await fixture();
+  const j = (await inspectPendingNativeTransition(f.paths, f.name))!;
+  expect(j.previousRun).toBeNull();
+  expect(await readNativeRunState(f.dir)).toBeNull();
+  const result = await continueNativeTransition(f.paths, f.name);
+  expect(result).toEqual(j.nextState);
+  expect(await readNativeRunState(f.dir)).toEqual(j.nextRun);
+  const events = await readNativeTrajectory(f.dir, j.nextRun.trajectoryRef);
+  expect(events.filter((e) => e.type === 'run_started')).toHaveLength(1);
+  expect(events.filter((e) => e.type === 'state_transitioned')).toHaveLength(1);
+  expect(await readNativeCheckpoint(f.dir, j.nextRun.checkpointRef)).toMatchObject({
+    runId: j.nextRun.runId,
+    stateVersion: 1,
+  });
+  await expect(fs.access(f.wal)).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(await continueNativeTransition(f.paths, f.name)).toBeNull();
+  expect(await readNativeTrajectory(f.dir, j.nextRun.trajectoryRef)).toEqual(events);
+});
+it('preserves original WAL and change when a different valid Run exists', async () => {
+  const f = await fixture();
+  const j = (await inspectPendingNativeTransition(f.paths, f.name))!;
+  const { writeNativeRunState } = await import('../../../domains/comet-native/native-run-store.js');
+  await writeNativeRunState(f.dir, {
+    ...j.nextRun,
+    runId: 'different-valid-run',
+  });
+  const before = await fs.readFile(f.wal, 'utf8'),
+    state = await readNativeChange(f.paths, f.name);
+  await expect(continueNativeTransition(f.paths, f.name)).rejects.toThrow(/Run|source/);
+  expect(await fs.readFile(f.wal, 'utf8')).toBe(before);
+  expect(await readNativeChange(f.paths, f.name)).toEqual(state);
+});
+
+import {
+  inspectNativeTransitionJournalValue,
+  inspectPendingNativeTransitionSchema,
+} from '../../../domains/comet-native/native-transition-journal.js';
+import { writeNativeChangeFile } from '../../../domains/comet-native/native-change.js';
+import { writeNativeRunState } from '../../../domains/comet-native/native-run-store.js';
+import { repairNativeTrajectoryTail } from '../../../domains/comet-native/native-trajectory-recovery.js';
+import { appendNativeTrajectoryEvent } from '../../../domains/comet-native/native-trajectory.js';
+import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
+
+import { nativeArchiveCommand } from '../../../domains/comet-native/native-archive-command.js';
+
+async function currentJournal() {
+  const f = await fixture();
+  const journal = (await inspectPendingNativeTransition(f.paths, f.name))!;
+  return { ...f, journal };
+}
+async function nonFirstFixture() {
+  const f = await fixture(),
+    frozen = JSON.parse(
+      await fs.readFile(
+        path.resolve(
+          'test/fixtures/native-052-transition-journal/non-first-hop-build-to-verify.json',
+        ),
+        'utf8',
+      ),
+    );
+  for (const x of frozen.nativeFiles) {
+    const file = path.join(f.paths.nativeRoot, x.ref);
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, Buffer.from(x.bytesBase64, 'base64'));
+  }
+  for (const x of frozen.runtimeFiles.filter(
+    (x: any) =>
+      x.ref === 'transition.json' ||
+      x.ref === 'run-state.json' ||
+      x.ref === 'trajectory.jsonl' ||
+      x.ref.startsWith('checkpoints/'),
+  )) {
+    const file = path.join(f.dir, x.ref);
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, Buffer.from(x.bytesBase64, 'base64'));
+  }
+  for (const x of frozen.projectFiles)
+    await fs.writeFile(path.join(f.project, x.ref), Buffer.from(x.bytesBase64, 'base64'));
+  return {
+    ...f,
+    journal: (await inspectPendingNativeTransition(f.paths, f.name))!,
+  };
+}
+function mutated(journal: any, mutate: (j: any) => void) {
+  const j = structuredClone(journal);
+  mutate(j);
+  return j;
+}
+it('validates an oversized original transition document by JSON/schema rather than retired snapshot budgets', async () => {
+  const f = await fixture();
+  await fs.writeFile(f.wal, 'x'.repeat(600 * 1024));
+  await expect(inspectPendingNativeTransitionSchema(f.paths, f.name)).rejects.toThrow(
+    /Unexpected token|JSON/,
+  );
+  expect((await fs.stat(f.wal)).size).toBe(600 * 1024);
+});
+it.each(['prepared', 'Run-write', 'change-write'])(
+  'continues original WAL after an interruption at %s without incrementing twice',
+  async (boundary) => {
+    const f = await currentJournal();
+    if (boundary !== 'prepared')
+      await expect(
+        continueNativeTransition(
+          f.paths,
+          f.name,
+          boundary === 'Run-write'
+            ? {
+                afterRunStateWritten() {
+                  throw Error('exact interrupted write');
+                },
+              }
+            : {
+                afterChangeStateWritten() {
+                  throw Error('exact interrupted write');
+                },
+              },
+        ),
+      ).rejects.toThrow('exact interrupted write');
+    await continueNativeTransition(f.paths, f.name);
+    expect(await readNativeChange(f.paths, f.name)).toEqual(f.journal.nextState);
+    expect(await readNativeRunState(f.dir)).toEqual(f.journal.nextRun);
+    const events = await readNativeTrajectory(f.dir, f.journal.nextRun.trajectoryRef);
+    expect(events.filter((e) => e.type === 'state_transitioned')).toHaveLength(1);
+    expect(await continueNativeTransition(f.paths, f.name)).toBeNull();
+    expect(await readNativeTrajectory(f.dir, f.journal.nextRun.trajectoryRef)).toEqual(events);
+  },
+);
+it('rejects a waiting next Run in the retained persisted-journal reader without changing bytes', async () => {
+  const f = await currentJournal();
+  const j = mutated(f.journal, (j) => {
+    j.nextRun.status = 'waiting';
+    j.nextRun.pending = 'corrupt';
+  });
+  await fs.writeFile(f.wal, JSON.stringify(j));
+  const before = await fs.readFile(f.wal, 'utf8');
+  await expect(inspectPendingNativeTransitionSchema(f.paths, f.name)).rejects.toThrow(
+    /status must be running/,
+  );
+  await expect(continueNativeTransition(f.paths, f.name)).rejects.toThrow(/status must be running/);
+  expect(await fs.readFile(f.wal, 'utf8')).toBe(before);
+  expect(await readNativeRunState(f.dir)).toBeNull();
+});
+it('rejects original non-first-hop identity refs counters and iteration tampering through the retained parser', async () => {
+  const f = await nonFirstFixture();
+  expect(f.journal.previousRun).not.toBeNull();
+  const mutations: [string, (j: any) => void][] = [
+    [
+      'waiting next',
+      (j) => {
+        j.nextRun.status = 'waiting';
+        j.nextRun.pending = 'bad';
+      },
+    ],
+    ['pending', (j) => (j.nextRun.pending = 'bad')],
+    ['iteration reuse', (j) => (j.nextRun.iteration = j.previousRun.iteration)],
+    ['identity', (j) => (j.nextRun.runId = 'different-run')],
+    ['metadata', (j) => (j.nextRun.skillHash = 'f'.repeat(64))],
+    ['context', (j) => (j.nextRun.contextRef = 'runtime/other-context.md')],
+    ['trajectory', (j) => (j.nextRun.trajectoryRef = 'runtime/other.jsonl')],
+    ['retries', (j) => (j.nextRun.retries = { corrupt: 1 })],
+    ['previous phase', (j) => (j.previousRun.currentStep = 'verify')],
+    [
+      'waiting previous',
+      (j) => {
+        j.previousRun.status = 'waiting';
+        j.previousRun.pending = 'bad';
+      },
+    ],
+  ];
+  for (const generation of ['v1', 'v2', 'v3'] as const)
+    for (const [label, mutation] of mutations)
+      expect(
+        () =>
+          inspectNativeTransitionJournalValue(
+            mutated(
+              generation === 'v3' ? f.journal : oldSchemaVariant(f.journal, generation),
+              mutation,
+            ),
+            f.name,
+          ),
+        generation + ': ' + label,
+      ).toThrow();
+});
+it('rejects first-hop Run metadata iteration retry and previous-Run tampering from the published WAL', async () => {
+  const f = await currentJournal();
+  const mutations: [string, (j: any) => void][] = [
+    ['pending', (j) => (j.nextRun.pending = 'bad')],
+    ['iteration skip', (j) => (j.nextRun.iteration = 2)],
+    ['retries', (j) => (j.nextRun.retries = { corrupt: 1 })],
+    ['metadata', (j) => (j.nextRun.skill = 'other-runtime')],
+    ['checkpoint ref', (j) => (j.nextRun.checkpointRef = 'runtime/checkpoints/other.json')],
+    ['previous run id', (j) => (j.previousState.run_id = j.nextRun.runId)],
+    [
+      'unexpected previous',
+      (j) => (j.previousRun = { ...j.nextRun, currentStep: 'shape', iteration: 0 }),
+    ],
+  ];
+  for (const generation of ['v1', 'v2', 'v3'] as const)
+    for (const [label, mutation] of mutations)
+      expect(
+        () =>
+          inspectNativeTransitionJournalValue(
+            mutated(
+              generation === 'v3' ? f.journal : oldSchemaVariant(f.journal, generation),
+              mutation,
+            ),
+            f.name,
+          ),
+        generation + ': ' + label,
+      ).toThrow();
+});
+it('rejects phase skipping unknown event fields credential leaks and forged evidence from the original WAL', async () => {
+  const f = await currentJournal();
+  const mutations: [string, (j: any) => void][] = [
+    [
+      'phase skip',
+      (j) => {
+        j.nextState.phase = 'verify';
+        j.nextRun.currentStep = 'verify';
+        j.eventData.nextPhase = 'verify';
+      },
+    ],
+    ['unknown', (j) => (j.eventData.extra = true)],
+    ['missing', (j) => delete j.eventData.summary],
+    ['credentials', (j) => (j.eventData.summary = 'api_key=raw-transition-secret')],
+    ['text bound', (j) => (j.eventData.summary = 'x'.repeat(4097))],
+    ['evidence identity', (j) => (j.eventData.evidenceHash = 'f'.repeat(64))],
+    ['event phase', (j) => (j.eventData.previousPhase = 'build')],
+    ['unearned pass', (j) => (j.eventData.verificationResult = 'pass')],
+    ['unearned artifact', (j) => (j.eventData.artifacts = ['unexpected.ts'])],
+  ];
+  for (const generation of ['v1', 'v2', 'v3'] as const)
+    for (const [label, mutation] of mutations)
+      expect(
+        () =>
+          inspectNativeTransitionJournalValue(
+            mutated(
+              generation === 'v3' ? f.journal : oldSchemaVariant(f.journal, generation),
+              mutation,
+            ),
+            f.name,
+          ),
+        generation + ': ' + label,
+      ).toThrow();
+});
+it('requires current typed operation and rejects relabeling advance as spec-rebase', async () => {
+  const f = await currentJournal();
+  expect(() =>
+    inspectNativeTransitionJournalValue(
+      mutated(f.journal, (j) => delete j.operation),
+      f.name,
+    ),
+  ).toThrow();
+  expect(() =>
+    inspectNativeTransitionJournalValue(
+      mutated(f.journal, (j) => (j.operation = 'spec-rebase')),
+      f.name,
+    ),
+  ).toThrow();
+});
+it('rejects unsupported future transition schema without inventing a migration route', async () => {
+  const f = await currentJournal(),
+    bad = mutated(f.journal, (j) => (j.schema = 'comet.native.transition.v999'));
+  await fs.writeFile(f.wal, JSON.stringify(bad));
+  const before = await fs.readFile(f.wal, 'utf8');
+  await expect(inspectPendingNativeTransitionSchema(f.paths, f.name)).rejects.toThrow(
+    /Unsupported/,
+  );
+  expect(await fs.readFile(f.wal, 'utf8')).toBe(before);
+});
+it('preserves original WAL over a same-revision external change', async () => {
+  const f = await currentJournal(),
+    state = await readNativeChange(f.paths, f.name);
+  await writeNativeChangeFile(path.join(f.paths.changesDir, f.name, 'comet-state.yaml'), {
+    ...state,
+    approval: 'implicit',
+  });
+  const before = await fs.readFile(f.wal, 'utf8');
+  await expect(continueNativeTransition(f.paths, f.name)).rejects.toThrow();
+  expect(await fs.readFile(f.wal, 'utf8')).toBe(before);
+  expect((await readNativeChange(f.paths, f.name)).approval).toBe('implicit');
+});
+it('does not accept an existing trajectory event whose complete content diverges from the original WAL', async () => {
+  const f = await currentJournal();
+  await expect(
+    continueNativeTransition(f.paths, f.name, {
+      afterChangeStateWritten() {
+        throw Error('states persisted');
+      },
+    }),
+  ).rejects.toThrow('states persisted');
+  const run = (await readNativeRunState(f.dir))!;
+  await appendNativeTrajectoryEvent({
+    changeDir: f.dir,
+    run,
+    type: 'run_started',
+    data: {
+      runtime: 'comet-native',
+      phase: 'shape',
+      transitionId: f.journal.id,
+    },
+  });
+  await appendNativeTrajectoryEvent({
+    changeDir: f.dir,
+    run,
+    type: 'state_transitioned',
+    data: {
+      ...f.journal.eventData,
+      transitionId: f.journal.id,
+      summary: 'different event',
+    },
+  });
+  const before = await fs.readFile(f.wal, 'utf8');
+  await expect(continueNativeTransition(f.paths, f.name)).rejects.toThrow(
+    /event changed|does not match/,
+  );
+  expect(await fs.readFile(f.wal, 'utf8')).toBe(before);
+});
+it('continues one published transition serially without duplicate events', async () => {
+  const f = await currentJournal();
+  const results = [
+    await continueNativeTransition(f.paths, f.name),
+    await continueNativeTransition(f.paths, f.name),
+  ];
+  expect(results.filter(Boolean)).toHaveLength(1);
+  const events = await readNativeTrajectory(f.dir, f.journal.nextRun.trajectoryRef);
+  expect(events.filter((e) => e.type === 'run_started')).toHaveLength(1);
+  expect(events.filter((e) => e.type === 'state_transitioned')).toHaveLength(1);
+});
+it('has the real prepared WAL durable before any trajectory or Run side effect', async () => {
+  const f = await currentJournal();
+  await fs.rm(f.wal);
+  await prepareNativeTransition({
+    paths: f.paths,
+    previousState: f.journal.previousState,
+    nextState: f.journal.nextState,
+    previousRun: f.journal.previousRun,
+    nextRun: f.journal.nextRun,
+    evidenceHash: f.journal.evidenceHash,
+    eventData: f.journal.eventData,
+    operation: f.journal.operation,
+    transitionId: () => f.journal.id,
+    now: new Date(f.journal.createdAt),
+  });
+  expect(await readNativeRunState(f.dir)).toBeNull();
+  expect(await readNativeCheckpoint(f.dir, f.journal.nextRun.checkpointRef)).toBeNull();
+  expect(await readNativeTrajectory(f.dir, f.journal.nextRun.trajectoryRef)).toEqual([]);
+  expect(JSON.parse(await fs.readFile(f.wal, 'utf8'))).toEqual(f.journal);
+});
+it('explicitly truncates only an incomplete last trajectory line then continues the same WAL once', async () => {
+  const f = await currentJournal(),
+    trajectory = path.join(f.dir, 'trajectory.jsonl');
+  await fs.writeFile(trajectory, '{"sequence":');
+  await expect(continueNativeTransition(f.paths, f.name)).rejects.toThrow(
+    /incomplete|repair|trajectory/i,
+  );
+  await repairNativeTrajectoryTail(f.paths, f.name);
+  await continueNativeTransition(f.paths, f.name);
+  const events = await readNativeTrajectory(f.dir, f.journal.nextRun.trajectoryRef);
+  expect(events.filter((e) => e.type === 'state_transitioned')).toHaveLength(1);
+});
+it('never truncates a malformed middle trajectory line or clears its original WAL', async () => {
+  const f = await currentJournal(),
+    trajectory = path.join(f.dir, 'trajectory.jsonl'),
+    bad = '{bad-json}\n' + JSON.stringify({ sequence: 2, type: 'state_transitioned' }) + '\n';
+  await fs.writeFile(trajectory, bad);
+  const wal = await fs.readFile(f.wal, 'utf8');
+  await expect(repairNativeTrajectoryTail(f.paths, f.name)).rejects.toThrow(
+    /invalid|malformed|JSON/i,
+  );
+  await expect(continueNativeTransition(f.paths, f.name)).rejects.toThrow();
+  expect(await fs.readFile(trajectory, 'utf8')).toBe(bad);
+  expect(await fs.readFile(f.wal, 'utf8')).toBe(wal);
+});
+it('preserves concurrently appended trajectory bytes when preparing tail repair', async () => {
+  const f = await currentJournal(),
+    trajectory = path.join(f.dir, 'trajectory.jsonl');
+  await fs.writeFile(trajectory, '{"partial":');
+  const extra =
+    '\n' +
+    JSON.stringify({
+      sequence: 2,
+      type: 'checkpoint_written',
+      data: { source: 'concurrent-writer' },
+    }) +
+    '\n';
+  await expect(
+    repairNativeTrajectoryTail(f.paths, f.name, {
+      beforeCommit: () => fs.appendFile(trajectory, extra),
+    }),
+  ).rejects.toThrow(/changed while preparing/);
+  expect(await fs.readFile(trajectory, 'utf8')).toBe('{"partial":' + extra);
+});
+it('continues the original WAL while preserving obsolete writer metadata without token confirmation', async () => {
+  const f = await currentJournal();
+  const file = path.join(f.paths.runtimeDir, 'locks', 'transition-' + f.name + '.lock');
+  const bytes = JSON.stringify({
+    id: 'SIMULATED obsolete writer',
+    createdAt: '2026-07-15T00:00:00.000Z',
+    operation: 'continue original WAL',
+  });
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, bytes);
+  await continueNativeTransition(f.paths, f.name);
+  expect(await inspectPendingNativeTransition(f.paths, f.name)).toBeNull();
+  expect(
+    (await readNativeTrajectory(f.dir, f.journal.nextRun.trajectoryRef)).filter(
+      (e) => e.type === 'state_transitioned',
+    ),
+  ).toHaveLength(1);
+  expect(await fs.readFile(file, 'utf8')).toBe(bytes);
+  expect(await continueNativeTransition(f.paths, f.name)).toBeNull();
+});
+it('does not archive through a pending unaccepted Verify transition or consume its WAL', async () => {
+  const f = await nonFirstFixture(),
+    before = await fs.readFile(f.wal, 'utf8'),
+    state = await readNativeChange(f.paths, f.name);
+  const result = await nativeArchiveCommand([f.name, '--confirmed'], f.project).catch((e) => ({
+    exitCode: 65,
+    error: String(e),
+  }));
+  expect(result.exitCode).not.toBe(0);
+  expect(await fs.readFile(f.wal, 'utf8')).toBe(before);
+  expect(await readNativeChange(f.paths, f.name)).toEqual(state);
+});
+it.each(['prepared', 'yaml-committed'])(
+  'explicitly imports a real published %s migration journal without recreating middle-schema engines',
+  async (boundary) => {
+    const f = await fixture(),
+      frozen = JSON.parse(
+        await fs.readFile(
+          'test/fixtures/native-052-migration-journals/' + boundary + '.json',
+          'utf8',
+        ),
+      );
+    await fs.rm(f.wal);
+    for (const x of frozen.changeFiles)
+      await fs.writeFile(
+        path.join(f.paths.changesDir, f.name, x.ref),
+        Buffer.from(x.bytesBase64, 'base64'),
+      );
+    await fs.mkdir(f.paths.transactionsDir, { recursive: true });
+    const wal = path.join(f.paths.transactionsDir, 'portable-migration-' + f.name + '.json');
+    await fs.writeFile(wal, frozen.transactionText);
+    const source = await fs.readFile(
+        path.join(f.paths.changesDir, f.name, 'comet-state.yaml'),
+        'utf8',
+      ),
+      diagnosis = await nativeDoctorCommand([f.name], f.project);
+    expect(diagnosis.data).toMatchObject({ healthy: false, repaired: false });
+    expect(await fs.readFile(wal, 'utf8')).toBe(frozen.transactionText);
+    expect(
+      await fs.readFile(path.join(f.paths.changesDir, f.name, 'comet-state.yaml'), 'utf8'),
+    ).toBe(source);
+    const repaired = await nativeDoctorCommand([f.name, '--repair'], f.project);
+    expect(repaired.exitCode).toBe(0);
+    await expect(fs.access(wal)).rejects.toMatchObject({ code: 'ENOENT' });
+    const portable = await fs.readFile(
+      path.join(f.paths.changesDir, f.name, 'comet-state.yaml'),
+      'utf8',
+    );
+    expect(portable).toContain('schema: comet.native.v4');
+    const again = await nativeDoctorCommand([f.name, '--repair'], f.project);
+    expect(again.exitCode).toBe(0);
+    expect(
+      await fs.readFile(path.join(f.paths.changesDir, f.name, 'comet-state.yaml'), 'utf8'),
+    ).toBe(portable);
+  },
+);
+
+import { nativeNextCommand } from '../../../domains/comet-native/native-next-command.js';
+import { nativeSpecCommand } from '../../../domains/comet-native/native-spec-command.js';
+import { readSdkChangeOwner } from '../../../domains/workflow-contract/change-runtime-owner.js';
+it.each(['archive', 'next', 'spec-remove'])(
+  'requires explicit Doctor import for ordinary %s and leaves original WAL state Run and owner unchanged',
+  async (command) => {
+    const f = await nonFirstFixture(),
+      file = path.join(f.paths.changesDir, f.name, 'comet-state.yaml'),
+      before = {
+        wal: await fs.readFile(f.wal, 'utf8'),
+        state: await fs.readFile(file, 'utf8'),
+        run: await readNativeRunState(f.dir),
+        owner: await readSdkChangeOwner(f.project, 'native', f.name),
+      };
+    let result: any;
+    try {
+      result =
+        command === 'archive'
+          ? await nativeArchiveCommand([f.name, '--confirmed'], f.project)
+          : command === 'next'
+            ? await nativeNextCommand([f.name], f.project)
+            : await nativeSpecCommand(['remove', f.name, 'legacy-capability'], f.project);
+    } catch (error) {
+      result = { exitCode: 65, error: String(error) };
+    }
+    const after = {
+      wal: await fs.readFile(f.wal, 'utf8').catch(() => null),
+      state: await fs.readFile(file, 'utf8'),
+      run: await readNativeRunState(f.dir),
+      owner: await readSdkChangeOwner(f.project, 'native', f.name),
+    };
+    expect.soft(result.exitCode).not.toBe(0);
+    expect.soft(after.wal).toBe(before.wal);
+    expect.soft(after.state).toBe(before.state);
+    expect.soft(after.run).toEqual(before.run);
+    expect.soft(after.owner).toEqual(before.owner);
+    expect.soft(JSON.stringify(result)).toMatch(/doctor.*--repair/);
+    expect.soft(result.data?.archived).not.toBe(true);
+  },
+);
+
+function oldSchemaVariant(journal: any, generation: 'v1' | 'v2') {
+  const j = structuredClone(journal);
+  for (const key of ['operation']) delete j[key];
+  for (const which of ['previousState', 'nextState']) {
+    const s = j[which];
+    for (const key of [
+      'verification_protocol',
+      'approved_contract_hash',
+      'implementation_scope',
+      'verification_evidence',
+      'partial_allowance',
+    ])
+      delete s[key];
+    s.schema = 'comet.native.' + generation;
+    if (generation === 'v1') {
+      delete s.minimum_runtime_version;
+      delete s.revision;
+    } else s.minimum_runtime_version = 2;
+  }
+  j.schema = 'comet.native.transition.' + generation;
+  if (generation === 'v1') {
+    delete j.minimum_runtime_version;
+    delete j.revision;
+  } else j.minimum_runtime_version = 2;
+  return j;
+}
+it.each(['v1', 'v2'] as const)(
+  'reads %s historical journal schema without restoring its removed migration executor and rejects malformed Run data',
+  async (generation) => {
+    const f = await currentJournal(),
+      legacy = oldSchemaVariant(f.journal, generation);
+    expect(inspectNativeTransitionJournalValue(legacy, f.name).status).toBe('migration-required');
+    for (const mutation of [
+      (j: any) => (j.nextRun.status = 'waiting'),
+      (j: any) => (j.nextRun.iteration = 2),
+      (j: any) => (j.nextRun.retries = { corrupt: 1 }),
+      (j: any) => (j.nextRun.checkpointRef = 'runtime/other.json'),
+      (j: any) => (j.eventData.extra = true),
+    ])
+      expect(() =>
+        inspectNativeTransitionJournalValue(mutated(legacy, mutation), f.name),
+      ).toThrow();
+    await fs.writeFile(f.wal, JSON.stringify(legacy));
+    const before = await fs.readFile(f.wal, 'utf8');
+    expect((await inspectPendingNativeTransitionSchema(f.paths, f.name))?.status).toBe(
+      'migration-required',
+    );
+    await expect(continueNativeTransition(f.paths, f.name)).rejects.toThrow(/migration|migrate/i);
+    expect(await fs.readFile(f.wal, 'utf8')).toBe(before);
+    expect(await readNativeRunState(f.dir)).toBeNull();
+  },
+);
+
+it.each(['first-hop', 'non-first-hop'])(
+  'explicit Doctor repair completes original %s WAL once and retains original approval event Run and checkpoint history',
+  async (kind) => {
+    const f = kind === 'first-hop' ? await currentJournal() : await nonFirstFixture();
+    const stateFile = path.join(f.paths.changesDir, f.name, 'comet-state.yaml'),
+      source = await fs.readFile(stateFile, 'utf8'),
+      before = await fs.readFile(f.wal, 'utf8');
+    await nativeDoctorCommand([f.name], f.project);
+    expect(await fs.readFile(f.wal, 'utf8')).toBe(before);
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(source);
+    const result = await nativeDoctorCommand([f.name, '--repair'], f.project);
+    expect(result.exitCode).toBe(0);
+    expect(await readNativeRunState(f.dir)).toEqual(f.journal.nextRun);
+    const events = await readNativeTrajectory(f.dir, f.journal.nextRun.trajectoryRef),
+      accepted = events.filter(
+        (e) => e.type === 'state_transitioned' && e.data.transitionId === f.journal.id,
+      );
+    expect(accepted).toHaveLength(1);
+    expect(accepted[0].data).toEqual({
+      ...f.journal.eventData,
+      transitionId: f.journal.id,
+    });
+    expect(await readNativeCheckpoint(f.dir, f.journal.nextRun.checkpointRef)).toMatchObject({
+      runId: f.journal.nextRun.runId,
+    });
+    await expect(fs.access(f.wal)).rejects.toMatchObject({ code: 'ENOENT' });
+    const portable = await fs.readFile(stateFile, 'utf8');
+    expect(portable).toContain('schema: comet.native.v4');
+    const originalRun = await readNativeRunState(f.dir);
+    expect((await nativeDoctorCommand([f.name, '--repair'], f.project)).exitCode).toBe(0);
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(portable);
+    expect(await readNativeRunState(f.dir)).toEqual(originalRun);
+    expect(await readNativeTrajectory(f.dir, f.journal.nextRun.trajectoryRef)).toEqual(events);
+  },
+);
+
+import { sha256Text } from '../../../domains/comet-native/native-hash.js';
+it.each(['v1', 'v2'] as const)(
+  'keeps %s old spec-rebase semantics readable without recreating the removed intermediate migration',
+  async (generation) => {
+    const f = await nonFirstFixture(),
+      j: any = structuredClone(f.journal),
+      summary = 'Refresh the old spec base',
+      hash = sha256Text('spec-rebase:' + f.name + ':' + summary);
+    j.operation = 'spec-rebase';
+    j.evidenceHash = hash;
+    j.nextState.phase = 'build';
+    j.nextState.verification_result = 'pending';
+    j.nextState.verification_report = null;
+    j.nextState.implementation_scope = null;
+    j.nextState.verification_evidence = null;
+    j.nextState.partial_allowance = null;
+    j.nextRun.currentStep = 'build';
+    j.eventData = {
+      previousPhase: 'build',
+      nextPhase: 'build',
+      evidenceHash: hash,
+      summary,
+      reason: 'spec-rebase',
+    };
+    const legacy = oldSchemaVariant(j, generation),
+      parsed = inspectNativeTransitionJournalValue(legacy, f.name);
+    expect(parsed.status).toBe('migration-required');
+    expect(parsed.journal.evidenceHash).toBe(hash);
+    expect(parsed.journal.previousRun?.runId).toBe(f.journal.previousRun?.runId);
+    expect(parsed.journal.nextRun.runId).toBe(f.journal.nextRun.runId);
+    await fs.writeFile(f.wal, JSON.stringify(legacy));
+    const before = await fs.readFile(f.wal, 'utf8');
+    await expect(continueNativeTransition(f.paths, f.name)).rejects.toThrow(/migration|migrate/i);
+    expect(await fs.readFile(f.wal, 'utf8')).toBe(before);
+  },
+);
+
+import { inspectNativeStatus } from '../../../domains/comet-native/native-diagnostics.js';
+it('retains explicit Doctor tail repair and same-WAL continuation for the original incomplete-trajectory badcase', async () => {
+  const f = await currentJournal();
+  await expect(
+    continueNativeTransition(f.paths, f.name, {
+      afterChangeStateWritten() {
+        throw Error('before trajectory');
+      },
+    }),
+  ).rejects.toThrow('before trajectory');
+  const file = path.join(f.dir, 'trajectory.jsonl');
+  await fs.writeFile(file, '{"sequence":1');
+  const before = await fs.readFile(file, 'utf8');
+  expect(await inspectNativeStatus(f.paths, f.name)).toMatchObject({
+    nextCommand: null,
+    error: expect.stringContaining('incomplete final line'),
+  });
+  const diagnosis = await nativeDoctorCommand([f.name], f.project);
+  expect(diagnosis.data).toMatchObject({ healthy: false, repaired: false });
+  expect(await fs.readFile(file, 'utf8')).toBe(before);
+  let result: any;
+  try {
+    result = await nativeDoctorCommand([f.name, '--repair'], f.project);
+  } catch (error) {
+    result = { exitCode: 65, error: String(error) };
+  }
+  expect(result.exitCode).toBe(0);
+  expect(
+    (await readNativeTrajectory(f.dir, f.journal.nextRun.trajectoryRef)).map((e) => e.type),
+  ).toEqual(['run_started', 'state_transitioned']);
+  await expect(fs.access(f.wal)).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+it('preserves old root and transition lock bytes while continuing the same real WAL once', async () => {
+  const f = await currentJournal();
+  const files = ['root-move', 'transition-' + f.name].map((name) =>
+    path.join(f.paths.runtimeDir, 'locks', name + '.lock'),
+  );
+  const bytes = 'SIMULATED obsolete writer bytes';
+  for (const file of files) {
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, bytes);
+  }
+  const wal = await fs.readFile(f.wal, 'utf8');
+  expect(wal).toContain(f.journal.id);
+  await continueNativeTransition(f.paths, f.name);
+  expect(
+    (await readNativeTrajectory(f.dir, f.journal.nextRun.trajectoryRef)).filter(
+      (e) => e.type === 'state_transitioned',
+    ),
+  ).toHaveLength(1);
+  for (const file of files) expect(await fs.readFile(file, 'utf8')).toBe(bytes);
+  expect(await continueNativeTransition(f.paths, f.name)).toBeNull();
+});
+
+it('keeps malformed middle trajectory bytes and original WAL unchanged during explicit Doctor repair', async () => {
+  const f = await currentJournal();
+  await expect(
+    continueNativeTransition(f.paths, f.name, {
+      afterChangeStateWritten() {
+        throw Error('before trajectory');
+      },
+    }),
+  ).rejects.toThrow('before trajectory');
+  const file = path.join(f.dir, 'trajectory.jsonl'),
+    bad = '{not-json}\n{"sequence":';
+  await fs.writeFile(file, bad);
+  const wal = await fs.readFile(f.wal, 'utf8'),
+    stateFile = path.join(f.paths.changesDir, f.name, 'comet-state.yaml'),
+    state = await fs.readFile(stateFile, 'utf8'),
+    run = await readNativeRunState(f.dir);
+  const result = await nativeDoctorCommand([f.name, '--repair'], f.project);
+  expect(result.data).toMatchObject({
+    healthy: false,
+    repaired: false,
+    findings: expect.arrayContaining([expect.objectContaining({ code: 'trajectory-invalid' })]),
+  });
+  expect(await fs.readFile(file, 'utf8')).toBe(bad);
+  expect(await fs.readFile(f.wal, 'utf8')).toBe(wal);
+  expect(await fs.readFile(stateFile, 'utf8')).toBe(state);
+  expect(await readNativeRunState(f.dir)).toEqual(run);
+  expect(result.data.findings).not.toEqual(
+    expect.arrayContaining([expect.objectContaining({ code: 'trajectory-tail-repaired' })]),
+  );
+});
+
+import { prepareNativeTransition } from '../../../domains/comet-native/native-transition-journal.js';

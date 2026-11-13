@@ -58,8 +58,6 @@ const VALID_PHASES: ReadonlySet<ChangePhase> = new Set([
 const ARCHIVE_SEGMENT = 'archive';
 const CLASSIC_CHANGES_ROOTS = ['openspec/changes', 'docs/openspec/changes'] as const;
 const ARCHIVE_NAME_PATTERN = /^(\d{4}-\d{2}-\d{2})-(.+)$/u;
-const ARTIFACT_PREVIEW_LIMIT_BYTES = 256 * 1024;
-const ARTIFACT_READ_LIMIT_BYTES = 2 * 1024 * 1024;
 const DEFAULT_CHANGE_PAGE_SIZE = 5;
 const MAX_CHANGE_PAGE_SIZE = 50;
 const CHANGE_INDEX_CONCURRENCY = 16;
@@ -1217,7 +1215,7 @@ async function readArtifactPreviews(
         const result = await readProtectedProjectFile(
           inspection.projectRoot,
           inspection.relative,
-          ARTIFACT_READ_LIMIT_BYTES,
+          Number.MAX_SAFE_INTEGER,
           { label: `${label} preview` },
         );
         const stat = result.stat;
@@ -1225,8 +1223,8 @@ async function readArtifactPreviews(
         preview.exists = true;
         preview.size = Number(stat.size);
         preview.updatedAt = stat.mtime.toISOString();
-        preview.content = result.bytes.subarray(0, ARTIFACT_PREVIEW_LIMIT_BYTES).toString('utf-8');
-        preview.truncated = Number(stat.size) > ARTIFACT_PREVIEW_LIMIT_BYTES;
+        preview.content = result.bytes.toString('utf-8');
+        preview.truncated = false;
       } catch {
         // Missing or unreadable artifacts are represented as absent previews.
       }
@@ -1291,7 +1289,7 @@ async function readProjectCometYaml(
     const result = await readProtectedProjectFile(
       projectRoot,
       projectRelative(projectRoot, yamlPath),
-      ARTIFACT_READ_LIMIT_BYTES,
+      Number.MAX_SAFE_INTEGER,
       { label: 'Classic state artifact' },
     );
     return parseCometYaml(result.bytes.toString('utf8'));
@@ -1307,7 +1305,7 @@ async function readTasks(projectRoot: string, tasksPath: string): Promise<TasksS
     const result = await readProtectedProjectFile(
       projectRoot,
       projectRelative(projectRoot, tasksPath),
-      ARTIFACT_READ_LIMIT_BYTES,
+      Number.MAX_SAFE_INTEGER,
       { label: 'Classic tasks artifact' },
     );
     return parseTasksMarkdown(result.bytes.toString('utf8'));

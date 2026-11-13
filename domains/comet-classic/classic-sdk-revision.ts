@@ -1,4 +1,3 @@
-import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import {
   createMemoryRuntimeStore,
   createRuntime,
@@ -7,25 +6,23 @@ import {
   preserveRuntimeExecutionOrigins,
   RuntimeProtocolError,
   type WorkflowRun,
-  type RuntimeValue,
 } from '../engine/runtime.js';
+import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
+import { readClassicAgentCheckReports } from './classic-sdk-application.js';
 import { evaluateBranchBinding, isGitWorkTree, liveGitBranch } from './classic-branch-binding.js';
-import {
-  classicSdkRevisionApplication,
-  classicArchiveRepairAction,
-  classicInterruptedSkill,
-} from './classic-sdk-revision-application.js';
-import { assertClassicArchiveUnchanged } from './classic-sdk-archive-manifest.js';
-import { createClassicSdkStateStore } from './classic-sdk-state-store.js';
-import { inspectClassicSdkRun } from './classic-sdk-status.js';
+import { assertClassicArchiveRetryable } from './classic-sdk-archive-manifest.js';
+import { withClassicDeliveryRepair } from './classic-sdk-delivery-repair-application.js';
 import {
   captureClassicDeliveryRepair,
   classicDeliveryRepairCheckpointHash,
 } from './classic-sdk-delivery-repair.js';
-import { classicDeliveryActionContext } from './classic-sdk-delivery-repair-model.js';
-import { withClassicDeliveryRepair } from './classic-sdk-delivery-repair-application.js';
-import { classicEditReviewScope, classicFormalEditReviewScope } from './classic-edit-review.js';
-import { assertEditReviewsComplete } from '../workflow-contract/edit-review.js';
+import {
+  classicArchiveRepairAction,
+  classicInterruptedSkill,
+  classicSdkRevisionApplication,
+} from './classic-sdk-revision-application.js';
+import { createClassicSdkStateStore } from './classic-sdk-state-store.js';
+import { inspectClassicSdkRun } from './classic-sdk-status.js';
 
 /** 只更新当前工作区的分支绑定；原 Action、审批和执行收据继续保留。 */
 export async function rebindClassicSdkWork(
@@ -42,11 +39,7 @@ export async function rebindClassicSdkWork(
     !state.boundBranch ||
     state.archived ||
     ['completed', 'cancelled'].includes(run.status) ||
-    run.actions.some(
-      (action) =>
-        ['running', 'unknown'].includes(action.status) ||
-        (action.status === 'cancelled' && action.claim && !action.cancellation),
-    )
+    run.actions.some((action) => ['running', 'unknown'].includes(action.status))
   )
     throw new Error('Classic rebind requires an active bound Run with no unresolved execution');
   if (state.boundBranch === branch) return run;
@@ -74,23 +67,15 @@ export async function reviseClassicSdkWork(options: {
     | 'repair-archive'
     | 'repair-delivery'
     | 'continue-build'
-    | 'continue-work'
-    | 'refresh-checks';
+    | 'continue-work';
   expectedRevision: number;
-  refreshInput?: RuntimeValue;
+  checksRef?: string;
 }): Promise<WorkflowRun> {
   const { projectRoot, change, name, expectedRevision } = options;
   const { run, state } = await inspectClassicSdkRun(projectRoot, change);
   const commandId = hashRuntimeValue({ runId: run.runId, name, expectedRevision });
   const previousCommand = run.commands?.find((command) => command.id === commandId);
-  if (previousCommand) {
-    if (
-      name === 'refresh-checks' &&
-      previousCommand.inputHash !== hashRuntimeValue(options.refreshInput ?? null)
-    )
-      throw new RuntimeProtocolError('COMMAND_CONFLICT', '同一补充检查请求不能提交不同内容');
-    return run;
-  }
+  if (previousCommand) return run;
   if (run.revision !== expectedRevision)
     throw new RuntimeProtocolError(
       'REVISION_CONFLICT',
@@ -115,14 +100,6 @@ export async function reviseClassicSdkWork(options: {
         'Classic verification requires its active change directory; reconcile the Archive operation',
       );
   }
-  if (name === 'continue-build') {
-    await assertEditReviewsComplete(await classicEditReviewScope(projectRoot, change, state), {
-      allowImplementationRevision: true,
-    });
-    await assertEditReviewsComplete(
-      await classicFormalEditReviewScope(projectRoot, change, state, false, undefined, run),
-    );
-  }
   const base = classicSdkRevisionApplication(
     run.workflow.id.slice('comet-classic-'.length) as 'full' | 'tweak' | 'hotfix',
     state.workflow === 'full' ? 'full' : true,
@@ -132,17 +109,21 @@ export async function reviseClassicSdkWork(options: {
     run,
   );
   const deliveryRepair =
-    name === 'repair-delivery' ? await captureClassicDeliveryRepair(projectRoot, run) : null;
+    name === 'repair-delivery'
+      ? await captureClassicDeliveryRepair(
+          projectRoot,
+          run,
+          options.checksRef
+            ? await readClassicAgentCheckReports(projectRoot, options.checksRef)
+            : undefined,
+        )
+      : null;
   const repairingDelivery =
     deliveryRepair || run.commands?.some((command) => command.name === 'repair-delivery');
   const application = repairingDelivery
     ? withClassicDeliveryRepair(base, state.workflow, run)
     : base;
-  const failedSkill = name === 'continue-work' ? classicInterruptedSkill(run) : null;
-  const deliveryCheckpointHash =
-    failedSkill && classicDeliveryActionContext(run, failedSkill)
-      ? await classicDeliveryRepairCheckpointHash(projectRoot, run)
-      : null;
+
   const definition = defineWorkflow(application.workflow);
   const upgraded =
     hashRuntimeValue(definition) === run.workflow.hash
@@ -151,7 +132,7 @@ export async function reviseClassicSdkWork(options: {
   if (name === 'repair-archive') {
     const action = classicArchiveRepairAction(run);
     if (!action) throw new Error('Classic Archive 执行结果未知或尚未失败；先核对原执行');
-    await assertClassicArchiveUnchanged(projectRoot, run, action);
+    await assertClassicArchiveRetryable(projectRoot, run, action);
   }
   upgraded.workflow.hash = hashRuntimeValue(definition);
   upgraded.definitionHashes[JSON.stringify([definition.id, definition.version])] =
@@ -172,23 +153,29 @@ export async function reviseClassicSdkWork(options: {
     expectedRevision,
     commandId,
     name,
-    input:
-      name === 'refresh-checks'
-        ? (options.refreshInput ?? null)
-        : {
-            expectedRevision,
-            fromPhase: state.phase,
-            ...(deliveryRepair
+    input: {
+      expectedRevision,
+      fromPhase: state.phase,
+      ...(deliveryRepair
+        ? {
+            deliveryRepair:
+              deliveryRepair as unknown as import('../engine/runtime.js').RuntimeValue,
+          }
+        : {}),
+      ...(name === 'continue-work'
+        ? {
+            interruptedActionId: classicInterruptedSkill(run)?.id ?? '',
+            ...(state.archived
               ? {
-                  deliveryRepair:
-                    deliveryRepair as unknown as import('../engine/runtime.js').RuntimeValue,
+                  deliveryCheckpointHash: await classicDeliveryRepairCheckpointHash(
+                    projectRoot,
+                    run,
+                  ),
                 }
               : {}),
-            ...(name === 'continue-work'
-              ? { interruptedActionId: classicInterruptedSkill(run)?.id ?? '' }
-              : {}),
-            ...(deliveryCheckpointHash ? { deliveryCheckpointHash } : {}),
-          },
+          }
+        : {}),
+    },
     context: { requestId: commandId, projectRoot },
   });
   if (name === 'continue-work') {
@@ -257,7 +244,7 @@ export async function reviseClassicSdkWork(options: {
       buildPause: null,
     };
     const action = classicArchiveRepairAction(run)!;
-    await assertClassicArchiveUnchanged(projectRoot, run, action);
+    await assertClassicArchiveRetryable(projectRoot, run, action);
   }
   const store = createClassicSdkStateStore(projectRoot);
   if (!(await store.compareAndSwap(run.runId, expectedRevision, revised))) {

@@ -10,7 +10,7 @@ First establish the public CLI and selected workspace using scripts.md. For norm
 comet state check <change-name> <phase> --json
 ```
 
-Normal and recovery entries return layout, configuration, `configurationReadiness`, nextAction, taskState, coordination, and delivery. An empty `missingFields` and `invalidFields` means the current execution configuration can be reused; ask or repair only the fields listed there instead of querying each field again. taskState is `{authority, revision, total, completed, needsIds, next}`; coordination is `{path, stale, taskIds, stage, sessionId, reviewRounds, unresolved}`. Resolve logical directories through classic-layout.md and enter the actual phase. Do not query summary fields individually. Refresh affected state after state writes or changes to the workspace or requirements.
+Normal and recovery entries return layout, configuration, `configurationReadiness`, nextAction, taskState, coordination, and delivery. An empty `missingFields` and `invalidFields` means the current execution configuration can be reused; ask or repair only the fields listed there instead of querying each field again. taskState is `{authority, total, completed, needsIds, next}`; coordination is `{path, stale, taskIds, stage, sessionId, reviewRounds, unresolved}`. Resolve logical directories through classic-layout.md and enter the actual phase. Do not query summary fields individually. Refresh affected state after state writes or changes to the workspace or requirements.
 
 When configuration needs to be presented or completed, both SDK and Compat read [presenting execution configuration](decision-point.md#presenting-execution-configuration). Preserve valid choices in the same change and save through the current path's existing mechanism. Reuse an existing SDK Wait. Recovery or a return to Design does not require asking again about confirmed configuration, and choices from another change do not approve this one.
 
@@ -32,7 +32,7 @@ Use the returned recovery summary to identify unfinished steps. Add `--details` 
 comet state check <change-name> <phase> --recover --details --json
 ```
 
-Read only content still missing for the current step. Runtime marks check evidence `revalidated` or `rerun-required`; only the former is reusable. If local inputs, environment, logs, or run-specific evidence do not meet reuse requirements, rerun only the affected checks. Preserve the plan, tasks, reviews, and recheck rounds already used.
+Read only the text needed for the current step. The Agent judges whether original checks remain applicable and retains their execution source. Runtime reports reusable results or actual recovery reasons. Add only missing or affected checks. Recover real failures, unknown executions, and one-time operations from their original records, retaining plans, tasks, reviews, and progress.
 
 ## Ambient Resume
 
@@ -66,11 +66,11 @@ When commands fail, dependencies are unavailable, state is missing, or artifacts
 
 `tasks.md` is the sole authority for task completion; the plan describes implementation. An unchecked task does not justify reimplementation, and a checked task does not replace current acceptance evidence.
 
-1. Use stable task IDs, requirement revision, and the plan's base-ref to reconcile current files, Git diff/commits, check results, reviews, and unresolved feedback. Attribute uncommitted changes through dirty-worktree.md first.
+1. Use stable task IDs and the plan's base-ref to reconcile current files, Git diff/commits, check results, reviews, and unresolved feedback. Attribute uncommitted changes through dirty-worktree.md first.
 2. If implementation, checks, and required review are satisfied, check off through task-complete without repeating implementation.
 3. If implementation is complete but evidence is insufficient, supply only missing checks or independent review. If partially implemented, finish only the remainder. Report missing historical TDD RED honestly; never revert code to fabricate evidence or declare TDD satisfied without it.
 4. When evidence does not match current inputs, reverify only affected work and check off after acceptance.
-5. Use `comet state task-complete <name> <task-id> --expect <revision> --json`. On a revision conflict, reassess changed requirements rather than merely retrying with the new revision.
+5. Use `comet state task-complete <name> <task-id> --json`. Reconcile actual requirement changes before recording completion.
 
 When a legacy plan still has task checkboxes, establish the comet-task ID for each. task-complete automatically synchronizes mapped plan tasks from tasks.md. For a separate display update, run:
 
@@ -91,13 +91,12 @@ comet state checkpoint <change-name>
 comet state checkpoint <change-name> --file <json-path>
 ```
 
-JSON requires `schemaVersion: 1` and taskIds/revision/stage/sessionId/evidence/unresolved/reviewRounds. Replace the task IDs, revision, and session identifier below with actual current values:
+JSON requires `schemaVersion: 1` and taskIds/stage/sessionId/evidence/unresolved/reviewRounds. Replace the task IDs and session identifier below with actual current values:
 
 ```json
 {
   "schemaVersion": 1,
   "taskIds": ["task-1"],
-  "revision": "<task-revision>",
   "stage": "implementing",
   "sessionId": "<implementer-session-id>",
   "evidence": [],
@@ -108,11 +107,11 @@ JSON requires `schemaVersion: 1` and taskIds/revision/stage/sessionId/evidence/u
 
 evidence holds references to actual commits, RED/GREEN results, and review evidence. unresolved holds unresolved issues, not the entire conversation. stage identifies implementation, review, or checkoff work; reviewRounds records rechecks already used. Runtime validates the data and generates Markdown. Do not handwrite subagent-progress.md or treat coordination records as a task-completion list.
 
-Reads return `{checkpoint, stale}`. When stale is true, reconcile revision, task scope, and actual work before repeating any step. An empty checkpoint does not mean implementation is absent. Reread after repairing the record; do not bypass checks by editing internal state.
+Reads return `{checkpoint, stale}`. When stale is true, reconcile task scope and actual work before repeating any step. An empty checkpoint does not mean implementation is absent. Reread after repairing the record; do not bypass checks by editing internal state.
 
 Before dispatch, save the task scope and coordination-session information. Save sessionId immediately after receiving a subagent session ID, before continuing to wait or process replies. Save new evidence and next steps at handoffs, review completion, acceptance, or blockers. Combine small updates within one step rather than copying every message. If saving fails, stop further dispatch and phase advancement, preserving files for reconciliation.
 
-If records are missing, a session is unavailable, or revision does not match, inspect actual work and rebuild the records needed for recovery. “No checkpoint” does not mean “no implementation.” Preserve valid reviews and recheck rounds already used; a new session does not reset them.
+If records are missing, a session is unavailable, or task scope does not match, inspect actual work and rebuild the records needed for recovery. “No checkpoint” does not mean “no implementation.” Preserve valid reviews and recheck rounds already used; a new session does not reset them.
 
 ## Phase-Specific Recovery
 

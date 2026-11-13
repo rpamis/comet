@@ -7,7 +7,6 @@ import {
   createRuntime,
   type WorkflowRun,
 } from '../../../domains/engine/runtime.js';
-import { createNativeSdkCheckExecution } from '../../../domains/comet-native/native-sdk-check-execution.js';
 import { inspectNativeSdkCancellation } from '../../../domains/comet-native/native-sdk-cancellation.js';
 
 const roots: string[] = [];
@@ -86,68 +85,4 @@ it('keeps a claimed child whose persisted Run is missing unresolved', async () =
     quiescent: false,
     outstandingRuns: [advanced.children[0].runId],
   });
-});
-
-it('keeps a cancelled managed check occupied after its group stops until the original host confirms all child tasks stopped', async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-cancel-managed-'));
-  roots.push(root);
-  const runtime = createRuntime({
-    store: createMemoryRuntimeStore<WorkflowRun>(),
-    workflows: [
-      {
-        id: 'managed-stop',
-        version: '1',
-        entry: 'check',
-        steps: { check: { type: 'call_tool', ref: 'native-required-checks' } },
-      },
-    ],
-  });
-  const started = await runtime.start({
-    runId: 'managed-stop',
-    workflow: { id: 'managed-stop', version: '1' },
-    input: null,
-  });
-  const pending = started.actions[0];
-  const claimed = await runtime.claim({
-    runId: started.runId,
-    actionId: pending.id,
-    attempt: pending.attempt,
-    inputHash: pending.inputHash,
-    executorId: 'comet-native-checks',
-    claimToken: 'original-check',
-  });
-  const action = claimed.actions[0];
-  const registration = await createNativeSdkCheckExecution({
-    projectRoot: root,
-    run: claimed,
-    action,
-    candidateId: 'candidate',
-    plansHash: 'plans',
-  });
-  // 已登记的空计划实际未启动任何子进程；即使这份登记已完成，也不能推断外部后代已停止。
-  registration.execution.phase = 'completed';
-  registration.execution.terminationUnconfirmed = false;
-  await registration.save();
-  const cancelled = await runtime.cancel({ runId: claimed.runId, reason: 'Stop the task' });
-  const waiting = await inspectNativeSdkCancellation({ projectRoot: root, run: cancelled });
-  expect(waiting).toMatchObject({ status: 'cancelling', quiescent: false });
-  const request = waiting!.outstandingActions[0].acknowledgementRequest!;
-  expect(request.stoppedActions[0]).toMatchObject({
-    actionId: action.id,
-    claimToken: action.claim!.token,
-  });
-  const confirmed = await runtime.cancel({
-    ...request,
-    stoppedActions: [
-      {
-        ...request.stoppedActions[0],
-        evidence: 'The original host checked that this task and every detached child have stopped.',
-      },
-    ],
-  });
-  expect(await inspectNativeSdkCancellation({ projectRoot: root, run: confirmed })).toMatchObject({
-    status: 'cancelled',
-    quiescent: true,
-  });
-  expect(confirmed.actions[0].outcome).toBeUndefined();
 });

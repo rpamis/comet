@@ -1,3 +1,9 @@
+import {
+  NativeChangeRevisionConflictError,
+  NativeWorkspaceIsolationRequiredError,
+  NativeSpecConflictError,
+  NativeWorkspacePreparationError,
+} from './native-runtime-errors.js';
 import path from 'path';
 import { realpathSync } from 'fs';
 
@@ -12,12 +18,6 @@ import {
   type CliOutputEnvelope,
 } from '../workflow-contract/output-envelope.js';
 
-import { NativeArchivePreflightError, NativeSpecConflictError } from './native-archive.js';
-import {
-  NativeBaselineIncompleteError,
-  NativeChangeRevisionConflictError,
-  NativeWorkspaceIsolationRequiredError,
-} from './native-change.js';
 import { discoverNativeProject, nativeProjectPaths } from './native-paths.js';
 import { readProjectConfig, resolveNativeProject } from './native-config.js';
 import { deriveNativeOutputEnvelope, nativeErrorEnvelope } from './native-output-language.js';
@@ -25,8 +25,6 @@ import { NativeReceiptScopeStaleError } from './native-receipt-errors.js';
 import { NativeInputValidationError, type NativeInputIssue } from './native-input-error.js';
 import { NativeDocumentConstraintError } from './native-artifacts.js';
 import { NativeBuilderAcceptanceIncompleteError } from './native-builder-acceptance-review.js';
-import { NativeVerificationReceiptBindingError } from './native-verification-runtime.js';
-import { NativeWorkspacePreparationError } from './native-workspace-preparation.js';
 import type { CometProjectConfig, NativeProjectPaths } from './native-types.js';
 export { USAGE } from './native-cli-help.js';
 
@@ -53,6 +51,8 @@ export interface NativeCliErrorShape {
 }
 
 export interface DispatchResult {
+  /** 仅供 CLI 学习桥使用，不加入公开输出；false 表示仅领取或重复回报。 */
+  workflowCompleted?: boolean;
   executionCwd?: string;
   command: string | null;
   exitCode: number;
@@ -65,8 +65,6 @@ export interface DispatchResult {
    */
   envelope?: CliOutputEnvelope;
 }
-
-export const NATIVE_SHOW_MAX_SERIALIZED_BYTES = 10 * 1024 * 1024;
 
 export class NativeUsageError extends Error {}
 
@@ -200,13 +198,17 @@ export function isNativeReadOnlyCommand(command: string, args: readonly string[]
   return command === 'status' || command === 'show' || (command === 'root' && args[0] === 'show');
 }
 
-export async function configuredPaths(projectRoot: string): Promise<{
+export async function configuredPaths(
+  projectRoot: string,
+  change?: string,
+): Promise<{
   config: CometProjectConfig;
   paths: NativeProjectPaths;
 }> {
   const resolved = await resolveNativeProject({
     startPath: projectRoot,
     allowMissingConfig: false,
+    change,
   });
   return { config: resolved.config, paths: resolved.paths };
 }
@@ -314,14 +316,6 @@ function rawErrorResult(command: string | null, error: unknown): DispatchResult 
       error: { code: 'conflict', message: error.message },
     };
   }
-  if (error instanceof NativeArchivePreflightError) {
-    return {
-      command,
-      exitCode: 73,
-      data: error.preflight,
-      error: { code: 'conflict', message: error.message },
-    };
-  }
   if (error instanceof NativeChangeRevisionConflictError) {
     return {
       command,
@@ -353,41 +347,6 @@ function rawErrorResult(command: string | null, error: unknown): DispatchResult 
       exitCode: 73,
       data: { preparation: error.preparation },
       error: { code: 'workspace-preparation-incomplete', message: error.message },
-    };
-  }
-  if (error instanceof NativeBaselineIncompleteError) {
-    return {
-      command,
-      exitCode: 65,
-      data: {
-        change: error.change,
-        complete: false,
-        omittedCount: error.omittedCount,
-        omittedByReason: error.omittedByReason,
-        samplePaths: error.samplePaths,
-        sampleTruncated: error.sampleTruncated,
-        effectiveLimits: error.effectiveLimits,
-        policyHash: error.policyHash,
-        configPath: '.comet/config.yaml',
-        supportedFixes: [
-          'increase native.snapshot.max_files, native.snapshot.max_total_bytes, or native.snapshot.max_duration_ms',
-          'add an explicit native.snapshot.exclude pattern for data outside implementation scope',
-        ],
-        requiredAction: 'resolve-native-baseline',
-      },
-      error: { code: 'baseline-incomplete', message: error.message },
-    };
-  }
-  if (error instanceof NativeVerificationReceiptBindingError) {
-    // Insurance branch: the verify path normally converts binding failures into
-    // structured findings, but if one ever escapes (e.g. a direct caller), keep
-    // exit code 65 / invalid-data and surface the per-receipt diagnostics in
-    // `data` so the Agent still gets an actionable payload.
-    return {
-      command,
-      exitCode: 65,
-      data: { receiptBindingFailures: error.details },
-      error: { code: 'invalid-data', message: error.message },
     };
   }
   if (error instanceof NativeReceiptScopeStaleError) {

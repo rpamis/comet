@@ -1,0 +1,773 @@
+diff --git a/test/app/native-verification-cli.test.ts b/test/app/native-verification-cli.test.ts
+index 2e2be7dd..d865c70b 100644
+--- a/test/app/native-verification-cli.test.ts
++++ b/test/app/native-verification-cli.test.ts
+@@ -1,116 +1,203 @@
+-import { afterEach, expect, it } from 'vitest';
+-import { promises as fs } from 'node:fs';
+-import path from 'node:path';
+-import { nativeVerificationFixture } from '../helpers/native-verification-fixture.js';
+-import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
+-import { execFileSync } from 'node:child_process';
+-import { fixtureAcceptanceReview } from '../helpers/native-builder-acceptance-review.js';
+-
++import "../helpers/isolated-agent-home.js";
++import { afterEach, expect, it } from "vitest";
++import { promises as fs } from "node:fs";
++import path from "node:path";
++import { execFileSync } from "node:child_process";
++import { nativeVerificationFixture } from "../helpers/native-verification-fixture.js";
++import { fixtureAcceptanceReview } from "../helpers/native-builder-acceptance-review.js";
+ const roots: string[] = [];
+ afterEach(async () => {
+-  for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true });
++  for (const root of roots.splice(0))
++    await fs.rm(root, { recursive: true, force: true });
+ });
+-
+-it('submits the typed receipt template through the public CLI without rebuilding identity fields', async () => {
+-  await ensureCliBuilt(path.resolve('.'));
+-  const binary = path.resolve('bin/comet.js');
+-  const originalTask = 'Produce the expected value without changing the public interface.';
+-  const fixture = await nativeVerificationFixture((root) => roots.push(root), binary, originalTask);
+-  const pending = await fixture.invoke('next', 'verification-test');
+-  const requestFile = path.join(path.dirname(fixture.root), 'opaque-result.json');
++it("submits the typed receipt template through the public CLI without rebuilding identity fields", async () => {
++  const binary = path.resolve("bin/comet.js");
++  await fs.access(path.resolve("dist/app/cli/index.js"));
++  const originalTask =
++    "Produce the expected value without changing the public interface.";
++  const f = await nativeVerificationFixture(
++    (root) => roots.push(root),
++    binary,
++    originalTask,
++  );
++  expect((await f.inspect()).workflow.version).toBe("4");
++  const pending = await f.invoke("next", "verification-test"),
++    file = path.join(path.dirname(f.root), "opaque-result.json");
+   const dispatch = async (request: unknown) => {
+-    await fs.writeFile(requestFile, JSON.stringify(request));
++    await fs.writeFile(file, JSON.stringify(request));
+     return JSON.parse(
+       execFileSync(
+         process.execPath,
+         [
+           binary,
+-          'runtime',
+-          'dispatch',
+-          '--application',
+-          'native',
+-          '--project-root',
+-          fixture.root,
+-          '--request',
+-          requestFile,
+-          '--json',
++          "runtime",
++          "dispatch",
++          "--application",
++          "native",
++          "--project-root",
++          f.root,
++          "--request",
++          file,
++          "--json",
+         ],
+-        { encoding: 'utf8', windowsHide: true, timeout: 30000 },
++        { encoding: "utf8", windowsHide: true, timeout: 30000 },
+       ),
+     );
+   };
+-  const claimed = await dispatch({
+-    ...pending.data.pendingAction.claimRequest,
+-    sessionId: 'public-builder',
++  const builder = await dispatch({
++      ...pending.data.pendingAction.claimRequest,
++      sessionId: "public-builder",
++    }),
++    request = builder.data.resultRequest;
++  expect(builder.data.originalRequest).toEqual({
++    source: "run.input.task",
++    text: originalTask,
+   });
+-  const request = claimed.data.resultRequest;
+-  expect(claimed.data.originalRequest).toEqual({ source: 'run.input.task', text: originalTask });
++  expect(Object.keys(request).sort()).toEqual([
++    "operation",
++    "receipt",
++    "result",
++  ]);
++  expect(request.receipt).toEqual(expect.any(String));
+   expect(request.result.output).toMatchObject({
+-    verificationChecks: [expect.any(Object)],
+-    acceptanceReview: [{ id: 'A1' }],
+-  });
+-  expect(claimed.data.checkRequestTemplate).toMatchObject({
+-    executable: expect.any(String),
+-    argv: expect.any(Array),
++    addressedAcceptanceIds: ["A1"],
++    checks: [
++      {
++        name: expect.any(String),
++        result: expect.any(String),
++        note: expect.any(String),
++      },
++    ],
+   });
+-  await fs.writeFile(path.join(fixture.root, 'value.txt'), 'expected\n');
++  expect(builder.data).not.toHaveProperty("checkRequestTemplate");
++  expect(request.result.output).not.toHaveProperty("verificationChecks");
++  await fs.writeFile(path.join(f.root, "value.txt"), "expected\n");
++  const observed = execFileSync(
++    process.execPath,
++    [
++      "-e",
++      "process.stdout.write(require('node:fs').readFileSync('value.txt','utf8'))",
++    ],
++    { cwd: f.root, encoding: "utf8", windowsHide: true, timeout: 10000 },
++  );
++  expect(observed).toBe("expected\n");
++  const checks = [
++    {
++      name: "Read the final value",
++      result: "passed",
++      note: "Actual platform Node command stdout: " + observed.trim(),
++    },
++  ];
+   request.result.output = {
+     ...request.result.output,
+-    summary: 'Implemented the expected value.',
+-    acceptanceReview: fixtureAcceptanceReview(['A1']),
+-    checks: [],
++    summary: "SIMULATED Agent implemented the expected value.",
++    acceptanceReview: fixtureAcceptanceReview(["A1"]),
++    checks,
+     knownLimits: [],
+-    verificationChecks: [
+-      {
+-        id: 'read-value',
+-        name: 'Read the final value',
+-        executable: process.execPath,
+-        argv: ['-e', "process.stdout.write(require('node:fs').readFileSync('value.txt','utf8'))"],
+-        cwdRef: '.',
+-        timeoutMs: 10000,
+-        repeatable: true,
+-      },
+-    ],
++    requireIndependentReview: true,
+   };
+   await dispatch(request);
+-  const accepted = await fixture.inspect();
+-  expect(accepted.actions.at(-1)).toMatchObject({ stepId: 'verify.checks', status: 'pending' });
++  const built = await f.inspect();
++  expect(built.actions.at(-1)).toMatchObject({
++    stepId: "verify.verifier",
++    status: "pending",
++  });
++  expect(
++    built.actions.some((a: any) =>
++      ["verify.checks", "verify.requested-checks", "build.checks"].includes(
++        a.stepId,
++      ),
++    ),
++  ).toBe(false);
++  expect(built.state.builder_handoff.checks).toMatchObject([
++    {
++      name: { text: "Read the final value" },
++      result: "passed",
++      note: { text: "Actual platform Node command stdout: expected" },
++    },
++  ]);
+   await dispatch(request);
+-  expect(await fixture.inspect()).toEqual(accepted);
+-  const review = await fixture.invoke('next', 'verification-test');
++  expect(await f.inspect()).toEqual(built);
++  const review = await f.invoke("next", "verification-test");
++  expect(review.data.pendingAction.sessionRequirements).toMatchObject({
++    independent: true,
++    readOnly: true,
++  });
+   const reviewer = await dispatch({
+     ...review.data.pendingAction.claimRequest,
+-    sessionId: 'public-reviewer',
++    sessionId: "public-reviewer",
+   });
+-  expect(reviewer.data.resultRequest.result.output.response.result.requestReview).toMatchObject({
+-    result: '<aligned|conflict|blocked>',
++  expect(reviewer.data.originalRequest).toEqual({
++    source: "run.input.task",
++    text: originalTask,
+   });
+-  await dispatch(reviewer.data.refreshChecksResultRequest);
+-  await fixture.invoke('next', 'verification-test');
+-  const refreshed = await fixture.inspect();
+-  expect(refreshed.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
++  const finalRequest = reviewer.data.resultRequest;
++  expect(Object.keys(finalRequest).sort()).toEqual([
++    "operation",
++    "receipt",
++    "result",
++  ]);
+   expect(
+-    refreshed.actions.filter((action) => action.stepId === 'verify.requested-checks'),
+-  ).toHaveLength(1);
+-  const continuation = await fixture.invoke('next', 'verification-test');
+-  const resumed = await dispatch({
+-    ...continuation.data.pendingAction.claimRequest,
+-    sessionId: 'public-reviewer',
+-  });
+-  const finalRequest = resumed.data.resultRequest;
++    finalRequest.result.output.response.result.requestReview,
++  ).toMatchObject({ result: "<aligned|conflict|blocked>" });
++  expect(reviewer.data).not.toHaveProperty("refreshChecksResultRequest");
+   finalRequest.result.output.response.result = {
+     ...finalRequest.result.output.response.result,
+-    verdict: 'pass',
++    verdict: "pass",
+     acceptance: [
+-      { id: 'A1', result: 'passed', reason: 'The final value meets the original requirement.' },
++      {
++        id: "A1",
++        result: "passed",
++        reason:
++          "SIMULATED independent fixture reading agrees with actual expected stdout.",
++      },
+     ],
+     risks: [],
+-    summary: 'The original request, Spec and current value agree.',
++    summary:
++      "SIMULATED Agent compared the original request, Spec and actual value.",
+     requestReview: {
+-      result: 'aligned',
+-      reason: 'The expected value is implemented and the public interface remains unchanged.',
++      result: "aligned",
++      reason:
++        "Expected value and the original public interface agree in this isolated fixture.",
+     },
+   };
+   await dispatch(finalRequest);
+-  expect((await fixture.inspect()).state).toMatchObject({ verification_result: 'pass' });
++  const verified = await f.inspect();
++  expect(verified.state).toMatchObject({
++    phase: "verify",
++    status: "await-user",
++    verification_result: "pass",
++  });
++  expect(verified.waits.at(-1)).toMatchObject({
++    stepId: "verify.confirm",
++    status: "pending",
++  });
++  expect(
++    verified.actions.some((a: any) => a.stepId.startsWith("archive.")),
++  ).toBe(false);
++  await dispatch(finalRequest);
++  expect(await f.inspect()).toEqual(verified);
++  await f.invoke("next", "verification-test");
++  expect(await f.inspect()).toEqual(verified);
++  await f.invoke(
++    "next",
++    "verification-test",
++    "--accept-result",
++    "--summary",
++    "SIMULATED USER accepts this isolated verified result",
++    "--expected-state-version",
++    String(verified.state.state_version),
++    "--expected-action",
++    "accept-result",
++    "--proposal-hash",
++    verified.waits.at(-1).proposalHash,
++  );
++  const accepted = await f.inspect();
++  expect(
++    accepted.waits.find((w: any) => w.id === verified.waits.at(-1).id),
++  ).toMatchObject({ status: "resolved", decision: { choice: "approved" } });
++  expect(accepted.state.verification_result).toBe("pass");
++  expect(
++    accepted.actions.filter((a: any) => a.stepId === "verify.verifier"),
++  ).toHaveLength(1);
+ }, 90000);
+diff --git a/test/helpers/native-verification-fixture.ts b/test/helpers/native-verification-fixture.ts
+index b7bf8f73..da37ad2e 100644
+--- a/test/helpers/native-verification-fixture.ts
++++ b/test/helpers/native-verification-fixture.ts
+@@ -1,152 +1,177 @@
+-import { execFileSync, spawnSync } from 'node:child_process';
+-import { promises as fs } from 'node:fs';
+-import os from 'node:os';
+-import path from 'node:path';
+-import { runNativeCli } from '../../domains/comet-native/native-cli.js';
+-import { loadOwnedNativeSdkRuntime } from '../../domains/comet-native/native-runtime-ownership.js';
+-import { createNativePortableState } from '../../domains/comet-native/native-portable-state.js';
+-import { runtimeDispatchCommand } from '../../app/commands/runtime.js';
++import "./isolated-agent-home.js";
++import { execFileSync, spawnSync } from "node:child_process";
++import { promises as fs } from "node:fs";
++import os from "node:os";
++import path from "node:path";
++import { runNativeCli } from "../../domains/comet-native/native-cli.js";
++import { loadOwnedNativeSdkRuntime } from "../../domains/comet-native/native-runtime-ownership.js";
++import { createNativePortableState } from "../../domains/comet-native/native-portable-state.js";
++import { runtimeDispatchCommand } from "../../app/commands/runtime.js";
+ import {
+   defaultProjectConfig,
+   writeProjectConfig,
+-} from '../../domains/comet-native/native-config.js';
+-import { fixtureAcceptanceReview } from './native-builder-acceptance-review.js';
+-import type { RuntimeValue } from '../../domains/engine/runtime.js';
++} from "../../domains/comet-native/native-config.js";
++import { fixtureAcceptanceReview } from "./native-builder-acceptance-review.js";
++import type { RuntimeValue } from "../../domains/engine/runtime.js";
+ 
+ export async function nativeVerificationFixture(
+   onRoot?: (root: string) => void,
+   cliPath?: string,
+   task?: string,
+ ) {
+-  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-verification-'));
++  const temporary = await fs.mkdtemp(
++    path.join(os.tmpdir(), "comet-verification-"),
++  );
+   onRoot?.(temporary);
+-  const root = path.join(temporary, 'project');
++  const root = path.join(temporary, "project");
+   await fs.mkdir(root);
+   let requestIndex = 0;
+   const cli = (args: string[]) => {
+     const execution = spawnSync(process.execPath, [cliPath!, ...args], {
+-      encoding: 'utf8',
++      encoding: "utf8",
+       windowsHide: true,
+     });
+-    if (execution.status !== 0) throw new Error(execution.stdout + execution.stderr);
+-    return JSON.parse(execution.stdout.slice(execution.stdout.indexOf('{')));
++    if (execution.status !== 0)
++      throw new Error(execution.stdout + execution.stderr);
++    return JSON.parse(execution.stdout.slice(execution.stdout.indexOf("{")));
+   };
+   const dispatch = async (request: Record<string, unknown>) => {
+     const file = path.join(temporary, `request-${++requestIndex}.json`);
+     await fs.writeFile(file, JSON.stringify(request));
+     const result = cli([
+-      'runtime',
+-      'dispatch',
+-      '--application',
+-      'native',
+-      '--project-root',
++      "runtime",
++      "dispatch",
++      "--application",
++      "native",
++      "--project-root",
+       root,
+-      '--request',
++      "--request",
+       file,
+-      '--json',
++      "--json",
+     ]);
+-    if (result.status !== 'succeeded') throw new Error(JSON.stringify(result));
++    if (result.status !== "succeeded") throw new Error(JSON.stringify(result));
+     return result.data;
+   };
+   const load = async () => {
+-    const owned = await loadOwnedNativeSdkRuntime(root, 'verification-test');
+-    return { ...owned, run: await owned.runtime.inspect('verification-test') };
++    const owned = await loadOwnedNativeSdkRuntime(root, "verification-test");
++    return { ...owned, run: await owned.runtime.inspect("verification-test") };
+   };
+   const git = (...args: string[]) =>
+-    execFileSync('git', ['-C', root, ...args], { windowsHide: true, stdio: 'pipe' });
+-  git('init');
+-  await fs.writeFile(path.join(root, 'value.txt'), 'initial\n');
+-  git('add', 'value.txt');
++    execFileSync("git", ["-C", root, ...args], {
++      windowsHide: true,
++      stdio: "pipe",
++    });
++  git("init");
++  await fs.writeFile(path.join(root, "value.txt"), "initial\n");
++  git("add", "value.txt");
+   git(
+-    '-c',
+-    'user.name=Fixture',
+-    '-c',
+-    'user.email=fixture@example.invalid',
+-    'commit',
+-    '-m',
+-    'initial',
++    "-c",
++    "user.name=Fixture",
++    "-c",
++    "user.email=fixture@example.invalid",
++    "commit",
++    "-m",
++    "initial",
+   );
+-  const config = defaultProjectConfig('docs', 'zh-CN');
++  const config = defaultProjectConfig("docs", "zh-CN");
+   await writeProjectConfig(root, config);
+   const invoke = async (...args: string[]) => {
+     if (cliPath) {
+-      const result = cli(['native', ...args, '--project-root', root, '--json']) as Awaited<
+-        ReturnType<typeof runNativeCli>
+-      >;
++      const result = cli([
++        "native",
++        ...args,
++        "--project-root",
++        root,
++        "--json",
++      ]) as Awaited<ReturnType<typeof runNativeCli>>;
+       if (result.exitCode !== 0) throw new Error(JSON.stringify(result));
+       return result;
+     }
+-    const result = await runNativeCli([...args, '--project-root', root, '--json']);
++    const result = await runNativeCli([
++      ...args,
++      "--project-root",
++      root,
++      "--json",
++    ]);
+     if (result.exitCode !== 0) throw new Error(JSON.stringify(result));
+     return result;
+   };
+-  const change = path.join(root, 'docs/comet/changes/verification-test');
++  const change = path.join(root, "docs/comet/changes/verification-test");
+   await fs.mkdir(change, { recursive: true });
+-  // Exercise the legacy typed receipt and mandatory independent review contract.
++  // Current business workflow; independent review is selected explicitly in the fixture report.
+   const initial = {
+-    operation: 'start',
+-    runId: 'verification-test',
+-    workflow: { id: 'comet-native', version: '1' },
+-    input: { name: 'verification-test', artifactRootRef: 'docs', ...(task ? { task } : {}) },
++    operation: "start",
++    runId: "verification-test",
++    workflow: { id: "comet-native", version: "4" },
++    input: {
++      name: "verification-test",
++      artifactRootRef: "docs",
++      ...(task ? { task } : {}),
++    },
+     initialState: createNativePortableState({
+-      name: 'verification-test',
+-      language: 'zh-CN',
+-      nextAction: 'prepare-shape-confirmation',
++      name: "verification-test",
++      language: "zh-CN",
++      nextAction: "prepare-shape-confirmation",
+     }),
+   };
+   if (cliPath) await dispatch(initial);
+   else {
+-    const request = path.join(temporary, 'start.json');
++    const request = path.join(temporary, "start.json");
+     await fs.writeFile(request, JSON.stringify(initial));
+     const started = await runtimeDispatchCommand({
+       projectRoot: root,
+-      application: 'native',
++      application: "native",
+       request,
+     });
+     if (started.exitCode !== 0) throw new Error(JSON.stringify(started));
+   }
+   await fs.writeFile(
+-    path.join(change, 'brief.md'),
+-    '# Outcome\nDeliver the expected value.\n# Scope\nChange the value.\n## Directory structure\n### Modified\n- value.txt — expected value.\n# Non-goals\nNo unrelated changes.\n# Acceptance examples\n- The value is expected.\n',
++    path.join(change, "brief.md"),
++    "# Outcome\nDeliver the expected value.\n# Scope\nChange the value.\n## Directory structure\n### Modified\n- value.txt — expected value.\n# Non-goals\nNo unrelated changes.\n# Acceptance examples\n- The value is expected.\n",
+   );
+-  await fs.mkdir(path.join(change, 'specs/value'), { recursive: true });
++  await fs.mkdir(path.join(change, "specs/value"), { recursive: true });
+   await fs.writeFile(
+-    path.join(change, 'specs/value/spec.md'),
+-    '# Value\nThe final value is expected.\n',
++    path.join(change, "specs/value/spec.md"),
++    "# Value\nThe final value is expected.\n",
+   );
+-  await invoke('next', 'verification-test');
++  await invoke("next", "verification-test");
+   let owned = await load();
+   const state = owned.run.state as { state_version: number };
+   await invoke(
+-    'next',
+-    'verification-test',
+-    '--confirmed',
+-    '--summary',
+-    'Approve fixture shape',
+-    '--expected-state-version',
++    "next",
++    "verification-test",
++    "--confirmed",
++    "--summary",
++    "Approve fixture shape",
++    "--expected-state-version",
+     String(state.state_version),
+-    '--expected-action',
+-    'confirm-shape',
++    "--expected-action",
++    "confirm-shape",
+   );
+   const submit = async (output: RuntimeValue, sessionId: string) => {
+     if (cliPath) {
+-      const run = await dispatch({ operation: 'inspect', runId: 'verification-test' });
++      const run = await dispatch({
++        operation: "inspect",
++        runId: "verification-test",
++      });
+       const action = run.actions.at(-1)!;
+       const claimToken =
+-        action.claim?.sessionId === sessionId ? action.claim.token : crypto.randomUUID();
++        action.claim?.sessionId === sessionId
++          ? action.claim.token
++          : crypto.randomUUID();
+       if (action.claim?.sessionId !== sessionId)
+         await dispatch({
+-          operation: 'claim',
++          operation: "claim",
+           runId: run.runId,
+           actionId: action.id,
+           attempt: action.attempt,
+           inputHash: action.inputHash,
+-          executorId: 'native-host',
++          executorId: "native-host",
+           sessionId,
+           claimToken,
+         });
+       await dispatch({
+-        operation: 'record-outcome',
++        operation: "record-outcome",
+         runId: run.runId,
+         outcome: {
+           actionId: action.id,
+@@ -154,11 +179,11 @@ export async function nativeVerificationFixture(
+           inputHash: action.inputHash,
+           claimToken,
+           outcomeId: crypto.randomUUID(),
+-          status: 'succeeded',
++          status: "succeeded",
+           output,
+         },
+       });
+-      return dispatch({ operation: 'inspect', runId: run.runId });
++      return dispatch({ operation: "inspect", runId: run.runId });
+     }
+     owned = await load();
+     const action = owned.run.actions.at(-1)!;
+@@ -171,7 +196,7 @@ export async function nativeVerificationFixture(
+             actionId: action.id,
+             attempt: action.attempt,
+             inputHash: action.inputHash,
+-            executorId: 'native-host',
++            executorId: "native-host",
+             sessionId,
+             claimToken: crypto.randomUUID(),
+             context,
+@@ -184,31 +209,29 @@ export async function nativeVerificationFixture(
+         inputHash: action.inputHash,
+         claimToken: claimed.actions.at(-1)!.claim!.token,
+         outcomeId: crypto.randomUUID(),
+-        status: 'succeeded',
++        status: "succeeded",
+         output,
+       },
+       context,
+     });
+   };
+-  const candidate = async (
+-    value: string,
+-    sessionId = 'builder',
+-    verificationChecks: RuntimeValue[] = [],
+-  ) => {
+-    await fs.writeFile(path.join(root, 'value.txt'), value);
++  const candidate = async (value: string, sessionId = "builder") => {
++    await fs.writeFile(path.join(root, "value.txt"), value);
+     await submit(
+       {
+-        summary: 'Implement expected value',
+-        acceptanceReview: fixtureAcceptanceReview(['A1']) as unknown as RuntimeValue,
++        summary: "Implement expected value",
++        acceptanceReview: fixtureAcceptanceReview([
++          "A1",
++        ]) as unknown as RuntimeValue,
+         checks: [],
+         knownLimits: [],
+-        verificationChecks,
++        requireIndependentReview: true,
+       },
+       sessionId,
+     );
+-    await invoke('next', 'verification-test');
++    await invoke("next", "verification-test");
+     return cliPath
+-      ? dispatch({ operation: 'inspect', runId: 'verification-test' })
++      ? dispatch({ operation: "inspect", runId: "verification-test" })
+       : (await load()).run;
+   };
+   return {
+@@ -218,6 +241,8 @@ export async function nativeVerificationFixture(
+     submit,
+     candidate,
+     inspect: async () =>
+-      cliPath ? dispatch({ operation: 'inspect', runId: 'verification-test' }) : (await load()).run,
++      cliPath
++        ? dispatch({ operation: "inspect", runId: "verification-test" })
++        : (await load()).run,
+   };
+ }
+diff --git a/test/app/workflow-handoffs.test.ts b/test/app/workflow-handoffs.test.ts
+deleted file mode 100644
+--- a/test/app/workflow-handoffs.test.ts
++++ /dev/null
+@@ -1,152 +0,0 @@
+-import { spawn, spawnSync } from 'node:child_process';
+-import { existsSync } from 'node:fs';
+-import { promises as fs } from 'node:fs';
+-import os from 'node:os';
+-import path from 'node:path';
+-import { afterEach, beforeAll, expect, it } from 'vitest';
+-import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
+-import { prepareClassicLegacyProject } from '../helpers/classic-project.js';
+-
+-const repository = path.resolve('.');
+-const roots: string[] = [];
+-beforeAll(() => ensureCliBuilt(repository), 120_000);
+-afterEach(async () => {
+-  for (const root of roots.splice(0)) {
+-    const resolved = await fs.realpath(root);
+-    if (
+-      path.dirname(resolved) !== (await fs.realpath(os.tmpdir())) ||
+-      !path.basename(resolved).startsWith('comet-cli-handoffs-')
+-    )
+-      throw new Error('Unexpected test cleanup target');
+-    await fs.rm(resolved, { recursive: true, force: true });
+-  }
+-});
+-
+-it('reports live command progress before a Classic CLI check finishes', async () => {
+-  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-cli-handoffs-'));
+-  roots.push(base);
+-  const root = path.join(base, 'project'),
+-    home = path.join(base, 'home');
+-  await fs.mkdir(home);
+-  await prepareClassicLegacyProject(root);
+-  await fs.appendFile(path.join(root, '.comet/config.yaml'), '  document_evidence: strict\n');
+-  const env = {
+-    ...process.env,
+-    HOME: home,
+-    USERPROFILE: home,
+-    APPDATA: path.join(home, 'AppData/Roaming'),
+-    LOCALAPPDATA: path.join(home, 'AppData/Local'),
+-    XDG_DATA_HOME: path.join(home, '.local/share'),
+-    XDG_CONFIG_HOME: path.join(home, '.config'),
+-    XDG_CACHE_HOME: path.join(home, '.cache'),
+-    GIT_CONFIG_GLOBAL: path.join(home, '.gitconfig'),
+-    GIT_CONFIG_SYSTEM: path.join(home, 'git-system'),
+-    COMET_DAEMON: 'off',
+-    COMET_SKIP_UPDATE_CHECK: '1',
+-    NODE_OPTIONS: '',
+-    COMET_TASK: '',
+-    COMET_TASK_PHASE: '',
+-    COMET_TASK_PATH: '',
+-  };
+-  const runProcess = (program: string, args: string[], input?: string) =>
+-    spawnSync(program, args, {
+-      cwd: root,
+-      env,
+-      encoding: 'utf8',
+-      input,
+-      timeout: 90_000,
+-      windowsHide: true,
+-    });
+-  expect(runProcess('git', ['init', '-b', 'main']).status).toBe(0);
+-  expect(
+-    runProcess('git', [
+-      '-c',
+-      'user.name=Test',
+-      '-c',
+-      'user.email=test@example.invalid',
+-      'commit',
+-      '--allow-empty',
+-      '-m',
+-      'fixture',
+-    ]).status,
+-  ).toBe(0);
+-  const node = globalThis.process.execPath;
+-  const cli = (...args: string[]) =>
+-    runProcess(node, [path.join(repository, 'bin/comet.js'), ...args]);
+-  const checked = (...args: string[]) => {
+-    const result = cli(...args);
+-    expect(result.status, result.stderr || result.stdout).toBe(0);
+-    return { result, body: JSON.parse(result.stdout) };
+-  };
+-  checked(
+-    'state',
+-    'init',
+-    'demo',
+-    'tweak',
+-    '--isolation',
+-    'current',
+-    '--runtime',
+-    'compat',
+-    '--json',
+-  );
+-  checked('state', 'select', 'demo', '--json');
+-  const change = path.join(root, 'openspec/changes/demo');
+-  for (const [name, source] of Object.entries({
+-    'proposal.md': '# Proposal\nPreserve the worker.\n',
+-    'design.md': '# Design\nKeep output one.\n',
+-    'tasks.md': '- [x] Keep worker behavior\n',
+-  }))
+-    await fs.writeFile(path.join(change, name), source);
+-  await fs.writeFile(path.join(root, 'worker.py'), 'value = 1\n');
+-  checked('guard', 'demo', 'open', '--apply', '--json');
+-  const marker = path.join(base, 'executions');
+-  const argv = [
+-    node,
+-    '-e',
+-    "setTimeout(()=>require('node:fs').appendFileSync(process.argv[1],'checked\\n'),8000)",
+-    marker,
+-  ];
+-  await fs.writeFile(
+-    path.join(root, '.comet/check-policy.json'),
+-    JSON.stringify({ version: 2, commands: [{ argv, cwd: '.', files: ['worker.py'] }] }),
+-  );
+-  const live = await new Promise<{
+-    status: number | null;
+-    stdout: string;
+-    stderr: string;
+-    progressBeforeFinish: boolean;
+-  }>((resolve, reject) => {
+-    const child = spawn(
+-      node,
+-      [
+-        path.join(repository, 'bin/comet.js'),
+-        'check',
+-        'run',
+-        'demo',
+-        'build',
+-        '--json',
+-        '--',
+-        ...argv,
+-      ],
+-      { cwd: root, env, timeout: 90_000, windowsHide: true },
+-    );
+-    let stdout = '',
+-      stderr = '',
+-      progressBeforeFinish = false;
+-    child.stdout.on('data', (chunk) => {
+-      stdout += String(chunk);
+-    });
+-    child.stderr.on('data', (chunk) => {
+-      stderr += String(chunk);
+-      if (stderr.includes('[Comet]') && !existsSync(marker)) progressBeforeFinish = true;
+-    });
+-    child.on('error', reject);
+-    child.on('close', (status) => resolve({ status, stdout, stderr, progressBeforeFinish }));
+-  });
+-  expect(live.status, live.stderr || live.stdout).toBe(0);
+-  expect(live.progressBeforeFinish).toBe(true);
+-  const build = { body: JSON.parse(live.stdout), result: live };
+-  expect(build.body.data.exitCode).toBe(0);
+-  expect(await fs.readFile(marker, 'utf8')).toBe('checked\n');
+-  expect(build.result.stderr).toContain('[Comet]');
+-});

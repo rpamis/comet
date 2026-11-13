@@ -1,3 +1,4 @@
+import '../../helpers/isolated-agent-home.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { promises as fs } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -7,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
 import { createFileRuntimeStore, type WorkflowRun } from '../../../domains/engine/runtime.js';
-import { createNativeChange } from '../../../domains/comet-native/native-change.js';
+// SIMULATED historical document corpus for pagination/readonly discovery, not executable Runs.
+import { storedNativeChangeFixture } from '../../helpers/native-change-document.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -32,7 +34,7 @@ describe('Native status discovery pagination', () => {
     const paths = await nativeProjectPaths(projectRoot, '.');
     await ensureNativeDirectories(paths);
     for (let index = 0; index < 25; index += 1) {
-      await createNativeChange({
+      await storedNativeChangeFixture({
         paths,
         name: `change-${String(index).padStart(2, '0')}`,
         language: 'en',
@@ -62,7 +64,7 @@ describe('Native status discovery pagination', () => {
       JSON.stringify({
         operation: 'start',
         runId: 'sdk-change',
-        workflow: { id: 'comet-native', version: '1' },
+        workflow: { id: 'comet-native', version: '4' },
         input: { name: 'sdk-change', artifactRootRef: '.' },
         initialState: createNativePortableState({
           name: 'sdk-change',

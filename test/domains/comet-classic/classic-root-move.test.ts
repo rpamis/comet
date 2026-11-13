@@ -803,7 +803,7 @@ describe('Classic root move', () => {
           },
         },
       }),
-    ).rejects.toThrow(/symbolic link or junction|changed while/iu);
+    ).rejects.toThrow(/symbolic link(?:,| or) junction|changed while/iu);
 
     await expect(fs.readFile(path.join(payload, 'spec.md'), 'utf8')).resolves.toBe(
       'EXTERNAL SECRET\n',
@@ -830,7 +830,7 @@ describe('Classic root move', () => {
           },
         },
       }),
-    ).rejects.toThrow(/symbolic link or junction|changed while/iu);
+    ).rejects.toThrow(/symbolic link(?:,| or) junction|changed while/iu);
 
     const journal = JSON.parse(
       await fs.readFile(path.join(projectRoot, '.comet', 'classic-root-move.json'), 'utf8'),
@@ -1080,7 +1080,7 @@ describe('Classic root move', () => {
           },
         },
       }),
-    ).rejects.toThrow(/symbolic link or junction|changed while/iu);
+    ).rejects.toThrow(/symbolic link(?:,| or) junction|changed while/iu);
 
     await expect(
       fs.readFile(path.join(externalComet, 'classic-root-move.json'), 'utf8'),

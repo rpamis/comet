@@ -1,0 +1,34 @@
+{
+  "resultFiles": {
+    "startupRed": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/runtime-start-current-results.json",
+    "singleFinal29": "C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final-results.json"
+  },
+  "actualCommand": "node D:/Project/Comet/node_modules/vitest/vitest.mjs run --config C:/Users/BENYM/AppData/Local/Temp/comet-native-test-migration-94e8fa6a8f0f46b59eff0bf7e30de86c/adjacent-four/four-retained-final.config.cjs native-portable-runtime.test.ts native-portable-recovery.test.ts native-verifier-start.test.ts native-v4-regression-eval.test.ts",
+  "summary": {
+    "testFiles": 4,
+    "tests": 29,
+    "failed": 0,
+    "durationSeconds": 18.76
+  },
+  "ordinaryOnly": true,
+  "noModelContainerEval": true,
+  "isolatedEnv": [
+    "COMET_DATA_DIR",
+    "HOME",
+    "USERPROFILE",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "CODEX_HOME",
+    "XDG_DATA_HOME",
+    "XDG_CONFIG_HOME",
+    "XDG_STATE_HOME",
+    "XDG_CACHE_HOME"
+  ],
+  "notes": [
+    "原startup同Action重复开始前state_version6→7 RED；root最小持锁同对象幂等修复后完整29GREEN，stale candidate/token拒绝exactbytes不变。",
+    "初次marked dependency缺失为Temp harness，补现有node_modules/marked junction，无install/build。",
+    "恢复初轮输出文件被随后loop原型误复用，原recovery失败仅保留initial-run.log；不将被覆盖JSON作该轮证据。",
+    "确定性loop初轮残留finalChecks变量/原型漏import均为harness适配错误；日志保留、不当产品根因。",
+    "独立SIMULATED缺Action探针在父禁止新增消息到达前已单项1过，现仅Temp研究证据；未进入交付四文件/29计数/真实052证据。"
+  ]
+}

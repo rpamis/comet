@@ -1,0 +1,7 @@
+{
+  "baseline": "630ce380787f446e803f94b4b90cbbdbf8663364",
+  "file": "test/platform/process/owned-deadline-negative-control.test.ts",
+  "content": "import { execFileSync } from 'node:child_process';\nimport { vi } from 'vitest';\n\n// Temporary diagnostic: run the approved assertion against the actual baseline adapter.\nvi.mock('esbuild', async (importOriginal) => {\n  const original = await importOriginal<typeof import('esbuild')>();\n  return {\n    ...original,\n    build: (options: import('esbuild').BuildOptions) =>\n      original.build({\n        ...options,\n        plugins: [\n          ...(options.plugins ?? []),\n          {\n            name: 'baseline-owned-command',\n            setup(builder) {\n              builder.onLoad({ filter: /[/\\\\]owned-command\\.ts$/ }, () => ({\n                loader: 'ts',\n                contents: execFileSync(\n                  'git',\n                  ['show', '630ce380787f446e803f94b4b90cbbdbf8663364:platform/process/owned-command.ts'],\n                  { encoding: 'utf8', windowsHide: true },\n                ),\n              }));\n            },\n          },\n        ],\n      }),\n  };\n});\n\nawait import('./owned-command-termination.test.js');\n",
+  "redReport": "coverage/platform-execution-owned-deadline-baseline-red2.json",
+  "greenReport": "coverage/platform-execution-owned-deadline-approved-green2.json"
+}

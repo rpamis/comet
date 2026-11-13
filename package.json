@@ -1,6 +1,6 @@
 {
   "name": "@rpamis/comet",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Agent Skill Harness For Turning Ideas Into Evaluated Workflows",
   "keywords": [
     "comet",
@@ -63,6 +63,8 @@
     "dist",
     "bin",
     "assets",
+    "plugin",
+    "!plugin/AGENTS.md",
     "!assets/AGENTS.md",
     "!assets/skills-maintainer",
     "!assets/skills-maintainer/**",
@@ -89,6 +91,8 @@
     "build:classic-runtime": "node scripts/build/build-classic-runtime.mjs",
     "build:native-runtime": "node scripts/build/build-native-runtime.mjs",
     "build:entry-runtime": "node scripts/build/build-entry-runtime.mjs",
+    "build:codex-plugin": "node scripts/build/build-codex-plugin.mjs",
+    "build:dsh-plugin": "node scripts/build/build-dsh-plugin.mjs",
     "check:generated": "node scripts/build/build-runtime-schemas.mjs --check && node scripts/build/build-classic-runtime.mjs --check && node scripts/build/build-native-runtime.mjs --check && node scripts/build/build-entry-runtime.mjs --check",
     "check:sdk-api": "node scripts/release/check-sdk-api.mjs",
     "check:sdk-fixtures": "node scripts/release/check-sdk-fixtures.mjs",
@@ -108,12 +112,12 @@
     "test:dashboard-e2e": "playwright test --config test/domains/dashboard/playwright.config.ts",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
-    "lint": "eslint app/ domains/ platform/ && pnpm run lint:architecture",
+    "lint": "eslint app/ domains/ platform/ plugin/ && pnpm run lint:architecture",
     "lint:architecture": "node scripts/lint/architecture.mjs",
-    "lint:fix": "eslint app/ domains/ platform/ --fix",
+    "lint:fix": "eslint app/ domains/ platform/ plugin/ --fix",
     "verify:changed": "node scripts/lint/verify-changed.mjs",
-    "format": "prettier --write app/ domains/ platform/ scripts/ test/ .github/ config/ package.json vitest.config.ts build.js tsconfig.json",
-    "format:check": "prettier --check app/ domains/ platform/ scripts/ test/ .github/ config/ package.json vitest.config.ts build.js tsconfig.json",
+    "format": "prettier --write app/ domains/ platform/ plugin/ scripts/ test/ .github/ config/ package.json vitest.config.ts build.js tsconfig.json",
+    "format:check": "prettier --check app/ domains/ platform/ plugin/ scripts/ test/ .github/ config/ package.json vitest.config.ts build.js tsconfig.json",
     "benchmark:context": "node scripts/benchmark/context-compression-benchmark.mjs",
     "benchmark:execution": "node scripts/benchmark/context-execution-benchmark.mjs",
     "benchmark:classic": "node scripts/benchmark/classic-baseline-regression.mjs",
@@ -130,6 +134,7 @@
     "app/**/*.{ts,tsx,js,mjs,cjs,json,md,yaml,yml}": "prettier --write",
     "domains/**/*.{ts,tsx,js,mjs,cjs,json,md,yaml,yml}": "prettier --write",
     "platform/**/*.{ts,tsx,js,mjs,cjs,json,md,yaml,yml}": "prettier --write",
+    "plugin/**/*.{ts,tsx,js,mjs,cjs,json,md,yaml,yml}": "prettier --write",
     "scripts/**/*.{ts,tsx,js,mjs,cjs,json,md,yaml,yml}": "prettier --write",
     "test/**/*.{ts,tsx,js,mjs,cjs,json,md,yaml,yml}": "prettier --write",
     ".github/**/*.{json,md,yaml,yml}": "prettier --write",
@@ -196,6 +201,8 @@
     "@inquirer/figures": "^2.0.8",
     "@inquirer/prompts": "^8.7.0",
     "@inquirer/type": "^4.1.0",
+    "@modelcontextprotocol/ext-apps": "1.7.5",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@vscode/ripgrep": "^1.18.0",
     "ajv": "^8.17.1",
     "antd": "^6.6.2",
@@ -207,6 +214,7 @@
     "marked": "18.0.11",
     "mermaid": "11.17.2",
     "smol-toml": "^1.9.0",
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.0",
+    "zod": "4.6.7"
   }
 }

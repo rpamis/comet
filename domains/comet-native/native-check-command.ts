@@ -1,53 +1,19 @@
-import { checkNativeChange } from './native-check.js';
-import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
-import { resolveNativeSdkCommandRoot } from './native-runtime-ownership.js';
-import { isNativePortableChange } from './native-portable-runtime.js';
 import {
   assertNoArguments,
-  configuredPaths,
-  NativeUsageError,
+  success,
   requiredPositional,
   type DispatchResult,
 } from './native-cli-shared.js';
-
 export async function nativeCheckCommand(
   args: string[],
-  projectRoot: string,
+  _projectRoot: string,
 ): Promise<DispatchResult> {
   const name = requiredPositional(args, 'change name');
   assertNoArguments(args);
-  const commandRoot = await resolveNativeSdkCommandRoot(projectRoot, name);
-  if (await readSdkChangeOwner(commandRoot, 'native', name)) {
-    throw new NativeUsageError(
-      `comet native check is not available for this change. Run comet native status ${name} --json and follow its next action through comet native next.`,
-    );
-  }
-  const { paths } = await configuredPaths(projectRoot);
-  if (await isNativePortableChange(paths, name)) {
-    throw new NativeUsageError(
-      `comet native check is not available for this change. Run comet native status ${name} --json and follow its continuation to dispatch verification through comet native next.`,
-    );
-  }
-  const checked = await checkNativeChange({ paths, name });
-  const data = {
-    ref: checked.ref,
-    hash: checked.receipt.receiptHash,
-    status: checked.receipt.status,
-    checker: checked.receipt.checker,
-    counts: checked.receipt.counts,
-    issues: checked.receipt.issues,
-    issuesTruncated: checked.receipt.issuesTruncated,
-    stale: checked.receipt.stale,
-    staleReasons: checked.receipt.staleReasons,
-    startedAt: checked.receipt.startedAt,
-    endedAt: checked.receipt.endedAt,
-    sourceRevision: checked.receipt.sourceRevision,
-  };
-  const passed = checked.receipt.status === 'passed' && !checked.receipt.stale;
-  return {
-    command: 'check',
-    exitCode: passed ? 0 : 1,
-    data,
-    text: `Native check ${passed ? 'passed' : 'failed'}: ${checked.ref}\n`,
-  };
+  return success('check', {
+    name,
+    status: 'platform-execution-required',
+    checksExecuted: false,
+    next: '使用 Agent 平台工具执行实际检查，并按 comet native next 返回的任务模板报告结果。',
+  });
 }

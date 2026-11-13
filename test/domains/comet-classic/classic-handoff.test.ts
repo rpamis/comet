@@ -1,15 +1,11 @@
-import { resolveClassicRunDirectory } from '../../../domains/comet-classic/classic-runtime-paths.js';
 import { spawnSync } from 'child_process';
-import { createHash } from 'crypto';
 import { existsSync, promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { parse, stringify } from 'yaml';
-import { readRunState, writeRunState } from '../../../domains/engine/state.js';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
-import { runClassicEditReviewCommand } from '../../../domains/comet-classic/classic-edit-review-command.js';
-import { computeContextHash } from '../../../domains/comet-classic/classic-handoff.js';
+import { resolveClassicRunDirectory } from '../../../domains/comet-classic/classic-runtime-paths.js';
+import { readRunState, writeRunState } from '../../../domains/engine/state.js';
 
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
 const scriptByCommand: Record<string, string> = {
@@ -66,228 +62,6 @@ async function seedDesignChange(dir: string, name = 'demo'): Promise<string> {
 }
 
 describe('Classic handoff command', () => {
-  it('captures Compat preset canonical originals only at the actual Open transition', async () => {
-    const dir = await makeProject();
-    const previous = process.cwd();
-    process.chdir(dir);
-    const cli = async (...args: string[]) => {
-      const result = await runClassicCli(args);
-      expect(result.exitCode, result.stderr).toBe(0);
-      return result;
-    };
-    try {
-      await cli('state', 'init', 'demo', 'hotfix', '--runtime', 'compat');
-      const changeDir = path.join(dir, 'openspec/changes/demo');
-      await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\nPreserve behavior.\n');
-      await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] Preserve behavior\n');
-      await cli('state', 'set', 'demo', 'isolation', 'current');
-      await cli('state', 'set', 'demo', 'build_mode', 'direct');
-      await cli('guard', 'demo', 'open', '--apply');
-      const accepted = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
-      await fs.appendFile(
-        path.join(changeDir, 'proposal.md'),
-        '\nThe existing behavior is unchanged.\n',
-      );
-      const prepared = (await runClassicEditReviewCommand({
-        projectRoot: dir,
-        name: 'demo',
-        operation: 'prepare-applied',
-        sessionId: 'same-agent',
-      })) as {
-        recordTemplate: Record<string, unknown>;
-        proposal: { edits: Array<{ path: string }> };
-      };
-      expect(prepared.proposal.edits[0].path).toBe('openspec/changes/demo/proposal.md');
-      const file = path.join(dir, '.comet', 'preset-edit.json');
-      await fs.writeFile(
-        file,
-        JSON.stringify({
-          ...prepared.recordTemplate,
-          decision: 'non-behavioral',
-          summary: 'The additional explanation preserves the actual accepted Open scope.',
-        }),
-      );
-      await runClassicEditReviewCommand({
-        projectRoot: dir,
-        name: 'demo',
-        operation: 'record',
-        file,
-      });
-      expect(await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8')).toBe(accepted);
-      await cli('state', 'set', 'demo', 'isolation', 'current');
-      await cli(
-        'check',
-        'run',
-        'demo',
-        'build',
-        '--local',
-        '--',
-        process.execPath,
-        '-e',
-        'process.exit(0)',
-      );
-      await cli('guard', 'demo', 'build', '--apply');
-      expect(parse(await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8')).phase).toBe(
-        'verify',
-      );
-    } finally {
-      process.chdir(previous);
-    }
-  });
-  it('continues Compat Verify after the current Agent judges the Plan captured by the real Build transition', async () => {
-    const dir = await makeProject();
-    const changeDir = await seedDesignChange(dir);
-    const previous = process.cwd();
-    process.chdir(dir);
-    const cli = async (...args: string[]) => {
-      const result = await runClassicCli(args);
-      expect(result.exitCode, result.stderr).toBe(0);
-      return result;
-    };
-    try {
-      await fs.writeFile(
-        path.join(changeDir, 'tasks.md'),
-        '- [x] implement handoff <!-- comet-task:impl -->\n',
-      );
-      await cli('handoff', 'demo', 'design', '--write');
-      await fs.writeFile(
-        path.join(dir, 'technical.md'),
-        '---\ncomet_change: demo\nrole: technical-design\ncanonical_spec: openspec\n---\n# Design\nPreserve the current behavior.\n',
-      );
-      await cli('state', 'set', 'demo', 'design_doc', 'technical.md');
-      await cli('guard', 'demo', 'design', '--apply');
-      for (const [field, value] of Object.entries({
-        build_mode: 'executing-plans',
-        tdd_mode: 'direct',
-        review_mode: 'off',
-        isolation: 'current',
-        plan: 'plan.unknown',
-      }))
-        await cli('state', 'set', 'demo', field, value);
-      const original =
-        '<!-- comet-task-authority: openspec/changes/demo/tasks.md -->\n# Plan\n<!-- comet-task-ref:impl -->\nPreserve the current behavior.\n';
-      await fs.writeFile(path.join(dir, 'plan.unknown'), original);
-      await cli(
-        'check',
-        'run',
-        'demo',
-        'build',
-        '--local',
-        '--',
-        process.execPath,
-        '-e',
-        'process.exit(0)',
-      );
-      await cli('guard', 'demo', 'build', '--apply');
-      const accepted = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
-      const after = original + '\nThe existing task remains the same.\n';
-      await fs.writeFile(path.join(dir, 'plan.unknown'), after);
-      const prepared = (await runClassicEditReviewCommand({
-        projectRoot: dir,
-        name: 'demo',
-        operation: 'prepare-applied',
-        sessionId: 'same-agent',
-      })) as {
-        recordTemplate: Record<string, unknown>;
-        proposal: { edits: Array<{ path: string }> };
-      };
-      expect(prepared.proposal.edits[0].path).toBe('plan.unknown');
-      expect(prepared.recordTemplate).toBeTruthy();
-      const file = path.join(dir, '.comet', 'plan-judgment.json');
-      await fs.writeFile(
-        file,
-        JSON.stringify({
-          ...prepared.recordTemplate,
-          decision: 'non-behavioral',
-          summary: 'The additional explanation preserves the real accepted Build plan.',
-        }),
-      );
-      await runClassicEditReviewCommand({
-        projectRoot: dir,
-        name: 'demo',
-        operation: 'record',
-        file,
-      });
-      expect(await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8')).toBe(accepted);
-      await fs.writeFile(
-        path.join(dir, 'report.md'),
-        '# Verify\nThe original task still passes.\n',
-      );
-      await cli('state', 'set', 'demo', 'verification_report', 'report.md');
-      await cli(
-        'check',
-        'run',
-        'demo',
-        'verify',
-        '--local',
-        '--',
-        process.execPath,
-        '-e',
-        'process.exit(0)',
-      );
-      await cli('guard', 'demo', 'verify', '--apply');
-      expect(parse(await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8')).phase).toBe(
-        'archive',
-      );
-      expect(await fs.readFile(path.join(dir, 'plan.unknown'), 'utf8')).toBe(after);
-    } finally {
-      process.chdir(previous);
-    }
-  });
-  it('retains the Compat handoff after the current Agent judges an applied formal edit', async () => {
-    const dir = await makeProject();
-    const changeDir = await seedDesignChange(dir);
-    const previous = process.cwd();
-    process.chdir(dir);
-    try {
-      const result = await runClassicCli(['handoff', 'demo', 'design', '--write']);
-      expect(result.exitCode, result.stderr).toBe(0);
-      const original = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
-      const state = parse(original) as { handoff_hash: string };
-      await fs.appendFile(path.join(changeDir, 'design.md'), '\nSupplemental explanation.\n');
-      expect(await computeContextHash(dir, changeDir, 'openspec/changes/demo')).not.toBe(
-        state.handoff_hash,
-      );
-      const observed = (await runClassicEditReviewCommand({
-        projectRoot: dir,
-        name: 'demo',
-        operation: 'prepare-applied',
-        sessionId: 'same-agent',
-      })) as { proposal: { proposalHash: string } };
-      const claimed = (await runClassicEditReviewCommand({
-        projectRoot: dir,
-        name: 'demo',
-        operation: 'judge',
-        proposalHash: observed.proposal.proposalHash,
-        sessionId: 'same-agent',
-      })) as { recordTemplate: Record<string, unknown> };
-      const file = path.join(dir, '.comet', 'formal-judgment.json');
-      await fs.writeFile(
-        file,
-        JSON.stringify({
-          ...claimed.recordTemplate,
-          decision: 'non-behavioral',
-          summary: 'Only supplemental explanation; approved design remains applicable.',
-        }),
-      );
-      await runClassicEditReviewCommand({
-        projectRoot: dir,
-        name: 'demo',
-        operation: 'record',
-        file,
-      });
-      expect(await computeContextHash(dir, changeDir, 'openspec/changes/demo')).toBe(
-        state.handoff_hash,
-      );
-      expect(await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8')).toBe(original);
-      await fs.appendFile(path.join(changeDir, 'design.md'), 'Another edit.\n');
-      expect(await computeContextHash(dir, changeDir, 'openspec/changes/demo')).not.toBe(
-        state.handoff_hash,
-      );
-    } finally {
-      process.chdir(previous);
-    }
-  });
   it('rejects a nested handoff junction without writing outside the project', async () => {
     const dir = await makeProject();
     const previous = process.cwd();
@@ -314,7 +88,13 @@ describe('Classic handoff command', () => {
         process.platform === 'win32' ? 'junction' : 'dir',
       );
 
-      const result = await runClassicCli(['handoff', 'linked-handoff', 'design', '--write']);
+      const result = await runClassicCli([
+        'handoff',
+        'linked-handoff',
+        'design',
+        '--write',
+        '--full',
+      ]);
 
       expect(result.exitCode).not.toBe(0);
       expect(result.stderr).toMatch(/symbolic link or junction/iu);
@@ -325,274 +105,61 @@ describe('Classic handoff command', () => {
     }
   });
 
-  it('writes a compact design handoff and records the context fields', async () => {
+  it('references original requirements without generating a default handoff copy', async () => {
     const dir = await makeProject();
     const changeDir = await seedDesignChange(dir);
-
     const result = run(dir, 'handoff', 'demo', 'design', '--write');
-    expect(result.status).toBe(0);
-    expect(result.stderr).toContain(
-      '[HANDOFF] wrote openspec/changes/demo/.comet/handoff/design-context.json',
-    );
-    expect(result.stderr).toMatch(/\[HANDOFF\] handoff_hash=[a-f0-9]{64}/);
-
-    const md = await fs.readFile(
-      path.join(changeDir, '.comet', 'handoff', 'design-context.md'),
-      'utf8',
-    );
-    expect(md).toContain('Generated-by: comet-handoff.sh');
-    expect(md).toContain('- Mode: compact');
-    expect(md).toContain('- Source: openspec/changes/demo/proposal.md');
-
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toContain('[HANDOFF] source openspec/changes/demo/proposal.md');
+    expect(existsSync(path.join(changeDir, '.comet/handoff'))).toBe(false);
     expect(run(dir, 'state', 'get', 'demo', 'handoff_context').stdout.trim()).toBe(
-      'openspec/changes/demo/.comet/handoff/design-context.json',
+      'openspec/changes/demo/proposal.md',
     );
-    expect(run(dir, 'state', 'get', 'demo', 'handoff_hash').stdout).toMatch(/^[a-f0-9]{64}/);
-
-    const state = parse(await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8')) as Record<
-      string,
-      unknown
-    >;
-    const runState = await readRunState(await resolveClassicRunDirectory(changeDir));
-    expect(runState).not.toBeNull();
-    const context = await fs.readFile(
-      path.join(await resolveClassicRunDirectory(changeDir), runState!.contextRef),
-      'utf8',
-    );
-    const artifacts = JSON.parse(
+    expect(run(dir, 'state', 'get', 'demo', 'handoff_hash').stdout.trim()).toBe('null');
+    const state = await readRunState(await resolveClassicRunDirectory(changeDir));
+    expect(state).toMatchObject({
+      currentStep: 'full.design.document',
+      iteration: 1,
+      pending: null,
+    });
+    expect(
       await fs.readFile(
-        path.join(await resolveClassicRunDirectory(changeDir), runState!.artifactsRef),
+        path.join(await resolveClassicRunDirectory(changeDir), state!.contextRef),
         'utf8',
       ),
-    ) as Record<string, string>;
-    const checkpoint = JSON.parse(
-      await fs.readFile(
-        path.join(await resolveClassicRunDirectory(changeDir), runState!.checkpointRef),
-        'utf8',
-      ),
-    ) as Record<string, unknown>;
-    expect(context).toBe(md);
-    expect(artifacts).toMatchObject({
-      handoff_context: 'openspec/changes/demo/.comet/handoff/design-context.json',
-      handoff_markdown: 'openspec/changes/demo/.comet/handoff/design-context.md',
-    });
-    expect(checkpoint).toMatchObject({
-      runId: state.run_id,
-      contextHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
-      artifactsHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
-    });
-    expect(runState!.currentStep).toBe('full.design.document');
-    expect(runState!.iteration).toBe(1);
-    expect(runState!.pending).toBeNull();
+    ).toBe(await fs.readFile(path.join(changeDir, 'proposal.md'), 'utf8'));
     await expect(
-      fs.access(path.join(await resolveClassicRunDirectory(changeDir), runState!.pendingRef)),
-    ).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+      fs.access(path.join(await resolveClassicRunDirectory(changeDir), state!.pendingRef)),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it('computes and prints the hash without writing files in --hash-only mode', async () => {
-    const dir = await makeProject();
-    const changeDir = await seedDesignChange(dir);
-
-    const result = run(dir, 'handoff', 'demo', '--hash-only');
-    expect(result.status).toBe(0);
-    expect(result.stdout.trim()).toMatch(/^[a-f0-9]{64}$/);
-    expect(existsSync(path.join(changeDir, '.comet', 'handoff'))).toBe(false);
-  });
-
-  it('reports a FRESH verdict on stderr while keeping the bare hash on stdout', async () => {
-    const dir = await makeProject();
-    await seedDesignChange(dir);
-    expect(run(dir, 'handoff', 'demo', 'design', '--write').status).toBe(0);
-
-    const result = run(dir, 'handoff', 'demo', '--hash-only');
-    expect(result.status).toBe(0);
-    expect(result.stdout.trim()).toMatch(/^[a-f0-9]{64}$/);
-    expect(result.stderr).toContain('[HANDOFF] status: FRESH');
-    expect(result.stderr).not.toContain('STALE');
-  });
-
-  it('reports a STALE verdict with the changed artifacts instead of a bare comparison', async () => {
+  it('generates one complete optional handoff view without advancing the original Run', async () => {
     const dir = await makeProject();
     const changeDir = await seedDesignChange(dir);
     expect(run(dir, 'handoff', 'demo', 'design', '--write').status).toBe(0);
-    await fs.appendFile(path.join(changeDir, 'proposal.md'), 'changed\n');
-
-    const result = run(dir, 'handoff', 'demo', '--hash-only');
-    expect(result.status).toBe(0);
-    expect(result.stdout.trim()).toMatch(/^[a-f0-9]{64}$/);
-    expect(result.stderr).toContain(
-      '[HANDOFF] status: STALE (changed: openspec/changes/demo/proposal.md)',
-    );
-    expect(result.stderr).toContain('Recorded: ');
-    expect(result.stderr).toContain('Current:  ');
-    expect(result.stderr).toContain('NEXT: comet handoff demo design --write');
-  });
-
-  it('refreshes the design handoff when source evidence changed after a completed handoff', async () => {
-    const dir = await makeProject();
-    const changeDir = await seedDesignChange(dir);
-    expect(run(dir, 'handoff', 'demo', 'design', '--write').status).toBe(0);
-    const beforeHash = run(dir, 'state', 'get', 'demo', 'handoff_hash').stdout.trim();
-    expect(beforeHash).toMatch(/^[a-f0-9]{64}$/);
-
-    await fs.appendFile(path.join(changeDir, 'proposal.md'), 'changed\n');
-    const result = run(dir, 'handoff', 'demo', 'design', '--write');
-
-    expect(result.status).toBe(0);
-    expect(result.stderr).toContain('refreshing stale design handoff');
-    const afterHash = run(dir, 'state', 'get', 'demo', 'handoff_hash').stdout.trim();
-    expect(afterHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(afterHash).not.toBe(beforeHash);
-
-    // The refreshed handoff must remain traceable by the design guard:
-    // its markdown must list the current SHA256 of every source file.
-    const md = await fs.readFile(
-      path.join(changeDir, '.comet', 'handoff', 'design-context.md'),
+    const before = await readRunState(await resolveClassicRunDirectory(changeDir));
+    const spec = path.join(changeDir, 'specs', 'nested', 'worker', 'spec.md');
+    await fs.mkdir(path.dirname(spec), { recursive: true });
+    await fs.writeFile(spec, 'The complete nested worker requirement.\n');
+    const result = run(dir, 'handoff', 'demo', 'design', '--write', '--full');
+    expect(result.status, result.stderr).toBe(0);
+    expect(await fs.readdir(path.join(changeDir, '.comet/handoff'))).toEqual(['design-context.md']);
+    const view = await fs.readFile(
+      path.join(changeDir, '.comet/handoff/design-context.md'),
       'utf8',
     );
-    const updatedProposal = await fs.readFile(path.join(changeDir, 'proposal.md'), 'utf8');
-    const proposalHash = createHash('sha256').update(updatedProposal).digest('hex');
-    expect(md).toContain(`- SHA256: ${proposalHash}`);
-  });
-
-  it('rewrites stale context files even when the recorded hash was aligned', async () => {
-    const dir = await makeProject();
-    const changeDir = await seedDesignChange(dir);
-    expect(run(dir, 'handoff', 'demo', 'design', '--write').status).toBe(0);
-
-    // Simulate the workaround from issue #324: aligning the recorded hash to
-    // the new source hash without regenerating the context files.
-    await fs.appendFile(path.join(changeDir, 'proposal.md'), 'changed\n');
-    const hashOnly = run(dir, 'handoff', 'demo', '--hash-only').stdout.trim();
-    expect(hashOnly).toMatch(/^[a-f0-9]{64}$/);
-    expect(run(dir, 'state', 'set', 'demo', 'handoff_hash', hashOnly).status).toBe(0);
-
-    const result = run(dir, 'handoff', 'demo', 'design', '--write');
-    expect(result.status).toBe(0);
-
-    // The markdown must actually reflect the updated proposal.md now, not
-    // merely report success on a short-circuit path.
-    const md = await fs.readFile(
-      path.join(changeDir, '.comet', 'handoff', 'design-context.md'),
-      'utf8',
-    );
-    const updatedProposal = await fs.readFile(path.join(changeDir, 'proposal.md'), 'utf8');
-    const proposalHash = createHash('sha256').update(updatedProposal).digest('hex');
-    expect(md).toContain(`- SHA256: ${proposalHash}`);
-  });
-
-  it('forces context regeneration when a delta spec was deleted after the handoff', async () => {
-    const dir = await makeProject();
-    const changeDir = await seedDesignChange(dir);
-
-    // Handoff over a delta spec, then capture the markdown that embeds it.
-    await fs.mkdir(path.join(changeDir, 'specs', 'feature'), { recursive: true });
-    await fs.writeFile(path.join(changeDir, 'specs', 'feature', 'spec.md'), '# Feature\n');
-    expect(run(dir, 'handoff', 'demo', 'design', '--write').status).toBe(0);
-    const specHash = run(dir, 'state', 'get', 'demo', 'handoff_hash').stdout.trim();
-    expect(specHash).toMatch(/^[a-f0-9]{64}$/);
-    let md = await fs.readFile(
-      path.join(changeDir, '.comet', 'handoff', 'design-context.md'),
-      'utf8',
-    );
-    expect(md).toContain('specs/feature/spec.md');
-
-    // Delete the delta spec and align the recorded hash to the reduced source
-    // set — the exact deadlock workaround from issue #324. The on-disk
-    // markdown still carries the old Context hash, so --write must regenerate
-    // the context files instead of short-circuiting on the aligned hash.
-    await fs.rm(path.join(changeDir, 'specs', 'feature'), { recursive: true });
-    const hashOnly = run(dir, 'handoff', 'demo', '--hash-only').stdout.trim();
-    expect(hashOnly).toMatch(/^[a-f0-9]{64}$/);
-    expect(hashOnly).not.toBe(specHash);
-    expect(run(dir, 'state', 'set', 'demo', 'handoff_hash', hashOnly).status).toBe(0);
-
-    const result = run(dir, 'handoff', 'demo', 'design', '--write');
-    expect(result.status).toBe(0);
-
-    // The regenerated markdown must match the new hash and drop the deleted
-    // delta spec; merely printing "wrote" without regenerating is a regression.
-    md = await fs.readFile(path.join(changeDir, '.comet', 'handoff', 'design-context.md'), 'utf8');
-    expect(md).toContain(`- Context hash: ${hashOnly}`);
-    expect(md).not.toContain('specs/feature/spec.md');
-  });
-
-  it('forces context regeneration when a delta spec was added after the handoff', async () => {
-    const dir = await makeProject();
-    const changeDir = await seedDesignChange(dir);
-
-    // Handoff without any delta spec, then capture the markdown that omits it.
-    expect(run(dir, 'handoff', 'demo', 'design', '--write').status).toBe(0);
-    const baseHash = run(dir, 'state', 'get', 'demo', 'handoff_hash').stdout.trim();
-    expect(baseHash).toMatch(/^[a-f0-9]{64}$/);
-    let md = await fs.readFile(
-      path.join(changeDir, '.comet', 'handoff', 'design-context.md'),
-      'utf8',
-    );
-    expect(md).not.toContain('specs/feature/spec.md');
-
-    // Add a delta spec and align the recorded hash to the enlarged source
-    // set. The old markdown still carries the previous Context hash, so
-    // --write must embed the new spec instead of short-circuiting.
-    await fs.mkdir(path.join(changeDir, 'specs', 'feature'), { recursive: true });
-    await fs.writeFile(path.join(changeDir, 'specs', 'feature', 'spec.md'), '# Feature\n');
-    const hashOnly = run(dir, 'handoff', 'demo', '--hash-only').stdout.trim();
-    expect(hashOnly).toMatch(/^[a-f0-9]{64}$/);
-    expect(hashOnly).not.toBe(baseHash);
-    expect(run(dir, 'state', 'set', 'demo', 'handoff_hash', hashOnly).status).toBe(0);
-
-    const result = run(dir, 'handoff', 'demo', 'design', '--write');
-    expect(result.status).toBe(0);
-
-    // The regenerated markdown must embed the new delta spec and carry the
-    // new Context hash.
-    md = await fs.readFile(path.join(changeDir, '.comet', 'handoff', 'design-context.md'), 'utf8');
-    expect(md).toContain('specs/feature/spec.md');
-    expect(md).toContain(`- Context hash: ${hashOnly}`);
-  });
-
-  it('regenerates the beta spec context when a delta spec was deleted after the handoff', async () => {
-    const dir = await makeProject();
-    const changeDir = await seedDesignChange(dir);
-    expect(run(dir, 'state', 'set', 'demo', 'context_compression', 'beta').status).toBe(0);
-
-    // Beta mode writes spec-context.md, which must carry the same Context hash
-    // marker so the stale-context short circuit cannot hide a deleted spec.
-    await fs.mkdir(path.join(changeDir, 'specs', 'feature'), { recursive: true });
-    await fs.writeFile(path.join(changeDir, 'specs', 'feature', 'spec.md'), '# Feature\n');
-    expect(run(dir, 'handoff', 'demo', 'design', '--write').status).toBe(0);
-    const specHash = run(dir, 'state', 'get', 'demo', 'handoff_hash').stdout.trim();
-    expect(specHash).toMatch(/^[a-f0-9]{64}$/);
-    const specContext = path.join(changeDir, '.comet', 'handoff', 'spec-context.md');
-    let md = await fs.readFile(specContext, 'utf8');
-    expect(md).toContain('- Mode: beta');
-    expect(md).toContain('specs/feature/spec.md');
-    expect(md).toContain(`- Context hash: ${specHash}`);
-
-    // Delete the delta spec and align the recorded hash to the reduced set.
-    await fs.rm(path.join(changeDir, 'specs', 'feature'), { recursive: true });
-    const hashOnly = run(dir, 'handoff', 'demo', '--hash-only').stdout.trim();
-    expect(hashOnly).toMatch(/^[a-f0-9]{64}$/);
-    expect(hashOnly).not.toBe(specHash);
-    expect(run(dir, 'state', 'set', 'demo', 'handoff_hash', hashOnly).status).toBe(0);
-
-    const result = run(dir, 'handoff', 'demo', 'design', '--write');
-    expect(result.status).toBe(0);
-
-    // The regenerated beta markdown must drop the deleted spec and match the
-    // new Context hash, just like the default mode.
-    md = await fs.readFile(specContext, 'utf8');
-    expect(md).toContain(`- Context hash: ${hashOnly}`);
-    expect(md).not.toContain('specs/feature/spec.md');
+    expect(view).toContain('The complete nested worker requirement.');
+    expect(view).toContain('openspec/changes/demo/specs/nested/worker/spec.md');
+    expect(view).not.toContain('sha256');
+    expect(await readRunState(await resolveClassicRunDirectory(changeDir))).toEqual(before);
   });
 
   it('refreshes the design handoff from the build phase after a Spec Patch', async () => {
     const dir = await makeProject();
     const changeDir = await seedDesignChange(dir);
     expect(run(dir, 'handoff', 'demo', 'design', '--write').status).toBe(0);
-    const beforeHash = run(dir, 'state', 'get', 'demo', 'handoff_hash').stdout.trim();
+    const beforeContext = run(dir, 'state', 'get', 'demo', 'handoff_context').stdout.trim();
+    const beforeText = await fs.readFile(path.join(dir, beforeContext), 'utf8');
 
     // Enter build through the real guard transition, not a forced phase write.
     // The full workflow requires a recorded Design Doc before leaving design.
@@ -627,9 +194,10 @@ describe('Classic handoff command', () => {
 
     const result = run(dir, 'handoff', 'demo', 'design', '--write');
     expect(result.status, result.stderr).toBe(0);
-    const afterHash = run(dir, 'state', 'get', 'demo', 'handoff_hash').stdout.trim();
-    expect(afterHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(afterHash).not.toBe(beforeHash);
+    const afterContext = run(dir, 'state', 'get', 'demo', 'handoff_context').stdout.trim();
+    expect(await fs.readFile(path.join(dir, afterContext), 'utf8')).toContain('build-phase change');
+    expect(await fs.readFile(path.join(dir, afterContext), 'utf8')).not.toBe(beforeText);
+    expect(run(dir, 'state', 'get', 'demo', 'handoff_hash').stdout.trim()).toBe('null');
 
     // The refresh must not move the workflow phase or the Runtime currentStep.
     expect(run(dir, 'state', 'get', 'demo', 'phase').stdout.trim()).toBe('build');
@@ -665,6 +233,7 @@ describe('Classic handoff command', () => {
     const afterRunState = await readRunState(await resolveClassicRunDirectory(changeDir));
     expect(afterRunState).not.toBeNull();
     expect(afterRunState!.pending).toBeNull();
+    expect(run(dir, 'handoff', 'demo', 'design', '--write').status).toBe(0);
     const trajectory = (
       await fs.readFile(
         path.join(await resolveClassicRunDirectory(changeDir), afterRunState!.trajectoryRef),

@@ -144,19 +144,13 @@ Build 只做任务或分段审查，Verify 负责唯一最终集成审查：
 - 不提前同步到 main spec，归档时统一同步
 - 小规模增量直接改 delta spec 时，应在 commit message 中注明，便于归档时判断 design doc 漂移
 
-**handoff 同步**：delta spec 的增、改、删都会使设计交接包（`handoff_hash`）过期。Build 阶段可随时直接重新生成，无需回退当前 phase 或 step：
-
-```bash
-comet handoff <change-name> design --write
-```
-
-重新生成时，会根据当前 OpenSpec 产物重建 handoff 并更新 `handoff_hash`，不会改变 `phase` 字段或 Runtime `currentStep`；更新后可以继续 build 阶段。
+**handoff 更新**：由 Agent 判断交接上下文是否仍能准确说明当前需求。需要更新时运行 `comet handoff <change-name> design --write`，继续原 Build；不计算或比较交接内容摘要，不因文件编辑自动撤回批准。
 
 ### 5. 上下文管理
 
 Build 是最长阶段，可能跨越大量任务。为支持上下文压缩后断点恢复：
 
-- **每完成一个 task**：按配置核对实际实现、检查和审查后，用 `comet state task-complete <name> <task-id> --expect <revision> --json` 勾选 tasks.md。revision 来自已核对的任务列表，需求变化时先重新判断，不能盲目刷新重试。新计划和检查点不复制 checkbox；旧计划只同步有明确 ID 映射的完成项，按 context-recovery.md 处理。工作包逐 ID 验收，使用 checkpoint 命令持久化协调记录，按项目提交策略保存进度。
+- **每完成一个 task**：按配置核对实际实现、检查和审查后，用 `comet state task-complete <name> <task-id> --json` 勾选 tasks.md。按稳定 task ID 记录真实完成结果；任务要求变化时由 Agent 重新判断实际影响。新计划和检查点不复制 checkbox；旧计划只同步有明确 ID 映射的完成项，按 context-recovery.md 处理。工作包逐 ID 验收，使用 checkpoint 命令持久化协调记录，按项目提交策略保存进度。
 - **上下文压缩后恢复**：按 `comet-classic/reference/context-recovery.md` 执行，phase 参数为 `build`。
 - **用户手动修改恢复**：按 `comet-classic/reference/dirty-worktree.md` 协议处理未提交改动。该协议定义了检查步骤、归因分类和禁令。build 阶段的特殊处理：
   1. 归因后，若 diff 暗示计划或 spec 已变化，按 Step 4「Spec 增量更新」分级处理
@@ -174,21 +168,7 @@ Build 是最长阶段，可能跨越大量任务。为支持上下文压缩后�
 - 已完成 `review_mode` 要求的任务级或分段审查；不在 Build 重复 Verify 的最终集成审查
 - **阶段守卫**：运行 `comet guard <change-name> build --apply`，全部 PASS 后由守卫推进到 `phase: verify`（此步骤更新 `phase` 字段，与 `auto_transition` 无关）
 
-优先用 Runtime 执行并记录检查，避免手动运行后 Guard 再跑一次：
-
-仅对确定性本地检查使用 `--local`；外部服务或环境不确定的检查省略该参数，证据只使用一次。Windows 的普通 npm/pnpm shim 由平台适配器处理；包含 shell 元字符的 batch 参数会被拒绝，复杂检查应使用 `node <script>` 等明确入口，不把整段 shell 字符串当作程序名。
-
-```bash
-comet check run <change-name> build --local -- <program> [args...]
-```
-
-Guard 先检查配置、任务和产物，再复用输入与环境相同的 Runtime 检查结果；没有有效结果时，才运行自动识别出的构建命令。证据的 cwd 必须与之后调用 guard 的目录一致（通常是项目根）；构建入口在子目录时，用从项目根可执行的形式记录（例如 `npm --prefix <subdir> run build`），或在 `.comet/check-policy.json`（v2）中声明该命令的 cwd 后用 `--cwd <subdir>` 记录（见 `comet-classic/reference/scripts.md`）。证据按"输入面"判定：默认输入是工作区文件内容，源文件、测试、相关配置、依赖或子模块内容变化后必须重跑相关检查；commit、暂存、勾选任务和环境变量变化默认不作废证据，需要绑定时通过 `.comet/check-policy.json` 声明（见 `comet-classic/reference/scripts.md`）。纯文档编辑（仓库根目录的 Markdown 与 `LICENSE`/`NOTICE`/`AUTHORS`，以及 `docs/`、`doc/`、`documentation/`、`.github/` 下的 Markdown/`.txt`/`.rst`，OpenSpec 与 Superpowers 产物除外）同样默认不作废证据；guard 和 `comet check run` 会列出被忽略的路径而不重跑命令，改一处 README 不再触发全量构建和测试。若命令确实以这些文档为输入，在 `.comet/config.yaml` 设置 `classic.document_evidence: strict`，或用 `.comet/check-policy.json` 声明精确输入。阶段内的小改动可以先用 `--incremental` 跑增量命令（如只跑相关测试）维持证据，guard `--apply` 推进阶段前仍要求完整命令的 full 证据。guard 报告证据失效时会给出原因和变化文件清单，按清单处理，不要凭猜测全量重跑。丢失上下文后恢复任务时，重新校验可复用的本地结果，只重跑已失效或只能使用一次的检查。执行期间输入发生变化的结果不得复用。预检不会用掉一次性结果；只有阶段转换成功后，该结果才不能再次使用。失败日志保存在 `logRef`，按需读取。
-
-`state record-check --command` 仍只保存手工声明，Comet **绝不会执行该文本**，也不能据此自动推进。手动声明还会成为该 scope 的最新记录，遮蔽之前仍然有效的 Runtime 证据，guard 会拒绝并要求重新 `comet check run`；没有恢复旧证据的方法，只能在树静止时重跑一条 check run。build 与 verify 证据彼此独立：Verify 可引用已验证的同一构建结果，但构建通过不替代测试和验收场景。`COMET_SKIP_BUILD=1` 仅是旧流程的兼容绕过方式，不是可审计的构建证据。
-
-构建命令自动识别覆盖三种来源：调用目录的 package.json build script、pom.xml、Cargo.toml；monorepo 根没有 build script 时，会探测 workspace 子包（package.json `workspaces` 或 `pnpm-workspace.yaml` 声明的一层目录），恰好一个子包有 build script 时自动执行 `npm --prefix <子包> run build`，多个子包时 guard 不代用户选择，会列出候选并给出可复制的录制命令。
-
-**证据录制**：实现完成、相关检查跑绿后，录制 build 证据并立即运行 `comet guard <change-name> build --apply`。Build 阶段只录 build 证据：外部（非 `--local`）verify 检查必须在 guard build --apply **成功之后**再录制——阶段转换会使此前录的外部 verify 证据过期（`crossed a phase boundary`），昂贵的非幂等外部检查会被白跑；`--local` 证据不受此限，可在一条 shell 调用里连续录制。输入未变化时 Runtime 会自动复用已记录的证据，文档编辑后的重跑不会再次执行命令。guard 报告证据失效时会给出确切原因和变化文件清单——只重跑列出的 scope，record-check 遮蔽或 phase 边界的情况按报错信息处理，不要全量重来。提交一律放在 guard 通过之后，勾选 task 用 `comet state task-complete`。
+按[普通命令与检查](../../comet/reference/platform-execution.md)使用平台工具执行普通命令、核对原任务与副作用、判断结果是否适用，并提交实际报告。Comet 不重复执行检查，不维护普通命令的内容快照、进程监管或恢复机制。 平台检查结束后用 `state record-check` 记录真实退出码，再运行阶段守卫。Guard 核对配置、任务、产物和报告，不执行检查。任务勾选继续用 `state task-complete`。`COMET_SKIP_BUILD=1` 不作为验收证据。
 
 退出前运行阶段守卫推进 phase（此步骤与 `auto_transition` 无关）：
 

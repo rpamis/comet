@@ -1,0 +1,21 @@
+{
+  "cases": [
+    {
+      "id": "manual-recovery-native-archive-check-history",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-native-main-four-registry-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "preserves an Agent-selected one-shot report while explicitly revising Archive-ready code without replay",
+          "requiredNames": [
+            "preserves an Agent-selected one-shot report while explicitly revising Archive-ready code without replay"
+          ]
+        }
+      ]
+    }
+  ],
+  "assertionReview": "Original one-shot Runtime scheduler protocol is retired; retain real one-shot Node once/log/accepted Archive-ready edit/proposal-bound revision/new candidate/full independent Verify/new user approval/actual Archive via the new explicit Agent report case. Source full bodies and 41 assertion mapping are preserved under docs/research/2026-11-11-platform-execution-retirement/main-four-business/.",
+  "executionEvidence": "Temp native-sdk-main-four/four-business-prototype-results.json: four passed. Root final results are recorded separately."
+}

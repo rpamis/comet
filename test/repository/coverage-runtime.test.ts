@@ -18,9 +18,9 @@ it('preserves source coverage while Supervisor recovery loads the built applicat
       config,
       `import base from ${JSON.stringify(pathToFileURL(path.join(repositoryRoot, 'vitest.config.ts')).href)};
 export default { ...base, test: { ...base.test,
-  include: ['test/domains/comet-native/native-lock.test.ts', 'test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts'],
+  include: ['test/domains/comet-native/native-single-writer.test.ts', 'test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts'],
   maxWorkers: 1,
-  coverage: { ...base.test.coverage, include: ['domains/comet-native/native-lock.ts'], reporter: ['json'], reportsDirectory: ${JSON.stringify(report)} }
+  coverage: { ...base.test.coverage, thresholds: {}, include: ['domains/comet-native/native-mutation.ts'], reporter: ['json'], reportsDirectory: ${JSON.stringify(report)} }
 } };
 `,
     );
@@ -40,12 +40,20 @@ export default { ...base, test: { ...base.test,
         '--reporter=json',
         `--outputFile=${resultsFile}`,
         '-t',
-        'Native operation locks|preserves a real custom application failure and receipts, advances its sibling, and retries only its review',
+        'creates a Native workspace without project or checkpoint lock directories|preserves a real custom application failure and receipts, advances its sibling, and retries only its review',
       ],
       { cwd: repositoryRoot, encoding: 'utf8', timeout: 180_000, windowsHide: true },
     );
     const tests = JSON.parse(await fs.readFile(resultsFile, 'utf8'));
-    expect(tests.numFailedTests, result.stdout + result.stderr).toBe(0);
+    const failures = tests.testResults.flatMap(
+      (suite: {
+        assertionResults: { title: string; status: string; failureMessages: string[] }[];
+      }) =>
+        suite.assertionResults
+          .filter((test) => test.status === 'failed')
+          .map((test) => ({ title: test.title, errors: test.failureMessages })),
+    );
+    expect(tests.numFailedTests, JSON.stringify(failures) + result.stdout + result.stderr).toBe(0);
     expect(
       tests.testResults.flatMap(
         (suite: { assertionResults: { title: string; status: string }[] }) =>
@@ -59,13 +67,13 @@ export default { ...base, test: { ...base.test,
     const coverage = JSON.parse(
       await fs.readFile(path.join(report, 'coverage-final.json'), 'utf8'),
     );
-    const subject = coverage[path.join(repositoryRoot, 'domains/comet-native/native-lock.ts')];
+    const subject = coverage[path.join(repositoryRoot, 'domains/comet-native/native-mutation.ts')];
     const inspected = Object.entries(subject.fnMap).find(
-      ([, fn]) => (fn as { name: string }).name === 'inspectNativeProjectLocks',
+      ([, fn]) => (fn as { name: string }).name === 'withNativeMutation',
     )!;
     expect(
       subject.f[inspected[0]],
-      'successful lock inspections must retain their source hits',
+      'executed Native mutations must retain their source hits',
     ).toBeGreaterThan(0);
     expect(result.status, result.stdout + result.stderr).toBe(0);
   } finally {

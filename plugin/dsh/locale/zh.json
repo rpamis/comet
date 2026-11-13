@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Comet",
+    "description": "Comet 是一个面向 Agent 的可恢复长程任务工作流与 Skill 平台，帮助你从需求推进到实现、验收和归档，并持续积累个人记忆与项目知识。在 DeepSeek Harness 中，可从侧栏打开当前项目的 Dashboard，并随插件安装匹配版本的 Comet CLI。",
+    "detail": "README.md"
+  }
+}

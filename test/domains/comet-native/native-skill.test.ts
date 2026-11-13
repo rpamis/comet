@@ -12,6 +12,7 @@ const roots = {
 const markdownFiles = [
   '../comet/reference/change-walkthrough.md',
   '../comet/reference/host-check.md',
+  '../comet/reference/platform-execution.md',
   '../comet/reference/task-learning.md',
   'SKILL.md',
   'reference/artifacts.md',
@@ -119,6 +120,7 @@ describe('Comet Native Skills', () => {
       expect(links).toEqual([
         '../comet/reference/change-walkthrough.md',
         '../comet/reference/host-check.md',
+        '../comet/reference/platform-execution.md',
         'reference/artifacts.md',
         'reference/clarification.md',
         'reference/commands.md',
@@ -175,7 +177,7 @@ describe('Comet Native Skills', () => {
       '临时 JSON 文件',
       '任务标识都原样保留',
       '`error.issues`',
-      '`returnAction` 指定的控制目录、命令和模板',
+      '主 Agent 在 `returnAction` 指定的控制目录，按原命令和模板逐个提交',
     ]) {
       expect(input, term).toContain(term);
     }
@@ -194,7 +196,7 @@ describe('Comet Native Skills', () => {
       '`exclusiveGroup`',
       'as a single JSON object',
       '`error.issues`',
-      'controller directory, command, and template specified by `returnAction`',
+      'The parent submits results in sequence through the controller directory, original command, and template specified by `returnAction`',
     ])
       expect(enInput, term).toContain(term);
     expect(enInput).not.toContain('supervisor-cancel');
@@ -202,98 +204,102 @@ describe('Comet Native Skills', () => {
   });
 
   it('keeps current-candidate verification bindings and child receipts on their normal action routes', async () => {
-    const commands = await read('zh', 'reference/commands.md');
-    const verify = section(commands, 'verify-协议');
-    for (const term of [
-      '`projectRoot`',
-      '`verificationRoot`',
-      '`changeDir`',
-      '`supervisorStateRef`',
-      '`--project-root`',
-      '`candidateId`',
-      '`verifierExecutionRef`',
-      '恰好标记一次',
-      '响应只列出当前 `scopeIds`',
-      '已通过且仍报告通过的合法超集会由 Runtime 过滤',
-      '至少一项集成检查',
-      '只在 `inputOptions.template` 中补充缺失或失效的检查',
-      '等待同一个 Verifier',
-      '`verifier-started`',
-      '`localExecution.verifierStartup`',
-      '启动调用被平台拒绝或返回错误时',
-      '`verifier-execution-error`',
-      '`verifier-unavailable`',
-    ]) {
-      expect(verify, term).toContain(term);
+    for (const language of ['zh', 'en'] as const) {
+      const commands = await read(language, 'reference/commands.md');
+      const sdk = section(commands, language === 'zh' ? 'sdk-verify-协议' : 'sdk-verify-protocol');
+      for (const field of [
+        'sessionRequirements.independent',
+        'candidateId',
+        'verifierExecutionRef',
+        'output.checks',
+        'evidence.checks',
+        'final-result',
+      ])
+        expect(sdk, language + ': ' + field).toContain(field);
+      for (const term of language === 'zh'
+        ? [
+            '只读要求适用于所有验收执行者',
+            '为 `false` 时可由当前会话领取',
+            '为 `true` 时由不同于 Builder',
+            '同一验收任务',
+            '等待工具超时继续跟踪同一任务',
+          ]
+        : ['read-only', 'false', 'true', 'same task', 'candidateId'])
+        expect(sdk, language + ': ' + term).toContain(term);
+      const verify = section(commands, language === 'zh' ? 'verify-协议' : 'verify-protocol');
+      for (const term of language === 'zh'
+        ? [
+            '`verifierDispatch`',
+            '全部 `scopeIds`',
+            '每项恰好标记一次',
+            '响应只列出当前 `scopeIds`',
+            '已通过且仍报告通过的合法超集会由 Runtime 过滤',
+            '等待同一个 Verifier',
+            '`verifier-started`',
+            '`verifier-execution-error`',
+            '`verifier-unavailable`',
+            '只有用户明确接受未经过独立验收的结果',
+          ]
+        : [
+            '`verifierDispatch`',
+            'all `scopeIds`',
+            'exactly once',
+            'The response lists only the current `scopeIds`',
+            'Runtime filters a known superset only when the extra criteria already passed and still report `passed`',
+            'waiting for the same Verifier',
+            '`verifier-started`',
+            '`verifier-execution-error`',
+            '`verifier-unavailable`',
+            'only after explicit acceptance',
+          ])
+        expect(verify, language + ': ' + term).toContain(term);
+      expect(markdownLinks(verify)).toContain(
+        language === 'zh' ? '#填写命令输入' : '#filling-command-inputs',
+      );
+      expect(markdownLinks(verify)).toContain(
+        language === 'zh' ? '#命令输入与异常' : '#command-inputs-and-exceptions',
+      );
+      const supervisor = section(
+        commands,
+        language === 'zh' ? 'supervisor-协作' : 'supervisor-coordination',
+      );
+      for (const term of language === 'zh'
+        ? [
+            '子任务角色、任务包、worktree、基线提交、`runId`',
+            '每个验收 ID 恰好出现一次',
+            '`{id,result,reason}`',
+            '`integrationCommit`',
+            '没有实际提交时只返回平台操作指引',
+            '`supervisor-cancel`',
+            '只有平台确认原执行及其后代已停止后',
+            '保留原 `runId` 和 worktree',
+            '不得取消或重新派发，也不得继续修改该 worktree',
+            '结果返回主 Agent，由主 Agent 顺序提交',
+            '子任务只写自己的 worktree，不直接推进父 Run',
+          ]
+        : [
+            'role, task package, worktree, baseline commit, `runId`',
+            'each `{id,result,reason}` exactly once',
+            '`integrationCommit`',
+            'Without a real commit it returns platform instructions',
+            '`supervisor-cancel`',
+            'Only after the platform confirms that the original execution and its descendants have stopped',
+            'preserve the original `runId` and worktree',
+            'do not cancel or redispatch the task or continue modifying that worktree',
+            'results to return to the parent for sequential submission',
+            'Children write only their own worktrees and do not advance the parent Run directly',
+          ])
+        expect(supervisor, language + ': ' + term).toContain(term);
+      expect(markdownLinks(supervisor)).toContain(
+        language === 'zh' ? '#填写命令输入' : '#filling-command-inputs',
+      );
+      expect(markdownLinks(supervisor)).toContain(
+        language === 'zh'
+          ? 'recovery.md#等待外部输入与监控'
+          : 'recovery.md#external-input-and-monitoring',
+      );
+      expect(verify).not.toContain('localExecution.verifierStartup');
     }
-    expect(markdownLinks(verify)).toContain('#填写命令输入');
-    expect(markdownLinks(verify)).toContain('#命令输入与异常');
-
-    const supervisor = section(commands, 'supervisor-协作');
-    for (const term of [
-      '子任务角色、任务包、worktree、基线提交、`runId`、验收项的编号与引用、依赖关系和停止条件',
-      '`supervisor-checks`',
-      '`contractHash`',
-      '`verificationBoundary`',
-      '非空、`repeatable: true`',
-      '`retry_check_ids`',
-      '`receiptRef`',
-      '每个验收 ID 必须恰好出现一次',
-      '全部通过才记录为 `integrated`',
-      '`supervisor-cancel`',
-      '只有平台确认原执行及其后代已停止后',
-      '保留原 `runId` 和 worktree',
-      '不得取消或重新派发，也不得继续修改该 worktree',
-    ]) {
-      expect(supervisor, term).toContain(term);
-    }
-    expect(markdownLinks(supervisor)).toContain('#填写命令输入');
-    expect(markdownLinks(supervisor)).toContain('recovery.md#等待外部输入与监控');
-    const enCommands = await read('en', 'reference/commands.md');
-    const enVerify = section(enCommands, 'verify-protocol');
-    for (const term of [
-      '`projectRoot`',
-      '`verificationRoot`',
-      '`changeDir`',
-      '`supervisorStateRef`',
-      '`--project-root`',
-      '`candidateId`',
-      '`verifierExecutionRef`',
-      'exactly once',
-      'The response lists only the current `scopeIds`',
-      'Runtime filters a known superset only when the extra criteria already passed and still report `passed`',
-      'at least one integration check',
-      'Add only missing or invalidated checks',
-      'waiting for the same Verifier',
-      '`verifier-started`',
-      '`localExecution.verifierStartup`',
-      'the dispatch is complete only after the platform accepts the launch',
-      '`verifier-execution-error`',
-      '`verifier-unavailable`',
-    ])
-      expect(enVerify, term).toContain(term);
-    expect(markdownLinks(enVerify)).toContain('#filling-command-inputs');
-    expect(markdownLinks(enVerify)).toContain('#command-inputs-and-exceptions');
-    const enSupervisor = section(enCommands, 'supervisor-coordination');
-    for (const term of [
-      'role, task package, worktree, baseline commit, `runId`, acceptance IDs and references, dependencies, and stopping conditions',
-      '`supervisor-checks`',
-      '`contractHash`',
-      '`verificationBoundary`',
-      'nonempty',
-      '`repeatable: true`',
-      '`retry_check_ids`',
-      '`receiptRef`',
-      'Every task-package acceptance ID must occur exactly once',
-      'records `integrated` only when all pass',
-      '`supervisor-cancel`',
-      'Only after the platform confirms that the original execution and its descendants have stopped',
-      'preserve the original `runId` and worktree',
-      'do not cancel or redispatch the task or continue modifying that worktree',
-    ])
-      expect(enSupervisor, term).toContain(term);
-    expect(markdownLinks(enSupervisor)).toContain('#filling-command-inputs');
-    expect(markdownLinks(enSupervisor)).toContain('recovery.md#external-input-and-monitoring');
   });
 
   it('keeps the main Skill on decisions while delegating mechanics to public CLI output', async () => {
@@ -324,7 +330,6 @@ describe('Comet Native Skills', () => {
           '最终验收，覆盖全部验收项',
           '原先通过 `finish=merge` 完成的合入步骤现由 Runtime 负责',
           'Supervisor 统筹动作',
-          '`repair-child`',
         ],
       },
       {
@@ -353,7 +358,6 @@ describe('Comet Native Skills', () => {
           'final verification of every Supervisor acceptance item',
           'Runtime now owns the integration step formerly performed through `finish=merge`',
           'Supervisor coordination actions',
-          '`repair-child`',
         ],
       },
     ];
@@ -384,7 +388,10 @@ describe('Comet Native Skills', () => {
   it('keeps clarification coverage aligned with repository and Agent sources', async () => {
     const variants = [
       { language: 'zh' as const, required: '项目文档、现有 Agent 指令' },
-      { language: 'en' as const, required: 'project documentation, existing Agent instructions' },
+      {
+        language: 'en' as const,
+        required: 'project documentation, existing Agent instructions',
+      },
     ];
     for (const variant of variants) {
       const clarification = await read(variant.language, 'reference/clarification.md');
@@ -392,19 +399,13 @@ describe('Comet Native Skills', () => {
     }
   });
 
-  it('allows omitted Chinese directory categories while requiring content for retained headings', async () => {
+  it('lets the Agent organize Chinese briefs without fixed directory headings', async () => {
     const brief = section(await read('zh', 'reference/artifacts.md'), 'brief');
-    expect(brief).toContain('至少填写一个有效类别');
-    expect(brief).toContain('无内容的类别可以省略');
-    expect(brief).toContain('已保留的标题必须有有效正文，不能留空或只放模板占位');
-    expect(brief).toContain('完整旧格式及「无」/`None` 写法继续有效');
-    expect(brief).not.toContain('章节固定四个三级子节');
-
-    const examples = [...brief.matchAll(/```text\r?\n([\s\S]*?)```/gu)].map((match) => match[1]);
-    const singleFile = examples.find((example) => example.includes('config/defaults.yaml'));
-    expect(singleFile).toBeDefined();
-    expect(singleFile!.match(/^### .+$/gmu)).toEqual(['### 修改']);
-    expect(singleFile).toContain('config/defaults.yaml — 调整默认超时时间');
+    expect(brief).toContain('Agent 按任务需要组织段落、列表或表格');
+    expect(brief).toContain('模板中的标题和目录树是写作参考');
+    expect(brief).toContain('已有有效确认不因格式变化撤回');
+    expect(brief).toContain('resultTemplate.output.acceptance');
+    expect(brief).toContain('等待用户确认后才允许实现');
   });
 
   it('explains Chinese requirement changes before reconfirming the complete current Shape', async () => {
@@ -423,17 +424,12 @@ describe('Comet Native Skills', () => {
     expect(reconfirmation).toContain('不复用旧 Shape 批准');
   });
 
-  it('keeps the English directory example minimal without accepting empty retained headings', async () => {
+  it('lets the Agent organize English briefs without fixed directory headings', async () => {
     const brief = section(await read('en', 'reference/artifacts.md'), 'brief');
-    expect(brief).toContain('at least one valid category');
-    expect(brief).toContain('Categories with no content may be omitted');
-    expect(brief).toContain('retained headings must have meaningful body content');
-    expect(brief).toContain('The complete legacy format and "None"/「无」 remain valid');
-    expect(brief).not.toContain('four fixed level-three subsections');
-    const examples = [...brief.matchAll(/```text\r?\n([\s\S]*?)```/gu)].map((match) => match[1]);
-    const singleFile = examples.find((example) => example.includes('config/defaults.yaml'));
-    expect(singleFile).toBeDefined();
-    expect(singleFile!.match(/^### .+$/gmu)).toEqual(['### Modified']);
+    expect(brief).toContain('Template headings and directory trees are writing aids');
+    expect(brief).toContain('Formatting changes do not revoke valid confirmation');
+    expect(brief).toContain('resultTemplate.output.acceptance');
+    expect(brief).toContain('waits for user confirmation before implementation');
   });
 
   it('keeps English reconfirmation reachable and bound to the complete current Shape', async () => {
@@ -514,22 +510,24 @@ describe('Comet Native Skills', () => {
         language: 'zh' as const,
         required: [
           'Build ↔ Verify Loop',
-          'Builder 提交候选',
+          'Builder 完成实现并用平台工具执行检查后',
+          '一次提交候选与实际结果',
           '新的只读 Verifier',
           '`iteration` 表示提交实现的轮次',
-          '`attempt` 表示对同一份候选实现启动 Verifier 的次数',
-          '所有计数都由 Runtime 更新',
+          '`attempt` 表示同一候选的 Verifier 执行次数',
+          'Runtime 保留真实失败次数预算和执行上限',
         ],
       },
       {
         language: 'en' as const,
         required: [
           'Build ↔ Verify Loop',
-          'the Builder submits a candidate',
-          'a new read-only Verifier',
+          'The Builder implements and runs checks with platform tools',
+          'submits the candidate and actual results together',
+          'sessionRequirements.independent',
           '`iteration` counts implementation submissions',
-          '`attempt` counts Verifier launches for the same candidate',
-          'Runtime updates all counters',
+          '`attempt` counts Verifier executions for one candidate',
+          'Runtime retains actual failure budgets and execution limits',
         ],
       },
     ];
@@ -761,8 +759,8 @@ describe('Comet Native Skills', () => {
         'acceptance_index',
         'specs/<capability>/spec.md',
         'verification.md',
-        '# Acceptance examples',
-        'Verification expectations',
+        'resultTemplate.output.acceptance',
+        '[blocking]',
         'comet-state.yaml',
         'verification.md',
         'Runtime',
@@ -772,7 +770,7 @@ describe('Comet Native Skills', () => {
       expect(artifacts).toContain(
         language === 'zh' ? '完整目标规格' : 'complete target specification',
       );
-      expect(artifacts).toContain(language === 'zh' ? '验收循环' : 'acceptance Loop');
+
       for (const RuntimeDetail of [
         'comet.native.workspace.v3',
         'baselineProjectionRef',
@@ -804,18 +802,13 @@ describe('Comet Native Skills', () => {
         expect(commands).toContain(field);
       }
       expect(commands).toContain('builder-handoff');
-      expect(commands).toContain('dispatch-verifier');
       expect(commands).toContain('verifier-response');
       expect(commands).toContain('verifier-execution-error');
       expect(commands).toContain('verifier-unavailable');
       expect(commands).toContain('retry-verifier');
       expect(commands).toContain('confirm-verifier-unavailable');
       expect(commands).toContain('skill-coordinated');
-      expect(commands).toContain(
-        language === 'zh'
-          ? '它不会启动独立服务或进程，也不需要配置服务地址或回调'
-          : 'It does not start an independent service or process, and requires no service address or callback',
-      );
+      expect(markdownLinks(commands)).toContain('../../comet/reference/platform-execution.md');
       expect(commands).toContain(
         language === 'zh'
           ? '本次任务未启动、执行失败、超时或结束后没有返回'
@@ -840,7 +833,12 @@ describe('Comet Native Skills', () => {
       const artifacts = await read(language, 'reference/artifacts.md');
       const example = /```yaml\n([\s\S]*?)\n```/u.exec(artifacts)?.[1];
       expect(example).toBeTruthy();
-      const contract = parseNativeChildrenContract(example!, ['A1', 'A2']);
+      const contract = parseNativeChildrenContract(example!, ['A1', 'A2'], {
+        acceptanceCatalog: [
+          { id: 'A1', source: 'brief.md', text: 'Actual first criterion.' },
+          { id: 'A2', source: 'brief.md', text: 'Actual second criterion.' },
+        ],
+      });
       expect(contract.acceptance_index).toEqual({
         A1: { source: 'brief.md', text: expect.any(String) },
         A2: { source: 'brief.md', text: expect.any(String) },
@@ -851,17 +849,15 @@ describe('Comet Native Skills', () => {
       ]);
       const commands = await read(language, 'reference/commands.md');
       for (const field of [
-        'projectRoot',
-        'verificationRoot',
-        'changeDir',
-        'supervisorStateRef',
-        '--project-root',
+        'workspace.projectRoot',
+        'candidateId',
+        'verifierExecutionRef',
+        'runId',
+        'integrationCommit',
       ]) {
         expect(commands).toContain(`\`${field}\``);
       }
-      expect(commands).toContain(
-        language === 'zh' ? '至少一项集成检查' : 'at least one integration check',
-      );
+      expect(markdownLinks(commands)).toContain('../../comet/reference/platform-execution.md');
     },
   );
 
@@ -869,29 +865,11 @@ describe('Comet Native Skills', () => {
     const variants = [
       {
         language: 'zh' as const,
-        required: [
-          '`workspace.projectRoot`',
-          '`comet-state.yaml`',
-          '`state.json`',
-          'Verify（`verify-ready`）',
-          '`migration-required`',
-          '`workspaceFinishResult.status`',
-          '`recoveryArgs`',
-          '`repair-child`',
-        ],
+        required: ['`comet-state.yaml`', '`workspaceFinishResult.status`', '`recoveryArgs`'],
       },
       {
         language: 'en' as const,
-        required: [
-          '`workspace.projectRoot`',
-          '`comet-state.yaml`',
-          '`state.json`',
-          'Verify (`verify-ready`)',
-          '`migration-required`',
-          '`workspaceFinishResult.status`',
-          '`recoveryArgs`',
-          '`repair-child`',
-        ],
+        required: ['`comet-state.yaml`', '`workspaceFinishResult.status`', '`recoveryArgs`'],
       },
     ];
     for (const variant of variants) {
@@ -899,6 +877,17 @@ describe('Comet Native Skills', () => {
       for (const term of variant.required) {
         expect(recovery, `${variant.language}: ${term}`).toContain(term);
       }
+      expect(await read(variant.language, 'SKILL.md')).toContain('workspace.projectRoot');
+      expect(
+        section(
+          await read(variant.language, 'reference/commands.md'),
+          variant.language === 'zh' ? 'supervisor-协作' : 'supervisor-coordination',
+        ),
+      ).toContain(
+        variant.language === 'zh'
+          ? '父级可以修复其集成范围'
+          : 'the parent may repair its integration scope',
+      );
       expect(recovery).not.toContain('git worktree list --porcelain');
       expect(recovery).not.toContain('comet native spec rebase <change-name>');
       expect(recovery).not.toContain('--strategy continue');
@@ -1064,7 +1053,18 @@ describe('Comet Native Skills', () => {
       expect(content).not.toMatch(
         /openspec|superpowers|grill-me|grilling|brainstorming|requiredSkillCalls|test-driven-development|code-review/iu,
       );
-      expect(content).not.toMatch(/comet\s+(state|guard|handoff)\b/iu);
+      const nativeContent = (
+        await Promise.all(
+          markdownFiles
+            .filter(
+              (file) =>
+                file !== '../comet/reference/platform-execution.md' &&
+                file !== '../comet/reference/host-check.md',
+            )
+            .map((file) => read(language, file)),
+        )
+      ).join('\n');
+      expect(nativeContent).not.toMatch(/comet\s+(state|guard|handoff)\b/iu);
       expect(content).not.toMatch(/waiver|attestation|external.role/iu);
       expect(content).not.toMatch(/(?:always|mandatory)\s+independent.review/iu);
       expect(content).not.toContain('host supports delegation');

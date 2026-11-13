@@ -1,0 +1,42 @@
+{
+  "cases": [
+    {
+      "id": "native-cancelled-history-import-guards",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-history-existing-run/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-history.test.ts",
+          "namePattern": "^(?:Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: active|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: missing-stop|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: corrupt-hash|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: unknown-definition|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: archive-obligation|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: child-lineage|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: fixed-application|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: pending-cleanup|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: existing-run|Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: existing-projection)$",
+          "requiredNames": [
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: active",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: missing-stop",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: corrupt-hash",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: unknown-definition",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: archive-obligation",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: child-lineage",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: fixed-application",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: pending-cleanup",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: existing-run",
+            "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: existing-projection"
+          ]
+        }
+      ]
+    }
+  ],
+  "behaviors": [
+    {
+      "name": "Native terminal history lifecycle preserves portable and local evidence at common recovery boundary: existing-run",
+      "before": "Raw store restores exact original cancelled Run into empty target; owner absent. Old test expects Doctor refusal even though portable and local data agree.",
+      "after": "Same public Doctor repair succeeds and closes owner/history, full original Run and Action.claim unchanged; active owner absent; history owner matches original identity; target checkpoint bytes before/after closure unchanged; repeat succeeds without altering Run/checkpoint/owner; original source portable and local closed checkpoint bytes unchanged.",
+      "notChanged": "All other nine table inputs and their original success/failure outcomes remain; unknown definition, corrupt checkpoint, Child lineage and missing fixed package still reject without target owner. Other local/source authority interruption cases outside this table remain unchanged and were not executed in this batch."
+    }
+  ],
+  "evidence": {
+    "original": "existing-before.json",
+    "group": "guard-group-after.json",
+    "finalStrongerRow": "existing-after.json"
+  },
+  "scope": "No production changes/build/Eval; no forged claim, stop proof, approval or Git effect. Raw-store fixture is explicitly the same original real current cancelled Run. No new framework or ordinary lock."
+}

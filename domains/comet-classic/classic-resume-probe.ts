@@ -572,8 +572,13 @@ function cancellationDecision(change: ActiveProbeChange): CometResumeProbeResult
     'ask_user',
     change,
     'low',
-    'Classic Run is cancelled; the original host must confirm its execution and child tasks stopped, then submit the original claim and stop evidence through runtime dispatch cancel stoppedActions before releasing the workspace',
-    [{ source: 'state', quote: 'Run cancelled; original execution stop is not confirmed' }],
+    'Classic Run is cancelled but an original Archive or child Run still has an unresolved business result. Preserve the records and complete its business recovery; ordinary task cleanup belongs to the Agent platform and needs no process-stop receipt.',
+    [
+      {
+        source: 'state',
+        quote: 'Run cancelled; original Archive or child Run business result is unresolved',
+      },
+    ],
   );
 }
 

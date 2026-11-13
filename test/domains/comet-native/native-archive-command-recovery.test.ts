@@ -39,6 +39,8 @@ const mocks = vi.hoisted(() => {
     migrateLegacyChange: vi.fn(),
     setWorkspaceFinish: vi.fn(),
     autoAdvanceParent: vi.fn(),
+    supervisorCleanupBinding: vi.fn(),
+    supervisorCleanupComplete: vi.fn(),
     continuation: vi.fn((state: unknown) => ({ disposition: 'continue', state })),
   };
 });
@@ -81,6 +83,13 @@ vi.mock('../../../domains/comet-native/native-portable-archive.js', () => ({
 }));
 vi.mock('../../../domains/comet-native/native-portable-continuation.js', () => ({
   nativePortableContinuation: mocks.continuation,
+}));
+vi.mock('../../../domains/comet-native/native-supervisor-workspace.js', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../../domains/comet-native/native-supervisor-workspace.js')
+  >()),
+  nativePortableSupervisorCleanupBinding: mocks.supervisorCleanupBinding,
+  nativeSupervisorCleanupComplete: mocks.supervisorCleanupComplete,
 }));
 vi.mock('../../../domains/comet-native/native-portable-migration-runtime.js', () => ({
   migrateNativeLegacyChangeToPortable: mocks.migrateLegacyChange,
@@ -154,6 +163,7 @@ describe('Native Archive workspace finish recovery command', () => {
     mocks.readJournal.mockResolvedValue(journal);
     mocks.prepareFinish.mockResolvedValue(null);
     mocks.autoAdvanceParent.mockResolvedValue(null);
+    mocks.supervisorCleanupBinding.mockResolvedValue(null);
   });
 
   afterEach(async () => {
@@ -214,6 +224,10 @@ describe('Native Archive workspace finish recovery command', () => {
       data: { archived: true, archiveDir: journal.archiveDir, workspaceFinish: 'keep' },
     });
     expect(mocks.clearJournal).toHaveBeenCalledWith(expect.anything(), 'finish-change');
+    expect(mocks.supervisorCleanupBinding).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ projectRoot: root }),
+      expect.objectContaining({ name: 'finish-change', archived: true, status: 'done' }),
+    );
   });
 
   it('records a blocked retry when workspace finish preparation still fails', async () => {
@@ -241,6 +255,10 @@ describe('Native Archive workspace finish recovery command', () => {
     expect(mocks.writeJournal).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ status: 'blocked' }),
+    );
+    expect(mocks.supervisorCleanupBinding).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ projectRoot: root }),
+      expect.objectContaining({ name: 'finish-change', archived: true, status: 'done' }),
     );
   });
 });

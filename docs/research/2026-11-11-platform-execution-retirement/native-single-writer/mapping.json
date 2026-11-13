@@ -1,0 +1,1927 @@
+{
+  "source": "report:2026-11-10-agent-platform-execution",
+  "authorization": "用户最新明确：并行 worktree 隔离，普通流程理论上不需要任何锁。每 workspace 一个 writer，Child 只写自己的 worktree，父 Agent 串行提交。",
+  "scope": "Native-only physical lock retirement. Preserve real WAL/checkpoint/claim/approval/readonly and actual Git-resource failures. No Engine/Classic/shared owner/application edits by this agent.",
+  "retiredDeclarations": [
+    {
+      "file": "test/domains/comet-native/native-lock.test.ts",
+      "wholeFile": true,
+      "reason": "普通workspace多writer排他/锁恢复协议已由用户明确退休"
+    },
+    {
+      "file": "test/domains/comet-native/native-lock-concurrency.test.ts",
+      "wholeFile": true,
+      "reason": "普通workspace多writer排他/锁恢复协议已由用户明确退休"
+    },
+    {
+      "file": "test/domains/comet-native/native-lock-without-pid.test.ts",
+      "wholeFile": true,
+      "reason": "普通workspace多writer排他/锁恢复协议已由用户明确退休"
+    },
+    {
+      "file": "test/domains/comet-native/native-command-recovery.test.ts",
+      "title": "reports a directory occupying a project lock path without advertising deletion as lock repair",
+      "body": "it('reports a directory occupying a project lock path without advertising deletion as lock repair', async () => {\n  const { root, paths } = await project();\n  const file = path.join(paths.locksDir, 'interrupted.lock');\n  await fs.mkdir(file);\n  const result = await runNativeCli(['doctor', '--project-root', root, '--json']);\n  const data = JSON.parse(result.stdout!).data;\n  expect(data.healthy).toBe(false);\n  expect(data.recovery).toMatchObject({\n    code: 'lock-owner-unknown',\n    affectedPaths: [file],\n    recoveryArgs: null,\n  });\n  expect((await fs.lstat(file)).isDirectory()).toBe(true);\n});"
+    },
+    {
+      "file": "test/domains/comet-native/native-command-recovery.test.ts",
+      "title": "executes the exact recovery command emitted by the standalone doctor bundle",
+      "body": "it('executes the exact recovery command emitted by the standalone doctor bundle', async () => {\n  const { root, paths } = await project();\n  const file = path.join(paths.locksDir, 'interrupted.lock');\n  await fs.writeFile(file, '{original-writer');\n  const entry = path.resolve('assets/skills/comet-native/scripts/comet-native-doctor.mjs');\n  const diagnosed = spawnSync(process.execPath, [entry, '--project-root', root, '--json'], {\n    encoding: 'utf8',\n  });\n  const data = JSON.parse(diagnosed.stdout).data;\n  expect(data.recovery).toMatchObject({ code: 'lock-owner-unknown', affectedPaths: [file] });\n  const recovered = spawnSync(process.execPath, [entry, ...data.recovery.recoveryArgs.slice(3)], {\n    encoding: 'utf8',\n  });\n  expect(recovered.status, recovered.stdout || recovered.stderr).toBe(0);\n  await expect(fs.access(file)).rejects.toMatchObject({ code: 'ENOENT' });\n});"
+    },
+    {
+      "file": "test/domains/comet-native/native-command-recovery.test.ts",
+      "title": "recovers an unknown Native coordinator claim through the exact emitted command without acquiring the blocked coordinator",
+      "body": "it('recovers an unknown Native coordinator claim through the exact emitted command without acquiring the blocked coordinator', async () => {\n  const { root, paths } = await project();\n  const directory = path.join(paths.locksDir, '.coordinator');\n  await fs.mkdir(directory, { recursive: true });\n  const file = path.join(directory, '00000000-0000-0000-0000-000000000000.claim');\n  await fs.writeFile(\n    file,\n    JSON.stringify({\n      id: 'old-coordinator',\n      pid: 2_147_483_647,\n      hostname: 'another-machine',\n      operation: 'interrupted coordinator',\n      createdAt: '2000-01-01T00:00:00.000Z',\n    }),\n  );\n  const diagnostic = await runNativeCli(['doctor', '--repair', '--project-root', root, '--json']);\n  const recovery = JSON.parse(diagnostic.stdout!).data.recovery;\n  expect(recovery).toMatchObject({ code: 'lock-owner-unknown', affectedPaths: [file] });\n  expect((await runNativeCli(recovery.recoveryArgs.slice(2))).exitCode).toBe(0);\n  await expect(fs.access(file)).rejects.toMatchObject({ code: 'ENOENT' });\n  const lock = await acquireNativeLock(paths, 'archive', 'after coordinator recovery');\n  await releaseNativeLock(lock);\n});"
+    },
+    {
+      "file": "test/domains/comet-native/native-command-recovery.test.ts",
+      "title": "preserves a live project lock even when its exact token is submitted with stopped-owner confirmation",
+      "body": "it('preserves a live project lock even when its exact token is submitted with stopped-owner confirmation', async () => {\n  const { root, paths } = await project();\n  const lock = await acquireNativeLock(paths, 'archive', 'live archive');\n  const before = await fs.readFile(lock.file, 'utf8');\n  const diagnostic = await runNativeCli(['doctor', '--repair', '--project-root', root, '--json']);\n  const data = JSON.parse(diagnostic.stdout!).data;\n  expect(data.recovery).toMatchObject({\n    code: 'lock-active',\n    recoveryArgs: null,\n    owner: { id: lock.owner.id },\n  });\n  const rejected = await runNativeCli([\n    'doctor',\n    '--repair',\n    '--confirmed',\n    '--lock-token',\n    data.findings[0].token,\n    '--project-root',\n    root,\n    '--json',\n  ]);\n  expect(rejected.exitCode).not.toBe(0);\n  expect(await fs.readFile(lock.file, 'utf8')).toBe(before);\n  await releaseNativeLock(lock);\n  expect(\n    JSON.parse((await runNativeCli(['doctor', '--project-root', root, '--json'])).stdout!).data,\n  ).toMatchObject({ healthy: true });\n});"
+    },
+    {
+      "file": "test/domains/comet-native/native-command-recovery.test.ts",
+      "title": "rejects a replaced lock token and preserves malformed lock bytes when explicit recovery quarantines them",
+      "body": "it('rejects a replaced lock token and preserves malformed lock bytes when explicit recovery quarantines them', async () => {\n  const { root, paths } = await project();\n  const lock = await acquireNativeLock(paths, 'archive', 'interrupted archive');\n  await releaseNativeLock(lock);\n  await fs.writeFile(lock.file, '{partial-first');\n  const first = JSON.parse(\n    (await runNativeCli(['doctor', '--project-root', root, '--json'])).stdout!,\n  ).data.recovery;\n  await fs.writeFile(lock.file, '{partial-replacement');\n  expect((await runNativeCli(first.recoveryArgs.slice(2))).exitCode).not.toBe(0);\n  expect(await fs.readFile(lock.file, 'utf8')).toBe('{partial-replacement');\n  const current = JSON.parse(\n    (await runNativeCli(['doctor', '--project-root', root, '--json'])).stdout!,\n  ).data.recovery;\n  expect((await runNativeCli(current.recoveryArgs.slice(2))).exitCode).toBe(0);\n  await expect(fs.access(lock.file)).rejects.toMatchObject({ code: 'ENOENT' });\n  const quarantined = (await fs.readdir(path.join(paths.locksDir, '.coordinator'))).filter((name) =>\n    name.endsWith('.repaired'),\n  );\n  expect(quarantined).toHaveLength(1);\n  expect(await fs.readFile(path.join(paths.locksDir, '.coordinator', quarantined[0]), 'utf8')).toBe(\n    '{partial-replacement',\n  );\n});"
+    },
+    {
+      "file": "test/domains/comet-native/native-command-recovery.test.ts",
+      "title": "requires the exact stopped-owner decision for an aged unknown project lock and executes its emitted recovery command",
+      "body": "it('requires the exact stopped-owner decision for an aged unknown project lock and executes its emitted recovery command', async () => {\n  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-command-recovery-'));\n  roots.push(root);\n  execFileSync('git', ['init', '--quiet'], { cwd: root });\n  await writeProjectConfig(root, defaultProjectConfig('docs', 'en'));\n  const paths = await nativeProjectPaths(root, 'docs');\n  await ensureNativeDirectories(paths);\n  const lock = await acquireNativeLock(paths, 'archive', 'archive on another machine');\n  await releaseNativeLock(lock);\n  const content = JSON.stringify({\n    ...lock.owner,\n    hostname: 'another-machine',\n    createdAt: '2000-01-01T00:00:00.000Z',\n  });\n  await fs.writeFile(lock.file, content);\n  const ordinary = await runNativeCli(['doctor', '--repair', '--project-root', root, '--json']);\n  expect(await fs.readFile(lock.file, 'utf8')).toBe(content);\n  const recovery = JSON.parse(ordinary.stdout!).data.recovery as {\n    code: string;\n    recoveryArgs: string[];\n    affectedPaths: string[];\n    owner: { hostname: string };\n  };\n  expect(recovery).toMatchObject({\n    code: 'lock-owner-unknown',\n    affectedPaths: [lock.file],\n    owner: { id: lock.owner.id },\n  });\n  expect(recovery.recoveryArgs).toContain('--lock-token');\n  const repaired = await runNativeCli(recovery.recoveryArgs.slice(2));\n  expect(repaired.exitCode, repaired.stdout ?? repaired.stderr).toBe(0);\n  await expect(fs.access(lock.file)).rejects.toMatchObject({ code: 'ENOENT' });\n});"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+      "title": "diagnoses and repairs the original SDK store writer lock without changing Run history",
+      "body": "it('diagnoses and repairs the original SDK store writer lock without changing Run history', async () => {\n    const { root, name, request } = await fixture();\n    const directory = path.join(\n      resolveWorkspaceRuntimeRootSync(root),\n      'sdk-runs/native/.runtime-store-v2',\n      createHash('sha256').update(JSON.stringify(name)).digest('hex'),\n    );\n    const file = path.join(directory, '.write.lock');\n    await fs.mkdir(directory, { recursive: true });\n    await fs.writeFile(file, '{interrupted-writer');\n    const original = await readNativeSdkRunRecord(root, name);\n    const action = original!.actions.find(({ status }) => status === 'pending')!;\n    await fs.writeFile(\n      request,\n      JSON.stringify({\n        operation: 'claim',\n        runId: name,\n        actionId: action.id,\n        attempt: action.attempt,\n        inputHash: action.inputHash,\n        executorId: 'native-host',\n        sessionId: 'writer-session',\n        claimToken: 'writer-session',\n      }),\n    );\n    const refused = await runtimeDispatchCommand({\n      application: 'native',\n      projectRoot: root,\n      request,\n    });\n    expect(refused.response).toMatchObject({\n      status: 'failed',\n      recovery: { code: 'lock-owner-unknown', affectedPaths: [file] },\n    });\n    const diagnosed = await runNativeCli(['doctor', name, '--project-root', root, '--json']);\n    const data = JSON.parse(diagnosed.stdout!).data;\n    expect(data).toMatchObject({\n      healthy: false,\n      recovery: { code: 'lock-owner-unknown', affectedPaths: [file] },\n    });\n    const repaired = await runNativeCli(data.recovery.recoveryArgs.slice(2));\n    expect(repaired.exitCode, repaired.stdout ?? repaired.stderr).toBe(0);\n    expect(await readNativeSdkRunRecord(root, name)).toEqual(original);\n    await expect(fs.access(file)).rejects.toMatchObject({ code: 'ENOENT' });\n  });"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+      "title": "executes the public recovery command for the exact uncertain lock and preserves the original Run",
+      "body": "it('executes the public recovery command for the exact uncertain lock and preserves the original Run', async () => {\n    const { root, name, lock } = await fixture();\n    await fs.writeFile(lock, '{partial');\n    const original = await readNativeSdkRunRecord(root, name);\n    const diagnosed = await runNativeCli(['doctor', name, '--project-root', root, '--json']);\n    expect(diagnosed.exitCode).toBe(65);\n    const data = JSON.parse(diagnosed.stdout!).data as {\n      recovery: {\n        code: string;\n        diagnosticArgs: string[];\n        recoveryArgs: string[];\n        preconditions: string[];\n      };\n    };\n    expect(data.recovery).toMatchObject({ code: 'lock-owner-unknown' });\n    expect(data.recovery.preconditions.length).toBeGreaterThan(0);\n    expect(data.recovery.recoveryArgs).toContain('--lock-token');\n    const repaired = await runNativeCli(data.recovery.recoveryArgs.slice(2));\n    expect(repaired.exitCode, repaired.stdout ?? repaired.stderr).toBe(0);\n    expect(await readNativeSdkRunRecord(root, name)).toEqual(original);\n    await expect(fs.access(lock)).rejects.toMatchObject({ code: 'ENOENT' });\n    const repeated = await runNativeCli(['doctor', name, '--project-root', root, '--json']);\n    expect(JSON.parse(repeated.stdout!).data).toMatchObject({ healthy: true });\n  });"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+      "title": "does not steal an uncertain lock during ordinary repair and requires its exact confirmed token",
+      "body": "it('does not steal an uncertain lock during ordinary repair and requires its exact confirmed token', async () => {\n    const { root, name, lock } = await fixture();\n    await fs.writeFile(lock, '{partial');\n    const before = await files(root);\n    const doctor = await nativeDoctorCommand([name, '--repair'], root);\n    const finding = (\n      doctor.data as { findings: Array<{ code: string; token: string; repairCommand: string }> }\n    ).findings[0];\n    expect(finding.code).toBe('sdk-projection-lock-malformed');\n    expect(finding.repairCommand).toContain('--repair --confirmed --lock-token');\n    expect(await files(root)).toEqual(before);\n    const wrongToken = await runNativeCli(['doctor',name,'--project-root',root,'--repair','--confirmed','--lock-token','wrong-token','--json']);\n    expect(wrongToken.exitCode).not.toBe(0);\n    expect(await files(root)).toEqual(before);\n    const run = await readNativeSdkRunRecord(root, name);\n    const repaired = await nativeDoctorCommand(\n      [name, '--repair', '--confirmed', '--lock-token', finding.token],\n      root,\n    );\n    expect(repaired.data).toMatchObject({ healthy: true, repaired: true });\n    expect(await readNativeSdkRunRecord(root, name)).toEqual(run);\n    expect((await nativeStatusCommand([name], root)).exitCode).toBe(0);\n  });"
+    },
+    {
+      "file": "test/domains/comet-native/native-doctor.test.ts",
+      "title": "repairs released real writer metadata without deleting or replacing its reusable SQLite database",
+      "body": "it('repairs released real writer metadata without deleting or replacing its reusable SQLite database', async () => {\n  const f = await fixture(),\n    lease = await acquireNativeLock(f.paths, 'archive', 'SIMULATED local fixture writer'),\n    metadata = await fs.readFile(lease.file, 'utf8');\n  await releaseNativeLock(lease);\n  const database = lease.file + '.sqlite',\n    original = await fs.stat(database, { bigint: true });\n  await fs.writeFile(lease.file, metadata);\n  const lock = (await inspectNativeProjectLocks(f.paths)).find((l) => l.file === lease.file)!;\n  expect(lock.status).toBe('stale');\n  await repairNativeProjectLock(f.paths, lock.token!, true);\n  await expect(fs.stat(lease.file)).rejects.toMatchObject({ code: 'ENOENT' });\n  const after = await fs.stat(database, { bigint: true });\n  expect({ dev: after.dev, ino: after.ino }).toEqual({\n    dev: original.dev,\n    ino: original.ino,\n  });\n  const next = await acquireNativeLock(f.paths, 'archive', 'SIMULATED next local writer');\n  await releaseNativeLock(next);\n});"
+    },
+    {
+      "file": "test/domains/comet-native/native-doctor.test.ts",
+      "title": "never repairs away a real live writer even when its exact metadata token is confirmed",
+      "body": "it('never repairs away a real live writer even when its exact metadata token is confirmed', async () => {\n  const f = await fixture(),\n    lease = await acquireNativeLock(f.paths, 'archive', 'SIMULATED live local writer');\n  try {\n    const before = await fs.readFile(lease.file, 'utf8'),\n      lock = (await inspectNativeProjectLocks(f.paths)).find((l) => l.file === lease.file)!;\n    expect(lock.status).toBe('active');\n    await expect(repairNativeProjectLock(f.paths, lock.token!, true)).rejects.toThrow();\n    expect(await fs.readFile(lease.file, 'utf8')).toBe(before);\n  } finally {\n    await releaseNativeLock(lease);\n  }\n});"
+    },
+    {
+      "file": "test/domains/comet-native/native-root-move.test.ts",
+      "title": "serializes root moves with archive operations through the global lock",
+      "body": "it('serializes root moves with archive operations through the global lock', async () => {\n    await seedNativeRoot(projectRoot, '.');\n    const paths = await nativeProjectPaths(projectRoot, '.');\n    const archiveGlobalLock = await acquireNativeLock(paths, 'root-move', 'archive active-change');\n    try {\n      await expect(moveNativeRoot({ projectRoot, toArtifactRoot: 'docs' })).rejects.toThrow(\n        /Native lock is busy/u,\n      );\n    } finally {\n      await releaseNativeLock(archiveGlobalLock);\n    }\n  });"
+    },
+    {
+      "file": "test/domains/comet-native/native-root-move.test.ts",
+      "title": "refuses to copy any unresolved operation lock into the destination root",
+      "body": "it('refuses to copy any unresolved operation lock into the destination root', async () => {\n    await seedNativeRoot(projectRoot, '.');\n    const paths = await nativeProjectPaths(projectRoot, '.');\n    const staleArchiveLock = await acquireNativeLock(\n      paths,\n      'archive',\n      'archive interrupted-change',\n    );\n    try {\n      await expect(moveNativeRoot({ projectRoot, toArtifactRoot: 'docs' })).rejects.toThrow(\n        'must be diagnosed before moving',\n      );\n      expect((await readProjectConfig(projectRoot))?.native).toEqual({\n        artifact_root: '.',\n        language: 'en',\n        clarification_mode: 'batch',\n        archive_confirmation: 'automatic',\n        max_verify_failures: 5,\n      });\n      await expect(fs.access(path.join(projectRoot, 'docs', 'comet'))).rejects.toMatchObject({\n        code: 'ENOENT',\n      });\n    } finally {\n      await releaseNativeLock(staleArchiveLock);\n    }\n  });"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "title": "does not remove an actually held transition writer even when its exact token is confirmed",
+      "body": "it('does not remove an actually held transition writer even when its exact token is confirmed', async () => {\n  const f = await currentJournal(),\n    lock = await acquireNativeLock(\n      f.paths,\n      'transition-' + f.name,\n      'actual live writer for WAL fixture',\n    );\n  try {\n    const d = await inspectNativeLockRecovery(lock.file);\n    expect(d.status).toBe('active');\n    expect(d.token).toBeTruthy();\n    await expect(repairNativeProjectLock(f.paths, d.token!, true)).rejects.toThrow();\n    expect(await inspectNativeLockRecovery(lock.file)).toMatchObject({\n      status: 'active',\n      token: d.token,\n    });\n    expect(await fs.readFile(f.wal, 'utf8')).toContain(f.journal.id);\n  } finally {\n    await releaseNativeLock(lock);\n  }\n  await continueNativeTransition(f.paths, f.name);\n  expect(await inspectPendingNativeTransition(f.paths, f.name)).toBeNull();\n});"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "title": "requires explicit confirmation for the original real writer metadata before finishing its WAL",
+      "body": "it('requires explicit confirmation for the original real writer metadata before finishing its WAL', async () => {\n  const f = await currentJournal();\n  await fs.mkdir(f.paths.locksDir, { recursive: true });\n  const lock = path.join(f.paths.locksDir, 'transition-' + f.name + '.lock');\n  await fs.writeFile(\n    lock,\n    JSON.stringify({\n      id: 'original-writer',\n      createdAt: '2026-07-15T00:00:00.000Z',\n      operation: 'continue original WAL',\n    }),\n  );\n  await expect(continueNativeTransition(f.paths, f.name)).rejects.toThrow(\n    /Legacy lock requires confirmation/,\n  );\n  const diagnosis = await inspectNativeLockRecovery(lock);\n  expect(diagnosis.token).toBeTruthy();\n  await expect(repairNativeProjectLock(f.paths, diagnosis.token!, false)).rejects.toThrow();\n  expect(await fs.readFile(f.wal, 'utf8')).toContain(f.journal.id);\n  await repairNativeProjectLock(f.paths, diagnosis.token!, true);\n  await continueNativeTransition(f.paths, f.name);\n  expect(await inspectPendingNativeTransition(f.paths, f.name)).toBeNull();\n  expect(\n    (await readNativeTrajectory(f.dir, f.journal.nextRun.trajectoryRef)).filter(\n      (e) => e.type === 'state_transitioned',\n    ),\n  ).toHaveLength(1);\n});",
+      "replacement": "it('continues the original WAL while preserving obsolete writer metadata without token confirmation', async () => {\n const f=await currentJournal();\n const file=path.join(f.paths.runtimeDir,'locks','transition-'+f.name+'.lock');\n const bytes=JSON.stringify({id:'SIMULATED obsolete writer',createdAt:'2026-07-15T00:00:00.000Z',operation:'continue original WAL'});\n await fs.mkdir(path.dirname(file),{recursive:true});await fs.writeFile(file,bytes);\n await continueNativeTransition(f.paths,f.name);\n expect(await inspectPendingNativeTransition(f.paths,f.name)).toBeNull();\n expect((await readNativeTrajectory(f.dir,f.journal.nextRun.trajectoryRef)).filter(e=>e.type==='state_transitioned')).toHaveLength(1);\n expect(await fs.readFile(file,'utf8')).toBe(bytes);\n expect(await continueNativeTransition(f.paths,f.name)).toBeNull();\n});"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "title": "preserves both original root and transition writer metadata until each explicit confirmed takeover",
+      "body": "it('preserves both original root and transition writer metadata until each explicit confirmed takeover', async () => {\n  const f = await currentJournal();\n  await fs.mkdir(f.paths.locksDir, { recursive: true });\n  const entries = [\n    ['transition-' + f.name, 'old-transition-writer'],\n    ['root-move', 'old-root-writer'],\n  ];\n  for (const [name, id] of entries)\n    await fs.writeFile(\n      path.join(f.paths.locksDir, name + '.lock'),\n      JSON.stringify({\n        id,\n        createdAt: '2026-07-15T00:00:00.000Z',\n        operation: 'original real WAL write boundary',\n      }),\n    );\n  const before = await fs.readFile(f.wal, 'utf8');\n  for (const [name] of entries) {\n    const file = path.join(f.paths.locksDir, name + '.lock'),\n      d = await inspectNativeLockRecovery(file);\n    expect(d.token).toBeTruthy();\n    await expect(repairNativeProjectLock(f.paths, d.token!, false)).rejects.toThrow();\n    await repairNativeProjectLock(f.paths, d.token!, true);\n  }\n  expect(await fs.readFile(f.wal, 'utf8')).toBe(before);\n  await continueNativeTransition(f.paths, f.name);\n  expect(\n    (await readNativeTrajectory(f.dir, f.journal.nextRun.trajectoryRef)).filter(\n      (e) => e.type === 'state_transitioned',\n    ),\n  ).toHaveLength(1);\n});",
+      "replacement": "it('preserves old root and transition lock bytes while continuing the same real WAL once', async () => {\n const f=await currentJournal(); const files=['root-move','transition-'+f.name].map(name=>path.join(f.paths.runtimeDir,'locks',name+'.lock'));const bytes='SIMULATED obsolete writer bytes';\n for(const file of files){await fs.mkdir(path.dirname(file),{recursive:true});await fs.writeFile(file,bytes);}\n const wal=await fs.readFile(f.wal,'utf8');expect(wal).toContain(f.journal.id);\n await continueNativeTransition(f.paths,f.name);\n expect((await readNativeTrajectory(f.dir,f.journal.nextRun.trajectoryRef)).filter(e=>e.type==='state_transitioned')).toHaveLength(1);\n for(const file of files)expect(await fs.readFile(file,'utf8')).toBe(bytes);\n expect(await continueNativeTransition(f.paths,f.name)).toBeNull();\n});"
+    }
+  ],
+  "originalFiles": [
+    "test/domains/comet-native/native-lock.test.ts",
+    "test/domains/comet-native/native-lock-concurrency.test.ts",
+    "test/domains/comet-native/native-lock-without-pid.test.ts",
+    "test/domains/comet-native/native-command-recovery.test.ts",
+    "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+    "test/domains/comet-native/native-doctor.test.ts",
+    "test/domains/comet-native/native-root-move.test.ts",
+    "test/domains/comet-native/native-transition-recovery.test.ts",
+    "test/domains/comet-native/native-sdk-cancellation.test.ts",
+    "test/domains/comet-native/native-sdk-completion.test.ts",
+    "test/domains/comet-native/native-portable-migration-runtime.test.ts",
+    "test/domains/comet-native/native-workspace-finish-branches.test.ts",
+    "test/fixtures/native-lock-process-worker.ts",
+    "test/platform/fs/lock-without-pid.test.ts",
+    "test/domains/comet-native/native-diagnostics.test.ts"
+  ],
+  "priorProjectionMigration": {
+    "file": "native-portable-migration-runtime.test.ts",
+    "source": "C:/Users/BENYM/AppData/Local/Temp/comet-native-adjacent-current-20261111/repo-ready/title-behavior-mapping.json",
+    "note": "The same original file was independently frozen and matched byte-for-byte after CRLF normalization. All original active WAL/branch/portable recovery assertions are preserved; retired implicit fence/local state.json/evidence cleanup semantics are explicitly mapped in that investigation."
+  },
+  "cases": [
+    {
+      "id": "native-project-lock-stopped-owner-repair",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-single-writer/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "namePattern": "^(?:creates a Native workspace without project or checkpoint lock directories|ignores retired Native lock records without changing their bytes or asking for a token)$",
+          "requiredNames": [
+            "creates a Native workspace without project or checkpoint lock directories",
+            "ignores retired Native lock records without changing their bytes or asking for a token"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-project-lock-owner-token-guards",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-single-writer/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "namePattern": "^(?:creates a Native workspace without project or checkpoint lock directories|ignores retired Native lock records without changing their bytes or asking for a token)$",
+          "requiredNames": [
+            "creates a Native workspace without project or checkpoint lock directories",
+            "ignores retired Native lock records without changing their bytes or asking for a token"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-coordinator-claim-recovery",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-single-writer/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "namePattern": "^(?:creates a Native workspace without project or checkpoint lock directories|ignores retired Native lock records without changing their bytes or asking for a token)$",
+          "requiredNames": [
+            "creates a Native workspace without project or checkpoint lock directories",
+            "ignores retired Native lock records without changing their bytes or asking for a token"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-store-writer-lock-recovery",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-single-writer/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "namePattern": "^(?:creates a Native workspace without project or checkpoint lock directories|ignores retired Native lock records without changing their bytes or asking for a token)$",
+          "requiredNames": [
+            "creates a Native workspace without project or checkpoint lock directories",
+            "ignores retired Native lock records without changing their bytes or asking for a token"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+          "namePattern": "^(?:Native SDK read-only history and checkpoint recovery diagnoses a missing Run without restoring it, then explicit repair preserves its revision|Native SDK read-only history and checkpoint recovery diagnoses lost ownership read-only and explicitly restores the same existing Run|Native SDK read-only history and checkpoint recovery does not register a root owner for a stored Child Run during explicit Doctor repair)$",
+          "requiredNames": [
+            "Native SDK read-only history and checkpoint recovery diagnoses a missing Run without restoring it, then explicit repair preserves its revision",
+            "Native SDK read-only history and checkpoint recovery diagnoses lost ownership read-only and explicitly restores the same existing Run",
+            "Native SDK read-only history and checkpoint recovery does not register a root owner for a stored Child Run during explicit Doctor repair"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-projection-recovery-command",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-single-writer/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "namePattern": "^(?:creates a Native workspace without project or checkpoint lock directories|ignores retired Native lock records without changing their bytes or asking for a token)$",
+          "requiredNames": [
+            "creates a Native workspace without project or checkpoint lock directories",
+            "ignores retired Native lock records without changing their bytes or asking for a token"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+          "namePattern": "^(?:Native SDK read-only history and checkpoint recovery diagnoses a missing Run without restoring it, then explicit repair preserves its revision|Native SDK read-only history and checkpoint recovery diagnoses lost ownership read-only and explicitly restores the same existing Run|Native SDK read-only history and checkpoint recovery does not register a root owner for a stored Child Run during explicit Doctor repair)$",
+          "requiredNames": [
+            "Native SDK read-only history and checkpoint recovery diagnoses a missing Run without restoring it, then explicit repair preserves its revision",
+            "Native SDK read-only history and checkpoint recovery diagnoses lost ownership read-only and explicitly restores the same existing Run",
+            "Native SDK read-only history and checkpoint recovery does not register a root owner for a stored Child Run during explicit Doctor repair"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-standalone-recovery-protocol",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-single-writer/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "namePattern": "^(?:creates a Native workspace without project or checkpoint lock directories|ignores retired Native lock records without changing their bytes or asking for a token)$",
+          "requiredNames": [
+            "creates a Native workspace without project or checkpoint lock directories",
+            "ignores retired Native lock records without changing their bytes or asking for a token"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-root-move.test.ts",
+          "namePattern": "^(?:Native artifact root moves moves an initialized root through the generated Runtime without creating lock files)$",
+          "requiredNames": [
+            "Native artifact root moves moves an initialized root through the generated Runtime without creating lock files"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-nonregular-lock-diagnostics",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-single-writer/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "namePattern": "^(?:creates a Native workspace without project or checkpoint lock directories|ignores retired Native lock records without changing their bytes or asking for a token)$",
+          "requiredNames": [
+            "creates a Native workspace without project or checkpoint lock directories",
+            "ignores retired Native lock records without changing their bytes or asking for a token"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-cancellation-pending-cleanup-diagnostic",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-single-writer/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "namePattern": "^(?:creates a Native workspace without project or checkpoint lock directories|ignores retired Native lock records without changing their bytes or asking for a token)$",
+          "requiredNames": [
+            "creates a Native workspace without project or checkpoint lock directories",
+            "ignores retired Native lock records without changing their bytes or asking for a token"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-cancellation.test.ts",
+          "namePattern": "^(?:Native cancellation lifecycle keeps failed selection cleanup visible until explicit repair and preserves the original cancelled Run)$",
+          "requiredNames": [
+            "Native cancellation lifecycle keeps failed selection cleanup visible until explicit repair and preserves the original cancelled Run"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t09-native-short-lock",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-single-writer/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "namePattern": "^(?:creates a Native workspace without project or checkpoint lock directories|ignores retired Native lock records without changing their bytes or asking for a token)$",
+          "requiredNames": [
+            "creates a Native workspace without project or checkpoint lock directories",
+            "ignores retired Native lock records without changing their bytes or asking for a token"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+          "namePattern": "^(?:continues one published transition serially without duplicate events|continues the original WAL while preserving obsolete writer metadata without token confirmation|preserves old root and transition lock bytes while continuing the same real WAL once)$",
+          "requiredNames": [
+            "continues one published transition serially without duplicate events",
+            "continues the original WAL while preserving obsolete writer metadata without token confirmation",
+            "preserves old root and transition lock bytes while continuing the same real WAL once"
+          ]
+        },
+        {
+          "file": "test/platform/fs/lock-without-pid.test.ts",
+          "namePattern": "^(?:releases the transaction after the writer exits without a PID lookup or doctor repair|retires a confirmed legacy operation without binding its PID to the replacement|serializes writers without probing or persisting a process identity|serializes independent processes without process ownership records)$",
+          "requiredNames": [
+            "releases the transaction after the writer exits without a PID lookup or doctor repair",
+            "retires a confirmed legacy operation without binding its PID to the replacement",
+            "serializes writers without probing or persisting a process identity",
+            "serializes independent processes without process ownership records"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "runtime-pid-free-lock-recovery",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-single-writer/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "namePattern": "^(?:creates a Native workspace without project or checkpoint lock directories|ignores retired Native lock records without changing their bytes or asking for a token)$",
+          "requiredNames": [
+            "creates a Native workspace without project or checkpoint lock directories",
+            "ignores retired Native lock records without changing their bytes or asking for a token"
+          ]
+        },
+        {
+          "file": "test/platform/fs/lock-without-pid.test.ts",
+          "namePattern": "^(?:releases the transaction after the writer exits without a PID lookup or doctor repair|retires a confirmed legacy operation without binding its PID to the replacement|preserves the original operation error when lock cleanup also fails|serializes writers without probing or persisting a process identity|serializes independent processes without process ownership records)$",
+          "requiredNames": [
+            "releases the transaction after the writer exits without a PID lookup or doctor repair",
+            "retires a confirmed legacy operation without binding its PID to the replacement",
+            "preserves the original operation error when lock cleanup also fails",
+            "serializes writers without probing or persisting a process identity",
+            "serializes independent processes without process ownership records"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-legacy-recovery-meta-lock-doctor",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-single-writer/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "namePattern": "^(?:creates a Native workspace without project or checkpoint lock directories|ignores retired Native lock records without changing their bytes or asking for a token)$",
+          "requiredNames": [
+            "creates a Native workspace without project or checkpoint lock directories",
+            "ignores retired Native lock records without changing their bytes or asking for a token"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-root-move.test.ts",
+          "namePattern": "^(?:Native artifact root moves moves an initialized root through the generated Runtime without creating lock files)$",
+          "requiredNames": [
+            "Native artifact root moves moves an initialized root through the generated Runtime without creating lock files"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-root-move-released-sqlite-sidecars",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-single-writer/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "namePattern": "^(?:creates a Native workspace without project or checkpoint lock directories|ignores retired Native lock records without changing their bytes or asking for a token)$",
+          "requiredNames": [
+            "creates a Native workspace without project or checkpoint lock directories",
+            "ignores retired Native lock records without changing their bytes or asking for a token"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-root-move.test.ts",
+          "namePattern": "^(?:Native artifact root moves moves an initialized root through the generated Runtime without creating lock files)$",
+          "requiredNames": [
+            "Native artifact root moves moves an initialized root through the generated Runtime without creating lock files"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-root-move.test.ts",
+          "namePattern": "^(?:Native artifact root moves moves \\. to docs with file-by-file hash equivalence|Native artifact root moves moves docs to artifacts/native with file-by-file hash equivalence|Native artifact root moves audits historical transactions even when the active transaction directory is absent)$",
+          "requiredNames": [
+            "Native artifact root moves moves . to docs with file-by-file hash equivalence",
+            "Native artifact root moves moves docs to artifacts/native with file-by-file hash equivalence",
+            "Native artifact root moves audits historical transactions even when the active transaction directory is absent"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-doctor-no-implicit-unknown-owner-confirmation",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-single-writer/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "namePattern": "^(?:creates a Native workspace without project or checkpoint lock directories|ignores retired Native lock records without changing their bytes or asking for a token)$",
+          "requiredNames": [
+            "creates a Native workspace without project or checkpoint lock directories",
+            "ignores retired Native lock records without changing their bytes or asking for a token"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+          "namePattern": "^(?:Native SDK read-only history and checkpoint recovery diagnoses a missing Run without restoring it, then explicit repair preserves its revision|Native SDK read-only history and checkpoint recovery diagnoses lost ownership read-only and explicitly restores the same existing Run|Native SDK read-only history and checkpoint recovery does not register a root owner for a stored Child Run during explicit Doctor repair)$",
+          "requiredNames": [
+            "Native SDK read-only history and checkpoint recovery diagnoses a missing Run without restoring it, then explicit repair preserves its revision",
+            "Native SDK read-only history and checkpoint recovery diagnoses lost ownership read-only and explicitly restores the same existing Run",
+            "Native SDK read-only history and checkpoint recovery does not register a root owner for a stored Child Run during explicit Doctor repair"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-malformed-lock-preserves-repair-evidence",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-single-writer/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "namePattern": "^(?:creates a Native workspace without project or checkpoint lock directories|ignores retired Native lock records without changing their bytes or asking for a token)$",
+          "requiredNames": [
+            "creates a Native workspace without project or checkpoint lock directories",
+            "ignores retired Native lock records without changing their bytes or asking for a token"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-incomplete-trajectory-status-recovery",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-single-writer/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+          "namePattern": "^(?:explicitly truncates only an incomplete last trajectory line then continues the same WAL once|retains explicit Doctor tail repair and same-WAL continuation for the original incomplete-trajectory badcase)$",
+          "requiredNames": [
+            "explicitly truncates only an incomplete last trajectory line then continues the same WAL once",
+            "retains explicit Doctor tail repair and same-WAL continuation for the original incomplete-trajectory badcase"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-invalid-middle-trajectory-doctor",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-single-writer/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+          "namePattern": "^(?:never truncates a malformed middle trajectory line or clears its original WAL|keeps malformed middle trajectory bytes and original WAL unchanged during explicit Doctor repair)$",
+          "requiredNames": [
+            "never truncates a malformed middle trajectory line or clears its original WAL",
+            "keeps malformed middle trajectory bytes and original WAL unchanged during explicit Doctor repair"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-missing-trajectory-runtime-diagnostics",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-10-agent-platform-execution",
+      "record": "docs/research/2026-11-11-platform-execution-retirement/native-single-writer/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+          "namePattern": "^(?:never truncates a malformed middle trajectory line or clears its original WAL|keeps malformed middle trajectory bytes and original WAL unchanged during explicit Doctor repair)$",
+          "requiredNames": [
+            "never truncates a malformed middle trajectory line or clears its original WAL",
+            "keeps malformed middle trajectory bytes and original WAL unchanged during explicit Doctor repair"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-diagnostics.test.ts",
+          "namePattern": "keeps a change discoverable when its whole local Runtime is missing",
+          "requiredNames": [
+            "Native status diagnostics keeps a change discoverable when its whole local Runtime is missing"
+          ]
+        }
+      ]
+    }
+  ],
+  "behaviors": [
+    {
+      "id": "native-project-lock-stopped-owner-repair",
+      "reason": "User explicitly retired ordinary Native writer exclusion, lock metadata and token/stopped-writer repair under one writer per workspace. Preserve obsolete bytes without interpreting or deleting them; retain the actual Run, revision, claims and business approvals. The retired lock protocol is not claimed fixed.",
+      "observedTargets": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "creates a Native workspace without project or checkpoint lock directories",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "ignores retired Native lock records without changing their bytes or asking for a token",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        }
+      ]
+    },
+    {
+      "id": "native-project-lock-owner-token-guards",
+      "reason": "User explicitly retired ordinary Native writer exclusion, lock metadata and token/stopped-writer repair under one writer per workspace. Preserve obsolete bytes without interpreting or deleting them; retain the actual Run, revision, claims and business approvals. The retired lock protocol is not claimed fixed.",
+      "observedTargets": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "creates a Native workspace without project or checkpoint lock directories",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "ignores retired Native lock records without changing their bytes or asking for a token",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        }
+      ]
+    },
+    {
+      "id": "native-coordinator-claim-recovery",
+      "reason": "User explicitly retired ordinary Native writer exclusion, lock metadata and token/stopped-writer repair under one writer per workspace. Preserve obsolete bytes without interpreting or deleting them; retain the actual Run, revision, claims and business approvals. The retired lock protocol is not claimed fixed.",
+      "observedTargets": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "creates a Native workspace without project or checkpoint lock directories",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "ignores retired Native lock records without changing their bytes or asking for a token",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-store-writer-lock-recovery",
+      "reason": "User explicitly retired ordinary Native writer exclusion, lock metadata and token/stopped-writer repair under one writer per workspace. Preserve obsolete bytes without interpreting or deleting them; retain the actual Run, revision, claims and business approvals. The retired lock protocol is not claimed fixed.",
+      "observedTargets": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "creates a Native workspace without project or checkpoint lock directories",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "ignores retired Native lock records without changing their bytes or asking for a token",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+          "name": "Native SDK read-only history and checkpoint recovery diagnoses a missing Run without restoring it, then explicit repair preserves its revision",
+          "status": "passed",
+          "evidence": "native-readonly-final-green.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+          "name": "Native SDK read-only history and checkpoint recovery diagnoses lost ownership read-only and explicitly restores the same existing Run",
+          "status": "passed",
+          "evidence": "native-readonly-final-green.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+          "name": "Native SDK read-only history and checkpoint recovery does not register a root owner for a stored Child Run during explicit Doctor repair",
+          "status": "passed",
+          "evidence": "native-readonly-final-green.json"
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-projection-recovery-command",
+      "reason": "User explicitly retired ordinary Native writer exclusion, lock metadata and token/stopped-writer repair under one writer per workspace. Preserve obsolete bytes without interpreting or deleting them; retain the actual Run, revision, claims and business approvals. The retired lock protocol is not claimed fixed.",
+      "observedTargets": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "creates a Native workspace without project or checkpoint lock directories",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "ignores retired Native lock records without changing their bytes or asking for a token",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+          "name": "Native SDK read-only history and checkpoint recovery diagnoses a missing Run without restoring it, then explicit repair preserves its revision",
+          "status": "passed",
+          "evidence": "native-readonly-final-green.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+          "name": "Native SDK read-only history and checkpoint recovery diagnoses lost ownership read-only and explicitly restores the same existing Run",
+          "status": "passed",
+          "evidence": "native-readonly-final-green.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+          "name": "Native SDK read-only history and checkpoint recovery does not register a root owner for a stored Child Run during explicit Doctor repair",
+          "status": "passed",
+          "evidence": "native-readonly-final-green.json"
+        }
+      ]
+    },
+    {
+      "id": "native-standalone-recovery-protocol",
+      "reason": "User explicitly retired ordinary Native writer exclusion, lock metadata and token/stopped-writer repair under one writer per workspace. Preserve obsolete bytes without interpreting or deleting them; retain the actual Run, revision, claims and business approvals. The retired lock protocol is not claimed fixed.",
+      "observedTargets": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "creates a Native workspace without project or checkpoint lock directories",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "ignores retired Native lock records without changing their bytes or asking for a token",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-root-move.test.ts",
+          "name": "Native artifact root moves moves an initialized root through the generated Runtime without creating lock files",
+          "status": "skipped",
+          "evidence": "native-migration-root-green.json"
+        }
+      ]
+    },
+    {
+      "id": "native-nonregular-lock-diagnostics",
+      "reason": "User explicitly retired ordinary Native writer exclusion, lock metadata and token/stopped-writer repair under one writer per workspace. Preserve obsolete bytes without interpreting or deleting them; retain the actual Run, revision, claims and business approvals. The retired lock protocol is not claimed fixed.",
+      "observedTargets": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "creates a Native workspace without project or checkpoint lock directories",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "ignores retired Native lock records without changing their bytes or asking for a token",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        }
+      ]
+    },
+    {
+      "id": "native-cancellation-pending-cleanup-diagnostic",
+      "reason": "User explicitly retired ordinary Native writer exclusion, lock metadata and token/stopped-writer repair under one writer per workspace. Preserve obsolete bytes without interpreting or deleting them; retain the actual Run, revision, claims and business approvals. The retired lock protocol is not claimed fixed. Retire only the root-lock age/owner diagnostic. Simulated actual selection-publication I/O failure still keeps cancellation unfinished, blocks replacement creation, preserves the original state and requires successful explicit cleanup before release.",
+      "observedTargets": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "creates a Native workspace without project or checkpoint lock directories",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "ignores retired Native lock records without changing their bytes or asking for a token",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-cancellation.test.ts",
+          "name": "Native cancellation lifecycle keeps failed selection cleanup visible until explicit repair and preserves the original cancelled Run",
+          "status": "passed",
+          "evidence": "native-business-first.json"
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t09-native-short-lock",
+      "reason": "User explicitly retired ordinary Native writer exclusion, lock metadata and token/stopped-writer repair under one writer per workspace. Preserve obsolete bytes without interpreting or deleting them; retain the actual Run, revision, claims and business approvals. The retired lock protocol is not claimed fixed.",
+      "observedTargets": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "creates a Native workspace without project or checkpoint lock directories",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "ignores retired Native lock records without changing their bytes or asking for a token",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+          "name": "continues one published transition serially without duplicate events",
+          "status": "passed",
+          "evidence": "native-business-first.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+          "name": "continues the original WAL while preserving obsolete writer metadata without token confirmation",
+          "status": "passed",
+          "evidence": "native-business-first.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+          "name": "preserves old root and transition lock bytes while continuing the same real WAL once",
+          "status": "passed",
+          "evidence": "native-business-first.json"
+        },
+        {
+          "file": "test/platform/fs/lock-without-pid.test.ts",
+          "name": "releases the transaction after the writer exits without a PID lookup or doctor repair",
+          "status": "pending",
+          "evidence": "unchanged existing platform contract; Root/context executes"
+        },
+        {
+          "file": "test/platform/fs/lock-without-pid.test.ts",
+          "name": "retires a confirmed legacy operation without binding its PID to the replacement",
+          "status": "pending",
+          "evidence": "unchanged existing platform contract; Root/context executes"
+        },
+        {
+          "file": "test/platform/fs/lock-without-pid.test.ts",
+          "name": "serializes writers without probing or persisting a process identity",
+          "status": "pending",
+          "evidence": "unchanged existing platform contract; Root/context executes"
+        },
+        {
+          "file": "test/platform/fs/lock-without-pid.test.ts",
+          "name": "serializes independent processes without process ownership records",
+          "status": "pending",
+          "evidence": "unchanged existing platform contract; Root/context executes"
+        }
+      ]
+    },
+    {
+      "id": "runtime-pid-free-lock-recovery",
+      "reason": "User explicitly retired ordinary Native writer exclusion, lock metadata and token/stopped-writer repair under one writer per workspace. Preserve obsolete bytes without interpreting or deleting them; retain the actual Run, revision, claims and business approvals. The retired lock protocol is not claimed fixed. Keep the five original platform shared-resource lock assertions unchanged; only ordinary Native lock exclusion is retired.",
+      "observedTargets": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "creates a Native workspace without project or checkpoint lock directories",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "ignores retired Native lock records without changing their bytes or asking for a token",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/platform/fs/lock-without-pid.test.ts",
+          "name": "releases the transaction after the writer exits without a PID lookup or doctor repair",
+          "status": "pending",
+          "evidence": "unchanged existing platform contract; Root/context executes"
+        },
+        {
+          "file": "test/platform/fs/lock-without-pid.test.ts",
+          "name": "retires a confirmed legacy operation without binding its PID to the replacement",
+          "status": "pending",
+          "evidence": "unchanged existing platform contract; Root/context executes"
+        },
+        {
+          "file": "test/platform/fs/lock-without-pid.test.ts",
+          "name": "preserves the original operation error when lock cleanup also fails",
+          "status": "pending",
+          "evidence": "unchanged existing platform contract; Root/context executes"
+        },
+        {
+          "file": "test/platform/fs/lock-without-pid.test.ts",
+          "name": "serializes writers without probing or persisting a process identity",
+          "status": "pending",
+          "evidence": "unchanged existing platform contract; Root/context executes"
+        },
+        {
+          "file": "test/platform/fs/lock-without-pid.test.ts",
+          "name": "serializes independent processes without process ownership records",
+          "status": "pending",
+          "evidence": "unchanged existing platform contract; Root/context executes"
+        }
+      ]
+    },
+    {
+      "id": "native-legacy-recovery-meta-lock-doctor",
+      "reason": "User explicitly retired ordinary Native writer exclusion, lock metadata and token/stopped-writer repair under one writer per workspace. Preserve obsolete bytes without interpreting or deleting them; retain the actual Run, revision, claims and business approvals. The retired lock protocol is not claimed fixed.",
+      "observedTargets": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "creates a Native workspace without project or checkpoint lock directories",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "ignores retired Native lock records without changing their bytes or asking for a token",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-root-move.test.ts",
+          "name": "Native artifact root moves moves an initialized root through the generated Runtime without creating lock files",
+          "status": "skipped",
+          "evidence": "native-migration-root-green.json"
+        }
+      ]
+    },
+    {
+      "id": "native-root-move-released-sqlite-sidecars",
+      "reason": "User explicitly retired ordinary Native writer exclusion, lock metadata and token/stopped-writer repair under one writer per workspace. Preserve obsolete bytes without interpreting or deleting them; retain the actual Run, revision, claims and business approvals. The retired lock protocol is not claimed fixed. SQLite lock creation and multiwriter exclusion are removed; actual source/destination file equivalence and transaction history audit remain mandatory.",
+      "observedTargets": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "creates a Native workspace without project or checkpoint lock directories",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "ignores retired Native lock records without changing their bytes or asking for a token",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-root-move.test.ts",
+          "name": "Native artifact root moves moves an initialized root through the generated Runtime without creating lock files",
+          "status": "skipped",
+          "evidence": "native-migration-root-green.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-root-move.test.ts",
+          "name": "Native artifact root moves moves . to docs with file-by-file hash equivalence",
+          "status": "passed",
+          "evidence": "native-migration-root-green.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-root-move.test.ts",
+          "name": "Native artifact root moves moves docs to artifacts/native with file-by-file hash equivalence",
+          "status": "passed",
+          "evidence": "native-migration-root-green.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-root-move.test.ts",
+          "name": "Native artifact root moves audits historical transactions even when the active transaction directory is absent",
+          "status": "passed",
+          "evidence": "native-migration-root-green.json"
+        }
+      ]
+    },
+    {
+      "id": "native-doctor-no-implicit-unknown-owner-confirmation",
+      "reason": "User explicitly retired ordinary Native writer exclusion, lock metadata and token/stopped-writer repair under one writer per workspace. Preserve obsolete bytes without interpreting or deleting them; retain the actual Run, revision, claims and business approvals. The retired lock protocol is not claimed fixed.",
+      "observedTargets": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "creates a Native workspace without project or checkpoint lock directories",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "ignores retired Native lock records without changing their bytes or asking for a token",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+          "name": "Native SDK read-only history and checkpoint recovery diagnoses a missing Run without restoring it, then explicit repair preserves its revision",
+          "status": "passed",
+          "evidence": "native-readonly-final-green.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+          "name": "Native SDK read-only history and checkpoint recovery diagnoses lost ownership read-only and explicitly restores the same existing Run",
+          "status": "passed",
+          "evidence": "native-readonly-final-green.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+          "name": "Native SDK read-only history and checkpoint recovery does not register a root owner for a stored Child Run during explicit Doctor repair",
+          "status": "passed",
+          "evidence": "native-readonly-final-green.json"
+        }
+      ]
+    },
+    {
+      "id": "native-malformed-lock-preserves-repair-evidence",
+      "reason": "User explicitly retired ordinary Native writer exclusion, lock metadata and token/stopped-writer repair under one writer per workspace. Preserve obsolete bytes without interpreting or deleting them; retain the actual Run, revision, claims and business approvals. The retired lock protocol is not claimed fixed.",
+      "observedTargets": [
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "creates a Native workspace without project or checkpoint lock directories",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-single-writer.test.ts",
+          "name": "ignores retired Native lock records without changing their bytes or asking for a token",
+          "status": "passed",
+          "evidence": "native-final-single-writer.json"
+        }
+      ]
+    },
+    {
+      "id": "native-incomplete-trajectory-status-recovery",
+      "reason": "Bind the existing preserved original-WAL tail repair and status/Doctor assertions to their exact current selectors after the earlier test migration. Original complete event preservation, explicit repair and same-WAL exactly-once continuation remain required; no trajectory business is retired.",
+      "observedTargets": [
+        {
+          "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+          "name": "explicitly truncates only an incomplete last trajectory line then continues the same WAL once",
+          "status": "passed",
+          "evidence": "native-business-first.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+          "name": "retains explicit Doctor tail repair and same-WAL continuation for the original incomplete-trajectory badcase",
+          "status": "passed",
+          "evidence": "native-business-first.json"
+        }
+      ]
+    },
+    {
+      "id": "native-invalid-middle-trajectory-doctor",
+      "reason": "Bind the existing malformed-middle trajectory assertions to exact current selectors after the earlier migration. Preserve the original bad bytes and WAL and reject continuation/Doctor repair; no malformed-data business is retired.",
+      "observedTargets": [
+        {
+          "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+          "name": "never truncates a malformed middle trajectory line or clears its original WAL",
+          "status": "passed",
+          "evidence": "native-business-first.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+          "name": "keeps malformed middle trajectory bytes and original WAL unchanged during explicit Doctor repair",
+          "status": "passed",
+          "evidence": "native-business-first.json"
+        }
+      ]
+    },
+    {
+      "id": "native-missing-trajectory-runtime-diagnostics",
+      "reason": "Bind the existing malformed-middle trajectory assertions to exact current selectors after the earlier migration. Preserve the original bad bytes and WAL and reject continuation/Doctor repair; no malformed-data business is retired.",
+      "observedTargets": [
+        {
+          "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+          "name": "never truncates a malformed middle trajectory line or clears its original WAL",
+          "status": "passed",
+          "evidence": "native-business-first.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+          "name": "keeps malformed middle trajectory bytes and original WAL unchanged during explicit Doctor repair",
+          "status": "passed",
+          "evidence": "native-business-first.json"
+        },
+        {
+          "file": "test/domains/comet-native/native-diagnostics.test.ts",
+          "name": "Native status diagnostics keeps a change discoverable when its whole local Runtime is missing",
+          "status": "passed",
+          "evidence": "preserved-shared-diagnostics-green.json"
+        }
+      ]
+    }
+  ],
+  "observedCurrentTests": [
+    {
+      "file": "test/domains/comet-native/native-command-recovery.test.ts",
+      "name": "classifies Git lock diagnostics without crossing lines (0)",
+      "status": "passed",
+      "evidence": "native-readonly-final-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-command-recovery.test.ts",
+      "name": "classifies Git lock diagnostics without crossing lines (1)",
+      "status": "passed",
+      "evidence": "native-readonly-final-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-command-recovery.test.ts",
+      "name": "classifies Git lock diagnostics without crossing lines (2)",
+      "status": "passed",
+      "evidence": "native-readonly-final-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-command-recovery.test.ts",
+      "name": "classifies Git lock diagnostics without crossing lines (3)",
+      "status": "passed",
+      "evidence": "native-readonly-final-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-command-recovery.test.ts",
+      "name": "classifies Git lock diagnostics without crossing lines (4)",
+      "status": "passed",
+      "evidence": "native-readonly-final-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-command-recovery.test.ts",
+      "name": "classifies Git lock diagnostics without crossing lines (5)",
+      "status": "passed",
+      "evidence": "native-readonly-final-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-command-recovery.test.ts",
+      "name": "keeps failed native command recovery diagnosis read-only before any Run exists",
+      "status": "passed",
+      "evidence": "native-readonly-final-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-command-recovery.test.ts",
+      "name": "keeps failed classic-full command recovery diagnosis read-only before any Run exists",
+      "status": "passed",
+      "evidence": "native-readonly-final-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-command-recovery.test.ts",
+      "name": "reports an actual Git index lock with its path and retry conditions without deleting the Git lock",
+      "status": "passed",
+      "evidence": "native-readonly-final-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-doctor.test.ts",
+      "name": "fails closed on malformed config and preserves its exact bytes through the public Doctor entry",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-doctor.test.ts",
+      "name": "inspects a real pending root move read-only and repairs it only with the requested rollback strategy",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-doctor.test.ts",
+      "name": "keeps stale selection reads unchanged and changes only selection after an explicit current user choice",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-doctor.test.ts",
+      "name": "rejects an oversized selection before parsing while preserving the exact input bytes",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-doctor.test.ts",
+      "name": "rejects an escaped Runtime directory without writing outside the selected project",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-cancellation.test.ts",
+      "name": "Native cancellation lifecycle cancels claimed Builder scheduling while retaining its original claim without process-stop receipts",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-cancellation.test.ts",
+      "name": "Native cancellation lifecycle keeps failed selection cleanup visible until explicit repair and preserves the original cancelled Run",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-cancellation.test.ts",
+      "name": "Native cancellation lifecycle returns actionable cancellation closure directly in the unstarted CLI response without changing the SDK Run shape",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-cancellation.test.ts",
+      "name": "Native cancellation lifecycle returns actionable cancellation closure directly in the builder CLI response without changing the SDK Run shape",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-cancellation.test.ts",
+      "name": "Native cancellation lifecycle releases a cancelled fixed custom Native application from its own store",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-cancellation.test.ts",
+      "name": "Native cancellation lifecycle ends unstarted work and releases the workspace without Archive",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-cancellation.test.ts",
+      "name": "Native cancellation lifecycle ends approval work and releases the workspace without Archive",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-cancellation.test.ts",
+      "name": "Native cancellation lifecycle ends builder work and releases the workspace without Archive",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-cancellation.test.ts",
+      "name": "Native cancellation lifecycle retains a cancelled Builder claim and partial work without a stop receipt (unknown=false)",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-cancellation.test.ts",
+      "name": "Native cancellation lifecycle retains a cancelled Builder claim and partial work without a stop receipt (unknown=true)",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-completion.test.ts",
+      "name": "Native SDK completion selection release releases the current selection once the archived Run settles as completed",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-completion.test.ts",
+      "name": "Native SDK completion selection release keeps a selection that points at a different change",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-completion.test.ts",
+      "name": "Native SDK completion selection release does nothing for a Run that has not settled as completed",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-completion.test.ts",
+      "name": "Native SDK completion selection release surfaces a failed selection release and repairs it without changing an unrelated selection",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+      "name": "Native SDK read-only history and checkpoint recovery status and public runtime inspect never acquire or mutate a empty lock",
+      "status": "failed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+      "name": "Native SDK read-only history and checkpoint recovery status and public runtime inspect never acquire or mutate a partial lock",
+      "status": "failed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+      "name": "Native SDK read-only history and checkpoint recovery status and public runtime inspect never acquire or mutate a remote lock",
+      "status": "failed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+      "name": "Native SDK read-only history and checkpoint recovery status and public runtime inspect never acquire or mutate a dead lock",
+      "status": "failed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+      "name": "Native SDK read-only history and checkpoint recovery diagnoses a missing Run without restoring it, then explicit repair preserves its revision",
+      "status": "passed",
+      "evidence": "native-readonly-final-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+      "name": "Native SDK read-only history and checkpoint recovery reads the authoritative Run without requiring or recreating a retired projection marker",
+      "status": "passed",
+      "evidence": "native-readonly-final-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+      "name": "Native SDK read-only history and checkpoint recovery ignores an unsafe retired projection-lock path without writing its target",
+      "status": "skipped",
+      "evidence": "native-readonly-final-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+      "name": "Native SDK read-only history and checkpoint recovery reads a healthy raw SDK start before Native artifacts exist without creating a projection",
+      "status": "passed",
+      "evidence": "native-readonly-final-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+      "name": "Native SDK read-only history and checkpoint recovery diagnoses lost ownership read-only and explicitly restores the same existing Run",
+      "status": "passed",
+      "evidence": "native-readonly-final-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+      "name": "Native SDK read-only history and checkpoint recovery does not register a root owner for a stored Child Run during explicit Doctor repair",
+      "status": "passed",
+      "evidence": "native-readonly-final-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-single-writer.test.ts",
+      "name": "creates a Native workspace without project or checkpoint lock directories",
+      "status": "passed",
+      "evidence": "native-final-single-writer.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-single-writer.test.ts",
+      "name": "ignores retired Native lock records without changing their bytes or asking for a token",
+      "status": "passed",
+      "evidence": "native-final-single-writer.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "continues original published prepared WAL exactly once without rebuilding the old creator",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "preserves original WAL and change when a different valid Run exists",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "validates an oversized original transition document by JSON/schema rather than retired snapshot budgets",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "continues original WAL after an interruption at prepared without incrementing twice",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "continues original WAL after an interruption at Run-write without incrementing twice",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "continues original WAL after an interruption at change-write without incrementing twice",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "rejects a waiting next Run in the retained persisted-journal reader without changing bytes",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "rejects original non-first-hop identity refs counters and iteration tampering through the retained parser",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "rejects first-hop Run metadata iteration retry and previous-Run tampering from the published WAL",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "rejects phase skipping unknown event fields credential leaks and forged evidence from the original WAL",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "requires current typed operation and rejects relabeling advance as spec-rebase",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "rejects unsupported future transition schema without inventing a migration route",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "preserves original WAL over a same-revision external change",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "does not accept an existing trajectory event whose complete content diverges from the original WAL",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "continues one published transition serially without duplicate events",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "has the real prepared WAL durable before any trajectory or Run side effect",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "explicitly truncates only an incomplete last trajectory line then continues the same WAL once",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "never truncates a malformed middle trajectory line or clears its original WAL",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "preserves concurrently appended trajectory bytes when preparing tail repair",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "continues the original WAL while preserving obsolete writer metadata without token confirmation",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "does not archive through a pending unaccepted Verify transition or consume its WAL",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "explicitly imports a real published prepared migration journal without recreating middle-schema engines",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "explicitly imports a real published yaml-committed migration journal without recreating middle-schema engines",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "requires explicit Doctor import for ordinary archive and leaves original WAL state Run and owner unchanged",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "requires explicit Doctor import for ordinary next and leaves original WAL state Run and owner unchanged",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "requires explicit Doctor import for ordinary spec-remove and leaves original WAL state Run and owner unchanged",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "reads v1 historical journal schema without restoring its removed migration executor and rejects malformed Run data",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "reads v2 historical journal schema without restoring its removed migration executor and rejects malformed Run data",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "explicit Doctor repair completes original first-hop WAL once and retains original approval event Run and checkpoint history",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "explicit Doctor repair completes original non-first-hop WAL once and retains original approval event Run and checkpoint history",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "keeps v1 old spec-rebase semantics readable without recreating the removed intermediate migration",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "keeps v2 old spec-rebase semantics readable without recreating the removed intermediate migration",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "retains explicit Doctor tail repair and same-WAL continuation for the original incomplete-trajectory badcase",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "preserves old root and transition lock bytes while continuing the same real WAL once",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "name": "keeps malformed middle trajectory bytes and original WAL unchanged during explicit Doctor repair",
+      "status": "passed",
+      "evidence": "native-business-first.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-migration-runtime.test.ts",
+      "name": "Native portable migration Runtime does not treat a validated migration fence as incomplete portable migration",
+      "status": "failed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-migration-runtime.test.ts",
+      "name": "Native portable migration Runtime refuses migration cleanup with invalid-json local state and preserves all evidence",
+      "status": "failed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-migration-runtime.test.ts",
+      "name": "Native portable migration Runtime refuses migration cleanup with unknown-schema local state and preserves all evidence",
+      "status": "failed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-migration-runtime.test.ts",
+      "name": "Native portable migration Runtime refuses migration cleanup with different-change local state and preserves all evidence",
+      "status": "failed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-migration-runtime.test.ts",
+      "name": "Native portable migration Runtime refuses migration cleanup with symlink local state and preserves all evidence",
+      "status": "skipped",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-migration-runtime.test.ts",
+      "name": "Native portable migration Runtime rejects a changed fence target when repairing with captured project paths",
+      "status": "failed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-migration-runtime.test.ts",
+      "name": "Native portable migration Runtime does not treat a portable verification report as incomplete migration",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-migration-runtime.test.ts",
+      "name": "Native portable migration Runtime commits portable YAML before cleaning legacy Runtime and is idempotent",
+      "status": "failed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-migration-runtime.test.ts",
+      "name": "Native portable migration Runtime finishes cleanup and rebuilds local state when the portable YAML outlives its transaction",
+      "status": "failed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-migration-runtime.test.ts",
+      "name": "Native portable migration Runtime recognizes only valid portable migration journals and lets that migration resume itself",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-migration-runtime.test.ts",
+      "name": "Native portable migration Runtime refuses to migrate an isolated legacy change from the wrong checkout",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-migration-runtime.test.ts",
+      "name": "Native portable migration Runtime refuses to migrate a current legacy change when its saved branch does not match",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-root-move.test.ts",
+      "name": "Native artifact root moves moves an initialized root through the generated Runtime without creating lock files",
+      "status": "skipped",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-root-move.test.ts",
+      "name": "Native artifact root moves audits historical transactions even when the active transaction directory is absent",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-root-move.test.ts",
+      "name": "Native artifact root moves rejects SDK root moves before changing documents or configuration and preserves continuation",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-root-move.test.ts",
+      "name": "Native artifact root moves rechecks the branch after CLI root resolution before writing a root-move transaction",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-root-move.test.ts",
+      "name": "Native artifact root moves moves . to docs with file-by-file hash equivalence",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-root-move.test.ts",
+      "name": "Native artifact root moves moves docs to . with file-by-file hash equivalence",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-root-move.test.ts",
+      "name": "Native artifact root moves moves docs to artifacts/native with file-by-file hash equivalence",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-root-move.test.ts",
+      "name": "Native artifact root moves preserves v3 branch and finishing bindings while refreshing moved root identities",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-root-move.test.ts",
+      "name": "Native artifact root moves stops before moving a root that contains an invalid workspace binding",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-root-move.test.ts",
+      "name": "Native artifact root moves refreshes a valid v3 binding even when the change schema needs a newer runtime",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-root-move.test.ts",
+      "name": "Native artifact root moves moves documents without requiring another worktree Runtime (workspace v3)",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-root-move.test.ts",
+      "name": "Native artifact root moves moves documents without requiring another worktree Runtime (legacy workspace v2)",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-root-move.test.ts",
+      "name": "Native artifact root moves refuses an occupied destination without modifying either tree",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-root-move.test.ts",
+      "name": "Native artifact root moves refuses symlinks in the persisted Native tree",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-root-move.test.ts",
+      "name": "Native artifact root moves fails closed when a source directory is replaced after enumeration",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-root-move.test.ts",
+      "name": "Native artifact root moves does not recursively remove a source root replaced after equivalence checks",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-root-move.test.ts",
+      "name": "Native artifact root moves quarantines first and rejects a child rewritten by the pre-quarantine hook",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+      "name": "Native SDK read-only history and checkpoint recovery status and public runtime inspect ignore a retired empty lock without writing",
+      "status": "passed",
+      "evidence": "native-readonly-final-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+      "name": "Native SDK read-only history and checkpoint recovery status and public runtime inspect ignore a retired partial lock without writing",
+      "status": "passed",
+      "evidence": "native-readonly-final-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+      "name": "Native SDK read-only history and checkpoint recovery status and public runtime inspect ignore a retired remote lock without writing",
+      "status": "passed",
+      "evidence": "native-readonly-final-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+      "name": "Native SDK read-only history and checkpoint recovery status and public runtime inspect ignore a retired dead lock without writing",
+      "status": "passed",
+      "evidence": "native-readonly-final-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "name": "Native trusted checkpoint recovery keeps bound historical reads but rejects cross-namespace mutations after initialize-git",
+      "status": "passed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "name": "Native trusted checkpoint recovery keeps bound historical reads but rejects cross-namespace mutations after replace-git",
+      "status": "passed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "name": "Native trusted checkpoint recovery recovers a pre-Git checkpoint after initialization with completed Shape=true without replay",
+      "status": "passed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "name": "Native trusted checkpoint recovery recovers a pre-Git checkpoint after initialization with completed Shape=false without replay",
+      "status": "passed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "name": "Native trusted checkpoint recovery recovers missing run at the saved Shape revision and keeps its decision pending",
+      "status": "passed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "name": "Native trusted checkpoint recovery recovers missing retired-marker at the saved Shape revision and keeps its decision pending",
+      "status": "passed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "name": "Native trusted checkpoint recovery recovers missing runtime at the saved Shape revision and keeps its decision pending",
+      "status": "passed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "name": "Native trusted checkpoint recovery preserves Build history, approvals, hashes and an interrupted claim without replaying work",
+      "status": "passed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "name": "Native trusted checkpoint recovery restores Verify with its candidate, check evidence and pending Verifier unchanged",
+      "status": "passed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "name": "Native trusted checkpoint recovery restores legacy normalized checkpoints without requiring a marker and partial import=false",
+      "status": "passed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "name": "Native trusted checkpoint recovery restores legacy normalized checkpoints without requiring a marker and partial import=true",
+      "status": "passed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "name": "Native trusted checkpoint recovery retries after the Run is published but before projection completion",
+      "status": "passed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "name": "Native trusted checkpoint recovery rejects checkpoint drift before creating a replacement Run",
+      "status": "passed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "name": "Native trusted checkpoint recovery rejects source-revision drift before creating a replacement Run",
+      "status": "passed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "name": "Native trusted checkpoint recovery rejects state drift before creating a replacement Run",
+      "status": "passed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "name": "Native trusted checkpoint recovery rejects branch drift before creating a replacement Run",
+      "status": "passed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "name": "Native trusted checkpoint recovery requires the original custom application identity and a recovery-capable store",
+      "status": "passed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "name": "Native trusted checkpoint recovery restores only matching bound sourceRevision partial data (drift=false)",
+      "status": "passed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "name": "Native trusted checkpoint recovery restores only matching bound sourceRevision partial data (drift=true)",
+      "status": "passed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "name": "Native trusted checkpoint recovery ignores retired marker bytes while preserving the actual portable recovery evidence",
+      "status": "passed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "name": "Native trusted checkpoint recovery ignores retired future-marker bytes while preserving the actual portable recovery evidence",
+      "status": "passed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "name": "Native trusted checkpoint recovery retains a real public Shape Agent claim in its portable checkpoint before workspace recreation",
+      "status": "passed",
+      "evidence": "native-second-boundaries.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-migration-runtime.test.ts",
+      "name": "Native portable migration Runtime keeps committed portable business without rebuilding a retired fence or execution mirror",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-migration-runtime.test.ts",
+      "name": "Native portable migration Runtime preserves ignored invalid-json local cache without changing portable business",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-migration-runtime.test.ts",
+      "name": "Native portable migration Runtime preserves ignored unknown-schema local cache without changing portable business",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-migration-runtime.test.ts",
+      "name": "Native portable migration Runtime preserves ignored different-change local cache without changing portable business",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-migration-runtime.test.ts",
+      "name": "Native portable migration Runtime preserves ignored symlink local cache without changing portable business",
+      "status": "skipped",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-migration-runtime.test.ts",
+      "name": "Native portable migration Runtime does not use replaced legacy cache paths as portable business authority",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-migration-runtime.test.ts",
+      "name": "Native portable migration Runtime commits portable YAML while retaining legacy evidence and is idempotent",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-migration-runtime.test.ts",
+      "name": "Native portable migration Runtime retains committed portable history without rebuilding retired local projections",
+      "status": "passed",
+      "evidence": "native-migration-root-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-single-writer.test.ts",
+      "name": "returns Child results to the parent for serial submission without changing their original task identity",
+      "status": "passed",
+      "evidence": "native-final-single-writer.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-diagnostics.test.ts",
+      "name": "Native status diagnostics keeps workspace advisories visible without blocking an otherwise ready Archive",
+      "status": "skipped",
+      "evidence": "preserved-shared-diagnostics-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-diagnostics.test.ts",
+      "name": "Native status diagnostics keeps a failed workspace finish blocked after Archive has moved the change",
+      "status": "skipped",
+      "evidence": "preserved-shared-diagnostics-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-diagnostics.test.ts",
+      "name": "Native status diagnostics exposes an invalid workspace binding without treating legacy status as an approval",
+      "status": "skipped",
+      "evidence": "preserved-shared-diagnostics-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-diagnostics.test.ts",
+      "name": "Native status diagnostics does not route an Archive binding failure to receipt refresh",
+      "status": "skipped",
+      "evidence": "preserved-shared-diagnostics-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-diagnostics.test.ts",
+      "name": "Native status diagnostics returns policy-aware continuation after a ready Archive preview",
+      "status": "skipped",
+      "evidence": "preserved-shared-diagnostics-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-diagnostics.test.ts",
+      "name": "Native status diagnostics returns complete phase argv templates and alternative Build evidence",
+      "status": "skipped",
+      "evidence": "preserved-shared-diagnostics-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-diagnostics.test.ts",
+      "name": "Native status diagnostics returns an empty projection for an empty Native root",
+      "status": "skipped",
+      "evidence": "preserved-shared-diagnostics-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-diagnostics.test.ts",
+      "name": "Native status diagnostics sorts multiple active changes and projects only Native next commands",
+      "status": "skipped",
+      "evidence": "preserved-shared-diagnostics-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-diagnostics.test.ts",
+      "name": "Native status diagnostics pages a bounded status list and rejects stale or tampered cursors",
+      "status": "skipped",
+      "evidence": "preserved-shared-diagnostics-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-diagnostics.test.ts",
+      "name": "Native status diagnostics does not hide a malformed current selection as an unselected status list",
+      "status": "skipped",
+      "evidence": "preserved-shared-diagnostics-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-diagnostics.test.ts",
+      "name": "Native status diagnostics reports malformed change YAML without hiding the other changes",
+      "status": "skipped",
+      "evidence": "preserved-shared-diagnostics-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-diagnostics.test.ts",
+      "name": "Native status diagnostics keeps large status pages free of synthetic conflict-inspection failures",
+      "status": "skipped",
+      "evidence": "preserved-shared-diagnostics-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-diagnostics.test.ts",
+      "name": "Native status diagnostics requires legacy migration before Archive despite a prior verification report",
+      "status": "skipped",
+      "evidence": "preserved-shared-diagnostics-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-diagnostics.test.ts",
+      "name": "Native status diagnostics never scans a fixture openspec tree",
+      "status": "skipped",
+      "evidence": "preserved-shared-diagnostics-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-diagnostics.test.ts",
+      "name": "Native status diagnostics requires legacy migration without changing a pending ordinary transition",
+      "status": "skipped",
+      "evidence": "preserved-shared-diagnostics-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-diagnostics.test.ts",
+      "name": "Native status diagnostics keeps legacy migration guidance when an old Run state is missing",
+      "status": "skipped",
+      "evidence": "preserved-shared-diagnostics-green.json"
+    },
+    {
+      "file": "test/domains/comet-native/native-diagnostics.test.ts",
+      "name": "Native status diagnostics keeps a change discoverable when its whole local Runtime is missing",
+      "status": "passed",
+      "evidence": "preserved-shared-diagnostics-green.json"
+    }
+  ],
+  "notExecuted": [
+    "Root batch build/generated Runtime new root-move assertion pending",
+    "real platform Hook",
+    "model Eval (not authorized)",
+    "new package install/release"
+  ]
+}

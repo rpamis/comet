@@ -531,11 +531,31 @@ export class GitMemorySync implements MemoryGitSync {
   }
 
   private async ensureDedicatedRepository(): Promise<void> {
-    if (await this.isDedicatedRepository()) return;
-    await this.runCommand(['init']);
     if (!(await this.isDedicatedRepository())) {
-      throw new Error('Personal memory must use its own Git repository root');
+      await this.runCommand(['init']);
+      if (!(await this.isDedicatedRepository())) {
+        throw new Error('Personal memory must use its own Git repository root');
+      }
     }
+    const result = await this.runCommand(['rev-parse', '--git-path', 'info/exclude']);
+    const file = path.resolve(this.root, result.stdout.trim());
+    let source = '';
+    try {
+      source = await fs.readFile(file, 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    const lines = source.split(/\r?\n/u);
+    const missing = ['/.comet/runtime/.memory.lock*', '/.comet/runtime/.git-sync.lock*'].filter(
+      (rule) => !lines.includes(rule),
+    );
+    if (!missing.length) return;
+    const newline = source.includes('\r\n') ? '\r\n' : '\n';
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.appendFile(
+      file,
+      (source && !source.endsWith('\n') ? newline : '') + missing.join(newline) + newline,
+    );
   }
 }
 

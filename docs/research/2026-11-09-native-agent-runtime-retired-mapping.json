@@ -1,0 +1,27 @@
+{
+  "schema": "comet.workflow.migration-map.v1",
+  "cases": [
+    {
+      "id": "native-docker-syntax-scope",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-native-agent-runtime-simplification",
+      "record": "docs/research/2026-11-09-native-agent-runtime-implementation.zh.md",
+      "tests": [
+        {
+          "file": "test/repository/native-agent-runtime-retirement.test.ts",
+          "namePattern": "^keeps project snapshot creation and scope proof APIs out of the Native entry point$",
+          "requiredNames": [
+            "keeps project snapshot creation and scope proof APIs out of the Native entry point"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "namePattern": "^accepts platform check reports and completes authorized Archive without Runtime check actions \\(source\\)$",
+          "requiredNames": [
+            "accepts platform check reports and completes authorized Archive without Runtime check actions (source)"
+          ]
+        }
+      ]
+    }
+  ]
+}

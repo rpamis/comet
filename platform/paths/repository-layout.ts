@@ -22,6 +22,9 @@ export interface RepositoryLayout {
   };
   allowedTopLevelEntries: string[];
   sourceRoots: string[];
+  pluginModules: string[];
+  codexPlugin: { templateRoot: string; icon: string; files: string[] };
+  dshPlugin: { templateRoot: string; files: string[] };
   appModules: string[];
   domainModules: string[];
   platformModules: string[];

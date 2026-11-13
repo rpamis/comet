@@ -15,7 +15,10 @@ const fixture = vi.hoisted(() => ({
 vi.mock('../../../domains/comet-classic/classic-sdk-status.js', () => ({
   inspectClassicSdkRun: fixture.inspect,
 }));
-vi.mock('../../../domains/comet-classic/classic-sdk-application.js', () => ({
+vi.mock('../../../domains/comet-classic/classic-sdk-application.js', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../../domains/comet-classic/classic-sdk-application.js')
+  >()),
   classicOpenEvidenceReceipt: fixture.openReceipt,
   classicDesignEvidenceReceipt: fixture.designReceipt,
 }));
@@ -89,8 +92,8 @@ beforeEach(() => {
     recordEvidence: fixture.recordEvidence,
   };
   fixture.inspect.mockResolvedValue({ run, state, runtime, profile: 'full' });
-  fixture.openReceipt.mockResolvedValue({ ref: 'openspec/changes/demo', contentHash: 'open-hash' });
-  fixture.designReceipt.mockResolvedValue({ ref: 'design.md', contentHash: 'design-hash' });
+  fixture.openReceipt.mockResolvedValue({ ref: 'openspec/changes/demo' });
+  fixture.designReceipt.mockResolvedValue({ ref: 'design.md' });
   fixture.readiness.mockResolvedValue({ design: 'ready', issues: [] });
   fixture.handoff.mockResolvedValue(true);
   fixture.resolveWait.mockResolvedValue({ ...run, revision: 11 });
@@ -137,9 +140,18 @@ describe('Classic Design preflight budget', () => {
       expect.objectContaining({
         expectedRevision: 13,
         ref: 'design.md',
-        contentHash: 'design-hash',
+        contentHash: 'input',
       }),
     );
+  });
+
+  it('accepts the already inspected workspace without reopening the Run for Design Guard', async () => {
+    const inspected = await fixture.inspect();
+    fixture.inspect.mockClear();
+    const result = await inspectAndCompleteClassicSdkDesign({ ...options, inspected });
+    expect(fixture.inspect).not.toHaveBeenCalled();
+    expect(result.completed?.state).toMatchObject({ phase: 'build' });
+    expect(fixture.recordEvidence).toHaveBeenCalledTimes(1);
   });
 
   it('blocks a different approval without changing the Run', async () => {

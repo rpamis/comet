@@ -1,0 +1,194 @@
+{
+  "evidence": {
+    "red": "application-cancel-red-results.json",
+    "redPassed": 1,
+    "redFailed": 2,
+    "green": "application-cancel-green-results.json",
+    "greenPassed": 3,
+    "greenFailed": 0,
+    "durationSeconds": 9.38
+  },
+  "newTests": [
+    {
+      "file": "test/domains/workflow-application/application-platform-cancellation.test.ts",
+      "name": "releases a cancelled platform invoke_skill across a cold application reload without a stoppedActions handshake",
+      "passed": true
+    },
+    {
+      "file": "test/domains/workflow-application/application-platform-cancellation.test.ts",
+      "name": "shows cancelled platform invoke_skill as done in the actual compact dispatch response without stop confirmation",
+      "passed": true
+    },
+    {
+      "file": "test/domains/workflow-application/application-platform-cancellation.test.ts",
+      "name": "keeps generic claimed call_tool cancellation conservative without altering its original claim",
+      "passed": true
+    }
+  ],
+  "originalFiles": [
+    "test/domains/workflow-application/run-view.test.ts",
+    "test/domains/workflow-application/workspace-scope.test.ts",
+    "test/domains/workflow-application/cross-application-scope.test.ts",
+    "test/domains/workflow-application/application-hook.test.ts"
+  ],
+  "originalBodyArchive": "original-shared-cancellation-test-bodies.json",
+  "rows": [
+    {
+      "file": "test/domains/workflow-application/run-view.test.ts",
+      "name": "never executes residual child work after %s",
+      "line": 101,
+      "originalBody": "it.each(['completed', 'cancelled', 'failed'] as const)(\n    'never executes residual child work after %s',\n    (status) => {\n      const run = childRun('running');\n      run.status = status;\n      const view = projectWorkflowApplicationRun(application, run);\n      expect(view.continuation.mode).toBe(status === 'failed' ? 'reconcile' : 'done');\n      expect(view.continuation.nextRequest).toBeUndefined();\n    },\n  )",
+      "decision": "retain",
+      "targets": [],
+      "pending": []
+    },
+    {
+      "file": "test/domains/workflow-application/run-view.test.ts",
+      "name": "publishes pending stop confirmation instead of a done continuation after logical cancellation",
+      "line": 113,
+      "originalBody": "it('publishes pending stop confirmation instead of a done continuation after logical cancellation', () => {\n  const run = childRun('running');\n  run.children = [];\n  run.status = 'cancelled';\n  const action = run.actions[0];\n  action.type = 'invoke_skill';\n  action.status = 'cancelled';\n  action.claim = { executorId: 'host', token: 'original-token' };\n  const view = projectWorkflowApplicationRun(application, run);\n  expect(view.continuation.mode).toBe('reconcile');\n  expect(view.current.actions).toHaveLength(1);\n  expect(view.current.actions[0]).toMatchObject({\n    stopConfirmationRequired: true,\n    confirmStoppedRequest: {\n      operation: 'cancel',\n      stoppedActions: [\n        {\n          actionId: action.id,\n          claimToken: 'original-token',\n          attempt: action.attempt,\n          inputHash: action.inputHash,\n        },\n      ],\n    },\n  });\n  action.cancellation = {\n    actionId: action.id,\n    claimToken: 'original-token',\n    attempt: action.attempt,\n    inputHash: action.inputHash,\n    evidence: 'stopped',\n  };\n  const stopped = projectWorkflowApplicationRun(application, run);\n  expect(stopped.continuation.mode).toBe('done');\n  expect(stopped.current.actions).toHaveLength(0);\n})",
+      "decision": "split",
+      "targets": [
+        {
+          "file": "test/domains/workflow-application/application-platform-cancellation.test.ts",
+          "name": "shows cancelled platform invoke_skill as done in the actual compact dispatch response without stop confirmation",
+          "status": "passed this batch"
+        }
+      ],
+      "pending": [
+        "Keep original call_tool stop-confirmation contract by making the original view fixture call_tool; that counterpart has not been executed this batch."
+      ],
+      "retired": [
+        "invoke_skill cancelled requires a process stop receipt"
+      ]
+    },
+    {
+      "file": "test/domains/workflow-application/workspace-scope.test.ts",
+      "name": "retains cancelled claims across cold reloads until the original executor confirms stopping through %s",
+      "line": 229,
+      "originalBody": "it.each(['cancel', 'acknowledgeStopped'] as const)(\n  'retains cancelled claims across cold reloads until the original executor confirms stopping through %s',\n  async (operation) => {\n    const f = await fixture();\n    const action = f.run.actions.find((item) => item.stepId === 'left')!;\n    await f.runtime.claim({\n      runId: f.run.runId,\n      actionId: action.id,\n      attempt: action.attempt,\n      inputHash: action.inputHash,\n      executorId: 'local-skill',\n      capabilities: ['skill-script'],\n      claimToken: 'original-writer',\n    });\n\n    const restored = structuredClone(await f.runtime.inspect(f.run.runId));\n    restored.runId = 'restored-cancelled';\n    restored.revision = 50;\n    restored.status = 'cancelled';\n    restored.actions = restored.actions.map((item) => ({\n      ...item,\n      runId: restored.runId,\n      status: ['pending', 'running'].includes(item.status) ? 'cancelled' : item.status,\n    }));\n    await expect(\n      f.loaded.store.restoreCheckpoint!(restored.runId, null, restored),\n    ).rejects.toMatchObject({ code: 'SCOPE_HELD' });\n    let cancelled = await f.runtime.cancel({\n      runId: f.run.runId,\n      reason: 'user cancellation',\n    });\n    const store = createFileRuntimeStore({\n      rootDir: path.join(\n        resolveWorkspaceRuntimeRootSync(f.root),\n        'applications',\n        f.loaded.identity.id,\n      ),\n      mirroredRevisionPaths: ['run.revision'],\n    });\n    expect(await store.readPartitionMetadata(cancelled.runId)).toBe('active');\n    const loaded = await loadWorkflowApplication({\n      file: f.disk.file,\n      projectRoot: f.root,\n    });\n    const runtime = createRuntime({\n      ...loaded.implementation,\n      store: loaded.store,\n    });\n    let peer = await runtime.start({\n      runId: 'peer',\n      workflow: { id: 'editorial', version: '1' },\n      input: f.run.input,\n    });\n    peer = await runtime.execute({\n      runId: peer.runId,\n      actionId: peer.actions[0].id,\n      executorId: 'tool-host',\n    });\n    peer = await runtime.resolveWait({\n      runId: peer.runId,\n      waitId: peer.waits[0].id,\n      proposalHash: peer.waits[0].proposalHash,\n      decisionId: 'peer-approval',\n      choice: 'approved',\n    });\n    peer = await runtime.execute({\n      runId: peer.runId,\n      actionId: peer.actions.at(-1)!.id,\n      executorId: 'tool-host',\n    });\n    const next = peer.actions.find((item) => item.stepId === 'left')!;\n    const claim = {\n      runId: peer.runId,\n      actionId: next.id,\n      attempt: next.attempt,\n      inputHash: next.inputHash,\n      executorId: 'local-skill',\n      capabilities: ['skill-script'],\n      claimToken: 'peer-writer',\n    };\n    await expect(runtime.claim(claim)).rejects.toMatchObject({\n      code: 'SCOPE_HELD',\n    });\n    const acknowledge = (\n      stoppedActions: Parameters<typeof runtime.acknowledgeStopped>[0]['stoppedActions'],\n    ) =>\n      operation === 'cancel'\n        ? runtime.cancel({\n            runId: cancelled.runId,\n            reason: 'confirm',\n            stoppedActions,\n          })\n        : runtime.acknowledgeStopped({\n            runId: cancelled.runId,\n            stoppedActions,\n          });\n    const stopped = {\n      actionId: action.id,\n      attempt: action.attempt,\n      inputHash: action.inputHash,\n      claimToken: 'wrong',\n      evidence: 'The original process and its children have exited.',\n    };\n    await expect(acknowledge([stopped])).rejects.toMatchObject({\n      code: 'STALE_ACTION',\n    });\n    await expect(runtime.claim(claim)).rejects.toMatchObject({\n      code: 'SCOPE_HELD',\n    });\n    cancelled = await acknowledge([{ ...stopped, claimToken: 'original-writer' }]);\n    if (operation === 'acknowledgeStopped') {\n      expect(\n        cancelled.actions.find((item) => item.id === action.id)?.executionStop?.claimToken,\n      ).toBe('original-writer');\n      expect(cancelled.actions.find((item) => item.id === action.id)?.cancellation).toBeUndefined();\n    }\n    expect(await store.readPartitionMetadata(cancelled.runId)).toBe('closed');\n    expect((await runtime.claim(claim)).actions.find((item) => item.id === next.id)?.status).toBe(\n      'running',\n    );\n    // 原取消的重复提交保持兼容，封存不永久阻止幂等确认。\n    await acknowledge([{ ...stopped, claimToken: 'original-writer' }]);\n    expect(await store.readPartitionMetadata(cancelled.runId)).toBe('closed');\n  },\n)",
+      "decision": "split",
+      "targets": [
+        {
+          "file": "test/domains/workflow-application/application-platform-cancellation.test.ts",
+          "name": "releases a cancelled platform invoke_skill across a cold application reload without a stoppedActions handshake",
+          "status": "passed this batch"
+        },
+        {
+          "file": "test/domains/engine/runtime-cancellation.test.ts",
+          "name": "Runtime cancellation acknowledgement > rejects claim evidence without committing cancellation",
+          "status": "existing source verified, NOT RUN this batch"
+        },
+        {
+          "file": "test/domains/engine/runtime-cancellation.test.ts",
+          "name": "Runtime cancellation acknowledgement > rejects duplicate and conflicting acknowledgements and stale CAS revisions",
+          "status": "existing source verified, NOT RUN this batch"
+        },
+        {
+          "file": "test/domains/workflow-application/cross-application-scope.test.ts",
+          "name": "rejects a pre-claim checkpoint after the writer Store is lost, then restores the original unknown claim and releases only by proof",
+          "status": "retain whole recovery assertions; remove only incidental invoke_skill stop proof; NOT RUN this batch"
+        }
+      ],
+      "pending": [
+        "Same-application cold reload peer claim and partition metadata closed assertion need retained migration in this original fixture; cross-application target does not replace those exact assertions.",
+        "Preserve recovered original unknown-writer checkpoint fencing and current approval/claim identity; do not replace all of this mixed declaration by one happy path."
+      ],
+      "retired": [
+        "Cancelled ordinary invoke_skill remains an active owner until cancel/acknowledgeStopped proof",
+        "A manually terminal cancelled checkpoint competes with an actual active writer"
+      ]
+    },
+    {
+      "file": "test/domains/workflow-application/workspace-scope.test.ts",
+      "name": "fences raw writers after application holder coordination is enabled",
+      "line": 355,
+      "originalBody": "it('fences raw writers after application holder coordination is enabled', async () => {\n  const f = await fixture();\n  const store = createFileRuntimeStore({\n    rootDir: path.join(\n      resolveWorkspaceRuntimeRootSync(f.root),\n      'applications',\n      f.loaded.identity.id,\n    ),\n    mirroredRevisionPaths: ['run.revision'],\n  });\n  const old = await f.runtime.start({\n    runId: 'ended',\n    workflow: { id: 'editorial', version: '1' },\n    input: f.run.input,\n  });\n  const ended = await f.runtime.cancel({\n    runId: old.runId,\n    reason: 'never executed',\n  });\n  await expect(store.reopenRun(ended.runId, ended.revision)).rejects.toMatchObject({\n    code: 'STORE_WRITER_FENCED',\n  });\n  expect(await store.readPartitionMetadata(ended.runId)).toBe('closed');\n})",
+      "decision": "retain",
+      "targets": [],
+      "pending": []
+    },
+    {
+      "file": "test/domains/workflow-application/cross-application-scope.test.ts",
+      "name": "retains cancelled ownership across cold application reload until exact stop acknowledgement",
+      "line": 112,
+      "originalBody": "it('retains cancelled ownership across cold application reload until exact stop acknowledgement', async () => {\n  const project = await root();\n  const alpha = await fixture(project, 'alpha');\n  const beta = await fixture(project, 'beta');\n  const claimed = await alpha.runtime.claim({ ...alpha.request, claimToken: 'original' });\n  const action = claimed.actions.at(-1)!;\n  await alpha.runtime.cancel({ runId: claimed.runId, reason: 'cancel scheduling only' });\n  const reload = await loadWorkflowApplication({ file: beta.disk.file, projectRoot: project });\n  const runtime = createRuntime({ ...reload.implementation, store: reload.store });\n  await expect(runtime.claim(beta.request)).rejects.toMatchObject({ code: 'SCOPE_HELD' });\n  await alpha.runtime.acknowledgeStopped({\n    runId: claimed.runId,\n    stoppedActions: [\n      {\n        actionId: action.id,\n        attempt: action.attempt,\n        inputHash: action.inputHash,\n        claimToken: 'original',\n        evidence: 'The original executor and all child processes have exited.',\n      },\n    ],\n  });\n  expect((await runtime.claim(beta.request)).actions.at(-1)?.status).toBe('running');\n})",
+      "decision": "replace-platform-contract",
+      "targets": [
+        {
+          "file": "test/domains/workflow-application/application-platform-cancellation.test.ts",
+          "name": "releases a cancelled platform invoke_skill across a cold application reload without a stoppedActions handshake",
+          "status": "passed this batch"
+        }
+      ],
+      "pending": [],
+      "retired": [
+        "Cancelled invoke_skill holds cross-application scope until acknowledgeStopped"
+      ]
+    },
+    {
+      "file": "test/domains/workflow-application/cross-application-scope.test.ts",
+      "name": "does not read inactive peer Run checkpoints or their full member inventory on a warm claim",
+      "line": 157,
+      "originalBody": "it('does not read inactive peer Run checkpoints or their full member inventory on a warm claim', async () => {\n  const project = await root();\n  const alpha = await fixture(project, 'alpha');\n  await alpha.runtime.cancel({ runId: alpha.run.runId, reason: 'no execution' });\n  const beta = await fixture(project, 'beta');\n  const opened = vi.spyOn(fs, 'open');\n  await beta.runtime.claim(beta.request);\n  const peerPaths = opened.mock.calls\n    .map((call) => String(call[0]))\n    .filter((file) => file.includes(`${path.sep}applications${path.sep}alpha${path.sep}`));\n  expect(\n    peerPaths.some((file) => file.endsWith('checkpoint.json') || file.endsWith('inventory.json')),\n  ).toBe(false);\n})",
+      "decision": "retain",
+      "targets": [],
+      "pending": []
+    },
+    {
+      "file": "test/domains/workflow-application/cross-application-scope.test.ts",
+      "name": "still permits releasing an existing claim when an unrelated application directory is corrupt",
+      "line": 245,
+      "originalBody": "it('still permits releasing an existing claim when an unrelated application directory is corrupt', async () => {\n  const project = await root();\n  const alpha = await fixture(project, 'alpha', 'alpha.txt');\n  const beta = await fixture(project, 'beta', 'beta.txt');\n  await beta.runtime.claim({ ...beta.request, claimToken: 'beta-owner' });\n  await fs.writeFile(\n    path.join(resolveWorkspaceRuntimeRootSync(project), 'applications', 'bad-entry'),\n    'not a directory',\n  );\n  const cancelled = await beta.runtime.cancel({\n    runId: beta.run.runId,\n    reason: 'stop existing execution',\n    stoppedActions: [\n      {\n        actionId: beta.action.id,\n        attempt: beta.action.attempt,\n        inputHash: beta.action.inputHash,\n        claimToken: 'beta-owner',\n        evidence: 'The original executor and all child processes have exited.',\n      },\n    ],\n  });\n  expect(cancelled.status).toBe('cancelled');\n  await expect(alpha.runtime.claim(alpha.request)).rejects.toMatchObject({\n    code: 'STORE_INDEX_CORRUPT',\n  });\n})",
+      "decision": "retain-with-input-cleanup",
+      "targets": [],
+      "pending": [
+        "Remove stop proof input only; preserve unrelated corrupt-directory cannot prevent cancellation plus still blocks a new claim. This exact corruption scenario NOT RUN this batch."
+      ],
+      "retired": [
+        "Incidental stoppedActions on ordinary invoke_skill cancel"
+      ]
+    },
+    {
+      "file": "test/domains/workflow-application/cross-application-scope.test.ts",
+      "name": "rejects a pre-claim checkpoint after the writer Store is lost, then restores the original unknown claim and releases only by proof",
+      "line": 292,
+      "originalBody": "it('rejects a pre-claim checkpoint after the writer Store is lost, then restores the original unknown claim and releases only by proof', async () => {\n  const project = await root();\n  const alpha = await fixture(project, 'alpha');\n  const beta = await fixture(project, 'beta');\n  const stale = portable(alpha.run);\n  const claimed = await alpha.runtime.claim({ ...alpha.request, claimToken: 'actual-writer' });\n  const saved = portable(claimed);\n  await fs.rm(appDirectory(project), { recursive: true });\n  await expect(\n    alpha.loaded.store.restoreCheckpoint!(stale.runId, null, stale),\n  ).rejects.toMatchObject({ code: 'STORE_INDEX_CORRUPT' });\n  expect(await alpha.loaded.store.restoreCheckpoint!(saved.runId, null, saved)).toBe(true);\n  await expect(beta.runtime.claim(beta.request)).rejects.toMatchObject({ code: 'SCOPE_HELD' });\n  const old = saved.actions.at(-1)!;\n  await alpha.runtime.cancel({\n    runId: saved.runId,\n    reason: 'stop recovered original execution',\n    stoppedActions: [\n      {\n        actionId: old.id,\n        attempt: old.attempt,\n        inputHash: old.inputHash,\n        claimToken: old.claim!.token,\n        evidence: 'The original executor and all child processes have exited.',\n      },\n    ],\n  });\n  expect((await beta.runtime.claim(beta.request)).actions.at(-1)?.status).toBe('running');\n})",
+      "decision": "retain-with-input-cleanup",
+      "targets": [],
+      "pending": [
+        "Retain all stale-checkpoint refusal, exact original recovery, and scope-held-before-cancel assertions; release via ordinary platform cancellation. NOT RUN this exact restoration case this batch."
+      ],
+      "retired": [
+        "Incidental stoppedActions at final ordinary invoke_skill cancel; update title release wording"
+      ]
+    },
+    {
+      "file": "test/domains/workflow-application/application-hook.test.ts",
+      "name": "allows current work after 128 verified completed child Runs without treating history as active width",
+      "line": 62,
+      "originalBody": "it('allows current work after 128 verified completed child Runs without treating history as active width', async () => {\n  const f = await childTree(128);\n  for (const child of f.run.children) {\n    const run = await f.runtime.inspect(child.runId);\n    const action = run.actions[0];\n    const claimToken = `claim-${run.runId}`;\n    await f.runtime.claim({\n      runId: run.runId,\n      actionId: action.id,\n      attempt: action.attempt,\n      inputHash: action.inputHash,\n      executorId: 'reader',\n      claimToken,\n    });\n    await f.runtime.recordOutcome({\n      runId: run.runId,\n      outcome: {\n        actionId: action.id,\n        attempt: action.attempt,\n        inputHash: action.inputHash,\n        claimToken,\n        outcomeId: `done-${run.runId}`,\n        status: 'succeeded',\n        output: null,\n      },\n    });\n  }\n  const run = await f.runtime.next({ runId: f.run.runId });\n  expect(\n    run.actions.filter(\n      (action) => action.type === 'child_workflow' && action.status === 'succeeded',\n    ),\n  ).toHaveLength(128);\n  expect(run.actions.at(-1)).toMatchObject({ stepId: 'finish', status: 'pending' });\n  expect(await f.hook(run, f.request)).toMatchObject({ allowed: true });\n  const invalidOwner = createApplicationHook({\n    ...f.hookOptions,\n    readChild: async (runId) => ({ ...(await f.runtime.inspect(runId)), lineage: ['other'] }),\n  });\n  expect(await invalidOwner(run, f.request)).toMatchObject({\n    allowed: false,\n    reason: '子流程没有当前 SDK Run 的有效归属',\n  });\n  const disk = await createScopeCycleApplication(root, true);\n  const adapted = await loadWorkflowApplication({ file: disk.file, projectRoot: root });\n  const writer = adapted.skills.get('writer')!;\n  const terminalHook = createApplicationHook({\n    ...f.hookOptions,\n    manifest: {\n      ...f.hookOptions.manifest,\n      bindings: [\n        {\n          workflowId: 'worker',\n          stepId: 'work',\n          skillId: 'read',\n          usage: 'action',\n          capability: 'title',\n        },\n      ],\n    },\n    skills: new Map([['read', { ...writer, id: 'read' }]]),\n  });\n  const cancelled = await f.runtime.cancel({ runId: run.runId, reason: 'stop after children' });\n  expect(await terminalHook(cancelled, { intent: 'write', targets: ['shared.txt'] })).toMatchObject(\n    {\n      allowed: false,\n      reason: '已结束 Run 的声明产物保持固定；继续修改应启动新的 Run',\n    },\n  );\n  expect(await terminalHook(cancelled, f.request)).toMatchObject({ allowed: true });\n})",
+      "decision": "retain",
+      "targets": [],
+      "pending": []
+    },
+    {
+      "file": "test/domains/workflow-application/application-hook.test.ts",
+      "name": "still rejects excessive active child width, including cancelled claims without stop confirmation",
+      "line": 134,
+      "originalBody": "it('still rejects excessive active child width, including cancelled claims without stop confirmation', async () => {\n  const f = await childTree(128);\n  expect(await f.hook(f.run, f.request)).toMatchObject({\n    allowed: false,\n    reason: '活跃子流程超出安全读取范围',\n  });\n  for (const child of f.run.children) {\n    const run = await f.runtime.inspect(child.runId);\n    const action = run.actions[0];\n    await f.runtime.claim({\n      runId: run.runId,\n      actionId: action.id,\n      attempt: action.attempt,\n      inputHash: action.inputHash,\n      executorId: 'reader',\n      claimToken: `claim-${run.runId}`,\n    });\n  }\n  const cancelled = await f.runtime.cancel({\n    runId: f.run.runId,\n    reason: 'user stopped scheduling',\n  });\n  expect((await f.runtime.inspect(cancelled.children[0].runId)).actions[0]).toMatchObject({\n    status: 'cancelled',\n    claim: { executorId: 'reader' },\n  });\n  expect(await f.hook(cancelled, f.request)).toMatchObject({\n    allowed: false,\n    reason: '活跃子流程超出安全读取范围',\n  });\n})",
+      "decision": "split",
+      "targets": [],
+      "pending": [
+        "Keep first actual 128 active child width rejection; add cancelled-all-platform children no-width-leak and retain original child ownership checks. This batch 3 tests do not establish the 128-child boundary."
+      ],
+      "retired": [
+        "128 cancelled invoke_skill children still count as active only because they lack stop receipts"
+      ]
+    }
+  ],
+  "registryChanged": false,
+  "productOrRepositoryTestsChanged": false,
+  "fixedNativeClassicRuntime": "Applicability follows inspected loadWorkflowApplication shared pinnedStore and domain wrapStore source; no separate fixed Native/Classic end-to-end run in this batch.",
+  "runtimeClosure": "No isRuntimeRunQuiescent identifier exists in current domains tree. application.ts rawStore uses applicationRunCanClose and only closes standalone base. Real peer claim passed after cold reload; fixed base active partition is not itself a leak."
+}

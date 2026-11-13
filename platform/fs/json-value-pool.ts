@@ -20,6 +20,19 @@ interface SharedMapNode {
   removed: string[];
 }
 const immutableMaps = new WeakMap<object, SharedMapNode>();
+const immutableValueJsons = new WeakMap<object, string>();
+
+function jsonValueIdentity(value: unknown, isImmutable?: (value: object) => boolean): string {
+  const immutable = value !== null && typeof value === 'object' && isImmutable?.(value);
+  if (immutable) {
+    const cached = immutableValueJsons.get(value);
+    if (cached !== undefined) return cached;
+  }
+  const json = JSON.stringify(value);
+  // 只缓存小型不可变值；大对象继续流经既有池，不额外保留展开正文。
+  if (immutable && json.length <= 64 * 1024) immutableValueJsons.set(value as object, json);
+  return json;
+}
 
 /** 输入由调用方先按 JSON 契约校验。字段仍保留原位，公共协议无需识别内部引用。 */
 function encodeLegacyJsonValueMaps<T>(
@@ -57,7 +70,7 @@ function encodeLegacyJsonValueMaps<T>(
   const valueId = (item: unknown): number => {
     let id = item && typeof item === 'object' ? objectIds.get(item) : undefined;
     if (id !== undefined) return id;
-    const identity = JSON.stringify(item);
+    const identity = jsonValueIdentity(item, isImmutable);
     id = valueIds.get(identity);
     if (id === undefined) {
       id = values.length;
@@ -137,7 +150,7 @@ function encodeLegacyJsonValueMaps<T>(
     for (const [key, item] of Object.entries(current)) {
       let id = item && typeof item === 'object' ? objectIds.get(item) : undefined;
       if (id === undefined) {
-        const identity = JSON.stringify(item);
+        const identity = jsonValueIdentity(item, isImmutable);
         id = valueIds.get(identity);
         if (id === undefined) {
           id = values.length;

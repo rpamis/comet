@@ -1,51 +1,48 @@
-import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
-import { isClassicStateFileName } from './classic-state-file.js';
-import { isChangeWalkthroughPath } from '../workflow-contract/neutral-document-path.js';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { stripUtf8Bom } from '../../platform/fs/strip-bom.js';
+import type { CometHookRequest } from '../../platform/process/hook-adapter.js';
+import { parseCometHookRequest } from '../../platform/process/hook-adapter.js';
 import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
 import { readStdinTextWithTimeoutAsync } from '../../platform/process/stdin-read.js';
-import {
-  assertClassicLayoutWritable,
-  assertClassicLayoutReadable,
-  classicProjectRelative,
-  type ClassicLayoutPaths,
-} from './classic-layout.js';
-import { inspectClassicActiveChangeDirectory, openSpecChangeNameError } from './classic-paths.js';
-import { inspectClassicProjectTarget, readClassicProjectFile } from './classic-protected-path.js';
-import type { CometHookRequest } from '../../platform/process/hook-adapter.js';
-import {
-  proposedCometHookFileContent,
-  parseCometHookRequest,
-} from '../../platform/process/hook-adapter.js';
-import { isAgentInstructionPath } from '../workflow-contract/neutral-document-path.js';
-import { prepareEditReview, isReviewedEditProposal } from '../workflow-contract/edit-review.js';
-import { classicEditReviewScope } from './classic-edit-review.js';
-import type { CometHookDecision } from '../workflow-contract/hook.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
 import { scopeCometHookTargets } from '../workflow-contract/hook-target-scope.js';
 import { configuredHookWritePath } from '../workflow-contract/hook-write-policy.js';
-import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
+import type { CometHookDecision } from '../workflow-contract/hook.js';
+import {
+  isAgentInstructionPath,
+  isChangeWalkthroughPath,
+} from '../workflow-contract/neutral-document-path.js';
 import {
   driftStaleReason,
   resolveBranchBinding,
   unboundDetachedMessage,
 } from './classic-branch-binding.js';
+import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
 import { resolveCurrentChange } from './classic-current-change.js';
-import { classicGuardUserMessage, classicLocale } from './classic-output-language.js';
-import { readClassicState, readLegacyState } from './classic-store.js';
-import type { ClassicPhase, ClassicState } from './classic-state.js';
-import { inspectClassicSdkRun } from './classic-sdk-status.js';
 import {
-  inspectClassicPlanReadiness,
+  assertClassicLayoutReadable,
+  assertClassicLayoutWritable,
+  classicProjectRelative,
+  type ClassicLayoutPaths,
+} from './classic-layout.js';
+import {
+  classicDocumentEvidenceMode,
+  isClassicNeutralDocumentWrite,
+} from './classic-neutral-documents.js';
+import { classicGuardUserMessage, classicLocale } from './classic-output-language.js';
+import { inspectClassicActiveChangeDirectory, openSpecChangeNameError } from './classic-paths.js';
+import {
   inspectClassicAutonomousBuildProblems,
+  inspectClassicPlanReadiness,
   type ClassicPlanReadiness,
 } from './classic-plan-readiness.js';
-import {
-  isClassicNeutralDocumentWrite,
-  classicDocumentEvidenceMode,
-} from './classic-neutral-documents.js';
+import { inspectClassicProjectTarget } from './classic-protected-path.js';
+import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
+import { inspectClassicSdkRun } from './classic-sdk-status.js';
+import { isClassicStateFileName } from './classic-state-file.js';
+import type { ClassicPhase, ClassicState } from './classic-state.js';
+import { readClassicState, readLegacyState } from './classic-store.js';
 
 // Share the SDK read with current-selection branch checks within this Hook request only.
 const inspectHookSdkRun = memoizedHookRead(
@@ -1115,12 +1112,12 @@ async function inspectClassicHookTarget(
   if (governing.cancellationPending)
     return result(
       2,
-      'Classic Run cancellation is incomplete: the original host must confirm that its execution and child tasks have stopped before writing.',
+      'Classic Run still has an unresolved Archive or child Run. Reconcile its original business result before writing; platform tasks are cancelled and cleaned up by the Agent platform.',
     );
   if (governing.executionUnresolved)
     return result(
       2,
-      'Classic execution is unresolved: reconcile the original claim before writing, or confirm the entire process tree has stopped and cancel with stoppedActions.',
+      'Classic execution is unresolved: reconcile the original claim and business result before writing. Cancel ordinary tasks through the Agent platform, then record business cancellation without a process-stop receipt.',
     );
   if (governing.archived) return allowed(`${relativePath} (own change archived)`);
 
@@ -1187,7 +1184,7 @@ async function inspectClassicHookTarget(
     (await classicDocumentEvidenceMode(projectRoot)) !== 'strict'
   ) {
     return allowed(
-      `${relativePath} (preserve the current Run and user edits; before advancing, the current Agent must run comet edit-review observe classic ${changeName} --session <current-session> --json and assess the accumulated changes, formal decisions, and check applicability; uncovered changes cannot be accepted or archived)`,
+      `${relativePath} (preserve the current Run and user edits; before advancing, the current Agent must assess the actual changes, formal decisions, and check applicability, then follow comet state next ${changeName} --json; uncovered changes cannot be accepted or archived)`,
     );
   }
   if (phase === 'build' && governing.classic?.workflow === 'full' && !governing.classic.designDoc) {
@@ -1216,78 +1213,10 @@ async function inspectClassicHookTarget(
     }
     return allowed(`${relativePath} (phase: ${phase})`);
   }
-  if (phase === 'verify' && request?.writes) {
-    const proposals = request.writes.filter(
-      (proposal) =>
-        path.resolve(projectRoot, proposal.path) === path.resolve(projectRoot, relativePath),
+  if (phase === 'verify' && request?.writes)
+    return allowed(
+      relativePath + ' (保留当前阶段；由 Agent 判断修改影响，修复实现前通过 Runtime 返回 Build)',
     );
-    if (proposals.length === 1) {
-      try {
-        const scope = governing.classic
-          ? await classicEditReviewScope(projectRoot, changeName, governing.classic)
-          : null;
-        if (
-          scope?.formalPrefixes.some(
-            (prefix) => relativePath === prefix || relativePath.startsWith(prefix + '/'),
-          )
-        )
-          return blocked(
-            relativePath,
-            phase,
-            changeName,
-            classicLocale(governing.classic?.language),
-          );
-        const before = await readClassicProjectFile(projectRoot, relativePath, {
-          label: 'Classic content before edit',
-          maxBytes: 1024 * 1024,
-        });
-        const after = proposedCometHookFileContent(proposals[0], before);
-        if (after !== null) {
-          const { classifyEditImpact } = await import('../workflow-contract/edit-impact.js');
-          const impact = classifyEditImpact(relativePath, before, after);
-          if (
-            impact.kind === 'non-behavioral' ||
-            impact.kind === 'unchanged' ||
-            (impact.kind === 'review-required' &&
-              scope &&
-              (await isReviewedEditProposal(scope, relativePath, before, after)))
-          )
-            return allowed(
-              `${relativePath} (phase: verify, non-behavioral edit; refresh affected check evidence)`,
-            );
-          if (impact.kind === 'review-required' && scope) {
-            await prepareEditReview(
-              await classicEditReviewScope(projectRoot, changeName, governing.classic!, true),
-              {
-                ...request,
-                targets: [relativePath],
-                cwd: projectRoot,
-              },
-            );
-            return result(
-              2,
-              `Classic remains in Verify: the concrete edit requires review. Run comet edit-review show classic ${changeName} for the proposal and continuation; an independent session must claim and record the returned task, or obtain user confirmation in Compat. Acceptance and archive remain blocked until review.`,
-            );
-          }
-        }
-      } catch (error) {
-        if (
-          (error as NodeJS.ErrnoException).code === 'ENOENT' ||
-          (error instanceof Error && error.message.includes('does not exist'))
-        )
-          return blocked(
-            relativePath,
-            phase,
-            changeName,
-            classicLocale(governing.classic?.language),
-          );
-        return result(
-          2,
-          `Classic remains in Verify: edit impact could not be determined; ${error instanceof Error ? error.message : String(error)}. Supply the complete edit for review before acceptance or archive.`,
-        );
-      }
-    }
-  }
   return blocked(relativePath, phase, changeName, classicLocale(governing.classic?.language));
 }
 

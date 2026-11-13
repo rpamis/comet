@@ -1,0 +1,18 @@
+{
+  "registry": {
+    "file": "docs/research/2026-11-11-platform-execution-retirement/runtime-native-owner-retirement/registry.json",
+    "sha256": "5018f7c176fdc5b2dfe2ccc98e263bf452e6127d12ca7c4b9e05621f13b9f651"
+  },
+  "tests": {
+    "file": "docs/research/2026-11-11-platform-execution-retirement/runtime-native-owner-retirement/tests.json",
+    "sha256": "22ec92ce769d287c49ef05a5ca3fedf284aecac79bdb876abc92652b47bbacbe"
+  },
+  "mapping": {
+    "file": "docs/research/2026-11-11-platform-execution-retirement/runtime-native-owner-retirement/mapping.json",
+    "sha256": "4dc28f9189651a51e334ae2c7f47cbabd35db837bcfe9d1978b5301e7f029b70"
+  },
+  "patch": {
+    "file": "docs/research/2026-11-11-platform-execution-retirement/runtime-native-owner-retirement/patch.patch",
+    "sha256": "5691b97fa0dd50cbe2a246b3612c80ac098f8429d5916aeb77afb17d44c122f3"
+  }
+}

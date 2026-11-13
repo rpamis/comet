@@ -1,18 +1,8 @@
-import {
-  readNativeLocalExecution,
-  rebuildNativeLocalExecution,
-  writeNativeLocalExecution,
-} from './native-local-execution.js';
 import { appendNativePortableHistory } from './native-portable-state.js';
 import { toNativePortableText } from './native-portable-text.js';
 import type { NativePortableState } from './native-portable-types.js';
 import type { NativeProjectPaths } from './native-types.js';
-import {
-  currentBranch,
-  nativeLocalExecutionFile,
-  writePortableMutation,
-} from './native-portable-storage.js';
-
+import { writePortableMutation } from './native-portable-storage.js';
 export async function returnNativePortableStateToFinalVerificationLocked(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
@@ -23,15 +13,6 @@ export async function returnNativePortableStateToFinalVerificationLocked(options
   if (state.verification === null || state.verification_result !== 'pass') {
     throw new Error('Native Supervisor recovery requires a persisted final verification pass');
   }
-  const local = await readNativeLocalExecution(nativeLocalExecutionFile(options.paths, state.name));
-  if (
-    state.builder_handoff?.raw_input_ref &&
-    (!local ||
-      local.change !== state.name ||
-      local.candidateId !== state.builder_handoff.candidate_id)
-  )
-    throw new Error('Native final verification recovery lacks its original candidate execution');
-  const executionRoot = local?.workspace.worktreeRoot ?? options.paths.projectRoot;
   const withHistory = appendNativePortableHistory(state, {
     goal_cycle: state.loop.goal_cycle,
     iteration: state.loop.iteration,
@@ -61,15 +42,5 @@ export async function returnNativePortableStateToFinalVerificationLocked(options
     },
   };
   const written = await writePortableMutation({ paths: options.paths, previous: state, next });
-  await writeNativeLocalExecution(
-    nativeLocalExecutionFile(options.paths, state.name),
-    rebuildNativeLocalExecution({
-      portableState: written,
-      projectRoot: local?.workspace.projectRoot ?? options.paths.projectRoot,
-      worktreeRoot: executionRoot,
-      branch: currentBranch(executionRoot),
-    }),
-    { containedRoot: options.paths.runtimeDir },
-  );
   return written;
 }

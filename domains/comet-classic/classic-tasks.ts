@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
 export interface ClassicTask {
   id: string | null;
@@ -63,10 +63,6 @@ export function classicTaskRequirements(
   return lines.join('');
 }
 
-export function classicTaskRevision(source: string): string {
-  return createHash('sha256').update(classicTaskRequirements(source)).digest('hex');
-}
-
 export function assignClassicTaskIds(source: string): string {
   const lines = source.split(/(?<=\n)/u);
   for (const task of parseClassicTasks(source)) {
@@ -77,10 +73,11 @@ export function assignClassicTaskIds(source: string): string {
   return lines.join('');
 }
 
-export function completeClassicTask(source: string, id: string, expectedRevision: string): string {
-  if (classicTaskRevision(source) !== expectedRevision) {
-    throw new Error('Task requirements changed; reload the task list before recording completion');
-  }
+export function completeClassicTask(
+  source: string,
+  id: string,
+  _expectedRevision?: string,
+): string {
   const tasks = parseClassicTasks(source);
   if (tasks.some((task) => !task.id))
     throw new Error('Legacy tasks need stable IDs; run state tasks <change> --assign-ids first');

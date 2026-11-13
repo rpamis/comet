@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   nativeWorkspaceIsClean,
@@ -21,16 +22,23 @@ describe('Native Runtime-created workspace configuration', () => {
   afterEach(async () => {
     await fs.rm(root, { recursive: true, force: true, maxRetries: 3 });
   });
-  it('allows only the unchanged Runtime copy and preserves later user edits', async () => {
+  it('recognizes the Runtime-owned configuration and preserves user edits before cleanup', async () => {
     expect(nativeWorkspaceIsClean(root)).toBe(false);
     await recordNativeWorkspaceConfig(root);
     expect(nativeWorkspaceIsClean(root)).toBe(true);
     await fs.appendFile(path.join(root, '.comet/config.yaml'), '# user change\n');
-    expect(nativeWorkspaceIsClean(root)).toBe(false);
+    expect(nativeWorkspaceIsClean(root)).toBe(true);
     await removeNativeWorkspaceConfig(root);
-    expect(await fs.readFile(path.join(root, '.comet/config.yaml'), 'utf8')).toContain(
+    const runtimeRoot = resolveWorkspaceRuntimeRootSync(root);
+    const snapshot = JSON.parse(
+      await fs.readFile(path.join(runtimeRoot, 'native/workspace-config.json'), 'utf8'),
+    );
+    expect(await fs.readFile(path.join(runtimeRoot, snapshot.preservedRef), 'utf8')).toContain(
       '# user change',
     );
+    await expect(fs.access(path.join(root, '.comet/config.yaml'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
   });
   it('removes its exact untracked copy but never a tracked configuration', async () => {
     await recordNativeWorkspaceConfig(root);

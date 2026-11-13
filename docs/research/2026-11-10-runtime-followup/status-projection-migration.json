@@ -1,0 +1,5 @@
+{
+  "file": "test/domains/comet-native/native-sdk-status-observation.test.ts",
+  "reason": "The status projector consumes an already validated Run; real inspect still rejects a replaced root. Current v4 has no Runtime-managed check probe.",
+  "source": "  // Projection-only input; no synthetic candidate is persisted or dispatched.\n  await expect(\n    projectNativeSdkStatus(\n      { projectRoot, name },\n      {\n        ...inspected,\n        state: {\n          ...inspected.state,\n          phase: 'verify',\n          shape_confirmation_hash: 'projection-only-shape',\n          builder_handoff: { candidate_id: 'projection-only-candidate' } as NonNullable<\n            typeof inspected.state.builder_handoff\n          >,\n        },\n      },\n    ),\n  ).rejects.toThrow(/symbolic link/u);"
+}

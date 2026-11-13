@@ -40,7 +40,7 @@ describe('SDK Run observation', () => {
     vi.unstubAllEnvs();
     await fs.rm(directory, { recursive: true, force: true });
   });
-  it('bounds selected identities and counts invalid entries and duplicate authorities accurately', async () => {
+  it('bounds current identities and counts invalid entries without implicitly importing legacy stores', async () => {
     const current = path.join(resolveWorkspaceRuntimeRootSync(project), 'sdk-runs', 'native');
     const prior = path.join(project, '.comet/runtime/sdk-runs/native');
     const runtime = createRuntime({
@@ -69,14 +69,14 @@ describe('SDK Run observation', () => {
       unreadable: 0,
     });
     expect(await readChangeTraceSnapshots(project, 'native', 1)).toEqual({
-      runs: [],
+      runs: [run],
       truncated: true,
-      unreadable: 1,
+      unreadable: 0,
     });
     expect(await readChangeTraceSnapshots(project, 'native', 2)).toEqual({
-      runs: [],
+      runs: [run],
       truncated: false,
-      unreadable: 2,
+      unreadable: 1,
     });
     await fs.rm(prior, { recursive: true });
     expect(await readChangeTraceSnapshots(project, 'native', 2)).toEqual({

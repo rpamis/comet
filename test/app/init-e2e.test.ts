@@ -950,7 +950,7 @@ describe('comet init E2E', () => {
     });
   });
 
-  it('removes fresh Native config and artifacts while preserving its Runtime write fence', async () => {
+  it('removes fresh Native config and artifacts without creating a legacy Runtime write fence', async () => {
     mockExternalSuccess();
     await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
     const { initCommand } = await import('../../app/commands/init.js');
@@ -966,11 +966,10 @@ describe('comet init E2E', () => {
     );
     expect(result.status).toBe('complete');
     const runtimeFence = path.join(tmpDir, '.comet/runtime');
-    const fence = await fs.readFile(runtimeFence, 'utf8');
+    await expect(fs.stat(runtimeFence)).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(removeWorkingDirs(tmpDir)).resolves.toEqual({
       removed: 1,
       failed: 0,
-      preserved: [runtimeFence],
     });
     await expect(fs.stat(path.join(tmpDir, '.comet/config.yaml'))).rejects.toMatchObject({
       code: 'ENOENT',
@@ -978,10 +977,7 @@ describe('comet init E2E', () => {
     await expect(fs.stat(path.join(tmpDir, 'docs/comet'))).rejects.toMatchObject({
       code: 'ENOENT',
     });
-    await expect(fs.readFile(runtimeFence, 'utf8')).resolves.toBe(fence);
-    await expect(
-      fs.mkdir(path.join(runtimeFence, 'native'), { recursive: true }),
-    ).rejects.toThrow();
+    await expect(fs.stat(runtimeFence)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('preserves global workflows and policy settings when init does not explicitly replace them', async () => {

@@ -1,15 +1,14 @@
 import path from 'node:path';
-import {
-  readProtectedProjectFile,
-  ensureProtectedProjectDirectory,
-} from '../workflow-contract/protected-project-path.js';
 import { hashRuntimeValue, type WorkflowRun } from '../engine/runtime.js';
-import { atomicWriteJson } from './native-atomic-file.js';
+import {
+  ensureProtectedProjectDirectory,
+  readProtectedProjectFile,
+} from '../workflow-contract/protected-project-path.js';
 import {
   createNativeLegacyArchiveOverlay,
   withNativeLegacyArchiveMaterials,
 } from './native-archive-legacy-overlay.js';
-import { assertNativeSdkCandidateUnchanged } from './native-sdk-checks.js';
+import { atomicWriteJson } from './native-atomic-file.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import {
@@ -18,7 +17,7 @@ import {
 } from './native-portable-transactions.js';
 import type { NativeProjectPaths } from './native-types.js';
 
-const MAX_BYTES = 8 * 1024 * 1024;
+const MAX_BYTES = Number.MAX_SAFE_INTEGER;
 const SCHEMA = 'comet.native.archive-originals.v1';
 function evidenceRef(runId: string, transactionId: string) {
   return `archive-originals/${hashRuntimeValue({ runId, transactionId })}.json`;
@@ -108,16 +107,10 @@ export async function importNativeSdkArchiveOriginals(options: {
   );
   const value = JSON.parse(file.bytes.toString('utf8'));
   const originals = parseOriginals(value, run.runId, saved.journal);
-  const legacyArchiveOverlay = await withNativeLegacyArchiveMaterials({
+  await withNativeLegacyArchiveMaterials({
     paths,
     transaction: saved.journal,
     overlay: createNativeLegacyArchiveOverlay({ paths, transaction: saved.journal, originals }),
-  });
-  await assertNativeSdkCandidateUnchanged({
-    run,
-    projectRoot,
-    requireEvidence: true,
-    legacyArchiveOverlay,
   });
   const targetRef = evidenceRef(run.runId, saved.journal.id);
   const existing = await readNativeSdkArchiveOriginals(paths, run.runId, saved.journal);

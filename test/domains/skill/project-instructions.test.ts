@@ -32,6 +32,41 @@ describe('Comet project instructions', () => {
     }
   });
 
+  it('requires ambient confirmation without treating project selection as session consent', async () => {
+    await installCometProjectInstructions(tmpDir, 'zh');
+    const instructions = await fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8');
+    expect(instructions).toContain('reasonCode: ambient-resume-confirmation-required');
+    expect(instructions).toContain('收到确认后直接加载返回的 `skill`，无需再次扫描');
+    expect(instructions).toContain('保留原 change、selection、批准和阶段写入约束');
+    const rule = await fs.readFile(
+      path.resolve('assets/skills/comet/rules/comet-workflow-guard.md'),
+      'utf8',
+    );
+    expect(rule).toContain('或项目已有有效 selection，也先展示名称和阶段');
+    expect(rule).toContain('已在流程中的同一会话沿用已有确认');
+    expect(rule).toContain('本会话已确认进入且当前 workflow 是 Native');
+    expect(rule).toContain('本会话已确认进入且当前 workflow 是 Classic');
+    await installCometProjectInstructions(tmpDir, 'en');
+    const english = await fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8');
+    expect(english).toContain('reasonCode: ambient-resume-confirmation-required');
+    expect(english).toContain('load the returned `skill` directly without scanning again');
+    expect(english).toContain(
+      'preserving the original change, selection, approvals, and phase write constraints',
+    );
+    const englishRule = await fs.readFile(
+      path.resolve('assets/skills/comet/rules/comet-workflow-guard.en.md'),
+      'utf8',
+    );
+    expect(englishRule).toContain('or the project has a valid selection');
+    expect(englishRule).toContain('An ongoing session reuses its confirmation');
+    expect(englishRule).toContain(
+      'After this session has confirmed entry, if the workflow is Native',
+    );
+    expect(englishRule).toContain(
+      'After this session has confirmed entry, if the workflow is Classic',
+    );
+  });
+
   it.each(['@AGENTS.md', '@./AGENTS.md'])(
     'keeps a direct %s import in CLAUDE.md single-sourced',
     async (importPath) => {

@@ -1,0 +1,62 @@
+{
+  "scope": "Only the existing mixed Delta test edited; no production/catalog changes",
+  "delta": {
+    "initialFailure": "native-delta-materializes-current.json: old collectProposal(false) automatic source-drift rejection expected; actual success.",
+    "change": "Read-only collect now succeeds while preserving target text exactly. Agent explicitly merges revised Delta target; materializeTargets=true accepts it without rewriting. Independent target text + different Delta still rejects and preserves full user text.",
+    "preserved": "Original title, initial generation, explicit refresh, Delta link, independent edit rejection and target bytes.",
+    "result": "1 passed in native-delta-materializes-green.json",
+    "productionFinding": "No production defect confirmed; independent target safety passed; no hash or source-proof restored."
+  },
+  "selectors": [
+    {
+      "file": "D:/Project/Comet-runtime-review-053/test/domains/comet-entry/hook-adapter.test.ts",
+      "name": "Comet Hook platform adapter reads native Codex apply_patch commands without interpreting shell commands as patches",
+      "status": "passed",
+      "report": "native-selector-children-hook-current.json"
+    },
+    {
+      "file": "D:/Project/Comet-runtime-review-053/test/domains/comet-native/native-children.test.ts",
+      "name": "Native parent and child changes accepts a readable v2 acceptance index while retaining the v1 contract",
+      "status": "passed",
+      "report": "native-selector-children-hook-current.json"
+    },
+    {
+      "file": "D:/Project/Comet-runtime-review-053/test/domains/comet-native/native-children.test.ts",
+      "name": "Native parent and child changes derives referenced v2 acceptance from the current catalog without copying its text",
+      "status": "passed",
+      "report": "native-selector-children-hook-current.json"
+    },
+    {
+      "file": "D:/Project/Comet-runtime-review-053/test/domains/comet-native/native-children.test.ts",
+      "name": "Native parent and child changes retains approval after a children edit and leaves its meaning to the Agent",
+      "status": "passed",
+      "report": "native-selector-children-hook-current.json"
+    },
+    {
+      "file": "D:/Project/Comet-runtime-review-053/test/domains/comet-native/native-sdk-application.test.ts",
+      "name": "Native SDK Workflow Application confirms a Supervisor child plan and coordination mode in the same SDK Run' with referenced acceptance'",
+      "status": "passed",
+      "report": "native-selector-sdk-current.json"
+    },
+    {
+      "file": "D:/Project/Comet-runtime-review-053/test/domains/comet-native/native-sdk-application.test.ts",
+      "name": "Native SDK Workflow Application confirms a Supervisor child plan and coordination mode in the same SDK Run''",
+      "status": "passed",
+      "report": "native-selector-sdk-current.json"
+    },
+    {
+      "file": "D:/Project/Comet-runtime-review-053/test/domains/comet-native/native-sdk-application.test.ts",
+      "name": "Native SDK Workflow Application materializes a Delta target before Shape and refuses independent target edits",
+      "status": "passed",
+      "report": "native-delta-materializes-green.json"
+    },
+    {
+      "file": "D:/Project/Comet-runtime-review-053/test/domains/comet-native/native-sdk-application.test.ts",
+      "name": "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+      "status": "passed",
+      "report": "native-selector-sdk-current.json"
+    }
+  ],
+  "distinctPassingNames": 8,
+  "limitations": "Only requested exact selectors executed; no whole-file/full tests or Eval. SDK-current report Delta variant preceded final stronger raw-text assertion; final Delta-green report supersedes that one case."
+}

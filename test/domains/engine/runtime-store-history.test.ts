@@ -1,3 +1,4 @@
+import { requireFileSymlink } from '../../helpers/file-symlink.js';
 import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
 import os from 'node:os';
@@ -212,7 +213,8 @@ it('does not remove a replaced source after link publication', async () => {
   expect(await fs.stat(history())).toBeDefined();
 });
 
-it('rejects symlink history and absent checkpoint without reopening authority', async () => {
+it('rejects symlink history and absent checkpoint without reopening authority', async (context) => {
+  await requireFileSymlink(context);
   await store().closeRun(runId, 1);
   const saved = path.join(root, 'saved-checkpoint');
   await fs.rename(history(), saved);

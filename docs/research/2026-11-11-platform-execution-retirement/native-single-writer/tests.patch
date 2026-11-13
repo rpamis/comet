@@ -1,0 +1,2231 @@
+diff --git a/test/domains/comet-native/native-lock.test.ts b/test/domains/comet-native/native-lock.test.ts
+deleted file mode 100644
+index 7cd127ff..00000000
+--- a/test/domains/comet-native/native-lock.test.ts
++++ /dev/null
+@@ -1,323 +0,0 @@
+-import { execFileSync } from 'node:child_process';
+-import { promises as fs } from 'fs';
+-import os from 'os';
+-import path from 'path';
+-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+-
+-import {
+-  acquireNativeLock,
+-  diagnoseNativeLock,
+-  inspectNativeLockRecovery,
+-  inspectNativeProjectLocks,
+-  NATIVE_LOCK_UNKNOWN_TAKEOVER_MS,
+-  readNativeLock,
+-  releaseNativeLock,
+-  repairNativeProjectLock,
+-  takeOverNativeStaleLock,
+-  withNativeLockRecovery,
+-} from '../../../domains/comet-native/native-lock.js';
+-import { withNativeMutationLock } from '../../../domains/comet-native/native-mutation-lock.js';
+-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+-import { withNativeTransitionLock } from '../../../domains/comet-native/native-transition-journal.js';
+-import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+-import * as processIdentity from '../../../platform/process/process-identity.js';
+-import * as nativeLocking from '../../../domains/comet-native/native-lock.js';
+-import { RaceSafeReadError } from '../../../platform/fs/race-safe-read.js';
+-
+-describe('Native operation locks', () => {
+-  let projectRoot: string;
+-  let paths: NativeProjectPaths;
+-
+-  beforeEach(async () => {
+-    projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-lock-'));
+-    paths = await nativeProjectPaths(projectRoot, '.');
+-  });
+-
+-  afterEach(async () => {
+-    vi.restoreAllMocks();
+-    await fs.rm(projectRoot, { recursive: true, force: true });
+-  });
+-
+-  it('reports missing recovery records without creating a lock directory', async () => {
+-    const file = path.join(paths.locksDir, 'missing.lock');
+-    await expect(inspectNativeLockRecovery(file)).resolves.toEqual({
+-      file,
+-      status: 'missing',
+-      owner: null,
+-      identity: null,
+-      token: null,
+-    });
+-    await expect(inspectNativeProjectLocks(paths)).resolves.toEqual([]);
+-    await expect(fs.access(paths.locksDir)).rejects.toMatchObject({ code: 'ENOENT' });
+-  });
+-
+-  it('lists lock and coordinator records while preserving unrelated files and directories', async () => {
+-    const coordinator = path.join(paths.locksDir, '.coordinator');
+-    await fs.mkdir(coordinator, { recursive: true });
+-    await fs.writeFile(path.join(paths.locksDir, 'broken.lock'), 'interrupted JSON');
+-    await fs.writeFile(path.join(coordinator, 'broken.claim'), 'interrupted claim');
+-    await fs.mkdir(path.join(paths.locksDir, 'directory.lock'));
+-    await fs.mkdir(path.join(coordinator, 'directory.claim'));
+-    await fs.writeFile(path.join(paths.locksDir, 'notes.txt'), 'keep');
+-    await fs.writeFile(path.join(coordinator, 'notes.txt'), 'keep');
+-
+-    const records = await inspectNativeProjectLocks(paths);
+-    expect(records).toHaveLength(4);
+-    for (const [directory, kind, suffix] of [
+-      [paths.locksDir, 'lock', 'lock'],
+-      [coordinator, 'coordinator', 'claim'],
+-    ] as const) {
+-      expect(records).toContainEqual(
+-        expect.objectContaining({
+-          file: path.join(directory, `broken.${suffix}`),
+-          kind,
+-          status: 'malformed',
+-          token: expect.any(String),
+-        }),
+-      );
+-      expect(records).toContainEqual(
+-        expect.objectContaining({
+-          file: path.join(directory, `directory.${suffix}`),
+-          kind,
+-          status: 'malformed',
+-          token: null,
+-        }),
+-      );
+-      expect(await fs.readFile(path.join(directory, 'notes.txt'), 'utf8')).toBe('keep');
+-    }
+-  });
+-
+-  it.each(['lock', 'coordinator'] as const)(
+-    'repairs only the confirmed malformed %s record and retains its original bytes',
+-    async (kind) => {
+-      const coordinator = path.join(paths.locksDir, '.coordinator');
+-      await fs.mkdir(coordinator, { recursive: true });
+-      const file =
+-        kind === 'lock'
+-          ? path.join(paths.locksDir, 'broken.lock')
+-          : path.join(coordinator, 'broken.claim');
+-      const bytes = 'partial record from interrupted process';
+-      await fs.writeFile(file, bytes);
+-      const record = (await inspectNativeProjectLocks(paths)).find((entry) => entry.file === file)!;
+-      await expect(repairNativeProjectLock(paths, record.token!, false)).rejects.toThrow('changed');
+-      expect(await fs.readFile(file, 'utf8')).toBe(bytes);
+-      await repairNativeProjectLock(paths, record.token!, true);
+-      await expect(fs.access(file)).rejects.toMatchObject({ code: 'ENOENT' });
+-      await expect(inspectNativeProjectLocks(paths)).resolves.toEqual([]);
+-      await expect(repairNativeProjectLock(paths, record.token!, true)).rejects.toThrow('changed');
+-    },
+-  );
+-
+-  it('rejects an old repair token after the malformed record changes', async () => {
+-    await fs.mkdir(paths.locksDir, { recursive: true });
+-    const file = path.join(paths.locksDir, 'broken.lock');
+-    await fs.writeFile(file, 'old partial record');
+-    const before = await inspectNativeLockRecovery(file);
+-    await fs.writeFile(file, 'replacement partial record');
+-    const after = await inspectNativeLockRecovery(file);
+-    expect(after.token).not.toBe(before.token);
+-    await expect(repairNativeProjectLock(paths, before.token!, true)).rejects.toThrow('changed');
+-    expect(await fs.readFile(file, 'utf8')).toBe('replacement partial record');
+-  });
+-
+-  it('preserves a live lock even when its exact repair token and stop confirmation are supplied', async () => {
+-    const lock = await acquireNativeLock(paths, 'active', 'still running');
+-    try {
+-      const record = await inspectNativeLockRecovery(lock.file);
+-      expect(record.status).toBe('active');
+-      await expect(repairNativeProjectLock(paths, record.token!, true)).rejects.toThrow(
+-        'still held',
+-      );
+-      expect(await readNativeLock(lock.file)).toEqual(lock.owner);
+-    } finally {
+-      await releaseNativeLock(lock);
+-    }
+-  });
+-
+-  it('removes a confirmed stopped owner without touching another operation lock', async () => {
+-    await fs.mkdir(paths.locksDir, { recursive: true });
+-    const file = path.join(paths.locksDir, 'stopped.lock');
+-    await fs.writeFile(
+-      file,
+-      JSON.stringify({
+-        id: 'stopped-owner',
+-        pid: 2_147_483_647,
+-        hostname: os.hostname(),
+-        createdAt: '2026-07-14T00:00:00.000Z',
+-        operation: 'interrupted operation',
+-      }),
+-    );
+-    const other = await acquireNativeLock(paths, 'other', 'other operation');
+-    try {
+-      const record = await inspectNativeLockRecovery(file);
+-      expect(record.status).toBe('unknown');
+-      await repairNativeProjectLock(paths, record.token!, true);
+-      await expect(readNativeLock(file)).resolves.toBeNull();
+-      expect(await readNativeLock(other.file)).toEqual(other.owner);
+-    } finally {
+-      await releaseNativeLock(other);
+-    }
+-  });
+-
+-  it('stores owner metadata, rejects contention, and permits owner release', async () => {
+-    const lock = await acquireNativeLock(paths, 'archive', 'archive example');
+-    expect(await readNativeLock(lock.file)).toMatchObject({
+-      id: lock.owner.id,
+-      operation: 'archive example',
+-    });
+-    await expect(acquireNativeLock(paths, 'archive', 'another archive')).rejects.toThrow(
+-      /lock is busy/u,
+-    );
+-    await releaseNativeLock(lock);
+-    expect(await readNativeLock(lock.file)).toBeNull();
+-  });
+-
+-  it('releases a lock when close finalizes its ctime', async () => {
+-    const originalOpen = fs.open.bind(fs);
+-    const open = vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+-      const handle = await originalOpen(...args);
+-      if (args[1] !== 'wx') return handle;
+-
+-      const stat = handle.stat.bind(handle);
+-      return new Proxy(handle, {
+-        get(target, property) {
+-          if (property === 'stat') {
+-            return async (options?: { bigint?: boolean }) => {
+-              const result = await stat(options as { bigint: true });
+-              if (!options?.bigint) return result;
+-              return new Proxy(result, {
+-                get(statTarget, statProperty) {
+-                  if (statProperty === 'ctimeNs') return statTarget.ctimeNs - 1n;
+-                  return Reflect.get(statTarget, statProperty, statTarget);
+-                },
+-              });
+-            };
+-          }
+-          const value = Reflect.get(target, property, target);
+-          return typeof value === 'function' ? value.bind(target) : value;
+-        },
+-      });
+-    });
+-
+-    try {
+-      const lock = await acquireNativeLock(paths, 'archive', 'archive example');
+-      await expect(releaseNativeLock(lock)).resolves.toBeUndefined();
+-    } finally {
+-      open.mockRestore();
+-    }
+-  });
+-
+-  it('validates lock names, tolerates a missing release target, and reuses nested coordinators', async () => {
+-    await expect(acquireNativeLock(paths, 'Bad Name', 'invalid')).rejects.toThrow(
+-      'Invalid Native lock name',
+-    );
+-    const lock = await acquireNativeLock(paths, 'nested', 'nested operation');
+-    await fs.rm(lock.file);
+-    await expect(releaseNativeLock(lock)).resolves.toBeUndefined();
+-
+-    const events: string[] = [];
+-    await withNativeLockRecovery([paths, paths], 'nested recovery', async () => {
+-      events.push('outer');
+-      await withNativeLockRecovery([paths], 'nested recovery', async () => {
+-        events.push('inner');
+-      });
+-    });
+-    expect(events).toEqual(['outer', 'inner']);
+-  });
+-
+-  it('does not release a lock whose ownership changed', async () => {
+-    const lock = await acquireNativeLock(paths, 'archive', 'archive example');
+-    await fs.writeFile(lock.file, JSON.stringify({ ...lock.owner, id: 'another-owner' }));
+-    await expect(releaseNativeLock(lock)).rejects.toThrow(/ownership changed/u);
+-    expect(await readNativeLock(lock.file)).toMatchObject({ id: 'another-owner' });
+-  });
+-
+-  it.skipIf(process.platform === 'win32')(
+-    'rejects a symlinked lock file instead of following it',
+-    async () => {
+-      const lock = await acquireNativeLock(paths, 'archive', 'archive example');
+-      const displaced = `${lock.file}.real`;
+-      await fs.rename(lock.file, displaced);
+-      await fs.symlink(displaced, lock.file);
+-
+-      await expect(readNativeLock(lock.file)).rejects.toThrow(/regular file/u);
+-    },
+-  );
+-
+-  it.skipIf(process.platform === 'win32')(
+-    'rejects a FIFO at the lock path without blocking on open',
+-    async () => {
+-      const lock = await acquireNativeLock(paths, 'archive', 'archive example');
+-      await fs.rm(lock.file);
+-      execFileSync('mkfifo', [lock.file]);
+-
+-      await expect(readNativeLock(lock.file)).rejects.toThrow(/regular file/u);
+-    },
+-  );
+-
+-  it('fails closed for missing, malformed, oversized, and non-lock takeover targets', async () => {
+-    const missing = path.join(paths.locksDir, 'archive.lock');
+-    expect(await diagnoseNativeLock(missing)).toEqual({
+-      status: 'missing',
+-      owner: null,
+-      identity: null,
+-    });
+-    await expect(takeOverNativeStaleLock(paths, missing)).resolves.toEqual({ status: 'missing' });
+-
+-    await fs.mkdir(paths.locksDir, { recursive: true });
+-    await fs.writeFile(missing, JSON.stringify({ pid: 1 }));
+-    await expect(readNativeLock(missing)).rejects.toThrow(/Invalid Native lock metadata/u);
+-
+-    await fs.rm(missing);
+-    await fs.mkdir(missing);
+-    await expect(readNativeLock(missing)).rejects.toThrow(/regular file/u);
+-    await fs.rm(missing, { recursive: true });
+-
+-    await fs.writeFile(missing, 'x'.repeat(16 * 1024 + 1));
+-    await expect(readNativeLock(missing)).rejects.toThrow(/exceeds/u);
+-
+-    await fs.writeFile(
+-      missing,
+-      JSON.stringify({
+-        id: 'active-owner',
+-        pid: process.pid,
+-        hostname: os.hostname(),
+-        createdAt: '2026-07-17T00:00:00.000Z',
+-        operation: 'active operation',
+-      }),
+-    );
+-    const unknown = await diagnoseNativeLock(missing);
+-    expect(unknown.status).toBe('unknown');
+-    await expect(takeOverNativeStaleLock(paths, missing, unknown)).resolves.toMatchObject({
+-      status: 'changed',
+-      diagnosis: { status: 'unknown' },
+-    });
+-
+-    await expect(
+-      takeOverNativeStaleLock(paths, path.join(paths.runtimeDir, 'outside.lock')),
+-    ).rejects.toThrow(/outside the lock directory/u);
+-  });
+-
+-  it('serializes live mutation contenders so the later command can recheck state', async () => {
+-    let releaseFirst!: () => void;
+-    const firstMayFinish = new Promise<void>((resolve) => (releaseFirst = resolve));
+-    let firstEntered!: () => void;
+-    const firstDidEnter = new Promise<void>((resolve) => (firstEntered = resolve));
+-    const order: string[] = [];
+-    const first = withNativeMutationLock(paths, 'first mutation', async () => {
+-      order.push('first');
+-      firstEntered();
+-      await firstMayFinish;
+-    });
+-    await firstDidEnter;
+-    const second = withNativeMutationLock(paths, 'second mutation', async () => {
+-      order.push('second');
+-    });
+-
+-    await new Promise((resolve) => setTimeout(resolve, 20));
+-    expect(order).toEqual(['first']);
+-    releaseFirst();
+-    await Promise.all([first, second]);
+-    expect(order).toEqual(['first', 'second']);
+-  });
+-});
+
+diff --git a/test/domains/comet-native/native-lock-concurrency.test.ts b/test/domains/comet-native/native-lock-concurrency.test.ts
+deleted file mode 100644
+index a3bd657f..00000000
+--- a/test/domains/comet-native/native-lock-concurrency.test.ts
++++ /dev/null
+@@ -1,227 +0,0 @@
+-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+-import { promises as fs } from 'node:fs';
+-import os from 'node:os';
+-import path from 'node:path';
+-import { fileURLToPath } from 'node:url';
+-import { build } from 'esbuild';
+-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+-
+-import { acquireNativeLock, releaseNativeLock } from '../../../domains/comet-native/native-lock.js';
+-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+-import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+-
+-interface WorkerResult {
+-  code: number | null;
+-  stdout: string;
+-  stderr: string;
+-}
+-
+-const fixture = fileURLToPath(
+-  new URL('../../fixtures/native-lock-process-worker.ts', import.meta.url),
+-);
+-
+-async function waitFor(file: string): Promise<void> {
+-  const deadline = Date.now() + 10_000;
+-  while (Date.now() < deadline) {
+-    try {
+-      await fs.access(file);
+-      return;
+-    } catch (error) {
+-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+-      await new Promise((resolve) => setTimeout(resolve, 5));
+-    }
+-  }
+-  throw new Error(`Timed out waiting for ${file}`);
+-}
+-
+-async function waitForText(file: string): Promise<string> {
+-  const deadline = Date.now() + 10_000;
+-  while (Date.now() < deadline) {
+-    try {
+-      const text = await fs.readFile(file, 'utf8');
+-      if (text.length > 0) return text;
+-    } catch (error) {
+-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+-    }
+-    await new Promise((resolve) => setTimeout(resolve, 5));
+-  }
+-  throw new Error(`Timed out waiting for content in ${file}`);
+-}
+-
+-function collect(child: ChildProcessWithoutNullStreams): Promise<WorkerResult> {
+-  let stdout = '';
+-  let stderr = '';
+-  child.stdout.setEncoding('utf8').on('data', (chunk: string) => (stdout += chunk));
+-  child.stderr.setEncoding('utf8').on('data', (chunk: string) => (stderr += chunk));
+-  return new Promise((resolve) => {
+-    child.once('exit', (code) => resolve({ code, stdout, stderr }));
+-  });
+-}
+-
+-describe('Native lock process concurrency', () => {
+-  let buildRoot: string;
+-  let worker: string;
+-  let projectRoot: string;
+-  let paths: NativeProjectPaths;
+-
+-  beforeAll(async () => {
+-    buildRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-lock-worker-'));
+-    worker = path.join(buildRoot, 'worker.mjs');
+-    await build({
+-      entryPoints: [fixture],
+-      outfile: worker,
+-      bundle: true,
+-      platform: 'node',
+-      format: 'esm',
+-      target: 'node20',
+-      banner: {
+-        js: [
+-          "import { createRequire as __cometCreateRequire } from 'module';",
+-          'const require = __cometCreateRequire(import.meta.url);',
+-        ].join('\n'),
+-      },
+-    });
+-  });
+-
+-  beforeEach(async () => {
+-    projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-lock-process-'));
+-    paths = await nativeProjectPaths(projectRoot, '.');
+-    await fs.mkdir(paths.locksDir, { recursive: true });
+-  });
+-
+-  afterEach(async () => {
+-    await fs.rm(projectRoot, { recursive: true, force: true });
+-  });
+-
+-  afterAll(async () => {
+-    await fs.rm(buildRoot, { recursive: true, force: true });
+-  });
+-
+-  function startWorker(args: string[]): {
+-    child: ChildProcessWithoutNullStreams;
+-    result: Promise<WorkerResult>;
+-  } {
+-    const child = spawn(process.execPath, [worker, ...args], {
+-      cwd: projectRoot,
+-      stdio: ['pipe', 'pipe', 'pipe'],
+-    });
+-    return { child, result: collect(child) };
+-  }
+-
+-  it.each(['root-move', 'transition-example'])(
+-    'allows only one process to replace a diagnosed stale %s lock',
+-    async (lockName) => {
+-      const lockFile = path.join(paths.locksDir, `${lockName}.lock`);
+-      await fs.writeFile(
+-        lockFile,
+-        JSON.stringify({
+-          id: `stale-${lockName}`,
+-          pid: 2_147_483_647,
+-          hostname: os.hostname(),
+-          createdAt: '2026-07-17T00:00:00.000Z',
+-          operation: 'interrupted operation',
+-        }),
+-      );
+-      const readyPrimary = path.join(projectRoot, 'primary.ready');
+-      const readyLate = path.join(projectRoot, 'late.ready');
+-      const go = path.join(projectRoot, 'go');
+-      const primaryStatus = path.join(projectRoot, 'primary.status');
+-      const lateStatus = path.join(projectRoot, 'late.status');
+-      const release = path.join(projectRoot, 'release');
+-      const primary = startWorker([
+-        'takeover',
+-        projectRoot,
+-        lockName,
+-        'primary',
+-        readyPrimary,
+-        go,
+-        primaryStatus,
+-        release,
+-      ]);
+-      const late = startWorker([
+-        'takeover',
+-        projectRoot,
+-        lockName,
+-        'late',
+-        readyLate,
+-        go,
+-        lateStatus,
+-        release,
+-      ]);
+-
+-      await Promise.all([waitFor(readyPrimary), waitFor(readyLate)]);
+-      await fs.writeFile(go, 'go\n');
+-      await Promise.all([waitFor(primaryStatus), waitFor(lateStatus)]);
+-      const statuses = await Promise.all([
+-        fs.readFile(primaryStatus, 'utf8'),
+-        fs.readFile(lateStatus, 'utf8'),
+-      ]);
+-      expect(statuses.filter((status) => status.startsWith('acquired:'))).toHaveLength(1);
+-      expect(statuses.filter((status) => status.startsWith('blocked:'))).toHaveLength(1);
+-
+-      await fs.writeFile(release, 'release\n');
+-      const results = await Promise.all([primary.result, late.result]);
+-      expect(results).toEqual([
+-        expect.objectContaining({ code: 0, stderr: '' }),
+-        expect.objectContaining({ code: 0, stderr: '' }),
+-      ]);
+-      expect(JSON.parse(results[0].stdout)).toMatchObject({ takeover: { status: 'removed' } });
+-      expect(JSON.parse(results[1].stdout)).toMatchObject({ takeover: { status: 'changed' } });
+-    },
+-  );
+-
+-  it('prevents an old owner release from removing a replacement owner', async () => {
+-    const old = await acquireNativeLock(paths, 'archive', 'old archive owner');
+-    const oldSnapshot = path.join(projectRoot, 'old-lock.json');
+-    await fs.writeFile(oldSnapshot, JSON.stringify(old));
+-    await releaseNativeLock(old);
+-    const replacement = await acquireNativeLock(paths, 'archive', 'replacement archive owner');
+-    const ready = path.join(projectRoot, 'release.ready');
+-    const go = path.join(projectRoot, 'release.go');
+-    const status = path.join(projectRoot, 'release.status');
+-    const workerProcess = startWorker([
+-      'release-old',
+-      projectRoot,
+-      'archive',
+-      'late',
+-      ready,
+-      go,
+-      status,
+-      oldSnapshot,
+-    ]);
+-
+-    await waitFor(ready);
+-    await fs.writeFile(`${go}.primary`, 'replacement-ready\n');
+-    await fs.writeFile(go, 'go\n');
+-    await expect(waitForText(status)).resolves.toMatch(/^blocked:/u);
+-    expect(await fs.readFile(replacement.file, 'utf8')).toContain(replacement.owner.id);
+-    await expect(workerProcess.result).resolves.toMatchObject({ code: 0, stderr: '' });
+-    await releaseNativeLock(replacement);
+-  });
+-
+-  it('elects one winner when two processes acquire the same free lock together', async () => {
+-    const readyA = path.join(projectRoot, 'race-a.ready');
+-    const readyB = path.join(projectRoot, 'race-b.ready');
+-    const go = path.join(projectRoot, 'race.go');
+-    const statusA = path.join(projectRoot, 'race-a.status');
+-    const statusB = path.join(projectRoot, 'race-b.status');
+-    const release = path.join(projectRoot, 'race.release');
+-    const contenders = [
+-      startWorker(['acquire-race', projectRoot, 'root-move', 'a', readyA, go, statusA, release]),
+-      startWorker(['acquire-race', projectRoot, 'root-move', 'b', readyB, go, statusB, release]),
+-    ];
+-
+-    await Promise.all([waitFor(readyA), waitFor(readyB)]);
+-    await fs.writeFile(go, 'go\n');
+-    const statuses = await Promise.all([waitForText(statusA), waitForText(statusB)]);
+-    expect(statuses.filter((status) => status.startsWith('acquired:'))).toHaveLength(1);
+-    expect(statuses.filter((status) => status.startsWith('blocked:'))).toHaveLength(1);
+-    expect(statuses.join('\n')).not.toContain('coordinator is busy');
+-
+-    await fs.writeFile(release, 'release\n');
+-    await expect(Promise.all(contenders.map(({ result }) => result))).resolves.toEqual([
+-      expect.objectContaining({ code: 0, stderr: '' }),
+-      expect.objectContaining({ code: 0, stderr: '' }),
+-    ]);
+-  });
+-});
+
+diff --git a/test/domains/comet-native/native-lock-without-pid.test.ts b/test/domains/comet-native/native-lock-without-pid.test.ts
+deleted file mode 100644
+index 78b08289..00000000
+--- a/test/domains/comet-native/native-lock-without-pid.test.ts
++++ /dev/null
+@@ -1,145 +0,0 @@
+-import { promises as fs } from 'node:fs';
+-import os from 'node:os';
+-import path from 'node:path';
+-import { spawnSync } from 'node:child_process';
+-import { afterEach, expect, it, vi } from 'vitest';
+-import * as identity from '../../../platform/process/process-identity.js';
+-import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+-import {
+-  nativeProjectPaths,
+-  ensureNativeDirectories,
+-} from '../../../domains/comet-native/native-paths.js';
+-import {
+-  acquireNativeLock,
+-  releaseNativeLock,
+-  diagnoseNativeLock,
+-  withNativeLockRecovery,
+-  inspectNativeProjectLocks,
+-  repairNativeProjectLock,
+-} from '../../../domains/comet-native/native-lock.js';
+-
+-const roots: string[] = [];
+-
+-it.each(['source', 'bundle'] as const)(
+-  'recovers the legacy meta-lock through public %s doctor before creating a change',
+-  async (mode) => {
+-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-public-lock-'));
+-    roots.push(root);
+-    const cli = async (...args: string[]) => {
+-      const argv = [...args, '--project-root', root, '--json'];
+-      if (mode === 'source') return runNativeCli(argv);
+-      const result = spawnSync(
+-        process.execPath,
+-        [path.resolve('assets/skills/comet-native/scripts/comet-native-runtime.mjs'), ...argv],
+-        { encoding: 'utf8', windowsHide: true },
+-      );
+-      return { exitCode: result.status, stdout: result.stdout };
+-    };
+-    expect((await cli('init')).exitCode).toBe(0);
+-    const paths = await nativeProjectPaths(root, 'docs');
+-    const file = path.join(paths.locksDir, '.recovery.lock');
+-    const source = JSON.stringify({ nonce: 'legacy-recovery', createdAt: Date.now() });
+-    await fs.writeFile(file, source);
+-    const diagnosis = await cli('doctor');
+-    expect(diagnosis.exitCode).not.toBe(0);
+-    expect(diagnosis.stdout).toContain('legacy-recovery');
+-    expect(
+-      (await cli('doctor', '--repair', '--confirmed', '--lock-token', 'wrong')).exitCode,
+-    ).not.toBe(0);
+-    expect(await fs.readFile(file, 'utf8')).toBe(source);
+-    expect(
+-      (await cli('doctor', '--repair', '--confirmed', '--lock-token', 'legacy-recovery')).exitCode,
+-    ).toBe(0);
+-    expect((await cli('new', 'after-recovery', '--runtime', 'compat')).exitCode).toBe(0);
+-  },
+-);
+-afterEach(async () => {
+-  vi.restoreAllMocks();
+-  await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
+-});
+-
+-it('keeps Native mutation exclusion without binding a PID or probing a thread', async () => {
+-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-lock-no-pid-'));
+-  roots.push(root);
+-  const paths = await nativeProjectPaths(root, 'docs');
+-  await ensureNativeDirectories(paths);
+-  const probe = vi.spyOn(identity, 'readProcessIdentity');
+-  const lock = await acquireNativeLock(paths, 'mutation', 'Save actual workflow state');
+-  try {
+-    expect(lock.owner).not.toHaveProperty('pid');
+-    expect(lock.owner).not.toHaveProperty('processIdentity');
+-    expect((await diagnoseNativeLock(lock.file)).status).toBe('active');
+-    await expect(acquireNativeLock(paths, 'mutation', 'Another writer')).rejects.toThrow('busy');
+-  } finally {
+-    await releaseNativeLock(lock);
+-  }
+-  expect((await diagnoseNativeLock(lock.file)).status).toBe('missing');
+-  expect(probe).not.toHaveBeenCalled();
+-});
+-
+-it('keeps ordinary lock acquisition outside a running Native recovery section', async () => {
+-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-recovery-no-pid-'));
+-  roots.push(root);
+-  const paths = await nativeProjectPaths(root, 'docs');
+-  await ensureNativeDirectories(paths);
+-  let release!: () => void;
+-  let ready!: () => void;
+-  const entered = new Promise<void>((resolve) => {
+-    ready = resolve;
+-  });
+-  const held = new Promise<void>((resolve) => {
+-    release = resolve;
+-  });
+-  const restoring = withNativeLockRecovery([paths], 'Restore the original Action', async () => {
+-    ready();
+-    await held;
+-  });
+-  await entered;
+-  let acquired = false;
+-  const writing = acquireNativeLock(paths, 'root-move', 'Another operation').then(async (lock) => {
+-    acquired = true;
+-    await releaseNativeLock(lock);
+-  });
+-  await new Promise((resolve) => setTimeout(resolve, 30));
+-  expect(acquired).toBe(false);
+-  release();
+-  await Promise.all([restoring, writing]);
+-  expect(acquired).toBe(true);
+-});
+-
+-it('diagnoses and explicitly retires an interrupted legacy recovery lock', async () => {
+-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-legacy-recovery-'));
+-  roots.push(root);
+-  const paths = await nativeProjectPaths(root, 'docs');
+-  await ensureNativeDirectories(paths);
+-  const file = path.join(paths.locksDir, '.recovery.lock');
+-  const source = JSON.stringify({ nonce: 'interrupted-recovery', createdAt: Date.now() });
+-  await fs.writeFile(file, source);
+-  await expect(acquireNativeLock(paths, 'mutation', 'Continue the original Run')).rejects.toThrow(
+-    'Legacy lock requires confirmation',
+-  );
+-  expect(await inspectNativeProjectLocks(paths)).toContainEqual(
+-    expect.objectContaining({ file, token: 'interrupted-recovery', status: 'unknown' }),
+-  );
+-  await expect(repairNativeProjectLock(paths, 'other', true)).rejects.toThrow('changed');
+-  await expect(repairNativeProjectLock(paths, 'interrupted-recovery', false)).rejects.toThrow(
+-    'confirm',
+-  );
+-  expect(await fs.readFile(file, 'utf8')).toBe(source);
+-  await repairNativeProjectLock(paths, 'interrupted-recovery', true);
+-  const lock = await acquireNativeLock(paths, 'mutation', 'Continue the original Run');
+-  await releaseNativeLock(lock);
+-});
+-
+-it('does not retire a recovery lock while its original transaction is active', async () => {
+-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-active-recovery-'));
+-  roots.push(root);
+-  const paths = await nativeProjectPaths(root, 'docs');
+-  await ensureNativeDirectories(paths);
+-  await withNativeLockRecovery([paths], 'Restore the original Run', async () => {
+-    const [record] = await inspectNativeProjectLocks(paths);
+-    expect(record).toMatchObject({ status: 'active', token: expect.any(String) });
+-    await expect(repairNativeProjectLock(paths, record.token!, true)).rejects.toThrow('still held');
+-    expect((await inspectNativeProjectLocks(paths))[0].token).toBe(record.token);
+-  });
+-});
+
+diff --git a/test/domains/comet-native/native-command-recovery.test.ts b/test/domains/comet-native/native-command-recovery.test.ts
+index db010d35..6696ec13 100644
+--- a/test/domains/comet-native/native-command-recovery.test.ts
++++ b/test/domains/comet-native/native-command-recovery.test.ts
+@@ -4,7 +4,7 @@ import os from 'node:os';
+ import path from 'node:path';
+ import { afterEach, expect, it } from 'vitest';
+ import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+-import { acquireNativeLock, releaseNativeLock } from '../../../domains/comet-native/native-lock.js';
++
+ import {
+   defaultProjectConfig,
+   writeProjectConfig,
+@@ -43,45 +43,13 @@ it.each([
+   const { root } = await project();
+   const result = await withNativeCommandRecovery(
+     { command: 'archive', exitCode: 73, error: { code: 'conflict', message } },
+-    { projectRoot: root, onlyLocks: true },
++    { projectRoot: root },
+   );
+   expect((result.data as { recovery?: { code: string } } | undefined)?.recovery?.code).toBe(
+-    locked ? 'git-lock' : undefined,
++    locked ? 'git-lock' : 'archive-blocked',
+   );
+ });
+ 
+-it('reports a directory occupying a project lock path without advertising deletion as lock repair', async () => {
+-  const { root, paths } = await project();
+-  const file = path.join(paths.locksDir, 'interrupted.lock');
+-  await fs.mkdir(file);
+-  const result = await runNativeCli(['doctor', '--project-root', root, '--json']);
+-  const data = JSON.parse(result.stdout!).data;
+-  expect(data.healthy).toBe(false);
+-  expect(data.recovery).toMatchObject({
+-    code: 'lock-owner-unknown',
+-    affectedPaths: [file],
+-    recoveryArgs: null,
+-  });
+-  expect((await fs.lstat(file)).isDirectory()).toBe(true);
+-});
+-
+-it('executes the exact recovery command emitted by the standalone doctor bundle', async () => {
+-  const { root, paths } = await project();
+-  const file = path.join(paths.locksDir, 'interrupted.lock');
+-  await fs.writeFile(file, '{original-writer');
+-  const entry = path.resolve('assets/skills/comet-native/scripts/comet-native-doctor.mjs');
+-  const diagnosed = spawnSync(process.execPath, [entry, '--project-root', root, '--json'], {
+-    encoding: 'utf8',
+-  });
+-  const data = JSON.parse(diagnosed.stdout).data;
+-  expect(data.recovery).toMatchObject({ code: 'lock-owner-unknown', affectedPaths: [file] });
+-  const recovered = spawnSync(process.execPath, [entry, ...data.recovery.recoveryArgs.slice(3)], {
+-    encoding: 'utf8',
+-  });
+-  expect(recovered.status, recovered.stdout || recovered.stderr).toBe(0);
+-  await expect(fs.access(file)).rejects.toMatchObject({ code: 'ENOENT' });
+-});
+-
+ it.each(['native', 'classic-full'])(
+   'keeps failed %s command recovery diagnosis read-only before any Run exists',
+   async (application) => {
+@@ -94,7 +62,7 @@ it.each(['native', 'classic-full'])(
+         exitCode: 73,
+         error: { code: 'conflict', message: 'Run does not exist' },
+       },
+-      { projectRoot: root, name: 'missing-change', application, onlyLocks: true },
++      { projectRoot: root, name: 'missing-change', application },
+     );
+     expect(result.error?.message).toBe('Run does not exist');
+     await expect(fs.lstat(resolveWorkspaceRuntimeRootSync(root))).rejects.toMatchObject({
+@@ -104,30 +72,6 @@ it.each(['native', 'classic-full'])(
+   },
+ );
+ 
+-it('recovers an unknown Native coordinator claim through the exact emitted command without acquiring the blocked coordinator', async () => {
+-  const { root, paths } = await project();
+-  const directory = path.join(paths.locksDir, '.coordinator');
+-  await fs.mkdir(directory, { recursive: true });
+-  const file = path.join(directory, '00000000-0000-0000-0000-000000000000.claim');
+-  await fs.writeFile(
+-    file,
+-    JSON.stringify({
+-      id: 'old-coordinator',
+-      pid: 2_147_483_647,
+-      hostname: 'another-machine',
+-      operation: 'interrupted coordinator',
+-      createdAt: '2000-01-01T00:00:00.000Z',
+-    }),
+-  );
+-  const diagnostic = await runNativeCli(['doctor', '--repair', '--project-root', root, '--json']);
+-  const recovery = JSON.parse(diagnostic.stdout!).data.recovery;
+-  expect(recovery).toMatchObject({ code: 'lock-owner-unknown', affectedPaths: [file] });
+-  expect((await runNativeCli(recovery.recoveryArgs.slice(2))).exitCode).toBe(0);
+-  await expect(fs.access(file)).rejects.toMatchObject({ code: 'ENOENT' });
+-  const lock = await acquireNativeLock(paths, 'archive', 'after coordinator recovery');
+-  await releaseNativeLock(lock);
+-});
+-
+ it('reports an actual Git index lock with its path and retry conditions without deleting the Git lock', async () => {
+   const { root } = await project();
+   await fs.writeFile(path.join(root, 'candidate.txt'), 'candidate');
+@@ -164,91 +108,3 @@ it('reports an actual Git index lock with its path and retry conditions without
+   await fs.unlink(lock);
+   expect(runGitCommand(root, ['add', 'candidate.txt'])).toBe('');
+ });
+-
+-it('preserves a live project lock even when its exact token is submitted with stopped-owner confirmation', async () => {
+-  const { root, paths } = await project();
+-  const lock = await acquireNativeLock(paths, 'archive', 'live archive');
+-  const before = await fs.readFile(lock.file, 'utf8');
+-  const diagnostic = await runNativeCli(['doctor', '--repair', '--project-root', root, '--json']);
+-  const data = JSON.parse(diagnostic.stdout!).data;
+-  expect(data.recovery).toMatchObject({
+-    code: 'lock-active',
+-    recoveryArgs: null,
+-    owner: { id: lock.owner.id },
+-  });
+-  const rejected = await runNativeCli([
+-    'doctor',
+-    '--repair',
+-    '--confirmed',
+-    '--lock-token',
+-    data.findings[0].token,
+-    '--project-root',
+-    root,
+-    '--json',
+-  ]);
+-  expect(rejected.exitCode).not.toBe(0);
+-  expect(await fs.readFile(lock.file, 'utf8')).toBe(before);
+-  await releaseNativeLock(lock);
+-  expect(
+-    JSON.parse((await runNativeCli(['doctor', '--project-root', root, '--json'])).stdout!).data,
+-  ).toMatchObject({ healthy: true });
+-});
+-
+-it('rejects a replaced lock token and preserves malformed lock bytes when explicit recovery quarantines them', async () => {
+-  const { root, paths } = await project();
+-  const lock = await acquireNativeLock(paths, 'archive', 'interrupted archive');
+-  await releaseNativeLock(lock);
+-  await fs.writeFile(lock.file, '{partial-first');
+-  const first = JSON.parse(
+-    (await runNativeCli(['doctor', '--project-root', root, '--json'])).stdout!,
+-  ).data.recovery;
+-  await fs.writeFile(lock.file, '{partial-replacement');
+-  expect((await runNativeCli(first.recoveryArgs.slice(2))).exitCode).not.toBe(0);
+-  expect(await fs.readFile(lock.file, 'utf8')).toBe('{partial-replacement');
+-  const current = JSON.parse(
+-    (await runNativeCli(['doctor', '--project-root', root, '--json'])).stdout!,
+-  ).data.recovery;
+-  expect((await runNativeCli(current.recoveryArgs.slice(2))).exitCode).toBe(0);
+-  await expect(fs.access(lock.file)).rejects.toMatchObject({ code: 'ENOENT' });
+-  const quarantined = (await fs.readdir(path.join(paths.locksDir, '.coordinator'))).filter((name) =>
+-    name.endsWith('.repaired'),
+-  );
+-  expect(quarantined).toHaveLength(1);
+-  expect(await fs.readFile(path.join(paths.locksDir, '.coordinator', quarantined[0]), 'utf8')).toBe(
+-    '{partial-replacement',
+-  );
+-});
+-
+-it('requires the exact stopped-owner decision for an aged unknown project lock and executes its emitted recovery command', async () => {
+-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-command-recovery-'));
+-  roots.push(root);
+-  execFileSync('git', ['init', '--quiet'], { cwd: root });
+-  await writeProjectConfig(root, defaultProjectConfig('docs', 'en'));
+-  const paths = await nativeProjectPaths(root, 'docs');
+-  await ensureNativeDirectories(paths);
+-  const lock = await acquireNativeLock(paths, 'archive', 'archive on another machine');
+-  await releaseNativeLock(lock);
+-  const content = JSON.stringify({
+-    ...lock.owner,
+-    hostname: 'another-machine',
+-    createdAt: '2000-01-01T00:00:00.000Z',
+-  });
+-  await fs.writeFile(lock.file, content);
+-  const ordinary = await runNativeCli(['doctor', '--repair', '--project-root', root, '--json']);
+-  expect(await fs.readFile(lock.file, 'utf8')).toBe(content);
+-  const recovery = JSON.parse(ordinary.stdout!).data.recovery as {
+-    code: string;
+-    recoveryArgs: string[];
+-    affectedPaths: string[];
+-    owner: { hostname: string };
+-  };
+-  expect(recovery).toMatchObject({
+-    code: 'lock-owner-unknown',
+-    affectedPaths: [lock.file],
+-    owner: { id: lock.owner.id },
+-  });
+-  expect(recovery.recoveryArgs).toContain('--lock-token');
+-  const repaired = await runNativeCli(recovery.recoveryArgs.slice(2));
+-  expect(repaired.exitCode, repaired.stdout ?? repaired.stderr).toBe(0);
+-  await expect(fs.access(lock.file)).rejects.toMatchObject({ code: 'ENOENT' });
+-});
+
+diff --git a/test/domains/comet-native/native-sdk-readonly-lock.test.ts b/test/domains/comet-native/native-sdk-readonly-lock.test.ts
+index 8655baca..853be0e7 100644
+--- a/test/domains/comet-native/native-sdk-readonly-lock.test.ts
++++ b/test/domains/comet-native/native-sdk-readonly-lock.test.ts
+@@ -20,8 +20,6 @@ import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
+ import { readNativeSdkRunRecord } from '../../../domains/comet-native/native-sdk-state-store.js';
+ import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+ import { createFileRuntimeStore, type WorkflowRun } from '../../../domains/engine/runtime.js';
+-import { createHash } from 'node:crypto';
+-
+ 
+ const roots: string[] = [];
+ afterEach(async () => {
+@@ -68,78 +66,7 @@ async function files(root: string): Promise<Record<string, string>> {
+   return result;
+ }
+ 
+-describe('Native SDK read-only projection lock diagnostics', () => {
+-  it('diagnoses and repairs the original SDK store writer lock without changing Run history', async () => {
+-    const { root, name, request } = await fixture();
+-    const directory = path.join(
+-      resolveWorkspaceRuntimeRootSync(root),
+-      'sdk-runs/native/.runtime-store-v2',
+-      createHash('sha256').update(JSON.stringify(name)).digest('hex'),
+-    );
+-    const file = path.join(directory, '.write.lock');
+-    await fs.mkdir(directory, { recursive: true });
+-    await fs.writeFile(file, '{interrupted-writer');
+-    const original = await readNativeSdkRunRecord(root, name);
+-    const action = original!.actions.find(({ status }) => status === 'pending')!;
+-    await fs.writeFile(
+-      request,
+-      JSON.stringify({
+-        operation: 'claim',
+-        runId: name,
+-        actionId: action.id,
+-        attempt: action.attempt,
+-        inputHash: action.inputHash,
+-        executorId: 'native-host',
+-        sessionId: 'writer-session',
+-        claimToken: 'writer-session',
+-      }),
+-    );
+-    const refused = await runtimeDispatchCommand({
+-      application: 'native',
+-      projectRoot: root,
+-      request,
+-    });
+-    expect(refused.response).toMatchObject({
+-      status: 'failed',
+-      recovery: { code: 'lock-owner-unknown', affectedPaths: [file] },
+-    });
+-    const diagnosed = await runNativeCli(['doctor', name, '--project-root', root, '--json']);
+-    const data = JSON.parse(diagnosed.stdout!).data;
+-    expect(data).toMatchObject({
+-      healthy: false,
+-      recovery: { code: 'lock-owner-unknown', affectedPaths: [file] },
+-    });
+-    const repaired = await runNativeCli(data.recovery.recoveryArgs.slice(2));
+-    expect(repaired.exitCode, repaired.stdout ?? repaired.stderr).toBe(0);
+-    expect(await readNativeSdkRunRecord(root, name)).toEqual(original);
+-    await expect(fs.access(file)).rejects.toMatchObject({ code: 'ENOENT' });
+-  });
+-
+-  it('executes the public recovery command for the exact uncertain lock and preserves the original Run', async () => {
+-    const { root, name, lock } = await fixture();
+-    await fs.writeFile(lock, '{partial');
+-    const original = await readNativeSdkRunRecord(root, name);
+-    const diagnosed = await runNativeCli(['doctor', name, '--project-root', root, '--json']);
+-    expect(diagnosed.exitCode).toBe(65);
+-    const data = JSON.parse(diagnosed.stdout!).data as {
+-      recovery: {
+-        code: string;
+-        diagnosticArgs: string[];
+-        recoveryArgs: string[];
+-        preconditions: string[];
+-      };
+-    };
+-    expect(data.recovery).toMatchObject({ code: 'lock-owner-unknown' });
+-    expect(data.recovery.preconditions.length).toBeGreaterThan(0);
+-    expect(data.recovery.recoveryArgs).toContain('--lock-token');
+-    const repaired = await runNativeCli(data.recovery.recoveryArgs.slice(2));
+-    expect(repaired.exitCode, repaired.stdout ?? repaired.stderr).toBe(0);
+-    expect(await readNativeSdkRunRecord(root, name)).toEqual(original);
+-    await expect(fs.access(lock)).rejects.toMatchObject({ code: 'ENOENT' });
+-    const repeated = await runNativeCli(['doctor', name, '--project-root', root, '--json']);
+-    expect(JSON.parse(repeated.stdout!).data).toMatchObject({ healthy: true });
+-  });
+-
++describe('Native SDK read-only history and checkpoint recovery', () => {
+   it.each([
+     ['empty', '', 'malformed'],
+     ['partial', '{partial-owner:', 'malformed'],
+@@ -159,9 +86,10 @@ describe('Native SDK read-only projection lock diagnostics', () => {
+       'unknown',
+     ],
+   ])(
+-    'status and public runtime inspect never acquire or mutate a %s lock',
+-    async (_kind, content, expected) => {
++    'status and public runtime inspect ignore a retired %s lock without writing',
++    async (_kind, content) => {
+       const { root, name, lock, request } = await fixture();
++      await fs.mkdir(path.dirname(lock), { recursive: true });
+       await fs.writeFile(lock, content);
+       const before = await files(root);
+       // 直接拒绝获取写锁，避免并发调度和磁盘负载影响固定耗时断言。
+@@ -179,38 +107,13 @@ describe('Native SDK read-only projection lock diagnostics', () => {
+       expect(inspect.exitCode, JSON.stringify(inspect.response)).toBe(0);
+       const doctor = await nativeDoctorCommand([name], root);
+       expect(doctor.data).toMatchObject({
+-        healthy: false,
+-        findings: [{ code: `sdk-projection-lock-${expected}` }],
++        healthy: true,
+       });
+       expect(acquireLock).not.toHaveBeenCalled();
+       expect(await files(root)).toEqual(before);
+     },
+   );
+ 
+-  it('does not steal an uncertain lock during ordinary repair and requires its exact confirmed token', async () => {
+-    const { root, name, lock } = await fixture();
+-    await fs.writeFile(lock, '{partial');
+-    const before = await files(root);
+-    const doctor = await nativeDoctorCommand([name, '--repair'], root);
+-    const finding = (
+-      doctor.data as { findings: Array<{ code: string; token: string; repairCommand: string }> }
+-    ).findings[0];
+-    expect(finding.code).toBe('sdk-projection-lock-malformed');
+-    expect(finding.repairCommand).toContain('--repair --confirmed --lock-token');
+-    expect(await files(root)).toEqual(before);
+-    const wrongToken = await runNativeCli(['doctor',name,'--project-root',root,'--repair','--confirmed','--lock-token','wrong-token','--json']);
+-    expect(wrongToken.exitCode).not.toBe(0);
+-    expect(await files(root)).toEqual(before);
+-    const run = await readNativeSdkRunRecord(root, name);
+-    const repaired = await nativeDoctorCommand(
+-      [name, '--repair', '--confirmed', '--lock-token', finding.token],
+-      root,
+-    );
+-    expect(repaired.data).toMatchObject({ healthy: true, repaired: true });
+-    expect(await readNativeSdkRunRecord(root, name)).toEqual(run);
+-    expect((await nativeStatusCommand([name], root)).exitCode).toBe(0);
+-  });
+-
+   it('diagnoses a missing Run without restoring it, then explicit repair preserves its revision', async () => {
+     const { root, name } = await fixture();
+     const original = await readNativeSdkRunRecord(root, name);
+@@ -221,7 +124,9 @@ describe('Native SDK read-only projection lock diagnostics', () => {
+     await expect(nativeStatusCommand([name], root)).rejects.toThrow(/checkpoint recovery/);
+     const doctor = await nativeDoctorCommand([name], root);
+     expect(doctor.data).toMatchObject({ healthy: false });
+-    expect(doctor.data).toMatchObject({recovery:{commandArgs:['comet','native','doctor',name,'--repair','--confirmed']}});
++    expect(doctor.data).toMatchObject({
++      recovery: { commandArgs: ['comet', 'native', 'doctor', name, '--repair', '--confirmed'] },
++    });
+     expect(await files(root)).toEqual(before);
+     const repaired = await nativeDoctorCommand([name, '--repair', '--confirmed'], root);
+     expect(repaired.data).toMatchObject({ healthy: true, repaired: true });
+@@ -233,25 +138,38 @@ describe('Native SDK read-only projection lock diagnostics', () => {
+     });
+   });
+ 
+-  it('reads the authoritative Run without requiring or recreating a retired projection marker',async()=>{
+- const {root,name}=await fixture();const marker=path.join(resolveWorkspaceRuntimeRootSync(root),'state-projections/native',name+'.json');
+- await fs.rm(marker,{force:true});const original=await readNativeSdkRunRecord(root,name);const before=await files(root);
+- expect((await nativeStatusCommand([name],root)).exitCode).toBe(0);
+- expect((await nativeDoctorCommand([name],root)).data).toMatchObject({healthy:true,repaired:false});
+- expect(await readNativeSdkRunRecord(root,name)).toEqual(original);expect(await files(root)).toEqual(before);
+- await expect(fs.access(marker)).rejects.toMatchObject({code:'ENOENT'});
+-});
++  it('reads the authoritative Run without requiring or recreating a retired projection marker', async () => {
++    const { root, name } = await fixture();
++    const marker = path.join(
++      resolveWorkspaceRuntimeRootSync(root),
++      'state-projections/native',
++      name + '.json',
++    );
++    await fs.rm(marker, { force: true });
++    const original = await readNativeSdkRunRecord(root, name);
++    const before = await files(root);
++    expect((await nativeStatusCommand([name], root)).exitCode).toBe(0);
++    expect((await nativeDoctorCommand([name], root)).data).toMatchObject({
++      healthy: true,
++      repaired: false,
++    });
++    expect(await readNativeSdkRunRecord(root, name)).toEqual(original);
++    expect(await files(root)).toEqual(before);
++    await expect(fs.access(marker)).rejects.toMatchObject({ code: 'ENOENT' });
++  });
+ 
+   it.skipIf(process.platform === 'win32')(
+-    'rejects unsafe projection-lock paths without writing outside the project',
++    'ignores an unsafe retired projection-lock path without writing its target',
+     async () => {
+       const { root, name, lock } = await fixture();
+       const target = path.join(root, 'untouched');
+       await fs.writeFile(target, 'keep');
++      await fs.mkdir(path.dirname(lock), { recursive: true });
+       await fs.symlink(target, lock);
+       const before = await files(root);
+       const doctor = await nativeDoctorCommand([name, '--repair'], root);
+-      expect(doctor.data).toMatchObject({ healthy: false });
++      expect(doctor.data).toMatchObject({ healthy: true });
++      expect(await fs.readFile(target, 'utf8')).toBe('keep');
+       expect(await files(root)).toEqual(before);
+     },
+   );
+@@ -312,18 +230,42 @@ describe('Native SDK read-only projection lock diagnostics', () => {
+     expect(await readNativeSdkRunRecord(root, name)).toEqual(original);
+     expect((await nativeStatusCommand([name], root)).exitCode).toBe(0);
+   });
+-  it('does not register a root owner for a stored Child Run during explicit Doctor repair',async()=>{
+-    const {root,name}=await fixture();
+-    const raw=createFileRuntimeStore<WorkflowRun>({rootDir:path.join(resolveWorkspaceRuntimeRootSync(root),'sdk-runs/native')});
+-    const original=(await raw.read(name))!;
++  it('does not register a root owner for a stored Child Run during explicit Doctor repair', async () => {
++    const { root, name } = await fixture();
++    const raw = createFileRuntimeStore<WorkflowRun>({
++      rootDir: path.join(resolveWorkspaceRuntimeRootSync(root), 'sdk-runs/native'),
++    });
++    const original = (await raw.read(name))!;
+     // SIMULATED stored Child lineage at the owner-recovery boundary; no execution receipt or approval is fabricated.
+-    expect(await raw.compareAndSwap(name,original.revision,{...original,revision:original.revision+1,lineage:['parent-run']})).toBe(true);
+-    await fs.rm(path.join(resolveWorkspaceRuntimeRootSync(root),'change-owners'),{recursive:true});
+-    const child=await raw.read(name),before=await files(root);
+-    const result=await runNativeCli(['doctor',name,'--repair','--confirmed','--project-root',root,'--json']);
+-    expect(result.exitCode).not.toBe(0);expect(result.stdout).toContain('original parent');
+-    expect(await raw.read(name)).toEqual(child);expect(await files(root)).toEqual(before);
+-    await expect(fs.access(path.join(resolveWorkspaceRuntimeRootSync(root),'change-owners/native',name+'.json'))).rejects.toMatchObject({code:'ENOENT'});
++    expect(
++      await raw.compareAndSwap(name, original.revision, {
++        ...original,
++        revision: original.revision + 1,
++        lineage: ['parent-run'],
++      }),
++    ).toBe(true);
++    await fs.rm(path.join(resolveWorkspaceRuntimeRootSync(root), 'change-owners'), {
++      recursive: true,
++    });
++    const child = await raw.read(name),
++      before = await files(root);
++    const result = await runNativeCli([
++      'doctor',
++      name,
++      '--repair',
++      '--confirmed',
++      '--project-root',
++      root,
++      '--json',
++    ]);
++    expect(result.exitCode).not.toBe(0);
++    expect(result.stdout).toContain('original parent');
++    expect(await raw.read(name)).toEqual(child);
++    expect(await files(root)).toEqual(before);
++    await expect(
++      fs.access(
++        path.join(resolveWorkspaceRuntimeRootSync(root), 'change-owners/native', name + '.json'),
++      ),
++    ).rejects.toMatchObject({ code: 'ENOENT' });
+   });
+-
+ });
+
+diff --git a/test/domains/comet-native/native-doctor.test.ts b/test/domains/comet-native/native-doctor.test.ts
+index 27e5eec9..0d6ea1e7 100644
+--- a/test/domains/comet-native/native-doctor.test.ts
++++ b/test/domains/comet-native/native-doctor.test.ts
+@@ -69,12 +69,7 @@ it('inspects a real pending root move read-only and repairs it only with the req
+   expect((await readProjectConfig(f.root))?.native.artifact_root).toBe('.');
+   expect(await fs.readFile(spec, 'utf8')).toBe('Original canonical Spec\n');
+ });
+-import {
+-  acquireNativeLock,
+-  releaseNativeLock,
+-  inspectNativeProjectLocks,
+-  repairNativeProjectLock,
+-} from '../../../domains/comet-native/native-lock.js';
++
+ import {
+   nativeSelectionFile,
+   readNativeSelectionRecord,
+@@ -126,39 +121,7 @@ it('rejects an oversized selection before parsing while preserving the exact inp
+   await expect(readNativeSelectionRecord(f.paths)).rejects.toThrow(/exceeds|16384/);
+   expect(await fs.readFile(file)).toEqual(bytes);
+ });
+-it('repairs released real writer metadata without deleting or replacing its reusable SQLite database', async () => {
+-  const f = await fixture(),
+-    lease = await acquireNativeLock(f.paths, 'archive', 'SIMULATED local fixture writer'),
+-    metadata = await fs.readFile(lease.file, 'utf8');
+-  await releaseNativeLock(lease);
+-  const database = lease.file + '.sqlite',
+-    original = await fs.stat(database, { bigint: true });
+-  await fs.writeFile(lease.file, metadata);
+-  const lock = (await inspectNativeProjectLocks(f.paths)).find((l) => l.file === lease.file)!;
+-  expect(lock.status).toBe('stale');
+-  await repairNativeProjectLock(f.paths, lock.token!, true);
+-  await expect(fs.stat(lease.file)).rejects.toMatchObject({ code: 'ENOENT' });
+-  const after = await fs.stat(database, { bigint: true });
+-  expect({ dev: after.dev, ino: after.ino }).toEqual({
+-    dev: original.dev,
+-    ino: original.ino,
+-  });
+-  const next = await acquireNativeLock(f.paths, 'archive', 'SIMULATED next local writer');
+-  await releaseNativeLock(next);
+-});
+-it('never repairs away a real live writer even when its exact metadata token is confirmed', async () => {
+-  const f = await fixture(),
+-    lease = await acquireNativeLock(f.paths, 'archive', 'SIMULATED live local writer');
+-  try {
+-    const before = await fs.readFile(lease.file, 'utf8'),
+-      lock = (await inspectNativeProjectLocks(f.paths)).find((l) => l.file === lease.file)!;
+-    expect(lock.status).toBe('active');
+-    await expect(repairNativeProjectLock(f.paths, lock.token!, true)).rejects.toThrow();
+-    expect(await fs.readFile(lease.file, 'utf8')).toBe(before);
+-  } finally {
+-    await releaseNativeLock(lease);
+-  }
+-});
++
+ it('rejects an escaped Runtime directory without writing outside the selected project', async () => {
+   const f = await fixture(),
+     outside = await fs.mkdtemp(path.join(os.tmpdir(), 'native-doctor-escaped-runtime-'));
+
+diff --git a/test/domains/comet-native/native-root-move.test.ts b/test/domains/comet-native/native-root-move.test.ts
+index 8c92c9ca..c29b05c8 100644
+--- a/test/domains/comet-native/native-root-move.test.ts
++++ b/test/domains/comet-native/native-root-move.test.ts
+@@ -14,14 +14,15 @@ import { createNativePortableChange } from '../../../domains/comet-native/native
+ import { writeNativeWorkspaceIdentity } from '../../../domains/comet-native/native-workspace.js';
+ import { createNativeSdkChange } from '../../../domains/comet-native/native-sdk-create.js';
+ import { sha256File } from '../../../domains/comet-native/native-hash.js';
+-import { acquireNativeLock, releaseNativeLock } from '../../../domains/comet-native/native-lock.js';
++
+ import {
+   nativeChangeRuntimeDir,
+   nativeProjectPaths,
+ } from '../../../domains/comet-native/native-paths.js';
+ import { moveNativeRoot } from '../../../domains/comet-native/native-root-move.js';
++import * as pathsModule from '../../../domains/comet-native/native-paths.js';
+ import { runNativeCliDetailed } from '../../../domains/comet-native/native-cli.js';
+-import * as nativeLock from '../../../domains/comet-native/native-lock.js';
++
+ import { readNativeTransaction } from '../../../domains/comet-native/native-transaction.js';
+ import {
+   assertNativeWorkspaceBinding,
+@@ -69,7 +70,7 @@ describe('Native artifact root moves', () => {
+     await fs.rm(projectRoot, { recursive: true, force: true });
+   });
+ 
+-  it('moves an initialized root through the generated Runtime while SQLite coordination files persist', async () => {
++  it('moves an initialized root through the generated Runtime without creating lock files', async () => {
+     const entry = path.resolve('assets/skills/comet-native/scripts/comet-native-runtime.mjs');
+     const command = (...args: string[]) =>
+       JSON.parse(
+@@ -88,16 +89,14 @@ describe('Native artifact root moves', () => {
+     expect((await fs.stat(path.join(projectRoot, 'artifacts/native/comet'))).isDirectory()).toBe(
+       true,
+     );
+-    expect((await fs.readdir(paths.locksDir)).filter((name) => name.endsWith('.lock'))).toEqual([]);
+-    expect((await fs.readdir(paths.locksDir)).some((name) => name.endsWith('.lock.sqlite'))).toBe(
+-      true,
+-    );
++    await expect(fs.access(path.join(paths.runtimeDir, 'locks'))).rejects.toMatchObject({
++      code: 'ENOENT',
++    });
+     expect(command('doctor').data).toMatchObject({
+       healthy: true,
+       transactions: [],
+       workspaceFinishes: [],
+       changes: [],
+-      locks: [],
+     });
+   });
+ 
+@@ -187,15 +186,18 @@ describe('Native artifact root moves', () => {
+         targetBranch: branch,
+       },
+     });
+-    const acquire = nativeLock.acquireNativeLock;
+-    vi.spyOn(nativeLock, 'acquireNativeLock').mockImplementation(async (...args) => {
+-      if (args[1] === 'root-move') {
+-        execFileSync('git', ['checkout', '-b', 'changed-before-lock'], {
++    const resolve = pathsModule.nativeProjectPaths;
++    let changed = false;
++    vi.spyOn(pathsModule, 'nativeProjectPaths').mockImplementation(async (...args) => {
++      const resolved = await resolve(...args);
++      if (!changed) {
++        changed = true;
++        execFileSync('git', ['checkout', '-b', 'changed-after-root-resolution'], {
+           cwd: projectRoot,
+           stdio: 'ignore',
+         });
+       }
+-      return acquire(...args);
++      return resolved;
+     });
+     const result = await runNativeCliDetailed(
+       ['root', 'move', 'artifacts/native', '--json', '--project-root', projectRoot],
+@@ -640,44 +642,4 @@ describe('Native artifact root moves', () => {
+       ),
+     ).toBe('count words\n');
+   });
+-
+-  it('serializes root moves with archive operations through the global lock', async () => {
+-    await seedNativeRoot(projectRoot, '.');
+-    const paths = await nativeProjectPaths(projectRoot, '.');
+-    const archiveGlobalLock = await acquireNativeLock(paths, 'root-move', 'archive active-change');
+-    try {
+-      await expect(moveNativeRoot({ projectRoot, toArtifactRoot: 'docs' })).rejects.toThrow(
+-        /Native lock is busy/u,
+-      );
+-    } finally {
+-      await releaseNativeLock(archiveGlobalLock);
+-    }
+-  });
+-
+-  it('refuses to copy any unresolved operation lock into the destination root', async () => {
+-    await seedNativeRoot(projectRoot, '.');
+-    const paths = await nativeProjectPaths(projectRoot, '.');
+-    const staleArchiveLock = await acquireNativeLock(
+-      paths,
+-      'archive',
+-      'archive interrupted-change',
+-    );
+-    try {
+-      await expect(moveNativeRoot({ projectRoot, toArtifactRoot: 'docs' })).rejects.toThrow(
+-        'must be diagnosed before moving',
+-      );
+-      expect((await readProjectConfig(projectRoot))?.native).toEqual({
+-        artifact_root: '.',
+-        language: 'en',
+-        clarification_mode: 'batch',
+-        archive_confirmation: 'automatic',
+-        max_verify_failures: 5,
+-      });
+-      await expect(fs.access(path.join(projectRoot, 'docs', 'comet'))).rejects.toMatchObject({
+-        code: 'ENOENT',
+-      });
+-    } finally {
+-      await releaseNativeLock(staleArchiveLock);
+-    }
+-  });
+ });
+
+diff --git a/test/domains/comet-native/native-transition-recovery.test.ts b/test/domains/comet-native/native-transition-recovery.test.ts
+index ec18479b..a097c357 100644
+--- a/test/domains/comet-native/native-transition-recovery.test.ts
++++ b/test/domains/comet-native/native-transition-recovery.test.ts
+@@ -92,10 +92,7 @@ import { writeNativeRunState } from '../../../domains/comet-native/native-run-st
+ import { repairNativeTrajectoryTail } from '../../../domains/comet-native/native-trajectory-recovery.js';
+ import { appendNativeTrajectoryEvent } from '../../../domains/comet-native/native-trajectory.js';
+ import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
+-import {
+-  inspectNativeLockRecovery,
+-  repairNativeProjectLock,
+-} from '../../../domains/comet-native/native-lock.js';
++
+ import { nativeArchiveCommand } from '../../../domains/comet-native/native-archive-command.js';
+ 
+ async function currentJournal() {
+@@ -371,12 +368,12 @@ it('does not accept an existing trajectory event whose complete content diverges
+   );
+   expect(await fs.readFile(f.wal, 'utf8')).toBe(before);
+ });
+-it('serializes concurrent continuation of one published transition without duplicate events', async () => {
++it('continues one published transition serially without duplicate events', async () => {
+   const f = await currentJournal();
+-  const results = await Promise.all([
+-    continueNativeTransition(f.paths, f.name),
+-    continueNativeTransition(f.paths, f.name),
+-  ]);
++  const results = [
++    await continueNativeTransition(f.paths, f.name),
++    await continueNativeTransition(f.paths, f.name),
++  ];
+   expect(results.filter(Boolean)).toHaveLength(1);
+   const events = await readNativeTrajectory(f.dir, f.journal.nextRun.trajectoryRef);
+   expect(events.filter((e) => e.type === 'run_started')).toHaveLength(1);
+@@ -446,26 +443,16 @@ it('preserves concurrently appended trajectory bytes when preparing tail repair'
+   ).rejects.toThrow(/changed while preparing/);
+   expect(await fs.readFile(trajectory, 'utf8')).toBe('{"partial":' + extra);
+ });
+-it('requires explicit confirmation for the original real writer metadata before finishing its WAL', async () => {
++it('continues the original WAL while preserving obsolete writer metadata without token confirmation', async () => {
+   const f = await currentJournal();
+-  await fs.mkdir(f.paths.locksDir, { recursive: true });
+-  const lock = path.join(f.paths.locksDir, 'transition-' + f.name + '.lock');
+-  await fs.writeFile(
+-    lock,
+-    JSON.stringify({
+-      id: 'original-writer',
+-      createdAt: '2026-07-15T00:00:00.000Z',
+-      operation: 'continue original WAL',
+-    }),
+-  );
+-  await expect(continueNativeTransition(f.paths, f.name)).rejects.toThrow(
+-    /Legacy lock requires confirmation/,
+-  );
+-  const diagnosis = await inspectNativeLockRecovery(lock);
+-  expect(diagnosis.token).toBeTruthy();
+-  await expect(repairNativeProjectLock(f.paths, diagnosis.token!, false)).rejects.toThrow();
+-  expect(await fs.readFile(f.wal, 'utf8')).toContain(f.journal.id);
+-  await repairNativeProjectLock(f.paths, diagnosis.token!, true);
++  const file = path.join(f.paths.runtimeDir, 'locks', 'transition-' + f.name + '.lock');
++  const bytes = JSON.stringify({
++    id: 'SIMULATED obsolete writer',
++    createdAt: '2026-07-15T00:00:00.000Z',
++    operation: 'continue original WAL',
++  });
++  await fs.mkdir(path.dirname(file), { recursive: true });
++  await fs.writeFile(file, bytes);
+   await continueNativeTransition(f.paths, f.name);
+   expect(await inspectPendingNativeTransition(f.paths, f.name)).toBeNull();
+   expect(
+@@ -473,6 +460,8 @@ it('requires explicit confirmation for the original real writer metadata before
+       (e) => e.type === 'state_transitioned',
+     ),
+   ).toHaveLength(1);
++  expect(await fs.readFile(file, 'utf8')).toBe(bytes);
++  expect(await continueNativeTransition(f.paths, f.name)).toBeNull();
+ });
+ it('does not archive through a pending unaccepted Verify transition or consume its WAL', async () => {
+   const f = await nonFirstFixture(),
+@@ -731,61 +720,26 @@ it('retains explicit Doctor tail repair and same-WAL continuation for the origin
+   await expect(fs.access(f.wal)).rejects.toMatchObject({ code: 'ENOENT' });
+ });
+ 
+-import { acquireNativeLock, releaseNativeLock } from '../../../domains/comet-native/native-lock.js';
+-it('preserves both original root and transition writer metadata until each explicit confirmed takeover', async () => {
++it('preserves old root and transition lock bytes while continuing the same real WAL once', async () => {
+   const f = await currentJournal();
+-  await fs.mkdir(f.paths.locksDir, { recursive: true });
+-  const entries = [
+-    ['transition-' + f.name, 'old-transition-writer'],
+-    ['root-move', 'old-root-writer'],
+-  ];
+-  for (const [name, id] of entries)
+-    await fs.writeFile(
+-      path.join(f.paths.locksDir, name + '.lock'),
+-      JSON.stringify({
+-        id,
+-        createdAt: '2026-07-15T00:00:00.000Z',
+-        operation: 'original real WAL write boundary',
+-      }),
+-    );
+-  const before = await fs.readFile(f.wal, 'utf8');
+-  for (const [name] of entries) {
+-    const file = path.join(f.paths.locksDir, name + '.lock'),
+-      d = await inspectNativeLockRecovery(file);
+-    expect(d.token).toBeTruthy();
+-    await expect(repairNativeProjectLock(f.paths, d.token!, false)).rejects.toThrow();
+-    await repairNativeProjectLock(f.paths, d.token!, true);
++  const files = ['root-move', 'transition-' + f.name].map((name) =>
++    path.join(f.paths.runtimeDir, 'locks', name + '.lock'),
++  );
++  const bytes = 'SIMULATED obsolete writer bytes';
++  for (const file of files) {
++    await fs.mkdir(path.dirname(file), { recursive: true });
++    await fs.writeFile(file, bytes);
+   }
+-  expect(await fs.readFile(f.wal, 'utf8')).toBe(before);
++  const wal = await fs.readFile(f.wal, 'utf8');
++  expect(wal).toContain(f.journal.id);
+   await continueNativeTransition(f.paths, f.name);
+   expect(
+     (await readNativeTrajectory(f.dir, f.journal.nextRun.trajectoryRef)).filter(
+       (e) => e.type === 'state_transitioned',
+     ),
+   ).toHaveLength(1);
+-});
+-it('does not remove an actually held transition writer even when its exact token is confirmed', async () => {
+-  const f = await currentJournal(),
+-    lock = await acquireNativeLock(
+-      f.paths,
+-      'transition-' + f.name,
+-      'actual live writer for WAL fixture',
+-    );
+-  try {
+-    const d = await inspectNativeLockRecovery(lock.file);
+-    expect(d.status).toBe('active');
+-    expect(d.token).toBeTruthy();
+-    await expect(repairNativeProjectLock(f.paths, d.token!, true)).rejects.toThrow();
+-    expect(await inspectNativeLockRecovery(lock.file)).toMatchObject({
+-      status: 'active',
+-      token: d.token,
+-    });
+-    expect(await fs.readFile(f.wal, 'utf8')).toContain(f.journal.id);
+-  } finally {
+-    await releaseNativeLock(lock);
+-  }
+-  await continueNativeTransition(f.paths, f.name);
+-  expect(await inspectPendingNativeTransition(f.paths, f.name)).toBeNull();
++  for (const file of files) expect(await fs.readFile(file, 'utf8')).toBe(bytes);
++  expect(await continueNativeTransition(f.paths, f.name)).toBeNull();
+ });
+ 
+ it('keeps malformed middle trajectory bytes and original WAL unchanged during explicit Doctor repair', async () => {
+
+diff --git a/test/domains/comet-native/native-sdk-cancellation.test.ts b/test/domains/comet-native/native-sdk-cancellation.test.ts
+index 5709fb0c..140beb06 100644
+--- a/test/domains/comet-native/native-sdk-cancellation.test.ts
++++ b/test/domains/comet-native/native-sdk-cancellation.test.ts
+@@ -15,7 +15,7 @@ import { execFileSync } from 'node:child_process';
+ import { promises as fs } from 'node:fs';
+ import os from 'node:os';
+ import path from 'node:path';
+-import { afterEach, describe, expect, it } from 'vitest';
++import { afterEach, describe, expect, it, vi } from 'vitest';
+ 
+ import { prepareNativeApplication } from '../../helpers/native-application.js';
+ import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
+@@ -26,10 +26,12 @@ import {
+   inspectNativeSdkRun,
+ } from '../../../domains/comet-native/native-runtime-ownership.js';
+ import { settleNativeSdkCancellation } from '../../../domains/comet-native/native-sdk-cancellation-cleanup.js';
++import * as selectionModule from '../../../domains/workflow-contract/current-selection.js';
+ import { readCometCurrentSelection } from '../../../domains/workflow-contract/current-selection.js';
+ 
+ const roots: string[] = [];
+ afterEach(async () => {
++  vi.restoreAllMocks();
+   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
+ });
+ 
+@@ -134,44 +136,22 @@ describe('Native cancellation lifecycle', () => {
+     expect(await listActiveNativeHookChanges(f.root)).toEqual([]);
+   });
+ 
+-  it('reports pending selection cleanup and the retained root lock age gate instead of declaring cancellation complete', async () => {
++  it('keeps failed selection cleanup visible until explicit repair and preserves the original cancelled Run', async () => {
+     const f = await fixture('unstarted');
+     const before = await f.runtime.inspect(f.name);
+     const paths = await nativeProjectPaths(
+       f.root,
+       (before.input as { artifactRootRef: string }).artifactRootRef,
+     );
+-    await fs.mkdir(paths.locksDir, { recursive: true });
+-    const lock = path.join(paths.locksDir, 'root-move.lock');
+-    const owner = {
+-      id: 'controlled-foreign-root',
+-      pid: 2147483647,
+-      hostname: 'controlled-foreign-host',
+-      createdAt: new Date().toISOString(),
+-      operation: 'Controlled root move interruption',
+-    };
+-    await fs.writeFile(lock, JSON.stringify(owner));
++    const release = vi
++      .spyOn(selectionModule, 'clearCometCurrentSelectionIf')
++      .mockRejectedValue(new Error('SIMULATED selection publication failure'));
+     await expect(
+-      f.runtime.cancel({ runId: f.name, reason: 'Cancel while root cleanup is blocked' }),
+-    ).rejects.toThrow(/Legacy lock requires confirmation/);
+-    expect(await f.runtime.inspect(f.name)).toEqual(before);
+-    // SIMULATED committed cancellation through the base SDK; this is not a genuine published old Run.
+-    const application = nativeSdkApplicationForRun(before);
+-    const legacy = createRuntime({
+-      store: createFileRuntimeStore({
+-        rootDir: path.join(resolveWorkspaceRuntimeRootSync(f.root), 'sdk-runs', 'native'),
+-      }),
+-      workflows: [application.workflow],
+-      transitionHandlers: [application.transitionHandler],
+-      validators: application.validators,
+-      stateValidators: application.stateValidators,
+-      commandValidators: application.commandValidators,
+-    });
+-    const cancelled = await legacy.cancel({
+-      runId: f.name,
+-      reason: 'Legacy committed cancellation',
+-    });
+-    await f.runtime.inspect(f.name);
++      f.runtime.cancel({ runId: f.name, reason: 'Cancel with failed selection publication' }),
++    ).rejects.toThrow(/current selection release remains pending/);
++    const cancelled = await f.runtime.inspect(f.name);
++    expect(cancelled.status).toBe('cancelled');
++    expect(cancelled.state).toEqual(before.state);
+     await expect(
+       settleNativeSdkCancellation({ projectRoot: f.root, run: cancelled }),
+     ).rejects.toThrow(/current selection release remains pending/);
+@@ -181,13 +161,6 @@ describe('Native cancellation lifecycle', () => {
+       cancellation: {
+         quiescent: true,
+         cleanupRequired: true,
+-        cleanup: {
+-          rootMoveLock: {
+-            status: 'unknown',
+-            owner: { id: owner.id, createdAt: owner.createdAt, operation: owner.operation },
+-            minimumUnknownOwnerAgeMs: 0,
+-          },
+-        },
+       },
+       continuation: {
+         disposition: 'blocked',
+@@ -197,7 +170,7 @@ describe('Native cancellation lifecycle', () => {
+     expect(await isNativeSdkChangeCancellationComplete(f.root, f.name)).toBe(false);
+     for (const command of [
+       `comet native doctor ${f.name} --repair --json`,
+-      'comet runtime dispatch --application native --request stop-confirmation.json',
++      'comet runtime dispatch --application native --request original-result.json',
+     ]) {
+       const request = parseNativeHookRequest(
+         JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
+@@ -221,7 +194,6 @@ describe('Native cancellation lifecycle', () => {
+     expect(await listActiveNativeHookChanges(f.root)).toEqual([
+       expect.objectContaining({ name: f.name }),
+     ]);
+-    expect(status.data.cancellation.cleanup.rootMoveLock.remainingMs).toBe(0);
+     const doctor = await f.cli(['doctor', f.name]);
+     expect(doctor.data.healthy).toBe(false);
+     expect(
+@@ -230,10 +202,8 @@ describe('Native cancellation lifecycle', () => {
+       ),
+       JSON.stringify(doctor.data),
+     ).toBe(true);
+-    expect(JSON.parse(await fs.readFile(lock, 'utf8'))).toEqual(owner);
+-    // 受控假持有者自行释放它创建的锁；不是让 Runtime 绕过未知 owner 的保护。
+-    await fs.unlink(lock);
+-    // 锁已由原持有者释放，但选择清理尚未完成，三种创建入口都必须保留阻塞。
++    release.mockRestore();
++    // A failed selection write is repaired explicitly; the cancelled Run remains original.
+     expect(await listActiveNativeChangesOwnedByWorkspace(paths)).toEqual([f.name]);
+     const creation = {
+       paths,
+@@ -251,11 +221,9 @@ describe('Native cancellation lifecycle', () => {
+     expect((await f.cli(['doctor', f.name, '--repair'])).exitCode).toBe(0);
+     expect((await f.cli(['status', f.name])).data.status).toBe('cancelled');
+     expect((await f.cli(['new', 'after-root-release'])).exitCode).toBe(0);
+-    await fs.writeFile(lock, JSON.stringify(owner));
+     expect((await f.cli(['next', f.name])).exitCode).toBe(0);
+     expect((await f.cli(['doctor', f.name, '--repair'])).data.healthy).toBe(true);
+-    expect((await f.cli(['doctor'])).data.healthy).toBe(false);
+-    expect(JSON.parse(await fs.readFile(lock, 'utf8'))).toEqual(owner);
++    expect((await f.cli(['doctor'])).data.healthy).toBe(true);
+     expect(await readCometCurrentSelection(f.root)).toMatchObject({
+       status: 'selected',
+       selection: { change: 'after-root-release' },
+
+diff --git a/test/domains/comet-native/native-sdk-completion.test.ts b/test/domains/comet-native/native-sdk-completion.test.ts
+index e3d31c36..b3721d14 100644
+--- a/test/domains/comet-native/native-sdk-completion.test.ts
++++ b/test/domains/comet-native/native-sdk-completion.test.ts
+@@ -2,17 +2,19 @@ import { execFileSync } from 'node:child_process';
+ import { promises as fs } from 'node:fs';
+ import os from 'node:os';
+ import path from 'node:path';
+-import { afterEach, describe, expect, it } from 'vitest';
++import { afterEach, describe, expect, it, vi } from 'vitest';
+ 
+ import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+ import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+ import { inspectNativeSdkRun } from '../../../domains/comet-native/native-runtime-ownership.js';
+ import { settleNativeSdkCompletion } from '../../../domains/comet-native/native-sdk-completion-cleanup.js';
++import * as selectionModule from '../../../domains/workflow-contract/current-selection.js';
+ import { readCometCurrentSelection } from '../../../domains/workflow-contract/current-selection.js';
+ import type { WorkflowRun } from '../../../domains/engine/runtime.js';
+ 
+ const roots: string[] = [];
+ afterEach(async () => {
++  vi.restoreAllMocks();
+   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
+ });
+ 
+@@ -65,26 +67,18 @@ describe('Native SDK completion selection release', () => {
+     expect((await readCometCurrentSelection(f.root)).status).toBe('selected');
+   });
+ 
+-  it('surfaces a pending release instead of hiding a blocked mutation lock', async () => {
++  it('surfaces a failed selection release and repairs it without changing an unrelated selection', async () => {
+     const f = await fixture();
+-    const paths = await nativeProjectPaths(
+-      f.root,
+-      (f.completedRun.input as { artifactRootRef: string }).artifactRootRef,
+-    );
+-    await fs.mkdir(paths.locksDir, { recursive: true });
+-    await fs.writeFile(
+-      path.join(paths.locksDir, 'root-move.lock'),
+-      JSON.stringify({
+-        id: 'controlled-foreign-root',
+-        pid: 2147483647,
+-        hostname: 'controlled-foreign-host',
+-        createdAt: new Date().toISOString(),
+-        operation: 'Controlled root move interruption',
+-      }),
+-    );
+-
++    const selected = await readCometCurrentSelection(f.root);
++    const release = vi
++      .spyOn(selectionModule, 'clearCometCurrentSelectionIf')
++      .mockRejectedValueOnce(new Error('SIMULATED selection publication failure'));
+     await expect(
+       settleNativeSdkCompletion({ projectRoot: f.root, run: f.completedRun }),
+     ).rejects.toThrow(/current selection release remains pending/);
++    expect(await readCometCurrentSelection(f.root)).toEqual(selected);
++    release.mockRestore();
++    await settleNativeSdkCompletion({ projectRoot: f.root, run: f.completedRun });
++    expect((await readCometCurrentSelection(f.root)).status).toBe('missing');
+   });
+ });
+
+diff --git a/test/domains/comet-native/native-portable-migration-runtime.test.ts b/test/domains/comet-native/native-portable-migration-runtime.test.ts
+index 87f116ff..0f7b689f 100644
+--- a/test/domains/comet-native/native-portable-migration-runtime.test.ts
++++ b/test/domains/comet-native/native-portable-migration-runtime.test.ts
+@@ -1,10 +1,11 @@
++import { readNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
++import '../../helpers/isolated-agent-home.js';
+ import { promises as fs } from 'node:fs';
+ import { randomUUID } from 'node:crypto';
+ import os from 'node:os';
+ import path from 'node:path';
+ import { afterEach, describe, expect, it } from 'vitest';
+ import { stringify } from 'yaml';
+-import { isWorkspaceRuntimeMigrationFence } from '../../../domains/workflow-contract/workspace-runtime.js';
+ import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
+ 
+ import {
+@@ -15,7 +16,7 @@ import {
+   ensureNativeDirectories,
+   nativeProjectPaths,
+ } from '../../../domains/comet-native/native-paths.js';
+-import { withNativeMutationLock } from '../../../domains/comet-native/native-mutation-lock.js';
++import { withNativeMutation } from '../../../domains/comet-native/native-mutation.js';
+ import {
+   hasIncompleteNativePortableMigration,
+   migrateNativeLegacyChangeToPortable,
+@@ -90,77 +91,85 @@ describe('Native portable migration Runtime', () => {
+     const paths = await portableChange();
+     const localRuntime = path.join(paths.changesRuntimeDir, 'portable-change');
+     const legacyRuntime = path.join(paths.changesDir, 'portable-change', 'runtime');
+-    await fs.cp(localRuntime, legacyRuntime, { recursive: true });
+-    await fs.rm(localRuntime, { recursive: true });
+-    await nativeProjectPaths(paths.projectRoot, 'docs');
++    await fs.mkdir(legacyRuntime, { recursive: true });
+     return { paths, localRuntime, legacyRuntime };
+   }
+ 
+-  it('does not treat a validated migration fence as incomplete portable migration', async () => {
+-    const { paths, localRuntime, legacyRuntime } = await migratedPortableChange();
+-    const stateFile = path.join(localRuntime, 'state.json');
+-    const stateBefore = await fs.readFile(stateFile);
+-    const fenceBefore = await fs.readFile(legacyRuntime);
++  it('keeps committed portable business without rebuilding a retired fence or execution mirror', async () => {
++    const { paths, localRuntime, legacyRuntime } = await migratedPortableChange(),
++      file = path.join(paths.changesDir, 'portable-change', 'comet-state.yaml'),
++      before = await fs.readFile(file),
++      state = await readNativePortableState(file);
+     await expect(hasIncompleteNativePortableMigration(paths, 'portable-change')).resolves.toBe(
+       false,
+     );
+-    await migrateNativeLegacyChangeToPortable({ paths, name: 'portable-change' });
+-    expect(await fs.readFile(stateFile)).toEqual(stateBefore);
+-    expect(await fs.readFile(legacyRuntime)).toEqual(fenceBefore);
++    expect(await migrateNativeLegacyChangeToPortable({ paths, name: 'portable-change' })).toEqual(
++      state,
++    );
++    expect(await fs.readFile(file)).toEqual(before);
++    expect((await fs.lstat(legacyRuntime)).isDirectory()).toBe(true);
++    await expect(fs.access(path.join(localRuntime, 'state.json'))).rejects.toMatchObject({
++      code: 'ENOENT',
++    });
+   });
+ 
+   it.for(['invalid-json', 'unknown-schema', 'different-change', 'symlink'] as const)(
+-    'refuses migration cleanup with %s local state and preserves all evidence',
+-    async (caseName, context) => {
+-      if (caseName === 'symlink') await requireFileSymlink(context);
+-      const { paths, localRuntime, legacyRuntime } = await migratedPortableChange();
+-      const stateFile = path.join(localRuntime, 'state.json');
+-      const value = JSON.parse(await fs.readFile(stateFile, 'utf8'));
+-      if (caseName === 'unknown-schema') value.schema = 'comet.native.local-execution.future';
+-      if (caseName === 'different-change') value.change = 'another-change';
+-      const bytes = caseName === 'invalid-json' ? '{broken' : JSON.stringify(value);
+-      if (caseName === 'symlink') {
+-        const outside = path.join(paths.projectRoot, 'outside-state.json');
+-        await fs.writeFile(outside, bytes);
+-        await fs.unlink(stateFile);
+-        await fs.symlink(outside, stateFile);
+-      } else {
+-        await fs.writeFile(stateFile, bytes);
+-      }
+-      const projection = path.join(paths.changesDir, 'portable-change', 'checkpoint.md');
+-      const evidence = path.join(localRuntime, 'check.log');
+-      await fs.writeFile(projection, 'old projection');
+-      await fs.writeFile(evidence, 'retained evidence');
+-      const fenceBefore = await fs.readFile(legacyRuntime);
+-
+-      await expect(
+-        migrateNativeLegacyChangeToPortable({ paths, name: 'portable-change' }),
+-      ).rejects.toThrow();
+-      await expect(
+-        nativeDoctorCommand(['portable-change', '--repair'], paths.projectRoot),
+-      ).rejects.toThrow();
+-      expect(await fs.readFile(stateFile, 'utf8')).toBe(bytes);
+-      expect(await fs.readFile(projection, 'utf8')).toBe('old projection');
+-      expect(await fs.readFile(evidence, 'utf8')).toBe('retained evidence');
+-      expect(await fs.readFile(legacyRuntime)).toEqual(fenceBefore);
+-      if (caseName === 'symlink') expect((await fs.lstat(stateFile)).isSymbolicLink()).toBe(true);
++    'preserves ignored %s local cache without changing portable business',
++    async (kind, context) => {
++      if (kind === 'symlink') await requireFileSymlink(context);
++      const { paths, localRuntime } = await migratedPortableChange(),
++        file = path.join(paths.changesDir, 'portable-change', 'comet-state.yaml'),
++        before = await fs.readFile(file),
++        state = await readNativePortableState(file),
++        cache = path.join(localRuntime, 'state.json');
++      await fs.mkdir(localRuntime, { recursive: true });
++      const source =
++        kind === 'invalid-json'
++          ? '{SIMULATED retired cache'
++          : JSON.stringify({
++              schema:
++                kind === 'unknown-schema'
++                  ? 'SIMULATED-future-cache'
++                  : 'comet.native.local-execution.v4',
++              change: 'another-change',
++              execution: { status: 'failed' },
++            });
++      if (kind === 'symlink') {
++        const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'native-retired-cache-target-'));
++        roots.push(outside);
++        const target = path.join(outside, 'state.json');
++        await fs.writeFile(target, source);
++        await fs.symlink(target, cache);
++      } else await fs.writeFile(cache, source);
++      expect(await migrateNativeLegacyChangeToPortable({ paths, name: 'portable-change' })).toEqual(
++        state,
++      );
++      expect(await fs.readFile(file)).toEqual(before);
++      expect(await fs.readFile(cache, 'utf8')).toBe(source);
++      expect((await fs.lstat(cache)).isSymbolicLink()).toBe(kind === 'symlink');
+     },
+   );
+ 
+-  it('rejects a changed fence target when repairing with captured project paths', async () => {
+-    const { paths, localRuntime, legacyRuntime } = await migratedPortableChange();
+-    const fence = JSON.parse(await fs.readFile(legacyRuntime, 'utf8'));
+-    fence.target = path.join(paths.changesRuntimeDir, 'another-change');
+-    const changedFence = JSON.stringify(fence);
+-    await fs.writeFile(legacyRuntime, changedFence);
+-    const stateBefore = await fs.readFile(path.join(localRuntime, 'state.json'));
+-
+-    await expect(hasIncompleteNativePortableMigration(paths, 'portable-change')).rejects.toThrow();
+-    await expect(
+-      migrateNativeLegacyChangeToPortable({ paths, name: 'portable-change' }),
+-    ).rejects.toThrow();
+-    expect(await fs.readFile(path.join(localRuntime, 'state.json'))).toEqual(stateBefore);
+-    expect(await fs.readFile(legacyRuntime, 'utf8')).toBe(changedFence);
++  it('does not use replaced legacy cache paths as portable business authority', async () => {
++    const { paths, legacyRuntime } = await migratedPortableChange(),
++      file = path.join(paths.changesDir, 'portable-change', 'comet-state.yaml'),
++      bytes = await fs.readFile(file),
++      state = await readNativePortableState(file),
++      original = legacyRuntime + '-original';
++    await fs.writeFile(path.join(legacyRuntime, 'cache.txt'), 'SIMULATED original retired cache');
++    await fs.rename(legacyRuntime, original);
++    await fs.mkdir(legacyRuntime);
++    await fs.writeFile(path.join(legacyRuntime, 'cache.txt'), 'SIMULATED replaced retired cache');
++    expect(await migrateNativeLegacyChangeToPortable({ paths, name: 'portable-change' })).toEqual(
++      state,
++    );
++    expect(await fs.readFile(file)).toEqual(bytes);
++    expect(await fs.readFile(path.join(original, 'cache.txt'), 'utf8')).toBe(
++      'SIMULATED original retired cache',
++    );
++    expect(await fs.readFile(path.join(legacyRuntime, 'cache.txt'), 'utf8')).toBe(
++      'SIMULATED replaced retired cache',
++    );
+   });
+ 
+   it('does not treat a portable verification report as incomplete migration', async () => {
+@@ -175,7 +184,7 @@ describe('Native portable migration Runtime', () => {
+     );
+   });
+ 
+-  it('commits portable YAML before cleaning legacy Runtime and is idempotent', async () => {
++  it('commits portable YAML while retaining legacy evidence and is idempotent', async () => {
+     const paths = await legacyChange();
+     const migrated = await migrateNativeLegacyChangeToPortable({ paths, name: 'legacy-change' });
+     expect(migrated).toMatchObject({
+@@ -188,77 +197,54 @@ describe('Native portable migration Runtime', () => {
+     expect(JSON.stringify(migrated)).not.toContain('a'.repeat(64));
+     expect((await fs.readdir(path.join(paths.changesRuntimeDir, 'legacy-change'))).sort()).toEqual([
+       'evidence',
+-      'state.json',
+     ]);
+-    await expect(
+-      fs.stat(path.join(paths.changesDir, 'legacy-change', 'evidence.md')),
+-    ).rejects.toMatchObject({
+-      code: 'ENOENT',
+-    });
+-    await expect(
+-      fs.stat(path.join(paths.changesDir, 'legacy-change', 'verification.md')),
+-    ).rejects.toMatchObject({
+-      code: 'ENOENT',
+-    });
++    expect(
++      await fs.readFile(path.join(paths.changesDir, 'legacy-change', 'evidence.md'), 'utf8'),
++    ).toBe('legacy evidence');
++    expect(
++      await fs.readFile(path.join(paths.changesDir, 'legacy-change', 'verification.md'), 'utf8'),
++    ).toBe('legacy verification: passed');
+     expect(await migrateNativeLegacyChangeToPortable({ paths, name: 'legacy-change' })).toEqual(
+       migrated,
+     );
+   });
+ 
+-  it('finishes cleanup and rebuilds local state when the portable YAML outlives its transaction', async () => {
+-    const paths = await legacyChange();
+-    const migrated = await migrateNativeLegacyChangeToPortable({
+-      paths,
+-      name: 'legacy-change',
+-    });
+-    const activeDir = path.join(paths.changesDir, 'legacy-change');
+-    const legacyRuntime = path.join(activeDir, 'runtime');
+-    const localRuntime = path.join(paths.changesRuntimeDir, 'legacy-change');
++  it('retains committed portable history without rebuilding retired local projections', async () => {
++    const paths = await legacyChange(),
++      migrated = await migrateNativeLegacyChangeToPortable({ paths, name: 'legacy-change' }),
++      active = path.join(paths.changesDir, 'legacy-change'),
++      legacyRuntime = path.join(active, 'runtime'),
++      localRuntime = path.join(paths.changesRuntimeDir, 'legacy-change');
+     await fs.mkdir(legacyRuntime, { recursive: true });
+     await fs.writeFile(path.join(legacyRuntime, 'trajectory.jsonl'), '{"type":"legacy-history"}\n');
+-    await fs.writeFile(path.join(activeDir, 'checkpoint.md'), 'legacy projection');
++    await fs.writeFile(path.join(active, 'checkpoint.md'), 'legacy projection');
+     await fs.rm(localRuntime, { recursive: true, force: true });
+-
+-    const recovered = await migrateNativeLegacyChangeToPortable({
+-      paths,
+-      name: 'legacy-change',
+-    });
+-
+-    expect(recovered).toEqual(migrated);
+-    expect(await isWorkspaceRuntimeMigrationFence(legacyRuntime, localRuntime)).toBe(true);
+-    await expect(fs.stat(path.join(activeDir, 'checkpoint.md'))).rejects.toMatchObject({
+-      code: 'ENOENT',
+-    });
+-    expect((await fs.readdir(localRuntime)).sort()).toEqual(['state.json', 'trajectory.jsonl']);
+-    expect(await fs.readFile(path.join(localRuntime, 'trajectory.jsonl'), 'utf8')).toBe(
++    const file = path.join(active, 'comet-state.yaml'),
++      bytes = await fs.readFile(file);
++    expect(await migrateNativeLegacyChangeToPortable({ paths, name: 'legacy-change' })).toEqual(
++      migrated,
++    );
++    expect(await fs.readFile(file)).toEqual(bytes);
++    expect(await fs.readFile(path.join(legacyRuntime, 'trajectory.jsonl'), 'utf8')).toBe(
+       '{"type":"legacy-history"}\n',
+     );
+-    expect(
+-      JSON.parse(await fs.readFile(path.join(localRuntime, 'state.json'), 'utf8')),
+-    ).toMatchObject({
+-      schema: 'comet.native.local-execution.v4',
+-      change: 'legacy-change',
+-      basedOnStateVersion: migrated.state_version,
+-      execution: null,
+-      checks: [],
+-    });
++    expect(await fs.readFile(path.join(active, 'checkpoint.md'), 'utf8')).toBe('legacy projection');
++    await expect(fs.access(localRuntime)).rejects.toMatchObject({ code: 'ENOENT' });
+   });
+ 
+   it('recognizes only valid portable migration journals and lets that migration resume itself', async () => {
+     const paths = await legacyChange();
+     await fs.writeFile(path.join(paths.transactionsDir, 'notes.json'), '{"status":"prepared"}');
+-    await expect(
+-      withNativeMutationLock(paths, 'unrelated file probe', async () => 'allowed'),
+-    ).resolves.toBe('allowed');
++    await expect(withNativeMutation(paths, async () => 'allowed')).resolves.toBe('allowed');
+ 
+     const invalidTransaction = path.join(
+       paths.transactionsDir,
+       'portable-migration-invalid-change.json',
+     );
+     await fs.writeFile(invalidTransaction, '{}\n');
+-    await expect(
+-      withNativeMutationLock(paths, 'invalid transaction probe', async () => 'blocked'),
+-    ).rejects.toThrow('transaction recovery is required');
++    await expect(withNativeMutation(paths, async () => 'blocked')).rejects.toThrow(
++      'transaction recovery is required',
++    );
+     await fs.rm(invalidTransaction);
+ 
+     const transactionFile = path.join(
+@@ -298,9 +284,7 @@ describe('Native portable migration Runtime', () => {
+         createdAt: new Date().toISOString(),
+       })}\n`,
+     );
+-    await expect(
+-      withNativeMutationLock(paths, 'completed transaction probe', async () => 'allowed'),
+-    ).resolves.toBe('allowed');
++    await expect(withNativeMutation(paths, async () => 'allowed')).resolves.toBe('allowed');
+     await expect(
+       migrateNativeLegacyChangeToPortable({ paths, name: 'legacy-change' }),
+     ).resolves.toEqual(migrated);
+
+diff --git a/test/domains/comet-native/native-workspace-finish-branches.test.ts b/test/domains/comet-native/native-workspace-finish-branches.test.ts
+index 6f7f07c4..6daf6643 100644
+--- a/test/domains/comet-native/native-workspace-finish-branches.test.ts
++++ b/test/domains/comet-native/native-workspace-finish-branches.test.ts
+@@ -50,7 +50,6 @@ const paths: NativeProjectPaths = {
+   workspaceRuntimeRoot: path.join(os.tmpdir(), 'native-finish-runtime'),
+   runtimeDir: path.join(projectRoot, '.comet', 'runtime', 'native'),
+   changesRuntimeDir: path.join(projectRoot, '.comet', 'runtime', 'native', 'changes'),
+-  locksDir: path.join(projectRoot, '.comet', 'runtime', 'native', 'locks'),
+   transactionsDir: path.join(projectRoot, '.comet', 'runtime', 'native', 'transactions'),
+ };
+ 
+
+diff --git a/test/fixtures/native-lock-process-worker.ts b/test/fixtures/native-lock-process-worker.ts
+deleted file mode 100644
+index e492343a..00000000
+--- a/test/fixtures/native-lock-process-worker.ts
++++ /dev/null
+@@ -1,91 +0,0 @@
+-import { promises as fs } from 'node:fs';
+-import path from 'node:path';
+-
+-import {
+-  acquireNativeLock,
+-  diagnoseNativeLock,
+-  releaseNativeLock,
+-  takeOverNativeStaleLock,
+-  type NativeLock,
+-} from '../../domains/comet-native/native-lock.js';
+-import { nativeProjectPaths } from '../../domains/comet-native/native-paths.js';
+-
+-async function waitFor(file: string): Promise<void> {
+-  const deadline = Date.now() + 10_000;
+-  while (Date.now() < deadline) {
+-    try {
+-      await fs.access(file);
+-      return;
+-    } catch (error) {
+-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+-      await new Promise((resolve) => setTimeout(resolve, 5));
+-    }
+-  }
+-  throw new Error(`Timed out waiting for ${file}`);
+-}
+-
+-const [mode, projectRoot, lockName, role, readyFile, goFile, statusFile, releaseFile] =
+-  process.argv.slice(2);
+-if (
+-  !mode ||
+-  !projectRoot ||
+-  !lockName ||
+-  !role ||
+-  !readyFile ||
+-  !goFile ||
+-  !statusFile ||
+-  !releaseFile
+-) {
+-  throw new Error('Native lock process worker arguments are incomplete');
+-}
+-
+-const paths = await nativeProjectPaths(projectRoot, '.');
+-const lockFile = path.join(paths.locksDir, `${lockName}.lock`);
+-if (mode === 'takeover') {
+-  const diagnosis = await diagnoseNativeLock(lockFile);
+-  if (diagnosis.status !== 'unknown' || !diagnosis.owner || !diagnosis.identity) {
+-    throw new Error(`Expected an unknown legacy lock before the barrier, received ${diagnosis.status}`);
+-  }
+-  await fs.writeFile(readyFile, 'ready\n');
+-  await waitFor(goFile);
+-  if (role === 'late') await waitFor(`${goFile}.primary`);
+-  const takeover = await takeOverNativeStaleLock(paths, lockFile, diagnosis, { confirmedOwnerStopped: true });
+-  let acquired: NativeLock | null = null;
+-  try {
+-    acquired = await acquireNativeLock(paths, lockName, `${role} takeover contender`);
+-    await fs.writeFile(statusFile, `acquired:${acquired.owner.id}\n`);
+-    if (role === 'primary') await fs.writeFile(`${goFile}.primary`, 'acquired\n');
+-    await waitFor(releaseFile);
+-  } catch (error) {
+-    await fs.writeFile(statusFile, `blocked:${(error as Error).message}\n`);
+-  } finally {
+-    if (acquired) await releaseNativeLock(acquired);
+-  }
+-  process.stdout.write(JSON.stringify({ takeover }));
+-} else if (mode === 'release-old') {
+-  const oldLock = JSON.parse(await fs.readFile(releaseFile, 'utf8')) as NativeLock;
+-  await fs.writeFile(readyFile, 'ready\n');
+-  await waitFor(goFile);
+-  if (role === 'late') await waitFor(`${goFile}.primary`);
+-  try {
+-    await releaseNativeLock(oldLock);
+-    await fs.writeFile(statusFile, 'released\n');
+-  } catch (error) {
+-    await fs.writeFile(statusFile, `blocked:${(error as Error).message}\n`);
+-  }
+-} else if (mode === 'acquire-race') {
+-  await fs.writeFile(readyFile, 'ready\n');
+-  await waitFor(goFile);
+-  let acquired: NativeLock | null = null;
+-  try {
+-    acquired = await acquireNativeLock(paths, lockName, `${role} direct contender`);
+-    await fs.writeFile(statusFile, `acquired:${acquired.owner.id}\n`);
+-    await waitFor(releaseFile);
+-  } catch (error) {
+-    await fs.writeFile(statusFile, `blocked:${(error as Error).message}\n`);
+-  } finally {
+-    if (acquired) await releaseNativeLock(acquired);
+-  }
+-} else {
+-  throw new Error(`Unknown Native lock process worker mode: ${mode}`);
+-}
+
+
+
+diff --git a/test/domains/comet-native/native-single-writer.test.ts b/test/domains/comet-native/native-single-writer.test.ts
+new file mode 100644
+index 00000000..3eff5291
+--- /dev/null
++++ b/test/domains/comet-native/native-single-writer.test.ts
+@@ -0,0 +1,109 @@
++import '../../helpers/isolated-agent-home.js';
++import { promises as fs } from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import { afterEach, expect, it } from 'vitest';
++import {
++  defaultProjectConfig,
++  writeProjectConfig,
++} from '../../../domains/comet-native/native-config.js';
++import {
++  ensureNativeDirectories,
++  nativeProjectPaths,
++} from '../../../domains/comet-native/native-paths.js';
++import { nativeNewCommand } from '../../../domains/comet-native/native-new-command.js';
++import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
++import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
++import { readNativeSdkRunRecord } from '../../../domains/comet-native/native-sdk-state-store.js';
++import { projectNativeSupervisorTask } from '../../../domains/comet-native/native-supervisor-model.js';
++
++const roots: string[] = [];
++afterEach(async () => {
++  await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
++});
++async function project() {
++  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-single-writer-'));
++  roots.push(root);
++  await fs.mkdir(path.join(root, '.git'));
++  await writeProjectConfig(root, defaultProjectConfig('docs', 'en'));
++  const paths = await nativeProjectPaths(root, 'docs');
++  await ensureNativeDirectories(paths);
++  return { root, paths };
++}
++
++it('creates a Native workspace without project or checkpoint lock directories', async () => {
++  const { root, paths } = await project();
++  const created = await nativeNewCommand(['single-writer'], root);
++  expect(created.exitCode).toBe(0);
++  expect((await readNativeSdkRunRecord(root, 'single-writer'))?.runId).toBe('single-writer');
++  await expect(fs.access(path.join(paths.runtimeDir, 'locks'))).rejects.toMatchObject({
++    code: 'ENOENT',
++  });
++  await expect(
++    fs.access(path.join(resolveWorkspaceRuntimeRootSync(root), 'state-projections/native')),
++  ).rejects.toMatchObject({ code: 'ENOENT' });
++  const runtimeFiles = await fs.readdir(paths.workspaceRuntimeRoot, { recursive: true });
++  expect(
++    runtimeFiles.filter((file) => /\.lock(?:\.sqlite(?:-(?:journal|wal|shm))?)?$/u.test(file)),
++  ).toEqual([]);
++});
++
++it('ignores retired Native lock records without changing their bytes or asking for a token', async () => {
++  const { root, paths } = await project();
++  const oldLocks = [
++    path.join(paths.runtimeDir, 'locks', 'root-move.lock'),
++    path.join(paths.runtimeDir, 'locks', '.recovery.lock'),
++    path.join(paths.runtimeDir, 'locks', '.coordinator', 'old.claim'),
++    path.join(
++      resolveWorkspaceRuntimeRootSync(root),
++      'state-projections/native',
++      'single-writer.lock',
++    ),
++  ];
++  const bytes = 'SIMULATED obsolete lock metadata: preserve as historical bytes\n';
++  for (const file of oldLocks) {
++    await fs.mkdir(path.dirname(file), { recursive: true });
++    await fs.writeFile(file, bytes);
++  }
++  expect((await nativeNewCommand(['single-writer'], root)).exitCode).toBe(0);
++  const original = await readNativeSdkRunRecord(root, 'single-writer');
++  for (const args of [[], ['single-writer']]) {
++    const diagnosed = await nativeDoctorCommand([...args], root);
++    expect(diagnosed.exitCode).toBe(0);
++    expect(diagnosed.data).not.toHaveProperty('locks');
++    expect(JSON.stringify(diagnosed)).not.toContain('--lock-token');
++  }
++  expect(await readNativeSdkRunRecord(root, 'single-writer')).toEqual(original);
++  for (const file of oldLocks) expect(await fs.readFile(file, 'utf8')).toBe(bytes);
++});
++
++it('returns Child results to the parent for serial submission without changing their original task identity', () => {
++  const childRoot = path.resolve('isolated-child-worktree');
++  const parentRoot = path.resolve('parent-control-worktree');
++  const task = {
++    role: 'builder' as const,
++    child: 'original-child',
++    projectRoot: childRoot,
++    baseCommit: '1'.repeat(40),
++    runId: 'original-child-task',
++  };
++  const projected = projectNativeSupervisorTask(task, 'original-parent', parentRoot);
++  expect(projected).toMatchObject(task);
++  expect(projected.instruction).toContain('自己的 worktree');
++  expect(projected.instruction).toContain('JSON 返回父 Agent');
++  expect(projected.instruction).toContain('controlProjectRoot 串行');
++  expect(projected.returnAction.cwd).toBe(parentRoot);
++  expect(projected.returnAction.commandArgs).toEqual([
++    'comet',
++    'native',
++    'next',
++    'original-parent',
++    '--runner-input',
++    '<temporary-json-file>',
++    '--json',
++  ]);
++  expect(projected.returnAction.inputOptions[0].template).toMatchObject({
++    child: task.child,
++    runId: task.runId,
++  });
++});

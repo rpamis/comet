@@ -12,16 +12,14 @@ import {
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
 import {
+  confirmNativePortableShape,
   createNativePortableChange,
   nativePortableChangeDir,
   prepareNativePortableShapeConfirmation,
-  confirmNativePortableShape,
   readNativePortableChange,
   syncNativePortableSpecReferences,
 } from '../../../domains/comet-native/native-portable-runtime.js';
 import * as stateStorage from '../../../domains/comet-native/native-portable-state.js';
-import { readNativeVerificationReportSnapshot } from '../../../domains/comet-native/native-evidence-storage.js';
-import * as evidenceStorage from '../../../domains/comet-native/native-evidence-storage.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -59,28 +57,34 @@ async function setup(padding = '') {
     replacements: [{ from: 'old.md', to: 'new.md' }],
   };
   const audits = async () =>
-    (await fs.readdir(paths.runtimeDir, { recursive: true })).filter((name) =>
-      name.includes(`${path.sep}evidence${path.sep}reports${path.sep}`),
-    );
+    (
+      await fs
+        .readdir(path.join(paths.runtimeDir, 'spec-sync'))
+        .catch((error: NodeJS.ErrnoException) => {
+          if (error.code === 'ENOENT') return [];
+          throw error;
+        })
+    ).filter((name) => name.endsWith('.json'));
   return { paths, file, original, before, input, audits };
 }
 
 describe('Native spec sync audit recovery', () => {
-  it('syncs a large confirmed spec with a bounded and verifiable audit', async () => {
+  it('syncs a large confirmed spec with a bounded audit of the requested reference edit', async () => {
     const { paths, input, file, original } = await setup('Background material.\n'.repeat(40000));
     const synced = await syncNativePortableSpecReferences(input);
     expect(await fs.readFile(file, 'utf8')).toBe(original.replace('(old.md)', '(new.md)'));
-    const ref = synced.history.at(-1)!.summary.text.match(/reports\/([a-f0-9]{64})\.json/)![1];
-    const text = await readNativeVerificationReportSnapshot(paths, 'change', ref);
+    const ref = synced.history.at(-1)!.summary.text.match(/spec-sync\/[a-f0-9-]+\.json/)![0];
+    const text = await fs.readFile(path.join(paths.runtimeDir, ref), 'utf8');
     expect(Buffer.byteLength(text)).toBeLessThan(4096);
     expect(JSON.parse(text)).toMatchObject({
-      beforeHash: expect.stringMatching(/^[a-f0-9]{64}$/),
-      afterHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      schema: 'comet.native.spec-sync.v1',
+      actor: 'reviewer',
+      reason: 'Correct ADR reference',
       replacements: [{ from: 'old.md', to: 'new.md' }],
     });
   });
 
-  it('rolls back the spec and newly created audit when state commit fails', async () => {
+  it('rolls back the spec while retaining the attempted edit audit when state commit fails', async () => {
     const { paths, input, file, original, before, audits } = await setup();
     vi.spyOn(stateStorage, 'compareAndSwapNativePortableState').mockRejectedValueOnce(
       new Error('state commit failed'),
@@ -88,7 +92,7 @@ describe('Native spec sync audit recovery', () => {
     await expect(syncNativePortableSpecReferences(input)).rejects.toThrow('state commit failed');
     expect(await fs.readFile(file, 'utf8')).toBe(original);
     expect(await readNativePortableChange(paths, 'change')).toEqual(before);
-    expect(await audits()).toEqual([]);
+    expect(await audits()).toHaveLength(1);
   });
 
   it('preserves the original failure if state cannot be inspected during rollback', async () => {
@@ -104,22 +108,18 @@ describe('Native spec sync audit recovery', () => {
     expect(await audits()).toHaveLength(1);
   });
 
-  it('preserves an already existing identical audit when the state commit fails', async () => {
-    const { input, file, original, audits } = await setup();
-    const write = evidenceStorage.writeNativeVerificationReportSnapshot;
-    vi.spyOn(evidenceStorage, 'writeNativeVerificationReportSnapshot').mockImplementationOnce(
-      async (options) => {
-        // A preceding interrupted attempt can leave the same content-addressed audit.
-        await write({ ...options, onCreated: undefined });
-        return write(options);
-      },
-    );
+  it('preserves an earlier audit when a new state commit fails', async () => {
+    const { paths, input, file, original, audits } = await setup();
+    const prior = path.join(paths.runtimeDir, 'spec-sync', 'earlier.json');
+    await fs.mkdir(path.dirname(prior), { recursive: true });
+    await fs.writeFile(prior, '{"actor":"earlier-reviewer"}');
     vi.spyOn(stateStorage, 'compareAndSwapNativePortableState').mockRejectedValueOnce(
       new Error('state commit failed'),
     );
     await expect(syncNativePortableSpecReferences(input)).rejects.toThrow('state commit failed');
     expect(await fs.readFile(file, 'utf8')).toBe(original);
-    expect(await audits()).toHaveLength(1);
+    expect(await fs.readFile(prior, 'utf8')).toBe('{"actor":"earlier-reviewer"}');
+    expect(await audits()).toHaveLength(2);
   });
 
   it('retains the new spec and audit when failure occurs after state commit', async () => {

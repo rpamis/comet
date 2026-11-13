@@ -61,10 +61,7 @@ import {
   resolveArtifactLanguage,
 } from '../../../domains/skill/languages.js';
 import { assertClassicLayoutInitializationSafe } from '../../../domains/comet-classic/classic-layout-initialization.js';
-import {
-  createNativeChange,
-  writeNativeChange,
-} from '../../../domains/comet-native/native-change.js';
+import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -966,7 +963,7 @@ describe('skills', () => {
 
           await expect(
             createWorkingDirs(tmpDir, 'en', 'docs', initialization.initializationPermit),
-          ).rejects.toThrow(/symbolic link or junction/iu);
+          ).rejects.toThrow(/symbolic link(?:, junction or invalid directory| or junction)/iu);
           await expect(fs.access(path.join(outsideRoot, ...escapedWrite))).rejects.toMatchObject({
             code: 'ENOENT',
           });
@@ -1155,15 +1152,57 @@ describe('skills', () => {
       await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
       const paths = await nativeProjectPaths(projectRoot, '.');
       await ensureNativeDirectories(paths);
-      const change = await createNativeChange({
-        paths,
-        name: 'trae-cn-build',
-        language: 'en',
-        verificationProtocol: 'legacy-v1',
-      });
-      change.phase = 'build';
-      await writeNativeChange(paths, change);
-      await selectNativeChange(paths, change.name);
+      const invoke = async (args: string[]) => {
+        const result = await runNativeCli([
+          ...args,
+          ...(args.includes('--project-root') ? [] : ['--project-root', projectRoot]),
+          ...(args.includes('--json') ? [] : ['--json']),
+        ]);
+        expect(result.exitCode, result.stdout).toBe(0);
+        return JSON.parse(result.stdout!).data;
+      };
+      const name = 'trae-cn-build';
+      await invoke(['new', name]);
+      const changeDir = path.join(paths.changesDir, name);
+      await fs.writeFile(
+        path.join(changeDir, 'brief.md'),
+        'Allow the installed Hook to enforce the selected phase.',
+      );
+      const task = await invoke(['next', name, '--session', 'hook-fixture-agent']);
+      const resultFile = path.join(projectRoot, 'hook-shape-result.json');
+      await fs.writeFile(
+        resultFile,
+        JSON.stringify({
+          status: 'succeeded',
+          output: {
+            acceptance: [
+              { source: 'brief.md', text: 'The installed Hook enforces the selected phase.' },
+            ],
+          },
+        }),
+      );
+      const prepared = await invoke([
+        'next',
+        name,
+        '--session',
+        'hook-fixture-agent',
+        '--action',
+        task.task.actionId,
+        '--result',
+        resultFile,
+      ]);
+      const choice = prepared.next.commandAlternatives.find((item: { commandArgs: string[] }) =>
+        item.commandArgs.includes('--confirmed'),
+      );
+      // 模拟批准只用于安装夹具，保留真实公开 CLI 的阶段转换。
+      await invoke(
+        choice.commandArgs
+          .slice(2)
+          .map((value: string) =>
+            value === '<summary>' ? 'SIMULATED-USER fixture approval' : value,
+          ),
+      );
+      await invoke(['select', name]);
     };
 
     it('installs the Claude Code Router as an exec-form Node Hook', async () => {
@@ -1452,6 +1491,26 @@ describe('skills', () => {
       expect(updated.model).toBe('gpt-5');
       expect(updated.hooks.PreToolUse[0]).toEqual({ matcher: 'Write|Edit', hooks: [userHook] });
       expect(updated.hooks.PreToolUse[1]).toEqual({ matcher: 'Write|Edit', hooks: [] });
+    });
+
+    it('preserves the ZCode user Hook when reconciling a project that cannot execute project Hooks', async () => {
+      const platform = PLATFORMS.find((item) => item.id === 'zcode')!;
+      const home = path.join(tmpDir, 'home');
+      const project = path.join(tmpDir, 'project');
+      await installCometHooksForPlatform(home, platform, 'global', 'native');
+      const file = path.join(home, '.zcode/cli/config.json');
+      const source = await fs.readFile(file, 'utf8');
+      const result = await reconcileProjectCometHooksForPlatform(project, platform, 'native', {
+        globalBaseDir: home,
+      });
+      expect(await fs.readFile(file, 'utf8')).toBe(source);
+      expect(result).toMatchObject({
+        status: 'skipped',
+        reason: expect.stringContaining('--scope global'),
+      });
+      await expect(fs.access(path.join(project, '.zcode/config.json'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
     });
 
     it('installs a project Router and removes the historical global Router atomically', async () => {
@@ -2661,7 +2720,11 @@ describe('skills', () => {
       expect(zhOpen).toContain(
         '遵守 `context` 和 `rules` 中的约束，**不得将这些内容复制到产物中**',
       );
-      expect(zhOpen).toContain('每创建一个产物后');
+      expect(zhOpen).toContain('适配器在同一次 status 调用中校验完整闭包和实际文件');
+      expect(zhOpen).toContain('`data.artifactRequirements.problems` 为空时退出循环');
+      expect(zhOpen).toContain('每创建一个产物并确认实际输出文件存在且非空后');
+      expect(zhOpen).toContain('执行 instructions 响应中 `data.nextAction` 指定的 status 命令');
+      expect(zhOpen).toContain('循环中不插入 `state artifacts`');
       expect(zhOpen).toContain(
         'comet classic openspec --agent-json -- status --change "<name>" --json',
       );
@@ -2698,8 +2761,16 @@ describe('skills', () => {
       }
       expect(enOpen).toContain('do not copy them into the artifact');
       expect(enOpen).toContain(
-        'After each artifact is created, validate the closure locally with `comet state artifacts <name> --json`',
+        'the adapter validates the complete closure and actual files in that same status call',
       );
+      expect(enOpen).toContain('`data.artifactRequirements.problems` is empty');
+      expect(enOpen).toContain(
+        'After creating each artifact and confirming its actual output files exist and are nonempty',
+      );
+      expect(enOpen).toContain(
+        "execute the status command in the instructions response's `data.nextAction`",
+      );
+      expect(enOpen).toContain('Do not insert `state artifacts` into this loop');
       expect(enOpen).toContain(
         'comet classic openspec --agent-json -- status --change "<name>" --json',
       );
@@ -2860,7 +2931,7 @@ describe('skills', () => {
       expect(zhDesign).toContain(
         '必须按 `comet-classic/reference/decision-point.md` 的协议暂停并等待用户明确确认设计方案',
       );
-      expect(zhDesign).toContain('brainstorming 引用这些需求，只讨论尚未解决的技术选择');
+      expect(zhDesign).toContain('沿用已确认需求，只澄清尚未解决的技术决定');
       expect(zhDesign).not.toContain('跳过重复上下文探索，直接进入设计提问');
       expect(zhOpen).toContain('comet-classic/reference/workspace.md');
       expect(zhOpen).toContain('推荐理由不能代替用户选择');
@@ -2992,20 +3063,15 @@ describe('skills', () => {
       expect(zhBuild).toContain('不新建 Worktree、重新选择隔离、追加最终审查');
       expect(zhBuild).toContain('验收任务后进入 Verify');
       expect(zhBuild).toContain('必须解决 CRITICAL/IMPORTANT 问题');
-      expect(zhBuild).toContain(
-        'comet check run <change-name> build --local -- <program> [args...]',
+      const execution = await fs.readFile(
+        path.resolve('assets/skills-zh/comet/reference/platform-execution.md'),
+        'utf8',
       );
-      expect(zhVerify).toContain(
-        'comet check run <change-name> verify --local -- <program> [args...]',
-      );
-      expect(zhBuild).toContain('Comet **绝不会执行该文本**，也不能据此自动推进');
-      expect(zhVerify).toContain('手工 `record-check` 只保存声明，不能据此自动推进阶段');
-      expect(zhBuild).toContain('构建通过不替代测试和验收场景');
-      expect(zhVerify).toContain('verify 与 build 的检查结果彼此独立，不能互相替代');
-      expect(zhBuild).toContain(
-        '`COMET_SKIP_BUILD=1` 仅是旧流程的兼容绕过方式，不是可审计的构建证据',
-      );
-      expect(zhVerify).toContain('`COMET_SKIP_BUILD=1` 不能作为可核实的检查记录');
+      expect(execution).toContain('直接使用 Agent 平台工具');
+      expect(execution).toContain('该命令只记录结果，不执行命令');
+      expect(execution).toContain('报告不能代替任务完成、用户批准或验收');
+      expect(execution).toContain('不伪造检查通过或进程已停止');
+      expect(execution).toContain('完整验收须覆盖当前候选的全部验收项');
 
       // MEDIUM: comet-verify Step 1b auto-repairs CRITICAL/IMPORTANT findings
       // without turning mandatory work into a user decision.
@@ -3173,6 +3239,10 @@ describe('skills', () => {
 
   describe('English Comet workflow safeguards', () => {
     it('matches the Chinese workflow decision-point requirements', async () => {
+      const enSdkMethods = await fs.readFile(
+        path.resolve('assets/skills/comet-classic/reference/sdk-methods.md'),
+        'utf8',
+      );
       const enComet = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-classic');
       const enOpenMain = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-open');
       expect(enOpenMain).toContain('](reference/batch-changes.md)');
@@ -3318,7 +3388,7 @@ describe('skills', () => {
       expect
         .soft(enDesign)
         .toContain(
-          'discuss only unresolved technical choices; do not ask again about confirmed requirements',
+          'retain confirmed requirements, and clarify only unresolved technical decisions',
         );
       expect(enDesign).not.toContain('Skip redundant context exploration');
       expect(enBuild).toContain('Confirm the execution strategy before writing a plan.');
@@ -3541,39 +3611,35 @@ describe('skills', () => {
       expect(enBuild).toContain('Verify owns the single final integration review');
       expect(enBuild).toContain('accept tasks and enter Verify');
       expect(enBuild).toContain('Resolve CRITICAL/IMPORTANT findings.');
-      expect
-        .soft(enBuild)
-        .toContain('comet check run <change-name> build --local -- <program> [args...]');
-      expect
-        .soft(enVerify)
-        .toContain('comet check run <change-name> verify --local -- <program> [args...]');
-      expect
-        .soft(enBuild)
-        .toContain(
-          'Comet **never executes that text**, and it cannot automatically authorize advancement',
-        );
-      expect
-        .soft(enVerify)
-        .toContain(
-          'Manual `record-check` only stores a declaration, cannot automatically advance the phase, and shadows earlier valid Runtime evidence',
-        );
-      expect(enBuild).toContain('Build and Verify evidence are separate');
-      expect
-        .soft(enVerify)
-        .toContain('Verify and Build evidence are separate and cannot substitute for one another');
-      expect
-        .soft(enBuild)
-        .toContain('`COMET_SKIP_BUILD=1` is a legacy bypass, not auditable build evidence');
-      expect(enVerify).toContain('`COMET_SKIP_BUILD=1` is not a verifiable check record');
+      const execution = await fs.readFile(
+        path.resolve('assets/skills/comet/reference/platform-execution.md'),
+        'utf8',
+      );
+      expect(execution).toContain('Use Agent platform tools directly');
+      expect(execution).toContain(
+        'This command records results without executing the command text',
+      );
+      expect(execution).toContain(
+        'Reports do not replace task completion, user approval, or acceptance',
+      );
+      expect(execution).toContain('never fabricate a pass or a stopped process');
+      expect(execution).toContain(
+        'Complete acceptance covers every requirement for the current candidate',
+      );
       expect(enVerify).toContain('Do not add “should I fix it?” approval');
       expect(enVerify).toContain('CRITICAL/IMPORTANT findings can never be waived');
       expect
         .soft(enVerify)
         .toContain('Verify owns the single final integration code review for the whole change');
-      expect(enVerify).toContain('dispatch an independent reviewer');
+      expect(enVerify).toContain('SDK execution methods');
+      expect(enSdkMethods).toContain(
+        'Standard or thorough review requires an independent reviewer',
+      );
       expect
-        .soft(enVerify)
-        .toContain('check results, and repairs, focusing on correctness, security, and edge cases');
+        .soft(enSdkMethods)
+        .toContain(
+          'actual diff scope, compilation and relevant tests, security, goals, every acceptance scenario',
+        );
       expect(enVerify).toContain('no CRITICAL or IMPORTANT issues');
       expect
         .soft(enVerify)
@@ -3632,15 +3698,11 @@ describe('skills', () => {
       expect(enBuild).not.toContain('using-git-worktrees');
       expect(enBuild).not.toContain('native `EnterWorktree` tool');
       expect.soft(enBuild).toContain('load Superpowers `brainstorming` through the Skill tool');
-      expect
-        .soft(enDesign)
-        .toContain(
-          "The script generates and records the pack using the `context_compression` snapshot in the change's `.comet.yaml`",
-        );
-      expect(enDesign).toContain('The default `context_compression: off` generates');
-      expect(enDesign).toContain('For context_compression: beta, use:');
-      expect(enDesign).toContain('<classic-change-dir>/.comet/handoff/spec-context.md');
-      expect(enDesign).toContain('In beta mode, `spec-context.json` is structurally valid');
+      expect(enDesign).toContain('without copying artifact bodies');
+      expect(enDesign).toContain('`handoff_context` references the original proposal');
+      expect(enDesign).toContain(
+        'An optional handoff view aids reading; original files and user records remain authoritative',
+      );
       expect
         .soft(enDesign)
         .toContain('Keep `brainstorm-summary.md` updated throughout brainstorming');
@@ -3920,9 +3982,7 @@ describe('skills', () => {
       ]) {
         expect(zhDispatch, `zh dispatch should not bind to ${forbidden}`).not.toContain(forbidden);
       }
-      expect(zhDispatch).toContain(
-        'comet state task-complete <name> <task-id> --expect <revision> --json',
-      );
+      expect(zhDispatch).toContain('comet state task-complete <name> <task-id> --json');
       expect(zhDispatch).toContain('不能只换成新 revision 就盲目重试');
       expect(zhDispatch).toContain('不要求每个小任务都单独创建一次进度提交');
       expect(zhDispatch).toContain('不能擅自丢弃旧计划中额外存在的实际任务');
@@ -4013,7 +4073,7 @@ describe('skills', () => {
         '<classic-change-dir>/.comet/rulings.md',
         'Expanding scope, changing specifications or acceptance, accepting important defects, security exceptions, and external side effects still require user authorization',
         'before upstream temporary files are cleaned',
-        'comet state task-complete <name> <task-id> --expect <revision> --json',
+        'comet state task-complete <name> <task-id> --json',
         'rather than blindly retrying with a new revision',
         'without mechanical per-microtask progress commits',
         'genuine extra tasks are not silently discarded',
@@ -4652,6 +4712,78 @@ describe('skills', () => {
   });
 
   describe('mergeProjectConfig', () => {
+    it.each([
+      ['migrated scalar', 'language: &english en # user choice\ncopy: *english\n', 'en'],
+      [
+        'updated mapping',
+        'classic: &policy\n  language: en\n  review_mode: thorough\ncopy: *policy\n',
+        { language: 'en', review_mode: 'thorough' },
+      ],
+      [
+        'alias in a sequence',
+        'classic: &policy\n  language: en\n  review_mode: thorough\ncopy: [*policy]\n',
+        [{ language: 'en', review_mode: 'thorough' }],
+      ],
+    ])(
+      'preserves extension values referenced by moved or updated YAML anchors (%s)',
+      async (_label, input, expected) => {
+        const file = path.join(tmpDir, '.comet/config.yaml');
+        await fs.mkdir(path.dirname(file), { recursive: true });
+        await fs.writeFile(file, input as string);
+        await mergeProjectConfig(tmpDir, 'en');
+        const source = await fs.readFile(file, 'utf8');
+        expect(parse(source).copy).toEqual(expected);
+        await mergeProjectConfig(tmpDir, 'en');
+        expect(await fs.readFile(file, 'utf8')).toBe(source);
+      },
+    );
+    it('preserves extension aliases and comments on migrated Classic keys', async () => {
+      const file = path.join(tmpDir, '.comet/config.yaml');
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(
+        file,
+        '# Team uses English\nlanguage: en # Needed by shared scripts\ncustom: &shared\n  note: hello # user note\ncopy: *shared\n',
+      );
+      await mergeProjectConfig(tmpDir, 'en');
+      const source = await fs.readFile(file, 'utf8');
+      expect(parse(source)).toMatchObject({
+        classic: { language: 'en' },
+        custom: { note: 'hello' },
+        copy: { note: 'hello' },
+      });
+      for (const comment of ['Team uses English', 'Needed by shared scripts', 'user note'])
+        expect(source).toContain(comment);
+      expect(source).toContain('&shared');
+      expect(source).toContain('*shared');
+      await mergeProjectConfig(tmpDir, 'en');
+      expect(await fs.readFile(file, 'utf8')).toBe(source);
+    });
+    it('preserves user YAML comments while updating managed defaults and comment language', async () => {
+      const file = path.join(tmpDir, '.comet/config.yaml');
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(
+        file,
+        '# Team preference\nchange_walkthrough: false # keep explanations optional\nclassic:\n  # Keep this review policy\n  review_mode: thorough\ncustom_key: "keep" # extension note\n',
+      );
+      await mergeProjectConfig(tmpDir, 'zh-CN');
+      await mergeProjectConfig(tmpDir, 'en');
+      const source = await fs.readFile(file, 'utf8');
+      for (const comment of [
+        'Team preference',
+        'keep explanations optional',
+        'Keep this review policy',
+        'extension note',
+      ])
+        expect(source).toContain(comment);
+      expect(source).toContain('extra explanation tokens');
+      expect(parse(source)).toMatchObject({
+        change_walkthrough: false,
+        classic: { review_mode: 'thorough' },
+        custom_key: 'keep',
+      });
+      await mergeProjectConfig(tmpDir, 'en');
+      expect(await fs.readFile(file, 'utf8')).toBe(source);
+    });
     it.each([true, false])(
       'preserves change_walkthrough %s across repeated installation updates',
       async (enabled) => {

@@ -2,7 +2,7 @@ import { createHash } from 'crypto';
 import path from 'path';
 
 import { NATIVE_RUN_STORAGE } from '../engine/storage-layout.js';
-import { withNativeMutationLock } from './native-mutation-lock.js';
+import { withNativeMutation } from './native-mutation.js';
 import {
   nativeChangeRuntimeDir,
   nativeStorageRoot,
@@ -135,7 +135,13 @@ async function inspectFile(
   const file = trajectoryFile(paths, name);
   await resolveContainedNativePath(nativeStorageRoot(paths, file), file);
   const runtimeDir = nativeChangeRuntimeDir(paths, name);
-  const content = await readNativeTrajectoryText(runtimeDir, NATIVE_RUN_STORAGE.trajectoryRef);
+  const content = await readNativeTrajectoryText(
+    runtimeDir,
+    NATIVE_RUN_STORAGE.trajectoryRef,
+  ).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
   return content === null
     ? { status: 'clean', file }
     : analyzeTrajectory(file, Buffer.from(content));
@@ -162,7 +168,7 @@ export async function repairNativeTrajectoryTail(
   name: string,
   hooks?: NativeTrajectoryRepairHooks,
 ): Promise<Extract<NativeTrajectoryTailInspection, { status: 'repairable' }> | null> {
-  return withNativeMutationLock(paths, `repair trajectory tail for ${name}`, async () => {
+  return withNativeMutation(paths, async () => {
     const result = await inspectFile(paths, name);
     if (!('inspection' in result)) {
       if (result.status === 'clean') return null;

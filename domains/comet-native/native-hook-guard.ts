@@ -1,54 +1,37 @@
-import { listNativeSdkHistoryPartitions } from './native-sdk-history-discovery.js';
-import { mapWithConcurrency } from './native-concurrency.js';
-import {
-  isNativeSdkChangeCancellationComplete,
-  isNativeSdkCancellationComplete,
-} from './native-sdk-cancellation.js';
 import { promises as fs, type Dirent } from 'fs';
 import path from 'path';
+import { mapWithConcurrency } from './native-concurrency.js';
+import {
+  isNativeSdkCancellationComplete,
+  isNativeSdkChangeCancellationComplete,
+} from './native-sdk-cancellation.js';
+import { listNativeSdkHistoryPartitions } from './native-sdk-history-discovery.js';
 
+import type { CometHookIntent, CometHookRequest } from '../../platform/process/hook-adapter.js';
 import {
-  invalidateHookReadCache,
-  memoizedHookRead,
-} from '../../platform/process/hook-read-cache.js';
-import {
+  normalizeCometHookTargets,
   parseCometHookRequest,
   readCometHookRequest,
-  normalizeCometHookTargets,
-  proposedCometHookFileContent,
 } from '../../platform/process/hook-adapter.js';
-import type { CometHookIntent, CometHookRequest } from '../../platform/process/hook-adapter.js';
-import type { CometHookDecision } from '../workflow-contract/hook.js';
+import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
+import { configuredHookWritePath } from '../workflow-contract/hook-write-policy.js';
+import type { CometHookDecision } from '../workflow-contract/hook.js';
+import { isNeutralDocumentPath } from '../workflow-contract/neutral-document-path.js';
 import { nativeChangeDir, readNativeChange } from './native-change.js';
 import { readProjectConfig } from './native-config.js';
-import { nativeProjectPaths } from './native-paths.js';
-import { inspectNativeSdkRun } from './native-runtime-ownership.js';
-import { configuredHookWritePath } from '../workflow-contract/hook-write-policy.js';
-import { isNeutralDocumentPath } from '../workflow-contract/neutral-document-path.js';
-import { resolveSelectedNativeChange } from './native-selection.js';
 import { NATIVE_DELTA_FILE } from './native-delta-spec.js';
-import { NAME_PATTERN } from './native-portable-storage.js';
-import type { NativeChangeState, NativeProjectPaths } from './native-types.js';
+import { nativeProjectPaths } from './native-paths.js';
 import {
   isNativePortableChange,
   nativePortableChangeDir,
   readNativePortableChange,
-  returnNativePortableChangeToBuild,
-  returnNativePortableChangeToShape,
 } from './native-portable-runtime.js';
-import {
-  inspectNativePortableAcceptanceDrift,
-  readNativeApprovedShapeSemanticSnapshot,
-} from './native-portable-requirements.js';
+import { NAME_PATTERN } from './native-portable-storage.js';
 import type { NativePortableState } from './native-portable-types.js';
-import { prepareEditReview, isReviewedEditProposal } from '../workflow-contract/edit-review.js';
-import { nativeEditReviewScope, nativeEditReviewPreparationScope } from './native-edit-review.js';
-import { readNativeBoundedTextFile } from './native-bounded-file.js';
-import {
-  nativeShapeArtifactSnapshot,
-  nativeShapeArtifactContractHash,
-} from './native-shape-semantics.js';
+import { inspectNativeSdkRun } from './native-runtime-ownership.js';
+import { resolveSelectedNativeChange } from './native-selection.js';
+import type { NativeChangeState, NativeProjectPaths } from './native-types.js';
 
 const readHookProjectConfig = memoizedHookRead('nativeHookProjectConfig', readProjectConfig);
 
@@ -56,16 +39,6 @@ const inspectHookSdkRun = memoizedHookRead(
   'nativeHookSdkRun',
   (projectRoot: string, name: string) => inspectNativeSdkRun(projectRoot, name, { readOnly: true }),
 );
-
-async function runNativeHookMutation<T>(operation: () => Promise<T>): Promise<T> {
-  invalidateHookReadCache();
-  try {
-    return await operation();
-  } finally {
-    // Reads started while the mutation was pending cannot outlive its result.
-    invalidateHookReadCache();
-  }
-}
 
 export type NativeHookIntent = CometHookIntent;
 export interface NativeHookRequest extends Omit<CometHookRequest, 'toolName'> {
@@ -278,7 +251,7 @@ async function inspectPortableWriteTargets(options: {
   runtimeFormat?: 'compat' | 'sdk';
 }): Promise<NativeHookGuardResult> {
   const { projectRoot, paths, state, request } = options;
-  const sdkOwned = options.runtimeFormat === 'sdk';
+
   const changeDir = nativePortableChangeDir(paths, state.name);
   const formalTargets: string[] = [];
   const invalidFormalTargets: string[] = [];
@@ -384,93 +357,16 @@ async function inspectPortableWriteTargets(options: {
       change: state.name,
     };
   }
-  if (formalTargets.length > 0) {
-    if (
-      (state.document_constraints_version === 2 || state.document_constraints_version === 3) &&
-      formalTargets.every(
-        (target) => target === 'brief.md' || /^specs\/[^/]+\/spec\.md$/u.test(target),
-      )
-    ) {
-      if (documentsRevert && state.phase !== 'shape' && state.shape_confirmation_hash) {
-        const review = await formalCommentWriteReview(paths, state, request, formalTargets);
-        if (review) return review;
-      }
-      return {
-        allowed: true,
-        reason:
-          'Native formal Markdown edit; Runtime rechecks the actual content before an implementation write or workflow transition',
-        workflow: 'native',
-        phase: state.phase,
-        change: state.name,
-      };
-    }
-    if (state.phase !== 'shape') {
-      if (sdkOwned) {
-        return {
-          allowed: false,
-          reason: `Native SDK requirements can only be edited in Shape. Read comet native status ${state.name} --json and use the current SDK Run decision before changing formal artifacts.`,
-          workflow: 'native',
-          phase: state.phase,
-          change: state.name,
-        };
-      }
-      const returned = await runNativeHookMutation(() =>
-        returnNativePortableChangeToShape({
-          paths,
-          name: state.name,
-          reason: `Formal requirement write requested for ${formalTargets.join(', ')}`,
-        }),
-      );
-      return {
-        allowed: true,
-        reason: `Native requirements changed; returned to Shape goal cycle ${returned.loop.goal_cycle}`,
-        workflow: 'native',
-        phase: 'shape',
-        change: state.name,
-      };
-    }
+  if (formalTargets.length > 0)
     return {
       allowed: true,
-      reason: 'Native control artifact write',
+      reason: '保留当前批准。由 Agent 判断正式材料是否改变已确认需求；超出授权时先取得对应决定。',
       workflow: 'native',
       phase: state.phase,
       change: state.name,
     };
-  }
   if (implementationTargets.length > 0) {
-    if (
-      (state.document_constraints_version === 2 || state.document_constraints_version === 3) &&
-      state.phase !== 'shape'
-    ) {
-      const drift = await inspectNativePortableAcceptanceDrift({ paths, state });
-      if (drift.drifted) {
-        if (sdkOwned || drift.reviewRequired) {
-          return {
-            allowed: false,
-            reason: `${drift.reason ?? 'Native confirmed requirements changed'} Read comet native status ${state.name} --json and reconcile the current SDK Action and claim before revising Shape. The Hook preserves the authoritative Run and its projection.`,
-            workflow: 'native',
-            phase: state.phase,
-            change: state.name,
-          };
-        }
-        const returned = await runNativeHookMutation(() =>
-          returnNativePortableChangeToShape({
-            paths,
-            name: state.name,
-            reason: drift.reason ?? 'Native confirmed requirements changed',
-            keepFailureBudget: true,
-          }),
-        );
-        return {
-          allowed: false,
-          reason: implementationWriteDeniedReason(returned),
-          workflow: 'native',
-          phase: returned.phase,
-          change: returned.name,
-        };
-      }
-    }
-    if (state.children_contract_hash) {
+    if (state.children_contract_ref) {
       return {
         allowed: false,
         reason: 'Native parent Build advances child changes instead of editing implementation',
@@ -491,55 +387,10 @@ async function inspectPortableWriteTargets(options: {
     if (['verify', 'archive'].includes(state.phase) && !documentsRevert) {
       return {
         allowed: true,
-        reason: `保留当前 Run 和用户编辑。由当前 Agent 在下次推进时运行 comet edit-review observe native ${state.name} --session <当前会话> --json，判断合并后的实际变化和检查适用性；未覆盖的变化仍不能验收或归档。`,
+        reason:
+          '保留当前 Run 和用户编辑。由当前 Agent 判断实际影响、补充受影响检查或显式修订实现；文件编辑不自动撤回批准。',
         workflow: 'native',
         phase: state.phase,
-        change: state.name,
-      };
-    }
-    const editImpact =
-      state.phase === 'verify'
-        ? await implementationWriteImpact(paths, state, implementationTargets, request)
-        : 'implementation-changed';
-    if (editImpact === 'non-behavioral') {
-      return {
-        allowed: true,
-        reason: 'Native 非行为修改：保留 Verify；修改后必须按实际文件内容刷新检查证据。',
-        workflow: 'native',
-        phase: state.phase,
-        change: state.name,
-      };
-    }
-    if (editImpact === 'review-required')
-      return {
-        allowed: false,
-        workflow: 'native',
-        phase: state.phase,
-        change: state.name,
-        reason: `本地无法确定编辑影响，保留 Verify。使用 comet edit-review show native ${state.name} 读取待复核提案和 continuation；按返回任务的实际会话要求 claim 并 record，Compat 由用户确认。复核前不得通过或归档。`,
-      };
-    if (state.phase === 'verify' || state.phase === 'archive') {
-      if (sdkOwned) {
-        return {
-          allowed: false,
-          reason: `Native SDK candidate must return to Build through its current Run decision before implementation changes. Read comet native status ${state.name} --json.`,
-          workflow: 'native',
-          phase: state.phase,
-          change: state.name,
-        };
-      }
-      const returned = await runNativeHookMutation(() =>
-        returnNativePortableChangeToBuild({
-          paths,
-          name: state.name,
-          reason: `Observed implementation write before ${implementationTargets.join(', ')}`,
-        }),
-      );
-      return {
-        allowed: true,
-        reason: `Native candidate was invalidated and returned to Build iteration ${returned.loop.iteration}`,
-        workflow: 'native',
-        phase: 'build',
         change: state.name,
       };
     }
@@ -581,127 +432,6 @@ async function inspectPortableWriteTargets(options: {
     phase: state.phase,
     change: state.name,
   };
-}
-
-async function formalCommentWriteReview(
-  paths: NativeProjectPaths,
-  state: NativePortableState,
-  request: NativeHookRequest,
-  targets: readonly string[],
-): Promise<NativeHookGuardResult | null> {
-  const semantic = (await readNativeApprovedShapeSemanticSnapshot({ paths, state }))?.snapshot;
-  let needsReview = false;
-  for (const source of targets) {
-    const approved = semantic?.artifacts.find((entry) => entry.source === source);
-    if (!approved) return null;
-    const file = path.join(paths.changesDir, state.name, source);
-    const relative = path.relative(paths.projectRoot, file).replaceAll('\\', '/');
-    const writes =
-      request.writes?.filter((entry) => path.resolve(paths.projectRoot, entry.path) === file) ?? [];
-    if (writes.length !== 1) return null;
-    const before = await readNativeBoundedTextFile({ root: paths.projectRoot, ref: relative });
-    const after = proposedCometHookFileContent(writes[0], before.text);
-    if (after === null) return null;
-    const previous = nativeShapeArtifactSnapshot(source, before.text);
-    const current = nativeShapeArtifactSnapshot(source, after);
-    if (
-      nativeShapeArtifactContractHash({ ...current, commentsHash: previous.commentsHash }) !==
-      nativeShapeArtifactContractHash(previous)
-    )
-      return null;
-    if (
-      current.commentsHash !== previous.commentsHash &&
-      !(
-        state.builder_handoff &&
-        (await isReviewedEditProposal(
-          nativeEditReviewScope(paths, state),
-          relative,
-          before.text,
-          after,
-        ))
-      )
-    )
-      needsReview = true;
-  }
-  if (!needsReview) return null;
-  if (state.phase === 'verify' && state.builder_handoff) {
-    const complete = { ...request, toolName: request.toolName ?? null };
-    await prepareEditReview(
-      await nativeEditReviewPreparationScope(paths, state, complete),
-      complete,
-    );
-  }
-  return {
-    allowed: false,
-    workflow: 'native',
-    phase: state.phase,
-    change: state.name,
-    reason:
-      state.phase === 'verify' && state.builder_handoff
-        ? `正式材料中的注释可能包含执行指令，不能自动忽略。保留当前候选；使用 comet edit-review show native ${state.name} 完成当前编辑复核，然后原样重试编辑。`
-        : '正式材料中的注释可能包含执行指令，不能自动忽略。当前阶段没有可复核的 Verify 候选；保留原文和当前 Action/claim，或通过当前 continuation 显式修订 Shape。',
-  };
-}
-
-async function implementationWriteImpact(
-  paths: NativeProjectPaths,
-  state: NativePortableState,
-  targets: readonly string[],
-  request: NativeHookRequest,
-): Promise<'non-behavioral' | 'implementation-changed' | 'review-required'> {
-  const { classifyEditImpact } = await import('../workflow-contract/edit-impact.js');
-  const projectRoot = paths.projectRoot;
-  const documentsRevert = await nativeDocumentWritesRevert(projectRoot);
-  let implementationChanged = false;
-  let needsReview = false;
-  for (const relative of targets) {
-    if (documentsRevert && isNativeNeutralDocumentWrite(paths, relative)) {
-      implementationChanged = true;
-      continue;
-    }
-    const proposals =
-      request.writes?.filter(
-        (proposal) =>
-          path.resolve(projectRoot, proposal.path) === path.resolve(projectRoot, relative),
-      ) ?? [];
-    if (proposals.length !== 1) return 'review-required';
-    try {
-      const source = await readNativeBoundedTextFile({ root: projectRoot, ref: relative });
-      const after = proposedCometHookFileContent(proposals[0], source.text);
-      if (after === null) return 'review-required';
-      const impact = classifyEditImpact(relative, source.text, after);
-      if (impact.kind === 'implementation-changed' || impact.kind === 'requirements-changed') {
-        implementationChanged = true;
-        continue;
-      }
-      if (
-        impact.kind === 'review-required' &&
-        !(await isReviewedEditProposal(
-          nativeEditReviewScope(paths, state),
-          relative,
-          source.text,
-          after,
-        ))
-      )
-        needsReview = true;
-    } catch {
-      return 'review-required';
-    }
-  }
-  if (needsReview) {
-    await prepareEditReview(nativeEditReviewScope(paths, state), {
-      ...request,
-      toolName: request.toolName ?? null,
-      targets: [...targets],
-      cwd: projectRoot,
-    });
-    return 'review-required';
-  }
-  return implementationChanged
-    ? 'implementation-changed'
-    : targets.length > 0
-      ? 'non-behavioral'
-      : 'review-required';
 }
 
 function isWithin(parent: string, target: string): boolean {
@@ -907,9 +637,18 @@ export async function inspectNativeUnownedHookTargets(
   if (request.intent !== 'write' || request.targets.length === 0) return null;
   const config = await readHookProjectConfig(projectRoot);
   if (!config || !(config.workflows ?? [config.default_workflow]).includes('native')) return null;
+  const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root, {
+    readOnly: true,
+  });
+  if (
+    request.targets.every(
+      (target) =>
+        !nativeUnownedTargetDecision(projectRoot, paths, path.resolve(projectRoot, target)),
+    )
+  )
+    return null;
   const context = await activeNativeContext(projectRoot);
   if (!context) return null;
-  const paths = context.paths;
   const registeredChanges = new Set(context.changes.map(({ state }) => state.name));
   const decisions: NativeHookGuardResult[] = [];
   for (const targetPath of request.targets) {

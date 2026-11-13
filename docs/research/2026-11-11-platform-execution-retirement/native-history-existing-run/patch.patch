@@ -1,0 +1,117 @@
+diff --git a/test/domains/comet-native/native-sdk-history.test.ts b/test/domains/comet-native/native-sdk-history.test.ts
+index f2bd3499..80c030de 100644
+--- a/test/domains/comet-native/native-sdk-history.test.ts
++++ b/test/domains/comet-native/native-sdk-history.test.ts
+@@ -556,6 +556,35 @@ describe('Native terminal history lifecycle', () => {
+       if (failure === 'existing-run') await store.restoreCheckpoint(f.name, null, original);
+       const existing = await store.read(f.name),
+         marker = path.join(runtimeRoot, 'state-projections/native/' + f.name + '.json');
++      const existingCheckpoint =
++        failure === 'existing-run'
++          ? await fs.readFile(
++              path.join(
++                runtimeRoot,
++                'sdk-runs/native/.runtime-store-v2',
++                createHash('sha256').update(JSON.stringify(f.name)).digest('hex'),
++                'checkpoint.json',
++              ),
++            )
++          : null;
++      const sourceEvidence =
++        failure === 'existing-run'
++          ? {
++              portableFile: path.join(f.root, 'docs/comet/changes', f.name, 'comet-state.yaml'),
++              checkpointFile: path.join(
++                resolveWorkspaceRuntimeRootSync(f.root),
++                'sdk-runs/native/.runtime-store-history',
++                createHash('sha256').update(JSON.stringify(f.name)).digest('hex'),
++                'checkpoint.json',
++              ),
++            }
++          : null;
++      const originalSourceBytes = sourceEvidence
++        ? {
++            portable: await fs.readFile(sourceEvidence.portableFile),
++            checkpoint: await fs.readFile(sourceEvidence.checkpointFile),
++          }
++        : null;
+       if (failure === 'existing-projection') {
+         await fs.mkdir(path.dirname(marker), { recursive: true });
+         await fs.writeFile(marker, 'Retired unrelated marker bytes\n');
+@@ -571,13 +600,9 @@ describe('Native terminal history lifecycle', () => {
+       ]);
+       const restored = await store.read(f.name);
+       if (
+-        [
+-          'corrupt-hash',
+-          'unknown-definition',
+-          'child-lineage',
+-          'fixed-application',
+-          'existing-run',
+-        ].includes(failure)
++        ['corrupt-hash', 'unknown-definition', 'child-lineage', 'fixed-application'].includes(
++          failure,
++        )
+       ) {
+         expect(result.exitCode, result.stdout).not.toBe(0);
+         expect(restored).toEqual(existing);
+@@ -593,6 +618,59 @@ describe('Native terminal history lifecycle', () => {
+         expect(await store.readDisposition(f.name)).toBe(
+           failure === 'active' ? 'active' : 'closed',
+         );
++        if (failure === 'existing-run') {
++          expect(existing).toEqual(original);
++          expect(restored!.actions).toEqual(original.actions);
++          expect(restored!.actions[0].claim).toEqual(original.actions[0].claim);
++          expect(restored!.actions[0].claim?.token).toBe('original-claim');
++          expect(
++            await ownerStorage.readSdkChangeOwner(target, 'native', f.name, { readOnly: true }),
++          ).toMatchObject({
++            workflow: 'native',
++            application: 'native',
++            format: 'sdk',
++            runId: f.name,
++            change: f.name,
++          });
++          expect(
++            await listSdkChangeNames(target, 'native', { readOnly: true, partition: 'active' }),
++          ).toEqual([]);
++          expect(
++            await listSdkChangeNames(target, 'native', { readOnly: true, partition: 'history' }),
++          ).toEqual([f.name]);
++          const closedCheckpoint = path.join(
++            runtimeRoot,
++            'sdk-runs/native/.runtime-store-history',
++            createHash('sha256').update(JSON.stringify(f.name)).digest('hex'),
++            'checkpoint.json',
++          );
++          expect(await fs.readFile(closedCheckpoint)).toEqual(existingCheckpoint);
++          const historyOwner = path.join(
++            runtimeRoot,
++            'change-owner-history/native',
++            f.name + '.json',
++          );
++          const ownerBytes = await fs.readFile(historyOwner);
++          const again = await runNativeCli([
++            'doctor',
++            f.name,
++            '--repair',
++            '--confirmed',
++            '--project-root',
++            target,
++            '--json',
++          ]);
++          expect(again.exitCode, again.stdout).toBe(0);
++          expect(await store.read(f.name)).toEqual(original);
++          expect(await fs.readFile(closedCheckpoint)).toEqual(existingCheckpoint);
++          expect(await fs.readFile(historyOwner)).toEqual(ownerBytes);
++          expect(await fs.readFile(sourceEvidence!.portableFile)).toEqual(
++            originalSourceBytes!.portable,
++          );
++          expect(await fs.readFile(sourceEvidence!.checkpointFile)).toEqual(
++            originalSourceBytes!.checkpoint,
++          );
++        }
+         if (failure === 'pending-cleanup')
+           await expect(fs.access(selection)).rejects.toMatchObject({ code: 'ENOENT' });
+         if (failure === 'existing-projection')

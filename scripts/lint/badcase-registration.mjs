@@ -10,6 +10,8 @@ import {
   validSource,
   workflowRegressionEntries,
   assertWorkflowMigrationEvidence,
+  historicalTestMigrationCases,
+  workflowTestMigrationChain,
 } from './workflow-regressions.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -49,9 +51,13 @@ export function assertBadcaseRegistration({
   declaration,
 }) {
   historicalRegressionEntries(historical);
+  const migrations = new Map(
+    historicalTestMigrationCases(historical, registry).map((item) => [item.id, item.testMigration]),
+  );
   const historicalCases = historical.issues.flatMap((issue) =>
     issue.cases.map((item) => ({
       ...item,
+      ...(migrations.has(item.id) ? { testMigration: migrations.get(item.id) } : {}),
       sources: [`https://github.com/${historical.inventory.repository}/issues/${issue.number}`],
     })),
   );
@@ -96,7 +102,10 @@ export function assertBadcaseRegistration({
     seen.add(key);
     for (const id of fix.caseIds) {
       const item = cases.get(id);
-      if (item?.testMigration?.kind === 'feature-removed')
+      if (
+        item &&
+        workflowTestMigrationChain(item).some((migration) => migration.kind === 'feature-removed')
+      )
         throw new Error(`已撤下功能不能声明为原问题修复：${id}`);
       if (item?.additionalAcceptance?.some((acceptance) => acceptance.status !== 'verified'))
         throw new Error(`修复的附加验收仍待完成：${id}`);
@@ -127,7 +136,11 @@ export function readBaseRegistry(repositoryRoot, base, file, optional = false) {
     throw new Error(`比较基线缺少 ${file}`);
   }
   return JSON.parse(
-    execFileSync('git', ['show', `${base}:${file}`], { cwd: repositoryRoot, encoding: 'utf8' }),
+    execFileSync('git', ['show', `${base}:${file}`], {
+      cwd: repositoryRoot,
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    }),
   );
 }
 
