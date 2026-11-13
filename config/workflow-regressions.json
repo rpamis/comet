@@ -53838,6 +53838,17 @@
           "requiredNames": [
             "Native contract snapshot rejects a near-maximum dense Markdown list without materializing every criterion"
           ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "derives unchanged acceptance across parser metadata",
+          "requiredNames": [
+            "Native portable Runtime vertical path derives unchanged acceptance across parser metadata for https://example.com/spec",
+            "Native portable Runtime vertical path derives unchanged acceptance across parser metadata for http://example.com/spec",
+            "Native portable Runtime vertical path derives unchanged acceptance across parser metadata for www.example.com",
+            "Native portable Runtime vertical path derives unchanged acceptance across parser metadata for <https://example.com/spec>",
+            "Native portable Runtime vertical path derives unchanged acceptance across parser metadata for reader@example.com"
+          ]
         }
       ]
     }

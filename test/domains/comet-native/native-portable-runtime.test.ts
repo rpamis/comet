@@ -362,7 +362,7 @@ children:
       specChanges: [{ capability: 'links', source: 'specs/links/spec.md' }],
     };
     const original = await readNativePortableAcceptance(options);
-    const lex = Lexer.lex.bind(Lexer);
+    const lex = Lexer.prototype.blockTokens;
     let links = 0;
     const addMetadata = (value: unknown): void => {
       if (Array.isArray(value)) value.forEach(addMetadata);
@@ -376,8 +376,15 @@ children:
         Object.values(token).forEach(addMetadata);
       }
     };
-    const spy = vi.spyOn(Lexer, 'lex').mockImplementation((...args) => {
-      const tokens = lex(...args);
+    const spy = vi.spyOn(Lexer.prototype, 'blockTokens').mockImplementation(function (
+      this: Lexer,
+      ...args
+    ) {
+      const tokens = lex.apply(this, args);
+      // 在实际块级入口注入行内元数据，继续验证这些字段不会改变验收。
+      for (const token of tokens) {
+        if (token.type === 'paragraph') token.tokens = Lexer.lexInline(token.text);
+      }
       addMetadata(tokens);
       return tokens;
     });
