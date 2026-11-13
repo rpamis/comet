@@ -534,11 +534,15 @@ jobs:
       - run: pnpm build
       - name: Exercise SDK protocol, application lifecycle, Creator and domain adapters
         id: sdk-tests
-        run: pnpm test:sdk --shard=${{ matrix.shard }}/${{ matrix.shards }} ${{ matrix.os == 'windows-latest' && '--maxWorkers=1 --exclude test/domains/comet-classic/classic-application.test.ts' || '' }} --reporter=default --reporter=json --outputFile.json=coverage/sdk/results.json
+        run: pnpm test:sdk --shard=${{ matrix.shard }}/${{ matrix.shards }} ${{ matrix.os == 'windows-latest' && '--maxWorkers=1 --exclude test/domains/comet-classic/classic-application.test.ts' || matrix.os == 'macos-latest' && '--exclude test/app/native-runtime-dispatch.test.ts' || '' }} --reporter=default --reporter=json --outputFile.json=coverage/sdk/results.json
       - name: Exercise the Windows Classic lifecycle without competing SDK subprocesses
         id: classic-sdk-tests
         if: ${{ !cancelled() && matrix.os == 'windows-latest' && matrix.shard == 1 && steps.sdk-tests.outcome != 'skipped' }}
         run: pnpm exec vitest run test/domains/comet-classic/classic-application.test.ts --maxWorkers=1 --reporter=default --reporter=json --outputFile.json=coverage/sdk/classic-results.json
+      - name: Exercise macOS claim context delivery without competing SDK subprocesses
+        id: claim-context-tests
+        if: ${{ !cancelled() && matrix.os == 'macos-latest' && matrix.shard == 1 && steps.sdk-tests.outcome != 'skipped' }}
+        run: pnpm exec vitest run test/app/native-runtime-dispatch.test.ts --maxWorkers=1 --reporter=default --reporter=json --outputFile.json=coverage/sdk/claim-context-results.json
       - name: Upload SDK test results
         if: always() && steps.sdk-tests.outcome != 'skipped'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

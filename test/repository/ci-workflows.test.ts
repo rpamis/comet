@@ -554,6 +554,42 @@ describe('CI workflows', () => {
     expect(steps.indexOf(classic)).toBeGreaterThan(steps.indexOf(sdk));
   });
 
+  it('runs macOS cold claim context delivery separately and uploads its results', async () => {
+    const ci = parse(await readWorkflow('ci.yml')) as {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{
+            id?: string;
+            run?: string;
+            if?: string;
+            uses?: string;
+            with?: Record<string, unknown>;
+          }>;
+        }
+      >;
+    };
+    const steps = ci.jobs['sdk-contracts'].steps;
+    const sdk = steps.find((step) => step.id === 'sdk-tests')!;
+    const claim = steps.find((step) => step.id === 'claim-context-tests')!;
+    const upload = steps.find((step) => step.uses?.startsWith('actions/upload-artifact@'))!;
+    expect(sdk.run).toContain(
+      "matrix.os == 'macos-latest' && '--exclude test/app/native-runtime-dispatch.test.ts'",
+    );
+    expect(claim.if).toBe(
+      "${{ !cancelled() && matrix.os == 'macos-latest' && matrix.shard == 1 && steps.sdk-tests.outcome != 'skipped' }}",
+    );
+    expect(claim.run).toContain(
+      'vitest run test/app/native-runtime-dispatch.test.ts --maxWorkers=1',
+    );
+    expect(claim.run).toContain('--outputFile.json=coverage/sdk/claim-context-results.json');
+    expect(claim.run).not.toContain('--testNamePattern');
+    expect(claim.run).not.toContain('--passWithNoTests');
+    expect(steps.indexOf(claim)).toBeGreaterThan(steps.indexOf(sdk));
+    expect(steps.indexOf(upload)).toBeGreaterThan(steps.indexOf(claim));
+    expect(upload.with?.path).toBe('coverage/sdk/');
+  });
+
   it('requires SDK contracts on every supported CI platform and the minimum Node version', async () => {
     const ci = parse(await readWorkflow('ci.yml')) as {
       on: { push: { branches: string[] }; workflow_dispatch?: unknown };

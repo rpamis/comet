@@ -58,26 +58,24 @@ describe('Claim context delivery', () => {
       path.join(home, '.comet/memory/profile.md'),
       '# 个人画像\n\n## 沟通偏好\n\n- 使用中文回复\n',
     );
-    const invoke = async (args: string[]) =>
-      JSON.parse(
-        (
-          await promisify(execFile)(
-            process.execPath,
-            [path.resolve('dist/app/cli/index.js'), ...args],
-            {
-              env: {
-                ...process.env,
-                HOME: home,
-                USERPROFILE: home,
-                XDG_CACHE_HOME: path.join(home, '.cache'),
-                LOCALAPPDATA: path.join(home, 'local'),
-              },
-              windowsHide: true,
-              timeout: 30_000,
-            },
-          )
-        ).stdout,
+    const invoke = async (args: string[]) => {
+      const { stdout, stderr } = await promisify(execFile)(
+        process.execPath,
+        [path.resolve('dist/app/cli/index.js'), ...args],
+        {
+          env: {
+            ...process.env,
+            HOME: home,
+            USERPROFILE: home,
+            XDG_CACHE_HOME: path.join(home, '.cache'),
+            LOCALAPPDATA: path.join(home, 'local'),
+          },
+          windowsHide: true,
+          timeout: 30_000,
+        },
       );
+      return { ...JSON.parse(stdout), cliStderr: stderr };
+    };
     const args = [
       'runtime',
       'dispatch',
@@ -89,7 +87,7 @@ describe('Claim context delivery', () => {
       requestFile,
     ];
     const first = await invoke(args);
-    expect(first.data.contextDelivery.status).toBe('delivered');
+    expect(first.data.contextDelivery.status, first.cliStderr).toBe('delivered');
     expect(first.data.context[0].text).toContain('使用中文回复');
     expect((await invoke(args)).data.context).toEqual([]);
     const restored = await invoke(first.data.contextActions.restore.commandArgs.slice(1));
