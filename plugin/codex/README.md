@@ -46,7 +46,19 @@ Comet 配置；插件不分发这些项目的原始 Skills，也不自动授权�
 托管环境可设置 `COMET_PLUGIN_SKIP_CLI_INSTALL=1` 关闭 MCP 启动时的自动安装，
 自行预装合适版本；显式调用 `setup_comet_cli` 仍可准备 CLI。
 
-## 本地安装
+## 安装
+
+在 Codex 的「添加插件市场」中，只填写仓库地址：
+
+```text
+https://github.com/rpamis/comet
+```
+
+Git 引用和稀疏路径留空。添加市场后，选择 Comet 安装并启用，再开始新会话。
+市场会下载已构建的插件包，用户无需克隆源码、构建插件或运行 npm 安装命令。
+本地执行环境仍需满足上面的 Node.js 和 npm 要求。
+
+### 开发者本地安装
 
 源码仓库中执行 `pnpm build:codex-plugin`。命令会输出插件目录、私有归档和 marketplace
 根目录的绝对路径；默认生成在 `dist/codex-plugin/<插件版本>-zh/`。
@@ -69,6 +81,20 @@ codex plugin add comet@comet-market
 与 `migration-reports/`；`setup_comet_cli` 会返回记录路径。回退时先禁用插件，按备份记录
 核对 `source` 与 `backup` 后恢复文件，并移除带 `comet-plugin-migration` 标记的路径停用项。
 不要用整个旧配置覆盖后来添加的用户设置。
+
+### 发布插件包
+
+Git 仓库根目录的 `.agents/plugins/marketplace.json` 指向公共 npm 上的
+`@rpamis/comet-codex-plugin`。源码中的 `plugin/codex/` 是构建模板，不能直接作为可安装插件。
+发布 `@rpamis/comet` 不会连带发布 Codex 插件包；构建完成后，需单独发布输出中的 `comet/` 目录：
+
+```text
+npm publish <构建输出的pluginRoot> --access public --registry https://registry.npmjs.org/
+```
+
+先发布与市场清单匹配的插件包，并从公共 registry 拉取验证，再推送市场清单。
+用户填写的仍是上面的 Git 地址。插件内置对应 CLI 安装包；仅修复市场入口或分发方式时，
+无需为此重新发布 Comet 主 CLI。本地安装步骤可用于验证尚未公开的候选包。
 
 ## Hook 信任与既有安装
 

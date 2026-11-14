@@ -75,6 +75,23 @@ export async function buildCodexPlugin({ outputRoot, language = 'zh' } = {}) {
     path.join(pluginRoot, 'plugin.json'),
     `${JSON.stringify(manifest, null, 2)}\n`,
   );
+  await fs.writeFile(
+    path.join(pluginRoot, 'package.json'),
+    `${JSON.stringify(
+      {
+        name: '@rpamis/comet-codex-plugin',
+        version: manifest.version,
+        description: manifest.description,
+        license: manifest.license,
+        homepage: manifest.homepage,
+        repository: { type: 'git', url: manifest.repository },
+        publishConfig: { access: 'public', registry: 'https://registry.npmjs.org/' },
+        files: ['plugin.json', 'mcp.json', 'skills', 'rules', 'server', 'hooks', 'assets'],
+      },
+      null,
+      2,
+    )}\n`,
+  );
   await copyFile(path.join(templateRoot, 'README.md'), path.join(pluginRoot, 'README.md'));
   await copyFile(
     path.join(templateRoot, 'hooks/hooks.json'),

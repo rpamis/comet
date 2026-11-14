@@ -1,0 +1,17 @@
+{
+  "name": "comet-market",
+  "interface": { "displayName": "Comet Market" },
+  "plugins": [
+    {
+      "name": "comet",
+      "source": {
+        "source": "npm",
+        "package": "@rpamis/comet-codex-plugin",
+        "version": "0.5.3",
+        "registry": "https://registry.npmjs.org"
+      },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Developer Tools"
+    }
+  ]
+}

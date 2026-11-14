@@ -2,6 +2,61 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "codex-marketplace-windows-checkout-paths",
+      "behavior": "默认 Git 配置的 Windows 用户可以在 Codex 市场临时目录完整检出 Comet 仓库。",
+      "sources": ["report:codex-marketplace-windows-install-20261114"],
+      "coverageLevel": "unit",
+      "reproduction": "9b2c15a8 在 84 字符的 checkout 根目录、隔离用户 Git 配置且 core.longpaths=false 时，clone 退出 128，两个归档研究快照报 Filename too long；相同路径断言在旧树失败。",
+      "expected": "保留全部文件内容和历史回归证据，仓库相对路径适合原报告中的 Codex 临时目录；无需用户修改全局 Git 配置。",
+      "forbidden": "删除快照、缩减历史断言，或依赖用户开启全局长路径才能安装。",
+      "rootCause": "两个研究快照重复保留完整测试目录和长文件名，叠加 Codex staging 前缀后超过 Windows 默认 Git 检出路径限制。",
+      "tests": [
+        {
+          "file": "test/repository/codex-marketplace.test.ts",
+          "namePattern": "fits tracked files inside the reported Windows marketplace checkout path",
+          "requiredNames": [
+            "Codex repository marketplace fits tracked files inside the reported Windows marketplace checkout path"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "codex-marketplace-git-url-installation",
+      "behavior": "用户只填写 Git 仓库地址即可发现 Comet，并下载完整可运行的 Codex 插件包。",
+      "sources": ["report:codex-marketplace-windows-install-20261114"],
+      "coverageLevel": "public-cli",
+      "reproduction": "9b2c15a8 未跟踪根目录市场清单，插件目录仅为源码模板；旧构建产物缺少可发布 npm 包元数据，新增包断言报 package.json 不存在。",
+      "expected": "市场清单从仓库根发现插件，引用匹配版本的公共 npm 包；npm 解包后保留 Skills、MCP、CLI 和 Hook 入口，不依赖生命周期构建脚本。",
+      "forbidden": "要求用户填写稀疏路径或先构建源码，将不完整模板作为可安装插件，或仅发布 Comet 主 CLI 后声称插件已经公开。",
+      "rootCause": "仓库原本只提供开发者本地构建市场入口，缺少 Git 市场清单和独立 Codex 插件 npm 发布产物。",
+      "tests": [
+        {
+          "file": "test/repository/codex-marketplace.test.ts",
+          "namePattern": "discovers the published plugin from the repository root without sparse paths",
+          "requiredNames": [
+            "Codex repository marketplace discovers the published plugin from the repository root without sparse paths"
+          ]
+        },
+        {
+          "file": "test/scripts/codex-plugin-build.test.ts",
+          "namePattern": "builds a relocatable archive from product assets when invoked outside the repository",
+          "requiredNames": [
+            "Codex plugin package builds a relocatable archive from product assets when invoked outside the repository"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "remote Git marketplace and public npm installation",
+          "status": "pending",
+          "evidence": [
+            "docs/research/2026-11-14-codex-marketplace-install.zh.md：插件包首次公开发布和仓库推送仍需用户授权；本地打包与安装验证不能替代远端地址安装。",
+            "用户后续授权先提交并推送代码，插件包发布由用户执行；发布命令与验收分工已补充到同一记录，远端安装仍待包发布后验证。"
+          ]
+        }
+      ]
+    },
+    {
       "id": "dsh-plugin-public-npm-package",
       "behavior": "DSH 正式构建包可独立发布到公共 npm，源码模板保持私有以防误发占位版本。",
       "sources": ["report:dsh-plugin-public-npm-053"],

@@ -122,6 +122,11 @@ skills-lock.json
 .aws/
 .gcp/
 .agents/
+!/.agents/
+/.agents/*
+!/.agents/plugins/
+/.agents/plugins/*
+!/.agents/plugins/marketplace.json
 
 # Superpowers docs (local only)
 #docs/superpowers/

@@ -7,6 +7,7 @@ import { parse } from 'yaml';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { renderDashboardMcpHtml } from '../../scripts/build/build-dashboard-mcp.mjs';
+import { resolveNpmCommand } from '../../platform/process/node-cli-command.js';
 
 const repositoryRoot = path.resolve('.');
 const builder = path.join(repositoryRoot, 'scripts/build/build-codex-plugin.mjs');
@@ -40,6 +41,39 @@ describe('Codex plugin package', () => {
       const template = await readJson(path.join(repositoryRoot, 'plugin/codex/plugin.json'));
       expect(manifest.version).toBe(template.version);
       expect(manifest.version).toBe(packageJson.version);
+      const npmManifest = await readJson(path.join(built.pluginRoot, 'package.json'));
+      expect(npmManifest).toMatchObject({
+        name: '@rpamis/comet-codex-plugin',
+        version: manifest.version,
+        publishConfig: { access: 'public', registry: 'https://registry.npmjs.org/' },
+      });
+      expect(npmManifest.private).not.toBe(true);
+      expect(npmManifest.scripts).toBeUndefined();
+      const npm = resolveNpmCommand(['pack', '--json', '--ignore-scripts'], {
+        cwd: built.pluginRoot,
+      });
+      const packed = spawnSync(npm.command, npm.args, {
+        cwd: built.pluginRoot,
+        env: npm.env ?? process.env,
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+      expect(packed.status, packed.stderr).toBe(0);
+      const npmPackage = JSON.parse(packed.stdout)[0];
+      expect(npmPackage.name).toBe('@rpamis/comet-codex-plugin');
+      const npmFiles = npmPackage.files.map((file: { path: string }) => file.path);
+      for (const file of [
+        'plugin.json',
+        'mcp.json',
+        'server/comet-dashboard-mcp.mjs',
+        'server/comet-cli.tgz',
+        'skills/comet-native/SKILL.md',
+        'hooks/hooks.json',
+      ])
+        expect(npmFiles).toContain(file);
+      expect(npmFiles.some((file: string) => /node_modules|marketplace|\.env/u.test(file))).toBe(
+        false,
+      );
       expect(built.cometVersion).toBe(packageJson.version);
       expect(manifest.$schema).toBe('https://agent-plugins.org/schemas/1.0.0/plugin.schema.json');
       expect(manifest.extensions['com.openai'].requires_local_executor).toBe(true);
@@ -82,6 +116,25 @@ describe('Codex plugin package', () => {
         windowsHide: true,
       });
       expect(unpack.status).toBe(0);
+      const npmExtracted = path.join(temporary, 'npm package');
+      await mkdir(npmExtracted);
+      const npmUnpack = spawnSync(
+        'tar',
+        [
+          '-xzf',
+          path.join(built.pluginRoot, npmPackage.filename),
+          '--strip-components=1',
+          '-C',
+          npmExtracted,
+        ],
+        { encoding: 'utf8', windowsHide: true },
+      );
+      expect(npmUnpack.status, npmUnpack.stderr).toBe(0);
+      for (const file of npmFiles) {
+        const npmBytes = await readFile(path.join(npmExtracted, file));
+        const archiveBytes = await readFile(path.join(extracted, file));
+        expect(npmBytes.equals(archiveBytes), file).toBe(true);
+      }
       const migrationAssets = await readJson(path.join(extracted, 'rules/migration-assets.json'));
       expect(migrationAssets.versions).toContain('0.5.2');
       expect(Object.keys(migrationAssets.skills)).toHaveLength(13);
