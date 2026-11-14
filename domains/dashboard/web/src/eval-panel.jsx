@@ -1403,7 +1403,6 @@ function EvalCreate({
   useDashboardLanguage();
   const [form] = Form.useForm();
   useDashboardFormLanguage(form);
-  const { message } = App.useApp();
   const [step, setStep] = useState(initialConfig && !reviewTarget ? 2 : 0);
   const stepMotion = useDashboardMotion(step, 'panel');
   const [seedConfig, setSeedConfig] = useState(initialConfig);

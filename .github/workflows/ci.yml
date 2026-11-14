@@ -25,7 +25,38 @@ jobs:
       - name: Validate GitHub Actions workflows
         run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 -color
 
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.os == 'ubuntu-latest' && '22.16.0' || '24' }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Verify generated runtimes before rebuilding
+        if: matrix.os == 'ubuntu-latest'
+        run: pnpm check:generated
+      - run: pnpm build
+      - name: Verify build is deterministic
+        run: git diff --exit-code -- assets domains/engine/runtime-schema.generated.ts
+      - name: Share compiled outputs with test jobs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: build-${{ matrix.os }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+
   quality:
+    needs: [build]
     name: Quality and coverage
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -52,14 +83,14 @@ jobs:
         env:
           SDK_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: pnpm check:sdk-fixtures --base "$SDK_BASE_REF"
-      - name: Verify generated runtimes are current
-        run: pnpm check:generated
       - run: pnpm format:check
       - run: pnpm lint
-      - run: pnpm build
+      - name: Restore compiled outputs
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: build-ubuntu-latest
+          path: dist
       - run: pnpm check:sdk-api
-      - name: Verify build is deterministic
-        run: git diff --exit-code -- assets
       - name: Verify external OpenSpec CLI compatibility
         run: pnpm test:openspec-upstream
       - id: tests
@@ -136,6 +167,7 @@ jobs:
           NODE
 
   core-regressions:
+    needs: [build]
     name: Badcase regressions (${{ matrix.os }}${{ matrix.shards > 1 && format(', shard {0}/{1}', matrix.shard, matrix.shards) || '' }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
@@ -181,7 +213,11 @@ jobs:
         env:
           BADCASE_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
         run: pnpm check:badcase-registration
-      - run: pnpm build
+      - name: Restore compiled outputs
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: build-${{ matrix.os }}
+          path: dist
       - run: pnpm test:core-regressions --shard=${{ matrix.shard }}/${{ matrix.shards }}
       - name: Preserve core regression evidence
         if: always()
@@ -192,6 +228,7 @@ jobs:
           if-no-files-found: error
 
   node-compatibility:
+    needs: [build]
     name: Node 22 compatibility (shard ${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -215,7 +252,11 @@ jobs:
       - run: uv sync --locked --extra dev --extra langsmith
         working-directory: eval
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      - run: pnpm build
+      - name: Restore compiled outputs
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: build-ubuntu-latest
+          path: dist
       - name: Verify external OpenSpec CLI compatibility
         if: matrix.shard == 1
         run: pnpm test:openspec-upstream
@@ -231,6 +272,7 @@ jobs:
           if-no-files-found: error
 
   runtime-smoke:
+    needs: [build]
     name: Runtime smoke (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -246,7 +288,11 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      - run: pnpm build
+      - name: Restore compiled outputs
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: build-${{ matrix.os }}
+          path: dist
       - if: matrix.os != 'ubuntu-latest'
         run: pnpm test:native-parallel
       - name: Workspace Runtime identity and storage regressions
@@ -293,6 +339,7 @@ jobs:
           pnpm exec vitest run test/domains/eval/eval-container-cleanup.integration.test.ts --maxWorkers=1
 
   package-e2e:
+    needs: [build]
     name: Package install (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -314,7 +361,11 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: node -e "const dir=require('node:fs').realpathSync.native(require('node:os').tmpdir()); require('node:fs').appendFileSync(process.env.GITHUB_ENV, 'TEMP=' + dir + '\nTMP=' + dir + '\n')"
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      - run: pnpm build
+      - name: Restore compiled outputs
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: build-${{ matrix.os }}
+          path: dist
       - run: pnpm test:package-e2e
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: matrix.os == 'ubuntu-latest'
@@ -325,6 +376,7 @@ jobs:
         run: pnpm test:package-e2e
 
   eval-static:
+    needs: [build]
     name: Eval static tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -340,9 +392,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
         working-directory: .
-      - name: Compile Runtime modules for Eval contracts
-        run: pnpm exec tsc --pretty false
-        working-directory: .
+      - name: Restore compiled outputs
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: build-ubuntu-latest
+          path: dist
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
@@ -468,6 +522,7 @@ jobs:
           if-no-files-found: warn
 
   sdk-contracts:
+    needs: [build]
     name: SDK contracts (${{ matrix.os }}, Node ${{ matrix.node }}${{ matrix.shards > 1 && format(', shard {0}/{1}', matrix.shard, matrix.shards) || '' }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: ${{ matrix.os == 'windows-latest' && 90 || 60 }}
@@ -531,7 +586,11 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: node -e "const dir=require('node:fs').realpathSync.native(require('node:os').tmpdir()); require('node:fs').appendFileSync(process.env.GITHUB_ENV, 'TEMP=' + dir + '\nTMP=' + dir + '\n')"
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      - run: pnpm build
+      - name: Restore compiled outputs
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: build-${{ matrix.os }}
+          path: dist
       - name: Exercise SDK protocol, application lifecycle, Creator and domain adapters
         id: sdk-tests
         run: pnpm test:sdk --shard=${{ matrix.shard }}/${{ matrix.shards }} ${{ matrix.os == 'windows-latest' && '--maxWorkers=1 --exclude test/domains/comet-classic/classic-application.test.ts' || matrix.os == 'macos-latest' && '--exclude test/app/native-runtime-dispatch.test.ts' || '' }} --reporter=default --reporter=json --outputFile.json=coverage/sdk/results.json
@@ -555,6 +614,7 @@ jobs:
     name: CI required
     if: always()
     needs:
+      - build
       - workflow-lint
       - quality
       - core-regressions

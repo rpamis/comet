@@ -258,34 +258,12 @@ const PHASES = localized([
   ['archive', '归档'],
 ]);
 
-const ARTIFACTS = localized([
-  ['proposal', 'proposal.md', '提案'],
-  ['design', 'design.md', '设计文档'],
-  ['tasks', 'tasks.md', '任务清单'],
-  ['plan', 'plan.md', '实施计划'],
-  ['verifyReport', 'verify-result.md', '验证报告'],
-  ['cometYaml', '.comet.yaml', '变更配置'],
-]);
-
-const SOURCE_LABELS = localized({
-  openspec: 'OpenSpec 产物',
-  superpowers: 'Superpowers 产物',
-  comet: 'Comet 中间产物',
-});
-
 const VERIFY_LABEL = localized({
   pass: '通过',
   fail: '验证失败',
   pending: '待验证',
   unknown: '未知',
 });
-
-const VERIFY_TONE = {
-  pass: 'ok',
-  fail: 'danger',
-  pending: 'warn',
-  unknown: 'neutral',
-};
 
 const PROJECT_KNOWLEDGE_TYPE_OPTIONS = localized([
   {
@@ -2615,7 +2593,7 @@ function Dashboard({
               ) : isLoadingView ? (
                 <ClassicWorkspaceLoadingSidePanel />
               ) : selected ? (
-                <SidePanel change={selected} git={snapshot.git} onPreview={onPreview} />
+                <SidePanel change={selected} git={snapshot.git} />
               ) : null
             }
           />
@@ -2711,35 +2689,6 @@ function PluginCenterHeader({ meta = [], actions = null, help = null }) {
       </div>
       {actions && <div className="dashboard-tool-actions">{actions}</div>}
     </header>
-  );
-}
-
-function PhaseStepper({ phase, archived, next }) {
-  useDashboardLanguage();
-  const current = archived ? 'archive' : phase;
-  const currentIndex = Math.max(
-    0,
-    PHASES.findIndex(([key]) => key === current),
-  );
-  return (
-    <article>
-      <div className="mb-4 flex items-center gap-2">
-        <h4 className="text-lg font-semibold">{t('生命周期阶段')}</h4>
-        <span className="ml-auto rounded-full bg-surface px-3 py-1 font-mono text-xs text-fg-2">
-          {archived ? t('归档 {0}', [phase]) : t('下一步 {0}', [next?.command ?? '—'])}
-        </span>
-      </div>
-      <WorkflowPhaseTrack
-        phases={PHASES}
-        currentIndex={currentIndex}
-        archived={archived}
-        currentPhaseRunning={isClassicPhaseRunning({
-          status: archived ? 'archived' : 'active',
-          phase,
-        })}
-        ariaLabel={t('Classic 生命周期阶段')}
-      />
-    </article>
   );
 }
 
@@ -2984,7 +2933,7 @@ function TaskProgress({ change }) {
   );
 }
 
-function SidePanel({ change, git, onPreview }) {
+function SidePanel({ change, git }) {
   useDashboardLanguage();
   return (
     <aside className="min-h-[480px] space-y-4">
@@ -4632,10 +4581,6 @@ function formatFileSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function isUserProfileRecord(record) {
-  return record.memoryType === 'core-profile';
 }
 
 function isActiveMemoryRecord(record) {

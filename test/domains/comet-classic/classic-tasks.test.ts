@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   assignClassicTaskIds,
-  classicTaskRequirements,
   completeClassicTask,
   inspectClassicPlanTasks,
   parseClassicTasks,
@@ -58,27 +57,6 @@ describe('Classic canonical tasks', () => {
     expect(assignClassicTaskIds(assigned)).toBe(assigned);
     expect(assigned.split(eol)).toHaveLength(3);
   });
-  it.each(['\n', '\r\n'])(
-    'ignores task IDs for preset scope while preserving examples and task text (%j)',
-    (eol) => {
-      const source = [
-        '# Tasks',
-        '```md',
-        '- [x] example',
-        '```',
-        '- [ ] first',
-        '  * [ ] second',
-        '',
-      ].join(eol);
-      const assigned = assignClassicTaskIds(source);
-      const tasks = parseClassicTasks(assigned);
-      const completed = completeClassicTask(assigned, tasks[0].id!, 'legacy-task-revision');
-      const scope = (text: string) => classicTaskRequirements(text, { taskIds: 'ignore' });
-      expect(scope(completed)).toBe(scope(source));
-      expect(scope(completed.replace('first', 'different scope'))).not.toBe(scope(source));
-      expect(scope(completed.replace('- [x] example', '- [ ] example'))).not.toBe(scope(source));
-    },
-  );
   it('completes the current task by ID after reorder or an Agent-accepted description edit', () => {
     const source = '- [ ] one <!-- comet-task:a -->\n- [ ] two <!-- comet-task:b -->\n';
     const reordered = source.split('\n').slice(0, 2).reverse().join('\n') + '\n';
@@ -99,7 +77,10 @@ describe('Classic canonical tasks', () => {
     const second = completeClassicTask(first, two.id!, revision);
     expect(parseClassicTasks(second).every((task) => task.completed)).toBe(true);
     expect(completeClassicTask(second, one.id!, revision)).toBe(second);
-    expect(classicTaskRequirements(second)).toBe(source);
+    expect(parseClassicTasks(second).map(({ id, text }) => ({ id, text }))).toEqual([
+      { id: one.id, text: 'one' },
+      { id: two.id, text: 'two' },
+    ]);
   });
   it('rejects duplicate IDs, malformed IDs and ambiguous legacy completion', () => {
     expect(() =>

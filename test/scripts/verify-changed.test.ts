@@ -72,6 +72,16 @@ describe('changed verification planner', () => {
     );
   });
 
+  it('checks generated outputs when shared Runtime build logic changes', () => {
+    for (const file of [
+      'scripts/lib/runtime-bundle-build.mjs',
+      'scripts/lib/runtime-schema-build.mjs',
+    ]) {
+      const plan = planChangedVerification([file]);
+      expect(plan.find((check) => check.id === 'generated')?.args).toEqual(['check:generated']);
+    }
+  });
+
   it('normalizes Windows paths and emits shell-free command arguments', () => {
     const plan = planChangedVerification(['platform\\process\\hook-adapter.ts']);
     const platform = plan.find((check) => check.id === 'platform');

@@ -204,7 +204,7 @@ window.__ModuleLoader__.load({
       },
     };
 
-    function CenterNote({ t, error, message, children }) {
+    function CenterNote({ error, message, children }) {
       return h(
         'div',
         { style: styles.centered },
@@ -261,15 +261,15 @@ window.__ModuleLoader__.load({
       };
 
       if (state.status === 'no-session') {
-        return h(CenterNote, { t, message: t('noSession') });
+        return h(CenterNote, { message: t('noSession') });
       }
       if (state.status === 'loading') {
-        return h(CenterNote, { t, message: t('loading') });
+        return h(CenterNote, { message: t('loading') });
       }
       if (state.status === 'error') {
         return h(
           CenterNote,
-          { t, error: true, message: `${t('failed')}: ${state.message}` },
+          { error: true, message: `${t('failed')}: ${state.message}` },
           h('button', { type: 'button', style: styles.button, onClick: refresh }, t('refresh')),
         );
       }

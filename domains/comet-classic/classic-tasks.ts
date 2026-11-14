@@ -10,7 +10,7 @@ export interface ClassicTask {
 const TASK = /^(\s*[-*]\s+\[)([ xX])(\]\s+)(.*)$/u;
 const ID = /\s*<!-- comet-task:([a-zA-Z0-9][a-zA-Z0-9_-]{0,79}) -->\s*$/u;
 
-/** One parser for completion, recovery and handoff; fenced examples are not work. */
+/** One parser for completion and recovery; fenced examples are not work. */
 export function parseClassicTasks(source: string): ClassicTask[] {
   const tasks: ClassicTask[] = [];
   const ids = new Set<string>();
@@ -45,22 +45,6 @@ export function parseClassicTasks(source: string): ClassicTask[] {
     tasks.push({ id, text, completed: match[2].toLowerCase() === 'x', line: index + 1 });
   }
   return tasks;
-}
-
-export function classicTaskRequirements(
-  source: string,
-  options: { taskIds?: 'include' | 'ignore' } = {},
-): string {
-  const lines = source.split(/(?<=\n)/u);
-  for (const task of parseClassicTasks(source)) {
-    const index = task.line - 1;
-    lines[index] = lines[index].replace(/^(\s*[-*]\s+\[)[ xX](\])/u, '$1 $2');
-    if (options.taskIds === 'ignore') {
-      const ending = /\r?\n$/u.exec(lines[index])?.[0] ?? '';
-      lines[index] = lines[index].trimEnd().replace(ID, '').trimEnd() + ending;
-    }
-  }
-  return lines.join('');
 }
 
 export function assignClassicTaskIds(source: string): string {
