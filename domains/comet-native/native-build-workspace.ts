@@ -5,6 +5,7 @@ import { createFileRuntimeStore, type WorkflowRun } from '../engine/runtime.js';
 import { resolveWorkspaceRuntimeRoot } from '../workflow-contract/workspace-runtime.js';
 import {
   registerSdkChangeOwner,
+  readChangeRuntimeOwner,
   COMET_CHANGE_OWNER_SCHEMA,
 } from '../workflow-contract/change-runtime-owner.js';
 import { readProjectConfig } from './native-config.js';
@@ -58,8 +59,23 @@ export async function prepareNativeBuildWorkspace(
       targetBranch: inspectGitWorktree(projectRoot).currentBranch ?? undefined,
     });
     const existing = await readNativeSdkRunRecord(prepared.projectRoot, name);
-    if (existing) throw new Error(`Build worktree already owns ${name}: ${prepared.projectRoot}`);
+    const targetPaths = await nativeProjectPaths(prepared.projectRoot, config.native.artifact_root);
+    const owner = await readChangeRuntimeOwner(prepared.projectRoot, 'native', name, {
+      readOnly: true,
+    });
+    const existingArtifacts = await fs.lstat(path.join(targetPaths.changesDir, name)).then(
+      () => true,
+      (error) => {
+        if (error.code === 'ENOENT') return false;
+        throw error;
+      },
+    );
+    if (existing || owner || (!prepared.preparation.createdWorktree && existingArtifacts))
+      throw new Error(
+        `Build worktree already contains Runtime ownership or change artifacts for ${name}: ${prepared.projectRoot}. Preserve both workspaces and choose an unused worktree before retrying native next.`,
+      );
     transfer = {
+      copied: false,
       projectRoot: prepared.projectRoot,
       run: {
         ...run,
@@ -78,22 +94,32 @@ export async function prepareNativeBuildWorkspace(
     await fs.mkdir(path.dirname(file), { recursive: true });
     await atomicWriteText(file, JSON.stringify(transfer), { containedRoot: path.dirname(file) });
   }
-  await writeNativeManagedRunState(
-    path.join(paths.changesDir, name, 'comet-state.yaml'),
-    parseNativePortableState(transfer.run.state),
-    paths.nativeRoot,
-    transfer.run,
-  );
   const target = transfer.projectRoot;
   const targetPaths = await nativeProjectPaths(target, config.native.artifact_root);
   const store = createFileRuntimeStore<WorkflowRun>({
     singleWriter: true,
     rootDir: path.join(await resolveWorkspaceRuntimeRoot(target), 'sdk-runs', 'native'),
   });
-  if (!(await store.read(name))) {
+  if (!(await store.read(name)) && transfer.copied !== false) {
+    const recovered = await createNativeSdkStateStore(target).read(name);
+    if (!recovered)
+      throw new Error(
+        `Native Build Run ${name} is missing at ${target}; preserve its latest checkpoint and recover the original Run with comet native doctor ${name} --project-root ${JSON.stringify(target)} --repair --confirmed.`,
+      );
+  } else if (!(await store.read(name))) {
+    await writeNativeManagedRunState(
+      path.join(paths.changesDir, name, 'comet-state.yaml'),
+      parseNativePortableState(transfer.run.state),
+      paths.nativeRoot,
+      transfer.run,
+    );
+
     await fs.cp(path.join(paths.changesDir, name), path.join(targetPaths.changesDir, name), {
       recursive: true,
     });
+    transfer = { ...transfer, copied: true };
+    const file = await transferFile(projectRoot, name);
+    await atomicWriteText(file, JSON.stringify(transfer), { containedRoot: path.dirname(file) });
     await registerSdkChangeOwner(target, {
       schema: COMET_CHANGE_OWNER_SCHEMA,
       workflow: 'native',

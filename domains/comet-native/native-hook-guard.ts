@@ -1,4 +1,7 @@
-import { listNativeSdkBuildPeers } from './native-build-workspace-record.js';
+import {
+  readNativeBuildWorkspace,
+  listNativeSdkBuildPeers,
+} from './native-build-workspace-record.js';
 import { promises as fs, type Dirent } from 'fs';
 import path from 'path';
 import { mapWithConcurrency } from './native-concurrency.js';
@@ -358,6 +361,20 @@ async function inspectPortableWriteTargets(options: {
       change: state.name,
     };
   }
+  if (
+    options.runtimeFormat === 'sdk' &&
+    (formalTargets.length > 0 || implementationTargets.length > 0)
+  ) {
+    const moved = await readNativeBuildWorkspace(projectRoot, state.name);
+    if (moved)
+      return {
+        allowed: false,
+        reason: `Native change ${state.name} moved to ${moved.projectRoot}; continue its original Action in that workspace. Use native select to choose another Shape in this planning workspace.`,
+        workflow: 'native',
+        phase: state.phase,
+        change: state.name,
+      };
+  }
   if (formalTargets.length > 0)
     return {
       allowed: true,
@@ -377,6 +394,18 @@ async function inspectPortableWriteTargets(options: {
       };
     }
     if (state.phase === 'build') {
+      if (
+        options.runtimeFormat === 'sdk' &&
+        (await listNativeSdkBuildPeers(projectRoot, state.name)).length > 0
+      ) {
+        return {
+          allowed: false,
+          reason: `Native change ${state.name} shares a planning workspace. Run comet native next ${state.name} --project-root ${JSON.stringify(projectRoot)} --json to prepare its Build worktree before writing implementation.`,
+          workflow: 'native',
+          phase: state.phase,
+          change: state.name,
+        };
+      }
       return {
         allowed: true,
         reason: 'Native change is in Build',
@@ -522,6 +551,8 @@ async function activeNativeContextImpl(projectRoot: string): Promise<ActiveNativ
     4,
     async ({ name, sdk }): Promise<PromiseSettledResult<Change | null>> => {
       try {
+        if (await readNativeBuildWorkspace(projectRoot, name))
+          return { status: 'fulfilled', value: null };
         if (sdk) {
           if (await isNativeSdkChangeCancellationComplete(projectRoot, name)) {
             return { status: 'fulfilled', value: null };
@@ -680,24 +711,6 @@ export async function inspectNativeHookGuard(
     ? await selectedNativeContext(projectRoot, selectedChangeName)
     : await activeNativeContext(projectRoot);
   if (!context) return { allowed: true, reason: 'Native workflow is not enabled' };
-  if (
-    request.intent !== 'non-write' &&
-    context.changes.some((change) => change.state.phase === 'build') &&
-    (
-      await listNativeSdkBuildPeers(
-        projectRoot,
-        selectedChangeName ?? context.changes[0].state.name,
-      )
-    ).length > 0
-  ) {
-    return {
-      allowed: false,
-      reason:
-        'Prepare the Build worktree with comet native next before writing implementation in a shared Shape workspace',
-      workflow: 'native',
-      change: selectedChangeName,
-    };
-  }
   if (request.intent === 'non-write') {
     return { allowed: true, reason: 'Hook event is not a write' };
   }

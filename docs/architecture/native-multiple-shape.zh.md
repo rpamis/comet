@@ -33,3 +33,13 @@ Compat 和固定 SDK 应用沿用各自的隔离规则。同一物理工作区�
 旧测试 `requires workspace isolation before creating a second current-workspace SDK change` 保留名称、退出码与禁止第二个 owner 的断言，前提更新为第一个需求已领取 Build。原先 Shape 即排他由本功能明确调整。产物缺失时占用工作区、Compat 排他及旧来源登记保留。此项是新功能的业务规则调整，未声称修复历史知识检索或真实模型遵循问题。
 
 真实平台 Hook 和模型 Eval 需要对应环境验证，确定性 Guard 测试只验证 Runtime 决策。
+
+## 2026-11-15 审核与恢复核对
+
+审核对照 Issue #560 与 feat 前的 master，分别检查仓库规范和需求覆盖。目标 Compat owner、复用 worktree 未登记材料、最新目标 checkpoint、共享目录 Hook 目标分类、moved 只读状态和参数校验分别登记为 native-560 系列案例。
+
+同一 checkpoint 恢复测试在 a699272f 临时检出为 1 failed / 1 passed，在当前修复代码为 2 passed。目标材料保护和打包 Router 目标分类的三项新增回归在修复前全部失败，修复后通过。source next 参数校验先于交接；完成材料复制后只从目标最新 checkpoint 恢复，原 Builder 会话和未知执行继续沿原恢复协议核对。
+
+遇到目标既有 Runtime 归属或复用 worktree 同名材料时，在改写源状态前拒绝迁移，保留双方现场。只读状态跟随目标当前 Run，源工作区继续阻止实施和原 Action 写入。Hook 先分类目标，中立路径保持原规则，实现路径要求完成工作区交接；中英文 Rule 已同步这些行为。
+
+本轮执行定向 CLI、Router、状态与恢复测试、生成资产和构建检查。真实 Agent 平台 Hook 和模型 Eval 未执行，确定性平台事件夹具不作为真实平台或模型证据。

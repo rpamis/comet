@@ -7,6 +7,7 @@ import type { NativePortableState } from './native-portable-types.js';
 import { resolveWorkspaceRuntimeRoot } from '../workflow-contract/workspace-runtime.js';
 
 export interface BuildWorkspaceTransfer {
+  copied?: boolean;
   projectRoot: string;
   run: WorkflowRun;
 }

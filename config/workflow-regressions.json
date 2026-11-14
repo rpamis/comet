@@ -2,6 +2,138 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "native-560-build-existing-owner",
+      "behavior": "迁移前保护目标已有Compat或其他Runtime归属。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/560",
+        "report:2026-11-15-native-multi-shape-review"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "a699272f构建CLI和同输入源码测试均覆盖目标Compat brief后报错；2026-11-15定向测试先失败后通过。",
+      "expected": "迁移在任何复制和源checkpoint改写前拒绝，保留双方材料与owner。",
+      "forbidden": "先覆盖目标brief/state再报归属冲突。",
+      "rootCause": "目标预检仅查内置SDK raw Run，owner登记发生在fs.cp之后。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+          "namePattern": "Native v4 public CLI surface preserves existing compat worktree artifacts when Build transfer conflicts",
+          "requiredNames": [
+            "Native v4 public CLI surface preserves existing compat worktree artifacts when Build transfer conflicts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-560-build-existing-artifacts",
+      "behavior": "迁移前保护复用worktree中未登记的已有需求材料。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/560",
+        "report:2026-11-15-native-multi-shape-review"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "a699272f相同回归输入返回成功并覆盖目标sentinel；定向测试先失败后通过。",
+      "expected": "保留目标原材料与源批准，拒绝冲突；全新worktree可继承已提交Shape。",
+      "forbidden": "覆盖目标同名未登记目录。",
+      "rootCause": "复用工作区未检查已有需求目录。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+          "namePattern": "Native v4 public CLI surface preserves existing unowned worktree artifacts when Build transfer conflicts",
+          "requiredNames": [
+            "Native v4 public CLI surface preserves existing unowned worktree artifacts when Build transfer conflicts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-560-build-current-checkpoint",
+      "behavior": "目标Run本地记录缺失时保留最新checkpoint与原执行身份。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/560",
+        "report:2026-11-15-native-multi-shape-review"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "同一测试在a699272f临时检出1失败1通过，失败证明replacement-builder替换原会话；当前两项通过。",
+      "expected": "沿目标最新checkpoint恢复原Builder；保留原claim及running/unknown恢复契约。",
+      "forbidden": "回放源journal旧快照，允许另一会话重领同一Builder。",
+      "rootCause": "将目标raw store缺失等同首次交接，重复复制并恢复旧transfer.run。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "Native Build workspace recovery preserves the current target checkpoint and original Builder when its local Run is missing",
+          "requiredNames": [
+            "Native Build workspace recovery preserves the current target checkpoint and original Builder when its local Run is missing"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-560-shared-hook-target-scope",
+      "behavior": "共享规划工作区仅阻止实现写入，保留中立与正式材料的目标分类。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/560",
+        "report:2026-11-15-native-multi-shape-review"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "原生成Router拒绝docs/notes.md，定向测试先失败后通过；模拟平台事件调用真实Router命令。",
+      "expected": "打包Router允许中立文档、配置、外部路径与当前Shape材料，拒绝实现及混合实现写入。",
+      "forbidden": "在目标分类前拒绝全部写入或允许共享规划目录中的实现。",
+      "rootCause": "共享工作区检查放在目标分类之前。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+          "namePattern": "Native v4 public CLI surface keeps shared Shape Hook decisions target scoped through packaged Router",
+          "requiredNames": [
+            "Native v4 public CLI surface keeps shared Shape Hook decisions target scoped through packaged Router"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-560-moved-readonly-status",
+      "behavior": "迁移后的只读查询指向目标当前Run并保留源写入限制。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/560",
+        "report:2026-11-15-native-multi-shape-review"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "a699272f构建CLI源named状态exit65且project状态列出error；当前同边界回归通过。",
+      "expected": "源named/project状态显示目标执行工作区，查询不改写双方状态，源CAS拒绝。",
+      "forbidden": "误报正常迁移为损坏，推荐无效源doctor或查询推进Run。",
+      "rootCause": "source同步投影对任何moved记录抛错，未区分只读定位与写入。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-status.test.ts",
+          "namePattern": "reads the current moved Run through source status without advancing or rewriting either workspace",
+          "requiredNames": [
+            "reads the current moved Run through source status without advancing or rewriting either workspace"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-560-next-validates-before-transfer",
+      "behavior": "原工作区的next在重试交接前完成参数校验。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/560",
+        "report:2026-11-15-native-multi-shape-review"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "原next入口在读取参数前执行交接；新增中断后无效参数断言，当前公开CLI回归验证目标需求目录未生成。",
+      "expected": "无效参数返回错误并保留未完成复制现场，合法next仍可继续原交接。",
+      "forbidden": "参数无效时先复制、恢复或选择目标Run。",
+      "rootCause": "moved路由位于assertNoArguments和通用参数验证之前。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+          "namePattern": "Native v4 public CLI surface keeps multiple Shapes independent and transfers the approved Run before claiming Build",
+          "requiredNames": [
+            "Native v4 public CLI surface keeps multiple Shapes independent and transfers the approved Run before claiming Build"
+          ]
+        }
+      ]
+    },
+    {
       "id": "ci-owned-command-owner-startup-readiness",
       "behavior": "独立截止时间回归在测试进程启动较慢时仍能进入真实超时与整树清理断言。",
       "sources": ["https://github.com/rpamis/comet/actions/runs/43545217542/job/132294851001"],

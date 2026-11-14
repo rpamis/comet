@@ -436,10 +436,17 @@ export function createNativeSdkStateStore(
   }
   async function syncBoundaryCheckpoint(run: WorkflowRun, publish: boolean): Promise<WorkflowRun> {
     const transferred = await readNativeBuildWorkspace(projectRoot, run.runId);
-    if (transferred)
-      throw new Error(
-        `Native change moved to ${transferred.projectRoot}; use comet native next ${run.runId} --project-root ${projectRoot} --json`,
-      );
+    if (transferred) {
+      const current = await createNativeSdkStateStore(transferred.projectRoot, {
+        readOnly: true,
+        rootRunId: run.runId,
+      }).read(run.runId);
+      if (!current)
+        throw new Error(
+          `Native Build workspace handoff is incomplete; use comet native next ${run.runId} --project-root ${projectRoot} --json to resume it`,
+        );
+      return current;
+    }
     const state = parseNativePortableState(run.state);
     const input = run.input as {
       name?: unknown;

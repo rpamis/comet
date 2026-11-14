@@ -9,7 +9,7 @@ import {
   defaultProjectConfig,
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -703,6 +703,134 @@ Run the focused checks.
     return String(ready.data?.stateVersion);
   }
 
+  async function queueSharedShape() {
+    execFileSync(
+      'git',
+      [
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.com',
+        'commit',
+        '--allow-empty',
+        '-m',
+        'fixture',
+      ],
+      { cwd: projectRoot, stdio: 'ignore' },
+    );
+    for (const name of ['shape-a', 'shape-b'])
+      expect(json(await runNativeCli(['new', name, '--json', ...projectArgs()])).exitCode).toBe(0);
+    const version = await prepareSdkShape('shape-a');
+    const approved = json(
+      await runNativeCli([
+        'next',
+        'shape-a',
+        '--confirmed',
+        '--defer-build',
+        '--summary',
+        'Approved, wait for implementation',
+        '--expected-state-version',
+        version,
+        '--expected-action',
+        'confirm-shape',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(approved.exitCode, approved.error?.message).toBe(0);
+  }
+
+  it.each(['compat', 'unowned'] as const)(
+    'preserves existing %s worktree artifacts when Build transfer conflicts',
+    async (owner) => {
+      await queueSharedShape();
+      const target = path.join(projectRoot, '.worktrees', 'shape-a');
+      execFileSync('git', ['worktree', 'add', '-b', 'comet/shape-a', target], {
+        cwd: projectRoot,
+        stdio: 'ignore',
+      });
+      if (owner === 'compat')
+        expect(
+          json(
+            await runNativeCli([
+              'new',
+              'shape-a',
+              '--runtime',
+              'compat',
+              '--json',
+              '--project-root',
+              target,
+            ]),
+          ).exitCode,
+        ).toBe(0);
+      const relative = 'docs/comet/changes/shape-a';
+      await fs.mkdir(path.join(target, relative), { recursive: true });
+      const sentinel = '# Existing worktree material must survive\n';
+      await fs.writeFile(path.join(target, relative, 'brief.md'), sentinel);
+      const source = await fs.readFile(
+        path.join(projectRoot, relative, 'comet-state.yaml'),
+        'utf8',
+      );
+      const rejected = json(await runNativeCli(['next', 'shape-a', '--json', ...projectArgs()]));
+      expect(rejected.exitCode).not.toBe(0);
+      expect(await fs.readFile(path.join(target, relative, 'brief.md'), 'utf8')).toBe(sentinel);
+      expect(await fs.readFile(path.join(projectRoot, relative, 'comet-state.yaml'), 'utf8')).toBe(
+        source,
+      );
+      expect((await inspectNativeSdkRun(projectRoot, 'shape-a')).state.phase).toBe('build');
+    },
+  );
+
+  it('keeps shared Shape Hook decisions target scoped through packaged Router', async () => {
+    await queueSharedShape();
+    expect(
+      json(await runNativeCli(['select', 'shape-a', '--json', ...projectArgs()])).exitCode,
+    ).toBe(0);
+    const routerWrite = (file: string) =>
+      spawnSync(
+        process.execPath,
+        [
+          path.resolve('assets/skills/comet/scripts/comet-hook-router.mjs'),
+          '--platform',
+          'codex',
+          '--project-root',
+          projectRoot,
+        ],
+        {
+          cwd: projectRoot,
+          input: JSON.stringify({
+            tool_name: 'Write',
+            cwd: projectRoot,
+            tool_input: { file_path: file, content: 'probe' },
+          }),
+          encoding: 'utf8',
+          timeout: 20_000,
+        },
+      );
+    for (const file of [
+      'docs/notes.md',
+      '.comet/config.yaml',
+      path.join(os.tmpdir(), 'outside-shape.txt'),
+      'docs/comet/changes/shape-a/brief.md',
+    ]) {
+      const result = routerWrite(file);
+      expect(result.status, result.stderr).toBe(0);
+    }
+    const denied = routerWrite('src/index.ts');
+    expect(denied.status, denied.stderr).toBe(2);
+    expect(denied.stderr).toContain('worktree');
+    expect(
+      await inspectNativeHookGuard(
+        projectRoot,
+        { intent: 'write', targets: ['docs/notes.md', 'src/index.ts'] },
+        'shape-a',
+      ),
+    ).toMatchObject({ allowed: false });
+    expect(
+      await inspectNativeHookGuard(projectRoot, { intent: 'unknown', targets: [] }, 'shape-a'),
+    ).toMatchObject({ allowed: true });
+  });
+
   it('keeps multiple Shapes independent and transfers the approved Run before claiming Build', async () => {
     execFileSync(
       'git',
@@ -789,6 +917,22 @@ Run the focused checks.
     );
     expect(interrupted.exitCode).not.toBe(0);
     expect(interrupted.error?.message).toContain('fixture interrupted transfer');
+    for (const invalidArgs of [
+      ['--invalid-option'],
+      ['--session', 'builder-a', '--confirmed'],
+      ['--confirmed', '--summary', 'Missing guards'],
+      ['--proposal-hash', 'invalid-context'],
+    ]) {
+      const invalid = json(
+        await runNativeCli(['next', 'shape-a', ...invalidArgs, '--json', ...projectArgs()]),
+      );
+      expect(invalid.exitCode).not.toBe(0);
+      expect(
+        await fs
+          .readdir(path.join(projectRoot, '.worktrees/shape-a/docs/comet/changes'))
+          .catch(() => []),
+      ).not.toContain('shape-a');
+    }
     const claimed = json(
       await runNativeCli(['next', 'shape-a', '--session', 'builder-a', '--json', ...projectArgs()]),
     );
@@ -819,7 +963,16 @@ Run the focused checks.
         (a) => a.stepId === 'build.builder',
       ),
     ).toHaveLength(1);
-    await expect(createNativeSdkRuntime(projectRoot).inspect('shape-a')).rejects.toThrow('moved');
+    expect(await createNativeSdkRuntime(projectRoot).inspect('shape-a')).toEqual(
+      (await inspectNativeSdkRun(target, 'shape-a')).run,
+    );
+    expect(
+      await inspectNativeHookGuard(
+        projectRoot,
+        { intent: 'write', targets: ['docs/comet/changes/shape-a/brief.md'] },
+        'shape-a',
+      ),
+    ).toMatchObject({ allowed: false });
   });
 
   it('requires workspace isolation before creating a second current-workspace SDK change', async () => {
