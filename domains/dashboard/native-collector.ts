@@ -233,7 +233,12 @@ function nativeDashboardCandidateLocator(
     `native:${nativeDashboardEntryIdentity(entry)}`,
   );
 }
+// Bump when the rebuild starts reading new facts or filtering candidates
+// differently. A stored index from another revision is rebuilt on the next read,
+// because its refreshPaths cannot notice the facts it never tracked.
+const NATIVE_DASHBOARD_INDEX_REVISION = 2;
 interface NativeDashboardIndex {
+  revision?: number;
   runtimeDataRoot?: string;
   refreshPaths?: string[];
   fingerprint?: string | null;
@@ -714,6 +719,7 @@ async function rebuildNativeDashboardIndex(
   const after = await nativeDashboardIndexFingerprint(refreshPaths, workspaces);
   const discoveryAfter = await nativeDashboardIndexFingerprint(discoveryPaths, workspaces);
   return {
+    revision: NATIVE_DASHBOARD_INDEX_REVISION,
     runtimeDataRoot: nativeDashboardRuntimeDataRoot(),
     refreshPaths,
     fingerprint: before === after && discoveryBefore === discoveryAfter ? after : null,
@@ -773,6 +779,8 @@ async function buildNativeDashboardIndex(
   const root = path.resolve(projectRoot);
   const cached = await readCachedNativeDashboardIndex(root);
   if (cached) {
+    if (cached.revision !== NATIVE_DASHBOARD_INDEX_REVISION)
+      return refreshNativeDashboardIndex(root);
     if (cached.runtimeDataRoot !== nativeDashboardRuntimeDataRoot())
       return refreshNativeDashboardIndex(root);
     if (hasInvalidCachedNativeSource(cached, root)) return refreshNativeDashboardIndex(root);

@@ -5,6 +5,31 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Lets a test build the index the way the collector did before #557: no
+// cancellation check and no SDK Run paths in refreshPaths.
+const preCancellationCollector = vi.hoisted(() => ({ enabled: false }));
+vi.mock('../../../domains/comet-native/native-sdk-cancellation.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../../domains/comet-native/native-sdk-cancellation.js')
+    >();
+  return {
+    ...actual,
+    isNativeSdkChangeCancellationComplete: (
+      ...args: Parameters<typeof actual.isNativeSdkChangeCancellationComplete>
+    ) =>
+      preCancellationCollector.enabled
+        ? Promise.resolve(false)
+        : actual.isNativeSdkChangeCancellationComplete(...args),
+    nativeSdkChangeCancellationPaths: (
+      ...args: Parameters<typeof actual.nativeSdkChangeCancellationPaths>
+    ) =>
+      preCancellationCollector.enabled
+        ? Promise.resolve([])
+        : actual.nativeSdkChangeCancellationPaths(...args),
+  };
+});
+
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { nativeSdkChangeRunPaths } from '../../../domains/comet-native/native-sdk-cancellation.js';
 import { workflowApplicationRunPaths } from '../../../domains/workflow-application/application.js';
@@ -29,6 +54,7 @@ describe('Native Dashboard after a completed cancellation', () => {
   });
 
   afterEach(async () => {
+    preCancellationCollector.enabled = false;
     vi.restoreAllMocks();
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
@@ -76,6 +102,32 @@ describe('Native Dashboard after a completed cancellation', () => {
 
     await activeNames();
     await Promise.all(pending);
+    await expect(activeNames()).resolves.toEqual([]);
+    await expect(collectNativeDashboardOverview(projectRoot)).resolves.toMatchObject({
+      activeChangeCount: 0,
+    });
+  });
+  it('rebuilds an index stored before the cancellation check on the first read after upgrade', async () => {
+    expect((await cli(['new', 'cancel-demo'])).exitCode).toBe(0);
+    const cancelled = await cli(['cancel', 'cancel-demo']);
+    expect(cancelled.exitCode, cancelled.error?.message).toBe(0);
+
+    // Persist the index an older collector wrote: the cancelled change is still
+    // active, the stored refreshPaths miss the SDK Run files, and there is no
+    // revision field.
+    preCancellationCollector.enabled = true;
+    await expect(activeNames()).resolves.toEqual(['cancel-demo']);
+    preCancellationCollector.enabled = false;
+    const store = new DashboardIndexStore({ projectRoot });
+    await store.open();
+    const legacy = (await store.readNativeIndex<Record<string, unknown>>())!;
+    delete legacy.revision;
+    await store.replaceNativeIndex(legacy);
+    await store.close();
+
+    // No project file changed since that index was written, so only the
+    // revision tells the reader to rebuild it.
+    await expect(activeNames()).resolves.toEqual([]);
     await expect(activeNames()).resolves.toEqual([]);
     await expect(collectNativeDashboardOverview(projectRoot)).resolves.toMatchObject({
       activeChangeCount: 0,
