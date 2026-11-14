@@ -2,6 +2,23 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "ci-owned-command-owner-startup-readiness",
+      "behavior": "独立截止时间回归在测试进程启动较慢时仍能进入真实超时与整树清理断言。",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/43545217542/job/132294851001"],
+      "coverageLevel": "runtime",
+      "reproduction": "a6b8e63e 的 Windows Runtime smoke 在 owned command did not start 失败；测试进程延迟 6 秒加载 bundle 可在本机稳定触发同一错误，尚未调用 runOwnedCommand。",
+      "expected": "等待测试进程就绪后，继续验证 5 秒命令时限、10 秒调用方阻塞、整树停止、心跳停止及 confirmed=true。",
+      "forbidden": "把测试进程的启动延迟误报为命令未启动，或延长被测命令时限、缩短阻塞、移除后代停止断言。",
+      "rootCause": "夹具从 spawn 测试进程时就开始 5 秒等待，早于测试进程加载并调用 runOwnedCommand。",
+      "tests": [
+        {
+          "file": "test/platform/process/owned-command-termination.test.ts",
+          "namePattern": "^waits for owner readiness before measuring the independent deadline$",
+          "requiredNames": ["waits for owner readiness before measuring the independent deadline"]
+        }
+      ]
+    },
+    {
       "id": "codex-marketplace-windows-checkout-paths",
       "behavior": "默认 Git 配置的 Windows 用户可以在 Codex 市场临时目录完整检出 Comet 仓库。",
       "sources": ["report:codex-marketplace-windows-install-20261114"],
