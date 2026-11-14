@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { readNativeSdkRunRecord } from './native-sdk-state-store.js';
 import path from 'node:path';
 
 import {
@@ -151,7 +152,29 @@ export async function createNativeSdkChange(options: {
       artifactRootRef: options.paths.artifactRootRef,
     });
     const activeChanges = await listActiveNativeChangesOwnedByWorkspace(options.paths);
-    if (activeChanges.some((name) => name !== options.name)) {
+    const sharedShapes = await Promise.all(
+      activeChanges.map(async (name) => {
+        const run = await readNativeSdkRunRecord(options.paths.projectRoot, name);
+        try {
+          await fs.access(path.join(options.paths.changesDir, name, 'brief.md'));
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+          throw error;
+        }
+        if (run?.workflow.version !== '4') return false;
+        const state = parseNativePortableState(run.state);
+        return (
+          state.phase === 'shape' ||
+          (state.phase === 'build' &&
+            !run.actions.some(
+              (action) =>
+                ['build.builder', 'supervisor.prepare'].includes(action.stepId) &&
+                action.status !== 'pending',
+            ))
+        );
+      }),
+    );
+    if (sharedShapes.some((shape) => !shape)) {
       throw new NativeWorkspaceIsolationRequiredError(
         options.workspaceBinding.isolation,
         activeChanges.filter((name) => name !== options.name),

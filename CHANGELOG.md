@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.5.4] - 2026-11-14
+
+### Added
+
+- **Parallel Shape review**: Keep multiple Native v4 changes in one planning workspace, approve a Shape with `--defer-build`, and prepare an independent worktree before implementing a change alongside other active requirements. Workspace handoff preserves the original Run and approval, resumes interrupted transfers, and routes subsequent task claims to the execution workspace ([#560](https://github.com/rpamis/comet/issues/560)).
+
 ## What's Changed [0.5.3] - 2026-11-13
 
 ### Added

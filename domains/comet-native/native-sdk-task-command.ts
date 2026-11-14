@@ -670,6 +670,12 @@ export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<
       (entry) => entry.stepId === 'shape.prepare' && ['pending', 'running'].includes(entry.status),
     );
   const advanced = repeated || awaitingShapeInput ? undefined : await advance();
+  if (advanced?.executionCwd && advanced.executionCwd !== options.projectRoot) {
+    return {
+      ...(await advanceNativeSdkTask({ ...options, projectRoot: advanced.executionCwd })),
+      executionCwd: advanced.executionCwd,
+    };
+  }
   if (advanced) run = advancementObservation?.run ?? (await owned.runtime.inspect(options.name));
   const pending = run.actions.filter((entry) => ordinaryTask(entry) && entry.status === 'pending');
   const reportedChild = reported ? activation(reported)?.child : undefined;

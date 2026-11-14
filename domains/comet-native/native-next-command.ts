@@ -1,3 +1,5 @@
+import { readNativeBuildWorkspace } from './native-build-workspace-record.js';
+import { prepareNativeBuildWorkspace } from './native-build-workspace.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
 import { inspectNativeChildren } from './native-children.js';
 import {
@@ -83,7 +85,12 @@ export async function nativeNextCommand(
   args: string[],
   projectRoot: string,
 ): Promise<DispatchResult> {
+  const originalArgs = [...args];
   const name = requiredPositional(args, 'change name');
+  if (await readNativeBuildWorkspace(projectRoot, name)) {
+    const target = await prepareNativeBuildWorkspace(projectRoot, name);
+    return { ...(await nativeNextCommand(originalArgs, target)), executionCwd: target };
+  }
   const resultFile = takeOption(args, '--result');
   const sessionId = takeOption(args, '--session');
   const actionId = takeOption(args, '--action');
@@ -104,6 +111,8 @@ export async function nativeNextCommand(
   const runnerInputFile = takeOption(args, '--runner-input');
   const validateOnly = takeFlag(args, '--validate-only');
   const confirmed = takeFlag(args, '--confirmed');
+  const deferBuild = takeFlag(args, '--defer-build');
+  if (deferBuild && !confirmed) throw new NativeUsageError('--defer-build requires --confirmed');
   const acceptResult = takeFlag(args, '--accept-result');
   const finish = takeOption(args, '--finish') as NativeWorkspaceFinish | undefined;
   if (
@@ -191,6 +200,7 @@ export async function nativeNextCommand(
       },
     };
   }
+  if (deferBuild && !sdkOwner) throw new NativeUsageError('--defer-build requires an SDK change');
   const owner = sdkOwner ?? (await resolveNativeChangeRuntimeOwner(configured.paths, name));
   if (owner?.format === 'sdk') {
     if (taskInput) {
@@ -280,6 +290,7 @@ export async function nativeNextCommand(
         summary,
         expectedStateVersion: expectedContinuation.stateVersion,
         expectedAction: 'confirm-shape',
+        deferBuild,
         ...(coordinationMode === undefined ? {} : { coordinationMode }),
       });
     }

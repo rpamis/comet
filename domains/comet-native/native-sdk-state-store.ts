@@ -1,3 +1,4 @@
+import { readNativeBuildWorkspace } from './native-build-workspace-record.js';
 import { commitNativeSdkArchiveFailure } from './native-portable-archive.js';
 import { observeWorkflowRunStore } from '../workflow-application/run-trace.js';
 import {
@@ -434,6 +435,11 @@ export function createNativeSdkStateStore(
     return store.read(runId);
   }
   async function syncBoundaryCheckpoint(run: WorkflowRun, publish: boolean): Promise<WorkflowRun> {
+    const transferred = await readNativeBuildWorkspace(projectRoot, run.runId);
+    if (transferred)
+      throw new Error(
+        `Native change moved to ${transferred.projectRoot}; use comet native next ${run.runId} --project-root ${projectRoot} --json`,
+      );
     const state = parseNativePortableState(run.state);
     const input = run.input as {
       name?: unknown;
@@ -538,9 +544,30 @@ export function createNativeSdkStateStore(
         runId,
       ),
     async compareAndSwap(runId, expectedRevision, next) {
+      const transferred = await readNativeBuildWorkspace(projectRoot, runId);
+      if (transferred)
+        throw new Error(
+          `Native change moved to ${transferred.projectRoot}; run comet native next ${runId} --project-root ${projectRoot} --json to resume the transfer`,
+        );
       if (options.readOnly) throw new Error('Native SDK diagnostic store is read-only');
       assertMutationWorkspace();
       const state = parseNativePortableState(next.state);
+      const implementationClaim = next.actions.find(
+        (action) =>
+          ['build.builder', 'supervisor.prepare'].includes(action.stepId) &&
+          action.status === 'running',
+      );
+      if (implementationClaim) {
+        const previous = await store.read(runId);
+        const original = previous?.actions.find((action) => action.id === implementationClaim.id);
+        if (original?.status !== 'running') {
+          const { listNativeSdkBuildPeers } = await import('./native-build-workspace-record.js');
+          if ((await listNativeSdkBuildPeers(projectRoot, runId)).length > 0)
+            throw new Error(
+              `Native Build requires its own worktree; run comet native next ${runId} --project-root ${projectRoot} --json before claiming implementation`,
+            );
+        }
+      }
       for (const action of next.actions) {
         if (
           action.status !== 'running' ||

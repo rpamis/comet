@@ -1,3 +1,4 @@
+import { listNativeSdkBuildPeers } from './native-build-workspace-record.js';
 import { promises as fs, type Dirent } from 'fs';
 import path from 'path';
 import { mapWithConcurrency } from './native-concurrency.js';
@@ -679,6 +680,24 @@ export async function inspectNativeHookGuard(
     ? await selectedNativeContext(projectRoot, selectedChangeName)
     : await activeNativeContext(projectRoot);
   if (!context) return { allowed: true, reason: 'Native workflow is not enabled' };
+  if (
+    request.intent !== 'non-write' &&
+    context.changes.some((change) => change.state.phase === 'build') &&
+    (
+      await listNativeSdkBuildPeers(
+        projectRoot,
+        selectedChangeName ?? context.changes[0].state.name,
+      )
+    ).length > 0
+  ) {
+    return {
+      allowed: false,
+      reason:
+        'Prepare the Build worktree with comet native next before writing implementation in a shared Shape workspace',
+      workflow: 'native',
+      change: selectedChangeName,
+    };
+  }
   if (request.intent === 'non-write') {
     return { allowed: true, reason: 'Hook event is not a write' };
   }

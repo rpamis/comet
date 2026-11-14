@@ -1,3 +1,4 @@
+import { inspectNativeHookGuard } from '../../../domains/comet-native/native-hook-guard.js';
 import '../../helpers/isolated-agent-home.js';
 import { nativeVerifierActionExecutionRef } from '../../../domains/comet-native/native-verifier-action.js';
 import { readNativePortableChange } from '../../../domains/comet-native/native-portable-runtime.js';
@@ -685,11 +686,175 @@ Run the focused checks.
     );
   });
 
+  async function prepareSdkShape(name: string) {
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    const dir = path.join(paths.changesDir, name);
+    await fs.writeFile(
+      path.join(dir, 'brief.md'),
+      '# Outcome\nShip behavior.\n# Scope\nOne feature.\n## Directory structure\n### Modified\n- src/ — feature.\n# Non-goals\nNone.\n# Acceptance examples\n- Behavior works.\n# Constraints and invariants\nPreserve compatibility.\n# Decisions\nNone.\n# Open questions\nNone.\n# Verification expectations\nFocused tests.\n',
+    );
+    await fs.mkdir(path.join(dir, 'specs', 'feature'), { recursive: true });
+    await fs.writeFile(
+      path.join(dir, 'specs', 'feature', 'spec.md'),
+      '# Feature\nBehavior works.\n',
+    );
+    const ready = json(await runNativeCli(['next', name, '--json', ...projectArgs()]));
+    expect(ready.exitCode, ready.error?.message).toBe(0);
+    return String(ready.data?.stateVersion);
+  }
+
+  it('keeps multiple Shapes independent and transfers the approved Run before claiming Build', async () => {
+    execFileSync(
+      'git',
+      [
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.com',
+        'commit',
+        '--allow-empty',
+        '-m',
+        'fixture',
+      ],
+      { cwd: projectRoot, stdio: 'ignore' },
+    );
+    expect(json(await runNativeCli(['new', 'shape-a', '--json', ...projectArgs()])).exitCode).toBe(
+      0,
+    );
+    expect(json(await runNativeCli(['new', 'shape-b', '--json', ...projectArgs()])).exitCode).toBe(
+      0,
+    );
+    const beforeB = await fs.readFile(
+      path.join(projectRoot, 'docs/comet/changes/shape-b/brief.md'),
+      'utf8',
+    );
+    const version = await prepareSdkShape('shape-a');
+    const before = (await inspectNativeSdkRun(projectRoot, 'shape-a')).run;
+    const deferred = json(
+      await runNativeCli([
+        'next',
+        'shape-a',
+        '--confirmed',
+        '--defer-build',
+        '--summary',
+        'Approved, queue implementation',
+        '--expected-state-version',
+        version,
+        '--expected-action',
+        'confirm-shape',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(deferred.exitCode, deferred.error?.message).toBe(0);
+    expect((await inspectNativeSdkRun(projectRoot, 'shape-a')).state.phase).toBe('build');
+    expect(
+      (await inspectNativeSdkRun(projectRoot, 'shape-a')).run.actions.some(
+        (a) => a.stepId === 'build.builder' && a.claim,
+      ),
+    ).toBe(false);
+    expect(
+      await inspectNativeHookGuard(
+        projectRoot,
+        { intent: 'write', targets: ['src/index.ts'] },
+        'shape-a',
+      ),
+    ).toMatchObject({ allowed: false });
+    expect(
+      await inspectNativeHookGuard(
+        projectRoot,
+        { intent: 'write', targets: ['docs/comet/changes/shape-b/brief.md'] },
+        'shape-b',
+      ),
+    ).toMatchObject({ allowed: true });
+    const runtime = createNativeSdkRuntime(projectRoot);
+    const queued = await runtime.next({ runId: 'shape-a' });
+    const builder = queued.actions.find((a) => a.stepId === 'build.builder')!;
+    await expect(
+      runtime.claim({
+        runId: queued.runId,
+        expectedRevision: queued.revision,
+        actionId: builder.id,
+        attempt: builder.attempt,
+        inputHash: builder.inputHash,
+        executorId: 'native-host',
+        sessionId: 'bypass',
+        claimToken: 'bypass',
+        context: { requestId: 'bypass', projectRoot },
+      }),
+    ).rejects.toThrow('own worktree');
+    vi.spyOn(fs, 'cp').mockRejectedValueOnce(new Error('fixture interrupted transfer'));
+    const interrupted = json(
+      await runNativeCli(['next', 'shape-a', '--session', 'builder-a', '--json', ...projectArgs()]),
+    );
+    expect(interrupted.exitCode).not.toBe(0);
+    expect(interrupted.error?.message).toContain('fixture interrupted transfer');
+    const claimed = json(
+      await runNativeCli(['next', 'shape-a', '--session', 'builder-a', '--json', ...projectArgs()]),
+    );
+    expect(claimed.exitCode, claimed.error?.message).toBe(0);
+    const target = path.join(projectRoot, '.worktrees', 'shape-a');
+    const transferred = await inspectNativeSdkRun(target, 'shape-a');
+    expect(transferred.run.runId).toBe(before.runId);
+    expect(transferred.run.waits.find((w) => w.stepId === 'shape.confirm')?.status).toBe(
+      'resolved',
+    );
+    expect(
+      transferred.run.actions.find((a) => a.stepId === 'build.builder')?.claim?.sessionId,
+    ).toBe('builder-a');
+    expect(transferred.state.workspace).toMatchObject({
+      isolation: 'worktree',
+      change_branch: 'comet/shape-a',
+    });
+    expect(
+      await fs.readFile(path.join(projectRoot, 'docs/comet/changes/shape-b/brief.md'), 'utf8'),
+    ).toBe(beforeB);
+    expect((await inspectNativeSdkRun(projectRoot, 'shape-b')).state.phase).toBe('shape');
+    const repeated = json(
+      await runNativeCli(['next', 'shape-a', '--session', 'builder-a', '--json', ...projectArgs()]),
+    );
+    expect(repeated.exitCode, repeated.error?.message).toBe(0);
+    expect(
+      (await inspectNativeSdkRun(target, 'shape-a')).run.actions.filter(
+        (a) => a.stepId === 'build.builder',
+      ),
+    ).toHaveLength(1);
+    await expect(createNativeSdkRuntime(projectRoot).inspect('shape-a')).rejects.toThrow('moved');
+  });
+
   it('requires workspace isolation before creating a second current-workspace SDK change', async () => {
     const first = json(
       await runNativeCli(['new', 'first-sdk', '--runtime', 'sdk', '--json', ...projectArgs()]),
     );
     expect(first.exitCode).toBe(0);
+    const version = await prepareSdkShape('first-sdk');
+    const approved = json(
+      await runNativeCli([
+        'next',
+        'first-sdk',
+        '--confirmed',
+        '--summary',
+        'Approved',
+        '--expected-state-version',
+        version,
+        '--expected-action',
+        'confirm-shape',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(approved.exitCode, approved.error?.message).toBe(0);
+    const started = json(
+      await runNativeCli([
+        'next',
+        'first-sdk',
+        '--session',
+        'first-builder',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(started.exitCode, started.error?.message).toBe(0);
     const second = json(
       await runNativeCli(['new', 'second-sdk', '--runtime', 'sdk', '--json', ...projectArgs()]),
     );

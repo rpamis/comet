@@ -1,3 +1,4 @@
+import { prepareNativeBuildWorkspace } from './native-build-workspace.js';
 import { randomUUID } from 'node:crypto';
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 import { reportCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
@@ -113,6 +114,7 @@ export async function advanceNativeSdkChange(
         summary: string;
         expectedStateVersion: number;
         expectedAction: 'confirm-shape';
+        deferBuild?: boolean;
         coordinationMode?: NativeSupervisorCoordinationMode;
       }
     | {
@@ -575,7 +577,7 @@ export async function advanceNativeSdkChange(
     }
     if (!decision.summary.trim()) throw new NativeUsageError('--summary must not be empty');
     const { runtime } = await loadOwnedNativeSdkRuntime(projectRoot, name);
-    await runtime.resolveWait({
+    const confirmedRun = await runtime.resolveWait({
       runId: run.runId,
       waitId: wait.id,
       proposalHash: wait.proposalHash,
@@ -587,6 +589,8 @@ export async function advanceNativeSdkChange(
       }),
       choice: decision.coordinationMode ?? 'approved',
     });
+    if (decision.deferBuild)
+      return nextResult(projectRoot, name, confirmedRun, artifactRootRef, application);
     return advanceNativeSdkChange(
       projectRoot,
       name,
@@ -602,6 +606,29 @@ export async function advanceNativeSdkChange(
     )
   )
     return nextResult(projectRoot, name, run, artifactRootRef, application);
+  if (
+    !application &&
+    state.phase === 'build' &&
+    !run.actions.some(
+      (action) =>
+        ['build.builder', 'supervisor.prepare'].includes(action.stepId) &&
+        action.status !== 'pending',
+    )
+  ) {
+    const target = await prepareNativeBuildWorkspace(projectRoot, name);
+    if (target !== projectRoot)
+      return {
+        ...(await advanceNativeSdkChange(
+          target,
+          name,
+          undefined,
+          undefined,
+          taskProjection,
+          observeTaskResult,
+        )),
+        executionCwd: target,
+      };
+  }
   const diagnostics = await inspectNativeSdkRunDiagnostics(projectRoot, run);
   if (!diagnostics.healthy) return nextResult(projectRoot, name, run, artifactRootRef, application);
   if (
