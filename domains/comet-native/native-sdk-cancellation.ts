@@ -1,9 +1,20 @@
 import { resolveWorkspaceRuntimeRootSync } from '../workflow-contract/workspace-runtime.js';
 import path from 'node:path';
-import { createFileRuntimeStore, createRuntime, type WorkflowRun } from '../engine/runtime.js';
-import { readWorkflowApplicationRun } from '../workflow-application/application.js';
+import {
+  createFileRuntimeStore,
+  createRuntime,
+  fileRuntimeStoreRunPaths,
+  type WorkflowRun,
+} from '../engine/runtime.js';
+import {
+  readWorkflowApplicationRun,
+  workflowApplicationRunPaths,
+} from '../workflow-application/application.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
-import { readCometCurrentSelection } from '../workflow-contract/current-selection.js';
+import {
+  cometCurrentSelectionFile,
+  readCometCurrentSelection,
+} from '../workflow-contract/current-selection.js';
 import type { NativePortableContinuation } from './native-portable-continuation.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import type { NativePortableState } from './native-portable-types.js';
@@ -184,6 +195,62 @@ export async function isNativeSdkCancellationComplete(options: {
   return (await inspectNativeSdkCancellation(options))?.status === 'cancelled';
 }
 /** 从权威存储只读检查取消；保留历史投影不能证明任务仍在执行。 */
+/** Native change 的 SDK Run 存储位置；取消完成只改动这些文件时，Dashboard 索引据此重建。 */
+export function nativeSdkChangeRunPaths(projectRoot: string, name: string): string[] {
+  return fileRuntimeStoreRunPaths(
+    path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'sdk-runs/native'),
+    name,
+  );
+}
+
+/**
+ * `isNativeSdkChangeCancellationComplete` 读取的全部位置：根 Run、取消后仍需核对的子 Run（与
+ * `inspectNativeSdkQuiescence` 相同的遍历，Native 或应用所属存储）和当前选择文件。只有这些记录变化时，
+ * Dashboard 索引也据此重建。读取失败时返回已收集的位置。
+ */
+export async function nativeSdkChangeCancellationPaths(
+  projectRoot: string,
+  name: string,
+): Promise<string[]> {
+  const paths = [
+    ...nativeSdkChangeRunPaths(projectRoot, name),
+    cometCurrentSelectionFile(projectRoot),
+  ];
+  try {
+    const owner = await readSdkChangeOwner(projectRoot, 'native', name, { readOnly: true });
+    if (!owner) return paths;
+    const application = owner.application === 'native' ? null : owner.application;
+    const store = createFileRuntimeStore<WorkflowRun>({
+      singleWriter: true,
+      rootDir: path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'sdk-runs/native'),
+    });
+    const runPaths = (runId: string) =>
+      application
+        ? workflowApplicationRunPaths(projectRoot, application, runId)
+        : nativeSdkChangeRunPaths(projectRoot, runId);
+    const readRun = (runId: string) =>
+      application ? readWorkflowApplicationRun(projectRoot, application, runId) : store.read(runId);
+    paths.push(...runPaths(owner.runId));
+    const run = await readRun(owner.runId);
+    // 未取消的 Run 不读取子 Run；它转为 cancelled 时根 Run 位置已变化，下一次重建再纳入子 Run。
+    if (!run || run.status !== 'cancelled') return [...new Set(paths)];
+    const visited = new Set<string>([run.runId]);
+    const pending: WorkflowRun[] = [run];
+    while (pending.length > 0) {
+      for (const child of pending.shift()!.children) {
+        if (visited.has(child.runId)) continue;
+        visited.add(child.runId);
+        paths.push(...runPaths(child.runId));
+        const record = await readRun(child.runId);
+        if (record && ['cancelled', 'completed'].includes(record.status)) pending.push(record);
+      }
+    }
+  } catch {
+    // 与取消检查一致：读不到时保留已知位置，由下一次指纹变化触发重建。
+  }
+  return [...new Set(paths)];
+}
+
 export async function isNativeSdkChangeCancellationComplete(
   projectRoot: string,
   name: string,

@@ -17,6 +17,7 @@ import { createRequire, isBuiltin } from 'node:module';
 import { init, parse } from 'es-module-lexer';
 import {
   createFileRuntimeStore,
+  fileRuntimeStoreRunPaths,
   inspectFileRuntimeStoreLock,
   repairFileRuntimeStoreLock,
   createRuntime,
@@ -105,6 +106,22 @@ function safeId(id: string): string {
   return id;
 }
 
+function applicationRunStoreRoot(runtimeRoot: string, applicationId: string): string {
+  return path.join(runtimeRoot, 'applications', safeId(applicationId));
+}
+
+/** 应用一个 Run 的存储位置；只读缓存据此判断应用所属的 Run 记录是否变化。 */
+export function workflowApplicationRunPaths(
+  projectRoot: string,
+  applicationId: string,
+  runId: string,
+): string[] {
+  return fileRuntimeStoreRunPaths(
+    applicationRunStoreRoot(resolveWorkspaceRuntimeRootSync(projectRoot), applicationId),
+    runId,
+  );
+}
+
 async function rawStore(
   projectRoot: string,
   id: string,
@@ -132,7 +149,7 @@ async function rawStore(
     }
   };
   const store = createFileRuntimeStore<ApplicationRunRecord>({
-    rootDir: path.join(root, 'applications', safeId(id)),
+    rootDir: applicationRunStoreRoot(root, id),
     mirroredRevisionPaths: ['run.revision'],
     writerProtocol: 'application-holder-v1',
     ...(singleWriter ? { singleWriter: true } : {}),
@@ -190,11 +207,7 @@ export async function readWorkflowApplicationStorageDisposition(
   runId: string,
 ) {
   return createFileRuntimeStore<ApplicationRunRecord>({
-    rootDir: path.join(
-      resolveWorkspaceRuntimeRootSync(projectRoot),
-      'applications',
-      safeId(applicationId),
-    ),
+    rootDir: applicationRunStoreRoot(resolveWorkspaceRuntimeRootSync(projectRoot), applicationId),
     mirroredRevisionPaths: ['run.revision'],
   }).readPartitionMetadata(runId);
 }
@@ -461,6 +474,26 @@ export async function resolveWorkflowApplicationFile(
   );
 }
 
+/** 已发布的旧版固定包；其 Run 在新版本上继续原 Run。 */
+const LEGACY_BUILTIN_RUNTIME_VERSIONS: readonly string[] = ['0.5.2', '0.5.3'];
+
+/**
+ * 旧版固定包是否继续原 Run：内置 Native / Classic 基座、带 runId，且版本是已发布的旧版本。
+ * 普通执行调度由领域 Store 适配，不加载旧工厂。升级到下一个版本时，前一版本的固定包同样需要继续。
+ */
+export function isLegacyBuiltinRun(
+  manifest: { runtimeVersion: string; base: string },
+  version: string,
+  runId: string | undefined,
+): boolean {
+  return (
+    manifest.runtimeVersion !== version &&
+    LEGACY_BUILTIN_RUNTIME_VERSIONS.includes(manifest.runtimeVersion) &&
+    Boolean(runId) &&
+    (manifest.base === 'native' || manifest.base.startsWith('classic-'))
+  );
+}
+
 export async function loadWorkflowApplication(options: {
   file: string;
   projectRoot: string;
@@ -491,12 +524,7 @@ export async function loadWorkflowApplication(options: {
   )
     applicationError('应用规则 Rule 必须是固定包内的非空 Markdown 文件');
   const version = getCurrentVersion();
-  // 0.5.2 的固定包继续原 Run；普通执行调度由领域 Store 适配，不加载旧工厂。
-  const legacyBuiltinRun =
-    manifest.runtimeVersion === '0.5.2' &&
-    version === '0.5.3' &&
-    Boolean(options.runId) &&
-    (manifest.base === 'native' || manifest.base.startsWith('classic-'));
+  const legacyBuiltinRun = isLegacyBuiltinRun(manifest, version, options.runId);
   if (manifest.runtimeVersion !== version && !legacyBuiltinRun)
     applicationError(`应用要求 Runtime ${manifest.runtimeVersion}，当前是 ${version}`);
   if (!files[manifest.entrySkill] || !files[manifest.module])
