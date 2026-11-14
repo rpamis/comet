@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "comet",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "Comet 是一个面向 Agent 的可恢复长程任务工作流与 Skill 平台，帮助你从需求推进到实现、验收和归档，并持续积累个人记忆与项目知识。",
   "author": {
     "name": "benym"

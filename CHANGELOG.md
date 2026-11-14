@@ -2,6 +2,13 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.5.4] - 2026-11-14
+
+### Fixed
+
+- **Cancelled Native changes in Dashboard**: Leave a Native change out of the Dashboard active list and active count once `comet native cancel` completes, matching `comet native status`. The Dashboard now follows the cancelled Run instead of the unchanged `comet-state.yaml`; changes whose cancellation is still pending or unreadable stay visible. The Dashboard index also refreshes when a cancellation completes later through Run records alone (the change's Run, its child Runs or the current selection) ([#557](https://github.com/rpamis/comet/issues/557)).
+- **Resuming pinned Runs after upgrade**: Fixed Native and Classic packages pinned to 0.5.2 or 0.5.3 keep resuming their original Run on 0.5.4.
+
 ## What's Changed [0.5.3] - 2026-11-13
 
 ### Added

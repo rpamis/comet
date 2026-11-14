@@ -54006,6 +54006,35 @@
           ]
         }
       ]
+    },
+    {
+      "id": "dashboard-native-cancelled-change-leaves-active-list",
+      "behavior": "取消完成的 Native change 离开 Dashboard 活跃列表和活跃计数，与 comet native status 一致",
+      "sources": ["https://github.com/rpamis/comet/issues/557"],
+      "coverageLevel": "public-cli",
+      "reproduction": "用公开 Native CLI 执行 new cancel-demo、cancel cancel-demo、new keep-demo；master 上 Dashboard 活跃列表仍返回 cancel-demo（status active / phase shape），已缓存的索引在取消后刷新也仍保留它。",
+      "expected": "Dashboard 活跃列表、activeChangeCount 和旧版全量投影只包含 keep-demo；先缓存索引再取消时，下一次刷新后活跃列表为空。",
+      "forbidden": "取消已完成的 change 仍以 active / shape 出现在 Dashboard 活跃列表或计入 activeChangeCount。",
+      "rootCause": "Dashboard 只按 changes 目录和 comet-state.yaml 判断活跃；cancel 只更新 SDK Run checkpoint，Dashboard 没有像 native status 那样读取 Run 的取消完成状态。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/native-cancelled-collector.test.ts",
+          "namePattern": "Native Dashboard after a completed cancellation",
+          "requiredNames": [
+            "Native Dashboard after a completed cancellation leaves a cancelled Shape change out of the active list and counts",
+            "Native Dashboard after a completed cancellation drops a change cancelled after the Dashboard index was cached",
+            "Native Dashboard after a completed cancellation drops a cancelled application-owned change from a cached index that tracks its application Run store"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-cancellation-paths.test.ts",
+          "namePattern": "Native SDK cancellation paths for the Dashboard index",
+          "requiredNames": [
+            "Native SDK cancellation paths for the Dashboard index includes the child Runs of a cancelled change, and the current selection",
+            "Native SDK cancellation paths for the Dashboard index changes the fingerprint when only the child Run record changes"
+          ]
+        }
+      ]
     }
   ],
   "historicalTestMigrations": [

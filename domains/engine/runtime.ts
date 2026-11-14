@@ -47,6 +47,7 @@ export type {
 export {
   createMemoryRuntimeStore,
   createFileRuntimeStore,
+  fileRuntimeStoreRunPaths,
   inspectFileRuntimeStoreLock,
   repairFileRuntimeStoreLock,
 } from './runtime-store.js';
