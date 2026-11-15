@@ -17,7 +17,6 @@ import { createRequire, isBuiltin } from 'node:module';
 import { init, parse } from 'es-module-lexer';
 import {
   createFileRuntimeStore,
-  fileRuntimeStoreRunPaths,
   inspectFileRuntimeStoreLock,
   repairFileRuntimeStoreLock,
   createRuntime,
@@ -30,6 +29,7 @@ import {
   type RuntimeStore,
   type WorkflowRun,
 } from '../engine/runtime.js';
+import { fileRuntimeStoreRunPaths } from '../engine/runtime-store.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
 import {
   readCometCurrentSelection,

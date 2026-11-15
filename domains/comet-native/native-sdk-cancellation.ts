@@ -1,11 +1,7 @@
 import { resolveWorkspaceRuntimeRootSync } from '../workflow-contract/workspace-runtime.js';
 import path from 'node:path';
-import {
-  createFileRuntimeStore,
-  createRuntime,
-  fileRuntimeStoreRunPaths,
-  type WorkflowRun,
-} from '../engine/runtime.js';
+import { createFileRuntimeStore, createRuntime, type WorkflowRun } from '../engine/runtime.js';
+import { fileRuntimeStoreRunPaths } from '../engine/runtime-store.js';
 import {
   readWorkflowApplicationRun,
   workflowApplicationRunPaths,
