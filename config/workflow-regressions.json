@@ -2,6 +2,83 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "dependency-minimatch-glob-amplification",
+      "behavior": "Node 依赖中的优化 glob 预处理限制重复 **/.. 的扩展数量，同时保留正常匹配。",
+      "reproduction": "054 基线 05f86a863f1fd076045db1824a57f2703dd52626 的已安装 minimatch 将 8 组 **/../a/b 扩展为 256 项，超过 braceExpandMax=64；npm 与 pnpm 锁文件均包含受影响的 10.x。修改前新增行为与锁文件断言均失败。",
+      "expected": "实际解析的 minimatch 将扩展限制为最多 64 项，正常正反匹配保持正确，两份锁文件只解析到修复版本。",
+      "forbidden": "优化预处理无视扩展上限，或任一包管理器继续安装受影响的 minimatch。",
+      "rootCause": "ESLint、TypeScript ESLint 与 API Extractor 的传递依赖仍允许并锁定受影响的 minimatch 10.x。",
+      "sources": [
+        "https://github.com/rpamis/comet/security/dependabot/207",
+        "https://github.com/rpamis/comet/security/dependabot/208"
+      ],
+      "coverageLevel": "unit",
+      "tests": [
+        {
+          "file": "test/repository/dependency-boundaries.test.ts",
+          "namePattern": "^resolved dependency boundaries bounds optimized glob expansion while preserving ordinary matches$",
+          "requiredNames": [
+            "resolved dependency boundaries bounds optimized glob expansion while preserving ordinary matches"
+          ]
+        },
+        {
+          "file": "test/repository/dependency-boundaries.test.ts",
+          "namePattern": "^resolved dependency boundaries excludes vulnerable minimatch versions from both Node lockfiles$",
+          "requiredNames": [
+            "resolved dependency boundaries excludes vulnerable minimatch versions from both Node lockfiles"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dependency-opentelemetry-traceparent-dos",
+      "behavior": "Python 依赖锁文件排除存在 traceparent 解析资源耗尽漏洞的 OpenTelemetry API。",
+      "reproduction": "054 基线 eval/uv.lock 固定 opentelemetry-api 1.45.1，新增锁文件安全版本断言失败；独立 Python 探针用于对照旧版与修复版的超长 traceparent 处理。",
+      "expected": "锁文件解析到 opentelemetry-api >=1.45.2，超长 traceparent 被拒绝，正常上下文仍可提取。",
+      "forbidden": "锁文件重新引入已知受影响版本，或为阻止超长输入而拒绝正常 traceparent。",
+      "rootCause": "项目约束仅要求 opentelemetry-api>=1.45.1，锁文件仍固定到漏洞版本。",
+      "sources": ["https://github.com/rpamis/comet/security/dependabot/209"],
+      "coverageLevel": "unit",
+      "tests": [
+        {
+          "file": "test/repository/dependency-boundaries.test.ts",
+          "namePattern": "^resolved dependency boundaries excludes vulnerable opentelemetry-api versions from the Python lockfile$",
+          "requiredNames": [
+            "resolved dependency boundaries excludes vulnerable opentelemetry-api versions from the Python lockfile"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dependency-langgraph-stream-path-encoding",
+      "behavior": "Python 依赖锁文件同时排除 LangGraph 及其 SDK 的流式请求路径编码漏洞版本。",
+      "reproduction": "054 基线锁定 langgraph 1.2.6 和 langgraph-sdk 0.4.4，两项新增锁文件断言均失败；独立 Python 探针对同步及异步流式请求的 thread_id 与 assistant_id 编码做旧新版对照。",
+      "expected": "锁文件解析到 langgraph >=1.2.14、langgraph-sdk >=0.4.6；同步异步请求都将 ID 中的 / 和 # 编码为路径参数，正常响应仍可读取。",
+      "forbidden": "任一锁定依赖继续受影响，或攻击者提供的 ID 被解析为另一个服务器路径。",
+      "rootCause": "langchain 的传递依赖范围允许旧版 LangGraph 和 SDK，旧锁文件未包含修复，项目也未声明安全下限。",
+      "sources": [
+        "https://github.com/rpamis/comet/security/dependabot/203",
+        "https://github.com/rpamis/comet/security/dependabot/204"
+      ],
+      "coverageLevel": "unit",
+      "tests": [
+        {
+          "file": "test/repository/dependency-boundaries.test.ts",
+          "namePattern": "^resolved dependency boundaries excludes vulnerable langgraph versions from the Python lockfile$",
+          "requiredNames": [
+            "resolved dependency boundaries excludes vulnerable langgraph versions from the Python lockfile"
+          ]
+        },
+        {
+          "file": "test/repository/dependency-boundaries.test.ts",
+          "namePattern": "^resolved dependency boundaries excludes vulnerable langgraph-sdk versions from the Python lockfile$",
+          "requiredNames": [
+            "resolved dependency boundaries excludes vulnerable langgraph-sdk versions from the Python lockfile"
+          ]
+        }
+      ]
+    },
+    {
       "id": "classic-559-design-summary-path",
       "sources": ["https://github.com/rpamis/comet/issues/559"],
       "coverageLevel": "runtime",
