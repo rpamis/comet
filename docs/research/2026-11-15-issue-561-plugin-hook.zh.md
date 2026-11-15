@@ -65,3 +65,11 @@ pnpm exec vitest run test/domains/skill/plugin-hook.test.ts -t 'when piped Node 
 - 未执行真实 DSH 桌面原环境复验：本机未运行 DSH，且没有原报告沙箱。负责人 benym 在升级并重新启用插件后验证合法 write/edit 成功、跨 change 写入拒绝。Issue 保持打开，附加验收登记为 pending。
 
 当前 package 为 0.5.4，已重新拉取并确认 origin/master 为 0.5.3，上个发布 tag 为 0.5.3；修复追加到现有 0.5.4 Changelog，不再次递增版本。没有修改 website、本机插件安装缓存或 Hook 信任记录，也没有创建 PR 或发表评论。
+
+## Codex 打包超时补充核查
+
+用户追问后，保留原案例的全部断言和 90 秒限制，在诊断副本中单独运行同一打包、搬迁、MCP/Dashboard、Windows Hook 和 Guard 验收流程，通过，实际测试耗时 80.65 秒。诊断副本已删除，没有修改产品代码、测试断言或超时。
+
+原超时运行与其他打包和 Runtime 测试并行；文件记录确认 tar.gz 和 npm tgz 均已生成，两份包的解包目录约在测试开始后第 83 秒建立。该案例统一限制整条流程为 90 秒，还需逐文件比对、启动 MCP、访问 Dashboard、执行 Hook/Guard 和清理，因此累计预算余量很小。单独通过与先前并行超时支持耗时受运行负载影响，尚未证明具体某个构建子步骤存在性能缺陷。
+
+另复用原超时运行的已搬迁产物，在新的隔离 HOME 中检查 MCP：连接 266ms，工具列表 273ms，Dashboard 资源读取 506ms，HTTP 访问通过 587ms，关闭 601ms（均为累计耗时）。这排除了该产物必然卡死在 MCP/Dashboard 的假设；原 90 秒超时保留为事实，不能改写为原轮通过。后续若优化该测试，优先拆分构建与运行验收，并复用一次构建产物。
