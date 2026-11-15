@@ -11,6 +11,21 @@ async function englishSkill(name: string): Promise<string> {
 }
 
 describe('Classic Chinese Skill SDK routing', () => {
+  it.each(['skills-zh', 'skills'])(
+    'locates Design summary checkpoints before approval and during recovery in %s',
+    async (root) => {
+      for (const file of ['comet-design/SKILL.md', 'comet-classic/reference/sdk-methods.md']) {
+        const source = await readFile(path.resolve('assets', root, file), 'utf8');
+        expect(source, file).toContain('<classic-change-dir>/.comet/handoff/brainstorm-summary.md');
+        expect(source, file).toContain(
+          root === 'skills-zh'
+            ? '恢复讨论时读取同一文件'
+            : 'read the same file when resuming the discussion',
+        );
+      }
+    },
+  );
+
   // 旧案例名称保留；确认只约束需要新决定的分支，已有授权可以直接沿用。
   it.each(['comet-classic', 'comet-open', 'comet-design'])(
     'ends the response before newly presented %s content can be approved in Chinese',

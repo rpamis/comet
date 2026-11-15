@@ -10,6 +10,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Classic Design summaries**: Save discussion checkpoints at an explicit change-local path and resume from the same file. Guide misplaced summaries to that path without asking users to enter Build, while preserving Design approval and source-write protection ([#559](https://github.com/rpamis/comet/issues/559)).
 - **Plugin write Hooks**: Run the shared CLI Router inside the plugin Hook process so DSH and Codex writes do not depend on a second Node process with piped input and output. Preserve plugin activation checks and Guard denials ([#561](https://github.com/rpamis/comet/issues/561)).
 
 ## What's Changed [0.5.3] - 2026-11-13

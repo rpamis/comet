@@ -41,7 +41,7 @@ SDK 新 change 使用 `comet-state.yaml`，历史 `.comet.yaml` 原地保留。�
 
 技能加载后，只采用探索与设计方法；传入当前 change、已绑定工作区、已知事实、约束和源文件引用。遇到无法推断且会改变结果的决定时，按 decision-point.md 提供问题、推荐理由、选项及影响。信息充分时直接形成方案，不设最低问答轮数；真实存在取舍时比较方案，高风险接口、迁移、安全和并发说明失败路径与验证策略。
 
-持续保存 `brainstorm-summary.md`，区分候选与已确认内容。Spec Patch 先说明具体改动并取得用户同意，再修改 delta spec；大幅改变范围时重新澄清。需要重新确认时，按[需求变化后的重新确认](decision-point.md#需求变化后的重新确认)说明变化及影响。最终方案统一通过主 Skill 的 Design Wait 确认，仍绑定当前 Design 提案哈希；不再追加整份设计文档批准，也不让外部 Skill 自动进入规划、实施或切换工作区。
+使用文件工具确保 `<classic-change-dir>/.comet/handoff/` 存在，持续保存 `<classic-change-dir>/.comet/handoff/brainstorm-summary.md`，区分候选与已确认内容；恢复讨论时读取同一文件，保存摘要不推进阶段。Spec Patch 先说明具体改动并取得用户同意，再修改 delta spec；大幅改变范围时重新澄清。需要重新确认时，按[需求变化后的重新确认](decision-point.md#需求变化后的重新确认)说明变化及影响。最终方案统一通过主 Skill 的 Design Wait 确认，仍绑定当前 Design 提案哈希；不再追加整份设计文档批准，也不让外部 Skill 自动进入规划、实施或切换工作区。
 
 批准后完善唯一 Design Doc：已有引用优先沿用，否则使用当前 change 的 design.md；项目明确要求独立文档时，OpenSpec design.md 仅保存摘要和链接。frontmatter 仅含 `comet_change: <change-name>`、`role: technical-design`、`canonical_spec: openspec`。设计覆盖方案、取舍、风险和测试策略，正文与已批准提案一致后提交。中断后读取已保存摘要、源文件与当前 Wait，只补未完成工作。
 

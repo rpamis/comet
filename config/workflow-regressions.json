@@ -2,6 +2,80 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "classic-559-design-summary-path",
+      "sources": ["https://github.com/rpamis/comet/issues/559"],
+      "coverageLevel": "runtime",
+      "behavior": "SDK Design 指引明确讨论摘要的创建和恢复路径，使候选摘要可在设计批准前保存。",
+      "reproduction": "0.5.3 官方 npm 包与 054 基线 a09ef447 的隔离项目中，change 根目录 brainstorm-summary.md 被拒绝，.comet/handoff 同名文件允许；中英文 SDK 指引均只写文件名。新路径契约在修改前两项失败。",
+      "expected": "中英文 SDK Skill 与方法参考使用 <classic-change-dir>/.comet/handoff/brainstorm-summary.md，创建目录并从同一文件恢复；公开 Hook bundle 允许此路径且保留原 Design Wait 与批准。",
+      "forbidden": "Agent 根据不明确的文件名推断到被保护的 change 根目录，或将候选摘要等同正式批准并推进 Build。",
+      "rootCause": "完整摘要路径只出现在 SDK 不加载的 Compat 参考，SDK 主 Skill 与方法参考缺少保存和恢复位置。",
+      "tests": [
+        {
+          "file": "test/domains/skill/classic-sdk-skill-routing.test.ts",
+          "namePattern": "locates Design summary checkpoints before approval and during recovery in (skills-zh|skills)$",
+          "requiredNames": [
+            "Classic Chinese Skill SDK routing locates Design summary checkpoints before approval and during recovery in skills-zh",
+            "Classic Chinese Skill SDK routing locates Design summary checkpoints before approval and during recovery in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-design-summary.test.ts",
+          "namePattern": "preserves the original SDK Design Wait and approval while saving candidate summaries$",
+          "requiredNames": [
+            "Classic Design summary checkpoint preserves the original SDK Design Wait and approval while saving candidate summaries"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-design-summary-path-following",
+          "status": "pending",
+          "evidence": [
+            "docs/research/2026-11-15-issue-559-design-summary.zh.md；负责人 benym。未获 Eval 启动请求，未运行真实模型；定向契约和 Runtime 测试不能证明模型会遵循新路径。获授权后验证 Design 探索与上下文恢复均使用同一路径。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-559-design-summary-recovery",
+      "sources": ["https://github.com/rpamis/comet/issues/559"],
+      "coverageLevel": "runtime",
+      "behavior": "Design 阶段拒绝误放到 change 根目录的摘要时，提示正确检查点路径并保留当前阶段。",
+      "reproduction": "054 基线 a09ef447 同输入的四项 bundle 回归失败：通用源码拦截缺少正确路径，NEXT 要求执行 design --apply 进入 Build。0.5.3 发布包亦复现。",
+      "expected": "legacy/docs、中英文、Write/apply_patch 事件均指向当前 change 的检查点；按提示重试可保存，状态不变；跨 change、归档和混合源码补丁仍拒绝。",
+      "forbidden": "为保存未批准的讨论摘要而进入 Build、禁用 Hook、扩大普通写入权限或污染其他 change。",
+      "rootCause": "非标准路径摘要落入通用阶段拦截，未提供与摘要操作对应的恢复指引。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-design-summary.test.ts",
+          "namePattern": "recovers a misplaced summary without advancing Design \\((legacy|docs), (en|zh-CN)\\)$",
+          "requiredNames": [
+            "Classic Design summary checkpoint recovers a misplaced summary without advancing Design (legacy, en)",
+            "Classic Design summary checkpoint recovers a misplaced summary without advancing Design (legacy, zh-CN)",
+            "Classic Design summary checkpoint recovers a misplaced summary without advancing Design (docs, en)",
+            "Classic Design summary checkpoint recovers a misplaced summary without advancing Design (docs, zh-CN)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-design-summary.test.ts",
+          "namePattern": "rejects mixed implementation patches and foreign or archived summary checkpoints$",
+          "requiredNames": [
+            "Classic Design summary checkpoint rejects mixed implementation patches and foreign or archived summary checkpoints"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "reporter-github-copilot-pretooluse-hook",
+          "status": "pending",
+          "evidence": [
+            "docs/research/2026-11-15-issue-559-design-summary.zh.md；负责人 benym。已通过 github-copilot Router bundle 的隔离事件回放，未运行报告人的真实 Copilot 会话。升级后需验证平台显示正确路径、重试保存成功且未进入 Build。"
+          ]
+        }
+      ]
+    },
+    {
       "id": "plugin-561-no-piped-router-child",
       "sources": ["https://github.com/rpamis/comet/issues/561"],
       "coverageLevel": "runtime",
