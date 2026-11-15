@@ -2,6 +2,55 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "plugin-561-no-piped-router-child",
+      "sources": ["https://github.com/rpamis/comet/issues/561"],
+      "coverageLevel": "runtime",
+      "behavior": "DSH 插件 Hook 在管道 Node 子进程受限时仍允许合法写入，并保留共享 Router 的拒绝行为。",
+      "reproduction": "npm comet-dsh-plugin@0.5.3 经已安装官方 DSH 0.2.2-rc.1 桥接及隔离 PowerShell 适配器执行，注入管道 Node 子进程 EPERM 后拒绝普通写入；054 基线 2ea7575c 的同输入回归在 DSH/Codex 均失败。原用户操作系统沙箱未直接复现。",
+      "expected": "共享包内 Router 在当前 Hook 进程检查事件；普通项目不初始化、合法写入可完成、跨 change 写入和 Router 错误返回平台 JSON deny。",
+      "forbidden": "因额外管道 Node 启动失败拒绝全部写入，或通过禁用 Guard、忽略 Router 错误放行非法写入。",
+      "rootCause": "插件包装层已读取事件，却再次使用带 input/encoding 的 spawnSync 启动共享 Router；其管道进程要求超出受限平台能力。",
+      "tests": [
+        {
+          "file": "test/domains/skill/plugin-hook.test.ts",
+          "namePattern": "^keeps legitimate writes available and rejects cross-change writes when piped Node children are forbidden \\(dsh\\)$",
+          "requiredNames": [
+            "keeps legitimate writes available and rejects cross-change writes when piped Node children are forbidden (dsh)"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-hook.test.ts",
+          "namePattern": "^keeps legitimate writes available and rejects cross-change writes when piped Node children are forbidden \\(codex\\)$",
+          "requiredNames": [
+            "keeps legitimate writes available and rejects cross-change writes when piped Node children are forbidden (codex)"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-hook.test.ts",
+          "namePattern": "^denies inspection failures from the packaged router on both plugin platforms$",
+          "requiredNames": [
+            "denies inspection failures from the packaged router on both plugin platforms"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "installed-dsh-official-bridge-offline-events",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-15-issue-561-plugin-hook.zh.md：官方 bridge/protocol 0.2.2-rc.1、真实 PowerShell、隔离事件上下文与 EPERM 注入；0.5.3 拒绝普通写入，新 0.5.4 包 write/edit 合法成功且跨 change 拒绝，10 条 Hook 事件，无第二层管道 Node 启动。"
+          ]
+        },
+        {
+          "layer": "reporter-dsh-restricted-platform-hook",
+          "status": "pending",
+          "evidence": [
+            "负责人 benym；原用户操作系统沙箱不可用，尚未在真实 DSH 桌面会话复验。升级 0.5.4 并重新启用插件后，需在原环境验证合法 write/edit 完成、跨 change 写入拒绝。离线注入结果不替代此项。"
+          ]
+        }
+      ]
+    },
+    {
       "id": "native-560-build-existing-owner",
       "behavior": "迁移前保护目标已有Compat或其他Runtime归属。",
       "sources": [

@@ -479,7 +479,16 @@
         "to": "engine"
       }
     ],
+    "runtimeImports": [
+      {
+        "from": "domains/skill/plugin-hook-entry.ts",
+        "expression": "pathToFileURL(router).href",
+        "to": "domains/comet-entry/hook-router-entry.ts",
+        "reason": "Plugin Hooks load the same distributed Router from their approved installation without spawning another Node process."
+      }
+    ],
     "crossDomainEntrypoints": [
+      "domains/comet-entry/hook-router-entry.ts",
       "domains/eval/index.ts",
       "domains/agent-learning/index.ts",
       "domains/comet-classic/classic-command-checks.ts",

@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { beforeEach, afterEach, expect, it } from 'vitest';
 import { buildPluginIntegration } from '../../../scripts/build/build-plugin-integration.mjs';
 import { preparePluginIntegration } from '../../../domains/skill/plugin-integration.js';
@@ -114,6 +115,51 @@ it('runs the packaged router in the event project and provides rules without ini
   });
   expect(execute(args).status).toBe(0);
 });
+
+it.each(['dsh', 'codex'] as const)(
+  'keeps legitimate writes available and rejects cross-change writes when piped Node children are forbidden (%s)',
+  async (platform) => {
+    const preload = path.join(root, 'restrict-node-children.mjs');
+    const attempts = path.join(root, 'blocked-node-children.log');
+    await fs.writeFile(
+      preload,
+      `import childProcess from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
+import { appendFileSync } from 'node:fs';
+const original = childProcess.spawnSync;
+childProcess.spawnSync = function(command, args, options) {
+  if (command === process.execPath && options?.stdio !== 'inherit') {
+    appendFileSync(${JSON.stringify(attempts)}, 'EPERM: piped Node child\\n');
+    return { status: null, signal: null, stdout: '', stderr: '',
+      error: Object.assign(new Error('spawnSync ' + command + ' EPERM'), { code: 'EPERM' }) };
+  }
+  return original(command, args, options);
+};
+syncBuiltinESMExports();
+`,
+    );
+    const args = [
+      '--import',
+      pathToFileURL(preload).href,
+      ...(await invocation('PreToolUse', platform)),
+    ];
+    const ordinary = execute(args);
+    expect(ordinary.status, ordinary.stderr).toBe(0);
+    expect(ordinary.stdout).toBe('');
+    await expect(fs.access(path.join(project, '.comet'))).rejects.toThrow();
+    await activeChange();
+    const allowed = execute(args);
+    expect(allowed.status, allowed.stderr).toBe(0);
+    expect(allowed.stdout).toBe('');
+    const denied = execute(args, 'openspec/changes/other/tasks.md');
+    expect(denied.status, denied.stderr).toBe(0);
+    expect(JSON.parse(denied.stdout).hookSpecificOutput).toMatchObject({
+      permissionDecision: 'deny',
+      permissionDecisionReason: expect.stringContaining("belongs to Classic change 'other'"),
+    });
+    await expect(fs.access(attempts)).rejects.toThrow();
+  },
+);
 
 it.each(['codex', 'dsh'] as const)(
   'provides a reusable Rule pointer instead of repeating the full Rule on startup and compact (%s)',
@@ -297,7 +343,9 @@ it('denies modified packages and DSH startup failures using the platform protoco
 it('does not turn a failed DSH router process into an allowed tool execution', async () => {
   await fs.writeFile(
     path.join(plugin, 'skills/comet/scripts/comet-hook-router.mjs'),
-    'process.stderr.write("router failed");process.exit(1);',
+    // Router is now loaded in process. A module-load failure must retain the
+    // original fail-closed assertions for both plugin platforms.
+    'throw new Error("router failed");',
   );
   const failed = execute(await invocation('PreToolUse', 'dsh'));
   expect(failed.status).toBe(0);
@@ -316,6 +364,26 @@ it('does not turn a failed DSH router process into an allowed tool execution', a
     permissionDecision: 'deny',
     permissionDecisionReason: expect.stringContaining('router failed'),
   });
+});
+
+it('denies inspection failures from the packaged router on both plugin platforms', async () => {
+  await fs.writeFile(
+    path.join(plugin, 'skills/comet/scripts/comet-hook-router.mjs'),
+    'export async function inspectCometHookRequest() { throw new Error("inspection failed"); }',
+  );
+  for (const platform of ['dsh', 'codex']) {
+    await preparePluginIntegration({
+      platform: platform as 'dsh' | 'codex',
+      pluginRoot: plugin,
+      env: { CODEX_HOME: configRoot, DSH_HOME: path.join(root, 'dsh') },
+    });
+    const failed = execute(await invocation('PreToolUse', platform));
+    expect(failed.status, failed.stderr).toBe(0);
+    expect(JSON.parse(failed.stdout).hookSpecificOutput).toMatchObject({
+      permissionDecision: 'deny',
+      permissionDecisionReason: expect.stringContaining('inspection failed'),
+    });
+  }
 });
 
 it('does not migrate files for an invalid hook event or malformed payload', async () => {

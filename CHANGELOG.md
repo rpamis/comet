@@ -8,6 +8,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Parallel Shape review**: Keep multiple Native v4 changes in one planning workspace, approve a Shape with `--defer-build`, and prepare an independent worktree before implementing a change alongside other active requirements. Workspace handoff preserves the original Run and approval, resumes interrupted transfers, and follows current execution status and subsequent task claims from the original workspace ([#560](https://github.com/rpamis/comet/issues/560)).
 
+### Fixed
+
+- **Plugin write Hooks**: Run the shared CLI Router inside the plugin Hook process so DSH and Codex writes do not depend on a second Node process with piped input and output. Preserve plugin activation checks and Guard denials ([#561](https://github.com/rpamis/comet/issues/561)).
+
 ## What's Changed [0.5.3] - 2026-11-13
 
 ### Added

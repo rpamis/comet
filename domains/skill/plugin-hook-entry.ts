@@ -1,6 +1,5 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { parse as parseToml } from 'smol-toml';
 import {
@@ -181,37 +180,21 @@ export async function runPluginHook(
     };
   }
   const router = path.join(pluginRoot, 'skills/comet/scripts/comet-hook-router.mjs');
-  const result = spawnSync(process.execPath, [router, '--platform', platform], {
-    input,
-    encoding: 'utf8',
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
-    windowsHide: true,
-    timeout: 60_000,
-    maxBuffer: 4 * 1024 * 1024,
-  });
-  if (result.error || result.status === null)
-    return renderCometHookDecision(
-      platform,
-      {
-        allowed: false,
-        reason: `Comet Router 启动失败：${result.error?.message ?? result.signal}`,
-      },
-      { denialOutput: 'json' },
-    );
-  if (result.status !== 0)
-    return renderCometHookDecision(
-      platform,
-      {
-        allowed: false,
-        reason:
-          result.status === 2
-            ? result.stderr.trim() || 'Comet Router 拒绝本次写入'
-            : `Comet Router 执行失败（${result.status}）：${result.stderr.trim()}`,
-      },
-      { denialOutput: 'json' },
-    );
+  // Load the distributed Router itself; a second Node process needs pipes that
+  // some Agent platforms prohibit even when the Hook process can run normally.
+  const { inspectCometHookRequest } = (await import(pathToFileURL(router).href)) as {
+    inspectCometHookRequest: (
+      parsed: { platformId: string },
+      request: ReturnType<typeof parseCometHookRequest>,
+    ) => Promise<Parameters<typeof renderCometHookDecision>[1]>;
+  };
+  const result = renderCometHookDecision(
+    platform,
+    await inspectCometHookRequest({ platformId: platform }, request),
+    { denialOutput: 'json' },
+  );
   return {
-    exitCode: result.status,
+    exitCode: result.exitCode,
     stdout: result.stdout,
     stderr: (migration.preserved.length ? `${migrationContext}\n` : '') + result.stderr,
   };

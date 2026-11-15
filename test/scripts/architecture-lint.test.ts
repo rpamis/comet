@@ -12,6 +12,7 @@ interface DependencyTestLayout {
     crossDomainEntrypoints: string[];
     compatibilityFacades: Array<{ facade: string; implementations: string[] }>;
     restrictedDependencies: Array<{ target: string; importers: string[]; reason: string }>;
+    runtimeImports?: Array<{ from: string; to: string; expression: string; reason: string }>;
   };
 }
 
@@ -530,6 +531,67 @@ describe('architecture lint', () => {
     expect(result.stderr).toContain(
       'domains/comet-classic/runtime.ts:1 has a dynamic import that cannot be resolved statically',
     );
+  });
+
+  it('checks declared runtime imports through the same domain dependency rules', async () => {
+    const root = await makeMinimalRepository();
+    await writeFile(root, '.gitignore', '\n');
+    const layoutFile = path.join(root, 'config/repository-layout.json');
+    const layout = JSON.parse(await fs.readFile(layoutFile, 'utf8')) as DependencyTestLayout;
+    await writeFile(
+      root,
+      'domains/comet-classic/runtime.ts',
+      'export async function load(target: string) { return import(target); }\n',
+    );
+    await writeFile(root, 'domains/comet-classic/shared.ts', 'export const value = 1;\n');
+    layout.dependencyRules.runtimeImports = [
+      {
+        from: 'domains/comet-classic/runtime.ts',
+        to: 'domains/comet-classic/shared.ts',
+        expression: 'target',
+        reason: 'Load the approved distributed runtime module.',
+      },
+    ];
+    await fs.writeFile(layoutFile, JSON.stringify(layout));
+    const run = () =>
+      spawnSync(process.execPath, [path.resolve('scripts/lint/architecture.mjs')], {
+        cwd: root,
+        encoding: 'utf8',
+      });
+    const allowed = run();
+    expect(allowed.status, allowed.stderr).toBe(0);
+    await writeFile(root, 'domains/comet-native/shared.ts', 'export const value = 1;\n');
+    layout.dependencyRules.runtimeImports[0].to = 'domains/comet-native/shared.ts';
+    await fs.writeFile(layoutFile, JSON.stringify(layout));
+    const denied = run();
+    expect(denied.status).toBe(1);
+    expect(denied.stderr).toContain('undeclared domain dependency comet-classic -> comet-native');
+  });
+
+  it('rejects stale and invalid runtime import declarations', async () => {
+    const root = await makeMinimalRepository();
+    await writeFile(root, '.gitignore', '\n');
+    const layoutFile = path.join(root, 'config/repository-layout.json');
+    const layout = JSON.parse(await fs.readFile(layoutFile, 'utf8')) as DependencyTestLayout;
+    await writeFile(root, 'domains/comet-classic/runtime.ts', 'export const value = 1;\n');
+    layout.dependencyRules.runtimeImports = [
+      {
+        from: 'domains/comet-classic/runtime.ts',
+        to: 'domains/comet-classic/runtime.ts',
+        expression: 'target',
+        reason: 'No matching import remains.',
+      },
+    ];
+    await fs.writeFile(layoutFile, JSON.stringify(layout));
+    const run = () =>
+      spawnSync(process.execPath, [path.resolve('scripts/lint/architecture.mjs')], {
+        cwd: root,
+        encoding: 'utf8',
+      });
+    expect(run().stderr).toContain('unused runtime import declaration');
+    layout.dependencyRules.runtimeImports[0].to = 'domains/comet-classic/missing.ts';
+    await fs.writeFile(layoutFile, JSON.stringify(layout));
+    expect(run().stderr).toContain('runtime imports must name existing source files');
   });
 
   it('resolves local imports written with Windows path separators', async () => {

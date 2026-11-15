@@ -7,6 +7,7 @@ import {
   COMET_HOOK_PLATFORM_IDS,
   readCometHookRequest,
   renderCometHookDecision,
+  type CometHookRequest,
 } from '../../platform/process/hook-adapter.js';
 import type { CometHookDecision } from '../workflow-contract/hook.js';
 import type { ParsedArgs } from './hook-router-guard-entry.js';
@@ -96,6 +97,31 @@ function loadCometHookGuard(): Promise<CometHookGuardModule> {
   return guardModule;
 }
 
+/** Shared decision path for standalone Hooks and plugin events already read from stdin. */
+export async function inspectCometHookRequest(
+  parsed: ParsedArgs,
+  request: CometHookRequest,
+): Promise<CometHookDecision> {
+  // 确定不写文件的事件不依赖项目配置或 Git worktree 归属。
+  // context 事件仍进入项目发现，以便加载当前任务上下文。
+  if (request.intent === 'non-write') {
+    return { allowed: true, reason: 'Hook event is not a write' };
+  } else if (!parsed.projectRoot && !request.cwd) {
+    return { allowed: true, reason: 'No Comet project discovered' };
+  } else if (
+    request.intent !== 'write' &&
+    !parsed.projectRoot &&
+    request.cwd &&
+    !(await hasCometTrace(request.cwd))
+  ) {
+    return { allowed: true, reason: 'No Comet project discovered' };
+  } else {
+    // 项目记录丢失时，写入事件仍须检查用户级 Runtime，不能按无项目记录直接放行。
+    const guard = await loadCometHookGuard();
+    return guard.runCometHookRouterGuard(parsed, request);
+  }
+}
+
 export async function runCometHookRouter(args: readonly string[]): Promise<number> {
   let parsed: ParsedArgs;
   try {
@@ -107,25 +133,7 @@ export async function runCometHookRouter(args: readonly string[]): Promise<numbe
 
   let decision: CometHookDecision;
   try {
-    const request = await readCometHookRequest();
-    // 确定不写文件的事件不依赖项目配置或 Git worktree 归属。
-    // context 事件仍进入项目发现，以便加载当前任务上下文。
-    if (request.intent === 'non-write') {
-      decision = { allowed: true, reason: 'Hook event is not a write' };
-    } else if (!parsed.projectRoot && !request.cwd) {
-      decision = { allowed: true, reason: 'No Comet project discovered' };
-    } else if (
-      request.intent !== 'write' &&
-      !parsed.projectRoot &&
-      request.cwd &&
-      !(await hasCometTrace(request.cwd))
-    ) {
-      decision = { allowed: true, reason: 'No Comet project discovered' };
-    } else {
-      // 项目记录丢失时，写入事件仍须检查用户级 Runtime，不能按无项目记录直接放行。
-      const guard = await loadCometHookGuard();
-      decision = await guard.runCometHookRouterGuard(parsed, request);
-    }
+    decision = await inspectCometHookRequest(parsed, await readCometHookRequest());
   } catch (error) {
     decision = {
       allowed: false,
