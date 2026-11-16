@@ -150,6 +150,46 @@ describe('Native Build workspace recovery', () => {
     ).toBe(approved.id);
   });
 
+  it.each([true, false])(
+    'hands off edited Chinese Shape materials while preserving code checks (quotePath=%s)',
+    async (quotePath) => {
+      git('config', 'core.quotePath', String(quotePath));
+      const version = await prepareShape();
+      const material = 'docs/comet/changes/shape-a/补充 说明.md';
+      const implementation = '实现.ts';
+      await fs.writeFile(path.join(projectRoot, material), '# Initial notes\n');
+      await fs.writeFile(path.join(projectRoot, implementation), '// Committed baseline\n');
+      git('add', 'docs', implementation);
+      git('commit', '-m', 'Commit Chinese Shape materials and implementation baseline');
+      await fs.writeFile(path.join(projectRoot, material), '# Approved additional notes\n');
+      await approve(version);
+      const approved = (await inspectNativeSdkRun(projectRoot, 'shape-a')).run;
+
+      await fs.writeFile(path.join(projectRoot, implementation), '// Pending implementation\n');
+      const blocked = startPackagedBuild();
+      expect(blocked.exitCode).not.toBe(0);
+      expect(blocked.error?.message).toContain('committed code changes');
+      expect((await inspectNativeSdkRun(projectRoot, 'shape-a')).run).toEqual(approved);
+      git('add', implementation);
+      git('commit', '-m', 'Commit implementation before handoff');
+
+      const started = startPackagedBuild();
+      expect(started.exitCode, started.error?.message).toBe(0);
+      expect(started.data?.task).toMatchObject({ session: 'approved-builder', status: 'running' });
+      const target = path.join(projectRoot, '.worktrees/shape-a');
+      expect(await fs.readFile(path.join(target, material), 'utf8')).toBe(
+        '# Approved additional notes\n',
+      );
+      expect(await fs.readFile(path.join(target, implementation), 'utf8')).toBe(
+        '// Pending implementation\n',
+      );
+      const moved = (await inspectNativeSdkRun(target, 'shape-a')).run;
+      expect(moved.id).toBe(approved.id);
+      expect(moved.waits).toEqual(approved.waits);
+      expect((await cli(['status', 'shape-b'])).data?.phase).toBe('shape');
+    },
+  );
+
   it('does not restore deleted committed Shape materials during first packaged Build handoff', async () => {
     const version = await prepareShape();
     const relative = 'docs/comet/changes/shape-a/specs/obsolete';

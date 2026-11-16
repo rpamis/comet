@@ -75,3 +75,7 @@ CI 中旧 Run 的批准续行、后续合法归档和 Runtime 读取预算也先
 原规划区已使用 `comet/<change>` 或默认 worktree 时，实施交接使用独立的 `-build` 名称，仍核对既有目标基线、owner 和本地修改，不覆盖其他工作区。新建与后续 Build 共用当前 Shape 轮次的动作查询，保留历史成功/失败记录，未领取新 Builder 时允许继续共享规划。案例 `native-562-source-workspace-name-collision` 和 `native-562-reapproved-shape-admission` 分别覆盖 branch/worktree 规划和成功/失败 Builder；同时断言原 Run、批准及其他 Shape 材料不变。真实平台 Hook 和模型 Eval 未执行。
 
 [原规划分支绑定审核](https://github.com/rpamis/comet/pull/562#discussion_r4581965480) 的可复现条件是：批准 main 上的 Shape 后，切到另一分支并创建该分支的新 Shape，再从该分支推进原任务。普通同分支 peer 随切换一并退出活动集合，不触发交接；上述跨分支 peer 才会暴露原绑定被覆盖的问题。精确公开 CLI 回归在修复前失败；交接前检查原 change_branch，分支不匹配时沿原诊断返回，不发布交接。案例 `native-562-planning-branch-binding` 核对原 Run 不变、目标未创建，并核对切回 main 后可正常实施。
+
+[中文材料路径审核](https://github.com/rpamis/comet/pull/562#discussion_r4583195979) 指出，Git 默认对中文文件名的按行输出添加引号及八进制转义，合法的正式材料因此被误判为未提交实现代码。`c8913fbf` 的公开 next bundle 在 `core.quotePath=true` 时返回 65；同一 Run 场景在 false 时通过。源码改用 Git 既有的 `-z` 路径输出，按 NUL 分隔，不依赖用户配置。
+
+案例 `native-562-unquoted-material-paths` 覆盖两种 Git 引号设置，核对中文及空格文件名的当前材料、原 Run、批准和其他 Shape 保留；两种设置下未提交中文源码仍阻止交接，明确提交源码后才可继续。重建后交接恢复测试文件 17 个测试通过，Native/Entry 构建、lint 和生成物检查通过。该问题属于本分支新增共享交接能力的开发期修正，不另写为已发布版本修复；网站现有共享规划说明不需改变。没有启动真实平台 Hook 或模型 Eval。

@@ -54,8 +54,8 @@ export async function prepareNativeBuildWorkspace(
       throw new Error(
         'Build workspace preparation requires an approved Run with no active execution',
       );
-    const changed = runGitCommand(projectRoot, ['diff', 'HEAD', '--name-only'])
-      .split(/\r?\n/u)
+    const changed = runGitCommand(projectRoot, ['diff', 'HEAD', '--name-only', '-z'])
+      .split('\0')
       .filter(Boolean);
     const changesRef = path.relative(projectRoot, paths.changesDir).replaceAll('\\', '/') + '/';
     if (changed.some((file) => !file.startsWith(changesRef) && file !== '.comet/config.yaml'))

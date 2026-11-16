@@ -2,6 +2,26 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "native-562-unquoted-material-paths",
+      "behavior": "中文文件名的正式材料修改可以交接到独立 Build 工作区，同时继续拒绝未提交源码。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4583195979"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 c8913fbf 的公开 Native next bundle 上运行精确案例，quotePath=true 时合法交接返回 65，关闭 quotePath 后通过。",
+      "expected": "两种 Git 引号设置下均保留中文及空格文件名、材料内容、原 Run 和批准；未提交中文源码仍阻止交接。",
+      "forbidden": "将 Git 引号和八进制转义路径误判为源码，或允许未提交实现代码进入工作区。",
+      "rootCause": "按行读取 Git 默认转义的路径字符串，再与未转义的材料目录比较。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "^Native Build workspace recovery hands off edited Chinese Shape materials while preserving code checks \\(quotePath=(true|false)\\)$",
+          "requiredNames": [
+            "Native Build workspace recovery hands off edited Chinese Shape materials while preserving code checks (quotePath=true)",
+            "Native Build workspace recovery hands off edited Chinese Shape materials while preserving code checks (quotePath=false)"
+          ]
+        }
+      ]
+    },
+    {
       "id": "eval-562-container-removal-in-progress",
       "behavior": "Docker 已在自动删除本实验容器时，等待删除完成再确认停止；删除失败或未结束时继续报告未完成。",
       "sources": ["https://github.com/rpamis/comet/actions/runs/43824667030/job/133156268104"],
