@@ -2,6 +2,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
 import {
@@ -44,6 +45,7 @@ describe('release announcement', () => {
     expect(composeReleaseNotes(changelog, '0.5.4', generated)).toEqual({
       previousTag: '0.5.3',
       body: `## What's Changed
+
 * Add Shapes by @contributor in https://github.com/rpamis/comet/pull/560
 
 ### Added
@@ -55,6 +57,7 @@ describe('release announcement', () => {
 - **Plugin Hooks**: Preserve write denials.
 
 ### New Contributors
+
 * @contributor made their first contribution
 
 **Full Changelog**: https://github.com/rpamis/comet/compare/0.5.3...0.5.4
@@ -75,6 +78,14 @@ describe('release announcement', () => {
 
   it('rejects a missing version instead of publishing the entire changelog', () => {
     expect(() => composeReleaseNotes(changelog, '0.5.9', '')).toThrow('Changelog');
+  });
+
+  it('preserves fenced examples and existing heading spacing', () => {
+    const example = ['```markdown', '## Example', '* Literal example', '```'].join('\n');
+    const input = `## What's Changed\n\n* One PR\n\n${example}`;
+    const { body } = composeReleaseNotes(changelog, '0.5.4', input);
+    expect(body).toContain(`## What's Changed\n\n* One PR\n\n${example}\n\n### Added\n\n`);
+    expect(body).not.toContain("## What's Changed\n\n\n");
   });
 });
 
@@ -247,6 +258,142 @@ describe('release candidate and final announcement', () => {
     expect(announcement?.[1]).not.toHaveProperty('assets');
   });
 
+  it('finalizes current master with older public npm packages and no staging record', async () => {
+    const { options, request, head: packageHead, git } = await fixture();
+    await fs.appendFile(path.join(options.root, 'CHANGELOG.md'), '\n');
+    git(['add', 'CHANGELOG.md']);
+    git([
+      '-c',
+      'user.name=Test',
+      '-c',
+      'user.email=test@example.invalid',
+      'commit',
+      '--quiet',
+      '-m',
+      'test: master advances',
+    ]);
+    const head = git(['rev-parse', 'HEAD']);
+    await fs.rm(path.join(options.root, '.tmp'), { recursive: true });
+    const names = ['@rpamis/comet', '@rpamis/comet-codex-plugin', 'comet-dsh-plugin'];
+    const transport = async (url: string, body?: unknown) => {
+      if (new URL(url).hostname === 'registry.npmjs.org')
+        return { version: '0.5.4', gitHead: packageHead };
+      return request(url, body);
+    };
+    const result = await publishRelease(
+      {
+        ...options,
+        env: {
+          ...options.env,
+          GITHUB_SHA: head,
+          GITHUB_RUN_ID: undefined,
+          RELEASE_SOURCE_RUN_ID: undefined,
+        },
+      },
+      {
+        request: transport,
+        prepare: async () => ({
+          packages: names.map((name) => ({ name })),
+          runNpm: async (args: string[]) =>
+            JSON.stringify([
+              { name: args[1].slice(0, args[1].lastIndexOf('@')), version: '0.5.4' },
+            ]),
+        }),
+      },
+    );
+    expect(head).not.toBe(packageHead);
+    expect(result.head).toBe(head);
+    expect(result.packages.every((item) => item.status === 'verified')).toBe(true);
+    expect(result.body).toContain("## What's Changed\n\n* One PR");
+    expect(request).toHaveBeenCalledWith(
+      'https://api.github.com/repos/rpamis/comet/releases',
+      expect.objectContaining({ tag_name: '0.5.4', target_commitish: head, body: result.body }),
+    );
+    expect(request.mock.calls.some(([url]) => url.includes('/actions/'))).toBe(false);
+  });
+
+  it('finalizes through the public CLI using version checks and downloads without rebuilding packages', async () => {
+    const { root, options, head } = await fixture();
+    await fs.rm(path.join(root, '.tmp'), { recursive: true });
+    const npmLog = path.join(root, 'npm-commands.jsonl');
+    const announcement = path.join(root, 'announcement.json');
+    const fakeNpm = path.join(root, 'npm.mjs');
+    await fs.writeFile(
+      fakeNpm,
+      `
+      import { appendFileSync } from 'node:fs';
+      const args = process.argv.slice(2);
+      appendFileSync(${JSON.stringify(npmLog)}, JSON.stringify(args) + '\\n');
+      if (args[0] !== 'pack' || !args[1].endsWith('@0.5.4')) throw new Error('Unexpected npm command');
+      console.log(JSON.stringify([{ name: args[1].slice(0, args[1].lastIndexOf('@')), version: '0.5.4' }]));
+    `,
+    );
+    const commandDirectory = path.join(root, 'dist/platform/process');
+    await fs.mkdir(commandDirectory, { recursive: true });
+    await fs.writeFile(path.join(root, 'dist/package.json'), '{"type":"module"}');
+    await fs.writeFile(
+      path.join(commandDirectory, 'node-cli-command.js'),
+      `
+      export function resolveNpmCommand(args) {
+        return { command: process.execPath, args: [${JSON.stringify(fakeNpm)}, ...args] };
+      }
+    `,
+    );
+    const transport = path.join(root, 'transport.mjs');
+    await fs.writeFile(
+      transport,
+      `
+      import { writeFileSync } from 'node:fs';
+      globalThis.fetch = async (url, options) => {
+        if (url.startsWith('https://registry.npmjs.org/')) {
+          if (url.endsWith('/latest')) throw new Error('Finalize must check only the requested version');
+          return Response.json({ version: '0.5.4' });
+        }
+        if (url.endsWith('/generate-notes')) return Response.json({ body: "## What's Changed\\n* Current master PR" });
+        if (url.endsWith('/releases/tags/0.5.4')) return new Response('', { status: 404 });
+        if (url.includes('/releases?')) return Response.json([]);
+        if (url === 'https://api.github.com/repos/rpamis/comet/releases' && options.method === 'POST') {
+          writeFileSync(${JSON.stringify(announcement)}, options.body);
+          return Response.json({ html_url: 'https://example.invalid/release' });
+        }
+        throw new Error('Unexpected API request: ' + url);
+      };
+    `,
+    );
+    const result = spawnSync(
+      process.execPath,
+      [
+        '--import',
+        pathToFileURL(transport).href,
+        path.resolve('scripts/release/publish-release.mjs'),
+        '--version',
+        '0.5.4',
+        '--action',
+        'finalize',
+      ],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        env: { ...process.env, ...options.env, GITHUB_STEP_SUMMARY: '' },
+      },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(await fs.readFile(announcement, 'utf8'))).toMatchObject({
+      tag_name: '0.5.4',
+      target_commitish: head,
+      body: expect.stringContaining("## What's Changed\n\n* Current master PR"),
+    });
+    const commands = (await fs.readFile(npmLog, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    expect(commands.map((args) => args.slice(0, 2))).toEqual([
+      ['pack', '@rpamis/comet@0.5.4'],
+      ['pack', '@rpamis/comet-codex-plugin@0.5.4'],
+      ['pack', 'comet-dsh-plugin@0.5.4'],
+    ]);
+  });
+
   it('stage completes without waiting for npm approval or creating an announcement', async () => {
     const { options, request } = await fixture();
     const runNpm = vi.fn().mockRejectedValue(new Error('must reuse recorded stage IDs'));
@@ -369,6 +516,30 @@ describe('release candidate and final announcement', () => {
 });
 
 describe('release workflow entry', () => {
+  it('finalizes the selected master without a staged checkout, artifact or extra token', async () => {
+    const source = await fs.readFile('.github/workflows/release.yml', 'utf8');
+    const steps = parse(source).jobs.release.steps;
+    const checkouts = steps.filter((step: { uses?: string }) =>
+      step.uses?.startsWith('actions/checkout@'),
+    );
+    expect(checkouts).toHaveLength(1);
+    expect(checkouts[0].with.ref).toBe('${{ github.sha }}');
+    const restore = steps.find((step: { uses?: string }) =>
+      step.uses?.startsWith('actions/download-artifact@'),
+    );
+    expect(restore.if).toBe("inputs.action == 'stage' && github.run_attempt > 1");
+    expect(restore.with['run-id']).toBe('${{ github.run_id }}');
+    expect(source).not.toMatch(
+      /findReleaseRun|resolveReleaseSource|RELEASE_SOURCE_SHA|RELEASE_SOURCE_RUN_ID|RELEASE_GITHUB_TOKEN/,
+    );
+    const publish = steps.find(
+      (step: { name?: string }) => step.name === 'Preview, stage or finalize release',
+    );
+    expect(publish.run).toBe(
+      'node scripts/release/publish-release.mjs --version "$RELEASE_VERSION" --action "$RELEASE_ACTION"',
+    );
+  });
+
   it('defaults to preview, serializes releases, and never attaches assets or starts Eval', async () => {
     const source = await fs.readFile('.github/workflows/release.yml', 'utf8');
     const workflow = parse(source);
@@ -478,8 +649,23 @@ describe('npm release sequence', () => {
     io.request.mockImplementation(async (url: string) =>
       url.includes('codex') ? { version: '0.5.4', gitHead: 'other-commit' } : null,
     );
-    await expect(publishPackages(packages, { ...options, action: 'finalize' }, io)).rejects.toThrow(
+    await expect(publishPackages(packages, { ...options, action: 'stage' }, io)).rejects.toThrow(
       'other-commit',
+    );
+    expect(io.runNpm).not.toHaveBeenCalled();
+  });
+  it('finalize checks the requested public version without requiring gitHead or latest equality', async () => {
+    const io = registry();
+    io.request.mockResolvedValue({ version: '0.5.4' } as never);
+    const result = await publishPackages(packages, { ...options, action: 'finalize' }, io);
+    expect(result.every((item) => item.status === 'verified')).toBe(true);
+    expect(io.request.mock.calls.every(([url]) => !url.endsWith('/latest'))).toBe(true);
+  });
+  it('rejects a different public version before downloading any package', async () => {
+    const io = registry();
+    io.request.mockResolvedValue({ version: '0.5.3' } as never);
+    await expect(publishPackages(packages, { ...options, action: 'finalize' }, io)).rejects.toThrow(
+      'version',
     );
     expect(io.runNpm).not.toHaveBeenCalled();
   });
@@ -504,7 +690,7 @@ describe('npm release sequence', () => {
     io.request.mockImplementation(async (url: string) =>
       url.endsWith('/latest') ? ({ version: '0.6.0' } as never) : null,
     );
-    await expect(publishPackages(packages, { ...options, action: 'finalize' }, io)).rejects.toThrow(
+    await expect(publishPackages(packages, { ...options, action: 'stage' }, io)).rejects.toThrow(
       'older',
     );
     expect(io.runNpm).not.toHaveBeenCalled();

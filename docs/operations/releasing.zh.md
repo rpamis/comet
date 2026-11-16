@@ -35,27 +35,33 @@ Require two-factor authentication and disallow tokens。OIDC 暂存仍可正常�
    作为运行记录；无需复制运行 ID。它不会直接公开 npm 版本，也不会创建 Git tag 或公告。
 4. 到 npm 的 Staged Packages 页面检查包名、版本和发布标签，通过 2FA 批准。
    先批准主包，再批准插件；支持批量审批的账号也可批量处理，但批量操作并非原子操作，需确认三项均成功。
-5. 再运行 Release，版本号不变，action=finalize；工作流自动找到该版本的原暂存运行，
-   不需要填写任何 ID。三个包都已在公共 npm 可下载后，工作流才生成或公开 GitHub Release。
+5. 再从最新 master 新建 Release 运行，版本号不变，action=finalize。
+   工作流确认指定版本的三个 npm 包已公开且可下载，然后以本次 master 提交创建 GitHub Release。
+   不需要填写运行 ID，也不需要原暂存记录。
 
 **不等待 master CI。** Release 自行执行生成物检查、构建、发布文件扫描、SDK API 检查、
-发布定向测试和主包安装 E2E；任一检查失败便停止。finalize 沿用原暂存提交，并重新进行
-版本、生成物、构建、发布物和 npm 下载核对，不重复暂存前的测试与安装 E2E。
+发布定向测试和主包安装 E2E；任一检查失败便停止。finalize 使用本次 master 的代码，重新核对
+版本、生成物、构建和发布文件，并验证指定 npm 版本；不重复暂存前的测试与安装 E2E，也不重新打包上传。
 这不等于完整仓库 CI，Release 不声明完整 CI 已通过，也不自动启动真实模型或容器 Eval。
 
-## 原提交与公告
+## finalize 的版本与公告
 
-finalize 先读取已批准主包在 npm 上的 gitHead，再分页查找本仓库 master 上、同一提交的
-Release 手动运行，选择最近一份未过期的 comet-release-stage 记录。预览和 finalize 运行
-没有该记录，会被跳过；不读取其他仓库、工作流或提交的记录。然后检出原提交，继续核对
-暂存记录的运行 ID、版本和提交。即使 master 已前进，也不把新代码或新 Changelog 混入公告。
-主包尚未批准、缺少 gitHead 或找不到有效记录时，会明确停止，不改用当前 master 或其他版本。
+finalize 是维护者人工选择的发布动作，GitHub Release 的 tag 指向本次 dispatch 的 master 提交。
+先检查该提交的 package、assets、Codex 插件和市场清单版本均与输入一致，再检查三个 npm 包的
+指定版本是否公开，按主包、Codex、DSH 的顺序下载验证。npm 包的 gitHead 无需与 master 一致，
+也不要求指定版本仍是 npm latest；finalize 不修改 npm dist-tag。
 
-公告沿用原样式：GitHub 自动生成的 What's Changed / PR 列表、本版本 Changelog 分类正文、
-New Contributors（有则保留）、Full Changelog 比较链接。记录在 stage 时保存完整公告，
-finalize 使用同一内容。上个 tag 从 Changelog 下一版本标题取得，必须是候选提交的祖先。
-三个正式 npm 版本均需有匹配的 gitHead，并按主包、Codex、DSH 顺序下载验证。
-已公开的同版公告保持不变；同版草稿沿用原 ID，在验证后更新并公开。
+master 可以领先 stage 时的提交。因此，GitHub tag 与 npm 包的源码提交可能不同，这是该人工
+发布流程允许的行为。stage 及 stage 重跑仍检查同版本包的原提交，拒绝混用来源或倒退 npm latest。
+
+公告从本次 master 重新生成：GitHub 自动生成的 What's Changed / PR 列表、本版本 Changelog
+分类正文、New Contributors（有则保留）、Full Changelog 比较链接。标题前后补齐空行，保留
+代码块内容。stage 保存的旧公告不覆盖本次内容。上个 tag 从 Changelog 下一版本标题取得，
+必须是本次 master 的祖先。已公开的同版公告保持不变；同版草稿沿用原 ID，在验证后更新并公开。
+
+工作流仅使用默认 GITHUB_TOKEN 的 Contents 写权限，无需额外令牌。
+本次提交与创建公告时的默认分支没有 workflow 差异时，可避免旧流程指向历史提交触发的额外权限限制。
+参考：[GitHub 创建 Release 的权限要求](https://docs.github.com/en/rest/releases/releases#create-a-release)。
 
 ## 失败与恢复
 
@@ -69,9 +75,11 @@ Actions 的 comet-release-stage artifact 只保存版本、原提交、公告、
   不要在旧状态不明时启动第二个 stage 运行。
 - 首次运行在暂存记录生成前就失败时，没有 npm 写入；修复前置检查后重新发起 stage。
   artifact 不存在时，恢复步骤会停止，不猜测旧上传结果。
-- finalize 发现尚未批准、不可下载、来源不匹配或 npm 服务异常时停止，不创建公告、不代替用户批准。
-  完成 npm 批准或修复下载后，重跑该 finalize 运行即可。
-- 已有同版包来自其他提交、已有 tag 指向其他提交，或 npm latest 已高于待发布版本时停止。
+- finalize 发现指定 npm 版本尚未公开、不可下载或 npm 服务异常时停止，不创建公告、不代替用户批准。
+  完成 npm 批准或修复下载后，从最新 master 新建相同版本的 finalize 运行。
+- 本次 master 的版本与输入不一致，或已有 tag 指向其他提交时停止；不移动已有 tag。
+- stage 发现已有同版 npm 包来自其他提交，或 npm latest 已高于待发布版本时停止。
+- 旧 finalize 运行的 Re-run 仍使用旧工作流，不能带入这次修复。需要从最新 master 新建运行。
 - npm 拒绝或删除暂存版本后，旧 stage ID 只表示曾经上传成功，不表示仍待批准；人工确认后发起新的 stage 运行。
 
 ## 本地检查
@@ -88,10 +96,10 @@ node scripts/release/publish-release.mjs --version 0.5.4
 ```
 
 stage 和 finalize 的写入只接受本仓库 master 上明确触发、提交匹配的 Actions 运行。
-原 --publish 及 publish 布尔输入已由 action 取代。source_run_id 现在由工作流自动查找，不再显示为表单输入；
-内部仍保存该 ID 以核对和恢复原执行。此前已成功暂存的记录也可自动查找，无需重新暂存。
-旧运行仍使用旧脚本，不会因代码更新自动变为暂存。
-启用新流程需从最新 master 发起新的 Release 运行。
+原 --publish 及 publish 布尔输入已由 action 取代，source_run_id 不再是表单输入。
+
+以下记录描述早期实现；finalize 当前采用上文的人工 master 发布规则。
+早期自动查找暂存记录的只读辅助入口及回归保留，但不参与当前 finalize。
 
 ## 2026-11-16 发布策略调整与回归
 
@@ -135,3 +143,27 @@ JSON stageId 能被脚本读取，且未出现直接发布 PUT 或 approve 请�
 再覆盖正常查找、master 前进、分页、过期记录、其他来源及尚未批准等情况；保留原显式来源核对测试。
 本机只读查询已验证主包尚未批准时会停止；该结果不代表已验证完整托管 finalize。
 本轮不修改打包、npm 暂存、人工批准或下载验证逻辑，不启动真实发布、全量测试或 Eval。
+
+## master 发布与标题空行回归
+
+[运行 43865158436](https://github.com/rpamis/comet/actions/runs/43865158436/job/133291723722)
+已在原暂存提交 8a3a0abe 完成三个 npm 包的下载验证，创建公告时返回 403。
+日志确认默认令牌有 Contents 写权限；原提交与 master 的 workflow 存在差异，GitHub 要求额外的
+Workflows 写权限。用户明确选择人工 finalize 以最新 master 发布，只核验指定 npm 版本公开可下载。
+因此移除 finalize 的原提交检出、原运行查询、artifact 和收据依赖，保留原 stage 恢复机制。
+不引入额外令牌，不要求 npm 原提交与 master 一致。
+
+新增的 master 前进、缺少收据、无 gitHead 和版本不匹配断言在旧实现中失败，修改后通过。
+公开 CLI 测试实际启动发布脚本和 npm 子进程，使用本地模拟 API/下载响应，确认只下载指定的三个包，
+不重新构建 npm 包或上传，也不查询暂存记录。该测试不能代替真实 GitHub 发布与 npm 网络下载验收。
+原来源检查及 latest 不倒退测试继续覆盖 stage；finalize 的行为按用户上述明确要求调整。
+草稿恢复、下载失败不写公告、已公开公告不改写等历史断言保持不变。
+
+标题空行另登记为 report:2026-11-16-release-heading-spacing：用户样例中 What's Changed 标题后
+直接接列表。组合函数补齐标题前后空行，代码块和正文保持原样；相同断言先在旧实现失败，再在新实现通过。
+本轮没有写入真实 GitHub Release/tag，没有重新上传 npm 包，也未执行全量测试或 Eval。
+用户可继续手动发布；若采用修复后的 CI，应从最新 master 新建 finalize 运行。
+
+本轮验证：88 项定向测试通过，包含三个真实 npm 包的本地打包；lint、受影响文件的 Prettier、
+actionlint、差异空白检查及 badcase 基线保留检查通过。公开 CLI 的发布和下载响应使用模拟服务，
+真实 GitHub 写入、真实 npm 下载及完整托管发布未执行。

@@ -36,38 +36,16 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Select original release source
-        id: source
-        run: |
-          node --input-type=module - <<'NODE'
-          import { appendFileSync } from 'node:fs';
-          import { findReleaseRun, resolveReleaseSource } from './scripts/release/publish-release.mjs';
-          const sourceRunId = process.env.RELEASE_ACTION === 'finalize'
-            ? await findReleaseRun({ version: process.env.RELEASE_VERSION })
-            : '';
-          const head = await resolveReleaseSource({
-            action: process.env.RELEASE_ACTION,
-            sourceRunId,
-          });
-          appendFileSync(process.env.GITHUB_OUTPUT, `head=${head}\nrun_id=${sourceRunId}\n`);
-          appendFileSync(process.env.GITHUB_ENV, `RELEASE_SOURCE_RUN_ID=${sourceRunId}\n`);
-          NODE
-      - name: Check out the original staged commit
-        if: inputs.action == 'finalize'
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          ref: ${{ steps.source.outputs.head }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Restore recorded staging results
-        if: inputs.action == 'finalize' || (inputs.action == 'stage' && github.run_attempt > 1)
+        if: inputs.action == 'stage' && github.run_attempt > 1
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: comet-release-stage
           path: .tmp/release
-          run-id: ${{ inputs.action == 'finalize' && steps.source.outputs.run_id || github.run_id }}
+          run-id: ${{ github.run_id }}
           github-token: ${{ github.token }}
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -79,8 +57,6 @@ jobs:
         run: npm install --global npm@11.21.0
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Check version and selected source commit
-        env:
-          RELEASE_SOURCE_SHA: ${{ steps.source.outputs.head }}
         run: |
           node --input-type=module - <<'NODE'
           import { checkReleaseCandidate } from './scripts/release/publish-release.mjs';
@@ -107,8 +83,6 @@ jobs:
       - run: pnpm test:package-e2e
         if: inputs.action != 'finalize'
       - name: Preview, stage or finalize release
-        env:
-          RELEASE_SOURCE_SHA: ${{ steps.source.outputs.head }}
         run: node scripts/release/publish-release.mjs --version "$RELEASE_VERSION" --action "$RELEASE_ACTION"
       - name: Save staging results for approval and recovery
         if: always() && inputs.action == 'stage'

@@ -2,6 +2,53 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "release-finalize-master",
+      "behavior": "人工 finalize 只核验指定 npm 版本公开且可下载，以本次 master 创建 GitHub Release，不要求 npm 与 master 同提交。",
+      "sources": [
+        "https://github.com/rpamis/comet/actions/runs/43865158436/job/133291723722",
+        "report:2026-11-16-release-finalize-master"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "真实运行在旧暂存提交创建公告时返回 403；用户明确改为 master 发布。新增当前 master 领先 npm、缺少暂存记录、npm 无 gitHead 和错误版本四项断言在修改前失败。公开 CLI 以模拟 API 和 npm 子进程验证命令路径；没有真实远端写入。",
+      "expected": "本次 master 版本匹配输入，指定三个 npm 版本公开并下载验证后才写公告；finalize 不查原运行、不恢复收据、不比较 gitHead 或 latest，也不重新打包上传。",
+      "forbidden": "继续要求原暂存提交/收据、接受错误版本、缺包或下载失败时仍发布、修改已有 tag、自动批准 npm 或将本地模拟当作远端验收。",
+      "rootCause": "原流程把人工 GitHub Release 与 npm 原提交绑定，检出历史 workflow 后触发额外权限要求，与用户确认的最新 master 发布策略不符。",
+      "tests": [
+        {
+          "file": "test/scripts/publish-release.test.ts",
+          "namePattern": "^(release candidate and final announcement (finalizes current master with older public npm packages and no staging record|finalizes through the public CLI using version checks and downloads without rebuilding packages)|release workflow entry finalizes the selected master without a staged checkout, artifact or extra token|npm release sequence (finalize checks the requested public version without requiring gitHead or latest equality|rejects a different public version before downloading any package))$",
+          "requiredNames": [
+            "release candidate and final announcement finalizes current master with older public npm packages and no staging record",
+            "release candidate and final announcement finalizes through the public CLI using version checks and downloads without rebuilding packages",
+            "release workflow entry finalizes the selected master without a staged checkout, artifact or extra token",
+            "npm release sequence finalize checks the requested public version without requiring gitHead or latest equality",
+            "npm release sequence rejects a different public version before downloading any package"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "release-heading-spacing",
+      "behavior": "生成发布公告时补齐标题前后空行，保留正文和代码示例。",
+      "sources": ["report:2026-11-16-release-heading-spacing"],
+      "coverageLevel": "unit",
+      "reproduction": "用户样例在 What's Changed 标题后直接接列表；446c695a 上使用相同格式断言失败。",
+      "expected": "自动生成标题、Changelog 分类和贡献者标题与正文之间有空行。",
+      "forbidden": "改动代码块内文本、重复空行或改写已经公开的公告。",
+      "rootCause": "组合函数仅在正文块之间插空行，没有规范 GitHub 生成的标题间距。",
+      "tests": [
+        {
+          "file": "test/scripts/publish-release.test.ts",
+          "namePattern": "^(release announcement (inserts only the requested changelog between generated changes and contributors|preserves fenced examples and existing heading spacing)|release candidate and final announcement keeps an already published announcement unchanged on a rerun)$",
+          "requiredNames": [
+            "release announcement inserts only the requested changelog between generated changes and contributors",
+            "release announcement preserves fenced examples and existing heading spacing",
+            "release candidate and final announcement keeps an already published announcement unchanged on a rerun"
+          ]
+        }
+      ]
+    },
+    {
       "id": "release-562-pending-tag-draft",
       "behavior": "按 tag 查不到尚未发布的草稿时，从已认证的分页发布列表找回同版本草稿，并仅在 npm 验证后更新原草稿。",
       "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4583250651"],

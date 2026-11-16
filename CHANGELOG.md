@@ -6,7 +6,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Added
 
-- **Release automation**: Preview and stage the Comet CLI, Codex plugin and DSH plugin with self-contained release checks, without waiting for master CI. Approve the staged packages with npm 2FA, then finalize by version without copying a run ID. Automatically find the saved staging run, verify its original source commit and public downloads, and combine GitHub-generated changes with this version's Changelog in the announcement.
+- **Release automation**: Preview and stage the Comet CLI, Codex plugin and DSH plugin with self-contained release checks, without waiting for master CI. Approve the staged packages with npm 2FA, then manually finalize the specified version from the latest master once all three npm packages are public and downloadable, without copying a run ID or requiring the npm source commit to match master. Combine GitHub-generated changes with this version's Changelog using spaced Markdown headings.
 - **Parallel Shape review**: Keep multiple Native v4 changes in one planning workspace, approve a Shape with `--defer-build`, and prepare an independent worktree before implementing a change alongside other active requirements. Workspace handoff preserves the original Run and approval, resumes interrupted transfers, and follows current execution status and subsequent task claims from the original workspace ([#560](https://github.com/rpamis/comet/issues/560)).
 
 ### Fixed
