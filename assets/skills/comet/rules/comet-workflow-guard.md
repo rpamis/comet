@@ -32,6 +32,8 @@ Classic 旧项目没有新版配置时只按 Classic legacy fallback 处理，�
 
 - Classic 的 Verify 只写验证报告和状态等阶段产物，不修改 tasks 或普通项目实现；需要更新任务状态或修复实现时，先执行 `verify-fail` 回到 Build。
 - Native Build 的普通写入权限不覆盖 brief 中未解决的 `[blocking]` 用户决定；出现新决定时按 Native Skill 暂停实现并重新确认。
+- 内置 Native v4 的多个 Shape 可以共用规划工作区和分支，各自保留材料、Run 与批准。同一目录由一个 Agent 写入，通过 `native select <change>` 切换当前需求；多人可以同时评审不同需求。多个 Agent 同时编写或实施时使用独立 worktree。
+- 用户批准 Shape 后要求等待实施时，在返回的确认命令中追加 `--defer-build`。开始实施时执行原需求的 `native next`，由 Runtime 准备 Build 工作区并保留原 Run 和批准。读取响应中的 `executionCwd` 或 `workspace.projectRoot`，进入实际工作区后核对其配置和 selection，再领取或继续原任务。同一规划工作区还有其他活跃需求时，Build 阶段本身不足以允许在原目录写实现；先完成 Runtime 的工作区交接。已交接需求的只读状态指向实际执行位置，普通实现写入和任务回报继续使用该位置及原 Action。
 - Native 状态包含 `children` 时，Build 的普通写入权限只属于 Runtime `readyChildren` 中列出的子任务工作区；不得运行 Supervisor Change Builder，也不得在父级工作区实现子任务。
 - Classic full workflow 只有在状态已记录 Design Doc 且实施计划存在并可用后，才允许在 Build 进行普通实现写入；hotfix 和 tweak 继续服从各自的 preset 阶段协议。
 - 本会话已确认进入且当前 workflow 是 Native：恢复 `/comet-native`。新普通 SDK 任务沿用返回的 `native next --session` 业务入口，提交结果后由 Runtime 连续处理已授权步骤。SDK 以本地 Run 为权威，Portable 在恢复边界保存检查点；旧 Run 和 Supervisor 使用各自返回的协议。

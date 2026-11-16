@@ -3,10 +3,11 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   gitStatusPaths,
+  runGitCommand,
   parseGitStatusPaths,
   parseGitStatusUntrackedPaths,
   readGitStatusPorcelain,
@@ -44,7 +45,24 @@ describe('Git process helpers', () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await fs.rm(projectRoot, { recursive: true, force: true });
+  });
+
+  it('reads the requested worktree despite inherited repository and index variables', async () => {
+    const target = path.join(projectRoot, 'linked');
+    execFileSync('git', ['worktree', 'add', '-b', 'linked', target], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    await fs.writeFile(path.join(target, '.comet/current-change.json'), '{"changed":true}\n');
+    vi.stubEnv('GIT_DIR', path.join(projectRoot, '.git'));
+    vi.stubEnv('GIT_WORK_TREE', projectRoot);
+    vi.stubEnv('GIT_INDEX_FILE', path.join(projectRoot, '.git/index'));
+    expect(runGitCommand(target, ['diff', 'HEAD', '--name-only'])).toContain(
+      '.comet/current-change.json',
+    );
+    expect(runGitCommand(target, ['branch', '--show-current'])).toBe('linked');
   });
 
   it('reads complete Git blobs beyond the former file and process buffer limits by default', () => {

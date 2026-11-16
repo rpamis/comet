@@ -1,3 +1,4 @@
+import { readNativeBuildWorkspace } from './native-build-workspace-record.js';
 import { NativeChangeRevisionConflictError } from './native-runtime-errors.js';
 export {
   NativeChangeRevisionConflictError,
@@ -313,6 +314,7 @@ async function inspectActiveNativeChangesOwnedByWorkspace(
   return owned;
 
   async function inspect(name: string): Promise<string | null> {
+    if (await readNativeBuildWorkspace(paths.projectRoot, name)) return null;
     const sdkOwner = await readSdkChangeOwner(paths.projectRoot, 'native', name, {
       readOnly: true,
     });

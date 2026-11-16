@@ -26,8 +26,8 @@ it('builds identical strict runtime bundles inside and outside node_modules', as
       const entry = "import read from '../../value'; export const strict = read();";
       await writeFile(path.join(root, 'app/commands/native.ts'), entry);
       const runtime = {
-        entries: { runtime: 'app/commands/native.ts' },
-        outputs: { runtime: 'runtime.mjs' },
+        entries: { runtime: 'app/commands/native.ts', command: 'app/commands/native.ts' },
+        outputs: { runtime: 'runtime.mjs', command: 'commands/example.mjs' },
       };
       await writeFile(
         path.join(root, 'config/repository-layout.json'),
@@ -41,6 +41,29 @@ it('builds identical strict runtime bundles inside and outside node_modules', as
         });
         expect(result.stderr, name).toBe('');
         expect(result.status, name).toBe(0);
+        if (name !== 'native-facade') {
+          const command = path.join(root, 'commands/example.mjs');
+          const expected = await readFile(command);
+          expect(expected.equals(await readFile(path.join(root, 'runtime.mjs')))).toBe(true);
+          if (relative === 'ordinary') {
+            const check = () =>
+              spawnSync(process.execPath, [`scripts/build/build-${name}.mjs`, '--check'], {
+                cwd: root,
+                encoding: 'utf8',
+              });
+            expect(check().status, name).toBe(0);
+            await writeFile(command, 'stale command');
+            const stale = check();
+            expect(stale.status, name).toBe(1);
+            expect(stale.stderr).toContain('stale: commands/example.mjs');
+            expect(await readFile(command, 'utf8')).toBe('stale command');
+            await rm(command);
+            const missing = check();
+            expect(missing.status, name).toBe(1);
+            expect(missing.stderr).toContain('missing: commands/example.mjs');
+            await expect(readFile(command)).rejects.toMatchObject({ code: 'ENOENT' });
+          }
+        }
         row.push(
           await readFile(
             path.join(

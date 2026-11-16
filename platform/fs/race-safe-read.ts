@@ -186,7 +186,30 @@ export async function readFileRaceSafe(
       }
       chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
     }
+    const bytes = Buffer.concat(chunks, total);
     await options.hooks?.beforeFinalCheck?.();
+
+    // Windows can retain the same timestamps for an equal-size write in one
+    // clock tick. Compare the bounded bytes again through the same descriptor.
+    if (process.platform === 'win32') {
+      let position = 0;
+      for (;;) {
+        const { bytesRead } = await handle.read(
+          buffer,
+          0,
+          Math.min(buffer.length, total + 1 - position),
+          position,
+        );
+        if (bytesRead === 0 && position === total) break;
+        if (
+          bytesRead === 0 ||
+          position + bytesRead > total ||
+          !buffer.subarray(0, bytesRead).equals(bytes.subarray(position, position + bytesRead))
+        )
+          throw new RaceSafeReadError('changed', `${label} changed while reading`);
+        position += bytesRead;
+      }
+    }
 
     const [afterHandle, afterPath, afterRealPath] = await Promise.all([
       handle.stat({ bigint }),
@@ -206,7 +229,7 @@ export async function readFileRaceSafe(
       realPath: afterRealPath,
       identity: identityOf(afterHandle),
     });
-    return { bytes: Buffer.concat(chunks, total), stat: afterHandle, realPath: afterRealPath };
+    return { bytes, stat: afterHandle, realPath: afterRealPath };
   } finally {
     await handle.close();
   }
@@ -268,14 +291,11 @@ export async function hashFileRaceSafe(
     });
     await options.hooks?.afterOpen?.();
 
-    const hash = createHash(options.algorithm ?? 'sha256');
-    const buffer = Buffer.allocUnsafe(64 * 1024);
-    for (;;) {
-      const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
-      if (bytesRead === 0) break;
-      hash.update(buffer.subarray(0, bytesRead));
-    }
+    const algorithm = options.algorithm ?? 'sha256';
+    const digest = await hashOpenFile(handle, algorithm);
     await options.hooks?.beforeFinalCheck?.();
+    if (process.platform === 'win32' && (await hashOpenFile(handle, algorithm)) !== digest)
+      throw new RaceSafeReadError('changed', `${label} changed while reading`);
 
     const [afterHandle, afterPath, afterRealPath] = await Promise.all([
       handle.stat({ bigint }),
@@ -295,8 +315,24 @@ export async function hashFileRaceSafe(
       realPath: afterRealPath,
       identity: identityOf(afterHandle),
     });
-    return { digest: hash.digest('hex'), stat: afterHandle, realPath: afterRealPath };
+    return { digest, stat: afterHandle, realPath: afterRealPath };
   } finally {
     await handle.close();
   }
+}
+
+async function hashOpenFile(
+  handle: Awaited<ReturnType<typeof fs.open>>,
+  algorithm: string,
+): Promise<string> {
+  const hash = createHash(algorithm);
+  const buffer = Buffer.allocUnsafe(64 * 1024);
+  let position = 0;
+  for (;;) {
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
+    if (bytesRead === 0) break;
+    hash.update(buffer.subarray(0, bytesRead));
+    position += bytesRead;
+  }
+  return hash.digest('hex');
 }

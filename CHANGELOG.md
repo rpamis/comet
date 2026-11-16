@@ -2,12 +2,31 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.5.4] - 2026-11-14
+## What's Changed [0.5.4] - 2026-11-16
+
+### Added
+
+- **Release automation**: Preview or publish the Comet CLI, Codex plugin and DSH plugin from one GitHub Actions run. Verify each package on public npm, resume completed publishes from the same source commit, and combine GitHub-generated changes with this version's Changelog in the release announcement.
+- **Parallel Shape review**: Keep multiple Native v4 changes in one planning workspace, approve a Shape with `--defer-build`, and prepare an independent worktree before implementing a change alongside other active requirements. Workspace handoff preserves the original Run and approval, resumes interrupted transfers, and follows current execution status and subsequent task claims from the original workspace ([#560](https://github.com/rpamis/comet/issues/560)).
 
 ### Fixed
 
+- **Eval container cleanup**: Wait for an already-running Docker container removal before confirming a stopped experiment, while keeping incomplete cleanup retryable and preserving other experiments.
+
+- **Linux process cleanup**: Confirm that the owned process group has stopped before recording successful cleanup, including descendants that outlive their parent or ignore standard streams.
+
+- **Windows input snapshots**: Reject files rewritten during capture even when Windows reports unchanged timestamps, so stale bytes or digests are not accepted as current inputs.
+
+- **Git worktree checks**: Use the requested repository and index when Comet runs from a Git Hook environment, so inherited Git variables do not hide local worktree changes. Preserve global configuration and authentication.
+- **Classic Design summaries**: Save discussion checkpoints at an explicit change-local path and resume from the same file. Guide misplaced summaries to that path without asking users to enter Build, while preserving Design approval and source-write protection ([#559](https://github.com/rpamis/comet/issues/559)).
+- **Plugin write Hooks**: Run the shared CLI Router inside the plugin Hook process so DSH and Codex writes do not depend on a second Node process with piped input and output. Preserve plugin activation checks and Guard denials ([#561](https://github.com/rpamis/comet/issues/561)).
+
 - **Cancelled Native changes in Dashboard**: Leave a Native change out of the Dashboard active list and active count once `comet native cancel` completes, matching `comet native status`. The Dashboard now follows the cancelled Run instead of the unchanged `comet-state.yaml`; changes whose cancellation is still pending or unreadable stay visible. The Dashboard index also refreshes when a cancellation completes later through Run records alone (the change's Run, its child Runs or the current selection), and a Dashboard index written by an earlier version is rebuilt on the first read after upgrade ([#557](https://github.com/rpamis/comet/issues/557)).
 - **Resuming pinned Runs after upgrade**: Fixed Native and Classic packages pinned to 0.5.2 or 0.5.3 keep resuming their original Run on 0.5.4.
+
+### Security
+
+- **Dependency security**: Upgrade minimatch to bound optimized glob expansion, OpenTelemetry API to reject oversized trace context before parsing, and LangGraph with its SDK to encode streaming request identifiers. Update npm, pnpm, and Python lockfiles to exclude affected versions ([#207](https://github.com/rpamis/comet/security/dependabot/207), [#208](https://github.com/rpamis/comet/security/dependabot/208), [#209](https://github.com/rpamis/comet/security/dependabot/209), [#203](https://github.com/rpamis/comet/security/dependabot/203), [#204](https://github.com/rpamis/comet/security/dependabot/204)).
 
 ## What's Changed [0.5.3] - 2026-11-13
 

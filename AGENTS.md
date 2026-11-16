@@ -169,6 +169,8 @@ pnpm test           # 仅在满足“测试”章节的全量条件时
 
 架构约束由 `pnpm run lint:architecture` 校验，并已接入 `pnpm lint`。它会检查顶层目录白名单、活跃源码根、app/domain/platform 子模块、脚本模块、Classic/Native/Entry runtime 入口与生成物、内置 Skill 根目录、测试归属、领域依赖方向、跨领域入口、纯模型和兼容门面。新增领域依赖或供其他领域使用的源码入口时，先判断职责是否合理，再显式更新 `config/repository-layout.json`；不得由脚本自动扩展许可清单。新增顶层目录、源码模块、测试根目录或例外时，同时更新架构 linter 和本节说明。
 
+插件从已批准的安装目录加载共享 Router 时，在 `dependencyRules.runtimeImports` 登记调用文件、精确导入表达式、对应源码入口和原因；该导入仍须通过领域依赖检查，移除调用时同步删除登记。
+
 ## Classic runtime 脚本规范
 
 脚本位于 `assets/skills/comet/scripts/`，当前发布形态是 CLI 聚合 runtime + 每命令独立的自包含 `.mjs` bundle：

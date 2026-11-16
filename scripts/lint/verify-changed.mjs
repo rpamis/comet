@@ -8,7 +8,7 @@ const SOURCE_PATTERN =
 const FORMAT_PATTERN =
   /^(?:\.claude\/rules\/|\.github\/|app\/|config\/|domains\/|platform\/|plugin\/|scripts\/|test\/)|^(?:AGENTS|CLAUDE)\.md$|^(?:build\.js|package\.json|tsconfig\.json|vitest\.config\.ts)$/u;
 const RUNTIME_SOURCE_PATTERN =
-  /^(?:domains\/(?:comet-classic|comet-entry|comet-native|workflow-contract)\/.*\.(?:ts|tsx)|platform\/process\/hook-adapter\.ts|scripts\/build\/build-(?:classic|entry|native)-runtime\.mjs|assets\/skills\/(?:comet|comet-native)\/scripts\/.*\.mjs)$/u;
+  /^(?:domains\/(?:comet-classic|comet-entry|comet-native|workflow-contract)\/.*\.(?:ts|tsx)|platform\/process\/hook-adapter\.ts|scripts\/build\/build-(?:classic|entry|native)-runtime\.mjs|scripts\/lib\/runtime-(?:bundle|schema)-build\.mjs|assets\/skills\/(?:comet|comet-native)\/scripts\/.*\.mjs)$/u;
 const AGENT_RULE_PATTERN =
   /^(?:(?:AGENTS|CLAUDE)\.md|\.claude\/rules\/.*\.md|(?:app|assets|docs|eval|platform|plugin|test|domains\/[^/]+|scripts\/release)\/AGENTS\.md)$/u;
 

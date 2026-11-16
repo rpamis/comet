@@ -1,26 +1,8 @@
 #!/usr/bin/env node
 
-import { build } from 'esbuild';
-import { promises as fs } from 'fs';
-import path from 'path';
-import { readRepositoryLayout, resolveRepositoryPath } from '../lib/repository-layout.mjs';
-import { writeFileWithTransientRetry } from '../lib/transient-file-write.mjs';
+import { buildRuntimeBundles } from '../lib/runtime-bundle-build.mjs';
 
-const layout = readRepositoryLayout();
-const repoRoot = resolveRepositoryPath('.');
-const packageVersion = JSON.parse(
-  await fs.readFile(path.join(repoRoot, 'package.json'), 'utf8'),
-).version;
-const runtimeEntries = Object.entries(layout.entryRuntime?.entries ?? {});
-const runtimeOutputs = layout.entryRuntime?.outputs ?? {};
-if (runtimeEntries.length === 0) throw new Error('Entry runtime requires at least one entry');
-for (const [name] of runtimeEntries) {
-  if (!runtimeOutputs[name]) throw new Error(`Entry runtime output is missing for ${name}`);
-}
-
-// The hook-router entry keeps its guard dependency out of the bundle: the
-// dynamic import is rewritten to the sibling output so the fast path never
-// parses the Classic/Native guard graph.
+// Keep the guard out of the router's fast path; load its sibling bundle only when needed.
 const hookRouterGuardExternal = {
   name: 'comet-hook-router-guard-external',
   setup(build) {
@@ -31,69 +13,8 @@ const hookRouterGuardExternal = {
   },
 };
 
-async function bundledRuntime(entry, plugins = []) {
-  const result = await build({
-    absWorkingDir: repoRoot,
-    tsconfig: path.join(repoRoot, 'tsconfig.json'),
-    entryPoints: [entry],
-    bundle: true,
-    write: false,
-    platform: 'node',
-    format: 'esm',
-    target: ['node20'],
-    packages: 'bundle',
-    // Resolve dependencies from pnpm's physical package directory so bundled
-    // transitive imports are found beside their owning package.
-    preserveSymlinks: false,
-    sourcemap: false,
-    legalComments: 'none',
-    charset: 'utf8',
-    treeShaking: true,
-    minify: true,
-    define: { __COMET_VERSION__: JSON.stringify(packageVersion) },
-    plugins,
-    banner: {
-      js: [
-        '#!/usr/bin/env node',
-        "import { createRequire as __cometCreateRequire } from 'module';",
-        'const require = __cometCreateRequire(import.meta.url);',
-      ].join('\n'),
-    },
-  });
-  if (result.outputFiles.length !== 1) {
-    throw new Error(`Expected one entry resolver runtime output, got ${result.outputFiles.length}`);
-  }
-  return Buffer.from(result.outputFiles[0].contents);
-}
-
-for (const [name, entry] of runtimeEntries) {
-  const runtimeOutput = runtimeOutputs[name];
-  const outputFile = resolveRepositoryPath(runtimeOutput);
-  const expected = await bundledRuntime(
-    entry,
-    name === 'hookRouter' ? [hookRouterGuardExternal] : [],
-  );
-
-  if (process.argv.includes('--check')) {
-    let actual;
-    try {
-      actual = await fs.readFile(outputFile);
-    } catch (error) {
-      if (error.code === 'ENOENT') {
-        console.error(`Entry runtime script is missing: ${runtimeOutput}`);
-        process.exitCode = 1;
-      } else {
-        throw error;
-      }
-    }
-    if (actual && !actual.equals(expected)) {
-      console.error(
-        `Entry runtime script is stale: ${runtimeOutput}; run node scripts/build/build-entry-runtime.mjs`,
-      );
-      process.exitCode = 1;
-    }
-  } else {
-    await fs.mkdir(path.dirname(outputFile), { recursive: true });
-    await writeFileWithTransientRetry(outputFile, expected);
-  }
-}
+await buildRuntimeBundles('entryRuntime', {
+  label: 'Entry',
+  script: 'scripts/build/build-entry-runtime.mjs',
+  plugins: (name) => (name === 'hookRouter' ? [hookRouterGuardExternal] : []),
+});

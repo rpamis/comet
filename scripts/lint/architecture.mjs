@@ -384,7 +384,12 @@ function collectDependencies(file, content) {
       ) {
         dependencies.push({ specifier: argument.text, runtime: true, line: sourceLine(node) });
       } else {
-        dependencies.push({ specifier: null, runtime: true, line: sourceLine(node) });
+        dependencies.push({
+          specifier: null,
+          expression: argument?.getText(sourceFile),
+          runtime: true,
+          line: sourceLine(node),
+        });
       }
     }
     ts.forEachChild(node, visit);
@@ -587,15 +592,32 @@ function checkSourceDependencies() {
   };
 
   const graph = new Map();
+  const runtimeImports = new Map();
+  for (const entry of dependencyRules.runtimeImports ?? []) {
+    if (
+      !sourceFiles.has(entry.from) ||
+      !sourceFiles.has(entry.to) ||
+      !entry.expression?.trim() ||
+      !entry.reason?.trim()
+    ) {
+      fail('runtime imports must name existing source files, an exact expression and a reason');
+      continue;
+    }
+    runtimeImports.set(`${entry.from}\0${entry.expression}`, entry.to);
+  }
+  const usedRuntimeImports = new Set();
   for (const file of [...sourceFiles].sort()) {
     const content = readFileSync(path.join(root, file), 'utf8');
     const edges = [];
     for (const imported of collectDependencies(file, content)) {
-      if (imported.specifier === null) {
+      const runtimeImportKey = `${file}\0${imported.expression}`;
+      const runtimeTarget = runtimeImports.get(runtimeImportKey);
+      if (imported.specifier === null && !runtimeTarget) {
         fail(`${file}:${imported.line} has a dynamic import that cannot be resolved statically`);
         continue;
       }
-      const target = resolveSource(file, imported.specifier);
+      if (runtimeTarget) usedRuntimeImports.add(runtimeImportKey);
+      const target = runtimeTarget ?? resolveSource(file, imported.specifier);
       if (!target) {
         const importedExtension = path.extname(imported.specifier.replaceAll('\\', '/'));
         if (
@@ -695,6 +717,10 @@ function checkSourceDependencies() {
       const [from, to] = key.split('\0');
       fail(`allowed domain dependency ${from} -> ${to} is unused`, 'ARCH_DOMAIN_DEPENDENCY_CONFIG');
     }
+  }
+  for (const key of runtimeImports.keys()) {
+    if (!usedRuntimeImports.has(key))
+      fail(`unused runtime import declaration: ${key.replace('\0', ' -> ')}`);
   }
   for (const entrypoint of crossDomainEntrypoints) {
     if (!usedCrossDomainEntrypoints.has(entrypoint)) {

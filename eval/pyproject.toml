@@ -49,7 +49,9 @@ target-version = "py311"
 constraint-dependencies = [
     "certifi>=2026.10.19",
     "filelock>=4.2.1",
-    "opentelemetry-api>=1.45.1",
+    "langgraph>=1.2.14",
+    "langgraph-sdk>=0.4.6",
+    "opentelemetry-api>=1.45.2",
     "pillow>=13.0.0",
     "virtualenv>=21.14.9",
 ]

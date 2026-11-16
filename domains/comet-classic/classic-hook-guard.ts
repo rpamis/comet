@@ -1217,6 +1217,25 @@ async function inspectClassicHookTarget(
     return allowed(
       relativePath + ' (保留当前阶段；由 Agent 判断修改影响，修复实现前通过 Runtime 返回 Build)',
     );
+  if (
+    phase === 'design' &&
+    governing.changeDir &&
+    comparisonKey(relativePath) ===
+      comparisonKey(
+        `${classicProjectRelative(projectRoot, governing.changeDir)}/brainstorm-summary.md`,
+      )
+  ) {
+    const checkpoint = `${classicProjectRelative(projectRoot, governing.changeDir)}/.comet/handoff/brainstorm-summary.md`;
+    const chinese = classicLocale(governing.classic?.language) === 'zh-CN';
+    return result(
+      2,
+      [
+        `[COMET-HOOK] blocked: ${chinese ? '设计讨论摘要应保存到检查点目录。' : 'Save the Design discussion summary in the checkpoint directory.'}`,
+        `Target file: ${relativePath}`,
+        `NEXT: ${chinese ? `将候选摘要写入 ${checkpoint}，保留 Design 阶段，等待当前方案的确认；保存摘要不需要进入 Build。` : `write the candidate summary to ${checkpoint}; keep the Design phase and await the current design decision. Saving a summary does not require entering Build.`}`,
+      ].join('\n'),
+    );
+  }
   return blocked(relativePath, phase, changeName, classicLocale(governing.classic?.language));
 }
 

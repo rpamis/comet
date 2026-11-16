@@ -1,8 +1,5 @@
-import {
-  isNeutralDocumentPath,
-  isChangeWalkthroughPath,
-} from '../workflow-contract/neutral-document-path.js';
-import { classicProjectRelative, resolveClassicLayout } from './classic-layout.js';
+import { isNeutralDocumentPath } from '../workflow-contract/neutral-document-path.js';
+import { classicProjectRelative } from './classic-layout.js';
 import type { ClassicLayoutPaths } from './classic-layout.js';
 import { readClassicConfigValue } from './classic-project-config.js';
 
@@ -39,36 +36,6 @@ export function classicProtectedDocumentPrefixes(
     classicProjectRelative(projectRoot, layout.openSpecRoot),
     classicProjectRelative(projectRoot, layout.superpowersRoot),
   ];
-}
-
-/** Splits changed paths into material inputs and neutral document paths. */
-export async function splitNeutralDocumentChanges(
-  projectRoot: string,
-  changedPaths: readonly string[],
-): Promise<{ material: string[]; neutral: string[] }> {
-  let protectedPrefixes: string[];
-  let changeRoots: string[];
-  try {
-    const layout = await resolveClassicLayout(projectRoot);
-    protectedPrefixes = classicProtectedDocumentPrefixes(projectRoot, layout);
-    changeRoots = [classicProjectRelative(projectRoot, layout.changesDir)];
-  } catch {
-    // Without a resolvable layout (missing config, Classic not enabled) both
-    // possible OpenSpec roots stay protected instead of failing the check.
-    protectedPrefixes = ['openspec', 'docs/openspec', 'docs/superpowers'];
-    changeRoots = ['openspec/changes', 'docs/openspec/changes'];
-  }
-  const material: string[] = [];
-  const neutral: string[] = [];
-  for (const changedPath of changedPaths) {
-    if (
-      changeRoots.some((root) => isChangeWalkthroughPath(changedPath, root)) ||
-      isNeutralDocumentPath(changedPath, protectedPrefixes)
-    )
-      neutral.push(changedPath);
-    else material.push(changedPath);
-  }
-  return { material, neutral };
 }
 
 /**

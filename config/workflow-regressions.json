@@ -2,6 +2,407 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "release-562-pending-tag-draft",
+      "behavior": "按 tag 查不到尚未发布的草稿时，从已认证的分页发布列表找回同版本草稿，并仅在 npm 验证后更新原草稿。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4583250651"],
+      "coverageLevel": "unit",
+      "reproduction": "在 e76845b6 上使按 tag 查询返回 404、列表含同版本草稿；原测试的 PATCH 断言失败，旧代码选择创建新 Release。",
+      "expected": "分页查找精确版本草稿，包下载验证后更新该草稿，已发布公告保持不变。",
+      "forbidden": "漏掉未创建 tag 的草稿或在包验证前发布公告。",
+      "rootCause": "按 tag 的 GitHub API 只返回已发布 Release，原实现用该结果判断是否存在草稿。",
+      "tests": [
+        {
+          "file": "test/scripts/publish-release.test.ts",
+          "namePattern": "^release candidate and final announcement (publishes an existing draft only after its npm download is verified|finds a pending-tag draft beyond the first release page|keeps an already published announcement unchanged on a rerun)$",
+          "requiredNames": [
+            "release candidate and final announcement publishes an existing draft only after its npm download is verified",
+            "release candidate and final announcement finds a pending-tag draft beyond the first release page",
+            "release candidate and final announcement keeps an already published announcement unchanged on a rerun"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-unquoted-material-paths",
+      "behavior": "中文文件名的正式材料修改可以交接到独立 Build 工作区，同时继续拒绝未提交源码。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4583195979"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 c8913fbf 的公开 Native next bundle 上运行精确案例，quotePath=true 时合法交接返回 65，关闭 quotePath 后通过。",
+      "expected": "两种 Git 引号设置下均保留中文及空格文件名、材料内容、原 Run 和批准；未提交中文源码仍阻止交接。",
+      "forbidden": "将 Git 引号和八进制转义路径误判为源码，或允许未提交实现代码进入工作区。",
+      "rootCause": "按行读取 Git 默认转义的路径字符串，再与未转义的材料目录比较。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "^Native Build workspace recovery hands off edited Chinese Shape materials while preserving code checks \\(quotePath=(true|false)\\)$",
+          "requiredNames": [
+            "Native Build workspace recovery hands off edited Chinese Shape materials while preserving code checks (quotePath=true)",
+            "Native Build workspace recovery hands off edited Chinese Shape materials while preserving code checks (quotePath=false)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-562-container-removal-in-progress",
+      "behavior": "Docker 已在自动删除本实验容器时，等待删除完成再确认停止；删除失败或未结束时继续报告未完成。",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/43824667030/job/133156268104"],
+      "coverageLevel": "unit",
+      "reproduction": "Docker rm 返回 removal already in progress，后续两次查询仍可见本项目容器；旧代码立即报告停止未完成。",
+      "expected": "在原删除时限内确认容器消失后完成，stop 和 rm 各执行一次，只查询当前实验。",
+      "forbidden": "容器仍存在时报告停止成功、反复删除或把权限错误当作删除进行中。",
+      "rootCause": "自动删除和显式删除可以重叠；旧代码忽略删除进行中错误后立即查询，不等待已开始的删除完成。CI 未保留 Docker stderr，因此原失败与此分支的对应关系待原容器集成检查确认。",
+      "tests": [
+        {
+          "file": "test/domains/eval/eval-container-removal.test.ts",
+          "namePattern": "^Docker container removal completion (waits for an in-progress removal before confirming scoped container cleanup|keeps cleanup incomplete when an in-progress removal never finishes|does not turn a failed removal into successful cleanup)$",
+          "requiredNames": [
+            "Docker container removal completion waits for an in-progress removal before confirming scoped container cleanup",
+            "Docker container removal completion keeps cleanup incomplete when an in-progress removal never finishes",
+            "Docker container removal completion does not turn a failed removal into successful cleanup"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dependency-minimatch-glob-amplification",
+      "behavior": "Node 依赖中的优化 glob 预处理限制重复 **/.. 的扩展数量，同时保留正常匹配。",
+      "reproduction": "054 基线 05f86a863f1fd076045db1824a57f2703dd52626 的已安装 minimatch 将 8 组 **/../a/b 扩展为 256 项，超过 braceExpandMax=64；npm 与 pnpm 锁文件均包含受影响的 10.x。修改前新增行为与锁文件断言均失败。",
+      "expected": "实际解析的 minimatch 将扩展限制为最多 64 项，正常正反匹配保持正确，两份锁文件只解析到修复版本。",
+      "forbidden": "优化预处理无视扩展上限，或任一包管理器继续安装受影响的 minimatch。",
+      "rootCause": "ESLint、TypeScript ESLint 与 API Extractor 的传递依赖仍允许并锁定受影响的 minimatch 10.x。",
+      "sources": [
+        "https://github.com/rpamis/comet/security/dependabot/207",
+        "https://github.com/rpamis/comet/security/dependabot/208"
+      ],
+      "coverageLevel": "unit",
+      "tests": [
+        {
+          "file": "test/repository/dependency-boundaries.test.ts",
+          "namePattern": "^resolved dependency boundaries bounds optimized glob expansion while preserving ordinary matches$",
+          "requiredNames": [
+            "resolved dependency boundaries bounds optimized glob expansion while preserving ordinary matches"
+          ]
+        },
+        {
+          "file": "test/repository/dependency-boundaries.test.ts",
+          "namePattern": "^resolved dependency boundaries excludes vulnerable minimatch versions from both Node lockfiles$",
+          "requiredNames": [
+            "resolved dependency boundaries excludes vulnerable minimatch versions from both Node lockfiles"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dependency-opentelemetry-traceparent-dos",
+      "behavior": "Python 依赖锁文件排除存在 traceparent 解析资源耗尽漏洞的 OpenTelemetry API。",
+      "reproduction": "054 基线 eval/uv.lock 固定 opentelemetry-api 1.45.1，新增锁文件安全版本断言失败；独立 Python 探针用于对照旧版与修复版的超长 traceparent 处理。",
+      "expected": "锁文件解析到 opentelemetry-api >=1.45.2，超长 traceparent 被拒绝，正常上下文仍可提取。",
+      "forbidden": "锁文件重新引入已知受影响版本，或为阻止超长输入而拒绝正常 traceparent。",
+      "rootCause": "项目约束仅要求 opentelemetry-api>=1.45.1，锁文件仍固定到漏洞版本。",
+      "sources": ["https://github.com/rpamis/comet/security/dependabot/209"],
+      "coverageLevel": "unit",
+      "tests": [
+        {
+          "file": "test/repository/dependency-boundaries.test.ts",
+          "namePattern": "^resolved dependency boundaries excludes vulnerable opentelemetry-api versions from the Python lockfile$",
+          "requiredNames": [
+            "resolved dependency boundaries excludes vulnerable opentelemetry-api versions from the Python lockfile"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dependency-langgraph-stream-path-encoding",
+      "behavior": "Python 依赖锁文件同时排除 LangGraph 及其 SDK 的流式请求路径编码漏洞版本。",
+      "reproduction": "054 基线锁定 langgraph 1.2.6 和 langgraph-sdk 0.4.4，两项新增锁文件断言均失败；独立 Python 探针对同步及异步流式请求的 thread_id 与 assistant_id 编码做旧新版对照。",
+      "expected": "锁文件解析到 langgraph >=1.2.14、langgraph-sdk >=0.4.6；同步异步请求都将 ID 中的 / 和 # 编码为路径参数，正常响应仍可读取。",
+      "forbidden": "任一锁定依赖继续受影响，或攻击者提供的 ID 被解析为另一个服务器路径。",
+      "rootCause": "langchain 的传递依赖范围允许旧版 LangGraph 和 SDK，旧锁文件未包含修复，项目也未声明安全下限。",
+      "sources": [
+        "https://github.com/rpamis/comet/security/dependabot/203",
+        "https://github.com/rpamis/comet/security/dependabot/204"
+      ],
+      "coverageLevel": "unit",
+      "tests": [
+        {
+          "file": "test/repository/dependency-boundaries.test.ts",
+          "namePattern": "^resolved dependency boundaries excludes vulnerable langgraph versions from the Python lockfile$",
+          "requiredNames": [
+            "resolved dependency boundaries excludes vulnerable langgraph versions from the Python lockfile"
+          ]
+        },
+        {
+          "file": "test/repository/dependency-boundaries.test.ts",
+          "namePattern": "^resolved dependency boundaries excludes vulnerable langgraph-sdk versions from the Python lockfile$",
+          "requiredNames": [
+            "resolved dependency boundaries excludes vulnerable langgraph-sdk versions from the Python lockfile"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-559-design-summary-path",
+      "sources": ["https://github.com/rpamis/comet/issues/559"],
+      "coverageLevel": "runtime",
+      "behavior": "SDK Design 指引明确讨论摘要的创建和恢复路径，使候选摘要可在设计批准前保存。",
+      "reproduction": "0.5.3 官方 npm 包与 054 基线 a09ef447 的隔离项目中，change 根目录 brainstorm-summary.md 被拒绝，.comet/handoff 同名文件允许；中英文 SDK 指引均只写文件名。新路径契约在修改前两项失败。",
+      "expected": "中英文 SDK Skill 与方法参考使用 <classic-change-dir>/.comet/handoff/brainstorm-summary.md，创建目录并从同一文件恢复；公开 Hook bundle 允许此路径且保留原 Design Wait 与批准。",
+      "forbidden": "Agent 根据不明确的文件名推断到被保护的 change 根目录，或将候选摘要等同正式批准并推进 Build。",
+      "rootCause": "完整摘要路径只出现在 SDK 不加载的 Compat 参考，SDK 主 Skill 与方法参考缺少保存和恢复位置。",
+      "tests": [
+        {
+          "file": "test/domains/skill/classic-sdk-skill-routing.test.ts",
+          "namePattern": "locates Design summary checkpoints before approval and during recovery in (skills-zh|skills)$",
+          "requiredNames": [
+            "Classic Chinese Skill SDK routing locates Design summary checkpoints before approval and during recovery in skills-zh",
+            "Classic Chinese Skill SDK routing locates Design summary checkpoints before approval and during recovery in skills"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-design-summary.test.ts",
+          "namePattern": "preserves the original SDK Design Wait and approval while saving candidate summaries$",
+          "requiredNames": [
+            "Classic Design summary checkpoint preserves the original SDK Design Wait and approval while saving candidate summaries"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-design-summary-path-following",
+          "status": "pending",
+          "evidence": [
+            "docs/research/2026-11-15-issue-559-design-summary.zh.md；负责人 benym。未获 Eval 启动请求，未运行真实模型；定向契约和 Runtime 测试不能证明模型会遵循新路径。获授权后验证 Design 探索与上下文恢复均使用同一路径。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-559-design-summary-recovery",
+      "sources": ["https://github.com/rpamis/comet/issues/559"],
+      "coverageLevel": "runtime",
+      "behavior": "Design 阶段拒绝误放到 change 根目录的摘要时，提示正确检查点路径并保留当前阶段。",
+      "reproduction": "054 基线 a09ef447 同输入的四项 bundle 回归失败：通用源码拦截缺少正确路径，NEXT 要求执行 design --apply 进入 Build。0.5.3 发布包亦复现。",
+      "expected": "legacy/docs、中英文、Write/apply_patch 事件均指向当前 change 的检查点；按提示重试可保存，状态不变；跨 change、归档和混合源码补丁仍拒绝。",
+      "forbidden": "为保存未批准的讨论摘要而进入 Build、禁用 Hook、扩大普通写入权限或污染其他 change。",
+      "rootCause": "非标准路径摘要落入通用阶段拦截，未提供与摘要操作对应的恢复指引。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-design-summary.test.ts",
+          "namePattern": "recovers a misplaced summary without advancing Design \\((legacy|docs), (en|zh-CN)\\)$",
+          "requiredNames": [
+            "Classic Design summary checkpoint recovers a misplaced summary without advancing Design (legacy, en)",
+            "Classic Design summary checkpoint recovers a misplaced summary without advancing Design (legacy, zh-CN)",
+            "Classic Design summary checkpoint recovers a misplaced summary without advancing Design (docs, en)",
+            "Classic Design summary checkpoint recovers a misplaced summary without advancing Design (docs, zh-CN)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-design-summary.test.ts",
+          "namePattern": "rejects mixed implementation patches and foreign or archived summary checkpoints$",
+          "requiredNames": [
+            "Classic Design summary checkpoint rejects mixed implementation patches and foreign or archived summary checkpoints"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "reporter-github-copilot-pretooluse-hook",
+          "status": "pending",
+          "evidence": [
+            "docs/research/2026-11-15-issue-559-design-summary.zh.md；负责人 benym。已通过 github-copilot Router bundle 的隔离事件回放，未运行报告人的真实 Copilot 会话。升级后需验证平台显示正确路径、重试保存成功且未进入 Build。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "plugin-561-no-piped-router-child",
+      "sources": ["https://github.com/rpamis/comet/issues/561"],
+      "coverageLevel": "runtime",
+      "behavior": "DSH 插件 Hook 在管道 Node 子进程受限时仍允许合法写入，并保留共享 Router 的拒绝行为。",
+      "reproduction": "npm comet-dsh-plugin@0.5.3 经已安装官方 DSH 0.2.2-rc.1 桥接及隔离 PowerShell 适配器执行，注入管道 Node 子进程 EPERM 后拒绝普通写入；054 基线 2ea7575c 的同输入回归在 DSH/Codex 均失败。原用户操作系统沙箱未直接复现。",
+      "expected": "共享包内 Router 在当前 Hook 进程检查事件；普通项目不初始化、合法写入可完成、跨 change 写入和 Router 错误返回平台 JSON deny。",
+      "forbidden": "因额外管道 Node 启动失败拒绝全部写入，或通过禁用 Guard、忽略 Router 错误放行非法写入。",
+      "rootCause": "插件包装层已读取事件，却再次使用带 input/encoding 的 spawnSync 启动共享 Router；其管道进程要求超出受限平台能力。",
+      "tests": [
+        {
+          "file": "test/domains/skill/plugin-hook.test.ts",
+          "namePattern": "^keeps legitimate writes available and rejects cross-change writes when piped Node children are forbidden \\(dsh\\)$",
+          "requiredNames": [
+            "keeps legitimate writes available and rejects cross-change writes when piped Node children are forbidden (dsh)"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-hook.test.ts",
+          "namePattern": "^keeps legitimate writes available and rejects cross-change writes when piped Node children are forbidden \\(codex\\)$",
+          "requiredNames": [
+            "keeps legitimate writes available and rejects cross-change writes when piped Node children are forbidden (codex)"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-hook.test.ts",
+          "namePattern": "^denies inspection failures from the packaged router on both plugin platforms$",
+          "requiredNames": [
+            "denies inspection failures from the packaged router on both plugin platforms"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "installed-dsh-official-bridge-offline-events",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-15-issue-561-plugin-hook.zh.md：官方 bridge/protocol 0.2.2-rc.1、真实 PowerShell、隔离事件上下文与 EPERM 注入；0.5.3 拒绝普通写入，新 0.5.4 包 write/edit 合法成功且跨 change 拒绝，10 条 Hook 事件，无第二层管道 Node 启动。"
+          ]
+        },
+        {
+          "layer": "reporter-dsh-restricted-platform-hook",
+          "status": "pending",
+          "evidence": [
+            "负责人 benym；原用户操作系统沙箱不可用，尚未在真实 DSH 桌面会话复验。升级 0.5.4 并重新启用插件后，需在原环境验证合法 write/edit 完成、跨 change 写入拒绝。离线注入结果不替代此项。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-560-build-existing-owner",
+      "behavior": "迁移前保护目标已有Compat或其他Runtime归属。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/560",
+        "report:2026-11-15-native-multi-shape-review"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "a699272f构建CLI和同输入源码测试均覆盖目标Compat brief后报错；2026-11-15定向测试先失败后通过。",
+      "expected": "迁移在任何复制和源checkpoint改写前拒绝，保留双方材料与owner。",
+      "forbidden": "先覆盖目标brief/state再报归属冲突。",
+      "rootCause": "目标预检仅查内置SDK raw Run，owner登记发生在fs.cp之后。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+          "namePattern": "Native v4 public CLI surface preserves existing compat worktree artifacts when Build transfer conflicts",
+          "requiredNames": [
+            "Native v4 public CLI surface preserves existing compat worktree artifacts when Build transfer conflicts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-560-build-existing-artifacts",
+      "behavior": "迁移前保护复用worktree中未登记的已有需求材料。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/560",
+        "report:2026-11-15-native-multi-shape-review"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "a699272f相同回归输入返回成功并覆盖目标sentinel；定向测试先失败后通过。",
+      "expected": "保留目标原材料与源批准，拒绝冲突；全新worktree可继承已提交Shape。",
+      "forbidden": "覆盖目标同名未登记目录。",
+      "rootCause": "复用工作区未检查已有需求目录。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+          "namePattern": "Native v4 public CLI surface preserves existing unowned worktree artifacts when Build transfer conflicts",
+          "requiredNames": [
+            "Native v4 public CLI surface preserves existing unowned worktree artifacts when Build transfer conflicts"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "inherits committed Shape documents while preserving the approved Run$",
+          "requiredNames": [
+            "Native Build workspace recovery inherits committed Shape documents while preserving the approved Run"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-560-build-current-checkpoint",
+      "behavior": "目标Run本地记录缺失时保留最新checkpoint与原执行身份。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/560",
+        "report:2026-11-15-native-multi-shape-review"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "同一测试在a699272f临时检出1失败1通过，失败证明replacement-builder替换原会话；当前两项通过。",
+      "expected": "沿目标最新checkpoint恢复原Builder；保留原claim及running/unknown恢复契约。",
+      "forbidden": "回放源journal旧快照，允许另一会话重领同一Builder。",
+      "rootCause": "将目标raw store缺失等同首次交接，重复复制并恢复旧transfer.run。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "Native Build workspace recovery preserves the current target checkpoint and original Builder when its local Run is missing",
+          "requiredNames": [
+            "Native Build workspace recovery preserves the current target checkpoint and original Builder when its local Run is missing"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-560-shared-hook-target-scope",
+      "behavior": "共享规划工作区仅阻止实现写入，保留中立与正式材料的目标分类。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/560",
+        "report:2026-11-15-native-multi-shape-review"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "原生成Router拒绝docs/notes.md，定向测试先失败后通过；模拟平台事件调用真实Router命令。",
+      "expected": "打包Router允许中立文档、配置、外部路径与当前Shape材料，拒绝实现及混合实现写入。",
+      "forbidden": "在目标分类前拒绝全部写入或允许共享规划目录中的实现。",
+      "rootCause": "共享工作区检查放在目标分类之前。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+          "namePattern": "Native v4 public CLI surface keeps shared Shape Hook decisions target scoped through packaged Router",
+          "requiredNames": [
+            "Native v4 public CLI surface keeps shared Shape Hook decisions target scoped through packaged Router"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-560-moved-readonly-status",
+      "behavior": "迁移后的只读查询指向目标当前Run并保留源写入限制。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/560",
+        "report:2026-11-15-native-multi-shape-review"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "a699272f构建CLI源named状态exit65且project状态列出error；当前同边界回归通过。",
+      "expected": "源named/project状态显示目标执行工作区，查询不改写双方状态，源CAS拒绝。",
+      "forbidden": "误报正常迁移为损坏，推荐无效源doctor或查询推进Run。",
+      "rootCause": "source同步投影对任何moved记录抛错，未区分只读定位与写入。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-status.test.ts",
+          "namePattern": "reads the current moved Run through source status without advancing or rewriting either workspace",
+          "requiredNames": [
+            "reads the current moved Run through source status without advancing or rewriting either workspace"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-560-next-validates-before-transfer",
+      "behavior": "原工作区的next在重试交接前完成参数校验。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/560",
+        "report:2026-11-15-native-multi-shape-review"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "原next入口在读取参数前执行交接；新增中断后无效参数断言，当前公开CLI回归验证目标需求目录未生成。",
+      "expected": "无效参数返回错误并保留未完成复制现场，合法next仍可继续原交接。",
+      "forbidden": "参数无效时先复制、恢复或选择目标Run。",
+      "rootCause": "moved路由位于assertNoArguments和通用参数验证之前。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+          "namePattern": "Native v4 public CLI surface keeps multiple Shapes independent and transfers the approved Run before claiming Build",
+          "requiredNames": [
+            "Native v4 public CLI surface keeps multiple Shapes independent and transfers the approved Run before claiming Build"
+          ]
+        }
+      ]
+    },
+    {
       "id": "ci-owned-command-owner-startup-readiness",
       "behavior": "独立截止时间回归在测试进程启动较慢时仍能进入真实超时与整树清理断言。",
       "sources": ["https://github.com/rpamis/comet/actions/runs/43545217542/job/132294851001"],
@@ -25444,7 +25845,10 @@
     },
     {
       "id": "platform-same-inode-content-read-race",
-      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation",
+        "https://github.com/rpamis/comet/actions/runs/43808488560/job/133105317401"
+      ],
       "behavior": "读取或散列期间同 inode 写入并恢复 mtime 时拒绝把旧内容绑定到新 stat。",
       "coverageLevel": "runtime",
       "reproduction": "同一 race-safe-read 用例在只检查 inode 身份的旧实现 read/hash 两种窗口均失败；当前实现检查大小、模式及 mtime/ctime，完整定向文件通过。",
@@ -25458,6 +25862,14 @@
           "requiredNames": [
             "race-safe bounded file read rejects same-inode writes with restored mtime during the read window",
             "race-safe bounded file read rejects same-inode writes with restored mtime during the hash window"
+          ]
+        },
+        {
+          "file": "test/platform/race-safe-read.test.ts",
+          "namePattern": "rejects Windows same-tick writes with unchanged metadata during the",
+          "requiredNames": [
+            "race-safe bounded file read rejects Windows same-tick writes with unchanged metadata during the read window",
+            "race-safe bounded file read rejects Windows same-tick writes with unchanged metadata during the hash window"
           ]
         }
       ],
@@ -54033,6 +54445,405 @@
           "requiredNames": [
             "Native SDK cancellation paths for the Dashboard index includes the child Runs of a cancelled change, and the current selection",
             "Native SDK cancellation paths for the Dashboard index changes the fingerprint when only the child Run record changes"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-build-material-deletions",
+      "behavior": "首次 Build 交接精确同步已批准材料，保留源工作区对已提交 Spec 的删除。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581585323"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 2df695243bb88f5093be22981ca39f5a6435d2ad 的公开 Native next bundle 上执行本条精确测试，断言失败。",
+      "expected": "目标不存在已删除的 Spec，保留原 Run、批准和其他 Shape。",
+      "forbidden": "Git 检出的过期 Spec 在交接后被重新纳入需求。",
+      "rootCause": "递归复制仅覆盖源目录存在的文件，未清除新 worktree 检出的旧材料。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "does not restore deleted committed Shape materials during first packaged Build handoff$",
+          "requiredNames": [
+            "Native Build workspace recovery does not restore deleted committed Shape materials during first packaged Build handoff"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-build-branch-baseline",
+      "behavior": "自动 Build 交接前拒绝代码基线不同的既有实施分支，不改写原 Run 或强行重置分支。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581585327"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 2df695243bb88f5093be22981ca39f5a6435d2ad 的公开 Native next bundle 上执行本条精确测试，断言失败。",
+      "expected": "旧分支在创建 worktree 和领取 Builder 前被拒绝；明确对齐基线后原任务可继续。",
+      "forbidden": "静默使用旧代码、覆盖旧分支或在被拒绝后推进原 Run。",
+      "rootCause": "工作区准备复用同名分支，交接调用未核对它是否仍对应源工作区的已提交代码。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "rejects a stale existing Build branch before packaged handoff and permits its aligned baseline$",
+          "requiredNames": [
+            "Native Build workspace recovery rejects a stale existing Build branch before packaged handoff and permits its aligned baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-prepared-checkout-recovery",
+      "behavior": "准备好干净 worktree 后尚未发布交接记录时，原 next 可继续交接已提交的 Shape 材料。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581632332"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 2e461885 的公开 next bundle 上运行精确选择断言失败；重新生成 Runtime 后通过。",
+      "expected": "首次交接能继续且只领取一个 Builder，原目标材料冲突仍拒绝。",
+      "forbidden": "因已提交材料拒绝合法恢复，或覆盖有本地改动的目标。",
+      "rootCause": "将干净 Git 检出中的当前已提交材料误判为无归属材料。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "resumes a prepared clean checkout with inherited Shape documents before transfer publication$",
+          "requiredNames": [
+            "Native Build workspace recovery resumes a prepared clean checkout with inherited Shape documents before transfer publication"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-reused-worktree-local-changes",
+      "behavior": "首次交接拒绝复用目标中的未提交实现修改，保留双方材料与原 Run。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581644957"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 2e461885 的公开 next bundle 上运行精确选择断言失败；重新生成 Runtime 后通过。",
+      "expected": "目标代码和原 Run 保持不变，输出具体本地变更阻塞。",
+      "forbidden": "静默在无关目标修改上派发已批准 Builder。",
+      "rootCause": "提交基线检查只比较分支，未检查复用 worktree 的本地修改。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "preserves local implementation changes in a reused Build worktree$",
+          "requiredNames": [
+            "Native Build workspace recovery preserves local implementation changes in a reused Build worktree"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-redirected-result-path",
+      "behavior": "从规划目录回报已交接任务的相对结果路径时读取原目录文件。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581632341"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 2e461885 的公开 next bundle 上运行精确选择断言失败；重新生成 Runtime 后通过。",
+      "expected": "原 Action 记录源目录的真实报告。",
+      "forbidden": "读取目标同路径的另一份报告或误报文件缺失。",
+      "rootCause": "重放 next 参数时未把结果路径解析为原工作区的绝对路径。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "reads a redirected relative result from the original workspace instead of the target$",
+          "requiredNames": [
+            "Native Build workspace recovery reads a redirected relative result from the original workspace instead of the target"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-reapproved-failed-builder-isolation",
+      "behavior": "Builder 失败后修订并重新批准 Shape，仍先按活跃任务准备实施隔离工作区。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581632346"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 2e461885 的公开 next bundle 上运行精确选择断言失败；重新生成 Runtime 后通过。",
+      "expected": "先要求提交仍需保留的部分实现，再把原 Run 交接到独立 worktree。",
+      "forbidden": "因旧失败跳过隔离，或丢弃、自动提交部分实现。",
+      "rootCause": "历史失败 Builder 被误视为已经完成当前实施准备。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "reconsiders Build isolation after a failed Builder and renewed Shape approval$",
+          "requiredNames": [
+            "Native Build workspace recovery reconsiders Build isolation after a failed Builder and renewed Shape approval"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-moved-source-history-loss",
+      "behavior": "交接后源端本地 Run 历史丢失时，只读查询直接跟随目标当前 Run，不恢复陈旧源检查点。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581632351"],
+      "coverageLevel": "runtime",
+      "reproduction": "移走源端 sdk-runs/native 后，2e461885 的只读 inspect 因旧检查点工作区绑定而失败。",
+      "expected": "源和目标文件不变，返回目标当前 Run。",
+      "forbidden": "恢复源端陈旧执行或要求修复已经迁走的 Run。",
+      "rootCause": "交接重定向晚于源端本地历史读取和检查点恢复。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-status.test.ts",
+          "namePattern": "^reads the current moved Run through source status without advancing or rewriting either workspace$",
+          "requiredNames": [
+            "reads the current moved Run through source status without advancing or rewriting either workspace"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-cancelling-shape-start",
+      "behavior": "共享 Shape 创建不能越过仍待释放 selection 的已取消 Run，显式修复清理后才允许新建。",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/43798471242/job/133073266488"],
+      "coverageLevel": "runtime",
+      "reproduction": "8e40d7b3 的既有 cancellation lifecycle 精确测试失败：createNativeSdkChange 意外创建 blocked-replacement。",
+      "expected": "清理前 SDK/Compat 新建均拒绝，保持原 cancelled Run 和 selection；doctor 修复后允许新建。",
+      "forbidden": "因旧便携状态仍在 Shape 而将未完成取消视为可共享规划任务。",
+      "rootCause": "多 Shape 创建只检查 workflow 版本和便携 phase，漏掉 Run 已取消而 selection 清理未完成的业务状态。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-cancellation.test.ts",
+          "namePattern": "keeps failed selection cleanup visible until explicit repair and preserves the original cancelled Run$",
+          "requiredNames": [
+            "Native cancellation lifecycle keeps failed selection cleanup visible until explicit repair and preserves the original cancelled Run"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-legacy-shape-approval",
+      "behavior": "升级旧 Run 后按原 Shape 批准与工作区继续原 Builder，并保持合法 Hook 写入。",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/43798471242/job/133073266461"],
+      "coverageLevel": "runtime",
+      "reproduction": "8e40d7b3 的现有精确回归在 CI 及本地失败；本轮不删除或降低原断言。",
+      "expected": "升级旧 Run 后按原 Shape 批准与工作区继续原 Builder，并保持合法 Hook 写入。",
+      "forbidden": "升级后丢失原批准或执行身份、重写原 Run，或改变只读查询的 Runtime 归属。",
+      "rootCause": "共享规划的领取规则没有区分原 Shape 的执行协议，给升级中的旧批准追加了隔离决定。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-incremental.test.ts",
+          "namePattern": "continues a restored 0.5.0 Run with its original approval and Builder claim without content proof$",
+          "requiredNames": [
+            "Native Shape incremental contract continues a restored 0.5.0 Run with its original approval and Builder claim without content proof"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-legacy-archive-continuation",
+      "behavior": "保留旧 SDK 工作区约定，使后续合法归档完成后仍能恢复原 Archive 的历史。",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/43798471242/job/133073266461"],
+      "coverageLevel": "runtime",
+      "reproduction": "8e40d7b3 的现有精确回归在 CI 及本地失败；本轮不删除或降低原断言。",
+      "expected": "保留旧 SDK 工作区约定，使后续合法归档完成后仍能恢复原 Archive 的历史。",
+      "forbidden": "升级后丢失原批准或执行身份、重写原 Run，或改变只读查询的 Runtime 归属。",
+      "rootCause": "新的共享工作区检查被应用到没有该规划绑定的既有 SDK 调用。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "recovers original archive history after a subsequent legitimate archive changes canonical Specs$",
+          "requiredNames": [
+            "recovers original archive history after a subsequent legitimate archive changes canonical Specs"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-captured-runtime-namespace",
+      "behavior": "只读重定向使用 store 创建时绑定的 Runtime 目录，避免每次读取重复核对或随环境变量改换目录。",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/43798471242/job/133073266461"],
+      "coverageLevel": "runtime",
+      "reproduction": "8e40d7b3 的现有精确回归在 CI 及本地失败；本轮不删除或降低原断言。",
+      "expected": "只读重定向使用 store 创建时绑定的 Runtime 目录，避免每次读取重复核对或随环境变量改换目录。",
+      "forbidden": "升级后丢失原批准或执行身份、重写原 Run，或改变只读查询的 Runtime 归属。",
+      "rootCause": "新增交接查询每次重新解析全局 Runtime 根目录，而非复用当前 store 的已绑定目录。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-read-performance.test.ts",
+          "namePattern": "uses its captured Runtime namespace without repeated workspace identity reconciliation$",
+          "requiredNames": [
+            "Native SDK read work budgets uses its captured Runtime namespace without repeated workspace identity reconciliation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-reapproved-succeeded-builder-isolation",
+      "behavior": "成功 Builder 之后修订并重新批准 Shape，仅本次 Shape 之后的实施记录决定是否已准备工作区。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581735753"],
+      "coverageLevel": "public-cli",
+      "reproduction": "当前修复前的精确回归失败；非 Git 行为另用 cd7488f6 的公开 new bundle 在隔离项目复现两次新建均成功。",
+      "expected": "保留成功记录和部分实现，先整理提交基线，再在独立 worktree 领取新 Builder。",
+      "forbidden": "被旧成功记录阻塞而无法交接，或在共享目录直接实施。",
+      "rootCause": "准备条件扫描所有历史成功 Builder，使新批准后的实施准备永久被跳过。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "reconsiders Build isolation after a succeeded Builder and renewed Shape approval$",
+          "requiredNames": [
+            "Native Build workspace recovery reconsiders Build isolation after a succeeded Builder and renewed Shape approval"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-nongit-shared-planning",
+      "behavior": "无 Git 分支时拒绝创建第二个共享 Shape，保留原单 change 的批准和 Build 流程。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581874362"],
+      "coverageLevel": "public-cli",
+      "reproduction": "当前修复前的精确回归失败；非 Git 行为另用 cd7488f6 的公开 new bundle 在隔离项目复现两次新建均成功。",
+      "expected": "第二个 Shape 被拒绝，原 Run 不变，单任务仍可批准并领取 Builder。",
+      "forbidden": "在非 Git 同一目录同时创建并实施两个未隔离任务。",
+      "rootCause": "创建入口只检查版本和阶段，与 Build/Hook 的共享规划适用条件不一致。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "rejects shared Shape planning without a Git branch while retaining the single-change workflow$",
+          "requiredNames": [
+            "Native Build workspace recovery rejects shared Shape planning without a Git branch while retaining the single-change workflow"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "git-562-inherited-worktree-environment",
+      "behavior": "从 Git Hook 环境执行指定 worktree 的同步 Git 检查时不继承其他仓库或索引。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581735745"],
+      "coverageLevel": "unit",
+      "reproduction": "当前修复前的精确回归失败；非 Git 行为另用 cd7488f6 的公开 new bundle 在隔离项目复现两次新建均成功。",
+      "expected": "读取目标 worktree 的实际分支和修改，保留原进程环境与全局 Git 配置。",
+      "forbidden": "读取源索引并将目标未提交实现误判为干净。",
+      "rootCause": "同步 Git 命令继承 GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE，覆盖了显式工作目录。",
+      "tests": [
+        {
+          "file": "test/platform/git-process.test.ts",
+          "namePattern": "reads the requested worktree despite inherited repository and index variables$",
+          "requiredNames": [
+            "Git process helpers reads the requested worktree despite inherited repository and index variables"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-source-workspace-name-collision",
+      "behavior": "规划区已占用默认实施分支或目录时，仍可把已批准 Run 交接至独立工作区。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581945001"],
+      "coverageLevel": "public-cli",
+      "reproduction": "8e49f3bb 的公开 Native CLI/bundle 上四项新增定向回归均失败；本轮源码修复并重新构建后相同四项通过。",
+      "expected": "选择独立执行分支和目录，保留原 Run、批准及另一 Shape 的材料。",
+      "forbidden": "在原共享规划区实施、覆盖既有 owner，或因默认名称相撞永久阻塞合法交接。",
+      "rootCause": "Build 固定复用 change 名称作为执行分支和目录，未区分原规划工作区已经占用该名称。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "hands off from a shared branch planning workspace already using the default execution name$",
+          "requiredNames": [
+            "Native Build workspace recovery hands off from a shared branch planning workspace already using the default execution name"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "hands off from a shared worktree planning workspace already using the default execution name$",
+          "requiredNames": [
+            "Native Build workspace recovery hands off from a shared worktree planning workspace already using the default execution name"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-reapproved-shape-admission",
+      "behavior": "Builder 结束后修订并重新批准 Shape，未领取本轮 Builder 时允许创建另一共享 Shape。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581945006"],
+      "coverageLevel": "public-cli",
+      "reproduction": "8e49f3bb 的公开 Native CLI/bundle 上四项新增定向回归均失败；本轮源码修复并重新构建后相同四项通过。",
+      "expected": "失败和成功 Builder 的旧记录均保留；新轮次尚未实施时允许继续共享规划并在 Build 前隔离。",
+      "forbidden": "把旧 Builder 当作本轮占用而拒绝新 Shape，或在共享目录直接领取 Builder。",
+      "rootCause": "创建入口扫描全部历史 Builder，后续执行却只扫描当前 Shape 轮次，产生不一致。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "admits another shared Shape after a failed Builder is reapproved$",
+          "requiredNames": [
+            "Native Build workspace recovery admits another shared Shape after a failed Builder is reapproved"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "admits another shared Shape after a succeeded Builder is reapproved$",
+          "requiredNames": [
+            "Native Build workspace recovery admits another shared Shape after a succeeded Builder is reapproved"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-planning-branch-binding",
+      "behavior": "共享 Build 交接前保留原 Run 的分支绑定，切错分支时不重绑或写入目标。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581965480"],
+      "coverageLevel": "public-cli",
+      "reproduction": "批准 main 上的 Shape，切到另一分支创建该分支的 Shape，再对原 Shape 执行公开 next。修复前会创建实施目标并替换原绑定；新增回归失败。",
+      "expected": "返回原分支恢复指引，保留原 Run，不创建目标；切回原分支后合法交接仍能完成。",
+      "forbidden": "用当前无关分支覆盖原 Run 绑定，或创建实施目标绕过原分支诊断。",
+      "rootCause": "交接只核对活跃 peer 和目标分支基线，没有在改写 workspace 前检查待交接 Run 的原分支。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "preserves the approved planning branch before handoff and permits switching back$",
+          "requiredNames": [
+            "Native Build workspace recovery preserves the approved planning branch before handoff and permits switching back"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ci-562-process-probe-readiness",
+      "behavior": "超时监管测试夹具在报告就绪前完成进程身份探测准备，保留原命令时限与独立清理断言。",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/43806388846/job/133098663297"],
+      "coverageLevel": "runtime",
+      "reproduction": "Windows Runtime smoke 原测试在约 5.1 秒报告 owned command did not start，尚未进入阻塞和清理断言；本地原样两项均通过。CI 未记录逐层耗时，冷探测准备是代码确认的就绪缺口，不能声称测得其线上耗时。 另在真实子进程 bundle 中仅为第一次身份探测注入 6 秒延迟，ready 仍早发时精确复现相同约 5.3 秒失败。",
+      "expected": "夹具先完成探测准备再报告就绪，命令仍在 5 秒时限后独立停止，后代停止、心跳不再增长且原调用方恢复后得到 confirmed:true。",
+      "forbidden": "延长命令时限或清理期限、跳过进程及后代存活断言，或修改产品超时预算来通过测试。",
+      "rootCause": "夹具在第一次进程身份探测之前发送 ready，把 Windows 可选探测器的冷启动准备与命令执行测试的启动窗口混在一起。",
+      "tests": [
+        {
+          "file": "test/platform/process/owned-command-termination.test.ts",
+          "namePattern": "^keeps its deadline when the owner event loop cannot run its timeout timer$",
+          "requiredNames": [
+            "keeps its deadline when the owner event loop cannot run its timeout timer"
+          ]
+        },
+        {
+          "file": "test/platform/process/owned-command-termination.test.ts",
+          "namePattern": "^waits for owner readiness before measuring the independent deadline$",
+          "requiredNames": ["waits for owner readiness before measuring the independent deadline"]
+        },
+        {
+          "file": "test/platform/process/owned-command-termination.test.ts",
+          "namePattern": "^waits for cold process identity preparation before reporting owner readiness$",
+          "requiredNames": [
+            "waits for cold process identity preparation before reporting owner readiness"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "process-562-linux-group-exit-confirmation",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/43813842367/job/133121798612"],
+      "behavior": "Linux 成功发送终止信号后，确认整个受管进程组已停止执行才登记成功。",
+      "coverageLevel": "runtime",
+      "reproduction": "8a0353cf 的 Linux 全量 CI 中 bridge=false 的后代仍存活但 confirmed 为 true。WSL Ubuntu 24.04 / Node 18.19.1 的真实 runOwnedCommand 夹具仅延迟组信号实际发送 150ms，两个 bridge 模式均复现错误确认；新增五项退出状态测试在旧代码均失败。",
+      "expected": "组已消失或只剩停止执行的僵尸时可确认；正常与延迟退出完成后成功；仍有运行成员或无法核对时不确认。",
+      "forbidden": "把 SIGKILL 被接受当作整组已退出，留下活后代却写 confirmed:true，按死亡组长推断成功，或重发组信号绕过核对。",
+      "rootCause": "Linux 路径发出 SIGKILL 后直接返回 true，只有 Darwin 使用原有的进程组退出探测。",
+      "tests": [
+        {
+          "file": "test/platform/process/owned-command-termination.test.ts",
+          "namePattern": "Linux 成功发送 SIGKILL 后整组为 (?:gone|delayed|alive|unknown|zombie) 时按实际存活状态确认$",
+          "requiredNames": [
+            "受管命令的整树终止证明 Linux 成功发送 SIGKILL 后整组为 gone 时按实际存活状态确认",
+            "受管命令的整树终止证明 Linux 成功发送 SIGKILL 后整组为 delayed 时按实际存活状态确认",
+            "受管命令的整树终止证明 Linux 成功发送 SIGKILL 后整组为 alive 时按实际存活状态确认",
+            "受管命令的整树终止证明 Linux 成功发送 SIGKILL 后整组为 unknown 时按实际存活状态确认",
+            "受管命令的整树终止证明 Linux 成功发送 SIGKILL 后整组为 zombie 时按实际存活状态确认"
+          ]
+        },
+        {
+          "file": "test/platform/process/owned-command-termination.test.ts",
+          "namePattern": "命令及中间父进程退出后不能为仍活着的忽略stdio后代写成功收据（bridge=(?:false|true)）$",
+          "requiredNames": [
+            "受管命令的整树终止证明 命令及中间父进程退出后不能为仍活着的忽略stdio后代写成功收据（bridge=false）",
+            "受管命令的整树终止证明 命令及中间父进程退出后不能为仍活着的忽略stdio后代写成功收据（bridge=true）"
           ]
         }
       ]

@@ -27,7 +27,11 @@ it('waits for owner readiness before measuring the independent deadline', async 
   await assertIndependentDeadline(6000);
 }, 35000);
 
-async function assertIndependentDeadline(ownerStartupDelayMs = 0) {
+it('waits for cold process identity preparation before reporting owner readiness', async () => {
+  await assertIndependentDeadline(0, 6000);
+}, 35000);
+
+async function assertIndependentDeadline(ownerStartupDelayMs = 0, identityStartupDelayMs = 0) {
   const marker = path.join(directory, 'timer-heartbeat'),
     started = path.join(directory, 'timer-started'),
     blocked = path.join(directory, 'owner-blocked'),
@@ -39,7 +43,7 @@ async function assertIndependentDeadline(ownerStartupDelayMs = 0) {
   const command = `const child=require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(heartbeat)},process.argv[2]],{stdio:'ignore',windowsHide:true});require('node:fs').writeFileSync(process.argv[1],JSON.stringify({command:process.pid,descendant:child.pid}));setInterval(()=>{},1000)`;
   await build({
     stdin: {
-      contents: `const fs=require('node:fs');const {runOwnedCommand}=require('./platform/process/run-owned-command.ts');process.send({type:'ready'});let confirmed;runOwnedCommand(process.execPath,['-e',${JSON.stringify(command)},process.env.COMET_TEST_STARTED,process.env.COMET_TEST_MARKER],{cwd:process.env.COMET_TEST_ROOT,timeoutMs:5000,onTerminated:async(_instance,value)=>{confirmed=value}}).then(()=>fs.writeFileSync(process.env.COMET_TEST_RESULT,JSON.stringify({completed:true,confirmed})),error=>fs.writeFileSync(process.env.COMET_TEST_RESULT,JSON.stringify({error:error.message,confirmed})));const poll=setInterval(()=>{if(fs.existsSync(process.env.COMET_TEST_STARTED)){clearInterval(poll);fs.writeFileSync(process.env.COMET_TEST_BLOCKED,'blocked');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10000);fs.writeFileSync(process.env.COMET_TEST_RESUMED,'resumed')}},25);`,
+      contents: `const fs=require('node:fs');const {runOwnedCommand}=require('./platform/process/run-owned-command.ts');const {readProcessIdentity}=require('./platform/process/process-identity.ts');(async()=>{await readProcessIdentity(process.pid);process.send({type:'ready'});let confirmed;runOwnedCommand(process.execPath,['-e',${JSON.stringify(command)},process.env.COMET_TEST_STARTED,process.env.COMET_TEST_MARKER],{cwd:process.env.COMET_TEST_ROOT,timeoutMs:5000,onTerminated:async(_instance,value)=>{confirmed=value}}).then(()=>fs.writeFileSync(process.env.COMET_TEST_RESULT,JSON.stringify({completed:true,confirmed})),error=>fs.writeFileSync(process.env.COMET_TEST_RESULT,JSON.stringify({error:error.message,confirmed})));const poll=setInterval(()=>{if(fs.existsSync(process.env.COMET_TEST_STARTED)){clearInterval(poll);fs.writeFileSync(process.env.COMET_TEST_BLOCKED,'blocked');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10000);fs.writeFileSync(process.env.COMET_TEST_RESUMED,'resumed')}},25);})();`,
       resolveDir: process.cwd(),
     },
     outfile: bundle,
@@ -47,6 +51,24 @@ async function assertIndependentDeadline(ownerStartupDelayMs = 0) {
     platform: 'node',
     format: 'cjs',
     logLevel: 'silent',
+    plugins: identityStartupDelayMs
+      ? [
+          {
+            name: 'slow-process-identity-preparation',
+            setup(builder) {
+              builder.onLoad({ filter: /[/\\]process-identity\.ts$/ }, async ({ path: file }) => ({
+                contents:
+                  'let fixtureIdentityPrepared = false;\n' +
+                  (await fs.readFile(file, 'utf8')).replace(
+                    'export async function readProcessIdentity(pid: number): Promise<string | null> {',
+                    `export async function readProcessIdentity(pid: number): Promise<string | null> { if (!fixtureIdentityPrepared) { fixtureIdentityPrepared = true; await new Promise(resolve => setTimeout(resolve, ${identityStartupDelayMs})); }`,
+                  ),
+                loader: 'ts',
+              }));
+            },
+          },
+        ]
+      : [],
   });
   const owner = spawn(
     process.execPath,
@@ -66,7 +88,7 @@ async function assertIndependentDeadline(ownerStartupDelayMs = 0) {
     },
   );
   processes.push(owner);
-  // 进程启动耗时不属于 runOwnedCommand 的时限；就绪后仍保留原来的启动与清理期限。
+  // 夹具先完成进程身份探测的冷启动准备，再报告就绪；命令时限和清理期限保持不变。
   expect((await once(owner, 'message'))[0]).toEqual({ type: 'ready' });
   const deadline = Date.now() + 5000;
   while (!(await fs.stat(started).catch(() => null))) {
@@ -329,6 +351,38 @@ describe('受管命令的整树终止证明', () => {
       } as unknown as ChildProcess;
       await expect(terminateProcessTreeConfirmed(child)).rejects.toBe(denied);
       expect(child.kill).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['gone', 'delayed', 'alive', 'unknown', 'zombie'] as const)(
+    'Linux 成功发送 SIGKILL 后整组为 %s 时按实际存活状态确认',
+    async (state) => {
+      Object.defineProperty(process, 'platform', { ...platform, value: 'linux' });
+      const pid = 2147483002;
+      let probes = 0;
+      const now = Date.now();
+      vi.spyOn(Date, 'now').mockImplementation(() => now + (probes > 0 ? 2000 : 0));
+      if (state === 'delayed') vi.mocked(Date.now).mockReturnValue(now);
+      const kill = vi.spyOn(process, 'kill').mockImplementation((target, signal) => {
+        expect(target).toBe(-pid);
+        if (signal === 'SIGKILL') return true;
+        expect(signal).toBe(0);
+        probes++;
+        if (state === 'gone' || (state === 'delayed' && probes === 2))
+          throw Object.assign(new Error('kill ESRCH'), { code: 'ESRCH' });
+        if (state === 'unknown') throw Object.assign(new Error('probe EIO'), { code: 'EIO' });
+        return true;
+      });
+      vi.spyOn(fs, 'readdir').mockResolvedValue(['42'] as never);
+      vi.spyOn(fs, 'readFile').mockResolvedValue(
+        `42 (worker) ${state === 'zombie' ? 'Z' : 'S'} 1 ${pid} 0`,
+      );
+      const child = { pid, kill: vi.fn(() => false) } as unknown as ChildProcess;
+      await expect(terminateProcessTreeConfirmed(child)).resolves.toBe(
+        ['gone', 'delayed', 'zombie'].includes(state),
+      );
+      expect(probes).toBe(state === 'delayed' ? 2 : 1);
+      expect(kill.mock.calls.filter(([, signal]) => signal === 'SIGKILL')).toHaveLength(1);
     },
   );
 

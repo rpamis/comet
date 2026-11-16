@@ -1,3 +1,4 @@
+import { readNativeBuildWorkspace } from './native-build-workspace-record.js';
 import { commitNativeSdkArchiveFailure } from './native-portable-archive.js';
 import { observeWorkflowRunStore } from '../workflow-application/run-trace.js';
 import {
@@ -491,6 +492,18 @@ export function createNativeSdkStateStore(
     runId: string,
     publishCheckpoint = false,
   ): Promise<WorkflowRun | null> {
+    const transferred = await readNativeBuildWorkspace(projectRoot, runId, workspaceRuntimeRoot);
+    if (transferred) {
+      const current = await createNativeSdkStateStore(transferred.projectRoot, {
+        readOnly: true,
+        rootRunId: runId,
+      }).read(runId);
+      if (!current)
+        throw new Error(
+          `Native Build workspace handoff is incomplete; use comet native next ${runId} --project-root ${projectRoot} --json to resume it`,
+        );
+      return current;
+    }
     let run: WorkflowRun | null;
     if (projectionRead) {
       try {
@@ -538,9 +551,30 @@ export function createNativeSdkStateStore(
         runId,
       ),
     async compareAndSwap(runId, expectedRevision, next) {
+      const transferred = await readNativeBuildWorkspace(projectRoot, runId, workspaceRuntimeRoot);
+      if (transferred)
+        throw new Error(
+          `Native change moved to ${transferred.projectRoot}; run comet native next ${runId} --project-root ${projectRoot} --json to resume the transfer`,
+        );
       if (options.readOnly) throw new Error('Native SDK diagnostic store is read-only');
       assertMutationWorkspace();
       const state = parseNativePortableState(next.state);
+      const implementationClaim = next.actions.find(
+        (action) =>
+          ['build.builder', 'supervisor.prepare'].includes(action.stepId) &&
+          action.status === 'running',
+      );
+      if (implementationClaim && !options.identity) {
+        const previous = await store.read(runId);
+        const original = previous?.actions.find((action) => action.id === implementationClaim.id);
+        if (original?.status !== 'running') {
+          const { listNativeSdkBuildPeers } = await import('./native-build-workspace-record.js');
+          if ((await listNativeSdkBuildPeers(projectRoot, runId)).length > 0)
+            throw new Error(
+              `Native Build requires its own worktree; run comet native next ${runId} --project-root ${projectRoot} --json before claiming implementation`,
+            );
+        }
+      }
       for (const action of next.actions) {
         if (
           action.status !== 'running' ||

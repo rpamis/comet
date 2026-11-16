@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { inspectNativeHookGuard } from '../../../domains/comet-native/native-hook-guard.js';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -241,6 +242,9 @@ describe('Native Shape incremental contract', () => {
       context: { projectRoot: f.root, requestId: token },
     });
     const claimed = await f.inspect();
+    expect(
+      await inspectNativeHookGuard(f.root, { intent: 'write', targets: ['worker.ts'] }, f.name),
+    ).toMatchObject({ allowed: true });
     await fs.writeFile(f.briefFile, f.released.brief.replace('planned', '42'));
     const result = await f.runtime.recordOutcome({
       runId: f.name,

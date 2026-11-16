@@ -143,7 +143,7 @@ export const DEMO_CHANGE_TRACES = Object.freeze(
   Object.fromEntries([native, command, classic].map((trace) => [trace.traceId, trace])),
 );
 export const DEMO_CHANGE_TRACE_INDEX = {
-  traces: Object.values(DEMO_CHANGE_TRACES).map(({ nodes, ...trace }) => trace),
+  traces: Object.values(DEMO_CHANGE_TRACES).map(({ nodes: _nodes, ...trace }) => trace),
   truncated: false,
   unreadable: 0,
   days: 7,

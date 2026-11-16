@@ -3,6 +3,7 @@ import { lstatSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 
 import { measureCometGitCommand } from './runtime-metrics.js';
+import { independentGitEnvironment } from './git-environment.js';
 import { ExternalCommandError, runExternalCommandAsync } from './external-command.js';
 
 const GIT_TIMEOUT_MS = 30_000;
@@ -28,6 +29,7 @@ function executeGitCommand(
     return measureCometGitCommand(() =>
       execFileSync('git', ['-C', cwd, ...args], {
         encoding: 'utf8',
+        env: independentGitEnvironment(),
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: GIT_TIMEOUT_MS,
         killSignal: 'SIGKILL',

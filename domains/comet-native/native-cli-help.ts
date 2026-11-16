@@ -199,6 +199,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--accept-on-pass <authorization-summary>  With this Verify result only, record prior explicit user delegation to accept and archive if all criteria pass. Without this option, wait for user acceptance.',
       '--details                   With --session, include the full SDK projection alongside the current task.',
       '--summary <text>    Required transition or recovery summary.',
+      '--defer-build       With --confirmed, save Shape approval and wait for a later next call to prepare the Build workspace.',
       '--confirmed         Confirm the persisted Shape boundary with both expected guards, or confirm an explicitly degraded verifier-unavailable fallback before Archive.',
       '--coordination-mode multi-session|single-session  Choose how a multi-child Supervisor proceeds. Supply it with --confirmed at the persisted Shape boundary to confirm the full plan and mode together, or select it during preparation and confirm the plan afterward.',
       '--accept-result     Accept the current skill-coordinated Verify result and make it archive-ready.',

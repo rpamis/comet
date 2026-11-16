@@ -1,3 +1,6 @@
+import path from 'node:path';
+import { readNativeBuildWorkspace } from './native-build-workspace-record.js';
+import { prepareNativeBuildWorkspace } from './native-build-workspace.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
 import { inspectNativeChildren } from './native-children.js';
 import {
@@ -83,6 +86,7 @@ export async function nativeNextCommand(
   args: string[],
   projectRoot: string,
 ): Promise<DispatchResult> {
+  const originalArgs = [...args];
   const name = requiredPositional(args, 'change name');
   const resultFile = takeOption(args, '--result');
   const sessionId = takeOption(args, '--session');
@@ -104,6 +108,8 @@ export async function nativeNextCommand(
   const runnerInputFile = takeOption(args, '--runner-input');
   const validateOnly = takeFlag(args, '--validate-only');
   const confirmed = takeFlag(args, '--confirmed');
+  const deferBuild = takeFlag(args, '--defer-build');
+  if (deferBuild && !confirmed) throw new NativeUsageError('--defer-build requires --confirmed');
   const acceptResult = takeFlag(args, '--accept-result');
   const finish = takeOption(args, '--finish') as NativeWorkspaceFinish | undefined;
   if (
@@ -191,8 +197,21 @@ export async function nativeNextCommand(
       },
     };
   }
+  if (deferBuild && !sdkOwner) throw new NativeUsageError('--defer-build requires an SDK change');
   const owner = sdkOwner ?? (await resolveNativeChangeRuntimeOwner(configured.paths, name));
   if (owner?.format === 'sdk') {
+    async function executeSdk(operation: () => Promise<DispatchResult>): Promise<DispatchResult> {
+      if (await readNativeBuildWorkspace(projectRoot, name)) {
+        const target = await prepareNativeBuildWorkspace(projectRoot, name);
+        if (resultFile !== undefined)
+          originalArgs[originalArgs.indexOf('--result') + 1] = path.resolve(
+            projectRoot,
+            resultFile,
+          );
+        return { ...(await nativeNextCommand(originalArgs, target)), executionCwd: target };
+      }
+      return operation();
+    }
     if (taskInput) {
       if (
         !sessionId ||
@@ -215,16 +234,18 @@ export async function nativeNextCommand(
         throw new NativeUsageError(
           '任务领取与结果回报需要 --session，并与原用户决定、Compat 或修订参数分开调用。',
         );
-      return advanceNativeSdkTask({
-        projectRoot,
-        name,
-        sessionId,
-        actionId,
-        resultFile,
-        review,
-        acceptOnPass,
-        details,
-      });
+      return executeSdk(() =>
+        advanceNativeSdkTask({
+          projectRoot,
+          name,
+          sessionId,
+          actionId,
+          resultFile,
+          review,
+          acceptOnPass,
+          details,
+        }),
+      );
     }
     if (
       runnerInputFile !== undefined ||
@@ -246,12 +267,14 @@ export async function nativeNextCommand(
           'SDK blocked 恢复需要 --summary、--proposal-hash、--expected-state-version 和 --expected-action resolve-verifier-blocker',
         );
       }
-      return advanceNativeSdkChange(projectRoot, name, {
-        summary,
-        proposalHash,
-        expectedStateVersion: expectedContinuation.stateVersion,
-        expectedAction: 'resolve-verifier-blocker',
-      });
+      return executeSdk(() =>
+        advanceNativeSdkChange(projectRoot, name, {
+          summary,
+          proposalHash,
+          expectedStateVersion: expectedContinuation.stateVersion,
+          expectedAction: 'resolve-verifier-blocker',
+        }),
+      );
     }
     if (reviseRequirements) {
       if (summary === undefined || expectedContinuation?.action !== 'revise-requirements') {
@@ -259,12 +282,14 @@ export async function nativeNextCommand(
           'SDK requirements revision requires --summary, --expected-state-version, and --expected-action revise-requirements',
         );
       }
-      return advanceNativeSdkChange(projectRoot, name, {
-        summary,
-        ...(proposalHash === undefined ? {} : { proposalHash }),
-        expectedStateVersion: expectedContinuation.stateVersion,
-        expectedAction: 'revise-requirements',
-      });
+      return executeSdk(() =>
+        advanceNativeSdkChange(projectRoot, name, {
+          summary,
+          ...(proposalHash === undefined ? {} : { proposalHash }),
+          expectedStateVersion: expectedContinuation.stateVersion,
+          expectedAction: 'revise-requirements',
+        }),
+      );
     }
     if (confirmed) {
       if (
@@ -276,12 +301,15 @@ export async function nativeNextCommand(
           'SDK Shape confirmation requires --summary, --expected-state-version, and --expected-action confirm-shape',
         );
       }
-      return advanceNativeSdkChange(projectRoot, name, {
-        summary,
-        expectedStateVersion: expectedContinuation.stateVersion,
-        expectedAction: 'confirm-shape',
-        ...(coordinationMode === undefined ? {} : { coordinationMode }),
-      });
+      return executeSdk(() =>
+        advanceNativeSdkChange(projectRoot, name, {
+          summary,
+          expectedStateVersion: expectedContinuation.stateVersion,
+          expectedAction: 'confirm-shape',
+          deferBuild,
+          ...(coordinationMode === undefined ? {} : { coordinationMode }),
+        }),
+      );
     }
     if (acceptResult || reviseImplementation || retryVerifier) {
       const action = acceptResult
@@ -298,12 +326,14 @@ export async function nativeNextCommand(
           `SDK Verify decision requires --summary, --proposal-hash, --expected-state-version, and --expected-action ${action}`,
         );
       }
-      return advanceNativeSdkChange(projectRoot, name, {
-        summary,
-        proposalHash,
-        expectedStateVersion: expectedContinuation.stateVersion,
-        expectedAction: action,
-      });
+      return executeSdk(() =>
+        advanceNativeSdkChange(projectRoot, name, {
+          summary,
+          proposalHash,
+          expectedStateVersion: expectedContinuation.stateVersion,
+          expectedAction: action,
+        }),
+      );
     }
     if (continueBuilder) {
       if (
@@ -315,12 +345,14 @@ export async function nativeNextCommand(
           'SDK Builder continuation requires --summary, --proposal-hash, --expected-state-version, and --expected-action continue-builder',
         );
       }
-      return advanceNativeSdkChange(projectRoot, name, {
-        summary,
-        proposalHash,
-        expectedStateVersion: expectedContinuation.stateVersion,
-        expectedAction: 'continue-builder',
-      });
+      return executeSdk(() =>
+        advanceNativeSdkChange(projectRoot, name, {
+          summary,
+          proposalHash,
+          expectedStateVersion: expectedContinuation.stateVersion,
+          expectedAction: 'continue-builder',
+        }),
+      );
     }
     if (proposalHash !== undefined || coordinationMode !== undefined) {
       throw new NativeUsageError(
@@ -341,17 +373,19 @@ export async function nativeNextCommand(
       };
     }
     if (summary !== undefined || expectedContinuation !== undefined) {
-      return advanceNativeSdkChange(projectRoot, name, {
-        ...(summary === undefined ? {} : { summary }),
-        ...(expectedContinuation === undefined
-          ? {}
-          : {
-              expectedStateVersion: expectedContinuation.stateVersion,
-              expectedAction: 'prepare-shape-confirmation' as const,
-            }),
-      });
+      return executeSdk(() =>
+        advanceNativeSdkChange(projectRoot, name, {
+          ...(summary === undefined ? {} : { summary }),
+          ...(expectedContinuation === undefined
+            ? {}
+            : {
+                expectedStateVersion: expectedContinuation.stateVersion,
+                expectedAction: 'prepare-shape-confirmation' as const,
+              }),
+        }),
+      );
     }
-    return advanceNativeSdkChange(projectRoot, name);
+    return executeSdk(() => advanceNativeSdkChange(projectRoot, name));
   }
   if (
     (confirmed ||

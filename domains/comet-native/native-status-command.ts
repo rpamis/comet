@@ -45,10 +45,8 @@ export async function nativeStatusCommand(
   const executionCwd = projectRoot;
   if (name && (await readSdkChangeOwner(projectRoot, 'native', name))) {
     if (cursor) throw new NativeUsageError('SDK Native status details do not use --cursor');
-    return sdkStatusResult(
-      await inspectNativeSdkStatus({ projectRoot, name, details }),
-      projectRoot,
-    );
+    const data = await inspectNativeSdkStatus({ projectRoot, name, details });
+    return sdkStatusResult(data, data.workspace.projectRoot);
   }
   const data = name
     ? await inspectDiscoveredNativeStatus({

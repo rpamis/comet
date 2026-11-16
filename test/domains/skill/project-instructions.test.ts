@@ -15,6 +15,23 @@ describe('Comet project instructions', () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-project-instructions-'));
   });
 
+  it('ships shared Shape workspace instructions in both Rule languages', async () => {
+    for (const suffix of ['', '.en']) {
+      const rule = await fs.readFile(
+        path.resolve(`assets/skills/comet/rules/comet-workflow-guard${suffix}.md`),
+        'utf8',
+      );
+      for (const entry of [
+        '--defer-build',
+        'native select <change>',
+        'executionCwd',
+        'workspace.projectRoot',
+        'Action',
+      ])
+        expect(rule).toContain(entry);
+    }
+  });
+
   it('creates AGENTS.md and CLAUDE.md with managed XML blocks', async () => {
     const result = await installCometProjectInstructions(tmpDir, 'zh');
 

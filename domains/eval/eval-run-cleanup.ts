@@ -131,15 +131,28 @@ export async function assertEvalContainersStopped(project: string, id: string): 
 
 /** 仅处理当前项目及实验的容器；无法复核时不能报告停止成功。 */
 export async function stopEvalContainers(project: string, id: string): Promise<void> {
-  const ids = await evalContainerIds(id, await evalProjectIdentity(project));
+  const projectIdentity = await evalProjectIdentity(project);
+  const ids = await evalContainerIds(id, projectIdentity);
   if (ids.length) {
     // --rm 容器可能在 stop 后自行消失；最终查询决定清理是否完成。
     await runExternalCommandAsync('docker', ['stop', '--time', '5', ...ids], {
       timeoutMs: 15000,
     }).catch(() => {});
+    const removalDeadline = Date.now() + 10000;
+    let removalPending = false;
     await runExternalCommandAsync('docker', ['rm', '--force', ...ids], {
       timeoutMs: 10000,
-    }).catch(() => {});
+    }).catch((error: Error) => {
+      removalPending = /removal of container .*already in progress/iu.test(error.message);
+    });
+    // --rm may already be removing the stopped container. Wait within the removal
+    // command's existing budget; a conflict is not proof that cleanup finished.
+    while (
+      removalPending &&
+      Date.now() < removalDeadline &&
+      (await evalContainerIds(id, projectIdentity)).some((value) => ids.includes(value))
+    )
+      await new Promise((resolve) => setTimeout(resolve, 100));
   }
   await assertEvalContainersStopped(project, id);
 }
