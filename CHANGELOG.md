@@ -10,6 +10,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Linux process cleanup**: Confirm that the owned process group has stopped before recording successful cleanup, including descendants that outlive their parent or ignore standard streams.
+
 - **Windows input snapshots**: Reject files rewritten during capture even when Windows reports unchanged timestamps, so stale bytes or digests are not accepted as current inputs.
 
 - **Git worktree checks**: Use the requested repository and index when Comet runs from a Git Hook environment, so inherited Git variables do not hide local worktree changes. Preserve global configuration and authentication.

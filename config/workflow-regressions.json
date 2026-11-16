@@ -54754,6 +54754,37 @@
           ]
         }
       ]
+    },
+    {
+      "id": "process-562-linux-group-exit-confirmation",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/43813842367/job/133121798612"],
+      "behavior": "Linux 成功发送终止信号后，确认整个受管进程组已停止执行才登记成功。",
+      "coverageLevel": "runtime",
+      "reproduction": "8a0353cf 的 Linux 全量 CI 中 bridge=false 的后代仍存活但 confirmed 为 true。WSL Ubuntu 24.04 / Node 18.19.1 的真实 runOwnedCommand 夹具仅延迟组信号实际发送 150ms，两个 bridge 模式均复现错误确认；新增五项退出状态测试在旧代码均失败。",
+      "expected": "组已消失或只剩停止执行的僵尸时可确认；正常与延迟退出完成后成功；仍有运行成员或无法核对时不确认。",
+      "forbidden": "把 SIGKILL 被接受当作整组已退出，留下活后代却写 confirmed:true，按死亡组长推断成功，或重发组信号绕过核对。",
+      "rootCause": "Linux 路径发出 SIGKILL 后直接返回 true，只有 Darwin 使用原有的进程组退出探测。",
+      "tests": [
+        {
+          "file": "test/platform/process/owned-command-termination.test.ts",
+          "namePattern": "Linux 成功发送 SIGKILL 后整组为 (?:gone|delayed|alive|unknown|zombie) 时按实际存活状态确认$",
+          "requiredNames": [
+            "受管命令的整树终止证明 Linux 成功发送 SIGKILL 后整组为 gone 时按实际存活状态确认",
+            "受管命令的整树终止证明 Linux 成功发送 SIGKILL 后整组为 delayed 时按实际存活状态确认",
+            "受管命令的整树终止证明 Linux 成功发送 SIGKILL 后整组为 alive 时按实际存活状态确认",
+            "受管命令的整树终止证明 Linux 成功发送 SIGKILL 后整组为 unknown 时按实际存活状态确认",
+            "受管命令的整树终止证明 Linux 成功发送 SIGKILL 后整组为 zombie 时按实际存活状态确认"
+          ]
+        },
+        {
+          "file": "test/platform/process/owned-command-termination.test.ts",
+          "namePattern": "命令及中间父进程退出后不能为仍活着的忽略stdio后代写成功收据（bridge=(?:false|true)）$",
+          "requiredNames": [
+            "受管命令的整树终止证明 命令及中间父进程退出后不能为仍活着的忽略stdio后代写成功收据（bridge=false）",
+            "受管命令的整树终止证明 命令及中间父进程退出后不能为仍活着的忽略stdio后代写成功收据（bridge=true）"
+          ]
+        }
+      ]
     }
   ],
   "historicalTestMigrations": [

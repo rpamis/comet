@@ -1,5 +1,8 @@
 import type { ChildProcess } from 'node:child_process';
-import { terminateProcessTreeConfirmed } from './terminate-process-tree.js';
+import {
+  inspectLinuxProcessGroupLiveness,
+  terminateProcessTreeConfirmed,
+} from './terminate-process-tree.js';
 import { promises as fs } from 'node:fs';
 
 import { runExternalCommandAsync } from './external-command.js';
@@ -142,30 +145,8 @@ export async function inspectProcessTreeLiveness(
     return (error as NodeJS.ErrnoException).code === 'ESRCH' ? 'dead' : 'unknown';
   }
   if (process.platform === 'linux') {
-    try {
-      const entries = await fs.readdir('/proc');
-      for (const entry of entries) {
-        if (!/^\d+$/u.test(entry)) continue;
-        try {
-          const stat = await fs.readFile(`/proc/${entry}/stat`, 'utf8');
-          const fields = stat
-            .slice(stat.lastIndexOf(')') + 2)
-            .trim()
-            .split(/\s+/u);
-          if (Number(fields[2]) === pid && fields[0] !== 'Z' && fields[0] !== 'X')
-            return leader === 'alive' ? 'alive' : 'unknown';
-        } catch (error) {
-          if (
-            (error as NodeJS.ErrnoException).code !== 'ENOENT' &&
-            (error as NodeJS.ErrnoException).code !== 'ESRCH'
-          )
-            return 'unknown';
-        }
-      }
-      return 'dead';
-    } catch {
-      return 'unknown';
-    }
+    const group = await inspectLinuxProcessGroupLiveness(pid);
+    return group === 'alive' && leader !== 'alive' ? 'unknown' : group;
   }
   return leader === 'alive' ? 'alive' : 'unknown';
 }

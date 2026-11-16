@@ -354,6 +354,38 @@ describe('受管命令的整树终止证明', () => {
     },
   );
 
+  it.each(['gone', 'delayed', 'alive', 'unknown', 'zombie'] as const)(
+    'Linux 成功发送 SIGKILL 后整组为 %s 时按实际存活状态确认',
+    async (state) => {
+      Object.defineProperty(process, 'platform', { ...platform, value: 'linux' });
+      const pid = 2147483002;
+      let probes = 0;
+      const now = Date.now();
+      vi.spyOn(Date, 'now').mockImplementation(() => now + (probes > 0 ? 2000 : 0));
+      if (state === 'delayed') vi.mocked(Date.now).mockReturnValue(now);
+      const kill = vi.spyOn(process, 'kill').mockImplementation((target, signal) => {
+        expect(target).toBe(-pid);
+        if (signal === 'SIGKILL') return true;
+        expect(signal).toBe(0);
+        probes++;
+        if (state === 'gone' || (state === 'delayed' && probes === 2))
+          throw Object.assign(new Error('kill ESRCH'), { code: 'ESRCH' });
+        if (state === 'unknown') throw Object.assign(new Error('probe EIO'), { code: 'EIO' });
+        return true;
+      });
+      vi.spyOn(fs, 'readdir').mockResolvedValue(['42'] as never);
+      vi.spyOn(fs, 'readFile').mockResolvedValue(
+        `42 (worker) ${state === 'zombie' ? 'Z' : 'S'} 1 ${pid} 0`,
+      );
+      const child = { pid, kill: vi.fn(() => false) } as unknown as ChildProcess;
+      await expect(terminateProcessTreeConfirmed(child)).resolves.toBe(
+        ['gone', 'delayed', 'zombie'].includes(state),
+      );
+      expect(probes).toBe(state === 'delayed' ? 2 : 1);
+      expect(kill.mock.calls.filter(([, signal]) => signal === 'SIGKILL')).toHaveLength(1);
+    },
+  );
+
   it('POSIX 整组已消失的 ESRCH 可确认，不再探测或重发组信号', async () => {
     Object.defineProperty(process, 'platform', { ...platform, value: 'darwin' });
     const pid = 2147483002;

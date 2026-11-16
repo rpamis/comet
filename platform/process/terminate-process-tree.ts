@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 const WINDOWS_TASKKILL_ATTEMPT_MS = 1_000;
@@ -19,6 +20,11 @@ async function waitForPosixGroupExit(pid: number): Promise<boolean> {
   for (;;) {
     try {
       process.kill(-pid, 0);
+      if (process.platform === 'linux') {
+        const group = await inspectLinuxProcessGroupLiveness(pid);
+        if (group === 'dead') return true;
+        if (group === 'unknown') return false;
+      }
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code === 'ESRCH') return true;
@@ -26,6 +32,32 @@ async function waitForPosixGroupExit(pid: number): Promise<boolean> {
     }
     if (Date.now() >= deadline) return false;
     await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+/** Linux retains zombie group members after execution has stopped. */
+export async function inspectLinuxProcessGroupLiveness(
+  pid: number,
+): Promise<'alive' | 'dead' | 'unknown'> {
+  try {
+    const entries = await fs.readdir('/proc');
+    for (const entry of entries) {
+      if (!/^\d+$/u.test(entry)) continue;
+      try {
+        const stat = await fs.readFile(`/proc/${entry}/stat`, 'utf8');
+        const fields = stat
+          .slice(stat.lastIndexOf(')') + 2)
+          .trim()
+          .split(/\s+/u);
+        if (Number(fields[2]) === pid && fields[0] !== 'Z' && fields[0] !== 'X') return 'alive';
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== 'ENOENT' && code !== 'ESRCH') return 'unknown';
+      }
+    }
+    return 'dead';
+  } catch {
+    return 'unknown';
   }
 }
 
@@ -107,8 +139,8 @@ export async function terminateProcessTreeConfirmed(child: ChildProcess): Promis
     groupExited = true;
   }
   child.kill('SIGKILL');
-  // Darwin 接受组信号后，忽略 stdio 的后代仍可能尚未退出。
-  // 沿用自清理分支的整组探测，不把信号已发送当成退出证明。
-  if (process.platform === 'darwin' && !groupExited) return waitForPosixGroupExit(pid);
+  // 接受组信号后，忽略 stdio 的后代仍可能尚未退出。
+  // Linux 排除已停止执行的僵尸，不能把信号已发送当成整组退出证明。
+  if (!groupExited) return waitForPosixGroupExit(pid);
   return true;
 }
