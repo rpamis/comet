@@ -43,3 +43,13 @@ Compat 和固定 SDK 应用沿用各自的隔离规则。同一物理工作区�
 遇到目标既有 Runtime 归属或复用 worktree 同名材料时，在改写源状态前拒绝迁移，保留双方现场。只读状态跟随目标当前 Run，源工作区继续阻止实施和原 Action 写入。Hook 先分类目标，中立路径保持原规则，实现路径要求完成工作区交接；中英文 Rule 已同步这些行为。
 
 本轮执行定向 CLI、Router、状态与恢复测试、生成资产和构建检查。真实 Agent 平台 Hook 和模型 Eval 未执行，确定性平台事件夹具不作为真实平台或模型证据。
+
+## 2026-11-16 PR #562 交接审核
+
+来源为 [已删除材料恢复](https://github.com/rpamis/comet/pull/562#discussion_r4581585323) 和 [既有分支基线](https://github.com/rpamis/comet/pull/562#discussion_r4581585327)。在 `2df695243bb88f5093be22981ca39f5a6435d2ad` 的公开 Native next bundle 上新增两项精确回归，两项均失败：新 worktree 留下已在源目录删除的已提交 Spec；已有实施分支停留在旧提交时仍可领取 Builder。
+
+首次交接在发布目标 Run 前替换该 change 的初始检出材料，使删除与当前材料一起交接。已完成复制的交接仍从目标最新 checkpoint 恢复，不重新复制。原有目标 owner、未登记材料及其他 Shape 的保护保持有效。
+
+自动交接前核对既有 `comet/<change>` 分支与源工作区 HEAD 的提交。不同则保留双方分支和材料，拒绝创建 worktree 或推进原 Run，并提示先核对实施基线；不自动重置分支。基线明确对齐后，同一个已批准任务可继续。
+
+案例为 `native-562-build-material-deletions` 与 `native-562-build-branch-baseline`，精确测试选择器见 `config/workflow-regressions.json`。使用公开 bundle 验证删除同步、旧基线拒绝、合法基线继续及原 Run/批准保留；相邻恢复测试继续核对目标最新 checkpoint 和原 Builder 身份。真实平台 Hook 与模型 Eval 不在本轮执行范围内。

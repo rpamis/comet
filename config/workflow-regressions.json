@@ -54368,6 +54368,44 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-562-build-material-deletions",
+      "behavior": "首次 Build 交接精确同步已批准材料，保留源工作区对已提交 Spec 的删除。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581585323"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 2df695243bb88f5093be22981ca39f5a6435d2ad 的公开 Native next bundle 上执行本条精确测试，断言失败。",
+      "expected": "目标不存在已删除的 Spec，保留原 Run、批准和其他 Shape。",
+      "forbidden": "Git 检出的过期 Spec 在交接后被重新纳入需求。",
+      "rootCause": "递归复制仅覆盖源目录存在的文件，未清除新 worktree 检出的旧材料。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "does not restore deleted committed Shape materials during first packaged Build handoff$",
+          "requiredNames": [
+            "Native Build workspace recovery does not restore deleted committed Shape materials during first packaged Build handoff"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-build-branch-baseline",
+      "behavior": "自动 Build 交接前拒绝代码基线不同的既有实施分支，不改写原 Run 或强行重置分支。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581585327"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 2df695243bb88f5093be22981ca39f5a6435d2ad 的公开 Native next bundle 上执行本条精确测试，断言失败。",
+      "expected": "旧分支在创建 worktree 和领取 Builder 前被拒绝；明确对齐基线后原任务可继续。",
+      "forbidden": "静默使用旧代码、覆盖旧分支或在被拒绝后推进原 Run。",
+      "rootCause": "工作区准备复用同名分支，交接调用未核对它是否仍对应源工作区的已提交代码。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "rejects a stale existing Build branch before packaged handoff and permits its aligned baseline$",
+          "requiredNames": [
+            "Native Build workspace recovery rejects a stale existing Build branch before packaged handoff and permits its aligned baseline"
+          ]
+        }
+      ]
     }
   ],
   "historicalTestMigrations": [

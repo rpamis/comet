@@ -1,5 +1,5 @@
 import '../../helpers/isolated-agent-home.js';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -24,6 +24,7 @@ describe('Native Build workspace recovery', () => {
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-build-workspace-recovery-'));
     git('init', '-b', 'main');
+    git('config', 'core.autocrlf', 'false');
     git('commit', '--allow-empty', '-m', 'Fixture baseline');
   });
 
@@ -82,6 +83,80 @@ describe('Native Build workspace recovery', () => {
     ]);
     expect(approved.exitCode, approved.error?.message).toBe(0);
   }
+
+  function startPackagedBuild(): NativeResult {
+    const result = spawnSync(
+      process.execPath,
+      [
+        path.resolve('assets/skills/comet-native/scripts/comet-native-next.mjs'),
+        'shape-a',
+        '--session',
+        'approved-builder',
+        '--project-root',
+        projectRoot,
+        '--json',
+      ],
+      { encoding: 'utf8', timeout: 30_000 },
+    );
+    expect(result.error).toBeUndefined();
+    return JSON.parse(result.stdout) as NativeResult;
+  }
+
+  it('does not restore deleted committed Shape materials during first packaged Build handoff', async () => {
+    const version = await prepareShape();
+    const relative = 'docs/comet/changes/shape-a/specs/obsolete';
+    await fs.mkdir(path.join(projectRoot, relative), { recursive: true });
+    await fs.writeFile(path.join(projectRoot, relative, 'spec.md'), '# Obsolete requirement\n');
+    git('add', 'docs');
+    git('commit', '-m', 'Review initial Shape documents');
+    await fs.rm(path.join(projectRoot, relative), { recursive: true });
+    await approve(version);
+
+    const approved = (await inspectNativeSdkRun(projectRoot, 'shape-a')).run;
+    const started = startPackagedBuild();
+    expect(started.exitCode, started.error?.message).toBe(0);
+    expect(started.data?.task).toMatchObject({ session: 'approved-builder', status: 'running' });
+    const target = path.join(projectRoot, '.worktrees/shape-a');
+    await expect(fs.lstat(path.join(target, relative))).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(
+      await fs.readFile(
+        path.join(target, 'docs/comet/changes/shape-a/specs/feature/spec.md'),
+        'utf8',
+      ),
+    ).toBe('# Feature\nBehavior works.\n');
+    const moved = (await inspectNativeSdkRun(target, 'shape-a')).run;
+    expect(moved.id).toBe(approved.id);
+    expect(moved.waits).toEqual(approved.waits);
+    expect((await cli(['status', 'shape-b'])).data?.phase).toBe('shape');
+  });
+
+  it('rejects a stale existing Build branch before packaged handoff and permits its aligned baseline', async () => {
+    git('branch', 'comet/shape-a');
+    await fs.writeFile(
+      path.join(projectRoot, 'implementation.txt'),
+      'Current implementation baseline\n',
+    );
+    git('add', 'implementation.txt');
+    git('commit', '-m', 'Advance implementation baseline');
+    await approve(await prepareShape());
+    const approved = (await inspectNativeSdkRun(projectRoot, 'shape-a')).run;
+
+    const rejected = startPackagedBuild();
+    expect(rejected.exitCode).not.toBe(0);
+    expect(rejected.error?.message).toContain('baseline');
+    expect((await inspectNativeSdkRun(projectRoot, 'shape-a')).run).toEqual(approved);
+    await expect(fs.lstat(path.join(projectRoot, '.worktrees/shape-a'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+
+    git('branch', '-f', 'comet/shape-a', 'HEAD');
+    const started = startPackagedBuild();
+    expect(started.exitCode, started.error?.message).toBe(0);
+    const target = path.join(projectRoot, '.worktrees/shape-a');
+    expect(await fs.readFile(path.join(target, 'implementation.txt'), 'utf8')).toBe(
+      'Current implementation baseline\n',
+    );
+  });
 
   it('preserves the current target checkpoint and original Builder when its local Run is missing', async () => {
     await approve(await prepareShape());

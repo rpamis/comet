@@ -14,7 +14,7 @@ import { parseNativePortableState } from './native-portable-state.js';
 import { prepareNativeWorkspace } from './native-workspace-preparation.js';
 import { atomicWriteText } from './native-atomic-file.js';
 import { selectNativeChange } from './native-selection.js';
-import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
+import { inspectGitWorktree, isLocalGitBranch } from '../../platform/paths/git-worktree.js';
 import { runGitCommand } from '../../platform/process/git.js';
 
 /** Move an approved, unclaimed built-in Run before dispatching implementation. */
@@ -51,10 +51,20 @@ export async function prepareNativeBuildWorkspace(
       throw new Error(
         'Build worktree requires committed code changes. Commit the implementation baseline before retrying the same next command.',
       );
+    const changeBranch = `comet/${name}`;
+    if (
+      isLocalGitBranch(projectRoot, changeBranch) &&
+      runGitCommand(projectRoot, ['rev-parse', `refs/heads/${changeBranch}`]) !==
+        runGitCommand(projectRoot, ['rev-parse', 'HEAD'])
+    )
+      throw new Error(
+        `Native Build branch ${changeBranch} has a different implementation baseline from ${projectRoot}. Preserve its branch and worktree, inspect git log ${changeBranch}...HEAD, and reconcile the intended baseline before retrying the same native next command.`,
+      );
     const prepared = await prepareNativeWorkspace({
       projectRoot,
       name,
       isolation: 'worktree',
+      changeBranch,
       sourceConfig: config,
       targetBranch: inspectGitWorktree(projectRoot).currentBranch ?? undefined,
     });
@@ -114,6 +124,9 @@ export async function prepareNativeBuildWorkspace(
       transfer.run,
     );
 
+    // Before publishing the target Run, replace its initial checkout with the
+    // approved materials, including deletions. Completed transfers never recopy.
+    await fs.rm(path.join(targetPaths.changesDir, name), { recursive: true, force: true });
     await fs.cp(path.join(paths.changesDir, name), path.join(targetPaths.changesDir, name), {
       recursive: true,
     });
