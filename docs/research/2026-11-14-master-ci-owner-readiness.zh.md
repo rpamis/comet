@@ -28,3 +28,13 @@
 - 远端结果见本次提交的 CI；提交前尚未执行该候选的远端检查，不以本地通过代替。
 
 本次只修改测试夹具、回归登记和本记录，没有产品行为变化，无需版本升级或用户发布 Changelog。未启动真实模型 Eval，用户没有启动请求。本地不运行全量测试，完整套件由远端 CI 验证。
+
+## 2026-11-16 冷探测准备补充
+
+来源：[PR #562 Windows Runtime smoke](https://github.com/rpamis/comet/actions/runs/43806388846/job/133098663297)，提交 `a4d833cd`。原案例再次在约 5.1 秒报告 `owned command did not start`，尚未进入事件循环阻塞断言。原样本地定向两项均通过，没有本地重现线上时序；CI 没有逐层启动日志，不能声称已测得具体慢在哪个子进程。
+
+代码核对发现，夹具的 ready 消息早于第一次 `readProcessIdentity`，Windows 的可选本地探测器首次准备仍落在后续 5 秒启动等待内。本轮只将真实进程身份探测准备移到夹具 ready 之前；生产 `runOwnedCommand`、监管器的截止时间、5 秒命令预算、8 秒清理等待、10 秒原调用方阻塞、心跳停止及 `confirmed: true` 断言全部保留。没有 mock 身份探测或进程终止，没有修改 Runtime 或发布行为，不追加用户 Changelog。
+
+登记 `ci-562-process-probe-readiness` 复用原两项精确测试，历史登记和名称保留。实际远端验收须以本轮候选的 Windows Runtime smoke 为准，本地通过不能证明冷 CI 环境已修复；完整验证结果在 PR 中持续更新。未启动模型 Eval。
+
+为取得稳定的前后对照，新增 `waits for cold process identity preparation before reporting owner readiness`：只在测试 bundle 为第一次真实身份探测注入 6 秒准备延迟，不 mock 返回身份或终止行为。沿原先先报告 ready 的顺序约 5.3 秒失败，错误同为 `owned command did not start`；准备后再报告 ready 使用相同的完整截止时间与后代清理断言。此案例的 35 秒测试总超时包含夹具准备，不改变原案例的 25 秒总超时或 5 秒命令预算。

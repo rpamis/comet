@@ -54712,6 +54712,37 @@
           ]
         }
       ]
+    },
+    {
+      "id": "ci-562-process-probe-readiness",
+      "behavior": "超时监管测试夹具在报告就绪前完成进程身份探测准备，保留原命令时限与独立清理断言。",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/43806388846/job/133098663297"],
+      "coverageLevel": "runtime",
+      "reproduction": "Windows Runtime smoke 原测试在约 5.1 秒报告 owned command did not start，尚未进入阻塞和清理断言；本地原样两项均通过。CI 未记录逐层耗时，冷探测准备是代码确认的就绪缺口，不能声称测得其线上耗时。 另在真实子进程 bundle 中仅为第一次身份探测注入 6 秒延迟，ready 仍早发时精确复现相同约 5.3 秒失败。",
+      "expected": "夹具先完成探测准备再报告就绪，命令仍在 5 秒时限后独立停止，后代停止、心跳不再增长且原调用方恢复后得到 confirmed:true。",
+      "forbidden": "延长命令时限或清理期限、跳过进程及后代存活断言，或修改产品超时预算来通过测试。",
+      "rootCause": "夹具在第一次进程身份探测之前发送 ready，把 Windows 可选探测器的冷启动准备与命令执行测试的启动窗口混在一起。",
+      "tests": [
+        {
+          "file": "test/platform/process/owned-command-termination.test.ts",
+          "namePattern": "^keeps its deadline when the owner event loop cannot run its timeout timer$",
+          "requiredNames": [
+            "keeps its deadline when the owner event loop cannot run its timeout timer"
+          ]
+        },
+        {
+          "file": "test/platform/process/owned-command-termination.test.ts",
+          "namePattern": "^waits for owner readiness before measuring the independent deadline$",
+          "requiredNames": ["waits for owner readiness before measuring the independent deadline"]
+        },
+        {
+          "file": "test/platform/process/owned-command-termination.test.ts",
+          "namePattern": "^waits for cold process identity preparation before reporting owner readiness$",
+          "requiredNames": [
+            "waits for cold process identity preparation before reporting owner readiness"
+          ]
+        }
+      ]
     }
   ],
   "historicalTestMigrations": [
