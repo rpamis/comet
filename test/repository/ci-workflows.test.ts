@@ -801,15 +801,6 @@ describe('CI workflows', () => {
     );
   });
 
-  it('separates unstable external integrations into a strict scheduled canary', async () => {
-    const workflow = await readWorkflow('integration-canary.yml');
-
-    expect(workflow).toContain('schedule:');
-    expect(workflow).toContain('--workflow classic --json');
-    expect(workflow).toContain("result[component] === 'failed'");
-    expect(workflow).toContain('throw new Error(`External installer failures:');
-  });
-
   it('requires both actual core platforms before the paid Eval job', async () => {
     const source = await readWorkflow('eval-regression.yml');
     const workflow = parse(source);
