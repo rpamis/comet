@@ -26,6 +26,7 @@ import {
 } from '../../../domains/workflow-application/index.js';
 import type { SkillExecutionHost } from '../../../domains/workflow-application/index.js';
 import {
+  isLegacyBuiltinRun,
   readWorkflowApplicationRun,
   inspectWorkflowApplicationRun,
 } from '../../../domains/workflow-application/application.js';
@@ -985,5 +986,25 @@ describe('application adaptation and SDK authority', () => {
         server.close((error) => (error ? reject(error) : resolve())),
       );
     }
+  });
+});
+
+describe('isLegacyBuiltinRun', () => {
+  const native = (runtimeVersion: string) => ({ runtimeVersion, base: 'native' });
+  it('keeps a pinned Run from the previous releases resuming after a version bump', () => {
+    expect(isLegacyBuiltinRun(native('0.5.2'), '0.5.3', 'run')).toBe(true);
+    expect(isLegacyBuiltinRun(native('0.5.2'), '0.5.4', 'run')).toBe(true);
+    expect(isLegacyBuiltinRun(native('0.5.3'), '0.5.4', 'run')).toBe(true);
+    expect(
+      isLegacyBuiltinRun({ runtimeVersion: '0.5.3', base: 'classic-hotfix' }, '0.5.4', 'run'),
+    ).toBe(true);
+  });
+  it('does not apply to the current version, new Runs, custom bases or unknown versions', () => {
+    expect(isLegacyBuiltinRun(native('0.5.4'), '0.5.4', 'run')).toBe(false);
+    expect(isLegacyBuiltinRun(native('0.5.3'), '0.5.4', undefined)).toBe(false);
+    expect(isLegacyBuiltinRun({ runtimeVersion: '0.5.3', base: 'custom' }, '0.5.4', 'run')).toBe(
+      false,
+    );
+    expect(isLegacyBuiltinRun(native('0.0.0'), '0.5.4', 'run')).toBe(false);
   });
 });

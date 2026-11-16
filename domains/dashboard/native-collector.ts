@@ -12,10 +12,16 @@ import {
 import { NATIVE_CHANGE_STATE_FILE, readNativeChangeFile } from '../comet-native/native-change.js';
 import { nativeProjectPaths, resolveContainedNativePath } from '../comet-native/native-paths.js';
 import { readNativePortableState } from '../comet-native/native-portable-state.js';
+import {
+  isNativeSdkChangeCancellationComplete,
+  nativeSdkChangeCancellationPaths,
+} from '../comet-native/native-sdk-cancellation.js';
 import type { NativePortableState } from '../comet-native/native-portable-types.js';
 import type { NativeChangeState, NativeProjectPaths } from '../comet-native/native-types.js';
 import { projectNativeWorkspace } from '../comet-native/native-workspace.js';
 import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
+import { withoutProtectedProjectReadScope } from '../workflow-contract/protected-project-path.js';
+import { runWithoutHookReadCache } from '../../platform/process/hook-read-cache.js';
 import {
   adaptNativeDashboardChange,
   adaptNativeDashboardListItem,
@@ -227,7 +233,12 @@ function nativeDashboardCandidateLocator(
     `native:${nativeDashboardEntryIdentity(entry)}`,
   );
 }
+// Bump when the rebuild starts reading new facts or filtering candidates
+// differently. A stored index from another revision is rebuilt on the next read,
+// because its refreshPaths cannot notice the facts it never tracked.
+const NATIVE_DASHBOARD_INDEX_REVISION = 2;
 interface NativeDashboardIndex {
+  revision?: number;
   runtimeDataRoot?: string;
   refreshPaths?: string[];
   fingerprint?: string | null;
@@ -292,6 +303,20 @@ async function rawNativeDashboardCandidates(sources: readonly NativeDashboardSou
     active: collections.flatMap(({ active }) => active),
     archived: collections.flatMap(({ archived }) => archived),
   };
+}
+/** 与 `comet native status` 一致：取消已完成的 change 以 SDK Run 为准离开活跃列表；读取失败时保留。 */
+async function withoutCancelledNativeCandidates(
+  candidates: readonly NativeDashboardCandidate[],
+): Promise<NativeDashboardCandidate[]> {
+  const cancelled = await Promise.all(
+    candidates.map((candidate) =>
+      isNativeSdkChangeCancellationComplete(
+        candidate.source.workspace.projectRoot,
+        candidate.entry.name,
+      ).catch(() => false),
+    ),
+  );
+  return candidates.filter((_, index) => !cancelled[index]);
 }
 async function nativeCandidateBindingState(
   candidate: NativeDashboardCandidate,
@@ -645,17 +670,28 @@ async function rebuildNativeDashboardIndex(
   const raw = await rawNativeDashboardCandidates(sources);
   // Archived entries are immutable history. Their container detects additions,
   // removals and renames; only active candidates need per-file change tracking.
+  // A cancellation can complete through SDK Run records alone (the change's Run,
+  // the child Runs it waits for, or the current selection), so those are tracked
+  // too, and the fingerprint is taken before the cancellation check so a change
+  // during the rebuild leaves the index stale.
+  const cancellationPaths = await Promise.all(
+    raw.active.map(({ source, entry }) =>
+      nativeSdkChangeCancellationPaths(source.workspace.projectRoot, entry.name),
+    ),
+  );
   const refreshPaths = [
     ...new Set([
       ...discoveryPaths,
-      ...raw.active.flatMap(({ source, entry }) => [
+      ...raw.active.flatMap(({ source, entry }, index) => [
         path.join(entryDirectory(source.paths, entry), NATIVE_CHANGE_STATE_FILE),
         path.join(entryDirectory(source.paths, entry), NATIVE_CHILDREN_FILE),
         nativeSupervisorStateFile(source.paths, entry.name),
+        ...cancellationPaths[index],
       ]),
     ]),
   ].sort();
   const before = await nativeDashboardIndexFingerprint(refreshPaths, workspaces);
+  raw.active = await withoutCancelledNativeCandidates(raw.active);
   const [active, archived] = await Promise.all([
     selectActiveNativeCandidates(raw.active),
     Promise.resolve(selectArchivedNativeCandidates(raw.archived)),
@@ -683,6 +719,7 @@ async function rebuildNativeDashboardIndex(
   const after = await nativeDashboardIndexFingerprint(refreshPaths, workspaces);
   const discoveryAfter = await nativeDashboardIndexFingerprint(discoveryPaths, workspaces);
   return {
+    revision: NATIVE_DASHBOARD_INDEX_REVISION,
     runtimeDataRoot: nativeDashboardRuntimeDataRoot(),
     refreshPaths,
     fingerprint: before === after && discoveryBefore === discoveryAfter ? after : null,
@@ -721,7 +758,13 @@ async function refreshNativeDashboardIndex(
 function scheduleNativeDashboardRefresh(projectRoot: string): void {
   const root = path.resolve(projectRoot);
   const key = resolveDashboardIndexPath(root);
-  nativeIndexReconciler.schedule(key, () => reconcileNativeDashboardIndex(root));
+  // The rebuild outlives the request that scheduled it, so it reads with its
+  // own sessions and cache instead of the request's, which close when it ends.
+  nativeIndexReconciler.schedule(key, () =>
+    withoutProtectedProjectReadScope(() =>
+      runWithoutHookReadCache(() => reconcileNativeDashboardIndex(root)),
+    ),
+  );
 }
 export function markNativeDashboardIndexDirty(projectRoot: string): void {
   nativeIndexReconciler.markDirty(resolveDashboardIndexPath(path.resolve(projectRoot)));
@@ -736,6 +779,8 @@ async function buildNativeDashboardIndex(
   const root = path.resolve(projectRoot);
   const cached = await readCachedNativeDashboardIndex(root);
   if (cached) {
+    if (cached.revision !== NATIVE_DASHBOARD_INDEX_REVISION)
+      return refreshNativeDashboardIndex(root);
     if (cached.runtimeDataRoot !== nativeDashboardRuntimeDataRoot())
       return refreshNativeDashboardIndex(root);
     if (hasInvalidCachedNativeSource(cached, root)) return refreshNativeDashboardIndex(root);

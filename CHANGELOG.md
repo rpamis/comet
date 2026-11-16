@@ -2,7 +2,7 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.5.4] - 2026-11-14
+## What's Changed [0.5.4] - 2026-11-16
 
 ### Added
 
@@ -12,6 +12,9 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Classic Design summaries**: Save discussion checkpoints at an explicit change-local path and resume from the same file. Guide misplaced summaries to that path without asking users to enter Build, while preserving Design approval and source-write protection ([#559](https://github.com/rpamis/comet/issues/559)).
 - **Plugin write Hooks**: Run the shared CLI Router inside the plugin Hook process so DSH and Codex writes do not depend on a second Node process with piped input and output. Preserve plugin activation checks and Guard denials ([#561](https://github.com/rpamis/comet/issues/561)).
+
+- **Cancelled Native changes in Dashboard**: Leave a Native change out of the Dashboard active list and active count once `comet native cancel` completes, matching `comet native status`. The Dashboard now follows the cancelled Run instead of the unchanged `comet-state.yaml`; changes whose cancellation is still pending or unreadable stay visible. The Dashboard index also refreshes when a cancellation completes later through Run records alone (the change's Run, its child Runs or the current selection), and a Dashboard index written by an earlier version is rebuilt on the first read after upgrade ([#557](https://github.com/rpamis/comet/issues/557)).
+- **Resuming pinned Runs after upgrade**: Fixed Native and Classic packages pinned to 0.5.2 or 0.5.3 keep resuming their original Run on 0.5.4.
 
 ### Security
 

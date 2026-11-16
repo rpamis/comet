@@ -37,6 +37,11 @@ export async function withProtectedProjectReadScope<T>(work: () => Promise<T>): 
   });
 }
 
+/** 请求内启动的后台任务不继承请求的读取会话；请求结束时会 finish 这些会话，后台读取随之失败。 */
+export function withoutProtectedProjectReadScope<T>(work: () => T): T {
+  return projectReadScopes.exit(work);
+}
+
 /** 单次文件观察共用目录身份；叶子仍新鲜读取，返回结果前必须 finish。 */
 export async function createProtectedProjectReadSession(
   projectRoot: string,

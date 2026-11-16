@@ -70,6 +70,17 @@ function fileRuntimeStoreRunDirectory(runId: string): string {
   return createHash('sha256').update(JSON.stringify(runId)).digest('hex');
 }
 
+/** 一个 Run 的存储位置（格式标记、当前目录、历史目录）；新修订与归档都会改动其中之一，供只读缓存判断是否过期。 */
+export function fileRuntimeStoreRunPaths(rootDir: string, runId: string): string[] {
+  const runDirectory = fileRuntimeStoreRunDirectory(runId);
+  const root = path.resolve(rootDir);
+  return [
+    path.join(root, runDirectory),
+    path.join(root, '.runtime-store-v2', runDirectory),
+    path.join(root, '.runtime-store-history', runDirectory),
+  ];
+}
+
 async function fileRuntimeStoreLockFile(
   options: Pick<FileRuntimeStoreOptions, 'rootDir'>,
   runId: string,
