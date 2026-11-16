@@ -7,10 +7,15 @@ on:
         description: 'Stable version in package.json, for example 0.5.4 (without v)'
         required: true
         type: string
-      publish:
-        description: 'Publish all three npm packages and the GitHub announcement (false previews only)'
-        default: false
-        type: boolean
+      action:
+        description: 'Preview, stage packages for npm 2FA approval, or finalize the announcement'
+        default: preview
+        type: choice
+        options: [preview, stage, finalize]
+      source_run_id:
+        description: 'For finalize: the original stage run ID shown in its Summary'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -30,13 +35,41 @@ jobs:
       id-token: write
     env:
       RELEASE_VERSION: ${{ inputs.version }}
-      RELEASE_PUBLISH: ${{ inputs.publish }}
+      RELEASE_ACTION: ${{ inputs.action }}
+      RELEASE_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Select original release source
+        id: source
+        run: |
+          node --input-type=module - <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          import { resolveReleaseSource } from './scripts/release/publish-release.mjs';
+          const head = await resolveReleaseSource({
+            action: process.env.RELEASE_ACTION,
+            sourceRunId: process.env.RELEASE_SOURCE_RUN_ID,
+          });
+          appendFileSync(process.env.GITHUB_OUTPUT, `head=${head}\n`);
+          NODE
+      - name: Check out the original staged commit
+        if: inputs.action == 'finalize'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ steps.source.outputs.head }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Restore recorded staging results
+        if: inputs.action == 'finalize' || (inputs.action == 'stage' && github.run_attempt > 1)
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: comet-release-stage
+          path: .tmp/release
+          run-id: ${{ inputs.action == 'finalize' && inputs.source_run_id || github.run_id }}
+          github-token: ${{ github.token }}
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -46,14 +79,16 @@ jobs:
       - name: Install npm with trusted publishing support
         run: npm install --global npm@11.21.0
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      - name: Check version, source commit and master CI
+      - name: Check version and selected source commit
+        env:
+          RELEASE_SOURCE_SHA: ${{ steps.source.outputs.head }}
         run: |
           node --input-type=module - <<'NODE'
           import { checkReleaseCandidate } from './scripts/release/publish-release.mjs';
           await checkReleaseCandidate({
             root: process.cwd(),
             version: process.env.RELEASE_VERSION,
-            publish: process.env.RELEASE_PUBLISH === 'true',
+            action: process.env.RELEASE_ACTION,
           });
           NODE
       - run: pnpm check:generated
@@ -61,19 +96,27 @@ jobs:
       - name: Check generated files remain unchanged
         run: git diff --exit-code -- assets domains/engine/runtime-schema.generated.ts
       - name: Verify release metadata and automation
+        if: inputs.action != 'finalize'
         run: >-
           pnpm exec vitest run
           test/repository/release-metadata.test.ts
           test/scripts/verify-release.test.ts
           test/scripts/prepublish-check.test.ts
           test/scripts/publish-release.test.ts
+          test/scripts/staged-release.test.ts
           --maxWorkers=2
       - run: pnpm test:package-e2e
-      - name: Preview or publish npm packages and announcement
-        shell: bash
-        run: |
-          args=(--version "$RELEASE_VERSION")
-          if [[ "$RELEASE_PUBLISH" == "true" ]]; then
-            args+=(--publish)
-          fi
-          node scripts/release/publish-release.mjs "${args[@]}"
+        if: inputs.action != 'finalize'
+      - name: Preview, stage or finalize release
+        env:
+          RELEASE_SOURCE_SHA: ${{ steps.source.outputs.head }}
+        run: node scripts/release/publish-release.mjs --version "$RELEASE_VERSION" --action "$RELEASE_ACTION"
+      - name: Save staging results for approval and recovery
+        if: always() && inputs.action == 'stage'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: comet-release-stage
+          path: .tmp/release/stage.json
+          overwrite: true
+          if-no-files-found: ignore
+          retention-days: 30

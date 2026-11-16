@@ -9,6 +9,45 @@ const repository = 'rpamis/comet';
 const registry = 'https://registry.npmjs.org/';
 const github = `https://api.github.com/repos/${repository}`;
 
+export async function resolveReleaseSource(options, services = {}) {
+  const { action = 'preview', sourceRunId, env = process.env } = options;
+  if (!['preview', 'stage', 'finalize'].includes(action))
+    throw new Error('Unknown release action.');
+  if (action !== 'finalize') return env.GITHUB_SHA;
+  if (!/^\d+$/.test(sourceRunId ?? '')) throw new Error('Finalize requires a source run ID.');
+  const run = await (services.request ?? requestJson)(`${github}/actions/runs/${sourceRunId}`);
+  if (
+    run?.repository?.full_name !== repository ||
+    run.head_branch !== 'master' ||
+    run.event !== 'workflow_dispatch' ||
+    run.path !== '.github/workflows/release.yml' ||
+    !/^[a-f0-9]{40}$/.test(run.head_sha ?? '')
+  ) {
+    throw new Error('Invalid release source run. Select the original master Release run.');
+  }
+  return run.head_sha;
+}
+
+export function validateStageReceipt(receipt, expected) {
+  if (
+    receipt?.schema !== 'comet.release-stage.v1' ||
+    receipt.version !== expected.version ||
+    receipt.head !== expected.head ||
+    receipt.runId !== expected.runId ||
+    typeof receipt.body !== 'string' ||
+    !Array.isArray(receipt.packages) ||
+    receipt.packages.some(
+      (item) =>
+        !['@rpamis/comet', '@rpamis/comet-codex-plugin', 'comet-dsh-plugin'].includes(item.name) ||
+        !['submitting', 'staged', 'published'].includes(item.status) ||
+        (item.status === 'staged' && typeof item.stageId !== 'string'),
+    )
+  ) {
+    throw new Error('Stage receipt does not match the original release run, version and commit.');
+  }
+  return receipt;
+}
+
 export function composeReleaseNotes(changelog, version, generated) {
   const source = changelog.replaceAll('\r\n', '\n');
   const headings = [...source.matchAll(/^## What's Changed \[([^\]]+)\].*$/gm)];
@@ -76,7 +115,7 @@ function runCommand(command, args, cwd) {
 }
 
 export async function checkReleaseCandidate(options, services = {}) {
-  const { root, version, publish = false, env = process.env } = options;
+  const { root, version, action = 'preview', env = process.env } = options;
   const run = services.run ?? ((args) => runCommand('git', args, root));
   const request = services.request ?? requestJson;
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version ?? '')) {
@@ -98,7 +137,10 @@ export async function checkReleaseCandidate(options, services = {}) {
     throw new Error(`Package, assets, Codex plugin and marketplace must all use ${version}.`);
   }
   const head = await run(['rev-parse', 'HEAD']);
-  assertReleaseContext(publish, head, env);
+  assertReleaseContext(action !== 'preview', head, {
+    ...env,
+    GITHUB_SHA: env.RELEASE_SOURCE_SHA || env.GITHUB_SHA,
+  });
   if (await run(['status', '--porcelain', '--untracked-files=no'])) {
     throw new Error('Release candidate has tracked changes. Use a clean checkout.');
   }
@@ -108,13 +150,6 @@ export async function checkReleaseCandidate(options, services = {}) {
   const existingTag = await run(['tag', '--list', version]);
   if (existingTag && (await run(['rev-parse', `refs/tags/${version}^{commit}`])) !== head) {
     throw new Error(`Tag ${version} points to a different commit.`);
-  }
-  const runs = await request(
-    `${github}/actions/workflows/ci.yml/runs?head_sha=${head}&branch=master&event=push&per_page=1`,
-  );
-  const ci = runs?.workflow_runs?.[0];
-  if (ci?.head_sha !== head || ci.status !== 'completed' || ci.conclusion !== 'success') {
-    throw new Error(`Wait for successful master CI on ${head} before releasing.`);
   }
   let release = await request(`${github}/releases/tags/${version}`);
   // The by-tag endpoint only returns published releases. Authenticated listing
@@ -134,7 +169,7 @@ export async function checkReleaseCandidate(options, services = {}) {
     previous_tag_name: previousTag,
   });
   const { body } = composeReleaseNotes(changelog, version, generated.body);
-  return { version, head, previousTag, body, release, ciUrl: ci.html_url };
+  return { version, head, previousTag, body, release };
 }
 
 export async function prepareReleasePackages(directory, candidate, services = {}) {
@@ -210,25 +245,57 @@ export async function prepareReleasePackages(directory, candidate, services = {}
 
 export async function publishRelease(options, services = {}) {
   const request = services.request ?? requestJson;
+  const action = options.action ?? 'preview';
+  const env = options.env ?? process.env;
   const candidate = await checkReleaseCandidate(options, { ...services, request });
+  const receiptPath = options.receiptPath ?? path.join(options.root, '.tmp/release/stage.json');
+  let receipt;
+  if (action !== 'preview') {
+    const runId = action === 'finalize' ? env.RELEASE_SOURCE_RUN_ID : env.GITHUB_RUN_ID;
+    if (!runId) throw new Error('Missing original Release run ID.');
+    if (services.receipt) receipt = services.receipt;
+    else {
+      try {
+        receipt = JSON.parse(await fs.readFile(receiptPath, 'utf8'));
+      } catch (error) {
+        if (error.code !== 'ENOENT' || action === 'finalize') throw error;
+        receipt = {
+          schema: 'comet.release-stage.v1',
+          version: candidate.version,
+          head: candidate.head,
+          runId,
+          body: candidate.body,
+          packages: [],
+        };
+      }
+    }
+    validateStageReceipt(receipt, { ...candidate, runId });
+    if (action === 'finalize') candidate.body = receipt.body;
+  }
+  const save =
+    services.save ??
+    (async () => {
+      await fs.mkdir(path.dirname(receiptPath), { recursive: true });
+      await fs.writeFile(receiptPath, JSON.stringify(receipt, null, 2) + '\n');
+    });
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-release-'));
   try {
     const prepare = services.prepare ?? prepareReleasePackages;
     const { packages, runNpm } = await prepare(directory, { ...candidate, root: options.root });
     const results = await publishPackages(
       packages,
-      { ...candidate, directory, publish: options.publish },
+      { ...candidate, directory, action, receipt },
       {
         request,
         runNpm,
-        wait: services.wait ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
+        save,
       },
     );
-    const summary = `## ${options.publish ? 'Published' : 'Preview'} ${candidate.version}\n\nCommit: ${candidate.head}\n\nCI: ${candidate.ciUrl}\n\n${results.map((item) => `- ${item.name}: ${item.status}`).join('\n')}\n\n${candidate.body}`;
+    const summary = `## ${action} ${candidate.version}\n\nCommit: ${candidate.head}\n\n${results.map((item) => `- ${item.name}: ${item.status}${item.stageId ? ` (${item.stageId})` : ''}`).join('\n')}\n\n${action === 'stage' ? `Approve the packages with npm 2FA, then run Release with action=finalize and source_run_id=${env.GITHUB_RUN_ID}.\n\n` : ''}${candidate.body}`;
     console.log(summary);
     if (process.env.GITHUB_STEP_SUMMARY)
       await fs.appendFile(process.env.GITHUB_STEP_SUMMARY, summary);
-    if (options.publish && (!candidate.release || candidate.release.draft)) {
+    if (action === 'finalize' && (!candidate.release || candidate.release.draft)) {
       const body = {
         tag_name: candidate.version,
         target_commitish: candidate.head,
@@ -253,21 +320,23 @@ if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === imp
     const args = process.argv.slice(2);
     if (args.length === 1 && args[0] === '--help') {
       console.log(
-        'Usage: node scripts/release/publish-release.mjs --version <x.y.z> [--publish]\nDefaults to preview. Live publishing is restricted to the master Release workflow.',
+        'Usage: node scripts/release/publish-release.mjs --version <x.y.z> [--action preview|stage|finalize]\nDefaults to preview. npm approval with 2FA is performed by the maintainer.',
       );
     } else {
       if (
         args[0] !== '--version' ||
         !args[1] ||
-        args.length > 3 ||
-        (args[2] && args[2] !== '--publish')
+        (args.length !== 2 && args.length !== 4) ||
+        (args[2] && (args[2] !== '--action' || !['preview', 'stage', 'finalize'].includes(args[3])))
       ) {
-        throw new Error('Usage: publish-release.mjs --version <x.y.z> [--publish]');
+        throw new Error(
+          'Usage: publish-release.mjs --version <x.y.z> [--action preview|stage|finalize]',
+        );
       }
       await publishRelease({
         root: process.cwd(),
         version: args[1],
-        publish: args[2] === '--publish',
+        action: args[3] ?? 'preview',
       });
     }
   } catch (error) {
@@ -277,8 +346,8 @@ if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === imp
 }
 
 export async function publishPackages(packages, options, services) {
-  const { version, head, directory, publish } = options;
-  const { request, runNpm, wait } = services;
+  const { version, head, directory, action = 'preview', receipt } = options;
+  const { request, runNpm, save = async () => {} } = services;
   const items = [];
   const inspect = async (item) => {
     const metadata = await request(`${registry}${encodeURIComponent(item.name)}/${version}`);
@@ -308,32 +377,66 @@ export async function publishPackages(packages, options, services) {
     }
     items.push({ ...item, status: existing ? 'published' : 'pending' });
   }
-  if (!publish) return items;
-  for (const item of items) {
-    if (item.status === 'pending') {
-      console.log(`Publishing ${item.name}@${version}`);
-      await runNpm([
-        'publish',
-        item.tarball,
-        '--access',
-        'public',
-        '--tag',
-        'latest',
-        '--registry',
-        registry,
-        '--ignore-scripts',
-      ]);
-      let metadata;
-      for (let attempt = 0; attempt < 6; attempt++) {
-        metadata = await inspect(item);
-        if (metadata) break;
-        if (attempt < 5) await wait(5_000);
+  if (action === 'preview') return items;
+  if (action === 'stage') {
+    for (const item of items) {
+      let saved = receipt.packages.find((entry) => entry.name === item.name);
+      if (item.status === 'published') {
+        if (saved) Object.assign(saved, { status: 'published' });
+        else receipt.packages.push({ name: item.name, status: 'published' });
+        await save();
+        continue;
       }
-      if (!metadata)
+      if (saved?.status === 'staged') {
+        Object.assign(item, saved);
+        continue;
+      }
+      if (saved)
         throw new Error(
-          `${item.name}@${version} is not visible on public npm yet. Rerun after checking npm.`,
+          `${item.name} has an unknown staging result. Check npm before resubmitting.`,
         );
+      saved = { name: item.name, status: 'submitting' };
+      receipt.packages.push(saved);
+      await save();
+      const output = JSON.parse(
+        await runNpm([
+          'stage',
+          'publish',
+          item.tarball,
+          '--access',
+          'public',
+          '--tag',
+          'latest',
+          '--registry',
+          registry,
+          '--ignore-scripts',
+          '--json',
+        ]),
+      );
+      // npm 11.21 emits either the package object or a package-name-keyed object.
+      const staged = output[item.name] ?? output;
+      if (staged.name !== item.name || staged.version !== version || !staged.stageId) {
+        throw new Error(
+          `npm stage publish did not return the expected name, version and stageId for ${item.name}.`,
+        );
+      }
+      Object.assign(saved, { status: 'staged', stageId: staged.stageId });
+      Object.assign(item, saved);
+      await save();
+      const line = `- ${item.name}@${version}: stage ID ${staged.stageId}\n`;
+      console.log(line.trim());
+      if (process.env.GITHUB_STEP_SUMMARY)
+        await fs.appendFile(process.env.GITHUB_STEP_SUMMARY, line);
     }
+    return items;
+  }
+  if (action !== 'finalize') throw new Error('Unknown release action.');
+  if (items.some((item) => item.status !== 'published')) {
+    throw new Error(
+      'Packages are still awaiting npm approval. Approve all staged versions with 2FA before finalizing.',
+    );
+  }
+  for (const item of items) {
     const [download] = JSON.parse(
       await runNpm([
         'pack',

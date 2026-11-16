@@ -54847,6 +54847,58 @@
           ]
         }
       ]
+    },
+    {
+      "id": "release-stage-only-2fa",
+      "behavior": "发布自动化只能暂存三个包，不能直接公开或代替维护者通过 2FA 批准。",
+      "sources": ["report:2026-11-16-release-stage-2fa"],
+      "coverageLevel": "unit",
+      "reproduction": "84ab3c11 的 publishPackages 使用 npm publish；相同 stage 行为测试在旧代码返回 pending，未取得 stageId。",
+      "expected": "仅调用 npm stage publish，保存 stageId，finalize 前必须看到所有原提交版本均已公开。",
+      "forbidden": "直接 npm publish、自动 approve、用户批准前生成公告或未知结果时重复上传。",
+      "rootCause": "原工作流将上传与公开合为一个直接发布动作，没有维护者 2FA 批准阶段。",
+      "tests": [
+        {
+          "file": "test/scripts/staged-release.test.ts",
+          "namePattern": "^staged release (stages all three packages without direct publishing, approval or public downloads|preserves completed stages and stops on unknown upload results without retrying|requires every package to be public before finalize performs any download)$",
+          "requiredNames": [
+            "staged release stages all three packages without direct publishing, approval or public downloads",
+            "staged release preserves completed stages and stops on unknown upload results without retrying",
+            "staged release requires every package to be public before finalize performs any download"
+          ]
+        },
+        {
+          "file": "test/scripts/publish-release.test.ts",
+          "namePattern": "^release candidate and final announcement stage completes without waiting for npm approval or creating an announcement$",
+          "requiredNames": [
+            "release candidate and final announcement stage completes without waiting for npm approval or creating an announcement"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "release-independent-master-ci",
+      "behavior": "Release 不因同提交 master CI 仍排队而停止，仍由发布工作流执行自身检查。",
+      "sources": [
+        "report:2026-11-16-release-no-master-ci",
+        "https://github.com/rpamis/comet/actions/runs/43837439354"
+      ],
+      "coverageLevel": "unit",
+      "reproduction": "真实运行 43837439354 在 master CI 未完成时退出，错误为 Wait for successful master CI。",
+      "expected": "候选核对不查询或等待 master CI；后续生成物、构建和发布检查仍保留。",
+      "forbidden": "继续以 master CI 结果作为启动前置条件，或把取消等待描述为完整 CI 验证通过。",
+      "rootCause": "checkReleaseCandidate 强制要求外部 CI run 成功，与用户希望发布流程独立运行的策略不符。",
+      "tests": [
+        {
+          "file": "test/scripts/publish-release.test.ts",
+          "namePattern": "^release candidate and final announcement does not wait for an unrelated master CI result: (failure|in_progress|other-commit)$",
+          "requiredNames": [
+            "release candidate and final announcement does not wait for an unrelated master CI result: failure",
+            "release candidate and final announcement does not wait for an unrelated master CI result: in_progress",
+            "release candidate and final announcement does not wait for an unrelated master CI result: other-commit"
+          ]
+        }
+      ]
     }
   ],
   "historicalTestMigrations": [

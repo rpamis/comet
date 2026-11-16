@@ -122,7 +122,27 @@ describe('release candidate and final announcement', () => {
       GITHUB_REF: 'refs/heads/master',
       GITHUB_SHA: head,
     };
-    const options = { root, version: '0.5.4', publish: true, env };
+    Object.assign(env, { GITHUB_RUN_ID: '42', RELEASE_SOURCE_RUN_ID: '42' });
+    const receiptDir = path.join(root, '.tmp/release');
+    await fs.mkdir(receiptDir, { recursive: true });
+    await fs.writeFile(
+      path.join(receiptDir, 'stage.json'),
+      JSON.stringify({
+        schema: 'comet.release-stage.v1',
+        version: '0.5.4',
+        head,
+        runId: '42',
+        body: composeReleaseNotes(
+          changelog,
+          '0.5.4',
+          "## What's Changed\n* One PR\n\n**Full Changelog**: compare-url",
+        ).body,
+        packages: ['@rpamis/comet', '@rpamis/comet-codex-plugin', 'comet-dsh-plugin'].map(
+          (name) => ({ name, status: 'staged', stageId: 'id-' + name }),
+        ),
+      }),
+    );
+    const options = { root, version: '0.5.4', action: 'finalize', env };
     const request = vi.fn(async (url: string, body?: unknown) => {
       if (url.includes('/releases?')) return [];
       if (url.includes('/actions/workflows/'))
@@ -155,20 +175,11 @@ describe('release candidate and final announcement', () => {
   });
 
   it.each(['failure', 'in_progress', 'other-commit'])(
-    'blocks an ineligible CI result: %s',
-    async (state) => {
-      const { options, request, head } = await fixture();
-      request.mockResolvedValueOnce({
-        workflow_runs: [
-          {
-            head_sha: state === 'other-commit' ? state : head,
-            status: state === 'in_progress' ? state : 'completed',
-            conclusion: state === 'failure' ? state : 'success',
-          },
-        ],
-      } as never);
-      await expect(checkReleaseCandidate(options, { request })).rejects.toThrow('master CI');
-      expect(request).toHaveBeenCalledTimes(1);
+    'does not wait for an unrelated master CI result: %s',
+    async () => {
+      const { options, request } = await fixture();
+      await expect(checkReleaseCandidate(options, { request })).resolves.toHaveProperty('head');
+      expect(request.mock.calls.some(([url]) => url.includes('/actions/workflows/'))).toBe(false);
     },
   );
 
@@ -236,6 +247,28 @@ describe('release candidate and final announcement', () => {
     expect(announcement?.[1]).not.toHaveProperty('assets');
   });
 
+  it('stage completes without waiting for npm approval or creating an announcement', async () => {
+    const { options, request } = await fixture();
+    const runNpm = vi.fn().mockRejectedValue(new Error('must reuse recorded stage IDs'));
+    const names = ['@rpamis/comet', '@rpamis/comet-codex-plugin', 'comet-dsh-plugin'];
+    const result = await publishRelease(
+      { ...options, action: 'stage' },
+      {
+        request,
+        prepare: async () => ({
+          packages: names.map((name) => ({ name, tarball: `${name}.tgz` })),
+          runNpm,
+        }),
+      },
+    );
+    expect(result.packages.every((item) => item.status === 'staged')).toBe(true);
+    expect(runNpm).not.toHaveBeenCalled();
+    expect(
+      request.mock.calls.filter(([url]) => new URL(url).hostname === 'registry.npmjs.org'),
+    ).toHaveLength(6);
+    expect(request.mock.calls.some(([url, body]) => url.endsWith('/releases') && body)).toBe(false);
+  });
+
   it('preview never saves a Release and a failed npm download never announces success', async () => {
     const { options, request, head } = await fixture();
     const transport = async (url: string, body?: unknown) =>
@@ -247,7 +280,7 @@ describe('release candidate and final announcement', () => {
       packages: [{ name: '@rpamis/comet', tarball: 'main.tgz' }],
       runNpm,
     });
-    await publishRelease({ ...options, publish: false }, { request: transport, prepare });
+    await publishRelease({ ...options, action: 'preview' }, { request: transport, prepare });
     expect(runNpm).not.toHaveBeenCalled();
     await expect(publishRelease(options, { request: transport, prepare })).rejects.toThrow(
       'download failed',
@@ -340,11 +373,11 @@ describe('release workflow entry', () => {
     const source = await fs.readFile('.github/workflows/release.yml', 'utf8');
     const workflow = parse(source);
     expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch']);
-    expect(workflow.on.workflow_dispatch.inputs.publish.default).toBe(false);
+    expect(workflow.on.workflow_dispatch.inputs.action.default).toBe('preview');
     expect(workflow.concurrency['cancel-in-progress']).toBe(false);
     expect(workflow.jobs.release.permissions['id-token']).toBe('write');
     expect(workflow.jobs.release.if).toContain("github.ref == 'refs/heads/master'");
-    expect(source).not.toMatch(/upload-artifact|gh release upload|comet eval|NPM_TOKEN/);
+    expect(source).not.toMatch(/gh release upload|comet eval|NPM_TOKEN/);
   });
 
   it('offers help without requiring a build or credentials, and rejects unintended flags', () => {
@@ -413,121 +446,67 @@ describe('release package preparation', () => {
 
 describe('npm release sequence', () => {
   const names = ['@rpamis/comet', '@rpamis/comet-codex-plugin', 'comet-dsh-plugin'];
-  const packages = names.map((name, index) => ({ name, tarball: `/staged/${index}.tgz` }));
+  const packages = names.map((name, index) => ({ name, tarball: '/staged/' + index + '.tgz' }));
   const options = { version: '0.5.4', head: 'current-commit', directory: '/download' };
-
-  function registry(initial: string[] = []) {
-    const published = new Set(initial);
-    const request = vi.fn(async (url: string) => {
-      const name = decodeURIComponent(new URL(url).pathname.split('/')[1]);
-      return published.has(name) ? { name, version: '0.5.4', gitHead: 'current-commit' } : null;
-    });
-    const runNpm = vi.fn(async (args: string[]) => {
-      if (args[0] === 'publish') {
-        const item = packages.find((candidate) => candidate.tarball === args[1])!;
-        published.add(item.name);
-        return '';
-      }
-      const name = args[1].slice(0, args[1].lastIndexOf('@'));
-      return JSON.stringify([{ name, version: '0.5.4', filename: 'download.tgz' }]);
-    });
-    return { request, runNpm, wait: vi.fn() };
-  }
-
-  it('previews all packages without publishing or downloading', async () => {
-    const services = registry();
-    const result = await publishPackages(packages, { ...options, publish: false }, services);
-    expect(result.map((item) => item.status)).toEqual(['pending', 'pending', 'pending']);
-    expect(services.runNpm).not.toHaveBeenCalled();
-  });
-
-  it('publishes and pulls the main CLI before either plugin, then only resumes missing packages', async () => {
-    const services = registry();
-    await publishPackages(packages, { ...options, publish: true }, services);
-    expect(services.runNpm.mock.calls.map(([args]) => args.slice(0, 2))).toEqual([
-      ['publish', '/staged/0.tgz'],
-      ['pack', '@rpamis/comet@0.5.4'],
-      ['publish', '/staged/1.tgz'],
-      ['pack', '@rpamis/comet-codex-plugin@0.5.4'],
-      ['publish', '/staged/2.tgz'],
-      ['pack', 'comet-dsh-plugin@0.5.4'],
-    ]);
-    services.runNpm.mockClear();
-    await publishPackages(packages, { ...options, publish: true }, services);
-    expect(services.runNpm.mock.calls.every(([args]) => args[0] === 'pack')).toBe(true);
-
-    const partial = registry(['@rpamis/comet']);
-    await publishPackages(packages, { ...options, publish: true }, partial);
-    expect(partial.runNpm.mock.calls.filter(([args]) => args[0] === 'publish')).toHaveLength(2);
-  });
-
-  it('rejects an existing plugin from another commit before publishing any package', async () => {
-    const services = registry();
-    services.request.mockImplementation(async (url: string) =>
-      url.includes('codex') ? { name: names[1], version: '0.5.4', gitHead: 'other-commit' } : null,
+  function registry(published = true) {
+    const request = vi.fn(async () =>
+      published ? { version: '0.5.4', gitHead: 'current-commit' } : null,
     );
-    await expect(
-      publishPackages(packages, { ...options, publish: true }, services),
-    ).rejects.toThrow('other-commit');
-    expect(services.runNpm).not.toHaveBeenCalled();
+    const runNpm = vi.fn(async (args: string[]) =>
+      JSON.stringify([{ name: args[1].slice(0, args[1].lastIndexOf('@')), version: '0.5.4' }]),
+    );
+    return { request, runNpm };
+  }
+  it('previews all packages without publishing or downloading', async () => {
+    const io = registry(false);
+    const result = await publishPackages(packages, { ...options, action: 'preview' }, io);
+    expect(result.map((item) => item.status)).toEqual(['pending', 'pending', 'pending']);
+    expect(io.runNpm).not.toHaveBeenCalled();
   });
-
-  it('stops after a failed or uncertain npm publish without retrying writes', async () => {
-    const services = registry();
-    services.runNpm.mockRejectedValueOnce(new Error('network disconnected'));
-    await expect(
-      publishPackages(packages, { ...options, publish: true }, services),
-    ).rejects.toThrow('network disconnected');
-    expect(services.runNpm).toHaveBeenCalledTimes(1);
+  it('pulls the approved main CLI before either plugin and never repeats uploads', async () => {
+    const io = registry();
+    for (let attempt = 0; attempt < 2; attempt++)
+      await publishPackages(packages, { ...options, action: 'finalize' }, io);
+    expect(io.runNpm.mock.calls.map(([args]) => args.slice(0, 2))).toEqual([
+      ...names.map((name) => ['pack', name + '@0.5.4']),
+      ...names.map((name) => ['pack', name + '@0.5.4']),
+    ]);
   });
-
+  it('rejects an existing plugin from another commit before publishing any package', async () => {
+    const io = registry();
+    io.request.mockImplementation(async (url: string) =>
+      url.includes('codex') ? { version: '0.5.4', gitHead: 'other-commit' } : null,
+    );
+    await expect(publishPackages(packages, { ...options, action: 'finalize' }, io)).rejects.toThrow(
+      'other-commit',
+    );
+    expect(io.runNpm).not.toHaveBeenCalled();
+  });
   it('does not proceed to plugins when the main package cannot be pulled', async () => {
-    const services = registry(['@rpamis/comet']);
-    services.runNpm.mockRejectedValueOnce(new Error('tarball unavailable'));
-    await expect(
-      publishPackages(packages, { ...options, publish: true }, services),
-    ).rejects.toThrow('tarball unavailable');
-    expect(services.runNpm.mock.calls.map(([args]) => args[0])).toEqual(['pack']);
+    const io = registry();
+    io.runNpm.mockRejectedValueOnce(new Error('tarball unavailable'));
+    await expect(publishPackages(packages, { ...options, action: 'finalize' }, io)).rejects.toThrow(
+      'tarball unavailable',
+    );
+    expect(io.runNpm.mock.calls.map(([args]) => args[0])).toEqual(['pack']);
   });
-
   it('treats a registry outage as a failure, not an unpublished version', async () => {
-    const services = registry();
-    services.request.mockRejectedValueOnce(new Error('HTTP 503'));
-    await expect(
-      publishPackages(packages, { ...options, publish: true }, services),
-    ).rejects.toThrow('503');
-    expect(services.runNpm).not.toHaveBeenCalled();
+    const io = registry();
+    io.request.mockRejectedValueOnce(new Error('HTTP 503'));
+    await expect(publishPackages(packages, { ...options, action: 'finalize' }, io)).rejects.toThrow(
+      '503',
+    );
+    expect(io.runNpm).not.toHaveBeenCalled();
   });
-
   it('does not move latest backwards when retrying an older partial release', async () => {
-    const services = registry();
-    services.request.mockImplementation(async (url: string) =>
+    const io = registry();
+    io.request.mockImplementation(async (url: string) =>
       url.endsWith('/latest') ? ({ version: '0.6.0' } as never) : null,
     );
-    await expect(
-      publishPackages(packages, { ...options, publish: true }, services),
-    ).rejects.toThrow('older');
-    expect(services.runNpm).not.toHaveBeenCalled();
-  });
-
-  it('only retries registry reads while a newly published main package becomes visible', async () => {
-    const services = registry();
-    const original = services.request.getMockImplementation()!;
-    let hidden = 2;
-    services.request.mockImplementation(async (url: string) => {
-      if (
-        url.includes(`${encodeURIComponent('@rpamis/comet')}/0.5.4`) &&
-        services.runNpm.mock.calls.some(
-          ([args]) => args[0] === 'publish' && args[1] === '/staged/0.tgz',
-        ) &&
-        hidden-- > 0
-      )
-        return null;
-      return original(url);
-    });
-    await publishPackages(packages, { ...options, publish: true }, services);
-    expect(services.wait).toHaveBeenCalledTimes(2);
-    expect(services.runNpm.mock.calls.filter(([args]) => args[0] === 'publish')).toHaveLength(3);
+    await expect(publishPackages(packages, { ...options, action: 'finalize' }, io)).rejects.toThrow(
+      'older',
+    );
+    expect(io.runNpm).not.toHaveBeenCalled();
   });
 });
 
