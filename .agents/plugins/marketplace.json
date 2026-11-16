@@ -7,7 +7,7 @@
       "source": {
         "source": "npm",
         "package": "@rpamis/comet-codex-plugin",
-        "version": "0.5.3",
+        "version": "0.5.4",
         "registry": "https://registry.npmjs.org"
       },
       "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
