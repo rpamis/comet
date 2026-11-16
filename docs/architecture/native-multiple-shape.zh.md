@@ -65,3 +65,7 @@ Windows SDK CI 的既有取消回归还发现：Run 已取消但 selection 清�
 CI 中旧 Run 的批准续行、后续合法归档和 Runtime 读取预算也先在本地复现失败。共享规划约束只适用于具有 Git 规划绑定、且本次 Shape 使用 v4 执行的内置 Run；旧 Shape 依据保留的执行来源继续原批准，固定应用和原本未绑定的 SDK 工作区沿用自身约定。领取、Hook 与高层 Build 准备使用同一判定，没有为归档另建状态或改写旧执行。现有升级案例补充核对原 Builder 的 Hook 合法写入。
 
 交接查询复用 store 已绑定的 Runtime 根目录，但每次仍读取当前交接记录；只读请求不因后来的环境变量变化切换归属。三项原失败回归均通过，分别登记为 `native-562-legacy-shape-approval`、`native-562-legacy-archive-continuation`、`native-562-captured-runtime-namespace`。没有删除或缩窄历史断言。
+
+后续 Review 又复现成功 Builder 的跨需求轮次问题、非 Git 项目误用共享规划，以及 Git Hook 环境下读错 worktree 索引。实施准备只检查最近一次 Shape 准备之后的动作；此前成功的 Builder 仍保留，但不阻止新轮次交接。创建入口与后续执行使用同一共享规划条件，无 Git 分支时只保留单 change。`cd7488f6` 的公开 new bundle 在隔离非 Git 项目中两次新建均成功，新代码拒绝第二次且保留原单任务的合法 Build。
+
+同步 Git 命令复用已有 `independentGitEnvironment()`，清除仓库和索引局部变量，保留全局配置与认证。临时 linked worktree 的实际修改在旧代码中被源索引掩盖，新代码读取目标修改和分支。三项案例 `native-562-reapproved-succeeded-builder-isolation`、`native-562-nongit-shared-planning`、`git-562-inherited-worktree-environment` 均保留修复前失败和修复后执行证据；此前失败 Builder 的精确测试名称和断言不变。

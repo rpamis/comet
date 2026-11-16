@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { readNativeSdkRunRecord } from './native-sdk-state-store.js';
+import { usesNativeSharedPlanning } from './native-build-workspace-record.js';
 import path from 'node:path';
 
 import {
@@ -161,7 +162,13 @@ export async function createNativeSdkChange(options: {
           if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
           throw error;
         }
-        if (run?.workflow.version !== '4' || run.status === 'cancelled') return false;
+        if (
+          !run ||
+          run.status === 'cancelled' ||
+          options.workspaceBinding.changeBranch === null ||
+          !usesNativeSharedPlanning(run)
+        )
+          return false;
         const state = parseNativePortableState(run.state);
         return (
           state.phase === 'shape' ||

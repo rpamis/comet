@@ -54584,6 +54584,63 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-562-reapproved-succeeded-builder-isolation",
+      "behavior": "成功 Builder 之后修订并重新批准 Shape，仅本次 Shape 之后的实施记录决定是否已准备工作区。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581735753"],
+      "coverageLevel": "public-cli",
+      "reproduction": "当前修复前的精确回归失败；非 Git 行为另用 cd7488f6 的公开 new bundle 在隔离项目复现两次新建均成功。",
+      "expected": "保留成功记录和部分实现，先整理提交基线，再在独立 worktree 领取新 Builder。",
+      "forbidden": "被旧成功记录阻塞而无法交接，或在共享目录直接实施。",
+      "rootCause": "准备条件扫描所有历史成功 Builder，使新批准后的实施准备永久被跳过。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "reconsiders Build isolation after a succeeded Builder and renewed Shape approval$",
+          "requiredNames": [
+            "Native Build workspace recovery reconsiders Build isolation after a succeeded Builder and renewed Shape approval"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-nongit-shared-planning",
+      "behavior": "无 Git 分支时拒绝创建第二个共享 Shape，保留原单 change 的批准和 Build 流程。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581874362"],
+      "coverageLevel": "public-cli",
+      "reproduction": "当前修复前的精确回归失败；非 Git 行为另用 cd7488f6 的公开 new bundle 在隔离项目复现两次新建均成功。",
+      "expected": "第二个 Shape 被拒绝，原 Run 不变，单任务仍可批准并领取 Builder。",
+      "forbidden": "在非 Git 同一目录同时创建并实施两个未隔离任务。",
+      "rootCause": "创建入口只检查版本和阶段，与 Build/Hook 的共享规划适用条件不一致。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "rejects shared Shape planning without a Git branch while retaining the single-change workflow$",
+          "requiredNames": [
+            "Native Build workspace recovery rejects shared Shape planning without a Git branch while retaining the single-change workflow"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "git-562-inherited-worktree-environment",
+      "behavior": "从 Git Hook 环境执行指定 worktree 的同步 Git 检查时不继承其他仓库或索引。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581735745"],
+      "coverageLevel": "unit",
+      "reproduction": "当前修复前的精确回归失败；非 Git 行为另用 cd7488f6 的公开 new bundle 在隔离项目复现两次新建均成功。",
+      "expected": "读取目标 worktree 的实际分支和修改，保留原进程环境与全局 Git 配置。",
+      "forbidden": "读取源索引并将目标未提交实现误判为干净。",
+      "rootCause": "同步 Git 命令继承 GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE，覆盖了显式工作目录。",
+      "tests": [
+        {
+          "file": "test/platform/git-process.test.ts",
+          "namePattern": "reads the requested worktree despite inherited repository and index variables$",
+          "requiredNames": [
+            "Git process helpers reads the requested worktree despite inherited repository and index variables"
+          ]
+        }
+      ]
     }
   ],
   "historicalTestMigrations": [

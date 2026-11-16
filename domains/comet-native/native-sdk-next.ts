@@ -606,10 +606,16 @@ export async function advanceNativeSdkChange(
     )
   )
     return nextResult(projectRoot, name, run, artifactRootRef, application);
+  const latestShape = [...run.actions]
+    .reverse()
+    .find((action) => ['shape.prepare', 'shape.revalidate'].includes(action.stepId));
+  const currentCycleActions = run.actions.slice(
+    latestShape ? run.actions.indexOf(latestShape) + 1 : 0,
+  );
   if (
     !application &&
     state.phase === 'build' &&
-    !run.actions.some(
+    !currentCycleActions.some(
       (action) =>
         ['build.builder', 'supervisor.prepare'].includes(action.stepId) &&
         ['running', 'unknown', 'succeeded'].includes(action.status),
