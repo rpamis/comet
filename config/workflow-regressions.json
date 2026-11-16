@@ -54508,6 +54508,82 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-562-cancelling-shape-start",
+      "behavior": "共享 Shape 创建不能越过仍待释放 selection 的已取消 Run，显式修复清理后才允许新建。",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/43798471242/job/133073266488"],
+      "coverageLevel": "runtime",
+      "reproduction": "8e40d7b3 的既有 cancellation lifecycle 精确测试失败：createNativeSdkChange 意外创建 blocked-replacement。",
+      "expected": "清理前 SDK/Compat 新建均拒绝，保持原 cancelled Run 和 selection；doctor 修复后允许新建。",
+      "forbidden": "因旧便携状态仍在 Shape 而将未完成取消视为可共享规划任务。",
+      "rootCause": "多 Shape 创建只检查 workflow 版本和便携 phase，漏掉 Run 已取消而 selection 清理未完成的业务状态。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-cancellation.test.ts",
+          "namePattern": "keeps failed selection cleanup visible until explicit repair and preserves the original cancelled Run$",
+          "requiredNames": [
+            "Native cancellation lifecycle keeps failed selection cleanup visible until explicit repair and preserves the original cancelled Run"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-legacy-shape-approval",
+      "behavior": "升级旧 Run 后按原 Shape 批准与工作区继续原 Builder，并保持合法 Hook 写入。",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/43798471242/job/133073266461"],
+      "coverageLevel": "runtime",
+      "reproduction": "8e40d7b3 的现有精确回归在 CI 及本地失败；本轮不删除或降低原断言。",
+      "expected": "升级旧 Run 后按原 Shape 批准与工作区继续原 Builder，并保持合法 Hook 写入。",
+      "forbidden": "升级后丢失原批准或执行身份、重写原 Run，或改变只读查询的 Runtime 归属。",
+      "rootCause": "共享规划的领取规则没有区分原 Shape 的执行协议，给升级中的旧批准追加了隔离决定。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-incremental.test.ts",
+          "namePattern": "continues a restored 0.5.0 Run with its original approval and Builder claim without content proof$",
+          "requiredNames": [
+            "Native Shape incremental contract continues a restored 0.5.0 Run with its original approval and Builder claim without content proof"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-legacy-archive-continuation",
+      "behavior": "保留旧 SDK 工作区约定，使后续合法归档完成后仍能恢复原 Archive 的历史。",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/43798471242/job/133073266461"],
+      "coverageLevel": "runtime",
+      "reproduction": "8e40d7b3 的现有精确回归在 CI 及本地失败；本轮不删除或降低原断言。",
+      "expected": "保留旧 SDK 工作区约定，使后续合法归档完成后仍能恢复原 Archive 的历史。",
+      "forbidden": "升级后丢失原批准或执行身份、重写原 Run，或改变只读查询的 Runtime 归属。",
+      "rootCause": "新的共享工作区检查被应用到没有该规划绑定的既有 SDK 调用。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "recovers original archive history after a subsequent legitimate archive changes canonical Specs$",
+          "requiredNames": [
+            "recovers original archive history after a subsequent legitimate archive changes canonical Specs"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-captured-runtime-namespace",
+      "behavior": "只读重定向使用 store 创建时绑定的 Runtime 目录，避免每次读取重复核对或随环境变量改换目录。",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/43798471242/job/133073266461"],
+      "coverageLevel": "runtime",
+      "reproduction": "8e40d7b3 的现有精确回归在 CI 及本地失败；本轮不删除或降低原断言。",
+      "expected": "只读重定向使用 store 创建时绑定的 Runtime 目录，避免每次读取重复核对或随环境变量改换目录。",
+      "forbidden": "升级后丢失原批准或执行身份、重写原 Run，或改变只读查询的 Runtime 归属。",
+      "rootCause": "新增交接查询每次重新解析全局 Runtime 根目录，而非复用当前 store 的已绑定目录。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-read-performance.test.ts",
+          "namePattern": "uses its captured Runtime namespace without repeated workspace identity reconciliation$",
+          "requiredNames": [
+            "Native SDK read work budgets uses its captured Runtime namespace without repeated workspace identity reconciliation"
+          ]
+        }
+      ]
     }
   ],
   "historicalTestMigrations": [

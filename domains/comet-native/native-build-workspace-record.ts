@@ -12,10 +12,25 @@ export interface BuildWorkspaceTransfer {
   run: WorkflowRun;
 }
 
-export async function transferFile(projectRoot: string, name: string): Promise<string> {
+/** Existing approvals keep the workspace contract under which Shape ran. */
+export function usesNativeSharedPlanning(run: Readonly<WorkflowRun>): boolean {
+  const shape = [...run.actions]
+    .reverse()
+    .find((action) => ['shape.prepare', 'shape.revalidate'].includes(action.stepId));
+  return (
+    (shape?.executionOrigin?.workflow.version ?? run.workflow.version) === '4' &&
+    (run.state as unknown as NativePortableState).workspace.change_branch !== null
+  );
+}
+
+export async function transferFile(
+  projectRoot: string,
+  name: string,
+  workspaceRuntimeRoot?: string,
+): Promise<string> {
   if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u.test(name)) throw new Error('Invalid Native change name');
   return path.join(
-    await resolveWorkspaceRuntimeRoot(projectRoot),
+    workspaceRuntimeRoot ?? (await resolveWorkspaceRuntimeRoot(projectRoot)),
     'native-build-workspaces',
     `${name}.json`,
   );
@@ -25,10 +40,11 @@ export async function transferFile(projectRoot: string, name: string): Promise<s
 export async function readNativeBuildWorkspace(
   projectRoot: string,
   name: string,
+  workspaceRuntimeRoot?: string,
 ): Promise<BuildWorkspaceTransfer | null> {
   try {
     return JSON.parse(
-      await fs.readFile(await transferFile(projectRoot, name), 'utf8'),
+      await fs.readFile(await transferFile(projectRoot, name, workspaceRuntimeRoot), 'utf8'),
     ) as BuildWorkspaceTransfer;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
@@ -46,6 +62,8 @@ export async function listNativeSdkBuildPeers(
     singleWriter: true,
     rootDir: path.join(root, 'sdk-runs', 'native'),
   });
+  const current = await store.read(name);
+  if (!current || !usesNativeSharedPlanning(current)) return [];
   const peers: string[] = [];
   const workspace = inspectGitWorktree(projectRoot);
   for (const candidate of await listSdkChangeNames(projectRoot, 'native', {

@@ -59,3 +59,9 @@ CodeRabbit 与第二轮 Codex 审核继续复现了五项行为：干净 worktre
 复用目标只允许当前提交的干净检出及 Comet 准备的配置，保留既有 Runtime owner 与本地改动拒绝。相对结果路径在原工作区解析；源端只读读取先跟随已有交接记录。失败 Builder 不再代表已完成实施准备，部分实现仍由 Agent 明确整理并提交，Runtime 不自动提交。两份交接/恢复测试与 v4 公开 CLI 共 58 项通过，保留既有断言。
 
 源工作区的未跟踪文件继续遵循已公开约定：不自动复制到基于已提交代码创建的新 worktree，启动前由 Agent 整理必要代码；未因审核建议新增全目录未跟踪文件阻塞。相关说明已在“开始实施”列出。
+
+Windows SDK CI 的既有取消回归还发现：Run 已取消但 selection 清理失败时，旧便携状态仍可能是 Shape，不能因此把该 Run 当作可共享规划。`native-562-cancelling-shape-start` 复用原案例，保留清理失败时阻止 SDK/Compat 新建、原取消 Run 与 selection 不变、显式修复后允许新建的全部断言。`8e40d7b3` 定向复现失败；创建入口排除已取消 Run，取消完成后的任务仍由原发现入口正常移出活动集合。
+
+CI 中旧 Run 的批准续行、后续合法归档和 Runtime 读取预算也先在本地复现失败。共享规划约束只适用于具有 Git 规划绑定、且本次 Shape 使用 v4 执行的内置 Run；旧 Shape 依据保留的执行来源继续原批准，固定应用和原本未绑定的 SDK 工作区沿用自身约定。领取、Hook 与高层 Build 准备使用同一判定，没有为归档另建状态或改写旧执行。现有升级案例补充核对原 Builder 的 Hook 合法写入。
+
+交接查询复用 store 已绑定的 Runtime 根目录，但每次仍读取当前交接记录；只读请求不因后来的环境变量变化切换归属。三项原失败回归均通过，分别登记为 `native-562-legacy-shape-approval`、`native-562-legacy-archive-continuation`、`native-562-captured-runtime-namespace`。没有删除或缩窄历史断言。

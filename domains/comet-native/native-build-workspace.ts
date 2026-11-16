@@ -1,4 +1,8 @@
-import { readNativeBuildWorkspace, transferFile } from './native-build-workspace-record.js';
+import {
+  readNativeBuildWorkspace,
+  transferFile,
+  usesNativeSharedPlanning,
+} from './native-build-workspace-record.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { createFileRuntimeStore, type WorkflowRun } from '../engine/runtime.js';
@@ -33,6 +37,7 @@ export async function prepareNativeBuildWorkspace(
     const active = await listActiveNativeChangesOwnedByWorkspace(paths);
     if (active.filter((change) => change !== name).length === 0) return projectRoot;
     const run = await readNativeSdkRunRecord(projectRoot, name);
+    if (run && !usesNativeSharedPlanning(run)) return projectRoot;
     if (!run || run.workflow.version !== '4')
       throw new Error('Build workspace preparation requires Native v4');
     const state = parseNativePortableState(run.state);

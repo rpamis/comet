@@ -161,7 +161,7 @@ export async function createNativeSdkChange(options: {
           if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
           throw error;
         }
-        if (run?.workflow.version !== '4') return false;
+        if (run?.workflow.version !== '4' || run.status === 'cancelled') return false;
         const state = parseNativePortableState(run.state);
         return (
           state.phase === 'shape' ||

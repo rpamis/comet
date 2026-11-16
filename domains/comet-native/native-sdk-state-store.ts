@@ -492,7 +492,7 @@ export function createNativeSdkStateStore(
     runId: string,
     publishCheckpoint = false,
   ): Promise<WorkflowRun | null> {
-    const transferred = await readNativeBuildWorkspace(projectRoot, runId);
+    const transferred = await readNativeBuildWorkspace(projectRoot, runId, workspaceRuntimeRoot);
     if (transferred) {
       const current = await createNativeSdkStateStore(transferred.projectRoot, {
         readOnly: true,
@@ -551,7 +551,7 @@ export function createNativeSdkStateStore(
         runId,
       ),
     async compareAndSwap(runId, expectedRevision, next) {
-      const transferred = await readNativeBuildWorkspace(projectRoot, runId);
+      const transferred = await readNativeBuildWorkspace(projectRoot, runId, workspaceRuntimeRoot);
       if (transferred)
         throw new Error(
           `Native change moved to ${transferred.projectRoot}; run comet native next ${runId} --project-root ${projectRoot} --json to resume the transfer`,
@@ -564,7 +564,7 @@ export function createNativeSdkStateStore(
           ['build.builder', 'supervisor.prepare'].includes(action.stepId) &&
           action.status === 'running',
       );
-      if (implementationClaim) {
+      if (implementationClaim && !options.identity) {
         const previous = await store.read(runId);
         const original = previous?.actions.find((action) => action.id === implementationClaim.id);
         if (original?.status !== 'running') {
