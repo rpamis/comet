@@ -69,21 +69,28 @@ export async function prepareNativeBuildWorkspace(
       targetBranch: inspectGitWorktree(projectRoot).currentBranch ?? undefined,
     });
     const existing = await readNativeSdkRunRecord(prepared.projectRoot, name);
-    const targetPaths = await nativeProjectPaths(prepared.projectRoot, config.native.artifact_root);
     const owner = await readChangeRuntimeOwner(prepared.projectRoot, 'native', name, {
       readOnly: true,
     });
-    const existingArtifacts = await fs.lstat(path.join(targetPaths.changesDir, name)).then(
-      () => true,
-      (error) => {
-        if (error.code === 'ENOENT') return false;
-        throw error;
-      },
-    );
-    if (existing || owner || (!prepared.preparation.createdWorktree && existingArtifacts))
+    if (existing || owner)
       throw new Error(
         `Build worktree already contains Runtime ownership or change artifacts for ${name}: ${prepared.projectRoot}. Preserve both workspaces and choose an unused worktree before retrying native next.`,
       );
+    if (!prepared.preparation.createdWorktree) {
+      const localChanges = [
+        ...runGitCommand(prepared.projectRoot, ['diff', 'HEAD', '--name-only', '-z']).split('\0'),
+        ...runGitCommand(prepared.projectRoot, [
+          'ls-files',
+          '--others',
+          '--exclude-standard',
+          '-z',
+        ]).split('\0'),
+      ].filter((file) => file && file !== '.comet/config.yaml');
+      if (localChanges.length)
+        throw new Error(
+          `Native Build worktree has local changes: ${prepared.projectRoot}: ${localChanges.join(', ')}. Preserve its files and reconcile them before retrying the same native next command.`,
+        );
+    }
     transfer = {
       copied: false,
       projectRoot: prepared.projectRoot,

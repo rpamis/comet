@@ -612,7 +612,7 @@ export async function advanceNativeSdkChange(
     !run.actions.some(
       (action) =>
         ['build.builder', 'supervisor.prepare'].includes(action.stepId) &&
-        action.status !== 'pending',
+        ['running', 'unknown', 'succeeded'].includes(action.status),
     )
   ) {
     const target = await prepareNativeBuildWorkspace(projectRoot, name);

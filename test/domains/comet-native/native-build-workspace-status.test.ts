@@ -8,6 +8,7 @@ import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { inspectNativeSdkRun } from '../../../domains/comet-native/native-runtime-ownership.js';
 import { createNativeSdkStateStore } from '../../../domains/comet-native/native-sdk-state-store.js';
 import { inspectCometProjectStatus } from '../../../domains/comet-entry/project-status.js';
+import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -88,6 +89,13 @@ it('reads the current moved Run through source status without advancing or rewri
   ).rejects.toThrow('moved');
 
   expect((await inspectNativeSdkRun(target, 'shape-a', { readOnly: true })).run).toEqual(
+    before.run,
+  );
+  expect(await fs.readFile(sourceFile, 'utf8')).toBe(sourceBefore);
+  expect(await fs.readFile(targetFile, 'utf8')).toBe(targetBefore);
+  const sourceHistory = path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'sdk-runs/native');
+  await fs.rename(sourceHistory, `${sourceHistory}-saved`);
+  expect((await inspectNativeSdkRun(projectRoot, 'shape-a', { readOnly: true })).run).toEqual(
     before.run,
   );
   expect(await fs.readFile(sourceFile, 'utf8')).toBe(sourceBefore);

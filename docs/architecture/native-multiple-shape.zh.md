@@ -53,3 +53,9 @@ Compat 和固定 SDK 应用沿用各自的隔离规则。同一物理工作区�
 自动交接前核对既有 `comet/<change>` 分支与源工作区 HEAD 的提交。不同则保留双方分支和材料，拒绝创建 worktree 或推进原 Run，并提示先核对实施基线；不自动重置分支。基线明确对齐后，同一个已批准任务可继续。
 
 案例为 `native-562-build-material-deletions` 与 `native-562-build-branch-baseline`，精确测试选择器见 `config/workflow-regressions.json`。使用公开 bundle 验证删除同步、旧基线拒绝、合法基线继续及原 Run/批准保留；相邻恢复测试继续核对目标最新 checkpoint 和原 Builder 身份。真实平台 Hook 与模型 Eval 不在本轮执行范围内。
+
+CodeRabbit 与第二轮 Codex 审核继续复现了五项行为：干净 worktree 已创建但尚未记录交接时不能重试；同提交目标中的本地实现修改被直接沿用；源端相对结果路径被重定向到目标的另一份报告；失败 Builder 修订 Shape 后跳过隔离；源端 Run 历史丢失后，只读读取先恢复陈旧检查点而未跟随交接目标。对应 `native-562-*` 案例已追加登记。
+
+复用目标只允许当前提交的干净检出及 Comet 准备的配置，保留既有 Runtime owner 与本地改动拒绝。相对结果路径在原工作区解析；源端只读读取先跟随已有交接记录。失败 Builder 不再代表已完成实施准备，部分实现仍由 Agent 明确整理并提交，Runtime 不自动提交。两份交接/恢复测试与 v4 公开 CLI 共 58 项通过，保留既有断言。
+
+源工作区的未跟踪文件继续遵循已公开约定：不自动复制到基于已提交代码创建的新 worktree，启动前由 Agent 整理必要代码；未因审核建议新增全目录未跟踪文件阻塞。相关说明已在“开始实施”列出。

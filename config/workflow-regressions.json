@@ -242,6 +242,13 @@
           "requiredNames": [
             "Native v4 public CLI surface preserves existing unowned worktree artifacts when Build transfer conflicts"
           ]
+        },
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "inherits committed Shape documents while preserving the approved Run$",
+          "requiredNames": [
+            "Native Build workspace recovery inherits committed Shape documents while preserving the approved Run"
+          ]
         }
       ]
     },
@@ -54403,6 +54410,101 @@
           "namePattern": "rejects a stale existing Build branch before packaged handoff and permits its aligned baseline$",
           "requiredNames": [
             "Native Build workspace recovery rejects a stale existing Build branch before packaged handoff and permits its aligned baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-prepared-checkout-recovery",
+      "behavior": "准备好干净 worktree 后尚未发布交接记录时，原 next 可继续交接已提交的 Shape 材料。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581632332"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 2e461885 的公开 next bundle 上运行精确选择断言失败；重新生成 Runtime 后通过。",
+      "expected": "首次交接能继续且只领取一个 Builder，原目标材料冲突仍拒绝。",
+      "forbidden": "因已提交材料拒绝合法恢复，或覆盖有本地改动的目标。",
+      "rootCause": "将干净 Git 检出中的当前已提交材料误判为无归属材料。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "resumes a prepared clean checkout with inherited Shape documents before transfer publication$",
+          "requiredNames": [
+            "Native Build workspace recovery resumes a prepared clean checkout with inherited Shape documents before transfer publication"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-reused-worktree-local-changes",
+      "behavior": "首次交接拒绝复用目标中的未提交实现修改，保留双方材料与原 Run。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581644957"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 2e461885 的公开 next bundle 上运行精确选择断言失败；重新生成 Runtime 后通过。",
+      "expected": "目标代码和原 Run 保持不变，输出具体本地变更阻塞。",
+      "forbidden": "静默在无关目标修改上派发已批准 Builder。",
+      "rootCause": "提交基线检查只比较分支，未检查复用 worktree 的本地修改。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "preserves local implementation changes in a reused Build worktree$",
+          "requiredNames": [
+            "Native Build workspace recovery preserves local implementation changes in a reused Build worktree"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-redirected-result-path",
+      "behavior": "从规划目录回报已交接任务的相对结果路径时读取原目录文件。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581632341"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 2e461885 的公开 next bundle 上运行精确选择断言失败；重新生成 Runtime 后通过。",
+      "expected": "原 Action 记录源目录的真实报告。",
+      "forbidden": "读取目标同路径的另一份报告或误报文件缺失。",
+      "rootCause": "重放 next 参数时未把结果路径解析为原工作区的绝对路径。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "reads a redirected relative result from the original workspace instead of the target$",
+          "requiredNames": [
+            "Native Build workspace recovery reads a redirected relative result from the original workspace instead of the target"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-reapproved-failed-builder-isolation",
+      "behavior": "Builder 失败后修订并重新批准 Shape，仍先按活跃任务准备实施隔离工作区。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581632346"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 2e461885 的公开 next bundle 上运行精确选择断言失败；重新生成 Runtime 后通过。",
+      "expected": "先要求提交仍需保留的部分实现，再把原 Run 交接到独立 worktree。",
+      "forbidden": "因旧失败跳过隔离，或丢弃、自动提交部分实现。",
+      "rootCause": "历史失败 Builder 被误视为已经完成当前实施准备。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "reconsiders Build isolation after a failed Builder and renewed Shape approval$",
+          "requiredNames": [
+            "Native Build workspace recovery reconsiders Build isolation after a failed Builder and renewed Shape approval"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-moved-source-history-loss",
+      "behavior": "交接后源端本地 Run 历史丢失时，只读查询直接跟随目标当前 Run，不恢复陈旧源检查点。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581632351"],
+      "coverageLevel": "runtime",
+      "reproduction": "移走源端 sdk-runs/native 后，2e461885 的只读 inspect 因旧检查点工作区绑定而失败。",
+      "expected": "源和目标文件不变，返回目标当前 Run。",
+      "forbidden": "恢复源端陈旧执行或要求修复已经迁走的 Run。",
+      "rootCause": "交接重定向晚于源端本地历史读取和检查点恢复。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-status.test.ts",
+          "namePattern": "^reads the current moved Run through source status without advancing or rewriting either workspace$",
+          "requiredNames": [
+            "reads the current moved Run through source status without advancing or rewriting either workspace"
           ]
         }
       ]

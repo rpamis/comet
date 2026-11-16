@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { readNativeBuildWorkspace } from './native-build-workspace-record.js';
 import { prepareNativeBuildWorkspace } from './native-build-workspace.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
@@ -202,6 +203,11 @@ export async function nativeNextCommand(
     async function executeSdk(operation: () => Promise<DispatchResult>): Promise<DispatchResult> {
       if (await readNativeBuildWorkspace(projectRoot, name)) {
         const target = await prepareNativeBuildWorkspace(projectRoot, name);
+        if (resultFile !== undefined)
+          originalArgs[originalArgs.indexOf('--result') + 1] = path.resolve(
+            projectRoot,
+            resultFile,
+          );
         return { ...(await nativeNextCommand(originalArgs, target)), executionCwd: target };
       }
       return operation();

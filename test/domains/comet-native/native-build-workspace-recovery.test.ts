@@ -15,6 +15,8 @@ interface NativeResult {
     stateVersion?: number;
     phase?: string;
     task?: { actionId: string; session: string; status: string };
+    continuation?: { commandAlternatives: Array<{ name: string; commandArgs: string[] }> };
+    continuation?: { commandAlternatives: Array<{ name: string; commandArgs: string[] }> };
   };
 }
 
@@ -44,12 +46,16 @@ describe('Native Build workspace recovery', () => {
   }
 
   async function cli(args: string[], root = projectRoot): Promise<NativeResult> {
-    const result = await runNativeCli([...args, '--project-root', root, '--json']);
+    const result = await runNativeCli([
+      ...args,
+      ...(args.includes('--project-root') ? [] : ['--project-root', root]),
+      ...(args.includes('--json') ? [] : ['--json']),
+    ]);
     return JSON.parse(result.stdout!) as NativeResult;
   }
 
-  async function prepareShape(): Promise<number> {
-    for (const name of ['shape-a', 'shape-b']) {
+  async function prepareShape(names = ['shape-a', 'shape-b']): Promise<number> {
+    for (const name of names) {
       const created = await cli(['new', name]);
       expect(created.exitCode, created.error?.message).toBe(0);
     }
@@ -156,6 +162,129 @@ describe('Native Build workspace recovery', () => {
     expect(await fs.readFile(path.join(target, 'implementation.txt'), 'utf8')).toBe(
       'Current implementation baseline\n',
     );
+  });
+
+  it('resumes a prepared clean checkout with inherited Shape documents before transfer publication', async () => {
+    const version = await prepareShape();
+    git('add', 'docs');
+    git('commit', '-m', 'Commit reviewed Shape materials');
+    await approve(version);
+    const target = path.join(projectRoot, '.worktrees/shape-a');
+    git('worktree', 'add', '-b', 'comet/shape-a', target);
+    const started = startPackagedBuild();
+    expect(started.exitCode, started.error?.message).toBe(0);
+    expect(started.data?.task?.session).toBe('approved-builder');
+    expect(
+      (await inspectNativeSdkRun(target, 'shape-a')).run.actions.filter(
+        (action) => action.stepId === 'build.builder' && action.status === 'running',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('preserves local implementation changes in a reused Build worktree', async () => {
+    await fs.writeFile(path.join(projectRoot, 'implementation.txt'), 'Committed baseline\n');
+    git('add', 'implementation.txt');
+    git('commit', '-m', 'Implementation baseline');
+    await approve(await prepareShape());
+    const target = path.join(projectRoot, '.worktrees/shape-a');
+    git('worktree', 'add', '-b', 'comet/shape-a', target);
+    await fs.writeFile(path.join(target, 'implementation.txt'), 'Unrelated target work\n');
+    const before = (await inspectNativeSdkRun(projectRoot, 'shape-a')).run;
+    const rejected = startPackagedBuild();
+    expect(rejected.exitCode).not.toBe(0);
+    expect(rejected.error?.message).toContain('local changes');
+    expect(await fs.readFile(path.join(target, 'implementation.txt'), 'utf8')).toBe(
+      'Unrelated target work\n',
+    );
+    expect((await inspectNativeSdkRun(projectRoot, 'shape-a')).run).toEqual(before);
+  });
+
+  it('reads a redirected relative result from the original workspace instead of the target', async () => {
+    await approve(await prepareShape());
+    const started = startPackagedBuild();
+    expect(started.exitCode, started.error?.message).toBe(0);
+    const target = path.join(projectRoot, '.worktrees/shape-a');
+    for (const [root, summary] of [
+      [projectRoot, 'Actual source report'],
+      [target, 'Wrong target report'],
+    ]) {
+      await fs.mkdir(path.join(root, '.comet/results'), { recursive: true });
+      await fs.writeFile(
+        path.join(root, '.comet/results/build.json'),
+        JSON.stringify({ status: 'failed', output: null, summary }),
+      );
+    }
+    const reported = await cli([
+      'next',
+      'shape-a',
+      '--session',
+      'approved-builder',
+      '--action',
+      started.data!.task!.actionId,
+      '--result',
+      '.comet/results/build.json',
+    ]);
+    expect(reported.exitCode, reported.error?.message).toBe(0);
+    const run = (await inspectNativeSdkRun(target, 'shape-a')).run;
+    expect(run.actions.find((action) => action.id === started.data!.task!.actionId)?.status).toBe(
+      'failed',
+    );
+    expect(JSON.stringify(run)).toContain('Actual source report');
+    expect(JSON.stringify(run)).not.toContain('Wrong target report');
+  });
+
+  it('reconsiders Build isolation after a failed Builder and renewed Shape approval', async () => {
+    await fs.writeFile(path.join(projectRoot, 'implementation.txt'), 'Initial implementation\n');
+    git('add', 'implementation.txt');
+    git('commit', '-m', 'Initial implementation');
+    await approve(await prepareShape(['shape-a']));
+    const started = startPackagedBuild();
+    expect(started.exitCode, started.error?.message).toBe(0);
+    await fs.writeFile(
+      path.join(projectRoot, 'implementation.txt'),
+      'Preserved partial implementation\n',
+    );
+    const file = path.join(projectRoot, '.comet/failed-builder.json');
+    await fs.writeFile(
+      file,
+      JSON.stringify({ status: 'failed', output: null, summary: 'Requirements need revision' }),
+    );
+    const failed = await cli([
+      'next',
+      'shape-a',
+      '--session',
+      'approved-builder',
+      '--action',
+      started.data!.task!.actionId,
+      '--result',
+      file,
+    ]);
+    expect(failed.exitCode, failed.error?.message).toBe(0);
+    const status = await cli(['status', 'shape-a', '--details']);
+    const revision = status.data?.continuation?.commandAlternatives.find(
+      (option) => option.name === 'revise-requirements',
+    );
+    expect(revision, JSON.stringify(status.data?.continuation)).toBeDefined();
+    const revised = await cli(
+      revision!.commandArgs
+        .slice(2)
+        .map((value) => (value === '<summary>' ? 'User approved revised requirements' : value)),
+    );
+    expect(revised.exitCode, revised.error?.message).toBe(0);
+    expect((await cli(['new', 'shape-b'])).exitCode).toBe(0);
+    const ready = await cli(['next', 'shape-a']);
+    expect(ready.exitCode, ready.error?.message).toBe(0);
+    await approve(ready.data!.stateVersion!);
+    const blocked = startPackagedBuild();
+    expect(blocked.exitCode).not.toBe(0);
+    expect(blocked.error?.message).toContain('committed code changes');
+    git('add', 'implementation.txt');
+    git('commit', '-m', 'Preserve reviewed partial implementation');
+    const resumed = startPackagedBuild();
+    expect(resumed.exitCode, resumed.error?.message).toBe(0);
+    expect(
+      await fs.readFile(path.join(projectRoot, '.worktrees/shape-a/implementation.txt'), 'utf8'),
+    ).toBe('Preserved partial implementation\n');
   });
 
   it('preserves the current target checkpoint and original Builder when its local Run is missing', async () => {
