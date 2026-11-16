@@ -11,6 +11,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Eval container cleanup**: Wait for an already-running Docker container removal before confirming a stopped experiment, while keeping incomplete cleanup retryable and preserving other experiments.
+
 - **Linux process cleanup**: Confirm that the owned process group has stopped before recording successful cleanup, including descendants that outlive their parent or ignore standard streams.
 
 - **Windows input snapshots**: Reject files rewritten during capture even when Windows reports unchanged timestamps, so stale bytes or digests are not accepted as current inputs.

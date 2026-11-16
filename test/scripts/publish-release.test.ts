@@ -208,7 +208,7 @@ describe('release candidate and final announcement', () => {
     const names = ['@rpamis/comet', '@rpamis/comet-codex-plugin', 'comet-dsh-plugin'];
     const verified: string[] = [];
     const transport = async (url: string, body?: unknown) => {
-      if (url.includes('registry.npmjs.org')) {
+      if (new URL(url).hostname === 'registry.npmjs.org') {
         const name = decodeURIComponent(new URL(url).pathname.split('/')[1]);
         return { name, version: '0.5.4', gitHead: head };
       }
@@ -238,7 +238,7 @@ describe('release candidate and final announcement', () => {
   it('preview never saves a Release and a failed npm download never announces success', async () => {
     const { options, request, head } = await fixture();
     const transport = async (url: string, body?: unknown) =>
-      url.includes('registry.npmjs.org')
+      new URL(url).hostname === 'registry.npmjs.org'
         ? { name: '@rpamis/comet', version: '0.5.4', gitHead: head }
         : request(url, body);
     const runNpm = vi.fn().mockRejectedValue(new Error('download failed'));
@@ -259,7 +259,8 @@ describe('release candidate and final announcement', () => {
     git(['tag', '0.5.4']);
     const transport = async (url: string, body?: unknown) => {
       if (url.endsWith('/releases/tags/0.5.4')) return { id: 12, draft: false };
-      if (url.includes('registry.npmjs.org')) return { version: '0.5.4', gitHead: head };
+      if (new URL(url).hostname === 'registry.npmjs.org')
+        return { version: '0.5.4', gitHead: head };
       return request(url, body);
     };
     await publishRelease(options, {
@@ -278,7 +279,8 @@ describe('release candidate and final announcement', () => {
     const patch = vi.fn();
     const transport = async (url: string, body?: unknown, method?: string) => {
       if (url.endsWith('/releases/tags/0.5.4')) return { id: 12, draft: true };
-      if (url.includes('registry.npmjs.org')) return { version: '0.5.4', gitHead: head };
+      if (new URL(url).hostname === 'registry.npmjs.org')
+        return { version: '0.5.4', gitHead: head };
       if (method === 'PATCH') {
         expect(downloaded).toBe(true);
         patch(url, body);

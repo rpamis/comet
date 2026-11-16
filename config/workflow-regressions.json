@@ -2,6 +2,27 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "eval-562-container-removal-in-progress",
+      "behavior": "Docker 已在自动删除本实验容器时，等待删除完成再确认停止；删除失败或未结束时继续报告未完成。",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/43824667030/job/133156268104"],
+      "coverageLevel": "unit",
+      "reproduction": "Docker rm 返回 removal already in progress，后续两次查询仍可见本项目容器；旧代码立即报告停止未完成。",
+      "expected": "在原删除时限内确认容器消失后完成，stop 和 rm 各执行一次，只查询当前实验。",
+      "forbidden": "容器仍存在时报告停止成功、反复删除或把权限错误当作删除进行中。",
+      "rootCause": "自动删除和显式删除可以重叠；旧代码忽略删除进行中错误后立即查询，不等待已开始的删除完成。CI 未保留 Docker stderr，因此原失败与此分支的对应关系待原容器集成检查确认。",
+      "tests": [
+        {
+          "file": "test/domains/eval/eval-container-removal.test.ts",
+          "namePattern": "^Docker container removal completion (waits for an in-progress removal before confirming scoped container cleanup|keeps cleanup incomplete when an in-progress removal never finishes|does not turn a failed removal into successful cleanup)$",
+          "requiredNames": [
+            "Docker container removal completion waits for an in-progress removal before confirming scoped container cleanup",
+            "Docker container removal completion keeps cleanup incomplete when an in-progress removal never finishes",
+            "Docker container removal completion does not turn a failed removal into successful cleanup"
+          ]
+        }
+      ]
+    },
+    {
       "id": "dependency-minimatch-glob-amplification",
       "behavior": "Node 依赖中的优化 glob 预处理限制重复 **/.. 的扩展数量，同时保留正常匹配。",
       "reproduction": "054 基线 05f86a863f1fd076045db1824a57f2703dd52626 的已安装 minimatch 将 8 组 **/../a/b 扩展为 256 项，超过 braceExpandMax=64；npm 与 pnpm 锁文件均包含受影响的 10.x。修改前新增行为与锁文件断言均失败。",
