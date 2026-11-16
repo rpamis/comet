@@ -10,6 +10,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Windows input snapshots**: Reject files rewritten during capture even when Windows reports unchanged timestamps, so stale bytes or digests are not accepted as current inputs.
+
 - **Git worktree checks**: Use the requested repository and index when Comet runs from a Git Hook environment, so inherited Git variables do not hide local worktree changes. Preserve global configuration and authentication.
 - **Classic Design summaries**: Save discussion checkpoints at an explicit change-local path and resume from the same file. Guide misplaced summaries to that path without asking users to enter Build, while preserving Design approval and source-write protection ([#559](https://github.com/rpamis/comet/issues/559)).
 - **Plugin write Hooks**: Run the shared CLI Router inside the plugin Hook process so DSH and Codex writes do not depend on a second Node process with piped input and output. Preserve plugin activation checks and Guard denials ([#561](https://github.com/rpamis/comet/issues/561)).

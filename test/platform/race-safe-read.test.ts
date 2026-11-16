@@ -1,8 +1,9 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promises as fs, symlinkSync, unlinkSync } from 'fs';
 import os from 'os';
 import path from 'path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   RaceSafeReadError,
@@ -16,12 +17,15 @@ import {
 // reasoning over the shared code path, not by an actual Windows test run.
 describe('race-safe bounded file read', () => {
   let root: string;
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
 
   beforeEach(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'race-safe-read-'));
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
+    Object.defineProperty(process, 'platform', platform);
     await fs.rm(root, { recursive: true, force: true });
   });
 
@@ -56,6 +60,65 @@ describe('race-safe bounded file read', () => {
         mode === 'read' ? readFileRaceSafe(file, 1024, options) : hashFileRaceSafe(file, options),
       ).rejects.toMatchObject({ reason: 'changed' });
       expect(await fs.readFile(file, 'utf8')).toBe('later');
+    },
+  );
+
+  it.each(['read', 'hash'] as const)(
+    'rejects Windows same-tick writes with unchanged metadata during the %s window',
+    async (mode) => {
+      Object.defineProperty(process, 'platform', { ...platform, value: 'win32' });
+      const file = path.join(root, 'same-tick.txt');
+      await fs.writeFile(file, 'first');
+      const originalTime = new Date('2020-01-01T00:00:00.000Z');
+      await fs.utimes(file, originalTime, originalTime);
+      const initial = await fs.stat(file, { bigint: true });
+      const sameTick = <T extends object>(stat: T): T =>
+        Object.defineProperties(stat, {
+          ctimeNs: { value: initial.ctimeNs },
+          ctimeMs: { value: initial.ctimeMs },
+        });
+      const lstat = fs.lstat.bind(fs);
+      vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => sameTick(await lstat(...args)));
+      const open = fs.open.bind(fs);
+      vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+        const handle = await open(...args);
+        const stat = handle.stat.bind(handle);
+        vi.spyOn(handle, 'stat').mockImplementation(async (...options) =>
+          sameTick(await stat(...options)),
+        );
+        return handle;
+      });
+      const options = {
+        bigint: true,
+        hooks: {
+          beforeFinalCheck: async () => {
+            await fs.writeFile(file, 'later');
+            await fs.utimes(file, originalTime, originalTime);
+          },
+        },
+      };
+      await expect(
+        mode === 'read' ? readFileRaceSafe(file, 1024, options) : hashFileRaceSafe(file, options),
+      ).rejects.toMatchObject({ reason: 'changed' });
+      const final = await fs.stat(file, { bigint: true });
+      expect(final.ino).toBe(initial.ino);
+      expect(final.mtimeNs).toBe(initial.mtimeNs);
+      expect(await fs.readFile(file, 'utf8')).toBe('later');
+    },
+  );
+
+  it.each([0, 200_000])(
+    'preserves unchanged Windows content across both passes for a %i-byte file',
+    async (size) => {
+      Object.defineProperty(process, 'platform', { ...platform, value: 'win32' });
+      const file = path.join(root, 'stable.txt');
+      const bytes = Buffer.alloc(size, 0x61);
+      await fs.writeFile(file, bytes);
+      expect((await readFileRaceSafe(file, Math.max(1, size))).bytes).toEqual(bytes);
+      for (const algorithm of ['sha256', 'sha512'])
+        expect((await hashFileRaceSafe(file, { algorithm })).digest).toBe(
+          createHash(algorithm).update(bytes).digest('hex'),
+        );
     },
   );
 

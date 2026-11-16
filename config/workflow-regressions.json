@@ -25783,7 +25783,10 @@
     },
     {
       "id": "platform-same-inode-content-read-race",
-      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation",
+        "https://github.com/rpamis/comet/actions/runs/43808488560/job/133105317401"
+      ],
       "behavior": "读取或散列期间同 inode 写入并恢复 mtime 时拒绝把旧内容绑定到新 stat。",
       "coverageLevel": "runtime",
       "reproduction": "同一 race-safe-read 用例在只检查 inode 身份的旧实现 read/hash 两种窗口均失败；当前实现检查大小、模式及 mtime/ctime，完整定向文件通过。",
@@ -25797,6 +25800,14 @@
           "requiredNames": [
             "race-safe bounded file read rejects same-inode writes with restored mtime during the read window",
             "race-safe bounded file read rejects same-inode writes with restored mtime during the hash window"
+          ]
+        },
+        {
+          "file": "test/platform/race-safe-read.test.ts",
+          "namePattern": "rejects Windows same-tick writes with unchanged metadata during the",
+          "requiredNames": [
+            "race-safe bounded file read rejects Windows same-tick writes with unchanged metadata during the read window",
+            "race-safe bounded file read rejects Windows same-tick writes with unchanged metadata during the hash window"
           ]
         }
       ],
