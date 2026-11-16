@@ -2,6 +2,31 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "release-published-version-guard",
+      "behavior": "指定版本的 GitHub Release 已发布时明确报错并提前停止，master 前进后也不能重复发布。",
+      "sources": ["report:2026-11-16-release-published-version-guard"],
+      "coverageLevel": "public-cli",
+      "reproduction": "91f3d0f0 的同版已发布路径会继续生成公告并核验 npm 后成功退出；公开 CLI 最小模拟案例因继续请求 generate-notes 而失败，新实现仅查询版本即拒绝。",
+      "expected": "preview、stage、finalize 均提示 GitHub Release 版本已发布并失败退出，在生成公告、打包和 npm 操作前停止；原 tag 指向旧提交时也报告重复版本。",
+      "forbidden": "将已发布版本当作本次发布成功、继续 npm 操作、重新写入公告或移动 tag；将未发布草稿当成已发布版本拒绝。",
+      "rootCause": "原预检读取已发布 Release 后仍返回候选，只在最终写入时跳过，缺少明确的重复版本拒绝。",
+      "tests": [
+        {
+          "file": "test/scripts/publish-release.test.ts",
+          "namePattern": "^release candidate and final announcement (rejects an already published version before preparing packages: (preview|stage|finalize)|reports a duplicate release before checking an older tag against advanced master|rejects a published version through the public CLI before npm or release writes|keeps an already published announcement unchanged on a rerun|publishes an existing draft only after its npm download is verified)$",
+          "requiredNames": [
+            "release candidate and final announcement rejects an already published version before preparing packages: preview",
+            "release candidate and final announcement rejects an already published version before preparing packages: stage",
+            "release candidate and final announcement rejects an already published version before preparing packages: finalize",
+            "release candidate and final announcement reports a duplicate release before checking an older tag against advanced master",
+            "release candidate and final announcement rejects a published version through the public CLI before npm or release writes",
+            "release candidate and final announcement keeps an already published announcement unchanged on a rerun",
+            "release candidate and final announcement publishes an existing draft only after its npm download is verified"
+          ]
+        }
+      ]
+    },
+    {
       "id": "release-finalize-master",
       "behavior": "人工 finalize 只核验指定 npm 版本公开且可下载，以本次 master 创建 GitHub Release，不要求 npm 与 master 同提交。",
       "sources": [

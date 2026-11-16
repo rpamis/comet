@@ -57,7 +57,9 @@ master 可以领先 stage 时的提交。因此，GitHub tag 与 npm 包的源�
 公告从本次 master 重新生成：GitHub 自动生成的 What's Changed / PR 列表、本版本 Changelog
 分类正文、New Contributors（有则保留）、Full Changelog 比较链接。标题前后补齐空行，保留
 代码块内容。stage 保存的旧公告不覆盖本次内容。上个 tag 从 Changelog 下一版本标题取得，
-必须是本次 master 的祖先。已公开的同版公告保持不变；同版草稿沿用原 ID，在验证后更新并公开。
+必须是本次 master 的祖先。已公开的同版公告会在预检时明确报错并停止，提示选择新版本；
+preview、stage 和 finalize 都不会继续生成公告、打包、下载或发布。master 已前进时也先报告版本已发布，
+不将它误报为 tag 提交不一致。同版草稿仍沿用原 ID，在验证后更新并公开。
 
 工作流仅使用默认 GITHUB_TOKEN 的 Contents 写权限，无需额外令牌。
 本次提交与创建公告时的默认分支没有 workflow 差异时，可避免旧流程指向历史提交触发的额外权限限制。
@@ -167,3 +169,16 @@ Workflows 写权限。用户明确选择人工 finalize 以最新 master 发布�
 本轮验证：88 项定向测试通过，包含三个真实 npm 包的本地打包；lint、受影响文件的 Prettier、
 actionlint、差异空白检查及 badcase 基线保留检查通过。公开 CLI 的发布和下载响应使用模拟服务，
 真实 GitHub 写入、真实 npm 下载及完整托管发布未执行。
+
+## 已发布版本预检
+
+来源 report:2026-11-16-release-published-version-guard。旧实现 91f3d0f0 遇到已发布的同版
+Release 时，仍会生成公告、检查 npm，最后跳过写入并成功退出。现在预检明确提示版本已发布，
+preview、stage、finalize 均失败退出；master 已前进也先报告重复版本。草稿恢复的来源、选择器
+及验证后更新原草稿的断言保留。历史“已发布公告不改写”案例进一步要求拒绝重复运行。
+tag 提交不一致的检查仍保留，但会先只读查询公告状态，以便给出准确原因。
+
+公开 CLI 最小模拟案例在旧实现因继续请求 generate-notes 而失败，修改后只查询版本即停止。
+本轮 59 项定向测试、格式和 badcase 基线保留检查通过；未重跑真实打包测试，因为预检改动不涉及
+打包内容或生成物，也未执行全量测试、Eval 或真实发布。此为仓库发版维护，不升级 npm 包版本，
+不改写已发布 0.5.4 的 Changelog。

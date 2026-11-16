@@ -223,7 +223,10 @@ describe('release candidate and final announcement', () => {
     await expect(
       checkReleaseCandidate({ ...options, env: { ...options.env, GITHUB_SHA: head } }, { request }),
     ).rejects.toThrow('different commit');
-    expect(request).not.toHaveBeenCalled();
+    expect(request.mock.calls).toEqual([
+      ['https://api.github.com/repos/rpamis/comet/releases/tags/0.5.4'],
+      ['https://api.github.com/repos/rpamis/comet/releases?per_page=100&page=1'],
+    ]);
   });
 
   it('creates the announcement without assets only after all npm downloads succeed', async () => {
@@ -444,14 +447,105 @@ describe('release candidate and final announcement', () => {
         return { version: '0.5.4', gitHead: head };
       return request(url, body);
     };
-    await publishRelease(options, {
-      request: transport,
-      prepare: async () => ({
-        packages: [{ name: '@rpamis/comet', tarball: 'main.tgz' }],
-        runNpm: async () => JSON.stringify([{ name: '@rpamis/comet', version: '0.5.4' }]),
+    await expect(
+      publishRelease(options, {
+        request: transport,
+        prepare: async () => ({
+          packages: [{ name: '@rpamis/comet', tarball: 'main.tgz' }],
+          runNpm: async () => JSON.stringify([{ name: '@rpamis/comet', version: '0.5.4' }]),
+        }),
       }),
-    });
+    ).rejects.toThrow('GitHub Release 0.5.4 is already published');
     expect(request.mock.calls.some(([url, body]) => url.endsWith('/releases') && body)).toBe(false);
+  });
+
+  it.each(['preview', 'stage', 'finalize'])(
+    'rejects an already published version before preparing packages: %s',
+    async (action) => {
+      const { options, request, git } = await fixture();
+      git(['tag', '0.5.4']);
+      const prepare = vi.fn();
+      const transport = vi.fn(async (url: string, body?: unknown) => {
+        if (url.endsWith('/releases/tags/0.5.4')) return { id: 12, draft: false };
+        return request(url, body);
+      });
+      await expect(
+        publishRelease({ ...options, action }, { request: transport, prepare }),
+      ).rejects.toThrow('GitHub Release 0.5.4 is already published');
+      expect(prepare).not.toHaveBeenCalled();
+      expect(transport.mock.calls).toEqual([
+        ['https://api.github.com/repos/rpamis/comet/releases/tags/0.5.4'],
+      ]);
+    },
+  );
+
+  it('reports a duplicate release before checking an older tag against advanced master', async () => {
+    const { options, git, root } = await fixture();
+    git(['tag', '0.5.4']);
+    await fs.appendFile(path.join(root, 'CHANGELOG.md'), '\n');
+    git(['add', 'CHANGELOG.md']);
+    git([
+      '-c',
+      'user.name=Test',
+      '-c',
+      'user.email=test@example.invalid',
+      'commit',
+      '--quiet',
+      '-m',
+      'test: master advances',
+    ]);
+    const head = git(['rev-parse', 'HEAD']);
+    const request = vi.fn().mockResolvedValue({ id: 12, draft: false });
+    await expect(
+      checkReleaseCandidate({ ...options, env: { ...options.env, GITHUB_SHA: head } }, { request }),
+    ).rejects.toThrow('GitHub Release 0.5.4 is already published');
+    expect(request).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a published version through the public CLI before npm or release writes', async () => {
+    const { options, root, git } = await fixture();
+    git(['tag', '0.5.4']);
+    const requests = path.join(root, 'requests.jsonl');
+    const transport = path.join(root, 'transport.mjs');
+    await fs.writeFile(
+      transport,
+      `
+      import { appendFileSync } from 'node:fs';
+      globalThis.fetch = async (url, options) => {
+        appendFileSync(${JSON.stringify(requests)}, JSON.stringify({ url, method: options.method }) + '\\n');
+        if (url === 'https://api.github.com/repos/rpamis/comet/releases/tags/0.5.4')
+          return Response.json({ id: 12, draft: false });
+        throw new Error('Unexpected request: ' + url);
+      };
+    `,
+    );
+    const result = spawnSync(
+      process.execPath,
+      [
+        '--import',
+        pathToFileURL(transport).href,
+        path.resolve('scripts/release/publish-release.mjs'),
+        '--version',
+        '0.5.4',
+        '--action',
+        'finalize',
+      ],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        env: { ...process.env, ...options.env, GITHUB_STEP_SUMMARY: '' },
+      },
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('GitHub Release 0.5.4 is already published');
+    expect(
+      (await fs.readFile(requests, 'utf8'))
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line)),
+    ).toEqual([
+      { url: 'https://api.github.com/repos/rpamis/comet/releases/tags/0.5.4', method: 'GET' },
+    ]);
   });
 
   it('publishes an existing draft only after its npm download is verified', async () => {

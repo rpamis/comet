@@ -198,9 +198,6 @@ export async function checkReleaseCandidate(options, services = {}) {
   const { previousTag } = composeReleaseNotes(changelog, version, '');
   await run(['merge-base', '--is-ancestor', `refs/tags/${previousTag}`, head]);
   const existingTag = await run(['tag', '--list', version]);
-  if (existingTag && (await run(['rev-parse', `refs/tags/${version}^{commit}`])) !== head) {
-    throw new Error(`Tag ${version} points to a different commit.`);
-  }
   let release = await request(`${github}/releases/tags/${version}`);
   // The by-tag endpoint only returns published releases. Authenticated listing
   // also exposes drafts whose tag has not been created yet.
@@ -211,8 +208,12 @@ export async function checkReleaseCandidate(options, services = {}) {
       if (release || releases.length < 100) break;
     }
   }
-  if (release && !release.draft && !existingTag)
-    throw new Error('Published release is missing its Git tag.');
+  if (release && !release.draft) {
+    throw new Error(`GitHub Release ${version} is already published. Choose a new version.`);
+  }
+  if (existingTag && (await run(['rev-parse', `refs/tags/${version}^{commit}`])) !== head) {
+    throw new Error(`Tag ${version} points to a different commit.`);
+  }
   const generated = await request(`${github}/releases/generate-notes`, {
     tag_name: version,
     target_commitish: head,
