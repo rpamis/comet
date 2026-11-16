@@ -30,14 +30,13 @@ Require two-factor authentication and disallow tokens。OIDC 暂存仍可正常�
 
 1. 准备版本号、发布元数据、Codex 市场清单和英文 CHANGELOG，合并到 master。
 2. 打开 Actions → Release → Run workflow，分支选 master，填写版本号（如 0.5.4，不带 v）。
-   action 默认 preview，只检查、打包和生成公告预览。source_run_id 留空。
+   action 默认 preview，只检查、打包和生成公告预览。
 3. 准备好后选择 action=stage。工作流检查并将三个包暂存到 npm，Summary 显示每个 stage ID
-   和本次运行 ID。它不会直接公开 npm 版本，也不会创建 Git tag 或公告。
+   作为运行记录；无需复制运行 ID。它不会直接公开 npm 版本，也不会创建 Git tag 或公告。
 4. 到 npm 的 Staged Packages 页面检查包名、版本和发布标签，通过 2FA 批准。
    先批准主包，再批准插件；支持批量审批的账号也可批量处理，但批量操作并非原子操作，需确认三项均成功。
-5. 再运行 Release，版本号不变，action=finalize，source_run_id 填第 3 步的运行 ID
-   （运行 URL 中 actions/runs/ 后面的数字，也可从 Summary 复制）。
-   三个包都已在公共 npm 可下载后，工作流才生成或公开 GitHub Release。
+5. 再运行 Release，版本号不变，action=finalize；工作流自动找到该版本的原暂存运行，
+   不需要填写任何 ID。三个包都已在公共 npm 可下载后，工作流才生成或公开 GitHub Release。
 
 **不等待 master CI。** Release 自行执行生成物检查、构建、发布文件扫描、SDK API 检查、
 发布定向测试和主包安装 E2E；任一检查失败便停止。finalize 沿用原暂存提交，并重新进行
@@ -46,9 +45,11 @@ Require two-factor authentication and disallow tokens。OIDC 暂存仍可正常�
 
 ## 原提交与公告
 
-finalize 通过 GitHub API 验证 source_run_id 属于本仓库、master 分支和 Release 手动工作流，
-再检出该运行的原提交。暂存记录必须同时匹配运行 ID、版本和提交；即使 master 已前进，
-也不把新代码或新 Changelog 混入本次公告。
+finalize 先读取已批准主包在 npm 上的 gitHead，再分页查找本仓库 master 上、同一提交的
+Release 手动运行，选择最近一份未过期的 comet-release-stage 记录。预览和 finalize 运行
+没有该记录，会被跳过；不读取其他仓库、工作流或提交的记录。然后检出原提交，继续核对
+暂存记录的运行 ID、版本和提交。即使 master 已前进，也不把新代码或新 Changelog 混入公告。
+主包尚未批准、缺少 gitHead 或找不到有效记录时，会明确停止，不改用当前 master 或其他版本。
 
 公告沿用原样式：GitHub 自动生成的 What's Changed / PR 列表、本版本 Changelog 分类正文、
 New Contributors（有则保留）、Full Changelog 比较链接。记录在 stage 时保存完整公告，
@@ -87,7 +88,9 @@ node scripts/release/publish-release.mjs --version 0.5.4
 ```
 
 stage 和 finalize 的写入只接受本仓库 master 上明确触发、提交匹配的 Actions 运行。
-原 --publish 及 publish 布尔输入已由 action 取代；旧运行仍使用旧脚本，不会因代码更新自动变为暂存。
+原 --publish 及 publish 布尔输入已由 action 取代。source_run_id 现在由工作流自动查找，不再显示为表单输入；
+内部仍保存该 ID 以核对和恢复原执行。此前已成功暂存的记录也可自动查找，无需重新暂存。
+旧运行仍使用旧脚本，不会因代码更新自动变为暂存。
 启用新流程需从最新 master 发起新的 Release 运行。
 
 ## 2026-11-16 发布策略调整与回归
@@ -123,3 +126,12 @@ JSON stageId 能被脚本读取，且未出现直接发布 PUT 或 approve 请�
 `userconfig` 和 `globalconfig` 指定配置。测试将 HOME、USERPROFILE、配置与缓存指向临时目录；
 在临时默认 `.npmrc` 写入 `dry-run=true`，再显式使用空白 userconfig，确认仍生成三个真实包。
 测试结束恢复环境；没有读取或修改开发者的 npm 配置，没有执行 npm publish 或创建远端 Release。
+
+## 自动查找暂存运行的验证
+
+来源 report:2026-11-16-release-auto-source-run：用户反馈每次手动查找和填写运行 ID 不便。
+8a3a0abe 的 finalize 表单要求 source_run_id；当前版本从表单移除该输入，按 npm 正式版本的原提交
+自动发现记录，保存和下载记录的内部 ID 绑定保持不变。新增单元测试先在旧代码因缺少自动查找入口失败，
+再覆盖正常查找、master 前进、分页、过期记录、其他来源及尚未批准等情况；保留原显式来源核对测试。
+本机只读查询已验证主包尚未批准时会停止；该结果不代表已验证完整托管 finalize。
+本轮不修改打包、npm 暂存、人工批准或下载验证逻辑，不启动真实发布、全量测试或 Eval。

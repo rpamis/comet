@@ -9,6 +9,44 @@ const repository = 'rpamis/comet';
 const registry = 'https://registry.npmjs.org/';
 const github = `https://api.github.com/repos/${repository}`;
 
+function isReleaseRun(run) {
+  return (
+    run?.repository?.full_name === repository &&
+    run.head_branch === 'master' &&
+    run.event === 'workflow_dispatch' &&
+    run.path === '.github/workflows/release.yml' &&
+    /^[a-f0-9]{40}$/.test(run.head_sha ?? '')
+  );
+}
+
+export async function findReleaseRun({ version }, services = {}) {
+  const request = services.request ?? requestJson;
+  const published = await request(
+    `${registry}${encodeURIComponent('@rpamis/comet')}/${encodeURIComponent(version)}`,
+  );
+  if (published?.version !== version || !/^[a-f0-9]{40}$/.test(published.gitHead ?? '')) {
+    throw new Error(
+      `Approve @rpamis/comet@${version} on npm before finalizing; its original commit is required.`,
+    );
+  }
+  for (let page = 1; ; page++) {
+    const result = await request(
+      `${github}/actions/workflows/release.yml/runs?head_sha=${published.gitHead}&branch=master&event=workflow_dispatch&status=completed&per_page=100&page=${page}`,
+    );
+    for (const run of result.workflow_runs) {
+      if (!isReleaseRun(run) || run.head_sha !== published.gitHead) continue;
+      const saved = await request(`${github}/actions/runs/${run.id}/artifacts?per_page=100`);
+      if (saved.artifacts.some((item) => item.name === 'comet-release-stage' && !item.expired)) {
+        return String(run.id);
+      }
+    }
+    if (result.workflow_runs.length < 100) break;
+  }
+  throw new Error(
+    `No saved staging record for ${version} at ${published.gitHead}. Check the original stage run and artifact retention.`,
+  );
+}
+
 export async function resolveReleaseSource(options, services = {}) {
   const { action = 'preview', sourceRunId, env = process.env } = options;
   if (!['preview', 'stage', 'finalize'].includes(action))
@@ -16,13 +54,7 @@ export async function resolveReleaseSource(options, services = {}) {
   if (action !== 'finalize') return env.GITHUB_SHA;
   if (!/^\d+$/.test(sourceRunId ?? '')) throw new Error('Finalize requires a source run ID.');
   const run = await (services.request ?? requestJson)(`${github}/actions/runs/${sourceRunId}`);
-  if (
-    run?.repository?.full_name !== repository ||
-    run.head_branch !== 'master' ||
-    run.event !== 'workflow_dispatch' ||
-    run.path !== '.github/workflows/release.yml' ||
-    !/^[a-f0-9]{40}$/.test(run.head_sha ?? '')
-  ) {
+  if (!isReleaseRun(run)) {
     throw new Error('Invalid release source run. Select the original master Release run.');
   }
   return run.head_sha;
@@ -291,7 +323,7 @@ export async function publishRelease(options, services = {}) {
         save,
       },
     );
-    const summary = `## ${action} ${candidate.version}\n\nCommit: ${candidate.head}\n\n${results.map((item) => `- ${item.name}: ${item.status}${item.stageId ? ` (${item.stageId})` : ''}`).join('\n')}\n\n${action === 'stage' ? `Approve the packages with npm 2FA, then run Release with action=finalize and source_run_id=${env.GITHUB_RUN_ID}.\n\n` : ''}${candidate.body}`;
+    const summary = `## ${action} ${candidate.version}\n\nCommit: ${candidate.head}\n\n${results.map((item) => `- ${item.name}: ${item.status}${item.stageId ? ` (${item.stageId})` : ''}`).join('\n')}\n\n${action === 'stage' ? `Approve the packages with npm 2FA, then run Release with action=finalize and version=${candidate.version}. The original stage run is selected automatically.\n\n` : ''}${candidate.body}`;
     console.log(summary);
     if (process.env.GITHUB_STEP_SUMMARY)
       await fs.appendFile(process.env.GITHUB_STEP_SUMMARY, summary);

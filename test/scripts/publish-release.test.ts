@@ -373,6 +373,7 @@ describe('release workflow entry', () => {
     const source = await fs.readFile('.github/workflows/release.yml', 'utf8');
     const workflow = parse(source);
     expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch']);
+    expect(Object.keys(workflow.on.workflow_dispatch.inputs)).toEqual(['version', 'action']);
     expect(workflow.on.workflow_dispatch.inputs.action.default).toBe('preview');
     expect(workflow.concurrency['cancel-in-progress']).toBe(false);
     expect(workflow.jobs.release.permissions['id-token']).toBe('write');

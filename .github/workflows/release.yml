@@ -12,10 +12,6 @@ on:
         default: preview
         type: choice
         options: [preview, stage, finalize]
-      source_run_id:
-        description: 'For finalize: the original stage run ID shown in its Summary'
-        required: false
-        type: string
 
 permissions:
   contents: read
@@ -36,7 +32,6 @@ jobs:
     env:
       RELEASE_VERSION: ${{ inputs.version }}
       RELEASE_ACTION: ${{ inputs.action }}
-      RELEASE_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -48,12 +43,16 @@ jobs:
         run: |
           node --input-type=module - <<'NODE'
           import { appendFileSync } from 'node:fs';
-          import { resolveReleaseSource } from './scripts/release/publish-release.mjs';
+          import { findReleaseRun, resolveReleaseSource } from './scripts/release/publish-release.mjs';
+          const sourceRunId = process.env.RELEASE_ACTION === 'finalize'
+            ? await findReleaseRun({ version: process.env.RELEASE_VERSION })
+            : '';
           const head = await resolveReleaseSource({
             action: process.env.RELEASE_ACTION,
-            sourceRunId: process.env.RELEASE_SOURCE_RUN_ID,
+            sourceRunId,
           });
-          appendFileSync(process.env.GITHUB_OUTPUT, `head=${head}\n`);
+          appendFileSync(process.env.GITHUB_OUTPUT, `head=${head}\nrun_id=${sourceRunId}\n`);
+          appendFileSync(process.env.GITHUB_ENV, `RELEASE_SOURCE_RUN_ID=${sourceRunId}\n`);
           NODE
       - name: Check out the original staged commit
         if: inputs.action == 'finalize'
@@ -68,7 +67,7 @@ jobs:
         with:
           name: comet-release-stage
           path: .tmp/release
-          run-id: ${{ inputs.action == 'finalize' && inputs.source_run_id || github.run_id }}
+          run-id: ${{ inputs.action == 'finalize' && steps.source.outputs.run_id || github.run_id }}
           github-token: ${{ github.token }}
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

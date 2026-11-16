@@ -54899,6 +54899,28 @@
           ]
         }
       ]
+    },
+    {
+      "id": "release-auto-source-run",
+      "behavior": "批准 npm 包后，finalize 按版本自动找到原暂存记录，无需用户查找和填写运行 ID。",
+      "sources": ["report:2026-11-16-release-auto-source-run"],
+      "coverageLevel": "unit",
+      "reproduction": "8a3a0abe 的 Release 表单要求 source_run_id；新增自动查找测试在旧代码中因入口不存在失败。",
+      "expected": "依据已批准版本的 gitHead 选择本仓库同提交的有效暂存记录，跳过其他运行并保留原提交绑定。",
+      "forbidden": "要求正常流程手填 ID、绑定当前 master 或其他提交、在主包未批准时继续生成公告。",
+      "rootCause": "工作流仅支持显式运行 ID，没有利用 npm 的原提交和 GitHub 保存的暂存记录自动关联。",
+      "tests": [
+        {
+          "file": "test/scripts/staged-release.test.ts",
+          "namePattern": "^automatic release run selection (finds the saved stage for the approved version without a manually supplied ID|uses the original package commit after master advances and skips expired records|stops before selecting a run if the main package has not been approved|does not substitute a receipt from another repository or workflow)$",
+          "requiredNames": [
+            "automatic release run selection finds the saved stage for the approved version without a manually supplied ID",
+            "automatic release run selection uses the original package commit after master advances and skips expired records",
+            "automatic release run selection stops before selecting a run if the main package has not been approved",
+            "automatic release run selection does not substitute a receipt from another repository or workflow"
+          ]
+        }
+      ]
     }
   ],
   "historicalTestMigrations": [

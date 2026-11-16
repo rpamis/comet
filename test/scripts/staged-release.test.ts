@@ -3,6 +3,7 @@ import {
   publishPackages,
   resolveReleaseSource,
   validateStageReceipt,
+  findReleaseRun,
 } from '../../scripts/release/publish-release.mjs';
 
 const names = ['@rpamis/comet', '@rpamis/comet-codex-plugin', 'comet-dsh-plugin'];
@@ -15,6 +16,87 @@ const receipt = () => ({
   runId: '42',
   body: 'release notes',
   packages: [],
+});
+
+describe('automatic release run selection', () => {
+  const run = (id: number) => ({
+    id,
+    head_sha: head,
+    head_branch: 'master',
+    event: 'workflow_dispatch',
+    path: '.github/workflows/release.yml',
+    repository: { full_name: 'rpamis/comet' },
+  });
+  const options = { version: '0.5.4' };
+
+  it('finds the saved stage for the approved version without a manually supplied ID', async () => {
+    const request = vi.fn(async (url: string) => {
+      if (url.startsWith('https://registry.npmjs.org/')) return { version: '0.5.4', gitHead: head };
+      if (url.includes('/workflows/')) return { workflow_runs: [run(43), run(42)] };
+      if (url.includes('/runs/43/artifacts')) return { artifacts: [] }; // preview/finalize has no receipt
+      if (url.includes('/runs/42/artifacts'))
+        return { artifacts: [{ name: 'comet-release-stage', expired: false }] };
+      throw new Error(url);
+    });
+    expect(await findReleaseRun(options, { request })).toBe('42');
+    expect(request).toHaveBeenCalledWith(expect.stringContaining(`head_sha=${head}`));
+  });
+
+  it('uses the original package commit after master advances and skips expired records', async () => {
+    const request = vi.fn(async (url: string) => {
+      if (url.startsWith('https://registry.npmjs.org/')) return { version: '0.5.4', gitHead: head };
+      if (url.includes('/workflows/')) return { workflow_runs: [run(43), run(42)] };
+      return { artifacts: [{ name: 'comet-release-stage', expired: url.includes('/runs/43/') }] };
+    });
+    expect(
+      await findReleaseRun({ ...options, env: { GITHUB_SHA: 'b'.repeat(40) } }, { request }),
+    ).toBe('42');
+  });
+
+  it('searches the next page instead of binding another commit or workflow', async () => {
+    const request = vi.fn(async (url: string) => {
+      if (url.startsWith('https://registry.npmjs.org/')) return { version: '0.5.4', gitHead: head };
+      if (url.endsWith('page=1'))
+        return {
+          workflow_runs: Array.from({ length: 100 }, (_, id) => ({
+            ...run(id),
+            head_sha: 'other',
+          })),
+        };
+      if (url.endsWith('page=2')) return { workflow_runs: [run(42)] };
+      return { artifacts: [{ name: 'comet-release-stage', expired: false }] };
+    });
+    expect(await findReleaseRun(options, { request })).toBe('42');
+    expect(request.mock.calls.filter(([url]) => url.includes('/artifacts'))).toHaveLength(1);
+  });
+
+  it('stops before selecting a run if the main package has not been approved', async () => {
+    const request = vi.fn().mockResolvedValue(null);
+    await expect(findReleaseRun(options, { request })).rejects.toThrow('Approve');
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not substitute a receipt from another repository or workflow', async () => {
+    const request = vi.fn(async (url: string) => {
+      if (url.startsWith('https://registry.npmjs.org/')) return { version: '0.5.4', gitHead: head };
+      return {
+        workflow_runs: [
+          { ...run(42), repository: { full_name: 'other/comet' } },
+          { ...run(43), path: '.github/workflows/ci.yml' },
+        ],
+      };
+    });
+    await expect(findReleaseRun(options, { request })).rejects.toThrow('No saved staging record');
+    expect(request.mock.calls.some(([url]) => url.includes('/artifacts'))).toBe(false);
+  });
+
+  it('treats a GitHub outage as a failure rather than trying a different release', async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({ version: '0.5.4', gitHead: head })
+      .mockRejectedValueOnce(new Error('HTTP 503'));
+    await expect(findReleaseRun(options, { request })).rejects.toThrow('503');
+  });
 });
 
 describe('staged release', () => {
