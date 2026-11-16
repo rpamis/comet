@@ -124,6 +124,7 @@ describe('release candidate and final announcement', () => {
     };
     const options = { root, version: '0.5.4', publish: true, env };
     const request = vi.fn(async (url: string, body?: unknown) => {
+      if (url.includes('/releases?')) return [];
       if (url.includes('/actions/workflows/'))
         return {
           workflow_runs: [
@@ -278,7 +279,8 @@ describe('release candidate and final announcement', () => {
     let downloaded = false;
     const patch = vi.fn();
     const transport = async (url: string, body?: unknown, method?: string) => {
-      if (url.endsWith('/releases/tags/0.5.4')) return { id: 12, draft: true };
+      if (url.endsWith('/releases/tags/0.5.4')) return null;
+      if (url.includes('/releases?')) return [{ id: 12, tag_name: '0.5.4', draft: true }];
       if (new URL(url).hostname === 'registry.npmjs.org')
         return { version: '0.5.4', gitHead: head };
       if (method === 'PATCH') {
@@ -302,6 +304,34 @@ describe('release candidate and final announcement', () => {
       expect.stringContaining('/releases/12'),
       expect.objectContaining({ draft: false, target_commitish: head }),
     );
+  });
+
+  it('finds a pending-tag draft beyond the first release page', async () => {
+    const { options, request } = await fixture();
+    request.mockImplementation(async (url: string) => {
+      if (url.includes('/actions/workflows/'))
+        return {
+          workflow_runs: [
+            { head_sha: options.env.GITHUB_SHA, status: 'completed', conclusion: 'success' },
+          ],
+        };
+      if (url.endsWith('/releases/tags/0.5.4')) return null;
+      if (url.endsWith('/releases?per_page=100&page=1'))
+        return Array.from({ length: 100 }, (_, id) => ({
+          id,
+          tag_name: `other-${id}`,
+          draft: true,
+        }));
+      if (url.endsWith('/releases?per_page=100&page=2'))
+        return [{ id: 112, tag_name: '0.5.4', draft: true }];
+      if (url.endsWith('/generate-notes')) return { body: "## What's Changed\n* Changes" };
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    expect((await checkReleaseCandidate(options, { request })).release).toMatchObject({
+      id: 112,
+      draft: true,
+    });
+    expect(request.mock.calls.filter(([url]) => url.includes('/releases?'))).toHaveLength(2);
   });
 });
 
@@ -329,6 +359,8 @@ describe('release workflow entry', () => {
 });
 
 describe('release package preparation', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
   it('packs three real npm artifacts with source commits and converts only shipped READMEs', async () => {
     const root = path.resolve('.');
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-release-artifacts-'));
@@ -336,6 +368,18 @@ describe('release package preparation', () => {
     const pkg = JSON.parse(await fs.readFile('package.json', 'utf8'));
     const head = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
     try {
+      const home = path.join(directory, 'home');
+      const npmrc = path.join(directory, 'npmrc');
+      await fs.mkdir(home);
+      // Poison the isolated default config to prove the explicit userconfig wins.
+      await fs.writeFile(path.join(home, '.npmrc'), 'dry-run=true\n');
+      await fs.writeFile(npmrc, '');
+      vi.stubEnv('HOME', home);
+      vi.stubEnv('USERPROFILE', home);
+      vi.stubEnv('npm_config_userconfig', npmrc);
+      vi.stubEnv('npm_config_globalconfig', path.join(directory, 'global-npmrc'));
+      vi.stubEnv('npm_config_cache', path.join(directory, 'npm-cache'));
+      await fs.writeFile(path.join(directory, 'global-npmrc'), '');
       const { packages } = await prepareReleasePackages(directory, {
         root,
         version: pkg.version,

@@ -2,6 +2,27 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "release-562-pending-tag-draft",
+      "behavior": "按 tag 查不到尚未发布的草稿时，从已认证的分页发布列表找回同版本草稿，并仅在 npm 验证后更新原草稿。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4583250651"],
+      "coverageLevel": "unit",
+      "reproduction": "在 e76845b6 上使按 tag 查询返回 404、列表含同版本草稿；原测试的 PATCH 断言失败，旧代码选择创建新 Release。",
+      "expected": "分页查找精确版本草稿，包下载验证后更新该草稿，已发布公告保持不变。",
+      "forbidden": "漏掉未创建 tag 的草稿或在包验证前发布公告。",
+      "rootCause": "按 tag 的 GitHub API 只返回已发布 Release，原实现用该结果判断是否存在草稿。",
+      "tests": [
+        {
+          "file": "test/scripts/publish-release.test.ts",
+          "namePattern": "^release candidate and final announcement (publishes an existing draft only after its npm download is verified|finds a pending-tag draft beyond the first release page|keeps an already published announcement unchanged on a rerun)$",
+          "requiredNames": [
+            "release candidate and final announcement publishes an existing draft only after its npm download is verified",
+            "release candidate and final announcement finds a pending-tag draft beyond the first release page",
+            "release candidate and final announcement keeps an already published announcement unchanged on a rerun"
+          ]
+        }
+      ]
+    },
+    {
       "id": "native-562-unquoted-material-paths",
       "behavior": "中文文件名的正式材料修改可以交接到独立 Build 工作区，同时继续拒绝未提交源码。",
       "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4583195979"],

@@ -116,7 +116,16 @@ export async function checkReleaseCandidate(options, services = {}) {
   if (ci?.head_sha !== head || ci.status !== 'completed' || ci.conclusion !== 'success') {
     throw new Error(`Wait for successful master CI on ${head} before releasing.`);
   }
-  const release = await request(`${github}/releases/tags/${version}`);
+  let release = await request(`${github}/releases/tags/${version}`);
+  // The by-tag endpoint only returns published releases. Authenticated listing
+  // also exposes drafts whose tag has not been created yet.
+  if (!release) {
+    for (let page = 1; ; page++) {
+      const releases = await request(`${github}/releases?per_page=100&page=${page}`);
+      release = releases.find((item) => item.draft && item.tag_name === version);
+      if (release || releases.length < 100) break;
+    }
+  }
   if (release && !release.draft && !existingTag)
     throw new Error('Published release is missing its Git tag.');
   const generated = await request(`${github}/releases/generate-notes`, {

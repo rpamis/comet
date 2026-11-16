@@ -70,6 +70,7 @@ GitHub Actions 的 `Release` 工作流负责发布三个 npm 包，并生成 Git
 会跳过发布，但仍重新下载验证，剩余包按顺序补发。任何已存在版本来自其他提交或缺少
 `gitHead` 时都会停止，需人工核对，不会当成可覆盖或可复用的包。已经公开的同版
 Release 保留原公告；尚未公开的同版草稿会在三个包验证成功后更新并公开。
+按 tag 查不到草稿时，会用当前凭据分页查询发布列表，按精确版本找回尚未创建 tag 的草稿。
 
 npm 已发布成功但短暂查不到版本时，工作流只重试读取，最多约 25 秒；仍不可见便停止。
 网络错误、授权错误和 npm 服务错误都按失败处理，不当成“尚未发布”。
@@ -90,4 +91,19 @@ node scripts/release/publish-release.mjs --version 0.5.4
 ```
 
 默认只预览。`--publish` 只接受本仓库 `master` 上手动触发且提交匹配的 Actions 运行。
-当前实现新增发布能力，不修复已发布版本的用户行为，因而没有新增 badcase 登记。
+当前实现新增发布能力，不宣称修复旧版发布行为。开发期 Review 的草稿恢复案例登记为
+`release-562-pending-tag-draft`；来源与原失败/修复后证据见下节。
+
+## 0.5.4 开发期 Review 验证
+
+[草稿恢复 Review](https://github.com/rpamis/comet/pull/562#discussion_r4583250651)对应
+[GitHub 发布 API](https://docs.github.com/en/rest/releases/releases)：按 tag 查询针对已发布公告，
+拥有推送权限的已认证列表查询可读取草稿。原测试错误地让按 tag 查询直接返回草稿；
+改为 404 后，`e76845b6` 未调用原草稿 PATCH，断言失败。新实现查找分页列表中的精确版本，
+保留 npm 下载验证先于公告写入以及已发布公告不改写的断言。
+
+[npm 测试隔离 Review](https://github.com/rpamis/comet/pull/562#discussion_r4583250657)指出真实打包
+测试可能读取本机配置。[npm 配置规则](https://docs.npmjs.com/cli/v11/configuring-npm/npmrc/)允许通过
+`userconfig` 和 `globalconfig` 指定配置。测试将 HOME、USERPROFILE、配置与缓存指向临时目录；
+在临时默认 `.npmrc` 写入 `dry-run=true`，再显式使用空白 userconfig，确认仍生成三个真实包。
+测试结束恢复环境；没有读取或修改开发者的 npm 配置，没有执行 npm publish 或创建远端 Release。
