@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Stable version in package.json, for example 0.5.4 (without v)'
+        required: true
+        type: string
+      publish:
+        description: 'Publish all three npm packages and the GitHub announcement (false previews only)'
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: comet-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.repository == 'rpamis/comet' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: write
+      id-token: write
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_PUBLISH: ${{ inputs.publish }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Install npm with trusted publishing support
+        run: npm install --global npm@11.21.0
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Check version, source commit and master CI
+        run: |
+          node --input-type=module - <<'NODE'
+          import { checkReleaseCandidate } from './scripts/release/publish-release.mjs';
+          await checkReleaseCandidate({
+            root: process.cwd(),
+            version: process.env.RELEASE_VERSION,
+            publish: process.env.RELEASE_PUBLISH === 'true',
+          });
+          NODE
+      - run: pnpm check:generated
+      - run: pnpm release:verify --artifact-only
+      - name: Check generated files remain unchanged
+        run: git diff --exit-code -- assets domains/engine/runtime-schema.generated.ts
+      - name: Verify release metadata and automation
+        run: >-
+          pnpm exec vitest run
+          test/repository/release-metadata.test.ts
+          test/scripts/verify-release.test.ts
+          test/scripts/prepublish-check.test.ts
+          test/scripts/publish-release.test.ts
+          --maxWorkers=2
+      - run: pnpm test:package-e2e
+      - name: Preview or publish npm packages and announcement
+        shell: bash
+        run: |
+          args=(--version "$RELEASE_VERSION")
+          if [[ "$RELEASE_PUBLISH" == "true" ]]; then
+            args+=(--publish)
+          fi
+          node scripts/release/publish-release.mjs "${args[@]}"

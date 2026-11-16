@@ -17,6 +17,10 @@
   ],
   "license": "MIT",
   "author": "benym",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rpamis/comet"
+  },
   "type": "module",
   "exports": {
     "./applications/compiler": {
