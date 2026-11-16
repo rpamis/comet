@@ -54641,6 +54641,77 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-562-source-workspace-name-collision",
+      "behavior": "规划区已占用默认实施分支或目录时，仍可把已批准 Run 交接至独立工作区。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581945001"],
+      "coverageLevel": "public-cli",
+      "reproduction": "8e49f3bb 的公开 Native CLI/bundle 上四项新增定向回归均失败；本轮源码修复并重新构建后相同四项通过。",
+      "expected": "选择独立执行分支和目录，保留原 Run、批准及另一 Shape 的材料。",
+      "forbidden": "在原共享规划区实施、覆盖既有 owner，或因默认名称相撞永久阻塞合法交接。",
+      "rootCause": "Build 固定复用 change 名称作为执行分支和目录，未区分原规划工作区已经占用该名称。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "hands off from a shared branch planning workspace already using the default execution name$",
+          "requiredNames": [
+            "Native Build workspace recovery hands off from a shared branch planning workspace already using the default execution name"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "hands off from a shared worktree planning workspace already using the default execution name$",
+          "requiredNames": [
+            "Native Build workspace recovery hands off from a shared worktree planning workspace already using the default execution name"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-reapproved-shape-admission",
+      "behavior": "Builder 结束后修订并重新批准 Shape，未领取本轮 Builder 时允许创建另一共享 Shape。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581945006"],
+      "coverageLevel": "public-cli",
+      "reproduction": "8e49f3bb 的公开 Native CLI/bundle 上四项新增定向回归均失败；本轮源码修复并重新构建后相同四项通过。",
+      "expected": "失败和成功 Builder 的旧记录均保留；新轮次尚未实施时允许继续共享规划并在 Build 前隔离。",
+      "forbidden": "把旧 Builder 当作本轮占用而拒绝新 Shape，或在共享目录直接领取 Builder。",
+      "rootCause": "创建入口扫描全部历史 Builder，后续执行却只扫描当前 Shape 轮次，产生不一致。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "admits another shared Shape after a failed Builder is reapproved$",
+          "requiredNames": [
+            "Native Build workspace recovery admits another shared Shape after a failed Builder is reapproved"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "admits another shared Shape after a succeeded Builder is reapproved$",
+          "requiredNames": [
+            "Native Build workspace recovery admits another shared Shape after a succeeded Builder is reapproved"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-562-planning-branch-binding",
+      "behavior": "共享 Build 交接前保留原 Run 的分支绑定，切错分支时不重绑或写入目标。",
+      "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581965480"],
+      "coverageLevel": "public-cli",
+      "reproduction": "批准 main 上的 Shape，切到另一分支创建该分支的 Shape，再对原 Shape 执行公开 next。修复前会创建实施目标并替换原绑定；新增回归失败。",
+      "expected": "返回原分支恢复指引，保留原 Run，不创建目标；切回原分支后合法交接仍能完成。",
+      "forbidden": "用当前无关分支覆盖原 Run 绑定，或创建实施目标绕过原分支诊断。",
+      "rootCause": "交接只核对活跃 peer 和目标分支基线，没有在改写 workspace 前检查待交接 Run 的原分支。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-build-workspace-recovery.test.ts",
+          "namePattern": "preserves the approved planning branch before handoff and permits switching back$",
+          "requiredNames": [
+            "Native Build workspace recovery preserves the approved planning branch before handoff and permits switching back"
+          ]
+        }
+      ]
     }
   ],
   "historicalTestMigrations": [

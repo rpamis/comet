@@ -1,6 +1,9 @@
 import { promises as fs } from 'node:fs';
 import { readNativeSdkRunRecord } from './native-sdk-state-store.js';
-import { usesNativeSharedPlanning } from './native-build-workspace-record.js';
+import {
+  nativeCurrentShapeActions,
+  usesNativeSharedPlanning,
+} from './native-build-workspace-record.js';
 import path from 'node:path';
 
 import {
@@ -173,7 +176,7 @@ export async function createNativeSdkChange(options: {
         return (
           state.phase === 'shape' ||
           (state.phase === 'build' &&
-            !run.actions.some(
+            !nativeCurrentShapeActions(run).some(
               (action) =>
                 ['build.builder', 'supervisor.prepare'].includes(action.stepId) &&
                 action.status !== 'pending',

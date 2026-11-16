@@ -23,6 +23,13 @@ export function usesNativeSharedPlanning(run: Readonly<WorkflowRun>): boolean {
   );
 }
 
+export function nativeCurrentShapeActions(run: Readonly<WorkflowRun>): WorkflowRun['actions'] {
+  const shape = [...run.actions]
+    .reverse()
+    .find((action) => ['shape.prepare', 'shape.revalidate'].includes(action.stepId));
+  return run.actions.slice(shape ? run.actions.indexOf(shape) + 1 : 0);
+}
+
 export async function transferFile(
   projectRoot: string,
   name: string,

@@ -18,7 +18,11 @@ import { parseNativePortableState } from './native-portable-state.js';
 import { prepareNativeWorkspace } from './native-workspace-preparation.js';
 import { atomicWriteText } from './native-atomic-file.js';
 import { selectNativeChange } from './native-selection.js';
-import { inspectGitWorktree, isLocalGitBranch } from '../../platform/paths/git-worktree.js';
+import {
+  inspectGitWorktree,
+  isLocalGitBranch,
+  samePath,
+} from '../../platform/paths/git-worktree.js';
 import { runGitCommand } from '../../platform/process/git.js';
 
 /** Move an approved, unclaimed built-in Run before dispatching implementation. */
@@ -41,6 +45,8 @@ export async function prepareNativeBuildWorkspace(
     if (!run || run.workflow.version !== '4')
       throw new Error('Build workspace preparation requires Native v4');
     const state = parseNativePortableState(run.state);
+    const sourceWorkspace = inspectGitWorktree(projectRoot);
+    if (state.workspace.change_branch !== sourceWorkspace.currentBranch) return projectRoot;
     if (
       state.phase !== 'build' ||
       run.actions.some((action) => action.status === 'running' || action.status === 'unknown')
@@ -56,7 +62,23 @@ export async function prepareNativeBuildWorkspace(
       throw new Error(
         'Build worktree requires committed code changes. Commit the implementation baseline before retrying the same next command.',
       );
-    const changeBranch = `comet/${name}`;
+    let workspaceName = name;
+    let suffix = 0;
+    while (
+      sourceWorkspace.currentBranch === `comet/${workspaceName}` ||
+      samePath(
+        sourceWorkspace.currentWorktreeRoot ?? projectRoot,
+        path.resolve(
+          sourceWorkspace.primaryWorktreeRoot ?? projectRoot,
+          '.worktrees',
+          workspaceName,
+        ),
+      )
+    ) {
+      suffix++;
+      workspaceName = `${name}-build${suffix === 1 ? '' : `-${suffix}`}`;
+    }
+    const changeBranch = `comet/${workspaceName}`;
     if (
       isLocalGitBranch(projectRoot, changeBranch) &&
       runGitCommand(projectRoot, ['rev-parse', `refs/heads/${changeBranch}`]) !==
@@ -70,8 +92,9 @@ export async function prepareNativeBuildWorkspace(
       name,
       isolation: 'worktree',
       changeBranch,
+      worktreePath: path.join('.worktrees', workspaceName),
       sourceConfig: config,
-      targetBranch: inspectGitWorktree(projectRoot).currentBranch ?? undefined,
+      targetBranch: sourceWorkspace.currentBranch ?? undefined,
     });
     const existing = await readNativeSdkRunRecord(prepared.projectRoot, name);
     const owner = await readChangeRuntimeOwner(prepared.projectRoot, 'native', name, {

@@ -69,3 +69,9 @@ CI 中旧 Run 的批准续行、后续合法归档和 Runtime 读取预算也先
 后续 Review 又复现成功 Builder 的跨需求轮次问题、非 Git 项目误用共享规划，以及 Git Hook 环境下读错 worktree 索引。实施准备只检查最近一次 Shape 准备之后的动作；此前成功的 Builder 仍保留，但不阻止新轮次交接。创建入口与后续执行使用同一共享规划条件，无 Git 分支时只保留单 change。`cd7488f6` 的公开 new bundle 在隔离非 Git 项目中两次新建均成功，新代码拒绝第二次且保留原单任务的合法 Build。
 
 同步 Git 命令复用已有 `independentGitEnvironment()`，清除仓库和索引局部变量，保留全局配置与认证。临时 linked worktree 的实际修改在旧代码中被源索引掩盖，新代码读取目标修改和分支。三项案例 `native-562-reapproved-succeeded-builder-isolation`、`native-562-nongit-shared-planning`、`git-562-inherited-worktree-environment` 均保留修复前失败和修复后执行证据；此前失败 Builder 的精确测试名称和断言不变。
+
+最新两项 Review 分别指出默认实施名称与原规划区相撞，以及创建入口仍扫描旧轮次 Builder。来源为 [规划区名称占用](https://github.com/rpamis/comet/pull/562#discussion_r4581945001) 和 [重新批准后新建 Shape](https://github.com/rpamis/comet/pull/562#discussion_r4581945006)。在 `8e49f3bb` 的公开 CLI/bundle 上四项新增回归均失败；同一案例在重建后的修复代码全部通过。
+
+原规划区已使用 `comet/<change>` 或默认 worktree 时，实施交接使用独立的 `-build` 名称，仍核对既有目标基线、owner 和本地修改，不覆盖其他工作区。新建与后续 Build 共用当前 Shape 轮次的动作查询，保留历史成功/失败记录，未领取新 Builder 时允许继续共享规划。案例 `native-562-source-workspace-name-collision` 和 `native-562-reapproved-shape-admission` 分别覆盖 branch/worktree 规划和成功/失败 Builder；同时断言原 Run、批准及其他 Shape 材料不变。真实平台 Hook 和模型 Eval 未执行。
+
+[原规划分支绑定审核](https://github.com/rpamis/comet/pull/562#discussion_r4581965480) 的可复现条件是：批准 main 上的 Shape 后，切到另一分支并创建该分支的新 Shape，再从该分支推进原任务。普通同分支 peer 随切换一并退出活动集合，不触发交接；上述跨分支 peer 才会暴露原绑定被覆盖的问题。精确公开 CLI 回归在修复前失败；交接前检查原 change_branch，分支不匹配时沿原诊断返回，不发布交接。案例 `native-562-planning-branch-binding` 核对原 Run 不变、目标未创建，并核对切回 main 后可正常实施。
