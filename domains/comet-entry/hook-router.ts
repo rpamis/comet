@@ -200,6 +200,7 @@ export async function resolveHookWorkflowOwner(
     };
   }
 
+  if (current.status === 'none') return { status: 'none' };
   if (current.status === 'selected') {
     const selection = current.selection;
     if (selection.workflow === 'application') return { status: 'none' };
@@ -420,6 +421,28 @@ export async function inspectCometHook(
   }
 
   try {
+    const current = await readHookCurrentSelection(projectRoot);
+    if (current.status === 'none') {
+      const config = await readCachedProjectConfig(projectRoot);
+      const layout = classicLayoutPaths(projectRoot, config?.classic?.artifact_layout ?? 'legacy');
+      const protectedRoots = [
+        path.join(projectRoot, '.comet'),
+        layout.openSpecRoot,
+        layout.superpowersRoot,
+        ...(config?.native ? [path.join(projectRoot, config.native.artifact_root, 'comet')] : []),
+      ];
+      for (const target of projectRequest.targets) {
+        for (const root of protectedRoots) {
+          if (await isCometHookTargetWithin(root, path.resolve(projectRoot, target)))
+            return {
+              allowed: false,
+              reason:
+                'No Comet change is selected. Select the owning change before editing workflow artifacts; Runtime state must be updated through public commands.',
+            };
+        }
+      }
+      return { allowed: true, reason: 'This workspace explicitly has no selected Comet change' };
+    }
     const selected = await readSelectedWorkflowApplication(projectRoot);
     if (selected) {
       const { application, run } = selected;

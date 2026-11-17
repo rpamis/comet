@@ -40,6 +40,47 @@ describe('shared Comet current selection', () => {
     });
   });
 
+  it('retains explicit none through migration and unrelated cleanup', async () => {
+    await writeCometCurrentSelection(root, {
+      schema: 'comet.selection.v2',
+      workflow: 'none',
+      change: null,
+      branch: null,
+    });
+    expect(await readCometCurrentSelection(root)).toEqual({ status: 'none' });
+    expect(await migrateLegacyClassicSelection(root)).toBe(false);
+    expect(await clearCometCurrentSelectionIf(root, 'native', 'old')).toBe(false);
+    expect(await readCometCurrentSelection(root)).toEqual({ status: 'none' });
+    await writeCometCurrentSelection(root, {
+      schema: 'comet.selection.v2',
+      workflow: 'classic',
+      change: 'restored',
+      branch: null,
+    });
+    expect(await readCometCurrentSelection(root)).toMatchObject({
+      status: 'selected',
+      selection: { workflow: 'classic', change: 'restored' },
+    });
+  });
+
+  it('rejects none records retaining another owner', async () => {
+    const file = cometCurrentSelectionFile(root);
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    for (const extra of [{ change: 'old' }, { branch: 'main' }, { applicationId: 'app' }]) {
+      await fs.writeFile(
+        file,
+        JSON.stringify({
+          schema: 'comet.selection.v2',
+          workflow: 'none',
+          change: null,
+          branch: null,
+          ...extra,
+        }),
+      );
+      await expect(readCometCurrentSelection(root)).rejects.toThrow('null change and branch');
+    }
+  });
+
   it('migrates the released Classic v1 record in place', async () => {
     const file = cometCurrentSelectionFile(root);
     await fs.mkdir(path.dirname(file), { recursive: true });

@@ -8,12 +8,12 @@
 
 当前 selection 的 `workflow` 为 `application` 时，使用它的 `applicationId` 与原 Run ID，恢复对应 SDK Skill 应用。读取平台 Skill 入口指向的固定包和应用 Rule；进度、批准、写入范围与恢复以同一 SDK Run 为准，不套用下方 Native/Classic 阶段表。先确认当前提案并领取 Action，再执行声明范围内的工作；SDK 状态、固定包和宿主配置由正式 Runtime/安装入口维护。平台 Rule、Hook 配置、实际 Hook 事件与业务验收分别核对；平台需要启用或信任 Hook 时按其要求处理。
 
-本会话尚未进入 Native 或 Classic 时，环境感知发现的 change 先作为候选。即使只有一个语义相关的 change，或项目已有有效 selection，也先展示名称和阶段，询问本次是否继续该流程，等待用户确认后再加载入口或推进。用户明确调用 Comet Skill，或明确要求继续、验证、归档或提交指定 change（包括明确指向当前 change）时直接进入；只提到名称或一般性的“验证”不算恢复确认。已在流程中的同一会话沿用已有确认，普通继续、答复和上下文恢复不重复询问。用户拒绝时按普通任务处理，保留原 change、selection、批准及阶段写入约束。
+本会话尚未进入 Native 或 Classic 时，环境感知发现的 change 先作为候选。即使只有一个语义相关的 change，或项目已有有效 selection，也先展示名称和阶段，询问本次是否继续该流程，等待用户确认后再加载入口或推进。用户明确调用 Comet Skill，或明确要求继续、验证、归档或提交指定 change（包括明确指向当前 change）时直接进入；只提到名称或一般性的“验证”不算恢复确认。已在流程中的同一会话沿用已有确认，普通继续、答复和上下文恢复不重复询问。用户明确要求在 Native 工作区处理独立修改、本次不使用 Comet 时，执行 `comet native select --none`，成功后进行普通编辑。此决定作用于整个当前工作区，同目录其他会话共享；原 change 和批准可稍后恢复。用户明确恢复时先执行 `comet native select <name>`，再继续原流程。仅询问、只读任务或 `already-in-comet-flow` 不触发取消选择。
 
 开始任务、恢复上下文或切换仓库、分支、change 时执行以下轻量所有权读取；同一任务正常推进沿用当前响应：
 
 1. 读取 `.comet/config.yaml`：`workflows` 表示项目启用的能力，`default_workflow` 只决定 `/comet` 的默认入口。
-2. 读取 `.comet/current-change.json`：其中的 `workflow + change` 才是当前需求所有者。
+2. 读取 `.comet/current-change.json`：其中的 `workflow + change` 才是当前需求所有者。`workflow: none` 表示工作区已明确取消选择，普通编辑放行，正式材料和 Runtime 数据仍受保护；等待用户明确恢复后重新选择，不枚举或推断活跃 change。
    selection 仍然有效且继续指向同一 workflow/change 时，正常 continuation 直接沿用当前响应中的状态；这两次轻量读取不运行 `resume-probe`、不查询 `status`，也不枚举全部 change。
 3. 只有 selection 缺失、失效、目标 change 已不存在或已归档，或所有权不明确时，才重新枚举全项目的 Comet 活跃 change：零个表示当前没有 Comet 需求；恰好一个时只读推断；多个候选时暂停并让用户选择。
 4. selection 文件不可读、格式或 schema 无效、workflow 未启用、跨分支失效或 change 状态不可安全读取时停止，不得回退到 `default_workflow` 猜测。

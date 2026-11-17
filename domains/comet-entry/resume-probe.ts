@@ -54,6 +54,7 @@ import {
 } from '../workflow-contract/change-runtime-owner.js';
 import { isNativeSdkRunRecoveryRequiredError } from '../comet-native/native-sdk-state-store.js';
 import { resolveCometEntry } from './resolve-entry.js';
+import { readCometCurrentSelection } from './current-selection.js';
 import type { CometEntryResolutionSource, CometEntrySkill, CometWorkflow } from './types.js';
 
 export const COMET_RESUME_PROBE_SCHEMA_VERSION = 'comet.resume_probe.v2' as const;
@@ -879,7 +880,8 @@ async function resolveCometEntryResumeProbeImpl(
       action: 'out_of_scope',
       confidence: 'low',
       reasonCode: 'user-opted-out',
-      reason: 'user opted out of Comet resume',
+      reason:
+        'user opted out of Comet resume. If the user requested independent edits in a Native workspace, run comet native select --none before editing. All sessions in that workspace share this choice.',
       evidence: [{ source: 'user', quote: utterance }],
     });
   }
@@ -888,6 +890,15 @@ async function resolveCometEntryResumeProbeImpl(
   let entry: Awaited<ReturnType<typeof resolveCometEntry>>;
   try {
     projectRoot = await discoverCachedNativeProject(startPath);
+    if ((await readCometCurrentSelection(projectRoot)).status === 'none') {
+      return result({
+        action: 'out_of_scope',
+        confidence: 'high',
+        reasonCode: 'no-change-selected',
+        reason:
+          'This workspace explicitly has no selected Comet change. To resume Native work, run comet native select <name>.',
+      });
+    }
     // Read config once here; the cached read is reused by resolveCometEntry
     // and the per-workflow resolvers below, instead of each re-opening the
     // file. Check ambient_resume on the same cached config.

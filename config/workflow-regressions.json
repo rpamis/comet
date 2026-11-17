@@ -2,6 +2,70 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "native-independent-work-selection",
+      "behavior": "未完成 Shape 旁的独立修改可经公开命令明确退出 Comet，再选择原需求后恢复 Shape 保护。",
+      "sources": ["https://github.com/rpamis/comet/issues/568"],
+      "coverageLevel": "public-cli",
+      "reproduction": "0.5.3 与 0.5.4 Router bundle 在独立 session 的 Edit 上均 exit 2；相同新增 CLI 回归在修复前因 select --none 返回 exit 64 失败。",
+      "expected": "select --none 持久化明确取消选择，普通源码编辑成功，原 Run 状态不变，重新 select 原需求后 Shape 写入仍被拦截。",
+      "forbidden": "强制批准或取消 Shape、改变原 Run、重新选择后继续放行、影响其他 worktree。",
+      "rootCause": "共享选择只表达已选与缺失，缺少显式未选择状态，项目唯一 active Shape 被默认用作所有源码写入的归属。",
+      "tests": [
+        {
+          "file": "test/app/native-selection-none.test.ts",
+          "namePattern": "^Native explicit no selection CLI (releases unrelated writes and restores Shape protection through explicit selection|isolates explicit none from another Git worktree)$",
+          "requiredNames": [
+            "Native explicit no selection CLI releases unrelated writes and restores Shape protection through explicit selection",
+            "Native explicit no selection CLI isolates explicit none from another Git worktree"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "真实 Claude Code Hook",
+          "status": "pending",
+          "evidence": [
+            "本地公开 CLI 与生成 Router 的 Claude PreToolUse 事件重放通过；负责人 benym，需在用户原 Claude 会话验证退出后的真实 Edit 与重新选择后的拒绝。"
+          ]
+        },
+        {
+          "layer": "真实模型自然语言退出与恢复",
+          "status": "pending",
+          "evidence": [
+            "平台 Rule、CLI 帮助和拒绝消息提供公开取消选择指引；未获 Eval 启动授权，负责人 benym，授权后验证 Agent 按用户意图调用退出及恢复命令。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-no-selection-resume-contract",
+      "behavior": "明确 none 阻止恢复探测与 Hook 的唯一 active change 回退推断，同时继续保护正式材料和 Runtime 控制数据。",
+      "sources": ["https://github.com/rpamis/comet/issues/568"],
+      "coverageLevel": "public-cli",
+      "reproduction": "旧版本自然语言返回 out_of_scope 后仍拒绝编辑；删除 selection 后也仍关联唯一 Shape。新增同一 CLI 测试修复前因缺少 --none 失败。",
+      "expected": "none 与缺少 selection 区分，探测只读返回 no-change-selected，普通编辑放行，正式材料与 Runtime 仍受保护，冲突参数不写入。",
+      "forbidden": "把 none 当缺失后自动恢复、所有 out_of_scope 都取消选择、直接编辑 selection 或正式材料、接受带旧归属的 none。",
+      "rootCause": "恢复探测的 out_of_scope 为只读意图结果，Hook 不读取这个结果，缺少跨二者共享的明确退出契约。",
+      "tests": [
+        {
+          "file": "test/app/native-selection-none.test.ts",
+          "namePattern": "^Native explicit no selection CLI (keeps explicit none during ambient resume and protects workflow artifacts|distinguishes missing selection and rejects conflicting deselection arguments)$",
+          "requiredNames": [
+            "Native explicit no selection CLI keeps explicit none during ambient resume and protects workflow artifacts",
+            "Native explicit no selection CLI distinguishes missing selection and rejects conflicting deselection arguments"
+          ]
+        },
+        {
+          "file": "test/domains/comet-entry/current-selection.test.ts",
+          "namePattern": "^shared Comet current selection (retains explicit none through migration and unrelated cleanup|rejects none records retaining another owner)$",
+          "requiredNames": [
+            "shared Comet current selection retains explicit none through migration and unrelated cleanup",
+            "shared Comet current selection rejects none records retaining another owner"
+          ]
+        }
+      ]
+    },
+    {
       "id": "release-published-version-guard",
       "behavior": "指定版本的 GitHub Release 已发布时明确报错并提前停止，master 前进后也不能重复发布。",
       "sources": ["report:2026-11-16-release-published-version-guard"],

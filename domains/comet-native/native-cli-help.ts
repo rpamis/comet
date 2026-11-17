@@ -37,7 +37,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       'spec sync <change-name> <capability> --input <json-file>  Audit local Markdown reference corrections.',
       'show <change-name>           Read formal artifacts and portable state.',
       'status [<change-name>]       Discover stable boundaries and Runner actions.',
-      'select <change-name>         Select a change in its bound workspace.',
+      'select <change-name>|--none  Select a change or explicitly leave this workspace unselected.',
       'next <change-name>           Confirm or recover a stable workflow boundary.',
       'archive <change-name>        Preview and execute Archive plus workspace finish.',
       'cancel <change-name>         Cancel an unfinished change while keeping its code and workspace.',
@@ -179,9 +179,10 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
     ],
   },
   select: {
-    usage: 'comet native select <change-name> [--rebind]',
+    usage: 'comet native select <change-name> [--rebind]\n       comet native select --none',
     options: [
       '--rebind  Explicitly bind the same idle SDK Run to the current Git branch; preserve work and approvals, and reject unresolved executions.',
+      '--none  After the user chooses independent work, allow ordinary edits in this workspace and stop ambient resume. All sessions in this workspace share this choice. Workflow artifacts remain protected. Resume with select <change-name>. Cannot combine with a name or --rebind.',
     ],
     purpose: 'Select one Native change after validating its workspace binding.',
     output: 'The selected change record.',

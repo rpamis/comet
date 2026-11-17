@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.5.5] - 2026-11-17
+
+### Fixed
+
+- **Independent edits beside pending Native changes**: Explicitly leave the current workspace unselected with `comet native select --none` so unrelated edits can proceed while a Shape is pending. Hook routing and ambient resume honor this choice, workflow artifacts remain protected, and selecting the original change restores its phase constraints ([#568](https://github.com/rpamis/comet/issues/568)).
+
 ## What's Changed [0.5.4] - 2026-11-16
 
 ### Added

@@ -15,7 +15,7 @@ import {
   createNativeSdkStateStore,
   isNativeSdkRunRecoveryRequiredError,
 } from './native-sdk-state-store.js';
-import { selectNativeChange } from './native-selection.js';
+import { deselectNativeChange, selectNativeChange } from './native-selection.js';
 import {
   inspectDiscoveredNativeStatus,
   NativePristineSdkRunRecoverableError,
@@ -80,6 +80,16 @@ export async function nativeSelectCommand(
   args: string[],
   projectRoot: string,
 ): Promise<DispatchResult> {
+  if (takeFlag(args, '--none')) {
+    assertNoArguments(args);
+    await deselectNativeChange((await configuredPaths(projectRoot)).paths);
+    return success('select', {
+      selected: null,
+      scope: 'workspace',
+      message:
+        'No Comet change is selected in this workspace. Ordinary edits are allowed. Resume with comet native select <name>.',
+    });
+  }
   const name = requiredPositional(args, 'change name');
   const rebind = takeFlag(args, '--rebind');
   assertNoArguments(args);
