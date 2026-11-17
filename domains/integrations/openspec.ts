@@ -25,6 +25,12 @@ const MINIMUM_OPENSPEC_VERSION = '1.5.0';
 const OH_MY_PI_MINIMUM_OPENSPEC_VERSION = '1.6.0';
 /** OpenSpec 2 writes every tool's project Skills once under this shared root. */
 const OPENSPEC_SHARED_SKILLS_DIR = '.agents';
+/** Lists, one per line, the OpenSpec tool ids the shared Skills were generated for. */
+const OPENSPEC_SHARED_TARGET_FILE = path.join(
+  OPENSPEC_SHARED_SKILLS_DIR,
+  'skills',
+  '.openspec-target',
+);
 const ALL_OPENSPEC_WORKFLOWS = [
   'propose',
   'explore',
@@ -289,6 +295,24 @@ async function copyGeneratedToolDirectory(
   }
 }
 
+/**
+ * Returns the tool ids OpenSpec 2 recorded for its shared `.agents` Skills, so
+ * the shared root is only accepted as output for a tool it was generated for.
+ */
+function readOpenSpecSharedTargets(stagingProject: string): Set<string> {
+  try {
+    const marker = fs.readFileSync(path.join(stagingProject, OPENSPEC_SHARED_TARGET_FILE), 'utf8');
+    return new Set(
+      marker
+        .split(/\r?\n/u)
+        .map((line) => line.trim())
+        .filter(Boolean),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
 interface GeneratedToolCopy {
   source: string;
   destination: string;
@@ -304,6 +328,7 @@ async function resolveGeneratedToolCopies(
 ): Promise<GeneratedToolCopy[]> {
   const copies: GeneratedToolCopy[] = [];
   const mergedDestinations = new Set<string>();
+  const sharedTargets = readOpenSpecSharedTargets(stagingProject);
   for (const toolId of toolIds) {
     const generator = getOpenSpecGeneratorPlatform(toolId);
     if (!generator) continue;
@@ -311,7 +336,7 @@ async function resolveGeneratedToolCopies(
       ...new Set([
         generator.openspecSkillsDir ?? generator.skillsDir,
         ...(generator.legacySkillsDirs ?? []),
-        OPENSPEC_SHARED_SKILLS_DIR,
+        ...(sharedTargets.has(toolId) ? [OPENSPEC_SHARED_SKILLS_DIR] : []),
       ]),
     ];
     const sourceDir = candidateDirs.find((dir) => fs.existsSync(path.join(stagingProject, dir)));
