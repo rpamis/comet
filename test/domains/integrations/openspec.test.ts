@@ -651,6 +651,9 @@ describe('openspec', () => {
               'utf8',
             ),
           ).resolves.toBe('# OpenSpec 2 shared skill\n');
+          expect(fs.existsSync(path.join(tmpDir, platformRoot, 'skills', '.openspec-target'))).toBe(
+            false,
+          );
           expect(fs.existsSync(path.join(tmpDir, '.agents'))).toBe(false);
         } finally {
           fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -696,6 +699,47 @@ describe('openspec', () => {
 
         expect(result).toBe('failed');
         expect(failures[0]?.message).toContain('no tool output for opencode');
+        expect(fs.existsSync(path.join(tmpDir, '.opencode'))).toBe(false);
+        expect(fs.existsSync(path.join(tmpDir, '.agents'))).toBe(false);
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it('fails when the shared .agents output holds only the target marker (OpenSpec 2)', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-shared-marker-only-'));
+      try {
+        mockedExecFileSync.mockImplementation((command, args) => {
+          if (command === 'where' || command === 'which') return Buffer.from('/usr/bin/openspec');
+          if (command === 'openspec' && Array.isArray(args) && args[0] === '--version') {
+            return Buffer.from('2.0.0');
+          }
+          if (command === 'openspec' && Array.isArray(args) && args[0] === 'init') {
+            const target = unquoteWindowsArg(args[1]);
+            const tools = args[args.indexOf('--tools') + 1];
+            if (tools === 'opencode') {
+              const skills = path.join(target, '.agents', 'skills');
+              fs.mkdirSync(skills, { recursive: true });
+              fs.writeFileSync(path.join(skills, '.openspec-target'), 'opencode\n');
+            } else {
+              fs.mkdirSync(path.join(target, 'openspec', 'changes', 'archive'), {
+                recursive: true,
+              });
+            }
+            return Buffer.from('ok');
+          }
+          return Buffer.from('ok');
+        });
+
+        const failures: Error[] = [];
+        const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+        const result = await installOpenSpec(tmpDir, ['opencode'], 'project', {
+          shouldInstallCli: false,
+          failureObserver: (error) => failures.push(error),
+        });
+
+        expect(result).toBe('failed');
+        expect(failures[0]?.message).toContain('empty tool output for opencode');
         expect(fs.existsSync(path.join(tmpDir, '.opencode'))).toBe(false);
         expect(fs.existsSync(path.join(tmpDir, '.agents'))).toBe(false);
       } finally {

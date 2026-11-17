@@ -200,13 +200,15 @@ function projectRelativePath(projectPath: string, target: string, label: string)
  * OpenSpec CLI, so the tree is small and bounded; walking it is cheap. This
  * distinguishes "no output at all" from "only empty directories" so a missing
  * or empty staged tool output fails the update instead of reporting success.
+ * `ignoredFile` (OpenSpec 2's shared target marker) does not count as output.
  */
-async function hasGeneratedToolFiles(dir: string): Promise<boolean> {
+async function hasGeneratedToolFiles(dir: string, ignoredFile?: string): Promise<boolean> {
   const entries = await fs.promises.readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
+    const entryPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      if (await hasGeneratedToolFiles(path.join(dir, entry.name))) return true;
-    } else {
+      if (await hasGeneratedToolFiles(entryPath, ignoredFile)) return true;
+    } else if (entryPath !== ignoredFile) {
       return true;
     }
   }
@@ -255,6 +257,7 @@ async function copyGeneratedToolDirectory(
     ) {
       throw new Error('OpenSpec generated tool source escaped its staging root');
     }
+    if (sourceEntry === path.join(stagingRoot, OPENSPEC_SHARED_TARGET_FILE)) continue;
     const destinationEntry = path.join(destination, entry.name);
     const sourceStat = entry.isSymbolicLink() ? await fs.promises.stat(sourceEntry) : entry;
     if (sourceStat.isDirectory()) {
@@ -346,7 +349,9 @@ async function resolveGeneratedToolCopies(
       );
     }
     const source = path.join(stagingProject, sourceDir);
-    if (!(await hasGeneratedToolFiles(source))) {
+    if (
+      !(await hasGeneratedToolFiles(source, path.join(stagingProject, OPENSPEC_SHARED_TARGET_FILE)))
+    ) {
       throw new Error(
         `OpenSpec generated an empty tool output for ${generator.id}: ${sourceDir} contains no skills or commands`,
       );

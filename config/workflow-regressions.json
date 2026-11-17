@@ -54998,10 +54998,10 @@
       "id": "issue-565-openspec-2-shared-skills-root",
       "behavior": "OpenSpec 2.x 只在共享的 .agents/skills 生成技能时，comet init 仍为 OpenCode、Cursor 等平台安装 openspec-* 技能。",
       "sources": ["https://github.com/rpamis/comet/issues/565"],
-      "coverageLevel": "unit",
-      "reproduction": "用真实 OpenSpec 2.0.0 运行 comet init --scope project --platform opencode（或 cursor），旧代码以 OpenSpec generated no tool output for opencode: expected one of .opencode 失败并退出 1；新增测试在旧代码中同样返回 failed。",
-      "expected": "安装返回 installed，技能从 staging 的 .agents 复制到平台自身的技能目录（如 .opencode/skills、.cursor/skills），项目根目录不出现 .agents。",
-      "forbidden": "因平台目录缺失而拒绝 OpenSpec 2 的共享输出，把 .openspec-target 未列出该工具的共享 .agents 输出当作该平台的生成物，或在 staging 完全没有输出时报告安装成功。",
+      "coverageLevel": "public-cli",
+      "reproduction": "用真实 OpenSpec 2.0.0 运行 comet init --scope project --platform opencode（或 cursor），旧代码以 OpenSpec generated no tool output for opencode: expected one of .opencode 失败并退出 1；新增单元测试在旧代码中同样返回 failed，公开 CLI 测试用模拟 OpenSpec 2.0.0 输出的 openspec 命令运行 comet init，旧代码同样退出 1。",
+      "expected": "comet init 退出 0 且状态为 complete，安装返回 installed，技能从 staging 的 .agents 复制到平台自身的技能目录（如 .opencode/skills、.cursor/skills），项目根目录不出现 .agents，.openspec-target 标记不被复制。",
+      "forbidden": "因平台目录缺失而拒绝 OpenSpec 2 的共享输出，把 .openspec-target 未列出该工具的共享 .agents 输出当作该平台的生成物（comet init 必须退出 1 且不安装 openspec-* 技能），在 staging 完全没有输出或只有 .openspec-target 标记时报告安装成功。",
       "rootCause": "OpenSpec 2.0 把所有工具的项目技能统一写到 .agents/skills，只为 Claude 等少数工具额外生成平台目录；resolveGeneratedToolCopies 只在平台自身目录（及历史目录）中查找生成物。",
       "tests": [
         {
@@ -55024,6 +55024,21 @@
           "namePattern": "does not use shared \\.agents Skills generated for another tool \\(OpenSpec 2\\)",
           "requiredNames": [
             "openspec installOpenSpec does not use shared .agents Skills generated for another tool (OpenSpec 2)"
+          ]
+        },
+        {
+          "file": "test/domains/integrations/openspec.test.ts",
+          "namePattern": "fails when the shared \\.agents output holds only the target marker \\(OpenSpec 2\\)",
+          "requiredNames": [
+            "openspec installOpenSpec fails when the shared .agents output holds only the target marker (OpenSpec 2)"
+          ]
+        },
+        {
+          "file": "test/app/openspec-2-init-cli.test.ts",
+          "namePattern": "installs OpenCode OpenSpec Skills from the shared \\.agents output through comet init|rejects shared \\.agents output that OpenSpec generated for another tool",
+          "requiredNames": [
+            "comet init with OpenSpec 2 shared .agents output installs OpenCode OpenSpec Skills from the shared .agents output through comet init",
+            "comet init with OpenSpec 2 shared .agents output rejects shared .agents output that OpenSpec generated for another tool"
           ]
         }
       ]
