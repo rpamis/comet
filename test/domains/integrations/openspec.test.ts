@@ -605,6 +605,59 @@ describe('openspec', () => {
       }
     });
 
+    it.each([
+      ['opencode', '.opencode'],
+      ['cursor', '.cursor'],
+    ] as const)(
+      'installs %s OpenSpec Skills from the shared .agents staging output (OpenSpec 2)',
+      async (toolId, platformRoot) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-shared-agents-'));
+        try {
+          mockedExecFileSync.mockImplementation((command, args) => {
+            if (command === 'where' || command === 'which') return Buffer.from('/usr/bin/openspec');
+            if (command === 'openspec' && Array.isArray(args) && args[0] === '--version') {
+              return Buffer.from('2.0.0');
+            }
+            if (command === 'openspec' && Array.isArray(args) && args[0] === 'init') {
+              const target = unquoteWindowsArg(args[1]);
+              const tools = args[args.indexOf('--tools') + 1];
+              if (tools === toolId) {
+                const skills = path.join(target, '.agents', 'skills');
+                fs.mkdirSync(path.join(skills, 'openspec-propose'), { recursive: true });
+                fs.writeFileSync(path.join(skills, '.openspec-target'), `${toolId}\n`);
+                fs.writeFileSync(
+                  path.join(skills, 'openspec-propose', 'SKILL.md'),
+                  '# OpenSpec 2 shared skill\n',
+                );
+              } else {
+                fs.mkdirSync(path.join(target, 'openspec', 'changes', 'archive'), {
+                  recursive: true,
+                });
+              }
+              return Buffer.from('ok');
+            }
+            return Buffer.from('ok');
+          });
+
+          const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+          const result = await installOpenSpec(tmpDir, [toolId], 'project', {
+            shouldInstallCli: false,
+          });
+
+          expect(result).toBe('installed');
+          await expect(
+            fs.promises.readFile(
+              path.join(tmpDir, platformRoot, 'skills', 'openspec-propose', 'SKILL.md'),
+              'utf8',
+            ),
+          ).resolves.toBe('# OpenSpec 2 shared skill\n');
+          expect(fs.existsSync(path.join(tmpDir, '.agents'))).toBe(false);
+        } finally {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+      },
+    );
+
     it('installs current Devin Desktop OpenSpec output from .devin for project and global scopes', async () => {
       const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-devin-project-'));
       const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-devin-global-'));

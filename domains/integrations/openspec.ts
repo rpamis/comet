@@ -23,6 +23,8 @@ import type { InstallScope } from '../../platform/install/types.js';
 const VALID_TOOL_IDS = new Set(PLATFORMS.map((p) => p.openspecToolId));
 const MINIMUM_OPENSPEC_VERSION = '1.5.0';
 const OH_MY_PI_MINIMUM_OPENSPEC_VERSION = '1.6.0';
+/** OpenSpec 2 writes every tool's project Skills once under this shared root. */
+const OPENSPEC_SHARED_SKILLS_DIR = '.agents';
 const ALL_OPENSPEC_WORKFLOWS = [
   'propose',
   'explore',
@@ -306,8 +308,11 @@ async function resolveGeneratedToolCopies(
     const generator = getOpenSpecGeneratorPlatform(toolId);
     if (!generator) continue;
     const candidateDirs = [
-      generator.openspecSkillsDir ?? generator.skillsDir,
-      ...(generator.legacySkillsDirs ?? []),
+      ...new Set([
+        generator.openspecSkillsDir ?? generator.skillsDir,
+        ...(generator.legacySkillsDirs ?? []),
+        OPENSPEC_SHARED_SKILLS_DIR,
+      ]),
     ];
     const sourceDir = candidateDirs.find((dir) => fs.existsSync(path.join(stagingProject, dir)));
     if (!sourceDir) {
