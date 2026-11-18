@@ -260,7 +260,7 @@ export async function submitClassicSdkBuildPlan(options: {
       ? inspected.input.changeDir
       : null;
   if (!changeDirRef) throw new Error('Classic SDK Run has no change directory');
-  await assertClassicSdkDesignRequirementsCurrent(projectRoot, changeDirRef, inspected);
+  await assertClassicSdkDesignRequirementsCurrent(changeDirRef, inspected);
   const receipt = await classicPlanEvidenceReceipt(projectRoot, planRef, changeDirRef);
   const designEvidence = await classicAcceptedDesignEvidence(projectRoot, inspected);
 

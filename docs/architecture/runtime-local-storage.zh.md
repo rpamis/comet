@@ -22,7 +22,11 @@ Classic SDK 新 change 与 Native 一样创建 `comet-state.yaml`。历史 `.com
 
 跨设备应同步实际使用的状态文件、change 文档、引用工件、代码及项目配置；`run_checkpoint` 保存已记录的阶段与确认，但不包含独立子 worktree 和未提交代码。换机前结束旧执行者，并确认最新状态已写入文件。
 
+Classic、Dashboard 和 Project Knowledge 共用 `workflow-contract/classic-state-file.ts` 定位状态文件并识别命名冲突。状态内容的解释和推进由 Classic Runtime 负责。
+
 ## 已有项目迁移
+
+`comet update`、`comet doctor --import-legacy-runtime` 和插件 SessionStart 各自判断何时导入旧数据。导入时统一调用 `comet-entry/legacy-runtime-import.ts`，先导入工作区 Run 和归属，再由 Classic 导入旧 change 目录下的本机记录。
 
 从 `0.4.5` 升级到 `0.5.0` 前，建议先用旧版完成并归档所有活跃 Native、Classic 任务。本次不保证旧活跃任务跨版本续跑；下述迁移用于安全处理升级后保留的本机数据，不代替旧任务的完成与归档。
 

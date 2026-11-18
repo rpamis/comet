@@ -1,3 +1,4 @@
+import { createNativeCompatFixture } from '../../helpers/native-compat-creation.js';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -103,7 +104,9 @@ describe('Native workflow file sizes', () => {
           { encoding: 'utf8', windowsHide: true, maxBuffer: 24 * 1024 * 1024 },
         ),
       );
-    invoke('new', ['large-brief', '--runtime', 'compat']);
+    expect(
+      (await createNativeCompatFixture(['large-brief', '--runtime', 'compat'], root)).exitCode,
+    ).toBe(0);
     const dir = path.join(root, 'docs/comet/changes/large-brief');
     const brief =
       '# Outcome\n支持大文档\n# Scope\n完整材料\n# Acceptance examples\n- 保留全文\n# Notes\n' +

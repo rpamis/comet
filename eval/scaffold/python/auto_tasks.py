@@ -33,8 +33,6 @@ from scaffold.python.progress import publish_eval_progress
 
 GENERATOR_VERSION = "comet-auto-task-generator.v1"
 TASK_SCHEMA_VERSION = "comet.eval/v1alpha1"
-MAX_SNAPSHOT_FILES = 128
-MAX_SNAPSHOT_BYTES = 512 * 1024
 MAX_GENERATED_TASKS = 4
 MIN_GENERATED_TASKS = 2
 
@@ -84,30 +82,6 @@ def _safe_skill_root(skill_path: Path) -> Path:
     if not root.is_dir() or not (root / "SKILL.md").is_file():
         raise AutoTaskError(f"Skill package must contain SKILL.md: {skill_path}")
     return root
-
-
-def _inside(root: Path, path: Path) -> bool:
-    try:
-        path.resolve().relative_to(root.resolve())
-        return True
-    except ValueError:
-        return False
-
-
-def _add_snapshot_file(root: Path, files: dict[str, SnapshotFile], path: Path) -> None:
-    if len(files) >= MAX_SNAPSHOT_FILES or not path.is_file() or not _inside(root, path):
-        return
-    relative = path.resolve().relative_to(root.resolve()).as_posix()
-    if relative in files:
-        return
-    content = path.read_text(encoding="utf-8", errors="replace")
-    if (
-        sum(len(item.content.encode("utf-8")) for item in files.values())
-        + len(content.encode("utf-8"))
-        > MAX_SNAPSHOT_BYTES
-    ):
-        return
-    files[relative] = SnapshotFile(relative, content, _sha256(content))
 
 
 def build_skill_snapshot(skill_path: Path | str) -> SkillSnapshot:

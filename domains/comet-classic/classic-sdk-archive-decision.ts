@@ -114,7 +114,7 @@ export async function decideClassicSdkArchive(options: {
   }
   if (!['reverify', 'later'].includes(options.choice)) {
     try {
-      await assertVerifyEvidenceCurrent(run, options.projectRoot, state, 1);
+      await assertVerifyEvidenceCurrent(run, state);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       throw new Error(

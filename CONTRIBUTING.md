@@ -2,6 +2,8 @@
 
 Languages: [English](CONTRIBUTING.md) | [中文](CONTRIBUTING-zh.md)
 
+Follow the [Code of Conduct](.github/CODE_OF_CONDUCT.md) when participating in the project. See the [Security Policy](.github/SECURITY.md) to report a vulnerability.
+
 Thank you for helping improve Comet. This guide explains how to set up the
 project, prepare a change, keep branches healthy, submit a pull request, and
 update project-specific assets such as skills and workflow runtimes.
@@ -341,7 +343,7 @@ Test directories strictly follow the ownership of the code under test:
 | `test/scripts/`          | The `scripts/` automation scripts                                                                          |
 | `test/repository/`       | Cross-layer constraints: README, CI workflows, repository layout, package scripts, workflow runtime assets |
 | `test/fixtures/`         | Test data                                                                                                  |
-| `test/helpers/`          | Test utilities (`comet-test-utils.ts`, `ensure-cli-built.ts`, `workflow-plan.ts`)                          |
+| `test/helpers/`          | Test utilities (`comet-test-utils.ts`, `ensure-cli-built.ts`)                                              |
 
 Do not add horizontal buckets like `test/ts/`; legacy files should be migrated
 to the directories above. The CI smoke entry point is

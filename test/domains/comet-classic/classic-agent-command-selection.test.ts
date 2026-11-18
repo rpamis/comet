@@ -295,16 +295,14 @@ it.each(['source', 'generated'] as const)(
     const before = await f.inspect();
     const original = before.actions.findLast((a) => a.stepId === 'tweak.verify.run')!;
     expect(before.actions.some((a) => a.ref === 'classic-check')).toBe(false);
-    await assertVerifyEvidenceCurrent(before, f.root, before.state as never);
+    await assertVerifyEvidenceCurrent(before, before.state as never);
     for (const kind of ['wrong-reference', 'latest-failure'] as const) {
       const changed = structuredClone(before);
       const verified = changed.actions.find((a) => a.id === original.id)!;
       if (kind === 'wrong-reference')
         (verified.outcome!.output as any).verificationReport += '.other';
       else (verified.outcome!.output as any).checks[0].result = 'failed';
-      await expect(
-        assertVerifyEvidenceCurrent(changed, f.root, changed.state as never),
-      ).rejects.toThrow();
+      await expect(assertVerifyEvidenceCurrent(changed, changed.state as never)).rejects.toThrow();
     }
     const blocked = await f.invoke('guard', 'demo', 'archive', '--apply');
     expect(blocked.exitCode).not.toBe(0);

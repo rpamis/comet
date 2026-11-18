@@ -17,7 +17,7 @@ import {
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
-import { nativeNewCommand } from '../../../domains/comet-native/native-new-command.js';
+import { createNativeCompatFixture } from '../../helpers/native-compat-creation.js';
 import { nativeNextCommand } from '../../../domains/comet-native/native-next-command.js';
 import {
   ensureNativeDirectories,
@@ -652,9 +652,9 @@ children:
     await writeProjectConfig(repository, defaultProjectConfig('docs', 'en'));
     git(repository, ['add', '.']);
     git(repository, ['commit', '-m', 'configure comet']);
-    expect((await nativeNewCommand(['parent', '--runtime', 'compat'], repository)).exitCode).toBe(
-      0,
-    );
+    expect(
+      (await createNativeCompatFixture(['parent', '--runtime', 'compat'], repository)).exitCode,
+    ).toBe(0);
     const paths = await nativeProjectPaths(repository, 'docs');
     const directory = nativePortableChangeDir(paths, 'parent');
     await fs.writeFile(path.join(directory, 'brief.md'), PARENT_BRIEF);
@@ -724,9 +724,9 @@ children:
     await writeProjectConfig(repository, defaultProjectConfig('docs', 'en'));
     git(repository, ['add', '.']);
     git(repository, ['commit', '-m', 'seed parent']);
-    expect((await nativeNewCommand(['parent', '--runtime', 'compat'], repository)).exitCode).toBe(
-      0,
-    );
+    expect(
+      (await createNativeCompatFixture(['parent', '--runtime', 'compat'], repository)).exitCode,
+    ).toBe(0);
     const paths = await nativeProjectPaths(repository, 'docs');
     const directory = nativePortableChangeDir(paths, 'parent');
     await fs.writeFile(path.join(directory, 'brief.md'), PARENT_BRIEF);
@@ -762,7 +762,10 @@ children:
     git(repository, ['add', '.']);
     git(repository, ['commit', '--allow-empty', '-m', 'seed parent integration branch']);
 
-    const parentCreated = await nativeNewCommand(['parent', '--runtime', 'compat'], repository);
+    const parentCreated = await createNativeCompatFixture(
+      ['parent', '--runtime', 'compat'],
+      repository,
+    );
     expect(parentCreated.exitCode).toBe(0);
     const parentPaths = await nativeProjectPaths(repository, 'docs');
     await ensureNativeDirectories(parentPaths);
@@ -819,7 +822,7 @@ children:
     config.default_workflow = 'native';
     await writeProjectConfig(repository, config);
 
-    const parentCreated = await nativeNewCommand(
+    const parentCreated = await createNativeCompatFixture(
       ['parent', '--isolation', 'current', '--runtime', 'compat'],
       repository,
     );
@@ -932,7 +935,10 @@ children:
     config.workflows = ['native', 'classic'];
     config.default_workflow = 'native';
     await writeProjectConfig(repository, config);
-    await nativeNewCommand(['parent', '--isolation', 'current', '--runtime', 'compat'], repository);
+    await createNativeCompatFixture(
+      ['parent', '--isolation', 'current', '--runtime', 'compat'],
+      repository,
+    );
     const paths = await nativeProjectPaths(repository, 'docs');
     await ensureNativeDirectories(paths);
     const changeDir = nativePortableChangeDir(paths, 'parent');
@@ -988,7 +994,10 @@ children:
     config.workflows = ['native', 'classic'];
     config.default_workflow = 'native';
     await writeProjectConfig(repository, config);
-    await nativeNewCommand(['parent', '--isolation', 'current', '--runtime', 'compat'], repository);
+    await createNativeCompatFixture(
+      ['parent', '--isolation', 'current', '--runtime', 'compat'],
+      repository,
+    );
     const paths = await nativeProjectPaths(repository, 'docs');
     await ensureNativeDirectories(paths);
     const changeDir = nativePortableChangeDir(paths, 'parent');
@@ -1065,9 +1074,9 @@ children:
     await fs.writeFile(path.join(repository, 'src/base.ts'), 'export const base=true;\n');
     git(repository, ['add', '.']);
     git(repository, ['commit', '-m', 'seed explicit parent']);
-    expect((await nativeNewCommand(['parent', '--runtime', 'compat'], repository)).exitCode).toBe(
-      0,
-    );
+    expect(
+      (await createNativeCompatFixture(['parent', '--runtime', 'compat'], repository)).exitCode,
+    ).toBe(0);
     const parentPaths = await nativeProjectPaths(repository, 'docs'),
       parentDir = nativePortableChangeDir(parentPaths, 'parent');
     await fs.writeFile(path.join(parentDir, 'brief.md'), PARENT_BRIEF);
@@ -1083,7 +1092,7 @@ children:
     git(repository, ['commit', '-m', 'fixture user approved v1 parent scope']);
     let expectedBase = git(repository, ['rev-parse', 'HEAD']);
     for (const name of ['child-a', 'child-b', 'child-c']) {
-      const created = await nativeNewCommand(
+      const created = await createNativeCompatFixture(
         [name, '--runtime', 'compat', '--isolation', 'worktree', '--target-branch', 'integration'],
         repository,
       );

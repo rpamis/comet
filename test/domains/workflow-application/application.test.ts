@@ -1,5 +1,5 @@
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
-import { importLegacyWorkspaceRuntimeData } from '../../../domains/workflow-contract/legacy-runtime-import.js';
+import { importLegacyWorkspaceRuntimeData } from '../../../domains/comet-entry/legacy-runtime-import.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -21,15 +21,12 @@ import {
   reconcileApplicationSkill,
   inspectApplicationSkill,
   listWorkflowApplicationRunRecords,
+  readWorkflowApplicationRun,
+  inspectWorkflowApplicationRun,
   inspectWorkflowApplicationLocks,
   repairWorkflowApplicationLock,
 } from '../../../domains/workflow-application/index.js';
 import type { SkillExecutionHost } from '../../../domains/workflow-application/index.js';
-import {
-  isLegacyBuiltinRun,
-  readWorkflowApplicationRun,
-  inspectWorkflowApplicationRun,
-} from '../../../domains/workflow-application/application.js';
 import {
   createDiskApplication,
   createScopeCycleApplication,
@@ -76,14 +73,14 @@ describe('application adaptation and SDK authority', () => {
       expect(await readWorkflowApplicationRun(root, applicationId, run.runId)).toEqual(before);
     }
   });
-  it('rejects an application pinned to a different Runtime before creating saved progress', async () => {
+  it('loads an application from a different Comet release without creating saved progress', async () => {
     const fixture = await createDiskApplication(root);
     fixture.manifest.runtimeVersion = '0.0.0';
     await fs.writeFile(fixture.file, JSON.stringify(fixture.manifest));
 
-    await expect(
-      loadWorkflowApplication({ file: fixture.file, projectRoot: root }),
-    ).rejects.toThrow('应用要求 Runtime 0.0.0');
+    const loaded = await loadWorkflowApplication({ file: fixture.file, projectRoot: root });
+    expect(loaded.manifest.runtimeVersion).toBe('0.0.0');
+    expect(loaded.identity.runtimeVersion).toBe('0.0.0');
     await expect(fs.stat(path.join(root, '.comet'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
   it('reads saved progress without loading changed application code or rewriting the Run', async () => {
@@ -986,25 +983,5 @@ describe('application adaptation and SDK authority', () => {
         server.close((error) => (error ? reject(error) : resolve())),
       );
     }
-  });
-});
-
-describe('isLegacyBuiltinRun', () => {
-  const native = (runtimeVersion: string) => ({ runtimeVersion, base: 'native' });
-  it('keeps a pinned Run from the previous releases resuming after a version bump', () => {
-    expect(isLegacyBuiltinRun(native('0.5.2'), '0.5.3', 'run')).toBe(true);
-    expect(isLegacyBuiltinRun(native('0.5.2'), '0.5.4', 'run')).toBe(true);
-    expect(isLegacyBuiltinRun(native('0.5.3'), '0.5.4', 'run')).toBe(true);
-    expect(
-      isLegacyBuiltinRun({ runtimeVersion: '0.5.3', base: 'classic-hotfix' }, '0.5.4', 'run'),
-    ).toBe(true);
-  });
-  it('does not apply to the current version, new Runs, custom bases or unknown versions', () => {
-    expect(isLegacyBuiltinRun(native('0.5.4'), '0.5.4', 'run')).toBe(false);
-    expect(isLegacyBuiltinRun(native('0.5.3'), '0.5.4', undefined)).toBe(false);
-    expect(isLegacyBuiltinRun({ runtimeVersion: '0.5.3', base: 'custom' }, '0.5.4', 'run')).toBe(
-      false,
-    );
-    expect(isLegacyBuiltinRun(native('0.0.0'), '0.5.4', 'run')).toBe(false);
   });
 });

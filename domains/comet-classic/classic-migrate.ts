@@ -1,4 +1,4 @@
-import { resolveClassicStateFile } from './classic-state-file.js';
+import { resolveClassicStateFile } from '../workflow-contract/classic-state-file.js';
 import { resolveClassicRunDirectory } from './classic-runtime-paths.js';
 import { createHash, randomUUID } from 'crypto';
 import { promises as fs } from 'fs';

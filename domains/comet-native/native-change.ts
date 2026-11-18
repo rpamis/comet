@@ -17,7 +17,7 @@ import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 import { createFileRuntimeStore, createRuntime, type WorkflowRun } from '../engine/runtime.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
 
-import { readWorkflowApplicationRun } from '../workflow-application/application.js';
+import { readWorkflowApplicationRun } from '../workflow-application/application-run-record.js';
 import { isNativeSdkCancellationComplete } from './native-sdk-cancellation.js';
 import { mapWithConcurrency } from './native-concurrency.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';

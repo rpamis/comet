@@ -1,4 +1,5 @@
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
+import { createNativeCompatFixture } from '../../helpers/native-compat-creation.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import {
   readProjectConfig,
@@ -262,14 +263,15 @@ describe('Native parallel linked-worktree Runtime', () => {
 
     const created = await Promise.all(
       CHANGE_NAMES.map((name) =>
-        runNativeCommand(
-          'new',
+        createNativeCompatFixture(
           [name, '--isolation', 'worktree', '--target-branch', targetBranch, '--runtime', 'compat'],
           repository,
         ),
       ),
     );
-    created.forEach((result, index) => assertCompleted(result, `create ${CHANGE_NAMES[index]}`));
+    created.forEach((result, index) =>
+      expect(result.exitCode, `create ${CHANGE_NAMES[index]}`).toBe(0),
+    );
 
     const worktrees = await Promise.all(
       CHANGE_NAMES.map(async (name) => ({
@@ -278,9 +280,11 @@ describe('Native parallel linked-worktree Runtime', () => {
       })),
     );
     worktrees.forEach(({ root }) => linkedWorktrees.push({ repository, root }));
-    expect(new Set(created.map((result) => result.data?.preparation?.projectRoot))).toEqual(
-      new Set(worktrees.map(({ root }) => root)),
-    );
+    expect(
+      new Set(
+        created.map((result) => (result.data as NativeEnvelope['data'])?.preparation?.projectRoot),
+      ),
+    ).toEqual(new Set(worktrees.map(({ root }) => root)));
     const worktreeList = execFileSync('git', ['worktree', 'list', '--porcelain'], {
       cwd: repository,
       encoding: 'utf8',

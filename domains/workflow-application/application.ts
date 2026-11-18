@@ -29,17 +29,12 @@ import {
   type RuntimeStore,
   type WorkflowRun,
 } from '../engine/runtime.js';
-import { fileRuntimeStoreRunPaths } from '../engine/runtime-store.js';
-import { getCurrentVersion } from '../../platform/version/version.js';
 import {
   readCometCurrentSelection,
   readHookCurrentSelection,
   writeCometCurrentSelection,
 } from '../workflow-contract/current-selection.js';
-import {
-  SDK_APPLICATIONS,
-  readChangeRuntimeOwner,
-} from '../workflow-contract/change-runtime-owner.js';
+import { readChangeRuntimeOwner } from '../workflow-contract/change-runtime-owner.js';
 import {
   adaptApplicationSkill,
   applicationError,
@@ -67,23 +62,23 @@ import { resolveInstalledWorkflowApplication } from './installed-application.js'
 import { projectWorkflowApplicationRun } from './run-view.js';
 import { createApplicationHook } from './application-hook.js';
 import {
+  parseWorkflowApplicationManifest,
+  requireWorkflowApplicationId,
+} from './application-manifest.js';
+import {
+  applicationRunStoreOptions,
+  assertWorkflowApplicationRuntimeRoot,
+  type ApplicationRunRecord,
+} from './application-run-record.js';
+import {
   readWorkflowApplicationDefinition,
-  validateWorkflowApplicationDefinitionPath,
-  assertWorkflowApplicationDefinitionMatches,
   matchesWorkflowApplicationDefinition,
+  workflowApplicationDefinitionMatchesImplementation,
 } from './application-definition.js';
 import {
   applyApplicationArtifactContracts,
   assertApplicationArtifactDependencies,
-  validateApplicationArtifactContracts,
 } from './artifact-contract.js';
-
-export interface ApplicationRunRecord {
-  runId: string;
-  revision: number;
-  application: ApplicationIdentity;
-  run: WorkflowRun;
-}
 
 const loadedModules = new Map<string, string>();
 
@@ -100,28 +95,6 @@ function applicationRunCanClose(run: WorkflowRun): boolean {
   );
 }
 
-function safeId(id: string): string {
-  if (typeof id !== 'string' || !/^[a-z][a-z\d]*(?:[.-][a-z\d]+)*$/u.test(id))
-    applicationError('应用身份必须是小写名称');
-  return id;
-}
-
-function applicationRunStoreRoot(runtimeRoot: string, applicationId: string): string {
-  return path.join(runtimeRoot, 'applications', safeId(applicationId));
-}
-
-/** 应用一个 Run 的存储位置；只读缓存据此判断应用所属的 Run 记录是否变化。 */
-export function workflowApplicationRunPaths(
-  projectRoot: string,
-  applicationId: string,
-  runId: string,
-): string[] {
-  return fileRuntimeStoreRunPaths(
-    applicationRunStoreRoot(resolveWorkspaceRuntimeRootSync(projectRoot), applicationId),
-    runId,
-  );
-}
-
 async function rawStore(
   projectRoot: string,
   id: string,
@@ -129,13 +102,7 @@ async function rawStore(
   singleWriter = false,
 ): Promise<RuntimeStore<ApplicationRunRecord>> {
   const root = resolveWorkspaceRuntimeRootSync(projectRoot);
-  const assertCurrentRoot = () => {
-    if (resolveWorkspaceRuntimeRootSync(projectRoot) !== root)
-      throw new RuntimeProtocolError(
-        'WORKFLOW_CHANGED',
-        '工作区身份已改变，请重新加载应用 Runtime',
-      );
-  };
+  const assertCurrentRoot = () => assertWorkflowApplicationRuntimeRoot(projectRoot, root);
   const prepare = async () => {
     assertCurrentRoot();
     if (!readOnly) {
@@ -149,8 +116,7 @@ async function rawStore(
     }
   };
   const store = createFileRuntimeStore<ApplicationRunRecord>({
-    rootDir: applicationRunStoreRoot(root, id),
-    mirroredRevisionPaths: ['run.revision'],
+    ...applicationRunStoreOptions(root, id),
     writerProtocol: 'application-holder-v1',
     ...(singleWriter ? { singleWriter: true } : {}),
   });
@@ -200,18 +166,6 @@ async function rawStore(
   };
 }
 
-/** 只读分区状态，不执行存储恢复或加载应用模块。 */
-export async function readWorkflowApplicationStorageDisposition(
-  projectRoot: string,
-  applicationId: string,
-  runId: string,
-) {
-  return createFileRuntimeStore<ApplicationRunRecord>({
-    rootDir: applicationRunStoreRoot(resolveWorkspaceRuntimeRootSync(projectRoot), applicationId),
-    mirroredRevisionPaths: ['run.revision'],
-  }).readPartitionMetadata(runId);
-}
-
 /** 只观测通用 SDK Run 的提交锁，不加载或推进应用；普通领域流程不获取此锁。 */
 export async function inspectWorkflowApplicationLocks(
   projectRoot: string,
@@ -219,7 +173,7 @@ export async function inspectWorkflowApplicationLocks(
   runId: string,
 ) {
   const root = resolveWorkspaceRuntimeRootSync(projectRoot);
-  const id = safeId(applicationId);
+  const id = requireWorkflowApplicationId(applicationId);
   return [
     {
       ...(await inspectFileRuntimeStoreLock(
@@ -246,7 +200,7 @@ export async function repairWorkflowApplicationLock(
           rootDir: path.join(
             resolveWorkspaceRuntimeRootSync(projectRoot),
             'applications',
-            safeId(applicationId),
+            requireWorkflowApplicationId(applicationId),
           ),
         },
         runId,
@@ -280,6 +234,27 @@ async function recordScopeManifest(
     );
   return manifest;
 }
+
+function actionUsesApplicationWriteScope(
+  manifest: WorkflowApplicationManifest,
+  workflowId: string,
+  stepId: string,
+  skills?: ReadonlyMap<string, AdaptedSkill>,
+): boolean {
+  return manifest.bindings.some((binding) => {
+    if (
+      binding.workflowId !== workflowId ||
+      binding.stepId !== stepId ||
+      binding.usage !== 'action'
+    )
+      return false;
+    const skill = skills
+      ? skills.get(binding.skillId)
+      : manifest.skills.find((item) => item.id === binding.skillId);
+    return !!skill && skill.adapter.sideEffect !== 'read' && skill.adapter.scope.length > 0;
+  });
+}
+
 function workspaceClaimsForRun(
   run: WorkflowRun,
   manifest: WorkflowApplicationManifest,
@@ -290,17 +265,7 @@ function workspaceClaimsForRun(
       (action) =>
         action.type === 'invoke_skill' &&
         applicationActionHoldsScope(action) &&
-        manifest.bindings.some((binding) => {
-          const skill = manifest.skills.find((item) => item.id === binding.skillId);
-          return (
-            binding.workflowId === run.workflow.id &&
-            binding.stepId === action.stepId &&
-            binding.usage === 'action' &&
-            skill &&
-            skill.adapter.sideEffect !== 'read' &&
-            skill.adapter.scope.length > 0
-          );
-        }),
+        actionUsesApplicationWriteScope(manifest, run.workflow.id, action.stepId),
     )
     .map((action) => ({
       runId: run.runId,
@@ -319,29 +284,9 @@ async function recordHoldsApplicationScope(record: ApplicationRunRecord): Promis
   );
   if (!actions.length) return false;
   try {
-    const files = await readApplicationFiles(record.application.packageRoot);
-    const manifest = parseWorkflowApplicationManifest(
-      JSON.parse(Buffer.from(files['application.json'], 'base64').toString('utf8')),
-    );
-    if (
-      hashRuntimeValue({
-        package: applicationFilesHash(files),
-        skills: manifest.skills.map((skill) => ({ id: skill.id, contentHash: skill.contentHash })),
-      }) !== record.application.contentHash
-    )
-      return true;
+    const manifest = await recordScopeManifest(record);
     return actions.some((action) =>
-      manifest.bindings.some((binding) => {
-        const skill = manifest.skills.find((skill) => skill.id === binding.skillId);
-        return (
-          binding.workflowId === run.workflow.id &&
-          binding.stepId === action.stepId &&
-          binding.usage === 'action' &&
-          skill &&
-          skill.adapter.sideEffect !== 'read' &&
-          skill.adapter.scope.length > 0
-        );
-      }),
+      actionUsesApplicationWriteScope(manifest, run.workflow.id, action.stepId),
     );
   } catch {
     return true;
@@ -353,19 +298,17 @@ function applicationStorageMaintenance(
   applicationId: string,
   singleWriter = false,
 ) {
-  const rootDir = path.join(
+  const options = applicationRunStoreOptions(
     resolveWorkspaceRuntimeRootSync(projectRoot),
-    'applications',
-    safeId(applicationId),
+    applicationId,
   );
   const store = createFileRuntimeStore<ApplicationRunRecord>({
-    rootDir,
-    mirroredRevisionPaths: ['run.revision'],
+    ...options,
     writerProtocol: 'application-holder-v1',
     ...(singleWriter ? { singleWriter: true } : {}),
   });
   return createApplicationStorageIndex({
-    rootDir,
+    rootDir: options.rootDir,
     read: (runId) => store.read(runId),
     settle: (runId) => store.settleRun(runId),
     holds: recordHoldsApplicationScope,
@@ -386,75 +329,10 @@ export async function repairWorkflowApplicationStorageIndex(options: {
   expectedEpoch: string;
 }) {
   await ensureWorkspaceRuntimeRoot(options.projectRoot);
-  return applicationStorageMaintenance(options.projectRoot, safeId(options.applicationId)).repair(
-    options.operation,
-    options.expectedEpoch,
-  );
-}
-
-/** 只读取保存的进度；不加载应用代码、不恢复记录，也不更新领域投影。 */
-export async function readWorkflowApplicationRun(
-  projectRoot: string,
-  applicationId: string,
-  runId: string,
-): Promise<WorkflowRun | null> {
-  return (await readWorkflowApplicationRunRecord(projectRoot, applicationId, runId))?.run ?? null;
-}
-
-/** 只读返回保存的固定身份；不加载应用模块或修复状态。 */
-export async function readWorkflowApplicationRunRecord(
-  projectRoot: string,
-  applicationId: string,
-  runId: string,
-): Promise<ApplicationRunRecord | null> {
-  const record = await (await rawStore(projectRoot, applicationId, true)).read(runId);
-  if (!record) return null;
-  if (
-    record.application.id !== applicationId ||
-    record.runId !== record.run.runId ||
-    record.revision !== record.run.revision
-  )
-    throw new RuntimeProtocolError('INVALID_RUN', '应用归属与 SDK Run 不一致');
-  record.run = parseWorkflowRun(record.run, runId);
-  return record;
-}
-
-export function parseWorkflowApplicationManifest(value: unknown): WorkflowApplicationManifest {
-  if (!value || typeof value !== 'object' || Array.isArray(value))
-    applicationError('应用文件必须是 JSON 对象');
-  const manifest = value as WorkflowApplicationManifest;
-  if (manifest.artifactContracts !== undefined)
-    validateApplicationArtifactContracts(manifest.artifactContracts);
-  if (manifest.schema !== 'comet.workflow.application.v1')
-    applicationError('应用格式不受支持，请重新生成 SDK 应用；原文件会保留');
-  if (manifest.definition !== undefined)
-    validateWorkflowApplicationDefinitionPath(manifest.definition);
-  if (
-    manifest.rule !== undefined &&
-    (typeof manifest.rule !== 'string' ||
-      !manifest.rule.endsWith('.md') ||
-      path.isAbsolute(manifest.rule) ||
-      manifest.rule.includes('\\') ||
-      manifest.rule.includes(':') ||
-      manifest.rule.split('/').some((part) => !part || part === '.' || part === '..'))
-  )
-    applicationError('应用规则 Rule 必须声明固定包内的 Markdown 相对路径');
-  safeId(manifest.id);
-  if ((SDK_APPLICATIONS as readonly string[]).includes(manifest.id))
-    applicationError(`应用身份 ${manifest.id} 与内置应用冲突，请使用独立名称`);
-  if (
-    !manifest.version?.trim() ||
-    !['standalone', 'native', 'classic-full', 'classic-hotfix', 'classic-tweak'].includes(
-      manifest.base,
-    ) ||
-    !manifest.runtimeVersion?.trim() ||
-    !manifest.entrySkill?.trim() ||
-    !manifest.module?.endsWith('.mjs') ||
-    !Array.isArray(manifest.skills) ||
-    !Array.isArray(manifest.bindings)
-  )
-    applicationError('应用定义缺少版本、基础流程、入口或绑定');
-  return manifest;
+  return applicationStorageMaintenance(
+    options.projectRoot,
+    requireWorkflowApplicationId(options.applicationId),
+  ).repair(options.operation, options.expectedEpoch);
 }
 
 /** Run 内的不可变归属是恢复依据；current 文件只是选择投影。 */
@@ -468,29 +346,20 @@ export async function resolveWorkflowApplicationFile(
   ).readProjection!(runId);
   if (record) return path.join(record.application.packageRoot, 'application.json');
   return (
-    (await resolveInstalledWorkflowApplication({ projectRoot, scope: 'project' }, safeId(id))) ??
-    (await resolveInstalledWorkflowApplication({ projectRoot, scope: 'user' }, safeId(id))) ??
-    path.join(projectRoot, '.comet/applications', safeId(id), 'application.json')
-  );
-}
-
-/** 已发布的旧版固定包；其 Run 在新版本上继续原 Run。 */
-const LEGACY_BUILTIN_RUNTIME_VERSIONS: readonly string[] = ['0.5.2', '0.5.3'];
-
-/**
- * 旧版固定包是否继续原 Run：内置 Native / Classic 基座、带 runId，且版本是已发布的旧版本。
- * 普通执行调度由领域 Store 适配，不加载旧工厂。升级到下一个版本时，前一版本的固定包同样需要继续。
- */
-export function isLegacyBuiltinRun(
-  manifest: { runtimeVersion: string; base: string },
-  version: string,
-  runId: string | undefined,
-): boolean {
-  return (
-    manifest.runtimeVersion !== version &&
-    LEGACY_BUILTIN_RUNTIME_VERSIONS.includes(manifest.runtimeVersion) &&
-    Boolean(runId) &&
-    (manifest.base === 'native' || manifest.base.startsWith('classic-'))
+    (await resolveInstalledWorkflowApplication(
+      { projectRoot, scope: 'project' },
+      requireWorkflowApplicationId(id),
+    )) ??
+    (await resolveInstalledWorkflowApplication(
+      { projectRoot, scope: 'user' },
+      requireWorkflowApplicationId(id),
+    )) ??
+    path.join(
+      projectRoot,
+      '.comet/applications',
+      requireWorkflowApplicationId(id),
+      'application.json',
+    )
   );
 }
 
@@ -523,10 +392,6 @@ export async function loadWorkflowApplication(options: {
       !Buffer.from(files[manifest.rule], 'base64').toString('utf8').trim())
   )
     applicationError('应用规则 Rule 必须是固定包内的非空 Markdown 文件');
-  const version = getCurrentVersion();
-  const legacyBuiltinRun = isLegacyBuiltinRun(manifest, version, options.runId);
-  if (manifest.runtimeVersion !== version && !legacyBuiltinRun)
-    applicationError(`应用要求 Runtime ${manifest.runtimeVersion}，当前是 ${version}`);
   if (!files[manifest.entrySkill] || !files[manifest.module])
     applicationError('应用入口 Skill 或执行模块缺失');
   const skills = new Map<string, AdaptedSkill>();
@@ -656,14 +521,21 @@ export async function loadWorkflowApplication(options: {
     applicationError('应用模块必须提供完整 SDK 工作流');
   implementation = applyApplicationArtifactContracts(implementation, { manifest, projectRoot });
   const workflows = implementation.workflows.map(defineWorkflow);
-  if (definition) {
-    if (!legacyBuiltinRun) assertWorkflowApplicationDefinitionMatches(definition, workflows);
-    else if (
-      existingRun &&
-      !matchesWorkflowApplicationDefinition(definition, existingRun) &&
-      !matchesWorkflowApplicationDefinition({ ...definition, workflows }, existingRun)
+  const needsDefinitionRecovery =
+    definition && !workflowApplicationDefinitionMatchesImplementation(definition, workflows);
+  // Native/Classic Store 可以适配历史领域定义。新 Run 仍须严格匹配固定图。
+  const assertRecoverableDefinition = (run: WorkflowRun) => {
+    if (
+      needsDefinitionRecovery &&
+      !matchesWorkflowApplicationDefinition(definition, run) &&
+      !matchesWorkflowApplicationDefinition({ ...definition, workflows }, run)
     )
-      applicationError('旧固定应用 Run 不匹配原定义或当前业务定义');
+      throw new RuntimeProtocolError('WORKFLOW_CHANGED', '原 Run 不匹配固定流程定义或领域恢复定义');
+  };
+  if (needsDefinitionRecovery) {
+    if (!singleWriter || !options.runId || !implementation.wrapStore)
+      applicationError('实际工厂的流程与固定流程定义不匹配，请同步确认方案');
+    if (existingRun) assertRecoverableDefinition(existingRun);
   }
   const bindingKeys = new Set<string>();
   for (const binding of manifest.bindings) {
@@ -854,17 +726,7 @@ export async function loadWorkflowApplication(options: {
   });
   const actionNeedsScope = (run: WorkflowRun, action: WorkflowRun['actions'][number]) =>
     action.type === 'invoke_skill' &&
-    manifest.bindings.some((binding) => {
-      const skill = skills.get(binding.skillId);
-      return (
-        binding.workflowId === run.workflow.id &&
-        binding.stepId === action.stepId &&
-        binding.usage === 'action' &&
-        skill &&
-        skill.adapter.sideEffect !== 'read' &&
-        skill.adapter.scope.length > 0
-      );
-    });
+    actionUsesApplicationWriteScope(manifest, run.workflow.id, action.stepId, skills);
   const storageIndex = createApplicationStorageIndex<ApplicationRunRecord>({
     rootDir: storageRoot,
     read: (runId) => coordinatedStore.read(runId),
@@ -918,17 +780,8 @@ export async function loadWorkflowApplication(options: {
     recovering = false,
   ): Promise<WorkflowRun[]> => {
     // 与 scope 校验使用相同绑定规则；没有共享资源的动作无需读取其他 Run。
-    const needsPeers = manifest.bindings.some((binding) => {
-      if (
-        binding.workflowId !== run.workflow.id ||
-        binding.stepId !== action.stepId ||
-        binding.usage !== 'action'
-      )
-        return false;
-      const skill = skills.get(binding.skillId);
-      return skill && skill.adapter.sideEffect !== 'read' && skill.adapter.scope.length > 0;
-    });
-    if (!needsPeers) return [];
+    if (!actionUsesApplicationWriteScope(manifest, run.workflow.id, action.stepId, skills))
+      return [];
 
     const currentScopes = applicationActionScopes({ manifest, projectRoot }, run, action);
     for (const peerId of await workspaceIds(recovering)) {
@@ -1000,6 +853,7 @@ export async function loadWorkflowApplication(options: {
     async restoreCheckpoint(runId, expectedRevision, run) {
       run = structuredClone(run);
       assertWritable();
+      assertRecoverableDefinition(run);
       await assertCurrentMaterial();
       const restore = async () => {
         await assertCurrentMaterial();
@@ -1075,6 +929,7 @@ export async function loadWorkflowApplication(options: {
       await assertCurrentMaterial();
       // 隔离调用者在异步等待期间修改下一版本。
       run = structuredClone(run);
+      if (expectedRevision === null) assertRecoverableDefinition(run);
       const prepared = persistent.prepareCompareAndSwap!(runId, expectedRevision, {
         runId,
         revision: run.revision,
@@ -1244,7 +1099,7 @@ export async function loadWorkflowApplication(options: {
   };
   // SDK 自身校验所有 handler、validator、executor 身份；只装载图不足以通过这里。
   const runtime = createRuntime({ ...checkedImplementation, store });
-  if (legacyBuiltinRun) await runtime.inspect(options.runId!);
+  if (needsDefinitionRecovery) await runtime.inspect(options.runId!);
   return { manifest, definition, identity, implementation: checkedImplementation, skills, store };
 }
 

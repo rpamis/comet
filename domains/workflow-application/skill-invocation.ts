@@ -12,10 +12,10 @@ import {
 } from '../engine/runtime.js';
 import {
   loadWorkflowApplication,
-  parseWorkflowApplicationManifest,
   resolveWorkflowApplicationFile,
   selectWorkflowApplication,
 } from './application.js';
+import { parseWorkflowApplicationManifest } from './application-manifest.js';
 import { applicationSkillWork, applicationWaitSkillWork } from './skill-work.js';
 import { projectWorkflowApplicationRun } from './run-view.js';
 import {

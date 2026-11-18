@@ -6,7 +6,8 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stringify } from 'yaml';
 
-import { runNativeCli, runNativeCliDetailed } from '../../../domains/comet-native/native-cli.js';
+import { runNativeCliDetailed } from '../../../domains/comet-native/native-cli.js';
+import { runNativeCliWithCompatFixture as runNativeCli } from '../../helpers/native-compat-creation.js';
 import {
   defaultProjectConfig,
   readProjectConfig,

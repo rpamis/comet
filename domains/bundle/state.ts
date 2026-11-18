@@ -166,17 +166,6 @@ async function listBundleAuthoringStateNames(projectRoot: string): Promise<strin
     .sort((left, right) => left.localeCompare(right));
 }
 
-export async function listBundleAuthoringStatesReadOnly(
-  projectRoot: string,
-): Promise<BundleAuthoringState[]> {
-  const names = await listBundleAuthoringStateNames(projectRoot);
-  const states: BundleAuthoringState[] = [];
-  for (const name of names) {
-    states.push(await readBundleAuthoringState(projectRoot, name));
-  }
-  return states;
-}
-
 export async function writeBundleAuthoringState(
   projectRoot: string,
   state: BundleAuthoringState,

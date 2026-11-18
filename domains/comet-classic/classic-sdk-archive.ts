@@ -33,7 +33,7 @@ import {
 } from './classic-sdk-archive-manifest.js';
 import { assertClassicSdkArchiveReady } from './classic-sdk-archive-preflight.js';
 import { classicSdkRemoteIdentity } from './classic-sdk-remote.js';
-import { resolveClassicStateFile } from './classic-state-file.js';
+import { resolveClassicStateFile } from '../workflow-contract/classic-state-file.js';
 import { hasClassicManagedRunMarker, type ClassicState } from './classic-state.js';
 
 interface ClassicSdkArchiveInput {

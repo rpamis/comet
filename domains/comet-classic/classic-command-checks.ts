@@ -125,7 +125,6 @@ async function checkEvent(
   });
 }
 export async function rememberClassicAcceptedVerifyCheck(
-  root: string,
   changeDir: string,
   run: RunState,
   state: ClassicState,
@@ -144,7 +143,6 @@ export async function rememberClassicAcceptedVerifyCheck(
   });
 }
 export async function readClassicAcceptedVerifyCheck(
-  root: string,
   changeDir: string,
   run: RunState,
   state: ClassicState,
@@ -198,7 +196,7 @@ export async function assertClassicAcceptedVerifyInputs(
     )
   )
     return;
-  await readClassicAcceptedVerifyCheck(root, changeDir, run, state);
+  await readClassicAcceptedVerifyCheck(changeDir, run, state);
   const result = await evaluateCommandCheck(root, changeDir, run, 'verify');
   if (!result.record)
     throw new Error(

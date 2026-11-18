@@ -10,6 +10,13 @@ import {
 } from '../../../platform/process/comet-daemon.js';
 import { applicationObservationFixture } from '../../helpers/dashboard-application-fixture.js';
 
+vi.mock('../../../domains/workflow-creation/creator.js', () => {
+  throw new Error('Runtime insights must not load Creator execution');
+});
+vi.mock('../../../domains/workflow-application/application.js', () => {
+  throw new Error('Runtime insights must not load the workflow application executor');
+});
+
 describe('Runtime health and SDK execution insights', () => {
   let directory: string;
   let project: string;

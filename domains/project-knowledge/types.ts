@@ -1,9 +1,4 @@
-import type {
-  PluginContext,
-  PluginDescriptor,
-  PluginDiagnostic,
-  PluginModule,
-} from '../comet-plugin/index.js';
+import type { PluginDiagnostic } from '../comet-plugin/index.js';
 import type {
   AgentLearningDelta,
   AgentContextApplicationRecord,
@@ -391,15 +386,6 @@ export interface ProjectKnowledgeDashboardSnapshotOptions {
   readonly config: WorkflowKnowledgeProjectConfig;
   readonly language?: MemoryLanguage;
   readonly env?: Readonly<Record<string, string | undefined>>;
-}
-
-export interface ProjectKnowledgePluginDescriptorFactory {
-  (options: ProjectKnowledgePluginOptions): PluginDescriptor;
-}
-
-export interface ProjectKnowledgePluginFactoryResult {
-  readonly descriptor: PluginDescriptor;
-  readonly createModule: (context: PluginContext) => Promise<PluginModule>;
 }
 
 export type { PluginDiagnostic, WorkflowKnowledgeProjectConfig, WorkflowKnowledgeProvider };

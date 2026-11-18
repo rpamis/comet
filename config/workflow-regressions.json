@@ -2,6 +2,133 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "issue-569-fixed-application-distribution",
+      "behavior": "Comet 升级后可导出旧固定包并安装到项目级或用户级，再从安装记录启动应用。",
+      "sources": ["https://github.com/rpamis/comet/issues/569"],
+      "coverageLevel": "public-cli",
+      "reproduction": "用未修复的 0.5.5 CLI 导出记录为 0.5.4 的完整固定包，CLI 报应用要求 Runtime 0.5.4。安装预览经过同一包校验。",
+      "expected": "旧包完整导出，确认预览后安装至两个作用域，按应用 ID 启动并保留 0.5.4 来源字段。",
+      "forbidden": "仅因 Comet 版本变化拒绝完整包，或改写导出、已安装的 application.json。",
+      "rootCause": "安装预览、确认和导出共用的完整包校验强制要求 Manifest 的 runtimeVersion 与当前 Comet 发布版本一致。",
+      "tests": [
+        {
+          "file": "test/app/pinned-application-upgrade.test.ts",
+          "namePattern": "^exports and installs a 0\\.5\\.4 fixed package at project and user scope after a Comet upgrade$",
+          "requiredNames": [
+            "exports and installs a 0.5.4 fixed package at project and user scope after a Comet upgrade"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-569-fixed-application-cold-inspection",
+      "behavior": "Comet 升级后从冷启动 CLI 查询 Native、Classic 和 standalone 的原固定 Run。",
+      "sources": ["https://github.com/rpamis/comet/issues/569"],
+      "coverageLevel": "public-cli",
+      "reproduction": "npm 0.5.4 CLI 保存四类固定包的已批准活动 Run，未修复的 0.5.5 CLI 以原应用 ID 和 Run ID 执行 inspect 均返回退出码 65。",
+      "expected": "通过固定归属找到原包，完整返回原 Run 和应用身份，保留 Action、批准、定义和修订号。",
+      "forbidden": "仅因当前 Comet 版本变化拒绝查询，或以新定义、新应用身份或新 Run 替代原记录。",
+      "rootCause": "加载固定应用时，发布版本相等检查在读取原 Run 和校验实际执行契约前直接拒绝加载。",
+      "tests": [
+        {
+          "file": "test/app/pinned-application-upgrade.test.ts",
+          "namePattern": "^cold-inspects and continues the original 0\\.5\\.4 (native|classic-hotfix|classic-full|standalone) Run after a Comet upgrade$",
+          "requiredNames": [
+            "cold-inspects and continues the original 0.5.4 native Run after a Comet upgrade",
+            "cold-inspects and continues the original 0.5.4 classic-hotfix Run after a Comet upgrade",
+            "cold-inspects and continues the original 0.5.4 classic-full Run after a Comet upgrade",
+            "cold-inspects and continues the original 0.5.4 standalone Run after a Comet upgrade"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-569-fixed-application-continuation",
+      "behavior": "升级后在原 Run 上续领已批准的 Action，应用源码和固定 Skill 资源发生漂移时保留原状态并拒绝继续。",
+      "sources": ["https://github.com/rpamis/comet/issues/569"],
+      "coverageLevel": "public-cli",
+      "reproduction": "0.5.4 CLI 持久化批准和待领取 Action，0.5.5 CLI 的 claim 经过与 inspect 相同的固定应用版本检查，无法进入领取。",
+      "expected": "恢复原文件后领取原 Action，保留 Run ID、定义、批准、Action ID、attempt 与 inputHash，修订号只推进一次。",
+      "forbidden": "重建 Run、重复批准或重派 Action，或在固定应用和 Skill 内容漂移时领取工作。",
+      "rootCause": "续行与查询共用固定应用加载器，发布版本白名单把实际内容检查和领域恢复限制在指定版本。",
+      "tests": [
+        {
+          "file": "test/app/pinned-application-upgrade.test.ts",
+          "namePattern": "^cold-inspects and continues the original 0\\.5\\.4 (native|classic-hotfix|classic-full|standalone) Run after a Comet upgrade$",
+          "requiredNames": [
+            "cold-inspects and continues the original 0.5.4 native Run after a Comet upgrade",
+            "cold-inspects and continues the original 0.5.4 classic-hotfix Run after a Comet upgrade",
+            "cold-inspects and continues the original 0.5.4 classic-full Run after a Comet upgrade",
+            "cold-inspects and continues the original 0.5.4 standalone Run after a Comet upgrade"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-independent-work-selection",
+      "behavior": "未完成 Shape 旁的独立修改可经公开命令明确退出 Comet，再选择原需求后恢复 Shape 保护。",
+      "sources": ["https://github.com/rpamis/comet/issues/568"],
+      "coverageLevel": "public-cli",
+      "reproduction": "0.5.3 与 0.5.4 Router bundle 在独立 session 的 Edit 上均 exit 2；相同新增 CLI 回归在修复前因 select --none 返回 exit 64 失败。",
+      "expected": "select --none 持久化明确取消选择，普通源码编辑成功，原 Run 状态不变，重新 select 原需求后 Shape 写入仍被拦截。",
+      "forbidden": "强制批准或取消 Shape、改变原 Run、重新选择后继续放行、影响其他 worktree。",
+      "rootCause": "共享选择只表达已选与缺失，缺少显式未选择状态，项目唯一 active Shape 被默认用作所有源码写入的归属。",
+      "tests": [
+        {
+          "file": "test/app/native-selection-none.test.ts",
+          "namePattern": "^Native explicit no selection CLI (releases unrelated writes and restores Shape protection through explicit selection|isolates explicit none from another Git worktree)$",
+          "requiredNames": [
+            "Native explicit no selection CLI releases unrelated writes and restores Shape protection through explicit selection",
+            "Native explicit no selection CLI isolates explicit none from another Git worktree"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "真实 Claude Code Hook",
+          "status": "pending",
+          "evidence": [
+            "本地公开 CLI 与生成 Router 的 Claude PreToolUse 事件重放通过；负责人 benym，需在用户原 Claude 会话验证退出后的真实 Edit 与重新选择后的拒绝。"
+          ]
+        },
+        {
+          "layer": "真实模型自然语言退出与恢复",
+          "status": "pending",
+          "evidence": [
+            "平台 Rule、CLI 帮助和拒绝消息提供公开取消选择指引；未获 Eval 启动授权，负责人 benym，授权后验证 Agent 按用户意图调用退出及恢复命令。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-no-selection-resume-contract",
+      "behavior": "明确 none 阻止恢复探测与 Hook 的唯一 active change 回退推断，同时继续保护正式材料和 Runtime 控制数据。",
+      "sources": ["https://github.com/rpamis/comet/issues/568"],
+      "coverageLevel": "public-cli",
+      "reproduction": "旧版本自然语言返回 out_of_scope 后仍拒绝编辑；删除 selection 后也仍关联唯一 Shape。新增同一 CLI 测试修复前因缺少 --none 失败。",
+      "expected": "none 与缺少 selection 区分，探测只读返回 no-change-selected，普通编辑放行，正式材料与 Runtime 仍受保护，冲突参数不写入。",
+      "forbidden": "把 none 当缺失后自动恢复、所有 out_of_scope 都取消选择、直接编辑 selection 或正式材料、接受带旧归属的 none。",
+      "rootCause": "恢复探测的 out_of_scope 为只读意图结果，Hook 不读取这个结果，缺少跨二者共享的明确退出契约。",
+      "tests": [
+        {
+          "file": "test/app/native-selection-none.test.ts",
+          "namePattern": "^Native explicit no selection CLI (keeps explicit none during ambient resume and protects workflow artifacts|distinguishes missing selection and rejects conflicting deselection arguments)$",
+          "requiredNames": [
+            "Native explicit no selection CLI keeps explicit none during ambient resume and protects workflow artifacts",
+            "Native explicit no selection CLI distinguishes missing selection and rejects conflicting deselection arguments"
+          ]
+        },
+        {
+          "file": "test/domains/comet-entry/current-selection.test.ts",
+          "namePattern": "^shared Comet current selection (retains explicit none through migration and unrelated cleanup|rejects none records retaining another owner)$",
+          "requiredNames": [
+            "shared Comet current selection retains explicit none through migration and unrelated cleanup",
+            "shared Comet current selection rejects none records retaining another owner"
+          ]
+        }
+      ]
+    },
+    {
       "id": "release-published-version-guard",
       "behavior": "指定版本的 GitHub Release 已发布时明确报错并提前停止，master 前进后也不能重复发布。",
       "sources": ["report:2026-11-16-release-published-version-guard"],

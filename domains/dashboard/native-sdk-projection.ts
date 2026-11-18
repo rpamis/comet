@@ -7,7 +7,7 @@ import { parseNativePortableState } from '../comet-native/native-portable-state.
 import { readNativeSdkRunRecord } from '../comet-native/native-sdk-state-store.js';
 import { currentNativeSdkSupervisorActions } from '../comet-native/native-sdk-supervisor-plan.js';
 import { readChangeRuntimeOwner } from '../workflow-contract/change-runtime-owner.js';
-import { readWorkflowApplicationRun } from '../workflow-application/application.js';
+import { readWorkflowApplicationRun } from '../workflow-application/application-run-record.js';
 import type { NativeDashboardLocalExecutionSummary } from './native-adapter.js';
 
 type SdkInspection = {

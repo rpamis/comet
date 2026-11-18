@@ -1,5 +1,6 @@
 import { execFileSync, spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
+import os from 'node:os';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
 import manifest from '../../assets/manifest.json';
@@ -78,7 +79,7 @@ describe('Native runtime release asset', () => {
     // 定制应用加载器使用同名的 Skill 完成条件；旧 Native 信任协议按其 schema 检查。
     expect(source).not.toContain('waiver-receipt');
     expect(source).not.toContain('trust authorize');
-    expect(source).toContain('new <change-name> [--runtime compat|sdk] [--language en|zh-CN]');
+    expect(source).toContain('new <change-name> [--runtime sdk] [--language en|zh-CN]');
     const help = execFileSync(process.execPath, [runtime, '--help'], { encoding: 'utf8' });
     expect(help).toContain('skill-coordinated steps');
     expect(help).not.toMatch(/checkpoint|receipt|evidence|preflight|sha256|--result|--report/iu);
@@ -139,11 +140,33 @@ describe('Native runtime release asset', () => {
       'utf8',
     );
 
-    expect(help).toContain('comet native new <change-name> [--runtime compat|sdk]');
+    expect(help).toContain('comet native new <change-name> [--runtime sdk]');
     expect(help).toContain('defaults to docs');
     for (const reference of [english, chinese]) {
       expect(reference).toContain('comet native <command> --help');
       expect(reference).not.toContain('comet native new <change-name> [--language en|zh-CN]');
+    }
+  });
+
+  it('rejects new compat changes without writing project files in the generated command', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-sdk-new-'));
+    try {
+      const command = path.join(path.dirname(runtime), 'comet-native-new.mjs');
+      const result = spawnSync(
+        process.execPath,
+        [command, 'new-compat', '--runtime', 'compat', '--json', '--project-root', root],
+        { encoding: 'utf8' },
+      );
+      expect(result.status, result.error?.message ?? result.stderr).toBe(64);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        error: {
+          code: 'usage',
+          message: expect.stringContaining('comet native next <change-name>'),
+        },
+      });
+      expect(await fs.readdir(root)).toEqual([]);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
     }
   });
 

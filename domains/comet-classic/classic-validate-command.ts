@@ -1,4 +1,4 @@
-import { resolveClassicStateFile } from './classic-state-file.js';
+import { resolveClassicStateFile } from '../workflow-contract/classic-state-file.js';
 import { CLASSIC_CHANGE_ID_PATTERN } from './classic-state.js';
 import path from 'path';
 import { isMap, parseDocument } from 'yaml';

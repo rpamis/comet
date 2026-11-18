@@ -29,7 +29,7 @@ import { createClassicSdkArchiveExecutor } from './classic-sdk-archive.js';
 import { classicSdkRunMatchesProfile } from './classic-sdk-profile.js';
 import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
 import { createClassicSdkStateStore } from './classic-sdk-state-store.js';
-import { isClassicStateFileName } from './classic-state-file.js';
+import { isClassicStateFileName } from '../workflow-contract/classic-state-file.js';
 import { type ClassicProfile, type ClassicState } from './classic-state.js';
 import { applyClassicTransition } from './classic-transitions.js';
 export { parseClassicStateDocument } from './classic-state.js';

@@ -1,7 +1,5 @@
 export {
   loadWorkflowApplication,
-  readWorkflowApplicationRun,
-  readWorkflowApplicationRunRecord,
   resolveWorkflowApplicationFile,
   selectWorkflowApplication,
   readSelectedWorkflowApplication,
@@ -92,13 +90,17 @@ export type {
   ApplicationSkillInvocationResult,
 } from './skill-invocation.js';
 export type { SelectedWorkflowApplicationStatus } from './application.js';
-export type { ApplicationRunRecord } from './application.js';
+export {
+  readWorkflowApplicationRun,
+  readWorkflowApplicationRunRecord,
+  readWorkflowApplicationStorageDisposition,
+} from './application-run-record.js';
+export type { ApplicationRunRecord } from './application-run-record.js';
 
 export { iterateWorkflowApplicationRunSources } from './run-observation.js';
 
 export { readWorkflowApplicationRunProjection } from './run-observation.js';
 export {
-  readWorkflowApplicationStorageDisposition,
   inspectWorkflowApplicationLocks,
   repairWorkflowApplicationLock,
   inspectWorkflowApplicationStorageIndex,

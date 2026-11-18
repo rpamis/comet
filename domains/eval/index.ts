@@ -1,7 +1,3 @@
-import {
-  readRepositoryLayout,
-  resolveRepositoryPath,
-} from '../../platform/paths/repository-layout.js';
 export { listBuiltinDatasets, inspectBuiltinDataset } from './builtin-datasets.js';
 export type { DatasetPlan } from './builtin-datasets.js';
 export {
@@ -51,12 +47,6 @@ export {
   registerCliEvalRun,
   updateManagedEvalRun,
 } from './eval-run-manager.js';
-
-export interface RepositoryEvalWorkspace {
-  root: string;
-  localRoot: string;
-  langsmithRoot: string;
-}
 
 export {
   canonicalPath,
@@ -110,16 +100,6 @@ export {
   type AgentLearningFormationCaseId,
   type AgentLearningRetrievalEvalMetrics,
 } from './agent-learning-eval.js';
-
-export function resolveRepositoryEvalWorkspace(): RepositoryEvalWorkspace {
-  const layout = readRepositoryLayout();
-  void layout;
-  return {
-    root: resolveRepositoryPath('eval'),
-    localRoot: resolveRepositoryPath('eval/local'),
-    langsmithRoot: resolveRepositoryPath('eval/langsmith'),
-  };
-}
 
 export { listEvalPresets, saveEvalPreset, deleteEvalPreset } from './eval-run-presets.js';
 export { readEvalRetrySelection } from './eval-run-retry.js';

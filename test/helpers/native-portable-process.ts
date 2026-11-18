@@ -1,26 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process';
-import path from 'node:path';
-
-export function spawnNativePortableProcess(options: {
-  repositoryRoot: string;
-  payload: Record<string, unknown>;
-}): ChildProcess {
-  const worker = path.join(
-    options.repositoryRoot,
-    'test',
-    'helpers',
-    'native-portable-process-worker.mjs',
-  );
-  const payload = Buffer.from(
-    JSON.stringify({ repositoryRoot: options.repositoryRoot, ...options.payload }),
-    'utf8',
-  ).toString('base64url');
-  return spawn(process.execPath, [worker, payload], {
-    cwd: options.repositoryRoot,
-    windowsHide: true,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-}
+import { type ChildProcess } from 'node:child_process';
 
 export async function waitForProcessExit(child: ChildProcess, timeoutMs = 10_000): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return;
@@ -51,13 +29,4 @@ export async function waitForCondition(
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   throw new Error(message);
-}
-
-export function processIsAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
 }

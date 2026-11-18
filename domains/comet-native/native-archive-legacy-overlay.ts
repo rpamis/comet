@@ -91,59 +91,6 @@ export function createNativeLegacyArchiveOverlay(options: {
   return overlay;
 }
 
-/** Archive 不改索引；保留当前索引、HEAD 与其他路径，只虚拟还原事务目标。 */
-export function nativeLegacyArchiveGitStatus(
-  projectRoot: string,
-  status: string,
-  overlay: NativeLegacyArchiveOverlay,
-): string {
-  const records = status.split('\0').filter(Boolean);
-  const kept: string[] = [];
-  for (let offset = 0; offset < records.length; offset += 1) {
-    const record = records[offset];
-    if (record.length < 4) throw new Error('旧 Archive 的 Git 状态记录无效');
-    const renamed = /[RC]/u.test(record.slice(0, 2));
-    const source = renamed ? records[++offset] : undefined;
-    if (renamed && !source) throw new Error('旧 Archive 的 Git 重命名记录不完整');
-    if (overlay.has(record.slice(3)) || (source !== undefined && overlay.has(source))) {
-      if (renamed || /U/u.test(record.slice(0, 2)))
-        throw new Error('旧 Archive 事务目标涉及重命名、复制或未合并索引，不能重建历史状态');
-      continue;
-    }
-    kept.push(source === undefined ? record : `${record}\0${source}`);
-  }
-  for (const [ref, original] of overlay) {
-    const index = gitEntry(projectRoot, ref, 'index');
-    const head = gitEntry(projectRoot, ref, 'head');
-    if (!index) {
-      if (head) {
-        // 同一路径可同时有 staged deletion 和 untracked 文件；不猜测其原顺序。
-        if (original.text !== null)
-          throw new Error(`旧 Archive 的 ${ref} 有已暂存删除，无法安全重建`);
-        kept.push(`D  ${ref}`);
-      } else if (original.text !== null) kept.push(`?? ${ref}`);
-      continue;
-    }
-    const x = !head
-      ? 'A'
-      : head.objectId === index.objectId && head.mode === index.mode
-        ? ' '
-        : 'M';
-    const y =
-      original.text === null
-        ? 'D'
-        : original.text === readGitBlob(projectRoot, index.objectId) && original.mode === index.mode
-          ? ' '
-          : 'M';
-    if (x !== ' ' || y !== ' ') kept.push(`${x}${y} ${ref}`);
-  }
-  kept.sort((left, right) => {
-    const category = Number(left.startsWith('??')) - Number(right.startsWith('??'));
-    return category || Buffer.compare(Buffer.from(left.slice(3)), Buffer.from(right.slice(3)));
-  });
-  return kept.length ? `${kept.join('\0')}\0` : '';
-}
-
 /** rename 后、收据落盘前，只读地把实际归档材料投影回原路径。 */
 export async function withNativeLegacyArchiveMaterials(options: {
   paths: NativeProjectPaths;

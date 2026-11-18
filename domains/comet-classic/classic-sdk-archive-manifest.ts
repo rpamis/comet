@@ -14,7 +14,7 @@ import { resolveWorkspaceRuntimeRoot } from '../workflow-contract/workspace-runt
 import { annotatedMarkdown, archivedClassicDocumentRef } from './classic-archive-annotation.js';
 import { readClassicProjectFile, writeClassicProjectText } from './classic-protected-path.js';
 import { readLegacyClassicArchiveInputs } from './classic-sdk-archive-legacy-manifest.js';
-import { resolveClassicStateFile } from './classic-state-file.js';
+import { resolveClassicStateFile } from '../workflow-contract/classic-state-file.js';
 import type { ClassicState } from './classic-state.js';
 
 const manifestName = '.comet/archive-manifest.json';
@@ -380,14 +380,4 @@ export async function readClassicArchiveManifest(
       ]),
     ],
   };
-}
-
-export async function classicArchiveManifestOutput(
-  root: string,
-  run: Readonly<WorkflowRun>,
-  action: Readonly<RuntimeAction>,
-) {
-  const entry = await (await receiptStore(root)).read(executionKey(run, action));
-  if (!entry) throw new Error('原 Archive 交付路径记录缺失');
-  return entry.manifest as unknown as import('../engine/runtime.js').RuntimeValue;
 }

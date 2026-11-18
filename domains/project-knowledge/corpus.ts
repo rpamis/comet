@@ -1,4 +1,4 @@
-import { resolveClassicStateFile } from '../comet-classic/classic-state-file.js';
+import { resolveClassicStateFile } from '../workflow-contract/classic-state-file.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { parse } from 'yaml';

@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   DashboardIndexStore,
   resolveDashboardIndexPath,
-  type DashboardIndexSnapshot,
 } from '../../../domains/dashboard/index-store.js';
 
 const tempRoots: string[] = [];
@@ -19,37 +18,6 @@ async function createTempRoot(): Promise<string> {
   return root;
 }
 
-const snapshot: DashboardIndexSnapshot = {
-  schema: 'comet.dashboard.index.v1',
-  repositoryId: 'repo-123',
-  generation: 2,
-  refreshedAt: '2026-08-15T00:00:00.000Z',
-  workspaces: [
-    {
-      id: 'workspace-1',
-      projectRoot: 'D:/repo',
-      branch: 'main',
-      head: 'abc123',
-      current: true,
-      generation: 2,
-    },
-  ],
-  changes: [
-    {
-      locator: 'native.workspace-1.change-1',
-      workspaceId: 'workspace-1',
-      name: 'change-1',
-      status: 'active',
-      phase: 'build',
-      archiveName: null,
-      parentLocator: null,
-      generation: 2,
-    },
-  ],
-  supervisorChildren: [],
-  artifacts: [],
-};
-
 afterEach(async () => {
   await Promise.all(openStores.splice(0).map((store) => store.close()));
   await Promise.all(
@@ -58,24 +26,6 @@ afterEach(async () => {
 });
 
 describe('DashboardIndexStore', () => {
-  it('stores and reads a repository snapshot in the user cache directory', async () => {
-    const projectRoot = await createTempRoot();
-    const cacheRoot = await createTempRoot();
-    const store = new DashboardIndexStore({ projectRoot, cacheRoot });
-    openStores.push(store);
-
-    await store.open();
-    await store.replaceSnapshot(snapshot);
-    const loaded = await store.readSnapshot();
-
-    expect(loaded).toEqual(snapshot);
-    expect(resolveDashboardIndexPath(projectRoot, cacheRoot)).toBe(store.databasePath);
-    expect(await fs.stat(store.databasePath)).toBeTruthy();
-    expect(await fs.readdir(projectRoot)).toEqual([]);
-
-    await store.close();
-  });
-
   it('stores and reads the serialized Native index without project files', async () => {
     const projectRoot = await createTempRoot();
     const cacheRoot = await createTempRoot();
@@ -93,6 +43,9 @@ describe('DashboardIndexStore', () => {
     await store.replaceNativeIndex(nativeIndex);
 
     await expect(store.readNativeIndex()).resolves.toEqual(nativeIndex);
+    expect(store.databasePath).toBe(resolveDashboardIndexPath(projectRoot, cacheRoot));
+    expect(await fs.stat(store.databasePath)).toBeTruthy();
+    expect(await fs.readdir(projectRoot)).toEqual([]);
 
     await store.close();
   });

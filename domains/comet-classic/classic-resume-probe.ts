@@ -1,4 +1,4 @@
-import { resolveClassicStateFile } from './classic-state-file.js';
+import { resolveClassicStateFile } from '../workflow-contract/classic-state-file.js';
 import { resolveWorkspaceRuntimeRoot } from '../workflow-contract/workspace-runtime.js';
 import { measureCometGitCommandAsync } from '../../platform/process/runtime-metrics.js';
 import path from 'node:path';

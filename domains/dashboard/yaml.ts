@@ -1,23 +1,5 @@
-/**
- * Lightweight `.comet.yaml` parser.
- *
- * Mirrors the format produced by `assets/skills/comet/scripts/comet-state.sh`
- * (a single flat map of `key: value` lines). This is intentionally a subset
- * of YAML — no nested keys, no anchors — and matches the parser already used
- * by `app/commands/status.ts`. It is reproduced here, rather than reused, to
- * keep the dashboard module standalone; a future PR may consolidate them.
- */
-
-import { promises as fs } from 'fs';
-import { fileExists } from '../../platform/fs/file-system.js';
-
+/** Parse the flat legacy Classic metadata used by Dashboard. */
 export type CometYaml = Record<string, string>;
-
-export async function readCometYaml(yamlPath: string): Promise<CometYaml | null> {
-  if (!(await fileExists(yamlPath))) return null;
-  const raw = await fs.readFile(yamlPath, 'utf-8');
-  return parseCometYaml(raw);
-}
 
 export function parseCometYaml(raw: string): CometYaml {
   const out: CometYaml = {};

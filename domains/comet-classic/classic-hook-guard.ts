@@ -40,7 +40,7 @@ import {
 import { inspectClassicProjectTarget } from './classic-protected-path.js';
 import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
 import { inspectClassicSdkRun } from './classic-sdk-status.js';
-import { isClassicStateFileName } from './classic-state-file.js';
+import { isClassicStateFileName } from '../workflow-contract/classic-state-file.js';
 import type { ClassicPhase, ClassicState } from './classic-state.js';
 import { readClassicState, readLegacyState } from './classic-store.js';
 

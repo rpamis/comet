@@ -37,7 +37,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       'spec sync <change-name> <capability> --input <json-file>  Audit local Markdown reference corrections.',
       'show <change-name>           Read formal artifacts and portable state.',
       'status [<change-name>]       Discover stable boundaries and Runner actions.',
-      'select <change-name>         Select a change in its bound workspace.',
+      'select <change-name>|--none  Select a change or explicitly leave this workspace unselected.',
       'next <change-name>           Confirm or recover a stable workflow boundary.',
       'archive <change-name>        Preview and execute Archive plus workspace finish.',
       'cancel <change-name>         Cancel an unfinished change while keeping its code and workspace.',
@@ -86,10 +86,11 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   },
   new: {
     usage:
-      'comet native new <change-name> [--runtime compat|sdk] [--language en|zh-CN] [--task <text>] [--capability <id>] [--isolation current|branch|worktree] [--change-branch <branch>] [--target-branch <branch>] [--worktree-path <path>]',
-    purpose: 'Create a portable Native change and prepare the requested branch or linked worktree.',
+      'comet native new <change-name> [--runtime sdk] [--language en|zh-CN] [--task <text>] [--capability <id>] [--isolation current|branch|worktree] [--change-branch <branch>] [--target-branch <branch>] [--worktree-path <path>]',
+    purpose:
+      'Create an SDK-owned Native change and prepare the requested branch or linked worktree.',
     options: [
-      '--runtime compat|sdk        Runtime format for this new change; defaults to sdk.',
+      '--runtime sdk                New Native changes use the SDK. Continue an existing compat change by name.',
       '--language en|zh-CN          Artifact language; defaults to project configuration.',
       '--task <text>                Preserve the original request in the SDK Run for independent alignment review; also search Project Knowledge for a capability association.',
       '--capability <id>            Directly validate and associate an existing capability without retrieval.',
@@ -98,8 +99,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--target-branch <branch>     Local base branch; defaults to the current branch.',
       '--worktree-path <path>       Worktree directory; defaults to .worktrees/<change-name>.',
     ],
-    output:
-      'The SDK Run or portable state, canonical artifact paths, and workspace preparation result; compat Runtime changes include the next Runner continuation.',
+    output: 'The SDK Run, canonical artifact paths, and workspace preparation result.',
     examples: [
       'comet native new session-timeout --language zh-CN',
       'comet native new add-sms-login --task "add SMS login to authentication"',
@@ -179,9 +179,10 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
     ],
   },
   select: {
-    usage: 'comet native select <change-name> [--rebind]',
+    usage: 'comet native select <change-name> [--rebind]\n       comet native select --none',
     options: [
       '--rebind  Explicitly bind the same idle SDK Run to the current Git branch; preserve work and approvals, and reject unresolved executions.',
+      '--none  After the user chooses independent work, allow ordinary edits in this workspace and stop ambient resume. All sessions in this workspace share this choice. Workflow artifacts remain protected. Resume with select <change-name>. Cannot combine with a name or --rebind.',
     ],
     purpose: 'Select one Native change after validating its workspace binding.',
     output: 'The selected change record.',

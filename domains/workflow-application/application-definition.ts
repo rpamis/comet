@@ -185,10 +185,10 @@ export function readWorkflowApplicationDefinition(
   );
 }
 
-export function assertWorkflowApplicationDefinitionMatches(
+export function workflowApplicationDefinitionMatchesImplementation(
   definition: WorkflowApplicationDefinition,
   workflows: readonly DefineWorkflowOptions[],
-): void {
+): boolean {
   const hashes = (items: readonly DefineWorkflowOptions[]) =>
     items
       .map((item) => {
@@ -196,8 +196,7 @@ export function assertWorkflowApplicationDefinitionMatches(
         return [normalized.id, normalized.version, hashRuntimeValue(normalized)];
       })
       .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right), 'en'));
-  if (hashRuntimeValue(hashes(definition.workflows)) !== hashRuntimeValue(hashes(workflows)))
-    applicationError('实际工厂的流程与固定流程定义不匹配，请同步确认方案');
+  return hashRuntimeValue(hashes(definition.workflows)) === hashRuntimeValue(hashes(workflows));
 }
 
 /** 固定包匹配后，再核对 Run 绑定的主流程及每个子流程定义；无需加载应用模块。 */

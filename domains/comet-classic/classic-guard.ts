@@ -50,7 +50,7 @@ import {
 } from './classic-sdk-guard.js';
 import { findClassicSdkWorkspace } from './classic-sdk-status.js';
 import { appendClassicStateEvent } from './classic-state-events.js';
-import { resolveClassicStateFile } from './classic-state-file.js';
+import { resolveClassicStateFile } from '../workflow-contract/classic-state-file.js';
 import type { ClassicPhase, ClassicState } from './classic-state.js';
 import { readClassicState, withClassicStateMutation } from './classic-store.js';
 import {
@@ -690,13 +690,7 @@ async function applyStateUpdateLocked(
       'verify',
     );
     if (!check) throw new GuardFailure('Verify 检查已变化，不能记录接受证据');
-    await rememberClassicAcceptedVerifyCheck(
-      classicCommandProjectRoot(),
-      changeDir,
-      context.run,
-      result.classic,
-      check,
-    );
+    await rememberClassicAcceptedVerifyCheck(changeDir, context.run, result.classic, check);
   }
   await transitionClassicRuntimeRun(changeDir, result.classic, context.run, {
     event,

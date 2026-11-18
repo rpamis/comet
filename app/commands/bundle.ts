@@ -5,7 +5,6 @@ import {
   listBundleAuthoringStates,
   reconcileBundleAuthoringState,
 } from '../../domains/bundle/state.js';
-import type { compileBundleIr } from '../../domains/bundle/compiler.js';
 import type { buildBundleReviewSummary } from '../../domains/bundle/review-summary.js';
 import type { distributeBundle } from '../../domains/bundle/distribute.js';
 import {

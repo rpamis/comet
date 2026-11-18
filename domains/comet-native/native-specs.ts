@@ -4,23 +4,16 @@ import path from 'path';
 import { canonicalSpecPath } from './native-artifacts.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { settleNativeChangeJournalsLocked } from './native-change-recovery.js';
-import { readNativeRunState } from './native-run-store.js';
 import {
   assertNativeName,
   compareAndSwapNativeChangeLocked,
   nativeChangeDir,
   readNativeChange,
 } from './native-change.js';
-import { sha256File, sha256Text } from './native-hash.js';
+import { sha256File } from './native-hash.js';
 import { withNativeMutation } from './native-mutation.js';
 import { captureNativeProtectedDirectoryGuard } from './native-protected-file.js';
-import { redactNativeCredentialText } from './native-redaction.js';
-import { nativeChangeRuntimeDir, resolveContainedNativePath } from './native-paths.js';
-import {
-  continueNativeTransitionLocked,
-  prepareNativeTransition,
-} from './native-transition-journal.js';
-import { assertNativeTrajectoryText } from './native-trajectory-limits.js';
+import { resolveContainedNativePath } from './native-paths.js';
 import { NATIVE_CONTRACT_FILE_LIMITS } from './native-contract-files.js';
 import type { NativeChangeState, NativeProjectPaths, NativeSpecChange } from './native-types.js';
 
@@ -125,114 +118,6 @@ export async function reconcileNativeSpecChanges(
     }
   }
   return changes.sort((left, right) => left.capability.localeCompare(right.capability));
-}
-
-async function refreshNativeSpecChanges(
-  paths: NativeProjectPaths,
-  state: NativeChangeState,
-): Promise<NativeSpecChange[]> {
-  const proposed = await proposedCapabilities(paths, state.name);
-  const changes: NativeSpecChange[] = [];
-  for (const capability of proposed) {
-    const existing = state.spec_changes.find((change) => change.capability === capability);
-    if (existing?.operation === 'remove') {
-      throw new Error(`Capability ${capability} has both a proposed spec and a remove intent`);
-    }
-    const canonical = canonicalSpecPath(paths, capability);
-    await resolveContainedNativePath(paths.nativeRoot, canonical);
-    const baseHash = await optionalHash(canonical);
-    changes.push({
-      capability,
-      operation: baseHash === null ? 'create' : 'replace',
-      source: `specs/${capability}/spec.md`,
-      base_hash: baseHash,
-    });
-  }
-  for (const change of state.spec_changes) {
-    if (change.operation !== 'remove' || proposed.includes(change.capability)) continue;
-    const canonical = canonicalSpecPath(paths, change.capability);
-    await resolveContainedNativePath(paths.nativeRoot, canonical);
-    const baseHash = await optionalHash(canonical);
-    if (baseHash !== null) {
-      changes.push({ ...change, base_hash: baseHash });
-    }
-  }
-  return changes.sort((left, right) => left.capability.localeCompare(right.capability));
-}
-
-export async function rebaseNativeSpecChanges(options: {
-  paths: NativeProjectPaths;
-  name: string;
-  summary: string;
-  now?: Date;
-  transitionId?: () => string;
-}): Promise<NativeChangeState> {
-  assertNativeName(options.name);
-  const summary = redactNativeCredentialText(options.summary);
-  assertNativeTrajectoryText(summary, 'Spec rebase summary');
-  return withNativeMutation(options.paths, async () => {
-    await settleNativeChangeJournalsLocked(options.paths, options.name);
-    const state = await readNativeChange(options.paths, options.name);
-    if (state.phase === 'shape') {
-      throw new Error('Shape spec metadata is refreshed by the next command');
-    }
-    if (state.archived) throw new Error(`Native change ${state.name} is already archived`);
-    const runtimeDir = nativeChangeRuntimeDir(options.paths, options.name);
-    const run = await readNativeRunState(runtimeDir);
-    if (!run || run.runId !== state.run_id || run.currentStep !== state.phase || run.pending) {
-      throw new Error(`Native Run state is missing or inconsistent for ${state.name}`);
-    }
-    const specChanges = await refreshNativeSpecChanges(options.paths, state);
-    const nextState: NativeChangeState = {
-      ...state,
-      revision: state.revision + 1,
-      phase: 'build',
-      spec_changes: specChanges,
-      verification_result: 'pending',
-      verification_report: null,
-      implementation_scope: null,
-      verification_evidence: null,
-      partial_allowance: null,
-    };
-    const nextRun = {
-      ...run,
-      currentStep: 'build',
-      iteration: run.iteration + 1,
-      pending: null,
-      status: 'running' as const,
-    };
-    const evidenceHash = sha256Text(
-      JSON.stringify({
-        operation: 'spec-rebase',
-        change: state.name,
-        summary,
-        specChanges,
-      }),
-    );
-    await prepareNativeTransition({
-      paths: options.paths,
-      previousState: state,
-      nextState,
-      previousRun: run,
-      nextRun,
-      evidenceHash,
-      eventData: {
-        previousPhase: state.phase,
-        nextPhase: 'build',
-        evidenceHash,
-        summary,
-        artifacts: [],
-        noCodeReason: null,
-        verificationResult: null,
-      },
-      operation: 'spec-rebase',
-      now: options.now,
-      transitionId: options.transitionId,
-    });
-    const rebased = await continueNativeTransitionLocked(options.paths, options.name);
-    if (!rebased) throw new Error('Native spec rebase journal disappeared before completion');
-    return rebased;
-  });
 }
 
 export async function markNativeSpecRemoval(

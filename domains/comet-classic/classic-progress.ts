@@ -18,7 +18,10 @@ import {
   writeClassicProjectText,
 } from './classic-protected-path.js';
 import { CLASSIC_LOCAL_RECORDS } from './classic-runtime-paths.js';
-import { CLASSIC_STATE_FILES, resolveClassicStateFile } from './classic-state-file.js';
+import {
+  CLASSIC_STATE_FILES,
+  resolveClassicStateFile,
+} from '../workflow-contract/classic-state-file.js';
 import type { ClassicState } from './classic-state.js';
 import { parseClassicTasks } from './classic-tasks.js';
 const STAGES = ['implementing', 'task-review', 'checkoff', 'done', 'blocked'] as const;

@@ -351,9 +351,7 @@ async function discoverProjectModules(
   }
   const bounded = unique.slice(0, MAX_MODULES);
   const slugs = bounded.map(normalizedModuleSlug);
-  const duplicateSlugs = new Set(
-    slugs.filter((slug, index, all) => all.indexOf(slug) !== all.lastIndexOf(slug)),
-  );
+  const duplicateSlugs = new Set(slugs.filter((slug, index) => slugs.indexOf(slug) !== index));
   return bounded.map((modulePath) => ({
     modulePath,
     absolutePath: path.join(root, ...modulePath.split('/')),

@@ -136,12 +136,9 @@ export async function runPluginHook(
           await fs.lstat(path.join(request.cwd, '.comet', 'runtime')).catch(() => null)
         )?.isDirectory()
       ) {
-        const { importLegacyWorkspaceRuntimeData } =
-          await import('../workflow-contract/legacy-runtime-import.js');
-        const { importClassicLegacyRuntimeData } =
-          await import('../comet-classic/classic-legacy-runtime-import.js');
-        await importLegacyWorkspaceRuntimeData(request.cwd);
-        await importClassicLegacyRuntimeData(request.cwd);
+        const { importLegacyProjectRuntimeData } =
+          await import('../comet-entry/legacy-runtime-import.js');
+        await importLegacyProjectRuntimeData(request.cwd);
       }
     }
     const rulePath = path.join(pluginRoot, 'rules/comet-workflow-guard.md');

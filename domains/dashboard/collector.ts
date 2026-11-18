@@ -1,4 +1,4 @@
-import { resolveClassicStateFile } from '../comet-classic/classic-state-file.js';
+import { resolveClassicStateFile } from '../workflow-contract/classic-state-file.js';
 import { inspectClassicProjectTarget } from '../comet-classic/classic-protected-path.js';
 import { promises as fs } from 'fs';
 import { runWithHookReadCache } from '../../platform/process/hook-read-cache.js';

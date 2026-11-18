@@ -16,7 +16,11 @@ import {
   ensureProtectedProjectDirectory,
   inspectProtectedProjectPath,
 } from '../workflow-contract/protected-project-path.js';
-import { addDshOwnedPaths, dshRootPath, readDshOwnedPaths } from '../skill/dsh-adapter.js';
+import {
+  addDshOwnedPaths,
+  dshRootPath,
+  readDshOwnedPaths,
+} from '../../platform/install/dsh-ownership.js';
 
 import type { InstallScope } from '../../platform/install/types.js';
 

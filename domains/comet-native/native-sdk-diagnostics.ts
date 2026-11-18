@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 import { createFileRuntimeStore, type WorkflowRun } from '../engine/runtime.js';
-import { readWorkflowApplicationStorageDisposition } from '../workflow-application/application.js';
+import { readWorkflowApplicationStorageDisposition } from '../workflow-application/application-run-record.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
 import { resolveWorkspaceRuntimeRootSync } from '../workflow-contract/workspace-runtime.js';
 import { parseNativePortableState } from './native-portable-state.js';

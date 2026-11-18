@@ -3,11 +3,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { compileBundleIr } from './compiler.js';
 import { loadBundle } from './load.js';
-import {
-  readBundleAuthoringState,
-  reconcileBundleAuthoringState,
-  writeBundleAuthoringState,
-} from './state.js';
+import { reconcileBundleAuthoringState, writeBundleAuthoringState } from './state.js';
 import type { BundleAuthoringState, BundleCompilerIr } from './types.js';
 
 export interface BundleEvalPlan {
@@ -265,13 +261,4 @@ export async function recordBundleEval(
 
 export async function readBundleEvalResult(resultPath: string): Promise<BundleEvalEvidenceResult> {
   return parseEvalResult(JSON.parse(await fs.readFile(resultPath, 'utf8')) as unknown);
-}
-
-export async function readRecordedBundleEval(
-  projectRoot: string,
-  name: string,
-): Promise<BundleEvalEvidenceResult | null> {
-  const state = await readBundleAuthoringState(projectRoot, name);
-  if (!state.eval) return null;
-  return readBundleEvalResult(state.eval.resultPath);
 }

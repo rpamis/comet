@@ -128,7 +128,10 @@ import { CLASSIC_MANAGED_RUN_MARKER } from './classic-sdk-state-store.js';
 import { findClassicSdkWorkspace, inspectClassicSdkRun } from './classic-sdk-status.js';
 import { failClassicSdkVerify } from './classic-sdk-verify-failure.js';
 import { appendClassicStateEvent } from './classic-state-events.js';
-import { LEGACY_CLASSIC_STATE_FILE, resolveClassicStateFile } from './classic-state-file.js';
+import {
+  LEGACY_CLASSIC_STATE_FILE,
+  resolveClassicStateFile,
+} from '../workflow-contract/classic-state-file.js';
 import { FIELD_ENUMS, MACHINE_OWNED_FIELDS, SETTABLE_FIELDS } from './classic-state-options.js';
 import {
   classicStateToDocument,
@@ -1123,7 +1126,7 @@ async function next(
         });
   if (sdkWorkspace) {
     if (continueRun) {
-      const advanced = await advanceClassicSdkChange(sdkWorkspace.projectRoot, name, sdkWorkspace);
+      const advanced = await advanceClassicSdkChange(sdkWorkspace.projectRoot, sdkWorkspace);
       await nextSdkEntry(
         output,
         name,

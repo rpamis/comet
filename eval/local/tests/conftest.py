@@ -62,9 +62,6 @@ from scaffold.python.execution import (
     resolve_judge,
     validate_base_url,
 )
-from scaffold.python.generated_task_cache import (
-    selected_agent_model as _legacy_selected_agent_model,
-)
 from scaffold.python.langfuse_adapter import (
     install_codex_plugin_workspace,
     install_transcript_hook,
@@ -385,12 +382,6 @@ def _resolve_eval_judge(config) -> ResolvedJudge | None:
         cli_base_url=_getoption(config, "--judge-base-url"),
         manifest=manifest_judge,
     )
-
-
-def _selected_agent_model(agent: str) -> str | None:
-    if _plugin is not None:
-        return _resolve_eval_execution(_plugin.config).model
-    return _legacy_selected_agent_model(agent)
 
 
 def _resolve_eval_agent(config):

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
-import { importLegacyBusinessFile } from '../workflow-contract/legacy-runtime-import.js';
+import { importLegacyBusinessFile } from '../workflow-contract/legacy-business-file.js';
 import { ensureWorkspaceRuntimeRoot } from '../workflow-contract/workspace-runtime.js';
 import { atomicWriteJson } from './native-atomic-file.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';

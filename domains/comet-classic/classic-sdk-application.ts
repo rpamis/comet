@@ -68,7 +68,7 @@ import {
   classicSdkRemoteBranchHead,
   classicSdkRemoteIdentity,
 } from './classic-sdk-remote.js';
-import { resolveClassicStateFile } from './classic-state-file.js';
+import { resolveClassicStateFile } from '../workflow-contract/classic-state-file.js';
 import type { ClassicProfile, ClassicState } from './classic-state.js';
 import { parseClassicTasks } from './classic-tasks.js';
 import { applyClassicTransition } from './classic-transitions.js';
@@ -740,7 +740,6 @@ export async function classicPlanEvidenceReceipt(
   return { ref: plan.relative };
 }
 export async function assertClassicSdkDesignRequirementsCurrent(
-  projectRoot: string,
   changeDirRef: string,
   run: WorkflowRun,
 ): Promise<void> {
@@ -776,7 +775,7 @@ export async function assertClassicBuildReady(
   state: ClassicState,
   run: WorkflowRun,
 ): Promise<void> {
-  await assertClassicPresetRequirementsCurrent(projectRoot, changeDirRef, run);
+  await assertClassicPresetRequirementsCurrent(changeDirRef, run);
   const configuration = classicConfigurationReadiness(state);
   if (
     state.isolation === null ||
@@ -812,7 +811,7 @@ export async function assertClassicBuildReady(
     throw new Error('Classic Build tasks are not all completed');
   }
   if (state.workflow === 'full') {
-    await assertClassicSdkDesignRequirementsCurrent(projectRoot, changeDirRef, run);
+    await assertClassicSdkDesignRequirementsCurrent(changeDirRef, run);
     await classicAcceptedDesignEvidence(projectRoot, run);
     if (!state.plan) throw new Error('Classic Build plan is missing');
     const acceptedPlan = run.evidenceWaits
@@ -844,7 +843,6 @@ export async function assertClassicBuildReady(
 }
 /** 预设以已批准的需求为准；勾选完成任务不会改变需求摘要。 */
 export async function assertClassicPresetRequirementsCurrent(
-  projectRoot: string,
   changeDirRef: string,
   run: Readonly<WorkflowRun>,
 ): Promise<void> {

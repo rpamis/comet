@@ -258,17 +258,6 @@ export async function beginWorkflowProjectConfigTransaction(
   return { candidate: journal.candidate, quarantine: journal.quarantine };
 }
 
-export async function finishWorkflowProjectConfigTransaction(
-  projectRoot: string,
-  id: string,
-): Promise<void> {
-  const transaction = await readTransaction(projectRoot);
-  if (!transaction || transaction.journal.id !== id) {
-    throw new Error('Project config write transaction changed before completion');
-  }
-  await removeTransactionJournal(projectRoot, transaction);
-}
-
 export async function inspectWorkflowProjectConfigTransaction(
   projectRoot: string,
 ): Promise<ProjectConfigWriteTransactionInspection | null> {

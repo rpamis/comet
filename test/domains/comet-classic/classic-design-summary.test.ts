@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { resolveClassicStateFile } from '../../../domains/comet-classic/classic-state-file.js';
+import { resolveClassicStateFile } from '../../../domains/workflow-contract/classic-state-file.js';
 import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
 
 const router = path.resolve('assets/skills/comet/scripts/comet-hook-router.mjs');

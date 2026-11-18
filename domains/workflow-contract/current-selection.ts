@@ -19,14 +19,16 @@ export interface CometCurrentSelection {
   applicationId?: string;
 }
 
-export interface LegacyClassicSelection {
-  version: 1;
-  change: string;
-  branch: string | null;
-}
-
 export type CometCurrentSelectionRead =
-  { status: 'missing' } | { status: 'selected'; selection: CometCurrentSelection; legacy: boolean };
+  | { status: 'missing' | 'none' }
+  | { status: 'selected'; selection: CometCurrentSelection; legacy: boolean };
+
+export interface CometNoSelection {
+  schema: typeof COMET_CURRENT_SELECTION_SCHEMA;
+  workflow: 'none';
+  change: null;
+  branch: null;
+}
 
 export function cometCurrentSelectionFile(projectRoot: string): string {
   return path.join(projectRoot, '.comet', 'current-change.json');
@@ -40,7 +42,10 @@ function validBranch(value: unknown): value is string | null {
   return value === null || typeof value === 'string';
 }
 
-function parseSelection(source: string): { selection: CometCurrentSelection; legacy: boolean } {
+function parseSelection(source: string): {
+  selection: CometCurrentSelection | CometNoSelection;
+  legacy: boolean;
+} {
   let value: unknown;
   try {
     value = JSON.parse(source) as unknown;
@@ -74,6 +79,11 @@ function parseSelection(source: string): { selection: CometCurrentSelection; leg
 
   if (value.schema !== COMET_CURRENT_SELECTION_SCHEMA) {
     throw new Error(`current change selection schema must be ${COMET_CURRENT_SELECTION_SCHEMA}`);
+  }
+  if (value.workflow === 'none') {
+    if (value.change !== null || value.branch !== null || value.applicationId !== undefined)
+      throw new Error('No current selection requires null change and branch without applicationId');
+    return { selection: value as unknown as CometNoSelection, legacy: false };
   }
   if (
     value.workflow !== 'native' &&
@@ -121,7 +131,8 @@ export async function readCometCurrentSelection(
     );
   }
   const parsed = parseSelection(source);
-  return { status: 'selected', ...parsed };
+  if (parsed.selection.workflow === 'none') return { status: 'none' };
+  return { status: 'selected', selection: parsed.selection, legacy: parsed.legacy };
 }
 
 /** 同一次 Hook 使用一个安全读取结果；Runtime 修改仍直接读取当前选择。 */
@@ -132,7 +143,7 @@ export const readHookCurrentSelection = memoizedHookRead(
 
 export async function writeCometCurrentSelection(
   projectRoot: string,
-  selection: CometCurrentSelection,
+  selection: CometCurrentSelection | CometNoSelection,
 ): Promise<void> {
   const parsed = parseSelection(JSON.stringify(selection));
   if (parsed.legacy) throw new Error('cannot write a legacy current change selection');
@@ -151,7 +162,7 @@ export async function writeCometCurrentSelection(
 
 export async function migrateLegacyClassicSelection(projectRoot: string): Promise<boolean> {
   const current = await readCometCurrentSelection(projectRoot);
-  if (current.status === 'missing' || !current.legacy) return false;
+  if (current.status !== 'selected' || !current.legacy) return false;
   await writeCometCurrentSelection(projectRoot, current.selection);
   return true;
 }

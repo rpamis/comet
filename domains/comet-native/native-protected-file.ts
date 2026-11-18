@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { constants as fsConstants, promises as fs, type Dirent } from 'node:fs';
 import path from 'node:path';
-import { TextDecoder } from 'node:util';
 
 import { atomicWriteBytes } from './native-atomic-file.js';
 import { sameNativeFileObject } from './native-file-identity.js';
@@ -18,10 +17,6 @@ export interface NativeProtectedFile {
   bytes: Buffer;
   hash: string;
   size: number;
-}
-
-export interface NativeProtectedTextFile extends NativeProtectedFile {
-  text: string;
 }
 
 interface DirectoryIdentity {
@@ -362,24 +357,6 @@ export async function hashNativeProtectedFile(options: {
   }
 }
 
-export async function readNativeProtectedTextFile(options: {
-  root: string;
-  file: string;
-  maxBytes: number | null;
-  label: string;
-  forbiddenRoots?: readonly string[];
-  hooks?: NativeProtectedFileHooks;
-}): Promise<NativeProtectedTextFile> {
-  const snapshot = await readNativeProtectedFile(options);
-  let text: string;
-  try {
-    text = new TextDecoder('utf-8', { fatal: true }).decode(snapshot.bytes);
-  } catch (error) {
-    throw new Error(`${options.label} is not valid UTF-8`, { cause: error });
-  }
-  return { ...snapshot, text };
-}
-
 export async function readNativeProtectedDirectory(options: {
   root: string;
   directory: string;
@@ -610,37 +587,6 @@ export async function removeNativeProtectedEmptyDirectory(options: {
     throw new Error(`${options.label} changed before removal`);
   }
   await fs.rmdir(directory);
-  await verifyDirectoryChain(parentChain, options.label);
-}
-
-export async function removeNativeProtectedQuarantine(options: {
-  root: string;
-  quarantine: string;
-  label: string;
-  beforeRemove?: (quarantine: string) => void | Promise<void>;
-}): Promise<void> {
-  const quarantine = path.resolve(options.quarantine);
-  const parentChain = await captureDirectoryChain(
-    options.root,
-    path.dirname(quarantine),
-    options.label,
-  );
-  const identity = await captureDirectoryIdentity(quarantine, options.label);
-  if (!isInside(parentChain[0].realPath, identity.realPath)) {
-    throw new Error(`${options.label} resolves outside its managed root`);
-  }
-  await options.beforeRemove?.(quarantine);
-  await verifyDirectoryChain(parentChain, options.label);
-  const beforeRemove = await fs.lstat(quarantine);
-  if (
-    !beforeRemove.isDirectory() ||
-    beforeRemove.isSymbolicLink() ||
-    !sameDirectoryIdentity(identity, beforeRemove) ||
-    (await fs.realpath(quarantine)) !== identity.realPath
-  ) {
-    throw new Error(`${options.label} changed before removal`);
-  }
-  await fs.rm(quarantine, { recursive: true });
   await verifyDirectoryChain(parentChain, options.label);
 }
 

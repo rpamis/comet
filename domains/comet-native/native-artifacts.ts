@@ -305,10 +305,3 @@ export async function validateNativeSpecChanges(
   }
   return result(findings);
 }
-
-export async function resolveNativeArtifactFile(
-  changeDir: string,
-  relativeRef: string,
-): Promise<string> {
-  return readContainedFile(changeDir, relativeRef);
-}

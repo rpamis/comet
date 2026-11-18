@@ -36,7 +36,7 @@ import {
 } from '../../../domains/dashboard/native-collector.js';
 import * as dashboardWorkspace from '../../../domains/dashboard/workspace.js';
 import type { WorkflowRun } from '../../../domains/engine/runtime.js';
-import * as applicationRunStore from '../../../domains/workflow-application/application.js';
+import * as applicationRunStore from '../../../domains/workflow-application/application-run-record.js';
 import * as changeOwnership from '../../../domains/workflow-contract/change-runtime-owner.js';
 
 const NOW = '2026-08-09T08:00:00.000Z';

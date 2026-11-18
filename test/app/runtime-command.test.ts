@@ -14,6 +14,7 @@ import {
 } from '../../domains/engine/runtime.js';
 import { createNativePortableState } from '../../domains/comet-native/native-portable-state.js';
 import { runNativeCli } from '../../domains/comet-native/native-cli.js';
+import { runNativeCliWithCompatFixture } from '../helpers/native-compat-creation.js';
 import { createNativePortableChange } from '../../domains/comet-native/native-portable-runtime.js';
 import { withNativeMutation } from '../../domains/comet-native/native-mutation.js';
 import {
@@ -721,7 +722,7 @@ describe('Runtime JSON command', () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('docs', 'en'));
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     await ensureNativeDirectories(paths);
-    const legacy = await runNativeCli([
+    const legacy = await runNativeCliWithCompatFixture([
       'new',
       'legacy-change',
       '--runtime',
@@ -1017,7 +1018,7 @@ describe('Runtime JSON command', () => {
   it('does not claim a linked Native SDK Action over an unregistered local legacy change', async () => {
     const name = 'native-collision';
     const linkedRoot = await initializeNativeLinkedSdk(name);
-    const legacy = await runNativeCli([
+    const legacy = await runNativeCliWithCompatFixture([
       'new',
       name,
       '--runtime',
@@ -1201,7 +1202,7 @@ describe('Runtime JSON command', () => {
       { application: 'native', workflow: [], rootDir: undefined },
     );
     expect(started.response.status).toBe('succeeded');
-    const legacy = await runNativeCli([
+    const legacy = await runNativeCliWithCompatFixture([
       'new',
       'native-change',
       '--runtime',
@@ -1296,7 +1297,7 @@ describe('Runtime JSON command', () => {
   });
 
   it('does not claim an existing legacy Native change for a new SDK Run', async () => {
-    const legacy = await runNativeCli([
+    const legacy = await runNativeCliWithCompatFixture([
       'new',
       'native-change',
       '--runtime',
@@ -1343,7 +1344,7 @@ describe('Runtime JSON command', () => {
   });
 
   it('restores legacy ownership before continuing a pre-existing Native change', async () => {
-    const created = await runNativeCli([
+    const created = await runNativeCliWithCompatFixture([
       'new',
       'native-change',
       '--runtime',

@@ -815,14 +815,3 @@ function projectRecordDelta(
     recommendedState: record.state,
   };
 }
-
-export async function projectKnowledgeLearningSourceExists(
-  projectRoot: string,
-  source: string,
-): Promise<boolean> {
-  try {
-    return (await fs.stat(path.join(projectRoot, source))).isFile();
-  } catch {
-    return false;
-  }
-}

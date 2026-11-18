@@ -46,20 +46,6 @@ export function hashMemoryText(content: string): string {
   return createHash('sha256').update(content, 'utf8').digest('hex');
 }
 
-/** Derive one stable, safe project key from a canonical repository identity. */
-export function deriveProjectKey(identity: string): string {
-  const canonical = identity
-    .trim()
-    .replace(/\\/gu, '/')
-    .replace(/\.git$/iu, '')
-    .replace(/\/+$/u, '')
-    .toLocaleLowerCase();
-  if (canonical.length === 0) throw new Error('Project identity must not be empty');
-  const leaf = canonical.split(/[/:]/u).filter(Boolean).at(-1) ?? 'project';
-  const slug = leaf.replace(/[^a-z0-9._-]+/gu, '-').replace(/^-+|-+$/gu, '') || 'project';
-  return `${slug.slice(0, 40)}-${hashMemoryText(canonical).slice(0, 8)}`;
-}
-
 export function emptyMemoryState(): MemoryRuntimeState {
   return {
     version: 3,

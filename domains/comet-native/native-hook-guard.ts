@@ -11,7 +11,7 @@ import {
 } from './native-sdk-cancellation.js';
 import { listNativeSdkHistoryPartitions } from './native-sdk-history-discovery.js';
 
-import type { CometHookIntent, CometHookRequest } from '../../platform/process/hook-adapter.js';
+import type { CometHookRequest } from '../../platform/process/hook-adapter.js';
 import {
   normalizeCometHookTargets,
   parseCometHookRequest,
@@ -43,8 +43,6 @@ const inspectHookSdkRun = memoizedHookRead(
   'nativeHookSdkRun',
   (projectRoot: string, name: string) => inspectNativeSdkRun(projectRoot, name, { readOnly: true }),
 );
-
-export type NativeHookIntent = CometHookIntent;
 export interface NativeHookRequest extends Omit<CometHookRequest, 'toolName'> {
   toolName?: string | null;
 }
@@ -236,7 +234,7 @@ function implementationWriteDeniedReason(state: {
 }): string {
   const prefix = `Native change ${state.name} is in ${state.phase}; implementation writes are only allowed in Build.`;
   if (state.phase === 'shape') {
-    return `${prefix} Reread the latest continuation, complete requirement clarification, and execute the Shape confirmation command after user confirmation.`;
+    return `${prefix} Reread the latest continuation, complete requirement clarification, and execute the Shape confirmation command after user confirmation. If the user explicitly requests independent work outside Comet, run comet native select --none in this workspace; resume this change later with comet native select ${state.name}.`;
   }
   if (state.phase === 'verify') {
     return `${prefix} Select and execute the matching commandAlternative from the latest continuation, preserving --expected-state-version and --expected-action.`;

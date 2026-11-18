@@ -4,7 +4,7 @@ import path from 'node:path';
 import { parse } from 'yaml';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
-import { resolveClassicStateFile } from '../../../domains/comet-classic/classic-state-file.js';
+import { resolveClassicStateFile } from '../../../domains/workflow-contract/classic-state-file.js';
 import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
 import { createFileRuntimeStore, type WorkflowRun } from '../../../domains/engine/runtime.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';

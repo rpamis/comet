@@ -22,7 +22,6 @@ export {
   projectConfigComment,
   renderStructuredProjectConfig,
   workflowProjectConfigManagedValue,
-  workflowProjectConfigRuntimeHelperScript,
   WORKFLOW_PROJECT_CONFIG_MAX_BYTES,
 } from './project-config.js';
 export {
@@ -80,7 +79,6 @@ export type {
   CometCurrentSelection,
   CometCurrentSelectionRead,
   CometWorkflow,
-  LegacyClassicSelection,
 } from './current-selection.js';
 export {
   inspectWorkflowProjectConfigTransaction,

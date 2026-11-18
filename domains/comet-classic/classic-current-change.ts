@@ -1,4 +1,4 @@
-import { ClassicStateFileConflictError } from './classic-state-file.js';
+import { ClassicStateFileConflictError } from '../workflow-contract/classic-state-file.js';
 import {
   clearCometCurrentSelection,
   clearCometCurrentSelectionIf,
@@ -182,7 +182,7 @@ export async function resolveCurrentChange(projectRoot: string): Promise<Current
       reason: error instanceof Error ? error.message : String(error),
     };
   }
-  if (current.status === 'missing') return { status: 'missing' };
+  if (current.status !== 'selected') return { status: 'missing' };
   if (current.selection.workflow !== 'classic') {
     return {
       status: 'stale',

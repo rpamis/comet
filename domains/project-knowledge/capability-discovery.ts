@@ -19,8 +19,6 @@ const MAX_SPEC_BYTES = 256 * 1024;
 const CAPABILITY_SEGMENT = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 const CLASSIC_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 
-export const CAPABILITY_ASSOCIATION_FILE = 'capability-association.yaml';
-
 export type WorkflowCapability = 'native' | 'classic';
 export type CapabilityCandidateConfidence = 'high' | 'medium' | 'low';
 

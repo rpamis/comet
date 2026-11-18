@@ -20,13 +20,11 @@ import {
   resolveWorkflowApplicationFile,
 } from '../workflow-application/application.js';
 
-export const NATIVE_SELECTION_MAX_BYTES = Number.MAX_SAFE_INTEGER;
-
 export async function readNativeSelectionRecord(
   paths: NativeProjectPaths,
 ): Promise<CometCurrentSelection | null> {
   const current = await readCometCurrentSelection(paths.projectRoot);
-  if (current.status === 'missing') return null;
+  if (current.status !== 'selected') return null;
   if (current.selection.workflow !== 'native') {
     if (current.selection.workflow !== 'application') return null;
     const owner = await readSdkChangeOwner(paths.projectRoot, 'native', current.selection.change, {
@@ -91,6 +89,17 @@ export async function selectNativeChange(paths: NativeProjectPaths, name: string
   });
 }
 
+export async function deselectNativeChange(paths: NativeProjectPaths): Promise<void> {
+  return withNativeMutation(paths, () =>
+    writeCometCurrentSelection(paths.projectRoot, {
+      schema: 'comet.selection.v2',
+      workflow: 'none',
+      change: null,
+      branch: null,
+    }),
+  );
+}
+
 export async function resolveSelectedNativeChange(
   paths: NativeProjectPaths,
 ): Promise<string | null> {
@@ -110,13 +119,6 @@ export async function clearNativeSelectionLocked(paths: NativeProjectPaths): Pro
   if (current.status === 'selected' && (await readNativeSelectionRecord(paths))) {
     await clearCometCurrentSelection(paths.projectRoot);
   }
-}
-
-export async function clearNativeSelectionIf(
-  paths: NativeProjectPaths,
-  name: string,
-): Promise<boolean> {
-  return withNativeMutation(paths, () => clearNativeSelectionIfLocked(paths, name));
 }
 
 export async function clearNativeSelectionIfLocked(

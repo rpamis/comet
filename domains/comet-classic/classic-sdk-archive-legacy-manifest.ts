@@ -6,7 +6,7 @@ import { inspectProtectedProjectPath } from '../workflow-contract/protected-proj
 import { archivedClassicDocumentRef } from './classic-archive-annotation.js';
 import { resolveClassicLayout } from './classic-layout.js';
 import { classicArchiveDocumentOutputs } from './classic-sdk-archive-documents.js';
-import { resolveClassicStateFile } from './classic-state-file.js';
+import { resolveClassicStateFile } from '../workflow-contract/classic-state-file.js';
 
 /** 旧 Archive 没有清单时，沿用原 Run 已批准的目录与文档路径；不恢复文件摘要。 */
 export async function readLegacyClassicArchiveInputs(
