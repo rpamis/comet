@@ -28,6 +28,7 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'comet state <command> [args]',
       'init <change-name> <full|hotfix|tweak> [--isolation <current|branch|worktree>] [--runtime <compat|sdk>]',
       'state init defaults to sdk in Git roots and compat in non-Git roots for document-only archive; explicit sdk remains available but SDK Archive requires Git.',
+      'Explicit compat creation in Git roots is deprecated. Continue existing compat changes by name; non-Git document delivery keeps its compatible default.',
       'restore <change-name> --confirmed (recover a copied SDK Run; older states without a checkpoint restart at Open)',
       'get <change-name> <field> [<field> ...]',
       'set <change-name> <field> <value> [<field> <value> ...]',

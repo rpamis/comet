@@ -30,8 +30,7 @@ import {
   nativeChangeArtifactPaths,
   nativeProjectPaths,
 } from './native-paths.js';
-import { nativePortableContinuation } from './native-portable-continuation.js';
-import { createNativePortableChange, nativePortableChangeDir } from './native-portable-runtime.js';
+import { nativePortableChangeDir } from './native-portable-storage.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import { createNativeSdkChange } from './native-sdk-create.js';
 import { projectNativeSdkStatus } from './native-sdk-status.js';
@@ -206,7 +205,9 @@ export async function nativeNewCommand(
       : null;
   const state = sdkRun
     ? parseNativePortableState(sdkRun.state)
-    : await createNativePortableChange({
+    : await (
+        await import('./native-portable-requirements.js')
+      ).createNativePortableChange({
         paths,
         name,
         language,
@@ -258,7 +259,11 @@ export async function nativeNewCommand(
               )),
               ...state,
             }
-          : { continuation: nativePortableContinuation(state) }),
+          : {
+              continuation: (
+                await import('./native-portable-continuation.js')
+              ).nativePortableContinuation(state),
+            }),
       },
       `Created Native change ${state.name}\n`,
     ),

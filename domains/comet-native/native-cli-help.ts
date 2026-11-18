@@ -89,7 +89,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       'comet native new <change-name> [--runtime compat|sdk] [--language en|zh-CN] [--task <text>] [--capability <id>] [--isolation current|branch|worktree] [--change-branch <branch>] [--target-branch <branch>] [--worktree-path <path>]',
     purpose: 'Create a portable Native change and prepare the requested branch or linked worktree.',
     options: [
-      '--runtime compat|sdk        Runtime format for this new change; defaults to sdk.',
+      '--runtime compat|sdk        Runtime format defaults to sdk. Explicit compat creation is deprecated; continue existing compat changes by name.',
       '--language en|zh-CN          Artifact language; defaults to project configuration.',
       '--task <text>                Preserve the original request in the SDK Run for independent alignment review; also search Project Knowledge for a capability association.',
       '--capability <id>            Directly validate and associate an existing capability without retrieval.',
