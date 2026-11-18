@@ -2,52 +2,28 @@ import path from 'node:path';
 import { readNativeBuildWorkspace } from './native-build-workspace-record.js';
 import { prepareNativeBuildWorkspace } from './native-build-workspace.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
-import { inspectNativeChildren } from './native-children.js';
 import {
   assertNoArguments,
   configuredPaths,
-  errorResult,
   NativeUsageError,
   requiredPositional,
-  success,
   takeFlag,
   takeOption,
   type DispatchResult,
 } from './native-cli-shared.js';
 import { readProjectConfig } from './native-config.js';
-import { nativePortableContinuation } from './native-portable-continuation.js';
-import {
-  confirmNativePortableShape,
-  confirmNativePortableSkillCoordinatedPass,
-  isNativePortableChange,
-  prepareNativePortableShapeConfirmation,
-  readNativePortableChange,
-  resolveNativePortableVerifierBlocker,
-  retryNativePortableVerifier,
-  returnNativePortableChangeToBuild,
-  returnNativePortableChangeToShape,
-  type NativePortableExpectedContinuation,
-  type NativePortableExpectedContinuationAction,
-} from './native-portable-runtime.js';
-import { nativePortableStateSummary } from './native-portable-summary.js';
+import { isNativePortableChange } from './native-portable-storage.js';
+import type {
+  NativePortableExpectedContinuation,
+  NativePortableExpectedContinuationAction,
+} from './native-portable-requirements.js';
 import {
   NATIVE_SUPERVISOR_COORDINATION_MODES,
   type NativeSupervisorCoordinationMode,
 } from './native-portable-types.js';
-import {
-  applyNativeRunnerInput,
-  readNativeRunnerInput,
-  validateNativeRunnerInputBoundary,
-} from './native-runner-input.js';
 import { resolveNativeChangeRuntimeOwner } from './native-runtime-ownership.js';
-import { NativeBuilderAcceptanceIncompleteError } from './native-builder-acceptance-review.js';
 import { advanceNativeSdkChange } from './native-sdk-next.js';
 import { advanceNativeSdkTask } from './native-sdk-task-command.js';
-import {
-  dispatchNativeSupervisorReadyTasks,
-  projectNativeSupervisorTask,
-  projectNativeSupervisorChildren,
-} from './native-supervisor.js';
 import type { NativeWorkspaceFinish } from './native-workspace.js';
 const EXPECTED_CONTINUATION_ACTIONS = new Set<NativePortableExpectedContinuationAction>([
   'prepare-shape-confirmation',
@@ -387,153 +363,26 @@ export async function nativeNextCommand(
     }
     return executeSdk(() => advanceNativeSdkChange(projectRoot, name));
   }
-  if (
-    (confirmed ||
-      acceptResult ||
-      reviseImplementation ||
-      reviseRequirements ||
-      retryVerifier ||
-      continueBuilder ||
-      resolveVerifierBlocker) &&
-    expectedContinuation === undefined
-  )
-    throw new NativeUsageError(
-      'User decisions require --expected-state-version and --expected-action from the current continuation',
-    );
-  let state = await readNativePortableChange(configured.paths, name);
-  if (runnerInputFile) {
-    const input = await readNativeRunnerInput(runnerInputFile, projectRoot);
-    await validateNativeRunnerInputBoundary({
-      paths: configured.paths,
-      name,
-      state,
-      input,
-      projectRoot,
-    });
-    if (validateOnly)
-      return success('next', {
-        validated: true,
-        runtimeFormat: 'compat',
-        change: name,
-        kind: input.kind,
-      });
-    const result = await applyNativeRunnerInput({
-      paths: configured.paths,
-      name,
-      input,
-      maxVerifyFailures: configured.config.native.max_verify_failures,
-      inputFile: runnerInputFile,
-    }).catch((error: unknown) => {
-      if (!(error instanceof NativeBuilderAcceptanceIncompleteError)) throw error;
-      return error;
-    });
-    if (result instanceof NativeBuilderAcceptanceIncompleteError) {
-      const rejected = errorResult('next', result);
-      return {
-        ...rejected,
-        data: {
-          ...(rejected.data as Record<string, unknown>),
-          state: nativePortableStateSummary(state, configured.paths),
-          continuation: nativePortableContinuation(state),
-        },
-      };
-    }
-    const { state: written, ...details } = result;
-    if ('supervisorState' in details) {
-      const { supervisorState, ...taskDetails } = details;
-      return success('next', {
-        runtimeFormat: 'compat',
-        state: nativePortableStateSummary(written, configured.paths),
-        ...taskDetails,
-        continuation: nativePortableContinuation(
-          written,
-          projectNativeSupervisorChildren(supervisorState),
-        ),
-      });
-    }
-    return success('next', {
-      runtimeFormat: 'compat',
-      state: nativePortableStateSummary(written, configured.paths),
-      ...details,
-    });
-  }
-  if (resultFile !== undefined)
-    throw new NativeUsageError(
-      '此旧需求沿用返回的业务输入格式；按当前 continuation 提交 --runner-input，不另建 Run。',
-    );
-  if (confirmed)
-    state = await confirmNativePortableShape({
-      paths: configured.paths,
-      name,
-      coordinationMode,
-      expectedContinuation,
-    });
-  else if (acceptResult)
-    state = await confirmNativePortableSkillCoordinatedPass({
-      paths: configured.paths,
-      name,
-      expectedContinuation,
-      finish,
-    });
-  else if (reviseImplementation)
-    state = await returnNativePortableChangeToBuild({
-      paths: configured.paths,
-      name,
-      reason: summary ?? 'User requested implementation revision',
-      expectedContinuation,
-    });
-  else if (reviseRequirements)
-    state = await returnNativePortableChangeToShape({
-      paths: configured.paths,
-      name,
-      reason: summary ?? 'User requested requirements revision',
-      expectedContinuation,
-    });
-  else if (retryVerifier)
-    state = await retryNativePortableVerifier({
-      paths: configured.paths,
-      name,
-      expectedContinuation,
-    });
-  else if (resolveVerifierBlocker)
-    state = await resolveNativePortableVerifierBlocker({
-      paths: configured.paths,
-      name,
-      reason: summary,
-      expectedContinuation,
-    });
-  else if (summary !== undefined && state.phase === 'shape')
-    state = await prepareNativePortableShapeConfirmation({
-      paths: configured.paths,
-      name,
-      coordinationMode,
-      expectedContinuation,
-    });
-  const children = await inspectNativeChildren({
+  const { advanceNativeCompatChange } = await import('./native-compat-next.js');
+  return advanceNativeCompatChange({
+    name,
+    projectRoot,
     paths: configured.paths,
-    state,
-  });
-  const dispatched =
-    state.phase === 'build' && children?.schema === 'comet.native.children.v2' && children.confirmed
-      ? await dispatchNativeSupervisorReadyTasks({
-          paths: configured.paths,
-          parent: name,
-          maxParallel: state.coordination_mode === 'single-session' ? 1 : maxParallel,
-        })
-      : null;
-  return success('next', {
-    runtimeFormat: 'compat',
-    state: nativePortableStateSummary(state, configured.paths),
-    ...(dispatched
-      ? {
-          supervisorTasks: dispatched.state.children.flatMap(({ task }) =>
-            task ? [projectNativeSupervisorTask(task, name, projectRoot)] : [],
-          ),
-          readyChildren: dispatched.tasks.map((task) => task.child),
-        }
-      : {}),
-    continuation: nativePortableContinuation(state, children, {
-      verifierExecutionRef: state.verifier_action?.claim?.token,
-    }),
+    maxVerifyFailures: configured.config.native.max_verify_failures,
+    expectedContinuation,
+    confirmed,
+    acceptResult,
+    reviseImplementation,
+    reviseRequirements,
+    retryVerifier,
+    continueBuilder,
+    resolveVerifierBlocker,
+    runnerInputFile,
+    resultFile,
+    summary,
+    validateOnly,
+    coordinationMode,
+    finish,
+    maxParallel,
   });
 }
