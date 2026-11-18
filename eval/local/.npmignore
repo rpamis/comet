@@ -21,3 +21,8 @@ _eval*/
 **/.pytest_*/
 **/__pycache__/
 **/.comet/
+
+# Repository-only samples and scaffold regression tests.
+/skills/benchmarks/040-beta
+/treatments/comet/comet_full_040_beta.yaml
+/tests/scaffold

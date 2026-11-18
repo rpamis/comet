@@ -85,9 +85,6 @@
     "eval/schemas",
     "scripts/install/postinstall.js",
     "!dist/**/*.map",
-    "!eval/local/skills/benchmarks/040-beta",
-    "!eval/local/treatments/comet/comet_full_040_beta.yaml",
-    "!eval/local/tests/scaffold",
     "!dist/**/*.test.js",
     "!dist/**/__tests__"
   ],
