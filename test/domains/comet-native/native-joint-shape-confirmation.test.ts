@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ensureCliBuilt } from '../../helpers/ensure-cli-built.js';
 
-import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+import { runNativeCliWithCompatFixture as runNativeCli } from '../../helpers/native-compat-creation.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import { readNativePortableChange } from '../../../domains/comet-native/native-portable-storage.js';
 

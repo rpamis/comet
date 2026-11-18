@@ -6,6 +6,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Native change creation**: New Native changes use the SDK. Existing compat changes can still resume and archive through their original Runtime.
 - **Smaller npm installs**: Install the built Dashboard without its frontend build dependencies. Historical 0.4.0 beta Eval samples are available from the source repository.
 
 ### Fixed

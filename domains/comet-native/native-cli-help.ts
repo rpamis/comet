@@ -86,10 +86,11 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   },
   new: {
     usage:
-      'comet native new <change-name> [--runtime compat|sdk] [--language en|zh-CN] [--task <text>] [--capability <id>] [--isolation current|branch|worktree] [--change-branch <branch>] [--target-branch <branch>] [--worktree-path <path>]',
-    purpose: 'Create a portable Native change and prepare the requested branch or linked worktree.',
+      'comet native new <change-name> [--runtime sdk] [--language en|zh-CN] [--task <text>] [--capability <id>] [--isolation current|branch|worktree] [--change-branch <branch>] [--target-branch <branch>] [--worktree-path <path>]',
+    purpose:
+      'Create an SDK-owned Native change and prepare the requested branch or linked worktree.',
     options: [
-      '--runtime compat|sdk        Runtime format defaults to sdk. Explicit compat creation is deprecated; continue existing compat changes by name.',
+      '--runtime sdk                New Native changes use the SDK. Continue an existing compat change by name.',
       '--language en|zh-CN          Artifact language; defaults to project configuration.',
       '--task <text>                Preserve the original request in the SDK Run for independent alignment review; also search Project Knowledge for a capability association.',
       '--capability <id>            Directly validate and associate an existing capability without retrieval.',
@@ -98,8 +99,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--target-branch <branch>     Local base branch; defaults to the current branch.',
       '--worktree-path <path>       Worktree directory; defaults to .worktrees/<change-name>.',
     ],
-    output:
-      'The SDK Run or portable state, canonical artifact paths, and workspace preparation result; compat Runtime changes include the next Runner continuation.',
+    output: 'The SDK Run, canonical artifact paths, and workspace preparation result.',
     examples: [
       'comet native new session-timeout --language zh-CN',
       'comet native new add-sms-login --task "add SMS login to authentication"',

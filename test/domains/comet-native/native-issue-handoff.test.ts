@@ -4,7 +4,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+import { runNativeCliWithCompatFixture as runNativeCli } from '../../helpers/native-compat-creation.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,

@@ -17,7 +17,8 @@ import { parse, stringify } from 'yaml';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+import { runNativeCli as runPublicNativeCli } from '../../../domains/comet-native/native-cli.js';
+import { runNativeCliWithCompatFixture as runNativeCli } from '../../helpers/native-compat-creation.js';
 import {
   COMET_RESUME_PROBE_SCHEMA_VERSION,
   resolveCometEntryResumeProbe,
@@ -1744,10 +1745,10 @@ Run applicable focused checks.
     });
   });
 
-  it('explains the SDK default and explicit compat option in Native new help', async () => {
-    const help = await runNativeCli(['new', '--help']);
-    expect(help.stdout).toContain('defaults to sdk');
-    expect(help.stdout).toContain('--runtime compat|sdk');
+  it('explains SDK creation and how to continue an existing compat change', async () => {
+    const help = await runPublicNativeCli(['new', '--help']);
+    expect(help.stdout).toContain('--runtime sdk');
+    expect(help.stdout).toContain('Continue an existing compat change by name');
   });
 
   it('prepares the complete Supervisor Shape before requesting a joint user decision', async () => {

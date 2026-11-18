@@ -1,3 +1,4 @@
+import { createNativeCompatFixture } from '../../helpers/native-compat-creation.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
@@ -65,7 +66,7 @@ describe('packaged Runtime issue regressions', () => {
       ],
       { cwd: root, stdio: 'ignore' },
     );
-    expect(invoke(['new', name, '--runtime', 'compat']).exitCode).toBe(0);
+    expect((await createNativeCompatFixture([name, '--runtime', 'compat'], root)).exitCode).toBe(0);
     const config = defaultProjectConfig('docs', 'en');
     await writeProjectConfig(root, {
       ...config,

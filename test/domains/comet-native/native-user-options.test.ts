@@ -6,7 +6,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+import {
+  runNativeCliWithCompatFixture as runNativeCli,
+  requestsNativeCompatFixture,
+} from '../../helpers/native-compat-creation.js';
 import { archiveNativePortableChange } from '../../../domains/comet-native/native-portable-archive.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import { nativeWorkspaceIsClean } from '../../../domains/comet-native/native-workspace-config.js';
@@ -25,7 +28,7 @@ const git = (root: string, args: string[]) => {
 async function cliEnvelope(root: string, args: string[]) {
   const argv = [...args, '--project-root', root, '--json'];
   const result =
-    process.env.COMET_TEST_NATIVE_RUNTIME === '1'
+    process.env.COMET_TEST_NATIVE_RUNTIME === '1' && !requestsNativeCompatFixture(argv)
       ? {
           stdout: execFileSync(
             process.execPath,

@@ -6,6 +6,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { nativeNewCommand } from '../../../domains/comet-native/native-new-command.js';
+import { createNativeCompatFixture } from '../../helpers/native-compat-creation.js';
 import { nativeSpecCommand } from '../../../domains/comet-native/native-spec-command.js';
 import { assertNativeSdkRemovalResult } from '../../../domains/comet-native/native-sdk-remove-command.js';
 import { nativeShowCommand } from '../../../domains/comet-native/native-show-command.js';
@@ -294,7 +295,7 @@ describe('Native capability association during change creation', () => {
     );
 
     const task = 'Improve authentication login security';
-    const first = await nativeNewCommand(
+    const first = await createNativeCompatFixture(
       ['extend-auth', '--task', task, '--runtime', 'compat'],
       root,
     );
@@ -318,7 +319,7 @@ describe('Native capability association during change creation', () => {
         force: true,
       },
     );
-    const second = await nativeNewCommand(
+    const second = await createNativeCompatFixture(
       ['extend-auth-again', '--task', task, '--runtime', 'compat'],
       root,
     );
@@ -343,7 +344,7 @@ describe('Native capability association during change creation', () => {
     );
 
     const task = 'Improve login security';
-    const first = await nativeNewCommand(
+    const first = await createNativeCompatFixture(
       ['extend-auth', '--task', task, '--runtime', 'compat'],
       root,
     );
@@ -367,7 +368,7 @@ describe('Native capability association during change creation', () => {
       },
     );
 
-    const second = await nativeNewCommand(
+    const second = await createNativeCompatFixture(
       ['extend-auth-again', '--task', task, '--runtime', 'compat'],
       root,
     );

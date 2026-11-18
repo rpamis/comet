@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+import { runNativeCliWithCompatFixture as runNativeCli } from '../../helpers/native-compat-creation.js';
 import { buildNativePortableAcceptance } from '../../../domains/comet-native/native-portable-acceptance.js';
 import {
   defaultProjectConfig,
