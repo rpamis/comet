@@ -5,7 +5,7 @@ import {
   readSdkChangeOwner,
   type SdkChangeOwner,
 } from '../workflow-contract/change-runtime-owner.js';
-import { readWorkflowApplicationStorageDisposition } from '../workflow-application/application.js';
+import { readWorkflowApplicationStorageDisposition } from '../workflow-application/application-run-record.js';
 import {
   isClassicSdkCancellationComplete,
   isUnresolvedClassicArchiveAction,

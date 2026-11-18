@@ -11,7 +11,7 @@ import {
   type WorkflowRun,
 } from '../../../domains/engine/runtime.js';
 import { loadWorkflowApplication } from '../../../domains/workflow-application/index.js';
-import { readWorkflowApplicationRun } from '../../../domains/workflow-application/application.js';
+import { readWorkflowApplicationRun } from '../../../domains/workflow-application/application-run-record.js';
 import { createDiskApplication } from '../../helpers/workflow-application.js';
 import {
   COMET_CHANGE_OWNER_SCHEMA,

@@ -5,16 +5,16 @@ import {
   iterateCreatorRunSources,
   readCreatorRunProjection,
   type CreatorRunObservation,
-} from '../workflow-creation/index.js';
+} from '../workflow-creation/run-observation.js';
 import {
   iterateWorkflowApplicationRunSources,
   readWorkflowApplicationRunProjection,
   inspectWorkflowApplicationMaterial,
   inspectWorkflowApplicationPackage,
-  readApplicationEvaluationEvidence,
   type WorkflowApplicationRunObservation,
-  type ApplicationRunRecord,
-} from '../workflow-application/index.js';
+} from '../workflow-application/run-observation.js';
+import type { ApplicationRunRecord } from '../workflow-application/application-run-record.js';
+import { readApplicationEvaluationEvidence } from '../workflow-application/evaluation-evidence.js';
 import {
   readProtectedProjectFile,
   inspectProtectedProjectPath,

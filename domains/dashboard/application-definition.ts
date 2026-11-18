@@ -1,9 +1,9 @@
-import { matchesWorkflowApplicationDefinition } from '../workflow-application/index.js';
-import type {
-  ApplicationRunRecord,
-  WorkflowApplicationDefinition,
-  WorkflowApplicationManifest,
-} from '../workflow-application/index.js';
+import {
+  matchesWorkflowApplicationDefinition,
+  type WorkflowApplicationDefinition,
+} from '../workflow-application/application-definition.js';
+import type { ApplicationRunRecord } from '../workflow-application/application-run-record.js';
+import type { WorkflowApplicationManifest } from '../workflow-application/index.js';
 import type {
   DashboardApplicationDefinition,
   DashboardApplicationRecord,

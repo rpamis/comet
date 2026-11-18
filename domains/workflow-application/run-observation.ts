@@ -6,16 +6,20 @@ import {
   readRuntimeProjection,
   iterateFileRuntimeStoreRunSources,
   hashRuntimeValue,
-  parseWorkflowRun,
 } from '../engine/runtime.js';
 import { createApplicationStorageIndex } from './storage-index.js';
 import { readWorkspaceRuntimeRoots } from '../workflow-contract/workspace-runtime.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import {
+  isWorkflowApplicationId,
   parseWorkflowApplicationManifest,
+} from './application-manifest.js';
+import {
+  applicationRunStoreOptions,
+  parseApplicationRunRecord,
   readWorkflowApplicationRunRecord,
   type ApplicationRunRecord,
-} from './application.js';
+} from './application-run-record.js';
 import {
   readApplicationFiles,
   applicationFilesHash,
@@ -56,7 +60,7 @@ export async function* iterateWorkflowApplicationRunSources(
       if (options.excludeApplications?.includes(entry.name)) continue;
       const applicationId = entry.name;
       if (
-        !/^[a-z][a-z\d]*(?:[.-][a-z\d]+)*$/u.test(applicationId) ||
+        !isWorkflowApplicationId(applicationId) ||
         !entry.isDirectory() ||
         entry.isSymbolicLink()
       ) {
@@ -70,11 +74,9 @@ export async function* iterateWorkflowApplicationRunSources(
         };
         continue;
       }
-      for await (const source of iterateFileRuntimeStoreRunSources({
-        rootDir: path.join(target, applicationId),
-        mirroredRevisionPaths: ['run.revision'],
-      }))
-        yield { ...source, applicationId, rootDir: path.join(target, applicationId) };
+      const storeOptions = applicationRunStoreOptions(root, applicationId);
+      for await (const source of iterateFileRuntimeStoreRunSources(storeOptions))
+        yield { ...source, applicationId, rootDir: storeOptions.rootDir };
     }
   }
 }
@@ -98,7 +100,6 @@ export async function readWorkflowApplicationRunObservation(
   try {
     const record = await readWorkflowApplicationRunRecord(projectRoot, applicationId, runId);
     if (!record) throw new Error('应用 Run 已消失，请重新读取列表');
-    record.run = parseWorkflowRun(record.run, runId);
     if (
       path.resolve(record.application.projectRoot) !== (await fs.realpath(projectRoot)) ||
       !record.application.version ||
@@ -153,7 +154,7 @@ export async function listWorkflowApplicationRunRecords(
       const applicationId = entry.name;
       if (options.applicationId && applicationId !== options.applicationId) continue;
       if (
-        !/^[a-z][a-z\d]*(?:[.-][a-z\d]+)*$/u.test(applicationId) ||
+        !isWorkflowApplicationId(applicationId) ||
         !entry.isDirectory() ||
         entry.isSymbolicLink()
       ) {
@@ -166,23 +167,16 @@ export async function listWorkflowApplicationRunRecords(
         continue;
       }
       try {
-        const rootDir = path.join(target, applicationId);
-        const store = createFileRuntimeStore<ApplicationRunRecord>({
-          rootDir,
-          mirroredRevisionPaths: ['run.revision'],
-        });
+        const storeOptions = applicationRunStoreOptions(root, applicationId);
+        const store = createFileRuntimeStore<ApplicationRunRecord>(storeOptions);
         const index = createApplicationStorageIndex({
-          rootDir,
+          rootDir: storeOptions.rootDir,
           read: (runId) => store.read(runId),
           holds: () => false,
         });
-        for (const item of await listFileRuntimeStoreRuns<ApplicationRunRecord>(
-          {
-            rootDir: path.join(target, applicationId),
-            mirroredRevisionPaths: ['run.revision'],
-          },
-          { excludeClosed: options.excludeClosed },
-        )) {
+        for (const item of await listFileRuntimeStoreRuns<ApplicationRunRecord>(storeOptions, {
+          excludeClosed: options.excludeClosed,
+        })) {
           if (
             options.excludeAbortedRegistrations &&
             item.runId &&
@@ -222,15 +216,8 @@ export async function listWorkflowApplicationRunRecords(
   return [...discovered.values()].map((item) => {
     if (!item.runId || item.error) return { ...item, record: null };
     try {
-      const record = item.record;
-      if (!record) throw new Error('应用 Run 已消失，请重新读取列表');
-      if (
-        record.application.id !== item.applicationId ||
-        record.runId !== record.run.runId ||
-        record.revision !== record.run.revision
-      )
-        throw new Error('应用归属与 SDK Run 不一致');
-      record.run = parseWorkflowRun(record.run, item.runId);
+      if (!item.record) throw new Error('应用 Run 已消失，请重新读取列表');
+      const record = parseApplicationRunRecord(item.record, item.applicationId, item.runId);
       if (
         path.resolve(record.application.projectRoot) !== root ||
         !record.application.version ||
@@ -343,14 +330,11 @@ export async function readWorkflowApplicationRunProjection(
   applicationId: string,
   runId: string,
 ) {
-  if (!/^[a-z][a-z\d]*(?:[.-][a-z\d]+)*$/u.test(applicationId)) throw new Error('应用身份无效');
+  if (!isWorkflowApplicationId(applicationId)) throw new Error('应用身份无效');
   const found = [];
   for (const root of await readWorkspaceRuntimeRoots(projectRoot)) {
     const projection = await readRuntimeProjection(
-      createFileRuntimeStore<ApplicationRunRecord>({
-        rootDir: path.join(root, 'applications', applicationId),
-        mirroredRevisionPaths: ['run.revision'],
-      }),
+      createFileRuntimeStore<ApplicationRunRecord>(applicationRunStoreOptions(root, applicationId)),
       runId,
     ).catch((error) => {
       if (error?.code === 'RUN_NOT_FOUND') return null;

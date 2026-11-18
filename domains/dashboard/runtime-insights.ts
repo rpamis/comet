@@ -1,9 +1,12 @@
 import { readCometDaemonStatus } from '../../platform/process/comet-daemon.js';
-import { listCreatorRunSources, readCreatorRunRecord } from '../workflow-creation/index.js';
+import {
+  listCreatorRunSources,
+  readCreatorRunRecord,
+} from '../workflow-creation/run-observation.js';
 import {
   listWorkflowApplicationRunSources,
   readWorkflowApplicationRunObservation,
-} from '../workflow-application/index.js';
+} from '../workflow-application/run-observation.js';
 
 async function collectHealth(projectRoot: string) {
   const observedAt = new Date().toISOString();

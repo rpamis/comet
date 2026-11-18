@@ -23,7 +23,8 @@ import {
   type ApplicationHostIntegrationPreview,
   type ApplicationHostIntegrationOptions,
 } from '../../platform/install/application-host.js';
-import { loadWorkflowApplication, parseWorkflowApplicationManifest } from './application.js';
+import { loadWorkflowApplication } from './application.js';
+import { parseWorkflowApplicationManifest } from './application-manifest.js';
 import { readWorkflowApplicationDefinition } from './application-definition.js';
 import {
   adaptApplicationSkill,

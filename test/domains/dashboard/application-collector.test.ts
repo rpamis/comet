@@ -21,7 +21,7 @@ import {
 } from '../../../domains/engine/runtime.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { DashboardSummaryIndex } from '../../../domains/dashboard/summary-index.js';
-import * as creatorObservations from '../../../domains/workflow-creation/index.js';
+import * as creatorObservations from '../../../domains/workflow-creation/run-observation.js';
 
 async function candidateEvidenceFixture(
   project: string,

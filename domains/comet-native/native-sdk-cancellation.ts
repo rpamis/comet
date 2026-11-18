@@ -5,7 +5,7 @@ import { fileRuntimeStoreRunPaths } from '../engine/runtime-store.js';
 import {
   readWorkflowApplicationRun,
   workflowApplicationRunPaths,
-} from '../workflow-application/application.js';
+} from '../workflow-application/application-run-record.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
 import {
   cometCurrentSelectionFile,

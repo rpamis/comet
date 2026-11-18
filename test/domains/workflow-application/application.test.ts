@@ -21,14 +21,12 @@ import {
   reconcileApplicationSkill,
   inspectApplicationSkill,
   listWorkflowApplicationRunRecords,
+  readWorkflowApplicationRun,
+  inspectWorkflowApplicationRun,
   inspectWorkflowApplicationLocks,
   repairWorkflowApplicationLock,
 } from '../../../domains/workflow-application/index.js';
 import type { SkillExecutionHost } from '../../../domains/workflow-application/index.js';
-import {
-  readWorkflowApplicationRun,
-  inspectWorkflowApplicationRun,
-} from '../../../domains/workflow-application/application.js';
 import {
   createDiskApplication,
   createScopeCycleApplication,

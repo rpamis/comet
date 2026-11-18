@@ -4,6 +4,8 @@
 
 公共类型和加载函数从 `@rpamis/comet/applications` 导出。源码入口为 `domains/workflow-application/index.ts`；执行调度和 Run 推进仍由 `@rpamis/comet/runtime` 实现。
 
+Dashboard 的 Run 观测直接读取 SDK 保存的进度、固定身份与清单。清单校验由 `application-manifest.ts` 维护，记录结构、存储路径和读取由 `application-run-record.ts` 维护，应用加载与执行由 `application.ts` 负责。SDK 的导出保持在原入口。
+
 ## 应用包与固定身份
 
 `application.json` 使用 `comet.workflow.application.v1`，声明 `id`、`version`、`base`、`runtimeVersion`、`entrySkill`、`module`、`skills` 和 `bindings`。`base` 表示 standalone、Native 或所选 Classic profile，不等同于应用身份。`id` 不得占用内置应用名 `native`、`classic-full`、`classic-hotfix`、`classic-tweak`，加载时在创建 Run 前拒绝冲突。应用目录必须与项目状态目录分开；入口文件固定命名为 `application.json`。

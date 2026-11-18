@@ -32,7 +32,7 @@ vi.mock('../../../domains/comet-native/native-sdk-cancellation.js', async (impor
 
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { nativeSdkChangeRunPaths } from '../../../domains/comet-native/native-sdk-cancellation.js';
-import { workflowApplicationRunPaths } from '../../../domains/workflow-application/application.js';
+import { workflowApplicationRunPaths } from '../../../domains/workflow-application/application-run-record.js';
 import { prepareNativeApplication } from '../../helpers/native-application.js';
 import { DashboardIndexReconciler } from '../../../domains/dashboard/index-reconciler.js';
 import { DashboardIndexStore } from '../../../domains/dashboard/index-store.js';
