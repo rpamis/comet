@@ -23,9 +23,6 @@ importers:
 
   .:
     dependencies:
-      '@ant-design/icons':
-        specifier: ^6.3.2
-        version: 6.3.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@babel/parser':
         specifier: 7.29.8
         version: 7.29.8
@@ -56,30 +53,18 @@ importers:
       ajv:
         specifier: ^8.17.1
         version: 8.20.0
-      antd:
-        specifier: ^6.6.2
-        version: 6.6.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       commander:
         specifier: ^15.0.0
         version: 15.0.0
-      dompurify:
-        specifier: ^3.4.17
-        version: 3.4.17
       es-module-lexer:
         specifier: 2.3.2
         version: 2.3.2
-      highlight.js:
-        specifier: ^11.12.0
-        version: 11.12.0
       jsonc-parser:
         specifier: 3.3.1
         version: 3.3.1
       marked:
         specifier: 18.0.11
         version: 18.0.11
-      mermaid:
-        specifier: 11.17.2
-        version: 11.17.2
       smol-toml:
         specifier: ^1.9.0
         version: 1.9.1
@@ -93,6 +78,9 @@ importers:
       '@ant-design/cssinjs':
         specifier: 2.1.2
         version: 2.1.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@ant-design/icons':
+        specifier: ^6.3.2
+        version: 6.3.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.4.0(jiti@2.7.0))
@@ -120,12 +108,21 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^4.1.12
         version: 4.1.12(vitest@4.1.12)
+      antd:
+        specifier: ^6.6.2
+        version: 6.6.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      dompurify:
+        specifier: ^3.4.17
+        version: 3.4.17
       esbuild:
         specifier: 0.28.2
         version: 0.28.2
       eslint:
         specifier: ^10.4.0
         version: 10.4.0(jiti@2.7.0)
+      highlight.js:
+        specifier: ^11.12.0
+        version: 11.12.0
       husky:
         specifier: ^9.1.7
         version: 9.1.7
@@ -135,6 +132,9 @@ importers:
       lint-staged:
         specifier: ^17.0.7
         version: 17.4.1
+      mermaid:
+        specifier: 11.17.2
+        version: 11.17.2
       postcss:
         specifier: 8.5.26
         version: 8.5.26

@@ -1,6 +1,5 @@
 import { readProjectConfig } from './native-config.js';
 import { nativeProjectPaths } from './native-paths.js';
-import { moveNativeRoot } from './native-root-move.js';
 import {
   assertNoArguments,
   NativeUsageError,
@@ -30,6 +29,7 @@ export async function nativeRootCommand(
   if (subcommand === 'move') {
     const target = requiredPositional(args, 'artifact root');
     assertNoArguments(args);
+    const { moveNativeRoot } = await import('./native-root-move.js');
     const result = await moveNativeRoot({ projectRoot, toArtifactRoot: target });
     return success('root move', result, `Moved Comet Native to ${result.toNativeRoot}\n`);
   }

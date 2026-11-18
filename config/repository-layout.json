@@ -384,10 +384,6 @@
       },
       {
         "from": "integrations",
-        "to": "skill"
-      },
-      {
-        "from": "integrations",
         "to": "workflow-contract"
       },
       {

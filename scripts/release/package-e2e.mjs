@@ -27,6 +27,7 @@ const requiredPackageFiles = [
   'bin/comet-daemon-router.js',
   'bin/fast-runtime-router.js',
   'dist/app/cli/index.js',
+  'dist/domains/dashboard/web/index.html',
   'dist/domains/engine/runtime.js',
   'dist/domains/engine/runtime.d.ts',
   'dist/domains/workflow-generation/index.js',
@@ -139,6 +140,16 @@ async function main() {
       }
     }
 
+    for (const file of packageFiles) {
+      if (
+        /^dist\/.*\.map$/u.test(file) ||
+        file.startsWith('eval/local/skills/benchmarks/040-beta/') ||
+        file === 'eval/local/treatments/comet/comet_full_040_beta.yaml' ||
+        file.startsWith('eval/local/tests/scaffold/')
+      )
+        throw new Error(`Published tarball contains a development artifact: ${file}`);
+    }
+
     const tarball = path.join(packageDir, packed.filename);
     const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8'));
     const packageName = packageJson.name;
@@ -157,7 +168,7 @@ async function main() {
     };
 
     run('npm', ['init', '--yes'], { cwd: consumerDir, env: environment });
-    run('npm', ['install', '--no-audit', '--no-fund', tarball], {
+    run('npm', ['install', '--omit=dev', '--no-audit', '--no-fund', tarball], {
       cwd: consumerDir,
       env: environment,
     });

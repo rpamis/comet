@@ -2,7 +2,6 @@ import path from 'node:path';
 import { runGitCommand } from '../../platform/process/git.js';
 import type { DispatchResult } from './native-cli-shared.js';
 import { nativeRecoveryCommand, type NativeRecovery } from './native-recovery.js';
-import { resolveNativeSdkCommandRoot } from './native-runtime-ownership.js';
 
 function object(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -36,9 +35,7 @@ export async function withNativeCommandRecovery(
     suppliedName && /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u.test(suppliedName)
       ? suppliedName
       : undefined;
-  let root = result.executionCwd ?? path.resolve(options.projectRoot);
-  if (name && result.exitCode !== 0 && !result.executionCwd)
-    root = await resolveNativeSdkCommandRoot(root, name, { readOnly: true }).catch(() => root);
+  const root = result.executionCwd ?? path.resolve(options.projectRoot);
   const command = (args: string[]) => nativeRecoveryCommand(args, root);
   const diagnosticArgs = command(['comet', 'native', 'doctor', ...(name ? [name] : [])]);
   const state = object(data.state);

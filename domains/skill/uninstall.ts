@@ -56,10 +56,9 @@ import { readJsonObjectFile } from './json-object.js';
 import {
   dshRootPath,
   readDshOwnedPaths,
-  removeDshCordisPatch,
-  removeDshInstruction,
   removeDshOwnedPaths,
-} from './dsh-adapter.js';
+} from '../../platform/install/dsh-ownership.js';
+import { removeDshCordisPatch, removeDshInstruction } from './dsh-adapter.js';
 import {
   SKILLS_AGENT_MAP,
   readStagedSuperpowersSkillNames,

@@ -4,6 +4,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ## What's Changed [0.5.5] - 2026-11-18
 
+### Changed
+
+- **Smaller npm installs**: Install the built Dashboard without its frontend build dependencies. Historical 0.4.0 beta Eval samples are available from the source repository.
+
 ### Fixed
 
 - **Fixed SDK applications across Comet upgrades**: Install, export, inspect, and resume fixed Native, Classic, and standalone applications across Comet releases. The original package and Run remain bound to their workflow, Skills, execution contracts, and approvals ([#569](https://github.com/rpamis/comet/issues/569)).

@@ -636,6 +636,8 @@ Comet 工作流专用，输出 9 个维度分数和一个 `weighted_score`。每
 
 ## Treatment 配置
 
+历史 `COMET_FULL_040_BETA` 对照样本和 scaffold 单元测试随源码仓库提供。复跑此基准时，从仓库的 `eval/` 目录启动对应命令。npm 安装包包含当前的 Eval 入口和场景。
+
 Treatment 定义注入哪些 Skill。位于 `local/treatments/`：
 
 ```yaml
