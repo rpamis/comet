@@ -12,13 +12,6 @@ export type NativeBriefSection =
 
 export type NativeBriefStructureSubsection = 'created' | 'modified' | 'deleted' | 'notCreated';
 
-export const NATIVE_BRIEF_STRUCTURE_SUBSECTIONS: readonly NativeBriefStructureSubsection[] = [
-  'created',
-  'modified',
-  'deleted',
-  'notCreated',
-];
-
 export type NativeVerificationSection =
   | 'verification'
   | 'currentResult'
@@ -124,7 +117,6 @@ const LEGACY_VERIFICATION_HEADINGS: Record<
 };
 
 const HEADING_KEYS = new Map<string, NativeBriefSection>();
-const VERIFICATION_HEADING_KEYS = new Map<string, NativeVerificationSection>();
 const BRIEF_STRUCTURE_SECTION_HEADINGS = new Set<string>();
 const BRIEF_STRUCTURE_SUBSECTION_KEYS = new Map<string, NativeBriefStructureSubsection>();
 
@@ -155,18 +147,6 @@ const BRIEF_STRUCTURE_HEADINGS: Record<
 for (const language of Object.keys(BRIEF_HEADINGS) as NativeArtifactLanguage[]) {
   for (const [key, heading] of Object.entries(BRIEF_HEADINGS[language])) {
     HEADING_KEYS.set(heading.toLocaleLowerCase('en-US'), key as NativeBriefSection);
-  }
-  for (const [key, heading] of Object.entries(VERIFICATION_HEADINGS[language])) {
-    VERIFICATION_HEADING_KEYS.set(
-      heading.toLocaleLowerCase('en-US'),
-      key as NativeVerificationSection,
-    );
-  }
-  for (const [key, heading] of Object.entries(LEGACY_VERIFICATION_HEADINGS[language])) {
-    VERIFICATION_HEADING_KEYS.set(
-      heading.toLocaleLowerCase('en-US'),
-      key as NativeVerificationSection,
-    );
   }
 }
 
@@ -203,27 +183,8 @@ export function nativeHeadingKey(heading: string): NativeBriefSection | null {
   return HEADING_KEYS.get(heading.trim().toLocaleLowerCase('en-US')) ?? null;
 }
 
-export function nativeVerificationHeadingKey(heading: string): NativeVerificationSection | null {
-  return VERIFICATION_HEADING_KEYS.get(heading.trim().toLocaleLowerCase('en-US')) ?? null;
-}
-
 export function nativeBriefStructureHeading(language: NativeArtifactLanguage): string {
   return BRIEF_STRUCTURE_HEADINGS[language].section;
-}
-
-export function nativeBriefStructureSubsectionHeading(
-  language: NativeArtifactLanguage,
-  subsection: NativeBriefStructureSubsection,
-): string {
-  return BRIEF_STRUCTURE_HEADINGS[language].subsections[subsection];
-}
-
-export function nativeBriefStructureSubsectionLabel(
-  subsection: NativeBriefStructureSubsection,
-): string {
-  return `${BRIEF_STRUCTURE_HEADINGS.en.subsections[subsection]}/${
-    BRIEF_STRUCTURE_HEADINGS['zh-CN'].subsections[subsection]
-  }`;
 }
 
 export function isNativeBriefStructureHeading(heading: string): boolean {

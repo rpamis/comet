@@ -111,7 +111,7 @@ it('retains original receipt, latest failure, and pending user decision checks f
     ),
   );
   const run = upgradeClassicRun(source, defineClassicWorkflowApplication('tweak').workflow);
-  await assertVerifyEvidenceCurrent(run, f.root, run.state as unknown as ClassicState, 1);
+  await assertVerifyEvidenceCurrent(run, run.state as unknown as ClassicState);
   const original = run.actions.findLast((a) => a.stepId === 'tweak.verify.check')!;
   for (const kind of [
     'wrong-reference',
@@ -133,7 +133,7 @@ it('retains original receipt, latest failure, and pending user decision checks f
       expect(() => parseWorkflowRun(changed), kind).toThrow();
     else
       await expect(
-        assertVerifyEvidenceCurrent(changed, f.root, changed.state as unknown as ClassicState, 1),
+        assertVerifyEvidenceCurrent(changed, changed.state as unknown as ClassicState),
         kind,
       ).rejects.toThrow();
   }

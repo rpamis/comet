@@ -297,21 +297,3 @@ export async function inspectNativeSupervisorOverlay(options: {
         snapshot,
       };
 }
-
-export async function removeNativeSupervisorOverlayIfUnchanged(options: {
-  paths: NativeProjectPaths;
-  state: NativePortableState;
-  expected: Extract<NativeSupervisorOverlayInspection, { status: 'repairable-legacy-overlay' }>;
-}): Promise<void> {
-  const current = await inspectNativeSupervisorOverlay({
-    paths: options.paths,
-    state: options.state,
-  });
-  if (
-    current.status !== 'repairable-legacy-overlay' ||
-    current.snapshot !== options.expected.snapshot
-  ) {
-    throw new Error('Native Supervisor overlay changed before the safe repair could be applied');
-  }
-  await fs.rm(current.file, { force: false });
-}

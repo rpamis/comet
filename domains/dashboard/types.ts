@@ -14,8 +14,6 @@ export type ChangeStatus = 'active' | 'archived';
 
 export type ChangePhase = 'open' | 'design' | 'build' | 'verify' | 'archive' | 'unknown';
 
-export type PhaseStepStatus = 'done' | 'current' | 'pending' | 'failed' | 'unknown';
-
 export type VerifyResult = 'pending' | 'pass' | 'fail' | 'unknown';
 
 export type RiskLevel = 'info' | 'warning' | 'error';

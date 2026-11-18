@@ -158,25 +158,6 @@ export function supervisorDependenciesIntegrated(
   const statuses = new Map(children.map(({ name, status }) => [name, status]));
   return dependsOn.every((dependency) => statuses.get(dependency) === 'integrated');
 }
-export function stableSupervisorIntegrationOrder(
-  state: NativeSupervisorState,
-): NativeSupervisorChildState[] {
-  const remaining = new Set(state.children.map(({ name }) => name));
-  const ordered: NativeSupervisorChildState[] = [];
-  while (remaining.size > 0) {
-    const candidate = state.children.find(
-      (child) =>
-        remaining.has(child.name) &&
-        child.dependsOn.every((dependency) => !remaining.has(dependency)),
-    );
-    if (!candidate) {
-      throw new Error('Native Supervisor Child dependencies contain a cycle');
-    }
-    ordered.push(candidate);
-    remaining.delete(candidate.name);
-  }
-  return ordered;
-}
 export function createNativeSupervisorState(options: {
   parent: string;
   targetBranch: string;

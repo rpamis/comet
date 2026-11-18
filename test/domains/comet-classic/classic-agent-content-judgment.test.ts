@@ -316,9 +316,7 @@ it.each(
       'Actual platform worker check exited 7; repair is required.',
     );
     const failed = (await inspectClassicSdkRun(root, 'example')).run;
-    await expect(
-      assertVerifyEvidenceCurrent(failed, root, failed.state as never),
-    ).rejects.toThrow();
+    await expect(assertVerifyEvidenceCurrent(failed, failed.state as never)).rejects.toThrow();
     expect(
       failed.actions.findLast((action) => action.stepId === profile + '.verify.run')?.outcome
         ?.output,

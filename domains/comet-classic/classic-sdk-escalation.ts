@@ -150,11 +150,10 @@ export async function decideClassicSdkEscalation(options: {
     );
     if (!expected) {
       // 旧提案没有范围收据，决定 continue 前只核对该提案之前已接受的范围。
-      await assertClassicPresetRequirementsCurrent(
-        options.projectRoot,
-        (run.input as { changeDir: string }).changeDir,
-        { ...run, waits: run.waits.filter((candidate) => candidate.id !== wait.id) },
-      );
+      await assertClassicPresetRequirementsCurrent((run.input as { changeDir: string }).changeDir, {
+        ...run,
+        waits: run.waits.filter((candidate) => candidate.id !== wait.id),
+      });
     } else if ((expected as { ref?: unknown }).ref !== current.ref)
       throw new Error(
         'Classic preset requirements changed after the scope proposal; restore the proposed artifacts or choose upgrade for a newly confirmed full Design',

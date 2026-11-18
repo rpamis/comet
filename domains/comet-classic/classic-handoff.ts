@@ -60,14 +60,6 @@ export function renderClassicHandoffMarkdown(
     ]),
   ].join('\n');
 }
-export function renderClassicSpecHandoffMarkdown(
-  _changeRef: string,
-  change: string,
-  _contextHash: string,
-  sources: readonly ClassicHandoffSource[],
-): string {
-  return renderClassicHandoffMarkdown(change, 'beta', '', sources);
-}
 
 /** 交接直接引用原需求材料；原 Run 已保存提案与决定，不再复制正文。 */
 export async function resolveClassicDesignContext(options: {

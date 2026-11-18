@@ -36,8 +36,3 @@ export async function unlinkWithRetry(target: string): Promise<void> {
 export async function linkWithRetry(source: string, target: string): Promise<void> {
   await withTransientRetry(() => fs.link(source, target), `link ${target}`);
 }
-
-/** Re-exported read that also tolerates transient Windows sharing violations. */
-export async function readFileWithRetry(path: string): Promise<string> {
-  return withTransientRetry(() => fs.readFile(path, 'utf8'), `read ${path}`);
-}

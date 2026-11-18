@@ -690,13 +690,7 @@ async function applyStateUpdateLocked(
       'verify',
     );
     if (!check) throw new GuardFailure('Verify 检查已变化，不能记录接受证据');
-    await rememberClassicAcceptedVerifyCheck(
-      classicCommandProjectRoot(),
-      changeDir,
-      context.run,
-      result.classic,
-      check,
-    );
+    await rememberClassicAcceptedVerifyCheck(changeDir, context.run, result.classic, check);
   }
   await transitionClassicRuntimeRun(changeDir, result.classic, context.run, {
     event,

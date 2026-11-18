@@ -766,10 +766,6 @@ function scheduleNativeDashboardRefresh(projectRoot: string): void {
     ),
   );
 }
-export function markNativeDashboardIndexDirty(projectRoot: string): void {
-  nativeIndexReconciler.markDirty(resolveDashboardIndexPath(path.resolve(projectRoot)));
-  scheduleNativeDashboardRefresh(projectRoot);
-}
 async function buildNativeDashboardIndex(
   projectRoot: string,
   options: {

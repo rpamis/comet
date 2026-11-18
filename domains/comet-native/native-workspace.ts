@@ -439,29 +439,6 @@ async function readNativeWorkspaceValue(
   }
 }
 
-export async function inspectNativeWorkspaceSchema(
-  paths: NativeProjectPaths,
-  name: string,
-): Promise<
-  'comet.native.workspace.v1' | 'comet.native.workspace.v2' | 'comet.native.workspace.v3' | null
-> {
-  const value = await readNativeWorkspaceValue(paths, name);
-  if (value === null) return null;
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('Native workspace identity must be an object');
-  }
-  const schema = (value as { schema?: unknown }).schema;
-  if (
-    schema === 'comet.native.workspace.v1' ||
-    schema === 'comet.native.workspace.v2' ||
-    schema === 'comet.native.workspace.v3'
-  ) {
-    if (schema !== 'comet.native.workspace.v1') assertIdentity(value);
-    return schema;
-  }
-  throw new Error('Unsupported Native workspace identity');
-}
-
 export async function projectNativeWorkspace(
   paths: NativeProjectPaths,
   name: string,
@@ -513,21 +490,6 @@ export async function projectNativeWorkspace(
       finish: null,
     };
   }
-}
-
-export async function nativeWorkspaceIdentityNeedsMigration(
-  paths: NativeProjectPaths,
-  name: string,
-): Promise<boolean> {
-  const value = await readNativeWorkspaceValue(paths, name);
-  if (value === null) return false;
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('Native workspace identity must be an object');
-  }
-  if ((value as { schema?: unknown }).schema === 'comet.native.workspace.v1') return true;
-  assertIdentity(value);
-  if (value.schema === 'comet.native.workspace.v3') return false;
-  return value.projectRootPathId === undefined || value.nativeRootPathId === undefined;
 }
 
 export async function inspectNativeWorkspaceIdentity(
@@ -640,18 +602,6 @@ export async function readNativeWorkspaceIdentity(
   }
   assertIdentity(value);
   return value;
-}
-
-export async function migrateLegacyNativeWorkspaceIdentity(options: {
-  paths: NativeProjectPaths;
-  name: string;
-  revision: number;
-  now?: Date;
-}): Promise<NativeWorkspaceIdentity | null> {
-  if (!(await nativeWorkspaceIdentityNeedsMigration(options.paths, options.name))) {
-    return null;
-  }
-  return writeNativeWorkspaceIdentity(options);
 }
 
 export async function inspectNativeWorkspaceAdvisory(options: {

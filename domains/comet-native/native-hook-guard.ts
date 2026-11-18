@@ -11,7 +11,7 @@ import {
 } from './native-sdk-cancellation.js';
 import { listNativeSdkHistoryPartitions } from './native-sdk-history-discovery.js';
 
-import type { CometHookIntent, CometHookRequest } from '../../platform/process/hook-adapter.js';
+import type { CometHookRequest } from '../../platform/process/hook-adapter.js';
 import {
   normalizeCometHookTargets,
   parseCometHookRequest,
@@ -43,8 +43,6 @@ const inspectHookSdkRun = memoizedHookRead(
   'nativeHookSdkRun',
   (projectRoot: string, name: string) => inspectNativeSdkRun(projectRoot, name, { readOnly: true }),
 );
-
-export type NativeHookIntent = CometHookIntent;
 export interface NativeHookRequest extends Omit<CometHookRequest, 'toolName'> {
   toolName?: string | null;
 }

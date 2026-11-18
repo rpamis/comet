@@ -1123,7 +1123,7 @@ async function next(
         });
   if (sdkWorkspace) {
     if (continueRun) {
-      const advanced = await advanceClassicSdkChange(sdkWorkspace.projectRoot, name, sdkWorkspace);
+      const advanced = await advanceClassicSdkChange(sdkWorkspace.projectRoot, sdkWorkspace);
       await nextSdkEntry(
         output,
         name,

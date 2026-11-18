@@ -761,17 +761,6 @@ export class PluginRuntime {
     return descriptor;
   }
 
-  private async requireInstalled(
-    descriptor: PluginDescriptor,
-  ): Promise<PluginState['plugins'][number]> {
-    const state = await this.ensureState();
-    const record = state.plugins.find((entry) => entry.id === descriptor.id);
-    if (record === undefined || record.status === 'uninstalled') {
-      throw new PluginRuntimeError(`Plugin is not installed: ${descriptor.id}`, 'missing');
-    }
-    return record;
-  }
-
   private assertCompatible(descriptor: PluginDescriptor): void {
     if (!this.isCompatible(descriptor)) {
       this.diagnosticEntries.push({

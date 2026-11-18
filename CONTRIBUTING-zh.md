@@ -282,7 +282,7 @@ docs/                # 架构、运维、设计文档（docs/superpowers/ 由工
 | `test/scripts/`          | `scripts/` 自动化脚本                                                                  |
 | `test/repository/`       | README、CI workflows、仓库布局、package scripts、各 workflow runtime assets 等跨层约束 |
 | `test/fixtures/`         | 测试数据                                                                               |
-| `test/helpers/`          | 测试工具（`comet-test-utils.ts`、`ensure-cli-built.ts`、`workflow-plan.ts`）           |
+| `test/helpers/`          | 测试工具（`comet-test-utils.ts`、`ensure-cli-built.ts`）                              |
 
 禁止新增 `test/ts/` 这种横向桶；旧文件应迁移到上面对应目录。CI smoke 入口是 `pnpm test:script-smoke`，GitHub Actions 与本地跑同一套 Classic 启动器 smoke。
 

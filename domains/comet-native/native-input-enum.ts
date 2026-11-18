@@ -21,24 +21,6 @@ export const NATIVE_ACCEPTANCE_REVIEW_STATUSES = [
 
 export const NATIVE_VERIFIER_RESPONSE_KINDS = ['final-result'] as const;
 
-export const NATIVE_RUNNER_INPUT_KINDS = [
-  'builder-handoff',
-  'dispatch-verifier',
-  'retry-checks',
-  'verifier-response',
-  'verifier-started',
-  'verifier-execution-error',
-  'verifier-unavailable',
-  'supervisor-builder-result',
-  'supervisor-builder-failure',
-  'supervisor-retry-builder',
-  'supervisor-reconnect',
-  'supervisor-cancel',
-  'supervisor-verifier-result',
-  'supervisor-checks',
-  'supervisor-integrate',
-] as const;
-
 /**
  * Validates an enumerated input value and names every legal value in the error
  * so a rejected submission is self-explanatory without reading source code.

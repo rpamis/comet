@@ -20,8 +20,6 @@ import {
   resolveWorkflowApplicationFile,
 } from '../workflow-application/application.js';
 
-export const NATIVE_SELECTION_MAX_BYTES = Number.MAX_SAFE_INTEGER;
-
 export async function readNativeSelectionRecord(
   paths: NativeProjectPaths,
 ): Promise<CometCurrentSelection | null> {
@@ -121,13 +119,6 @@ export async function clearNativeSelectionLocked(paths: NativeProjectPaths): Pro
   if (current.status === 'selected' && (await readNativeSelectionRecord(paths))) {
     await clearCometCurrentSelection(paths.projectRoot);
   }
-}
-
-export async function clearNativeSelectionIf(
-  paths: NativeProjectPaths,
-  name: string,
-): Promise<boolean> {
-  return withNativeMutation(paths, () => clearNativeSelectionIfLocked(paths, name));
 }
 
 export async function clearNativeSelectionIfLocked(

@@ -79,11 +79,7 @@ it.each([
   expect(accepted?.output.exitCode).toBe(0);
   expect(Object.keys(accepted?.output.deliveryInputs ?? {})).toEqual(['implementation.txt']);
   await expect(
-    assertVerifyEvidenceCurrent(
-      inspected,
-      'unused-for-business-history',
-      inspected.state as unknown as ClassicState,
-    ),
+    assertVerifyEvidenceCurrent(inspected, inspected.state as unknown as ClassicState),
   ).resolves.toBeUndefined();
   const verifier = inspected.actions.find((a) => a.stepId === 'tweak.verify.run')!;
   expect(verifier.outcome).toEqual(original.actions.find((a) => a.id === verifier.id)!.outcome);
@@ -94,11 +90,7 @@ it.each([
   );
   expect(acceptedClassicLegacyVerifyCheck(withoutEvidence)).toBeNull();
   await expect(
-    assertVerifyEvidenceCurrent(
-      withoutEvidence,
-      'unused',
-      withoutEvidence.state as unknown as ClassicState,
-    ),
+    assertVerifyEvidenceCurrent(withoutEvidence, withoutEvidence.state as unknown as ClassicState),
   ).rejects.toThrow();
 });
 
@@ -119,7 +111,7 @@ it.each(['reference', 'content-hash'] as const)(
     else evidence.receipt!.contentHash = '0'.repeat(64);
     expect(acceptedClassicLegacyVerifyCheck(converted)).toBeNull();
     await expect(
-      assertVerifyEvidenceCurrent(converted, 'unused', converted.state as unknown as ClassicState),
+      assertVerifyEvidenceCurrent(converted, converted.state as unknown as ClassicState),
     ).rejects.toThrow();
   },
 );

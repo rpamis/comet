@@ -99,7 +99,6 @@ export async function assertClassicSdkArchiveReady(
     }
     const approved = archiveApproval(run);
     await assertClassicPresetRequirementsCurrent(
-      projectRoot,
       String(
         (
           run.input as {
@@ -154,7 +153,7 @@ export async function assertClassicSdkArchiveReady(
     if (!branch || branch !== state.boundBranch || branch !== approved.targetBranch) {
       throw new Error('Classic Archive branch differs from the approved bound branch');
     }
-    await assertVerifyEvidenceCurrent(run, projectRoot, state);
+    await assertVerifyEvidenceCurrent(run, state);
     return approved;
   } catch (error) {
     throw new ClassicSdkArchiveReadinessError(
@@ -165,9 +164,7 @@ export async function assertClassicSdkArchiveReady(
 }
 export async function assertVerifyEvidenceCurrent(
   run: WorkflowRun,
-  projectRoot: string,
   state: ClassicState,
-  _acceptedEpochDelta = 2,
 ): Promise<void> {
   const report = run.evidenceWaits
     ?.slice()

@@ -5,10 +5,6 @@
 
 const ENUM_PLACEHOLDER_PATTERN = /^<([^<>|]+(?:\|[^<>|]+)+)>$/u;
 
-export function isNativeEnumPlaceholder(value: unknown): value is string {
-  return typeof value === 'string' && ENUM_PLACEHOLDER_PATTERN.test(value);
-}
-
 /**
  * Replaces every `<a|b|c>` placeholder with its first listed option so a
  * copied template can be parsed by the real input contract.

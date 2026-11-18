@@ -1,4 +1,4 @@
-import type { PluginContext, PluginDescriptor } from '../comet-plugin/index.js';
+import type { PluginContext } from '../comet-plugin/index.js';
 import type {
   AgentContextApplicationRecord,
   AgentContextOutcomeStatus,
@@ -746,7 +746,3 @@ export interface PersonalMemoryServiceLike {
   query?(request: MemoryProviderQuery): Promise<MemoryProviderQueryResult>;
   apply?(mutation: MemoryProviderMutation): Promise<unknown>;
 }
-
-export type PersonalMemoryPluginDescriptorFactory = (
-  options: PersonalMemoryPluginOptions,
-) => PluginDescriptor;

@@ -275,17 +275,6 @@ export interface NativePreparedScopeProjection {
   acceptancePage: NativeAcceptancePageProjection;
 }
 
-export interface NativeAdvanceResult {
-  change: NativeChangeState;
-  previousPhase: NativePhase;
-  next: 'auto' | 'manual' | 'done';
-  nextCommand: string | null;
-  findings: NativeStructuredFinding[];
-  continuation: NativeContinuation;
-  preparedScope?: NativePreparedScopeProjection;
-  repair?: NativeRepairDecisionProjection;
-}
-
 interface NativeTransitionJournalFields<TState extends NativeReadableChangeState> {
   id: string;
   change: string;
@@ -384,15 +373,6 @@ export interface NativeStatusPageProjection {
   };
 }
 
-export interface NativeDoctorFinding {
-  severity: 'info' | 'warning' | 'error';
-  code: string;
-  message: string;
-  path?: string;
-  repair?: 'continue' | 'rollback' | 'migrate' | 'truncate-tail' | 'recover';
-  repairCommand?: string;
-}
-
 export interface NativeSchemaMigrationJournal {
   schema: 'comet.native.schema-migration.v1';
   id: string;
@@ -422,16 +402,6 @@ export interface NativeSchemaMigrationJournal {
     evidenceHash: string;
     eventData: Record<string, unknown>;
   };
-}
-
-export interface NativeSchemaMigrationHooks {
-  afterPrepared?: (journal: NativeSchemaMigrationJournal) => void | Promise<void>;
-  afterStateWritten?: (journal: NativeSchemaMigrationJournal) => void | Promise<void>;
-  afterTransitionWritten?: (journal: NativeSchemaMigrationJournal) => void | Promise<void>;
-  afterTransitionSuperseded?: (journal: NativeSchemaMigrationJournal) => void | Promise<void>;
-  afterRunStateWritten?: (journal: NativeSchemaMigrationJournal) => void | Promise<void>;
-  afterTrajectoryWritten?: (journal: NativeSchemaMigrationJournal) => void | Promise<void>;
-  afterCheckpointWritten?: (journal: NativeSchemaMigrationJournal) => void | Promise<void>;
 }
 
 export type NativeTransactionKind = 'archive' | 'root-move';

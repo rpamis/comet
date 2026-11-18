@@ -56,7 +56,6 @@ async function continueEvidence(projectRoot: string, inspected: Inspection) {
 /** 合并明确续行中的内部操作；不猜命令、不领取 Agent 工作、不代替用户决定。 */
 export async function advanceClassicSdkChange(
   projectRoot: string,
-  change: string,
   inspected: Inspection,
 ): Promise<{
   run: WorkflowRun;

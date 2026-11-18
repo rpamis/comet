@@ -1,7 +1,3 @@
-import path from 'path';
-
-import type { NativeProjectPaths } from './native-types.js';
-
 export const NATIVE_EXCLUDED_DIRECTORY_NAMES = new Set([
   '.cache',
   '.git',
@@ -51,27 +47,6 @@ export function nativeSensitiveRelativePathReason(relativeRef: string): string |
   }
   if (lower.join('/') === '.comet/current-change.json') {
     return 'comet-selection';
-  }
-  return null;
-}
-
-export function nativeSensitiveArtifactReason(
-  paths: NativeProjectPaths,
-  relativeRef: string,
-): string | null {
-  const generic = nativeSensitiveRelativePathReason(relativeRef);
-  if (generic) return generic;
-  const target = path.resolve(paths.projectRoot, ...relativeRef.split('/'));
-  const relativeNativeRoot = path
-    .relative(paths.projectRoot, paths.nativeRoot)
-    .replaceAll('\\', '/');
-  const normalized = relativeRef.replaceAll('\\', '/');
-  if (
-    normalized === relativeNativeRoot ||
-    normalized.startsWith(`${relativeNativeRoot}/`) ||
-    target === path.resolve(paths.configFile)
-  ) {
-    return 'native-runtime';
   }
   return null;
 }

@@ -504,12 +504,4 @@ export async function inspectDshCordisPatch(
   }
 }
 
-export async function hasDshCordisPatch(
-  baseDir: string,
-  platform: Platform,
-  scope: InstallScope,
-): Promise<boolean> {
-  return (await inspectDshCordisPatch(baseDir, platform, scope)).present;
-}
-
 export { dshInstructionPath, dshPatchPath, dshHooksConfigPath };

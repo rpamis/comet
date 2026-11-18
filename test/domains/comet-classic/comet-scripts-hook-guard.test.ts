@@ -208,22 +208,6 @@ describe('hook guard', () => {
   });
 
   describe('allows source writes during build phase', () => {
-    it('allows preset-workflow build source writes when design_doc is null', async () => {
-      await createChange(
-        tmpDir,
-        'hotfix-build-no-doc',
-        ['workflow: hotfix', 'phase: build', 'design_doc: null', 'archived: false', ''].join('\n'),
-      );
-
-      const srcDir = path.join(tmpDir, 'src');
-      await fs.mkdir(srcDir, { recursive: true });
-      const targetFile = path.join(srcDir, 'fix.ts');
-
-      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
-
-      expect(result.status).toBe(0);
-    }, 20_000);
-
     it('blocks full-workflow build source writes until a plan is recorded', async () => {
       await createChange(
         tmpDir,

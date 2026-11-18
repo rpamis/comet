@@ -1,13 +1,7 @@
-import type { DeterministicResolver } from '../../domains/engine/resolver.js';
 import type { ClassicEvidence } from './classic-evidence.js';
 import { evidenceSatisfied } from './classic-evidence.js';
 import type { ClassicProfile, ClassicState } from './classic-state.js';
 import { classicConfigurationReady } from './classic-build-configuration.js';
-
-export interface ClassicResolverContext {
-  classic: ClassicState;
-  evidence: ClassicEvidence[];
-}
 
 function profileFor(classic: ClassicState): ClassicProfile {
   return classic.classicProfile ?? classic.workflow;
@@ -99,13 +93,3 @@ export function resolveClassicStepId(
       return resolveArchive(profile, classic);
   }
 }
-
-export const classicDeterministicResolver: DeterministicResolver<ClassicResolverContext> = {
-  resolveStep({ pkg, context }) {
-    const stepId = resolveClassicStepId(context.classic, context.evidence);
-    return pkg.definition.orchestration.steps?.find((step) => step.id === stepId);
-  },
-  resolveNext({ step }) {
-    return step.next ?? null;
-  },
-};

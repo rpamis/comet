@@ -52,7 +52,7 @@ const workContinuationExecutor: RuntimeExecutor = {
   id: 'comet-classic-work-continuation',
   capabilities: [],
   supports: (action) => action.ref === 'classic-work-continuation',
-  async execute(action, context, run) {
+  async execute(action, _context, run) {
     const id = (
       action.input as {
         activation?: {

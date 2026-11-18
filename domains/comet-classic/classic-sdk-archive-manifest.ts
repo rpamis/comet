@@ -381,13 +381,3 @@ export async function readClassicArchiveManifest(
     ],
   };
 }
-
-export async function classicArchiveManifestOutput(
-  root: string,
-  run: Readonly<WorkflowRun>,
-  action: Readonly<RuntimeAction>,
-) {
-  const entry = await (await receiptStore(root)).read(executionKey(run, action));
-  if (!entry) throw new Error('原 Archive 交付路径记录缺失');
-  return entry.manifest as unknown as import('../engine/runtime.js').RuntimeValue;
-}

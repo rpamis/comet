@@ -45,7 +45,7 @@ export async function inspectClassicSdkRevisionReadiness(
     )
   ) {
     try {
-      await assertClassicPresetRequirementsCurrent(projectRoot, input.changeDir, run);
+      await assertClassicPresetRequirementsCurrent(input.changeDir, run);
     } catch (error) {
       problems.push({
         code: 'CLASSIC_EVIDENCE_DRIFT',
@@ -100,7 +100,7 @@ export async function inspectClassicSdkRevisionReadiness(
     )
   ) {
     try {
-      await assertClassicSdkDesignRequirementsCurrent(projectRoot, input.changeDir, run);
+      await assertClassicSdkDesignRequirementsCurrent(input.changeDir, run);
       await classicAcceptedDesignEvidence(projectRoot, run);
     } catch (error) {
       requirementsDrift = true;

@@ -1,13 +1,11 @@
 import path from 'path';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { createHash } from 'node:crypto';
 import { resolveClassicLocalTarget } from './classic-runtime-paths.js';
 
 import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
 import { normalizeWorkflowRelativePath } from '../workflow-contract/project-config.js';
 import {
   ensureProtectedProjectDirectory,
-  hashProtectedProjectFile,
   inspectProtectedProjectPath,
   readProtectedProjectFile,
   type ProtectedProjectPathInspection,
@@ -48,11 +46,6 @@ export async function readClassicSourceObservation(
     active.files.set(ref, read);
   }
   return read;
-}
-
-export async function hashClassicSourceObservation(projectRoot: string, relative: string) {
-  const read = await readClassicSourceObservation(projectRoot, relative);
-  return read ? { ...read, digest: createHash('sha256').update(read.bytes).digest('hex') } : null;
 }
 
 async function projectTarget(
@@ -185,19 +178,6 @@ export async function ensureClassicProjectDirectory(
   return ensureProtectedProjectDirectory(resolved.root, resolved.relative, { label });
 }
 
-export async function assertClassicProjectFileWriteTarget(
-  projectRoot: string,
-  target: string,
-  label: string,
-): Promise<string> {
-  const inspection = await inspectClassicProjectTarget(projectRoot, target, {
-    label,
-    expected: 'file',
-    migrate: true,
-  });
-  return inspection.target;
-}
-
 export async function writeClassicProjectText(
   projectRoot: string,
   target: string,
@@ -220,13 +200,4 @@ export async function writeClassicProjectText(
     beforeCommit: options.beforeCommit,
     exclusive: options.exclusive,
   });
-}
-
-export async function hashClassicProjectFile(
-  projectRoot: string,
-  target: string,
-  options: Parameters<typeof hashProtectedProjectFile>[2],
-) {
-  const resolved = await projectTarget(projectRoot, target, options.label);
-  return hashProtectedProjectFile(resolved.root, resolved.relative, options);
 }
