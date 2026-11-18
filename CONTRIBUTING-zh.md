@@ -2,6 +2,8 @@
 
 语言：[English](CONTRIBUTING.md) | [中文](CONTRIBUTING-zh.md)
 
+参与项目交流时，请遵守[社区行为准则](.github/CODE_OF_CONDUCT-zh.md)。报告漏洞请参阅[安全政策](.github/SECURITY-zh.md)。
+
 感谢你帮助改进 Comet。这份指南说明如何配置项目、准备改动、维护分支、提交 PR，以及如何更新 Skill、Workflow runtime 等 Comet 特有资产。
 
 更深层的项目规范（中文术语翻译、Changelog 撰写、Skill 双语同步、README 改动克制等）写在 `CLAUDE.md` 中，本指南只覆盖贡献流程本身，不重复那些规则。
