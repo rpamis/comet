@@ -4,6 +4,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
 
 import { PLATFORMS, getPlatformSkillsDir } from '../../dist/platform/install/platforms.js';
@@ -59,7 +60,7 @@ function run(command, args, options = {}) {
     env: options.env ?? process.env,
     shell: process.platform === 'win32' && command === 'npm',
   });
-  if (result.status !== 0) {
+  if (result.status !== (options.expectedExitCode ?? 0)) {
     throw new Error(
       `${command} ${args.join(' ')} failed (${String(result.status)})\n${result.stdout}\n${result.stderr}`,
     );
@@ -879,7 +880,7 @@ async function main() {
       await assertFile(script, description);
     }
 
-    const createdChange = parseJsonPayload(
+    const rejectedCompatCreation = parseJsonPayload(
       run(
         process.execPath,
         [
@@ -891,19 +892,41 @@ async function main() {
           projectDir,
           '--json',
         ],
-        { cwd: projectDir, env: environment },
+        { cwd: projectDir, env: environment, expectedExitCode: 64 },
       ),
     );
     if (
-      createdChange.command !== 'new' ||
-      createdChange.exitCode !== 0 ||
-      createdChange.data?.name !== 'package-runtime-change' ||
-      createdChange.data?.run !== undefined
+      rejectedCompatCreation.error?.code !== 'usage' ||
+      !rejectedCompatCreation.error.message.includes('comet native next <change-name>')
     ) {
       throw new Error(
-        `Installed Native runtime could not create a change: ${JSON.stringify(createdChange)}`,
+        `Installed Native runtime did not explain compat recovery: ${JSON.stringify(rejectedCompatCreation)}`,
       );
     }
+
+    // Seed the legacy artifact and ownership records using the checkout. Status and Hook
+    // below read them through installed commands and must keep the original runtime format.
+    const fixtureModule = (name) =>
+      JSON.stringify(
+        pathToFileURL(path.join(repositoryRoot, 'dist/domains/comet-native', name + '.js')).href,
+      );
+    run(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `
+      import { nativeProjectPaths } from ${fixtureModule('native-paths')};
+      import { createNativePortableChange } from ${fixtureModule('native-portable-requirements')};
+      import { selectNativeChange } from ${fixtureModule('native-selection')};
+      const paths = await nativeProjectPaths(process.cwd(), 'docs');
+      const name = 'package-runtime-change';
+      await createNativePortableChange({ paths, name, language: 'en' });
+      await selectNativeChange(paths, name);
+    `,
+      ],
+      { cwd: projectDir, env: environment },
+    );
 
     const nativeStatus = parseJsonPayload(
       run(
@@ -919,7 +942,8 @@ async function main() {
       nativeStatus.command !== 'status' ||
       nativeStatus.exitCode !== 0 ||
       nativeStatus.data?.name !== 'package-runtime-change' ||
-      nativeStatus.data?.phase !== 'shape'
+      nativeStatus.data?.phase !== 'shape' ||
+      nativeStatus.data?.run !== undefined
     ) {
       throw new Error(
         `Installed Native runtime returned an invalid status: ${JSON.stringify(nativeStatus)}`,
