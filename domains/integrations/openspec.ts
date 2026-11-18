@@ -23,6 +23,14 @@ import type { InstallScope } from '../../platform/install/types.js';
 const VALID_TOOL_IDS = new Set(PLATFORMS.map((p) => p.openspecToolId));
 const MINIMUM_OPENSPEC_VERSION = '1.5.0';
 const OH_MY_PI_MINIMUM_OPENSPEC_VERSION = '1.6.0';
+/** OpenSpec 2 writes every tool's project Skills once under this shared root. */
+const OPENSPEC_SHARED_SKILLS_DIR = '.agents';
+/** Lists, one per line, the OpenSpec tool ids the shared Skills were generated for. */
+const OPENSPEC_SHARED_TARGET_FILE = path.join(
+  OPENSPEC_SHARED_SKILLS_DIR,
+  'skills',
+  '.openspec-target',
+);
 const ALL_OPENSPEC_WORKFLOWS = [
   'propose',
   'explore',
@@ -192,13 +200,15 @@ function projectRelativePath(projectPath: string, target: string, label: string)
  * OpenSpec CLI, so the tree is small and bounded; walking it is cheap. This
  * distinguishes "no output at all" from "only empty directories" so a missing
  * or empty staged tool output fails the update instead of reporting success.
+ * `ignoredFile` (OpenSpec 2's shared target marker) does not count as output.
  */
-async function hasGeneratedToolFiles(dir: string): Promise<boolean> {
+async function hasGeneratedToolFiles(dir: string, ignoredFile?: string): Promise<boolean> {
   const entries = await fs.promises.readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
+    const entryPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      if (await hasGeneratedToolFiles(path.join(dir, entry.name))) return true;
-    } else {
+      if (await hasGeneratedToolFiles(entryPath, ignoredFile)) return true;
+    } else if (entryPath !== ignoredFile) {
       return true;
     }
   }
@@ -247,6 +257,7 @@ async function copyGeneratedToolDirectory(
     ) {
       throw new Error('OpenSpec generated tool source escaped its staging root');
     }
+    if (sourceEntry === path.join(stagingRoot, OPENSPEC_SHARED_TARGET_FILE)) continue;
     const destinationEntry = path.join(destination, entry.name);
     const sourceStat = entry.isSymbolicLink() ? await fs.promises.stat(sourceEntry) : entry;
     if (sourceStat.isDirectory()) {
@@ -287,6 +298,24 @@ async function copyGeneratedToolDirectory(
   }
 }
 
+/**
+ * Returns the tool ids OpenSpec 2 recorded for its shared `.agents` Skills, so
+ * the shared root is only accepted as output for a tool it was generated for.
+ */
+function readOpenSpecSharedTargets(stagingProject: string): Set<string> {
+  try {
+    const marker = fs.readFileSync(path.join(stagingProject, OPENSPEC_SHARED_TARGET_FILE), 'utf8');
+    return new Set(
+      marker
+        .split(/\r?\n/u)
+        .map((line) => line.trim())
+        .filter(Boolean),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
 interface GeneratedToolCopy {
   source: string;
   destination: string;
@@ -302,12 +331,16 @@ async function resolveGeneratedToolCopies(
 ): Promise<GeneratedToolCopy[]> {
   const copies: GeneratedToolCopy[] = [];
   const mergedDestinations = new Set<string>();
+  const sharedTargets = readOpenSpecSharedTargets(stagingProject);
   for (const toolId of toolIds) {
     const generator = getOpenSpecGeneratorPlatform(toolId);
     if (!generator) continue;
     const candidateDirs = [
-      generator.openspecSkillsDir ?? generator.skillsDir,
-      ...(generator.legacySkillsDirs ?? []),
+      ...new Set([
+        generator.openspecSkillsDir ?? generator.skillsDir,
+        ...(generator.legacySkillsDirs ?? []),
+        ...(sharedTargets.has(toolId) ? [OPENSPEC_SHARED_SKILLS_DIR] : []),
+      ]),
     ];
     const sourceDir = candidateDirs.find((dir) => fs.existsSync(path.join(stagingProject, dir)));
     if (!sourceDir) {
@@ -316,7 +349,9 @@ async function resolveGeneratedToolCopies(
       );
     }
     const source = path.join(stagingProject, sourceDir);
-    if (!(await hasGeneratedToolFiles(source))) {
+    if (
+      !(await hasGeneratedToolFiles(source, path.join(stagingProject, OPENSPEC_SHARED_TARGET_FILE)))
+    ) {
       throw new Error(
         `OpenSpec generated an empty tool output for ${generator.id}: ${sourceDir} contains no skills or commands`,
       );

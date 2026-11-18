@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.5.5] - 2026-11-18
+
+### Fixed
+
+- **OpenSpec 2 Skills install**: `comet init` now installs OpenSpec Skills with OpenSpec 2.x for OpenCode, Cursor and other platforms that OpenSpec 2 no longer gives their own output directory. Skills generated in the shared `.agents/skills` directory are copied into each platform's own Skill directory when `.agents/skills/.openspec-target` lists that platform's tool; output generated for another tool, or a shared directory without any Skills, still fails the OpenSpec step instead of installing the wrong Skills ([#565](https://github.com/rpamis/comet/issues/565)).
+
 ## What's Changed [0.5.4] - 2026-11-16
 
 ### Added
