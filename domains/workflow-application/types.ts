@@ -63,6 +63,7 @@ export interface WorkflowApplicationManifest {
   id: string;
   version: string;
   base: ApplicationBase;
+  /** 生成应用时的 Comet 版本，随固定包及 Run 身份保存。 */
   runtimeVersion: string;
   entrySkill: string;
   /** 自包含 ESM；相对引用必须留在包内，第三方依赖须先 bundle。 */
@@ -110,6 +111,7 @@ export interface ApplicationIdentity {
   contentHash: string;
   packageRoot: string;
   projectRoot: string;
+  /** 原 Manifest 记录的 Comet 版本。 */
   runtimeVersion: string;
 }
 

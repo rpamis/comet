@@ -1,9 +1,13 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { getCurrentVersion } from '../../../platform/version/version.js';
-import { defineWorkflow, hashRuntimeValue } from '../../../domains/engine/runtime.js';
+import {
+  createRuntime,
+  defineWorkflow,
+  hashRuntimeValue,
+} from '../../../domains/engine/runtime.js';
 import {
   inspectWorkflowApplicationMaterial,
   inspectWorkflowApplicationPackage,
@@ -24,6 +28,7 @@ beforeEach(async () => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-application-definition-'));
 });
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await fs.rm(root, { recursive: true, force: true });
 });
 
@@ -317,3 +322,51 @@ it('refuses loading an application whose real graph differs from its static defi
     }),
   ).rejects.toThrow('实际工厂的流程与固定流程定义不匹配');
 });
+
+it.each(['native', 'classic-hotfix'] as const)(
+  'checks the stored %s Run before using a domain recovery definition',
+  async (base) => {
+    const fixture = await packageFixture(`
+import { readFileSync } from 'node:fs';
+const [fixed] = JSON.parse(readFileSync(new URL('./implementation.json', import.meta.url), 'utf8'));
+export function createApplication() {
+  const graph = structuredClone(fixed);
+  if (process.env.TEST_COMET_RECOVERY_GRAPH === 'incompatible') graph.transitions[2].to = 'search';
+  const workflows = [graph];
+  if (process.env.TEST_COMET_RECOVERY_GRAPH === 'extended') {
+    workflows.push({ id: 'restored-child', version: '1', entry: 'finish', steps: { finish: { type: 'handoff', ref: 'finish' } } });
+  }
+  return { workflows, wrapStore: store => store };
+}`);
+    const file = path.join(fixture.packageRoot, 'application.json');
+    await fs.writeFile(
+      file,
+      JSON.stringify({ ...fixture.manifest, base, runtimeVersion: '0.5.3' }),
+    );
+    const options = { file, projectRoot: root };
+    const initial = await loadWorkflowApplication(options);
+    const start = { runId: 'research', workflow: { id: 'research', version: '1' }, input: {} };
+    const original = await createRuntime({ ...initial.implementation, store: initial.store }).start(
+      start,
+    );
+
+    vi.stubEnv('TEST_COMET_RECOVERY_GRAPH', 'extended');
+    await expect(loadWorkflowApplication(options)).rejects.toThrow(
+      '实际工厂的流程与固定流程定义不匹配',
+    );
+    const recovered = await loadWorkflowApplication({
+      ...options,
+      runId: start.runId,
+      readOnly: true,
+    });
+    const runtime = createRuntime({ ...recovered.implementation, store: recovered.store });
+    expect(await runtime.inspect(start.runId)).toEqual(original);
+
+    vi.stubEnv('TEST_COMET_RECOVERY_GRAPH', 'incompatible');
+    await expect(
+      loadWorkflowApplication({ ...options, runId: start.runId, readOnly: true }),
+    ).rejects.toMatchObject({ code: 'WORKFLOW_CHANGED' });
+    vi.stubEnv('TEST_COMET_RECOVERY_GRAPH', 'extended');
+    expect(await runtime.inspect(start.runId)).toEqual(original);
+  },
+);

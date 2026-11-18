@@ -8,7 +8,9 @@
 
 `application.json` 使用 `comet.workflow.application.v1`，声明 `id`、`version`、`base`、`runtimeVersion`、`entrySkill`、`module`、`skills` 和 `bindings`。`base` 表示 standalone、Native 或所选 Classic profile，不等同于应用身份。`id` 不得占用内置应用名 `native`、`classic-full`、`classic-hotfix`、`classic-tweak`，加载时在创建 Run 前拒绝冲突。应用目录必须与项目状态目录分开；入口文件固定命名为 `application.json`。
 
-`module` 指向自包含 `.mjs` 工厂，导出 `createApplication(context)`。模块及其相对代码依赖只支持可检查的 `.mjs`；JSON 资源可引用。非字面量动态导入、包外相对导入和未固定的第三方包拒绝加载。第三方依赖先 bundle；模块不得有顶层 await。SDK 的公共入口按声明的 Runtime 版本固定。适配代码是经用户选择的可信代码，加载器不提供代码沙箱。
+`runtimeVersion` 记录生成应用时的 Comet 版本，并随固定包和 Run 身份保留。升级 Comet 后，可凭原包和原 Run ID 继续。加载器按实际格式、流程定义和执行契约校验兼容性，安装与导出按固定包内容校验。已有包和 Run 无需改写。
+
+`module` 指向自包含 `.mjs` 工厂，导出 `createApplication(context)`。模块及其相对代码依赖只支持可检查的 `.mjs`；JSON 资源可引用。非字面量动态导入、包外相对导入和未固定的第三方包拒绝加载。第三方依赖先 bundle；模块不得有顶层 await。适配代码是经用户选择的可信代码，加载器不提供代码沙箱。
 
 工厂收到 `manifest`、实际读取的 `skills`、`projectRoot`、`packageRoot`、`identity` 和 `createSkillExecutor(host)`，返回 SDK `workflows`、纯转移处理器、验证器与执行器。不能只改变图而遗漏对应实现。`inspectHook(run, request)` 读取相同 SDK Run；缺少 Guard 时当前应用的写入被阻塞。
 

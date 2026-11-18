@@ -66,9 +66,8 @@ describe('fixed packages pinned to an earlier published Runtime', () => {
     expect(claimed.revision).toBe(started.revision + 1);
     expect(claimed.actions[0].claim).toBeDefined();
 
-    // A new Run still needs the current Runtime.
-    await expect(loadWorkflowApplication({ file: disk.file, projectRoot: root })).rejects.toThrow(
-      `应用要求 Runtime ${pinned}`,
-    );
+    // 新 Run 也可使用原固定包，原包的来源版本会保留。
+    const forNewRun = await loadWorkflowApplication({ file: disk.file, projectRoot: root });
+    expect(forNewRun.identity).toEqual(before.identity);
   });
 });

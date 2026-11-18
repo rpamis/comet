@@ -31,7 +31,7 @@ export function renderApplicationRule(
     .join('\n');
   return `# ${manifest.id} 应用规则
 
-固定应用 ${manifest.id}@${manifest.version}；Runtime ${manifest.runtimeVersion}；基础流程 ${manifest.base}。Skill 入口与 Runtime 属于同一应用，SDK Run 是进度、执行尝试、批准与恢复的唯一依据。
+固定应用 ${manifest.id}@${manifest.version}；生成时的 Comet 版本 ${manifest.runtimeVersion}；基础流程 ${manifest.base}。Skill 入口与 Runtime 属于同一应用，SDK Run 是进度、执行尝试、批准与恢复的唯一依据。
 
 ## 当前工作与批准
 

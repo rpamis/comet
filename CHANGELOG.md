@@ -6,6 +6,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Fixed SDK applications across Comet upgrades**: Install, export, inspect, and resume fixed Native, Classic, and standalone applications across Comet releases. The original package and Run remain bound to their workflow, Skills, execution contracts, and approvals ([#569](https://github.com/rpamis/comet/issues/569)).
 - **Independent edits beside pending Native changes**: Explicitly leave the current workspace unselected with `comet native select --none` so unrelated edits can proceed while a Shape is pending. Hook routing and ambient resume honor this choice, workflow artifacts remain protected, and selecting the original change restores its phase constraints ([#568](https://github.com/rpamis/comet/issues/568)).
 - **OpenSpec 2 Skills install**: `comet init` now installs OpenSpec Skills with OpenSpec 2.x for OpenCode, Cursor and other platforms that OpenSpec 2 no longer gives their own output directory. Skills generated in the shared `.agents/skills` directory are copied into each platform's own Skill directory when `.agents/skills/.openspec-target` lists that platform's tool; output generated for another tool, or a shared directory without any Skills, still fails the OpenSpec step instead of installing the wrong Skills ([#565](https://github.com/rpamis/comet/issues/565)).
 

@@ -154,7 +154,6 @@ export interface ApplicationIdentity {
     packageRoot: string;
     // (undocumented)
     projectRoot: string;
-    // (undocumented)
     runtimeVersion: string;
     // (undocumented)
     version: string;
@@ -1958,7 +1957,6 @@ export interface WorkflowApplicationManifest {
     id: string;
     module: string;
     rule?: string;
-    // (undocumented)
     runtimeVersion: string;
     // (undocumented)
     schema: 'comet.workflow.application.v1';

@@ -39,7 +39,6 @@ import {
   type InstalledApplication,
 } from './installed-application.js';
 import { applicationInstallSkills, validateApplicationInstallEntries } from './install-record.js';
-import { getCurrentVersion } from '../../platform/version/version.js';
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 import { withRecoverableFileLock } from '../../platform/fs/plugin-store.js';
 
@@ -168,8 +167,6 @@ async function completePackage(file: string, projectRoot: string) {
     JSON.parse(Buffer.from(files['application.json'] ?? '', 'base64').toString('utf8')),
   );
   readWorkflowApplicationDefinition(files, manifest);
-  if (manifest.runtimeVersion !== getCurrentVersion())
-    applicationError(`应用要求 Runtime ${manifest.runtimeVersion}，当前是 ${getCurrentVersion()}`);
   if (!files[manifest.entrySkill] || !files[manifest.module])
     applicationError('应用入口 Skill 或执行模块缺失');
   for (const dependency of manifest.skills) {

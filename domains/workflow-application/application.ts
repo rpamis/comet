@@ -30,7 +30,6 @@ import {
   type WorkflowRun,
 } from '../engine/runtime.js';
 import { fileRuntimeStoreRunPaths } from '../engine/runtime-store.js';
-import { getCurrentVersion } from '../../platform/version/version.js';
 import {
   readCometCurrentSelection,
   readHookCurrentSelection,
@@ -69,8 +68,8 @@ import { createApplicationHook } from './application-hook.js';
 import {
   readWorkflowApplicationDefinition,
   validateWorkflowApplicationDefinitionPath,
-  assertWorkflowApplicationDefinitionMatches,
   matchesWorkflowApplicationDefinition,
+  workflowApplicationDefinitionMatchesImplementation,
 } from './application-definition.js';
 import {
   applyApplicationArtifactContracts,
@@ -474,26 +473,6 @@ export async function resolveWorkflowApplicationFile(
   );
 }
 
-/** 已发布的旧版固定包；其 Run 在新版本上继续原 Run。 */
-const LEGACY_BUILTIN_RUNTIME_VERSIONS: readonly string[] = ['0.5.2', '0.5.3'];
-
-/**
- * 旧版固定包是否继续原 Run：内置 Native / Classic 基座、带 runId，且版本是已发布的旧版本。
- * 普通执行调度由领域 Store 适配，不加载旧工厂。升级到下一个版本时，前一版本的固定包同样需要继续。
- */
-export function isLegacyBuiltinRun(
-  manifest: { runtimeVersion: string; base: string },
-  version: string,
-  runId: string | undefined,
-): boolean {
-  return (
-    manifest.runtimeVersion !== version &&
-    LEGACY_BUILTIN_RUNTIME_VERSIONS.includes(manifest.runtimeVersion) &&
-    Boolean(runId) &&
-    (manifest.base === 'native' || manifest.base.startsWith('classic-'))
-  );
-}
-
 export async function loadWorkflowApplication(options: {
   file: string;
   projectRoot: string;
@@ -523,10 +502,6 @@ export async function loadWorkflowApplication(options: {
       !Buffer.from(files[manifest.rule], 'base64').toString('utf8').trim())
   )
     applicationError('应用规则 Rule 必须是固定包内的非空 Markdown 文件');
-  const version = getCurrentVersion();
-  const legacyBuiltinRun = isLegacyBuiltinRun(manifest, version, options.runId);
-  if (manifest.runtimeVersion !== version && !legacyBuiltinRun)
-    applicationError(`应用要求 Runtime ${manifest.runtimeVersion}，当前是 ${version}`);
   if (!files[manifest.entrySkill] || !files[manifest.module])
     applicationError('应用入口 Skill 或执行模块缺失');
   const skills = new Map<string, AdaptedSkill>();
@@ -656,14 +631,21 @@ export async function loadWorkflowApplication(options: {
     applicationError('应用模块必须提供完整 SDK 工作流');
   implementation = applyApplicationArtifactContracts(implementation, { manifest, projectRoot });
   const workflows = implementation.workflows.map(defineWorkflow);
-  if (definition) {
-    if (!legacyBuiltinRun) assertWorkflowApplicationDefinitionMatches(definition, workflows);
-    else if (
-      existingRun &&
-      !matchesWorkflowApplicationDefinition(definition, existingRun) &&
-      !matchesWorkflowApplicationDefinition({ ...definition, workflows }, existingRun)
+  const needsDefinitionRecovery =
+    definition && !workflowApplicationDefinitionMatchesImplementation(definition, workflows);
+  // Native/Classic Store 可以适配历史领域定义。新 Run 仍须严格匹配固定图。
+  const assertRecoverableDefinition = (run: WorkflowRun) => {
+    if (
+      needsDefinitionRecovery &&
+      !matchesWorkflowApplicationDefinition(definition, run) &&
+      !matchesWorkflowApplicationDefinition({ ...definition, workflows }, run)
     )
-      applicationError('旧固定应用 Run 不匹配原定义或当前业务定义');
+      throw new RuntimeProtocolError('WORKFLOW_CHANGED', '原 Run 不匹配固定流程定义或领域恢复定义');
+  };
+  if (needsDefinitionRecovery) {
+    if (!singleWriter || !options.runId || !implementation.wrapStore)
+      applicationError('实际工厂的流程与固定流程定义不匹配，请同步确认方案');
+    if (existingRun) assertRecoverableDefinition(existingRun);
   }
   const bindingKeys = new Set<string>();
   for (const binding of manifest.bindings) {
@@ -1000,6 +982,7 @@ export async function loadWorkflowApplication(options: {
     async restoreCheckpoint(runId, expectedRevision, run) {
       run = structuredClone(run);
       assertWritable();
+      assertRecoverableDefinition(run);
       await assertCurrentMaterial();
       const restore = async () => {
         await assertCurrentMaterial();
@@ -1075,6 +1058,7 @@ export async function loadWorkflowApplication(options: {
       await assertCurrentMaterial();
       // 隔离调用者在异步等待期间修改下一版本。
       run = structuredClone(run);
+      if (expectedRevision === null) assertRecoverableDefinition(run);
       const prepared = persistent.prepareCompareAndSwap!(runId, expectedRevision, {
         runId,
         revision: run.revision,
@@ -1244,7 +1228,7 @@ export async function loadWorkflowApplication(options: {
   };
   // SDK 自身校验所有 handler、validator、executor 身份；只装载图不足以通过这里。
   const runtime = createRuntime({ ...checkedImplementation, store });
-  if (legacyBuiltinRun) await runtime.inspect(options.runId!);
+  if (needsDefinitionRecovery) await runtime.inspect(options.runId!);
   return { manifest, definition, identity, implementation: checkedImplementation, skills, store };
 }
 
