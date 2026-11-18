@@ -1,5 +1,5 @@
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
-import { importLegacyWorkspaceRuntimeData } from '../../../domains/workflow-contract/legacy-runtime-import.js';
+import { importLegacyWorkspaceRuntimeData } from '../../../domains/comet-entry/legacy-runtime-import.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

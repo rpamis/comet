@@ -6,7 +6,7 @@ import type { ClassicArtifactLayout } from '../comet-classic/classic-layout.js';
 import {
   isClassicStateFileName,
   resolveClassicStateFile,
-} from '../comet-classic/classic-state-file.js';
+} from '../workflow-contract/classic-state-file.js';
 import {
   hasExplicitClassicArtifactLayout,
   normalizeWorkflowArtifactRoot,

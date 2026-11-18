@@ -1,4 +1,7 @@
-import { resolveClassicStateFile, isClassicStateFileName } from './classic-state-file.js';
+import {
+  resolveClassicStateFile,
+  isClassicStateFileName,
+} from '../workflow-contract/classic-state-file.js';
 import { isWorkspaceRuntimeMigrationFence } from '../workflow-contract/workspace-runtime.js';
 import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';

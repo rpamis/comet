@@ -6,7 +6,7 @@ import {
   type WorkflowRun,
 } from '../engine/runtime.js';
 import { readClassicProjectFile } from './classic-protected-path.js';
-import { resolveClassicStateFile } from './classic-state-file.js';
+import { resolveClassicStateFile } from '../workflow-contract/classic-state-file.js';
 import { hasClassicManagedRunMarker, parseClassicStateDocument } from './classic-state.js';
 import { readClassicSdkDeliveryCheckpoint } from './classic-sdk-delivery-checkpoint.js';
 import { assertClassicAgentCheckReports } from './classic-sdk-application.js';

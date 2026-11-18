@@ -47,7 +47,7 @@ import { classicSdkArchiveGuard } from './classic-sdk-guard.js';
 import { classicSdkEntryData } from './classic-sdk-output.js';
 import { findClassicSdkWorkspace } from './classic-sdk-status.js';
 import { appendClassicStateEvent } from './classic-state-events.js';
-import { resolveClassicStateFile } from './classic-state-file.js';
+import { resolveClassicStateFile } from '../workflow-contract/classic-state-file.js';
 import { readClassicState, withClassicStateMutation, writeClassicState } from './classic-store.js';
 import { applyClassicTransition } from './classic-transitions.js';
 export { annotatedMarkdown } from './classic-archive-annotation.js';

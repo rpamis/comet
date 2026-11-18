@@ -3,7 +3,7 @@ import { promises as fs } from 'fs';
 import type { BigIntStats, Dirent, Stats } from 'fs';
 import path from 'path';
 import { hasClassicManagedRunMarker } from './classic-state.js';
-import { isClassicStateFileName } from './classic-state-file.js';
+import { isClassicStateFileName } from '../workflow-contract/classic-state-file.js';
 
 import {
   hasComparableFileObject,

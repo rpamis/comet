@@ -252,6 +252,10 @@
       },
       {
         "from": "comet-entry",
+        "to": "engine"
+      },
+      {
+        "from": "comet-entry",
         "to": "integrations"
       },
       {
@@ -388,10 +392,6 @@
       },
       {
         "from": "project-knowledge",
-        "to": "comet-classic"
-      },
-      {
-        "from": "project-knowledge",
         "to": "agent-learning"
       },
       {
@@ -473,10 +473,6 @@
       {
         "from": "workflow-generation",
         "to": "comet-classic"
-      },
-      {
-        "from": "workflow-contract",
-        "to": "engine"
       }
     ],
     "runtimeImports": [
@@ -497,13 +493,14 @@
       "domains/comet-classic/classic-hook-guard.ts",
       "domains/comet-classic/classic-layout-initialization.ts",
       "domains/comet-classic/classic-layout.ts",
+      "domains/comet-classic/classic-legacy-runtime-import.ts",
       "domains/comet-classic/classic-openspec-root.ts",
       "domains/comet-classic/classic-paths.ts",
       "domains/comet-classic/classic-protected-path.ts",
       "domains/comet-classic/classic-resume-probe.ts",
       "domains/comet-classic/classic-store.ts",
-      "domains/comet-classic/classic-state-file.ts",
       "domains/comet-classic/classic-sdk-status.ts",
+      "domains/comet-entry/legacy-runtime-import.ts",
       "domains/comet-entry/types.ts",
       "domains/comet-memory/index.ts",
       "domains/comet-memory/types.ts",
@@ -564,6 +561,8 @@
       "domains/skill/validate.ts",
       "domains/workflow-contract/workspace-runtime.ts",
       "domains/workflow-contract/change-runtime-owner.ts",
+      "domains/workflow-contract/classic-state-file.ts",
+      "domains/workflow-contract/legacy-business-file.ts",
       "domains/workflow-contract/contained-atomic-write.ts",
       "domains/workflow-contract/current-selection.ts",
       "domains/workflow-contract/global-config.ts",
@@ -590,8 +589,6 @@
       "domains/workflow-generation/index.ts",
       "domains/comet-native/native-application.ts",
       "domains/comet-classic/classic-sdk-application.ts",
-      "domains/workflow-contract/legacy-runtime-import.ts",
-      "domains/comet-classic/classic-legacy-runtime-import.ts",
       "domains/comet-native/native-children-contract.ts"
     ],
     "restrictedDependencies": [

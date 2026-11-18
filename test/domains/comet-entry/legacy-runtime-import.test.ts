@@ -3,7 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createFileRuntimeStore, type WorkflowRun } from '../../../domains/engine/runtime.js';
-import { importLegacyWorkspaceRuntimeData } from '../../../domains/workflow-contract/legacy-runtime-import.js';
+import { importLegacyWorkspaceRuntimeData } from '../../../domains/comet-entry/legacy-runtime-import.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { readChangeRuntimeOwner } from '../../../domains/workflow-contract/change-runtime-owner.js';
 const roots: string[] = [];

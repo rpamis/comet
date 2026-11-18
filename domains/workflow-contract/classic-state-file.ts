@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
-import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
 import path from 'node:path';
+import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
 
 export const CLASSIC_STATE_FILE = 'comet-state.yaml';
 export const LEGACY_CLASSIC_STATE_FILE = '.comet.yaml';

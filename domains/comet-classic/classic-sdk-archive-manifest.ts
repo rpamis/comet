@@ -14,7 +14,7 @@ import { resolveWorkspaceRuntimeRoot } from '../workflow-contract/workspace-runt
 import { annotatedMarkdown, archivedClassicDocumentRef } from './classic-archive-annotation.js';
 import { readClassicProjectFile, writeClassicProjectText } from './classic-protected-path.js';
 import { readLegacyClassicArchiveInputs } from './classic-sdk-archive-legacy-manifest.js';
-import { resolveClassicStateFile } from './classic-state-file.js';
+import { resolveClassicStateFile } from '../workflow-contract/classic-state-file.js';
 import type { ClassicState } from './classic-state.js';
 
 const manifestName = '.comet/archive-manifest.json';

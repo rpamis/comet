@@ -8,7 +8,7 @@ import {
 } from './classic-sdk-run-lifecycle.js';
 import { clearCometCurrentSelectionIf } from '../workflow-contract/current-selection.js';
 import { observeWorkflowRunStore } from '../workflow-application/run-trace.js';
-import { resolveClassicStateFile } from './classic-state-file.js';
+import { resolveClassicStateFile } from '../workflow-contract/classic-state-file.js';
 import {
   resolveWorkspaceRuntimeRoot,
   resolveWorkspaceRuntimeRootSync,

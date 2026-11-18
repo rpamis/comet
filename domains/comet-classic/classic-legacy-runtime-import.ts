@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { importLegacyBusinessFile } from '../workflow-contract/legacy-runtime-import.js';
+import { importLegacyBusinessFile } from '../workflow-contract/legacy-business-file.js';
 import { ensureWorkspaceRuntimeRoot } from '../workflow-contract/workspace-runtime.js';
 import {
   inspectProtectedProjectPath,
@@ -15,7 +15,7 @@ import {
 } from './classic-progress.js';
 import { resolveClassicLayout } from './classic-layout.js';
 import { resolveClassicRunDirectory, CLASSIC_LOCAL_RECORDS } from './classic-runtime-paths.js';
-import { resolveClassicStateFile } from './classic-state-file.js';
+import { resolveClassicStateFile } from '../workflow-contract/classic-state-file.js';
 import { readWorkflowProjectConfigDocument } from '../workflow-contract/project-config-reader.js';
 
 /** 安装升级时导入已知项目的 Classic 业务材料；普通命令不搬迁旧布局。 */

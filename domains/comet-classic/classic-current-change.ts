@@ -1,4 +1,4 @@
-import { ClassicStateFileConflictError } from './classic-state-file.js';
+import { ClassicStateFileConflictError } from '../workflow-contract/classic-state-file.js';
 import {
   clearCometCurrentSelection,
   clearCometCurrentSelectionIf,

@@ -3,7 +3,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { beforeEach, afterEach, expect, it } from 'vitest';
+import { beforeEach, afterEach, expect, it, vi } from 'vitest';
+import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { buildPluginIntegration } from '../../../scripts/build/build-plugin-integration.mjs';
 import { preparePluginIntegration } from '../../../domains/skill/plugin-integration.js';
 import {
@@ -114,6 +115,42 @@ it('runs the packaged router in the event project and provides rules without ini
     permissionDecisionReason: expect.stringContaining("belongs to Classic change 'other'"),
   });
   expect(execute(args).status).toBe(0);
+});
+
+it('imports workspace and change-local business records through the packaged SessionStart hook', async () => {
+  await activeChange();
+  const change = path.join(project, 'openspec/changes/selected');
+  const changeId = 'd25ad676-7df6-4d20-86c8-9a20c40d1974';
+  await fs.appendFile(path.join(change, '.comet.yaml'), `change_id: ${changeId}\n`);
+
+  const workspaceRecord = 'native/changes/older/trajectory.jsonl';
+  const workspaceSource = path.join(project, '.comet/runtime', workspaceRecord);
+  const classicSource = path.join(change, '.comet/trajectory.jsonl');
+  const workspaceLog = '{"event":"native history"}\n';
+  const classicLog = '{"event":"classic history"}\n';
+  await fs.mkdir(path.dirname(workspaceSource), { recursive: true });
+  await fs.mkdir(path.dirname(classicSource), { recursive: true });
+  await fs.writeFile(workspaceSource, workspaceLog);
+  await fs.writeFile(classicSource, classicLog);
+
+  vi.stubEnv('COMET_DATA_DIR', path.join(root, 'comet-data'));
+  try {
+    const session = execute(await invocation('SessionStart'));
+    expect(session.status, session.stderr).toBe(0);
+    const runtime = resolveWorkspaceRuntimeRootSync(project);
+    expect(await fs.readFile(path.join(runtime, workspaceRecord), 'utf8')).toBe(workspaceLog);
+    const classicTarget = path.join(
+      runtime,
+      'classic-changes',
+      changeId,
+      '.comet/trajectory.jsonl',
+    );
+    expect(await fs.readFile(classicTarget, 'utf8')).toBe(classicLog);
+    expect(await fs.readFile(workspaceSource, 'utf8')).toBe(workspaceLog);
+    expect(await fs.readFile(classicSource, 'utf8')).toBe(classicLog);
+  } finally {
+    vi.unstubAllEnvs();
+  }
 });
 
 it.each(['dsh', 'codex'] as const)(

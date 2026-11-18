@@ -1,4 +1,4 @@
-import { resolveClassicStateFile } from './classic-state-file.js';
+import { resolveClassicStateFile } from '../workflow-contract/classic-state-file.js';
 import { measureCometGitCommand } from '../../platform/process/runtime-metrics.js';
 import { execFileSync } from 'child_process';
 import { promises as fs } from 'fs';

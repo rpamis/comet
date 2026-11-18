@@ -50,7 +50,7 @@ import {
 } from './classic-sdk-guard.js';
 import { findClassicSdkWorkspace } from './classic-sdk-status.js';
 import { appendClassicStateEvent } from './classic-state-events.js';
-import { resolveClassicStateFile } from './classic-state-file.js';
+import { resolveClassicStateFile } from '../workflow-contract/classic-state-file.js';
 import type { ClassicPhase, ClassicState } from './classic-state.js';
 import { readClassicState, withClassicStateMutation } from './classic-store.js';
 import {

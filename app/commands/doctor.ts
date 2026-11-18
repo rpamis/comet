@@ -57,7 +57,7 @@ import type { InstallScope } from '../../platform/install/types.js';
 import {
   CLASSIC_STATE_FILE,
   resolveClassicStateFile,
-} from '../../domains/comet-classic/classic-state-file.js';
+} from '../../domains/workflow-contract/classic-state-file.js';
 import { inspectClassicChangeReadOnly } from '../../domains/comet-classic/classic-diagnostics.js';
 import { openSpecChangeNameError } from '../../domains/comet-classic/classic-paths.js';
 import {
@@ -1856,13 +1856,10 @@ export async function doctorCommand(
 ): Promise<number> {
   const projectPath = path.resolve(targetPath);
   if (options.importLegacyRuntime) {
-    const { importLegacyWorkspaceRuntimeData } =
-      await import('../../domains/workflow-contract/legacy-runtime-import.js');
-    const { importClassicLegacyRuntimeData } =
-      await import('../../domains/comet-classic/classic-legacy-runtime-import.js');
-    const data = await importLegacyWorkspaceRuntimeData(projectPath);
-    const classic = await importClassicLegacyRuntimeData(projectPath);
-    console.log(JSON.stringify({ status: 'imported', ...data, classic }));
+    const { importLegacyProjectRuntimeData } =
+      await import('../../domains/comet-entry/legacy-runtime-import.js');
+    const data = await importLegacyProjectRuntimeData(projectPath);
+    console.log(JSON.stringify({ status: 'imported', ...data }));
     return 0;
   }
   if (options.lockFile !== undefined) {

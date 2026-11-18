@@ -1,4 +1,7 @@
-import { resolveClassicStateFile, ClassicStateFileConflictError } from './classic-state-file.js';
+import {
+  resolveClassicStateFile,
+  ClassicStateFileConflictError,
+} from '../workflow-contract/classic-state-file.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { parseDocument } from 'yaml';

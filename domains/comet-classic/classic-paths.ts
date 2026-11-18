@@ -1,4 +1,4 @@
-import { resolveClassicStateFile } from './classic-state-file.js';
+import { resolveClassicStateFile } from '../workflow-contract/classic-state-file.js';
 import { classicOperationObservation } from './classic-command-context.js';
 import { promises as fs } from 'fs';
 import path from 'path';

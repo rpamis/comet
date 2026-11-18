@@ -2,7 +2,7 @@ import {
   resolveClassicStateFile,
   LEGACY_CLASSIC_STATE_FILE,
   isClassicStateFileName,
-} from './classic-state-file.js';
+} from '../workflow-contract/classic-state-file.js';
 import { randomUUID } from 'node:crypto';
 import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
 import { ensureWorkspaceRuntimeRoot } from '../workflow-contract/workspace-runtime.js';

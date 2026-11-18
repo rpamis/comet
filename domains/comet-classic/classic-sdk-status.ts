@@ -18,7 +18,7 @@ import {
   inspectClassicStateFileCandidates,
   resolveClassicChangeDirectory,
 } from './classic-paths.js';
-import { resolveClassicStateFile } from './classic-state-file.js';
+import { resolveClassicStateFile } from '../workflow-contract/classic-state-file.js';
 import type { ClassicProfile, ClassicState } from './classic-state.js';
 
 export const classicSdkCheckInstruction =

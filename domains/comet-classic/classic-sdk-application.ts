@@ -68,7 +68,7 @@ import {
   classicSdkRemoteBranchHead,
   classicSdkRemoteIdentity,
 } from './classic-sdk-remote.js';
-import { resolveClassicStateFile } from './classic-state-file.js';
+import { resolveClassicStateFile } from '../workflow-contract/classic-state-file.js';
 import type { ClassicProfile, ClassicState } from './classic-state.js';
 import { parseClassicTasks } from './classic-tasks.js';
 import { applyClassicTransition } from './classic-transitions.js';
