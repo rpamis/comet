@@ -3,8 +3,8 @@ import { promises as fs } from 'fs';
 import { spawnSync } from 'child_process';
 import os from 'os';
 import path from 'path';
-import { pathToFileURL } from 'url';
 import { vi } from 'vitest';
+import { readProtectedProjectFile } from '../../../domains/workflow-contract/protected-project-path.js';
 import { declaresWorkflowProjectConfig } from '../../../domains/workflow-contract/project-config.js';
 import {
   assertProjectConfigDocumentValid,
@@ -22,7 +22,6 @@ import {
   inspectProtectedProjectPath,
   validateWorkflowDefinition,
   workflowProjectConfigManagedValue,
-  workflowProjectConfigRuntimeHelperScript,
   inspectWorkflowProjectConfigTransaction,
   repairWorkflowProjectConfigTransaction,
 } from '../../../domains/workflow-contract/index.js';
@@ -277,12 +276,11 @@ describe('workflow contract normalization', () => {
     ).toThrow('hook.allow_paths[0] must stay inside its declared path base');
   });
 
-  it('keeps generated project-file reads bounded and rejects a post-inspection symlink swap', async () => {
+  it('rejects a project config replaced by a symlink during a protected read', async () => {
     const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-generated-config-race-'));
     const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-generated-config-outside-'));
     const configPath = path.join(projectRoot, '.comet', 'config.yaml');
     const outsideConfig = path.join(outsideRoot, 'config.yaml');
-    const helperModule = path.join(projectRoot, 'helper.mjs');
     await fs.mkdir(path.dirname(configPath), { recursive: true });
     await fs.writeFile(configPath, 'schema: comet.project.v1\n', 'utf8');
     await fs.writeFile(outsideConfig, `secret: ${'x'.repeat(128 * 1024)}\n`, 'utf8');
@@ -298,41 +296,17 @@ describe('workflow contract normalization', () => {
       }
       throw error;
     }
-    await fs.writeFile(
-      helperModule,
-      [
-        "import { constants as fsConstants, promises as fs } from 'fs';",
-        "import path from 'path';",
-        workflowProjectConfigRuntimeHelperScript(),
-        'export { readWorkflowProtectedFile };',
-        '',
-      ].join('\n'),
-      'utf8',
-    );
-
     try {
-      const runtime = (await import(`${pathToFileURL(helperModule).href}?race=${Date.now()}`)) as {
-        readWorkflowProtectedFile: (
-          projectRoot: string,
-          file: string,
-          label: string,
-          maxBytes: number,
-          hooks: { afterLstat: () => Promise<void> },
-        ) => Promise<Buffer>;
-      };
-      const result = runtime.readWorkflowProtectedFile(
-        projectRoot,
-        configPath,
-        '.comet/config.yaml',
-        64 * 1024,
-        {
-          afterLstat: async () => {
+      const result = readProtectedProjectFile(projectRoot, '.comet/config.yaml', 64 * 1024, {
+        label: 'Project config',
+        hooks: {
+          afterOpen: async () => {
             await fs.rm(configPath);
             await fs.symlink(outsideConfig, configPath, 'file');
           },
         },
-      );
-      await expect(result).rejects.toThrow(/real file|changed while opening/iu);
+      });
+      await expect(result).rejects.toThrow(/symlink|regular file|changed/iu);
       await expect(fs.readFile(outsideConfig, 'utf8')).resolves.toBe(
         `secret: ${'x'.repeat(128 * 1024)}\n`,
       );

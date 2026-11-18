@@ -19,10 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-try:
-    import tomllib
-except ImportError:
-    import tomli as tomllib  # Python < 3.11
+import tomllib
 
 
 from scaffold.python.paths import get_tasks_dir
