@@ -19,12 +19,6 @@ export interface CometCurrentSelection {
   applicationId?: string;
 }
 
-export interface LegacyClassicSelection {
-  version: 1;
-  change: string;
-  branch: string | null;
-}
-
 export type CometCurrentSelectionRead =
   | { status: 'missing' | 'none' }
   | { status: 'selected'; selection: CometCurrentSelection; legacy: boolean };

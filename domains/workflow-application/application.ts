@@ -279,6 +279,27 @@ async function recordScopeManifest(
     );
   return manifest;
 }
+
+function actionUsesApplicationWriteScope(
+  manifest: WorkflowApplicationManifest,
+  workflowId: string,
+  stepId: string,
+  skills?: ReadonlyMap<string, AdaptedSkill>,
+): boolean {
+  return manifest.bindings.some((binding) => {
+    if (
+      binding.workflowId !== workflowId ||
+      binding.stepId !== stepId ||
+      binding.usage !== 'action'
+    )
+      return false;
+    const skill = skills
+      ? skills.get(binding.skillId)
+      : manifest.skills.find((item) => item.id === binding.skillId);
+    return !!skill && skill.adapter.sideEffect !== 'read' && skill.adapter.scope.length > 0;
+  });
+}
+
 function workspaceClaimsForRun(
   run: WorkflowRun,
   manifest: WorkflowApplicationManifest,
@@ -289,17 +310,7 @@ function workspaceClaimsForRun(
       (action) =>
         action.type === 'invoke_skill' &&
         applicationActionHoldsScope(action) &&
-        manifest.bindings.some((binding) => {
-          const skill = manifest.skills.find((item) => item.id === binding.skillId);
-          return (
-            binding.workflowId === run.workflow.id &&
-            binding.stepId === action.stepId &&
-            binding.usage === 'action' &&
-            skill &&
-            skill.adapter.sideEffect !== 'read' &&
-            skill.adapter.scope.length > 0
-          );
-        }),
+        actionUsesApplicationWriteScope(manifest, run.workflow.id, action.stepId),
     )
     .map((action) => ({
       runId: run.runId,
@@ -318,29 +329,9 @@ async function recordHoldsApplicationScope(record: ApplicationRunRecord): Promis
   );
   if (!actions.length) return false;
   try {
-    const files = await readApplicationFiles(record.application.packageRoot);
-    const manifest = parseWorkflowApplicationManifest(
-      JSON.parse(Buffer.from(files['application.json'], 'base64').toString('utf8')),
-    );
-    if (
-      hashRuntimeValue({
-        package: applicationFilesHash(files),
-        skills: manifest.skills.map((skill) => ({ id: skill.id, contentHash: skill.contentHash })),
-      }) !== record.application.contentHash
-    )
-      return true;
+    const manifest = await recordScopeManifest(record);
     return actions.some((action) =>
-      manifest.bindings.some((binding) => {
-        const skill = manifest.skills.find((skill) => skill.id === binding.skillId);
-        return (
-          binding.workflowId === run.workflow.id &&
-          binding.stepId === action.stepId &&
-          binding.usage === 'action' &&
-          skill &&
-          skill.adapter.sideEffect !== 'read' &&
-          skill.adapter.scope.length > 0
-        );
-      }),
+      actionUsesApplicationWriteScope(manifest, run.workflow.id, action.stepId),
     );
   } catch {
     return true;
@@ -352,10 +343,9 @@ function applicationStorageMaintenance(
   applicationId: string,
   singleWriter = false,
 ) {
-  const rootDir = path.join(
+  const rootDir = applicationRunStoreRoot(
     resolveWorkspaceRuntimeRootSync(projectRoot),
-    'applications',
-    safeId(applicationId),
+    applicationId,
   );
   const store = createFileRuntimeStore<ApplicationRunRecord>({
     rootDir,
@@ -836,17 +826,7 @@ export async function loadWorkflowApplication(options: {
   });
   const actionNeedsScope = (run: WorkflowRun, action: WorkflowRun['actions'][number]) =>
     action.type === 'invoke_skill' &&
-    manifest.bindings.some((binding) => {
-      const skill = skills.get(binding.skillId);
-      return (
-        binding.workflowId === run.workflow.id &&
-        binding.stepId === action.stepId &&
-        binding.usage === 'action' &&
-        skill &&
-        skill.adapter.sideEffect !== 'read' &&
-        skill.adapter.scope.length > 0
-      );
-    });
+    actionUsesApplicationWriteScope(manifest, run.workflow.id, action.stepId, skills);
   const storageIndex = createApplicationStorageIndex<ApplicationRunRecord>({
     rootDir: storageRoot,
     read: (runId) => coordinatedStore.read(runId),
@@ -900,17 +880,8 @@ export async function loadWorkflowApplication(options: {
     recovering = false,
   ): Promise<WorkflowRun[]> => {
     // 与 scope 校验使用相同绑定规则；没有共享资源的动作无需读取其他 Run。
-    const needsPeers = manifest.bindings.some((binding) => {
-      if (
-        binding.workflowId !== run.workflow.id ||
-        binding.stepId !== action.stepId ||
-        binding.usage !== 'action'
-      )
-        return false;
-      const skill = skills.get(binding.skillId);
-      return skill && skill.adapter.sideEffect !== 'read' && skill.adapter.scope.length > 0;
-    });
-    if (!needsPeers) return [];
+    if (!actionUsesApplicationWriteScope(manifest, run.workflow.id, action.stepId, skills))
+      return [];
 
     const currentScopes = applicationActionScopes({ manifest, projectRoot }, run, action);
     for (const peerId of await workspaceIds(recovering)) {

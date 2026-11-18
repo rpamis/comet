@@ -80,7 +80,6 @@ export type {
   CometCurrentSelection,
   CometCurrentSelectionRead,
   CometWorkflow,
-  LegacyClassicSelection,
 } from './current-selection.js';
 export {
   inspectWorkflowProjectConfigTransaction,

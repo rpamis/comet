@@ -92,6 +92,19 @@ function enabledWorkflows(
   return config.workflows ?? [config.default_workflow];
 }
 
+function workflowArtifactRoots(
+  projectRoot: string,
+  config: Awaited<ReturnType<typeof readWorkflowProjectConfig>>,
+): string[] {
+  const layout = classicLayoutPaths(projectRoot, config?.classic?.artifact_layout ?? 'legacy');
+  return [
+    path.join(projectRoot, '.comet'),
+    layout.openSpecRoot,
+    layout.superpowersRoot,
+    ...(config?.native ? [path.join(projectRoot, config.native.artifact_root, 'comet')] : []),
+  ];
+}
+
 /**
  * Explicit user Hook outputs do not need a current Comet change. Keep this
  * check before owner resolution so an unrelated Hook is not forced to select
@@ -424,16 +437,11 @@ export async function inspectCometHook(
     const current = await readHookCurrentSelection(projectRoot);
     if (current.status === 'none') {
       const config = await readCachedProjectConfig(projectRoot);
-      const layout = classicLayoutPaths(projectRoot, config?.classic?.artifact_layout ?? 'legacy');
-      const protectedRoots = [
-        path.join(projectRoot, '.comet'),
-        layout.openSpecRoot,
-        layout.superpowersRoot,
-        ...(config?.native ? [path.join(projectRoot, config.native.artifact_root, 'comet')] : []),
-      ];
+      const protectedRoots = workflowArtifactRoots(projectRoot, config);
       for (const target of projectRequest.targets) {
+        const absolute = path.resolve(projectRoot, target);
         for (const root of protectedRoots) {
-          if (await isCometHookTargetWithin(root, path.resolve(projectRoot, target)))
+          if (await isCometHookTargetWithin(root, absolute))
             return {
               allowed: false,
               reason:
@@ -479,16 +487,11 @@ export async function inspectCometHook(
       return { ...decision, ...identity };
     }
     // With no selected change, ordinary documentation does not require historical Run recovery.
-    const selection = await readHookCurrentSelection(projectRoot);
-    if (selection.status === 'missing') {
+    if (current.status === 'missing') {
       const config = await readCachedProjectConfig(projectRoot);
-      const layout = classicLayoutPaths(projectRoot, config?.classic?.artifact_layout ?? 'legacy');
       const reserved = [
         path.join(projectRoot, '.git'),
-        path.join(projectRoot, '.comet'),
-        layout.openSpecRoot,
-        layout.superpowersRoot,
-        ...(config?.native ? [path.join(projectRoot, config.native.artifact_root, 'comet')] : []),
+        ...workflowArtifactRoots(projectRoot, config),
       ];
       const strict = config?.classic?.document_evidence === 'strict';
       const neutral =
@@ -500,11 +503,12 @@ export async function inspectCometHook(
         );
       if (neutral) {
         let protectedTarget = false;
-        for (const target of projectRequest.targets)
+        for (const target of projectRequest.targets) {
+          const absolute = path.resolve(projectRoot, target);
           for (const root of reserved) {
-            if (await isCometHookTargetWithin(root, path.resolve(projectRoot, target)))
-              protectedTarget = true;
+            if (await isCometHookTargetWithin(root, absolute)) protectedTarget = true;
           }
+        }
         if (!protectedTarget)
           return { allowed: true, reason: 'Unselected neutral documentation write' };
       }
@@ -539,11 +543,9 @@ export async function inspectCometHook(
     }
 
     const owner = resolution.owner;
-    const decision = await (owner.workflow === 'native'
+    return await (owner.workflow === 'native'
       ? dependencies.inspectNative(projectRoot, projectRequest, owner.name)
       : dependencies.inspectClassic(projectRoot, owner.name, projectRequest));
-    if (!decision.allowed) return decision;
-    return decision;
   } catch (error) {
     return {
       allowed: false,
