@@ -3,18 +3,31 @@ import type {
   NativeChildStatusProjection,
 } from '../comet-native/native-children.js';
 import { nativeSupervisorContractRef } from '../comet-native/native-children-contract.js';
-import { parseNativePortableState } from '../comet-native/native-portable-state.js';
+import {
+  createNativePortableState,
+  parseNativePortableState,
+} from '../comet-native/native-portable-state.js';
 import { readNativeSdkRunRecord } from '../comet-native/native-sdk-state-store.js';
 import { currentNativeSdkSupervisorActions } from '../comet-native/native-sdk-supervisor-plan.js';
 import { readChangeRuntimeOwner } from '../workflow-contract/change-runtime-owner.js';
 import { readWorkflowApplicationRun } from '../workflow-application/application-run-record.js';
-import type { NativeDashboardLocalExecutionSummary } from './native-adapter.js';
+import {
+  adaptNativeDashboardChange,
+  type NativeDashboardChangeProjection,
+  type NativeDashboardChildSummary,
+  type NativeDashboardLocalExecutionSummary,
+} from './native-adapter.js';
 
 type SdkInspection = {
   run: NonNullable<Awaited<ReturnType<typeof readNativeSdkRunRecord>>>;
   state: ReturnType<typeof parseNativePortableState>;
 };
 type Action = SdkInspection['run']['actions'][number];
+
+export interface NativeDashboardSdkChild extends NativeChildStatusProjection {
+  archiveName: string | null;
+  localExecution: NativeDashboardLocalExecutionSummary;
+}
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -42,7 +55,7 @@ function failed(action: Action): boolean {
 function childProgress(
   { run, state }: SdkInspection,
   projectRoot: string,
-): NativeChildStatusProjection[] {
+): NativeDashboardSdkChild[] {
   const confirmed = record(run.outputs['shape.prepare']?.value);
   const children = record(confirmed?.children);
   const contract = (state.children_contract ?? children?.contract) as
@@ -104,6 +117,8 @@ function childProgress(
         : typeof childWorktree === 'string'
           ? childWorktree
           : null,
+      archiveName: archived ? archiveRef(action) : null,
+      localExecution: describeExecution(action),
       message:
         status === 'blocked'
           ? (action?.reason ?? action?.outcome?.summary ?? 'SDK Action requires recovery.')
@@ -112,13 +127,16 @@ function childProgress(
   });
 }
 
-function executionProgress({ run, state }: SdkInspection): NativeDashboardLocalExecutionSummary {
-  const current = currentNativeSdkSupervisorActions(run).filter(
-    (action) => !/(?:checks|requested-checks)(?:-stop)?$/u.test(action.stepId),
-  );
-  const action =
-    current.find((action) => action.status === 'running') ??
-    current.find((action) => action.status === 'unknown');
+function archiveRef(action: Action): string | null {
+  const ref = record(action.outcome?.output)?.archiveRef;
+  return typeof ref === 'string' ? ref : null;
+}
+
+function describeExecution(
+  current: Action | undefined,
+  archived = false,
+): NativeDashboardLocalExecutionSummary {
+  const action = current?.status === 'running' || current?.status === 'unknown' ? current : null;
   const step = action?.stepId ?? '';
   const stage = step.includes('verifier')
     ? 'verifying'
@@ -129,7 +147,7 @@ function executionProgress({ run, state }: SdkInspection): NativeDashboardLocalE
         : null;
   return {
     status: action?.status === 'running' ? 'running' : action ? 'interrupted' : 'absent',
-    reason: state.archived ? 'archived' : action ? 'current' : 'idle',
+    reason: archived ? 'archived' : action ? 'current' : 'idle',
     stage,
     actor: action
       ? step.includes('builder')
@@ -141,10 +159,58 @@ function executionProgress({ run, state }: SdkInspection): NativeDashboardLocalE
   };
 }
 
+function executionProgress({ run, state }: SdkInspection): NativeDashboardLocalExecutionSummary {
+  const current = currentNativeSdkSupervisorActions(run).filter(
+    (action) => !/(?:checks|requested-checks)(?:-stop)?$/u.test(action.stepId),
+  );
+  return describeExecution(
+    current.find((action) => action.status === 'running') ??
+      current.find((action) => action.status === 'unknown'),
+    state.archived,
+  );
+}
+
 export interface NativeDashboardSdkProjection {
   state: SdkInspection['state'];
-  children: NativeChildStatusProjection[];
+  children: NativeDashboardSdkChild[];
   localExecution: NativeDashboardLocalExecutionSummary;
+}
+
+/** Project a child Action's own scope and execution, without creating a child state file. */
+export function adaptNativeDashboardSdkChild(
+  parent: SdkInspection['state'],
+  child: NativeDashboardSdkChild,
+  summary: NativeDashboardChildSummary,
+): NativeDashboardChangeProjection {
+  const base = createNativePortableState({
+    name: child.name,
+    language: parent.language,
+    createdAt: parent.created_at,
+  });
+  return {
+    ...adaptNativeDashboardChange({
+      state: {
+        ...base,
+        phase: 'build',
+        status: child.status === 'blocked' ? 'blocked' : 'active',
+        state_version: parent.state_version,
+        loop: {
+          ...base.loop,
+          stage: child.status === 'blocked' ? 'blocked' : 'building',
+          goal_cycle: parent.loop.goal_cycle,
+          next_action: child.message,
+        },
+        acceptance: parent.acceptance
+          .filter(({ id }) => child.covers.includes(id))
+          .map((item) => ({ ...item, result: 'pending', reason: null })),
+      },
+      status: 'active',
+      locator: summary.locator ?? undefined,
+      workspace: summary.workspace ?? undefined,
+      localExecutionSummary: child.localExecution,
+    }),
+    supervisorParent: parent.name,
+  };
 }
 
 /** SDK 读取失败由调用方显示为不可读，不能退回旧的进度来源。 */

@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.5.6] - 2026-11-19
+
+### Fixed
+
+- **Supervisor children in the Native Dashboard**: Group archived children under their Supervisor and open the snapshot for the confirmed plan, even after the children were archived again on a later date. Open running children to inspect their own acceptance scope and progress when execution is stored in the parent Run ([#577](https://github.com/rpamis/comet/issues/577)).
+
 ## What's Changed [0.5.5] - 2026-11-18
 
 ### Changed

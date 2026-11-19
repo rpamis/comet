@@ -54649,6 +54649,62 @@
       ]
     },
     {
+      "id": "dashboard-supervisor-archive-contract-grouping",
+      "behavior": "归档的 Supervisor 按同一 Run 归并子任务的历次归档，子任务详情打开父档确认的契约快照。",
+      "sources": ["https://github.com/rpamis/comet/issues/577"],
+      "coverageLevel": "runtime",
+      "reproduction": "Comet 0.5.4 的 Aevomi Dashboard 显示 25 个顶层归档，父档的 children 为空。隔离夹具使用引用式 v2 children.yaml、同一 Run 的两个日期快照和另一 Run 的同名快照，在 c458764e 返回 4 个顶层条目，期望 2 个。",
+      "expected": "归档列表计入父 Change 和无关归档。展开父档可以查看子任务和当前契约的归档。此前快照仍可按原归档名查询。",
+      "forbidden": "把同一 Run 历次子档计作独立 Change、将其他 Run 的同名子档归入该父档，或将子任务链接到已替代的契约快照。",
+      "rootCause": "父档读取引用式子任务契约时只传验收 ID，缺少验收目录，解析错误被当作空子列表。旧匹配逻辑只按子任务名定位，无法区分同名归档。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/native-collector.test.ts",
+          "namePattern": "^Native Dashboard v2 collector groups dated Supervisor child snapshots under the archived parent by Run and contract$",
+          "requiredNames": [
+            "Native Dashboard v2 collector groups dated Supervisor child snapshots under the archived parent by Run and contract"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "Windows Chromium using comet dashboard",
+          "status": "verified",
+          "evidence": [
+            "2026-11-19: On the original project through the installed 0.5.4 CLI, the Archived badge showed 25 and tools-browser was a top-level row. On the built 0.5.6 CLI, the badge showed 1, aevomi-platform expanded to 13 child rows, and clicking tools-browser opened 2026-11-19-tools-browser through the actual detail API."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard-supervisor-running-child-detail",
+      "behavior": "Dashboard 可从父 Run 打开没有独立状态文件的进行中 SDK Supervisor 子任务详情。",
+      "sources": ["https://github.com/rpamis/comet/issues/577"],
+      "coverageLevel": "runtime",
+      "reproduction": "Comet 0.5.4 的 Aevomi 父 change 下 platform-review 显示进行中，但是详情定位符为空，浏览器按钮禁用。在隔离夹具内，c458764e 的同一 running Builder Action 返回 locator: null。",
+      "expected": "点击子任务能查看其实际执行者、执行状态与分配到的验收范围，父项之外不增加顶层计数。",
+      "forbidden": "禁用正在执行的子任务、显示其他子任务或父任务的验收结果、暴露内部领取令牌、让已取消的 Action 继续通过旧链接打开，或写入独立子状态。",
+      "rootCause": "Dashboard 能从父 Run 计算 SDK 子任务进度，但定位详情只接受有独立 Native 目录的候选；实际子任务以父 Run 的 Action 保存。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/native-collector.test.ts",
+          "namePattern": "^Native Dashboard v2 collector opens a running SDK Supervisor child directly from its parent Run$",
+          "requiredNames": [
+            "Native Dashboard v2 collector opens a running SDK Supervisor child directly from its parent Run"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "Windows Chromium using comet dashboard",
+          "status": "verified",
+          "evidence": [
+            "2026-11-19: On the original project via the installed 0.5.4 CLI, the platform-review row was disabled. Through the built 0.5.6 CLI, Chromium clicked the same running row and rendered its own platform-review detail, Supervisor parent, and claimed execution status."
+          ]
+        }
+      ]
+    },
+    {
       "id": "native-562-build-material-deletions",
       "behavior": "首次 Build 交接精确同步已批准材料，保留源工作区对已提交 Spec 的删除。",
       "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581585323"],

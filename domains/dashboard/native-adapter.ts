@@ -179,6 +179,7 @@ interface NativeDashboardChangeIdentity {
 export type NativeDashboardChangeListItem = NativeDashboardChangeIdentity;
 
 export interface NativeDashboardChangeProjection extends NativeDashboardChangeIdentity {
+  supervisorParent?: string;
   artifacts: NativeDashboardArtifactPreview[];
   specs: NativeDashboardSpecSummary;
   acceptanceItems: NativeDashboardAcceptanceItem[];

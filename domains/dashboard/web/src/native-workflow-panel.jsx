@@ -976,6 +976,7 @@ const NativeChangeDetail = React.memo(function NativeChangeDetail({
           </div>
           <div className="mt-1 flex flex-wrap gap-3 text-xs text-meta">
             <span>native</span>
+            {change.supervisorParent && <span>Supervisor · {change.supervisorParent}</span>}
             <span>
               {change.status === 'archived'
                 ? t('归档于 {0}', [change.archivedAt ?? t('未知时间')])

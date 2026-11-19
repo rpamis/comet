@@ -2,7 +2,10 @@ import { promises as fs } from 'node:fs';
 import { fingerprintDashboardFiles } from './source-version.js';
 import path from 'node:path';
 import os from 'node:os';
-import { readNativeBoundedTextFile } from '../comet-native/native-bounded-file.js';
+import {
+  readNativeBoundedTextFile,
+  readNativeTextFilePrefix,
+} from '../comet-native/native-bounded-file.js';
 import {
   NATIVE_CHILDREN_FILE,
   inspectNativeChildren,
@@ -45,7 +48,9 @@ import { DashboardIndexStore, resolveDashboardIndexPath } from './index-store.js
 import { DashboardIndexReconciler } from './index-reconciler.js';
 import { nativeSupervisorStateFile } from '../comet-native/native-supervisor-state.js';
 import {
+  adaptNativeDashboardSdkChild,
   readNativeDashboardSdkProjection,
+  type NativeDashboardSdkChild,
   type NativeDashboardSdkProjection,
 } from './native-sdk-projection.js';
 import {
@@ -236,7 +241,7 @@ function nativeDashboardCandidateLocator(
 // Bump when the rebuild starts reading new facts or filtering candidates
 // differently. A stored index from another revision is rebuilt on the next read,
 // because its refreshPaths cannot notice the facts it never tracked.
-const NATIVE_DASHBOARD_INDEX_REVISION = 2;
+const NATIVE_DASHBOARD_INDEX_REVISION = 3;
 interface NativeDashboardIndex {
   revision?: number;
   runtimeDataRoot?: string;
@@ -416,9 +421,8 @@ function matchingChildCandidate(
 }
 function childSummary(
   child: NativeChildStatusProjection,
-  candidates: readonly NativeDashboardCandidate[],
+  candidate: NativeDashboardCandidate | null,
 ): NativeDashboardChildSummary {
-  const candidate = matchingChildCandidate(child, candidates);
   return {
     name: child.name,
     summary: child.summary,
@@ -431,6 +435,44 @@ function childSummary(
     changeStatus: candidate?.entry.status ?? null,
     ...(candidate?.entry.archiveName ? { archiveName: candidate.entry.archiveName } : {}),
     workspace: candidate ? dashboardWorkspaceIdentity(candidate.source.workspace) : null,
+  };
+}
+
+const SDK_CHILD_LOCATOR_PREFIX = 'native:supervisor-child:';
+
+function sdkChildSummary(
+  parent: NativeDashboardCandidate,
+  sdk: NativeDashboardSdkProjection,
+  child: NativeDashboardSdkChild,
+  candidates: readonly NativeDashboardCandidate[],
+): NativeDashboardChildSummary {
+  const candidate = child.archiveName
+    ? (candidates.find(
+        ({ entry }) => entry.archiveName === child.archiveName && entry.name === child.name,
+      ) ?? null)
+    : (candidates.find(
+        ({ entry, source }) =>
+          entry.status === 'active' &&
+          entry.name === child.name &&
+          child.projectRoot !== null &&
+          sameDashboardPath(source.workspace.projectRoot, child.projectRoot),
+      ) ?? null);
+  const summary = childSummary(child, candidate);
+  if (candidate || (child.status !== 'active' && child.status !== 'blocked')) return summary;
+  const parentWorkspace = parent.source.workspace;
+  const childWorkspace = child.projectRoot
+    ? collectDashboardWorkspaceSources(parentWorkspace.projectRoot).find(({ projectRoot }) =>
+        sameDashboardPath(projectRoot, child.projectRoot!),
+      )
+    : undefined;
+  return {
+    ...summary,
+    locator: encodeDashboardChangeLocator(
+      parentWorkspace.id,
+      `${SDK_CHILD_LOCATOR_PREFIX}${parent.entry.name}:${child.name}:${sdk.state.children_contract_ref}`,
+    ),
+    changeStatus: 'active',
+    workspace: dashboardWorkspaceIdentity(childWorkspace ?? parentWorkspace),
   };
 }
 async function hasNativeChildrenContract(candidate: NativeDashboardCandidate): Promise<boolean> {
@@ -450,7 +492,7 @@ async function activeParentChildren(
   try {
     if (!(await hasNativeChildrenContract(candidate))) return [];
     const { changeDir, read, sdk } = await readEntryState(candidate.source.paths, candidate.entry);
-    if (sdk) return sdk.children.map((child) => childSummary(child, candidates));
+    if (sdk) return sdk.children.map((child) => sdkChildSummary(candidate, sdk, child, candidates));
     if (read.kind !== 'portable') return [];
     const document = read.state.children_contract
       ? { contract: read.state.children_contract, drift: null }
@@ -468,7 +510,9 @@ async function activeParentChildren(
         state: read.state,
       });
       if (inspection) {
-        return inspection.children.map((child) => childSummary(child, candidates));
+        return inspection.children.map((child) =>
+          childSummary(child, matchingChildCandidate(child, candidates)),
+        );
       }
     }
     const children = document.contract.children;
@@ -533,7 +577,7 @@ async function activeParentChildren(
             projectRoot: childCandidate?.source.workspace.projectRoot ?? null,
             message,
           },
-          candidates,
+          childCandidate,
         );
       }),
     );
@@ -541,37 +585,81 @@ async function activeParentChildren(
     return [];
   }
 }
+
+async function childArchiveOrigin(candidate: NativeDashboardCandidate) {
+  const source = await readNativeTextFilePrefix({
+    root: entryDirectory(candidate.source.paths, candidate.entry),
+    ref: 'archive-source.md',
+    maxBytes: 1024,
+  }).catch(() => null);
+  // The Runtime writes provenance before the copied Parent materials in every SDK child archive.
+  const header = source?.text.split(/\r?\n/u, 6);
+  const parentRun = header?.[2]?.match(/^- Parent Run: (.+)$/u)?.[1];
+  const contractRef = header?.[4]?.match(/^- Contract: (.+)$/u)?.[1];
+  return parentRun && contractRef && header?.[3]?.startsWith(`- Archive Action: ${parentRun}:`)
+    ? { parentRun, contractRef, candidate }
+    : null;
+}
+
 async function archivedParentChildren(
   candidate: NativeDashboardCandidate,
   candidates: readonly NativeDashboardCandidate[],
-): Promise<NativeDashboardChildSummary[]> {
+): Promise<{ children: NativeDashboardChildSummary[]; ownedLocators: string[] }> {
+  const empty = { children: [], ownedLocators: [] };
   try {
-    if (!(await hasNativeChildrenContract(candidate))) return [];
+    if (!(await hasNativeChildrenContract(candidate))) return empty;
     const { changeDir, read } = await readEntryState(candidate.source.paths, candidate.entry);
-    if (read.kind !== 'portable' || !read.state.children_contract_ref) return [];
-    const document = await readNativeChildrenContract({
-      changeDir,
-      policy: 'advisory',
-      acceptanceIds: read.state.acceptance.map(({ id }) => id),
+    if (
+      read.kind !== 'portable' ||
+      !matchesEntry(candidate.entry, read.state) ||
+      !read.state.children_contract_ref
+    )
+      return empty;
+    const { state } = read;
+    const contract =
+      state.children_contract ??
+      (
+        await readNativeChildrenContract({
+          changeDir,
+          policy: 'advisory',
+          acceptanceIds: state.acceptance.map(({ id }) => id),
+          validation: { acceptanceCatalog: state.acceptance },
+        })
+      )?.contract;
+    if (!contract) return empty;
+    const names = new Set(contract.children.map(({ name }) => name));
+    const snapshots = candidates
+      .filter(({ entry }) => entry.status === 'archived' && names.has(entry.name))
+      .sort((left, right) => right.entry.archiveName!.localeCompare(left.entry.archiveName!));
+    const origins = await Promise.all(snapshots.map(childArchiveOrigin));
+    const owned = origins
+      .filter((origin) => origin !== null)
+      .filter(({ parentRun }) => parentRun === state.name);
+    const children = contract.children.map((child) => {
+      const progress: NativeChildStatusProjection = {
+        name: child.name,
+        summary: child.summary,
+        dependsOn: child.depends_on,
+        covers: child.covers,
+        status: 'done',
+        phase: 'archive',
+        projectRoot: null,
+        message: null,
+      };
+      const current = owned.find(
+        ({ candidate: snapshot, contractRef }) =>
+          snapshot.entry.name === child.name && contractRef === state.children_contract_ref,
+      );
+      const target =
+        current?.candidate ??
+        (contract.schema === 'comet.native.children.v1'
+          ? matchingChildCandidate(progress, snapshots)
+          : null);
+      return childSummary(progress, target);
     });
-    if (!document) return [];
-    return document.contract.children.map((child) =>
-      childSummary(
-        {
-          name: child.name,
-          summary: child.summary,
-          dependsOn: child.depends_on,
-          covers: child.covers,
-          status: 'done',
-          phase: 'archive',
-          projectRoot: null,
-          message: null,
-        },
-        candidates,
-      ),
-    );
+    return { children, ownedLocators: owned.map(({ candidate: snapshot }) => snapshot.locator) };
   } catch {
-    return [];
+    return empty;
   }
 }
 function isNativeDashboardIndex(value: unknown): value is NativeDashboardIndex {
@@ -697,16 +785,17 @@ async function rebuildNativeDashboardIndex(
     Promise.resolve(selectArchivedNativeCandidates(raw.archived)),
   ]);
   const all = [...active, ...archived];
-  const [activeChildren, archivedChildren] = await Promise.all([
+  const [activeChildren, archivedParents] = await Promise.all([
     Promise.all(active.map((candidate) => activeParentChildren(candidate, all))),
     Promise.all(archived.map((candidate) => archivedParentChildren(candidate, all))),
   ]);
-  const suppressed = new Set(
-    [...activeChildren, ...archivedChildren]
-      .flat()
-      .map(({ locator }) => locator)
-      .filter((locator): locator is string => Boolean(locator)),
-  );
+  const archivedChildren = archivedParents.map(({ children }) => children);
+  const suppressed = new Set([
+    ...archivedParents.flatMap(({ ownedLocators }) => ownedLocators),
+    ...[...activeChildren, ...archivedChildren].flatMap((children) =>
+      children.flatMap(({ locator }) => (locator ? [locator] : [])),
+    ),
+  ]);
   const rootCandidates = (
     candidates: readonly NativeDashboardCandidate[],
     children: readonly NativeDashboardChildSummary[][],
@@ -935,7 +1024,10 @@ async function collectNativeChangeListItem(
   };
   try {
     const { read, sdk } = await readEntryState(paths, entry);
-    if (sdk) common.children = sdk.children.map((child) => childSummary(child, candidates));
+    if (sdk)
+      common.children = sdk.children.map((child) =>
+        sdkChildSummary(candidate, sdk, child, candidates),
+      );
     if (read.kind === 'invalid') {
       return invalidNativeDashboardListItem({ name: entry.name, ...common, message: read.message });
     }
@@ -985,7 +1077,10 @@ async function collectNativeChange(
   };
   try {
     const { changeDir, read, sdk } = await readEntryState(paths, entry);
-    if (sdk) common.children = sdk.children.map((child) => childSummary(child, candidates));
+    if (sdk)
+      common.children = sdk.children.map((child) =>
+        sdkChildSummary(candidate, sdk, child, candidates),
+      );
     if (read.kind === 'invalid') {
       return invalidNativeDashboardChange({ name: entry.name, ...common, message: read.message });
     }
@@ -1121,6 +1216,27 @@ async function collectNativeDashboardChangeDetailUncached(
   if (options.locator) {
     const parsed = parseDashboardChangeLocator(options.locator);
     if (!parsed || !parsed.identity.startsWith('native:')) return null;
+    if (parsed.identity.startsWith(SDK_CHILD_LOCATOR_PREFIX)) {
+      if (options.status !== 'active') return null;
+      const [parentName, childName] = parsed.identity
+        .slice(SDK_CHILD_LOCATOR_PREFIX.length)
+        .split(':');
+      const parent = index.active.find(
+        ({ entry, source }) =>
+          entry.name === parentName && source.workspace.id === parsed.workspaceId,
+      );
+      if (!parent) return null;
+      const sdk = await readNativeDashboardSdkProjection(
+        parent.source.paths.projectRoot,
+        parentName,
+      ).catch(() => null);
+      const child = sdk?.children.find(({ name }) => name === childName);
+      if (!sdk || !child) return null;
+      const summary = sdkChildSummary(parent, sdk, child, index.all);
+      return summary.locator === options.locator
+        ? adaptNativeDashboardSdkChild(sdk.state, child, summary)
+        : null;
+    }
     candidate = index.all.find(({ locator }) => locator === options.locator);
   } else {
     candidate = index.all.find(
