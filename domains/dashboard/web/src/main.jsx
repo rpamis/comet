@@ -98,7 +98,7 @@ import { EvalSettings } from './eval-settings.jsx';
 import {
   DashboardAppearanceContext,
   DashboardAppearanceSettings,
-  useDashboardAppearance,
+  useDashboardFontScale,
 } from './dashboard-appearance.jsx';
 import { DashboardVersion, DashboardUpdateModal, useDashboardUpdate } from './dashboard-update.jsx';
 import { WorkflowPhaseTrack } from './phase-progress-indicator.jsx';
@@ -454,7 +454,7 @@ export function App({
 }) {
   const language = useDashboardLanguage();
   const { theme, updateTheme } = useTheme({ embedded, themeRoot });
-  const appearance = useDashboardAppearance({ embedded, themeRoot });
+  const appearance = useDashboardFontScale({ embedded, themeRoot });
   const scaledFontTokens = useMemo(() => {
     if (appearance.fontScale === 100) return {};
     const original = antdTheme.getDesignToken({
@@ -1817,7 +1817,7 @@ function DashboardApp({
     <main
       className={`dashboard-workbench min-h-screen bg-surface text-fg antialiased lg:grid lg:grid-cols-[var(--rail-w)_1fr]${
         sidebarCollapsed ? ' is-sidebar-collapsed' : ''
-      }${embedded ? ' is-embedded' : ''}`}
+      }${embedded ? ' is-embedded' : ''}${useDemo ? ' is-demo' : ''}`}
     >
       <AntSidebar
         embedded={embedded}

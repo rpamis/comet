@@ -14,8 +14,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
-- **Simpler Dashboard workspaces**: Show workflow cards, application lists, and observability charts closer to the top, with compact controls for workspace navigation and time filters.
-- **Dashboard typography**: Use locally bundled homepage fonts by default and switch back to the original system fonts in Appearance.
+- **Simpler Dashboard workspaces**: Show workflow cards, application lists, and observability charts closer to the top. Use compact controls for navigation and time filters and a shorter next-step notice in the Classic demo.
 
 ### Fixed
 

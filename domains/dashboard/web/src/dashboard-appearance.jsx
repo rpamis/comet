@@ -19,53 +19,31 @@ import {
 } from './font-scale.js';
 
 export const DashboardAppearanceContext = createContext(null);
-const FONT_FAMILY_STORAGE_KEY = 'comet-dashboard-font-family';
 
-function readFontFamily() {
-  try {
-    return localStorage.getItem(FONT_FAMILY_STORAGE_KEY) === 'system' ? 'system' : 'homepage';
-  } catch {
-    return 'homepage';
-  }
-}
-
-export function useDashboardAppearance({ embedded = false, themeRoot = null } = {}) {
+export function useDashboardFontScale({ embedded = false, themeRoot = null } = {}) {
   const [fontScale, setFontScale] = useState(() => (embedded ? 100 : readFontScale()));
-  const [fontFamily, setFontFamily] = useState(() => (embedded ? 'homepage' : readFontFamily()));
   useLayoutEffect(() => {
     const root = embedded ? themeRoot : document.documentElement;
     root?.style.setProperty('--dashboard-font-scale', String(fontScale / 100));
     if (!embedded) writeFontScale(fontScale);
   }, [embedded, themeRoot, fontScale]);
-  useLayoutEffect(() => {
-    const root = embedded ? themeRoot : document.documentElement;
-    root?.setAttribute('data-dashboard-font', fontFamily);
-    if (!embedded) {
-      try {
-        localStorage.setItem(FONT_FAMILY_STORAGE_KEY, fontFamily);
-      } catch {
-        // 浏览器禁止保存偏好时，仍在当前页面切换字体。
-      }
-    }
-  }, [embedded, themeRoot, fontFamily]);
   useEffect(() => {
     if (embedded) return undefined;
     const sync = (event) => {
       if (event.key === FONT_SCALE_STORAGE_KEY || event.key === null) setFontScale(readFontScale());
-      if (event.key === FONT_FAMILY_STORAGE_KEY || event.key === null)
-        setFontFamily(readFontFamily());
     };
     window.addEventListener('storage', sync);
     return () => window.removeEventListener('storage', sync);
   }, [embedded]);
   const updateFontScale = useCallback((value) => setFontScale(normalizeFontScale(value)), []);
-  return { fontScale, updateFontScale, fontFamily, setFontFamily, embedded };
+  return { fontScale, updateFontScale, embedded };
 }
 
 export function DashboardAppearanceSettings() {
   const language = useDashboardLanguage();
-  const { fontScale, updateFontScale, fontFamily, setFontFamily, embedded, theme, updateTheme } =
-    useContext(DashboardAppearanceContext);
+  const { fontScale, updateFontScale, embedded, theme, updateTheme } = useContext(
+    DashboardAppearanceContext,
+  );
   return (
     <div className="dashboard-settings-stack dashboard-appearance-settings">
       <div className="dashboard-settings-section-head">
@@ -73,8 +51,8 @@ export function DashboardAppearanceSettings() {
         <p>
           {t(
             embedded
-              ? '调整当前预览的字体和字号，重新加载后恢复默认。'
-              : '调整主题、字体和字号，所有项目沿用此浏览器的偏好。',
+              ? '调整当前预览的文字大小，重新加载后恢复默认。'
+              : '调整主题和文字大小，所有项目沿用此浏览器的偏好。',
           )}
         </p>
       </div>
@@ -161,22 +139,6 @@ export function DashboardAppearanceSettings() {
               </span>
             </Radio>
           ))}
-        </Radio.Group>
-      </section>
-      <section className="dashboard-settings-panel" aria-labelledby="dashboard-font-family-label">
-        <div className="dashboard-appearance-field-copy">
-          <h4 id="dashboard-font-family-label">{t('界面字体')}</h4>
-        </div>
-        <Radio.Group
-          className="dashboard-font-options"
-          name="dashboard-font-family"
-          role="radiogroup"
-          aria-labelledby="dashboard-font-family-label"
-          value={fontFamily}
-          onChange={(event) => setFontFamily(event.target.value)}
-        >
-          <Radio value="homepage">{t('官网字体（默认）')}</Radio>
-          <Radio value="system">{t('原版系统字体')}</Radio>
         </Radio.Group>
       </section>
       <section className="dashboard-settings-panel" aria-labelledby="dashboard-font-size-label">

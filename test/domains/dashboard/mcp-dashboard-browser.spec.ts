@@ -144,26 +144,6 @@ test('renders the packaged Dashboard without frames or browser network access un
       .click({ noWaitAfter: true, timeout: 10_000 });
     const dashboard = app;
     await expect(dashboard.locator('iframe')).toHaveCount(0);
-    const license = await fs.readFile(
-      path.join(pluginRoot, 'server/dashboard-fonts-OFL.txt'),
-      'utf8',
-    );
-    expect(license).toContain('SIL OPEN FONT LICENSE');
-    const bundledFonts = await dashboard.locator('body').evaluate(async (body) => {
-      const fonts = body.ownerDocument.fonts;
-      const samples = [
-        ['Newsreader', 'Change workspace'],
-        ['Source Serif 4', 'Comet Dashboard'],
-        ['Noto Serif SC', '关键产物'],
-      ];
-      return Promise.all(
-        samples.map(async ([family, text]) => {
-          const loaded = await fonts.load(`600 16px "${family}"`, text);
-          return loaded.some((font) => font.status === 'loaded');
-        }),
-      );
-    });
-    expect(bundledFonts).toEqual([true, true, true]);
     for (const width of [1600, 1280, 390]) {
       await page.setViewportSize({ width, height: 900 });
       await expect(dashboard.locator('body')).toContainText('sidebar-project', { timeout: 8_000 });

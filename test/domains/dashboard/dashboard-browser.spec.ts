@@ -5312,51 +5312,42 @@ test('keeps the demo Native detail visible after selecting a child change', asyn
   expect(consoleErrors).toEqual([]);
 });
 
-test('renders the homepage fonts locally in Chinese and English', async ({ page }, testInfo) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  const fontRequests = new Set<string>();
-  page.on('request', (request) => {
-    if (request.resourceType() === 'font') fontRequests.add(request.url());
-  });
+test('keeps the Classic demo next-step notice compact and readable', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.addInitScript(() => localStorage.setItem('comet-dashboard-font-family', 'homepage'));
   await page.goto('/?demo');
-
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send('DOM.enable');
-  await cdp.send('CSS.enable');
-  const renderedFonts = async (selector: string) => {
-    await page.evaluate(() => document.fonts.ready);
-    const { root } = await cdp.send('DOM.getDocument');
-    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector });
-    const { fonts } = await cdp.send('CSS.getPlatformFontsForNode', { nodeId });
-    return fonts.filter((font) => font.isCustomFont).map((font) => font.familyName);
-  };
-
-  const heading = '.classic-change-detail .change-detail-panels article:first-child h4';
-  await expect(page.locator(heading)).toHaveText('关键产物');
-  await expect
-    .poll(() => renderedFonts(heading))
-    .toEqual(expect.arrayContaining([expect.stringMatching(/Noto Serif SC/u)]));
-  await page.screenshot({
-    path: testInfo.outputPath('homepage-fonts-zh.png'),
+  const notice = page.locator('.classic-change-detail .dashboard-next-step-alert');
+  await expect(notice).toContainText('下一步：comet build');
+  await expect(notice).toContainText('全部任务完成后即可进入 Verify');
+  await expect(notice).toHaveCSS('font-family', /Segoe UI Variable Text/u);
+  await expect(notice.locator('.ant-alert-title')).toHaveCSS('font-size', '14px');
+  await expect(notice.locator('.ant-alert-description')).toHaveCSS('font-size', '13px');
+  for (const width of [1600, 1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const layout = await notice.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        height: element.getBoundingClientRect().height,
+        marginTop: Number.parseFloat(style.marginTop),
+        marginBottom: Number.parseFloat(style.marginBottom),
+        overflow: element.scrollWidth - element.clientWidth,
+      };
+    });
+    expect(layout.height).toBeLessThanOrEqual(width === 390 ? 104 : 72);
+    expect(layout.marginTop).toBeLessThanOrEqual(16);
+    expect(layout.marginBottom).toBeLessThanOrEqual(16);
+    expect(layout.overflow).toBeLessThanOrEqual(1);
+  }
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.locator('.classic-change-detail').screenshot({
+    path: testInfo.outputPath('classic-demo-next-step.png'),
     animations: 'disabled',
   });
-
-  await page.locator('.comet-language-switch').getByText('EN', { exact: true }).click();
-  await expect(page.locator(heading)).toHaveText('Key artifacts');
-  await expect
-    .poll(() => renderedFonts(heading))
-    .toEqual(expect.arrayContaining([expect.stringMatching(/^Newsreader\b/u)]));
-  await expect
-    .poll(() => renderedFonts('.dashboard-sidebar-brand-copy > strong'))
-    .toEqual(expect.arrayContaining([expect.stringMatching(/Source Serif 4/u)]));
-  expect(fontRequests.size).toBeGreaterThanOrEqual(3);
-  expect([...fontRequests].every((url) => new URL(url).origin === new URL(page.url()).origin)).toBe(
-    true,
-  );
-  await page.screenshot({
-    path: testInfo.outputPath('homepage-fonts-en.png'),
-    animations: 'disabled',
-  });
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  const settings = page.getByRole('dialog');
+  await settings.getByRole('menuitem', { name: '外观' }).click();
+  await expect(settings.getByRole('slider')).toBeVisible();
+  await expect(settings.getByText('界面字体', { exact: true })).toHaveCount(0);
 });
 
 test('renders one Classic key artifacts title and keeps preview available', async ({ page }) => {
