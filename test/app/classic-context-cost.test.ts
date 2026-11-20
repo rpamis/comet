@@ -1,10 +1,104 @@
+import '../helpers/isolated-agent-home.js';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
+import { runClassicGroupFacade } from '../../app/commands/classic.js';
+import { runClassicCli } from '../../domains/comet-classic/classic-cli.js';
 import { prepareClassicLegacyProject } from '../helpers/classic-project.js';
 import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
+
+it('renders Classic context costs in the terminal and reports unusable inputs through the requested output channel', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-context-output-'));
+  const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+  const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+  const invoke = async (...args: string[]) => {
+    stdout.mockClear();
+    stderr.mockClear();
+    const exitCode = await runClassicGroupFacade(['context-cost', ...args]);
+    return {
+      exitCode,
+      stdout: stdout.mock.calls.map(([chunk]) => String(chunk)).join(''),
+      stderr: stderr.mock.calls.map(([chunk]) => String(chunk)).join(''),
+    };
+  };
+  try {
+    await prepareClassicLegacyProject(root);
+    const init = await runClassicCli(
+      ['state', 'init', 'cost-view', 'full', '--runtime', 'compat'],
+      undefined,
+      { projectRoot: root, invocationCwd: root },
+    );
+    expect(init.exitCode, init.stderr).toBe(0);
+    const traceFile = path.join(root, 'trace.json');
+    await fs.writeFile(
+      traceFile,
+      JSON.stringify({
+        schema: 'comet.classic.context-trace.v1',
+        scope: { projectRoot: root, change: 'cost-view', phase: 'open' },
+        source: 'test trace',
+        metrics: { inputTokens: 34 },
+        categories: { cli: { contextBytes: 80 } },
+      }),
+    );
+    const report = await invoke('cost-view', '--project-root', root, '--trace', traceFile);
+    expect(report).toMatchObject({ exitCode: 0, stderr: '' });
+    expect(report.stdout).toContain('Classic context costs for cost-view (open)');
+    expect(report.stdout).toMatch(/rule: \d+ bytes \(estimated\); trace: unavailable/u);
+    expect(report.stdout).toContain('trace: contextBytes: 80 bytes (observed)');
+    expect(report.stdout).toContain('inputTokens: 34 tokens (observed)');
+    expect(report.stdout).toContain('waitMs: unavailable');
+
+    const structured = await invoke('cost-view', '--project-root', root, '--json');
+    expect(structured).toMatchObject({ exitCode: 0, stderr: '' });
+    expect(JSON.parse(structured.stdout)).toMatchObject({
+      command: 'context-cost',
+      exitCode: 0,
+      data: {
+        scope: { projectRoot: root, change: 'cost-view', phase: 'open' },
+        metrics: { inputTokens: null },
+        categories: { cli: { estimate: { kind: 'estimated' }, observed: {} } },
+      },
+    });
+
+    const help = await invoke('--help');
+    expect(help).toMatchObject({ exitCode: 0, stderr: '' });
+    expect(help.stdout).toContain(
+      'Use --trace with a JSON summary of actual platform measurements',
+    );
+    const duplicateFlag = await invoke(
+      'cost-view',
+      '--trace',
+      traceFile,
+      '--trace',
+      traceFile,
+      '--json',
+    );
+    expect(duplicateFlag).toMatchObject({ exitCode: 64, stderr: '' });
+    expect(JSON.parse(duplicateFlag.stdout)).toMatchObject({
+      command: 'context-cost',
+      exitCode: 64,
+      stderr: expect.stringContaining('Usage:'),
+    });
+    await expect(invoke('cost-view', '--trace', '--project-root', root)).resolves.toMatchObject({
+      exitCode: 64,
+      stdout: '',
+      stderr: expect.stringContaining('Usage:'),
+    });
+    const missing = await invoke('missing-change', '--project-root', root, '--json');
+    expect(missing).toMatchObject({ exitCode: 1, stderr: '' });
+    expect(JSON.parse(missing.stdout)).toMatchObject({
+      command: 'context-cost',
+      exitCode: 1,
+      stderr: expect.stringMatching(/not found/u),
+    });
+  } finally {
+    stdout.mockRestore();
+    stderr.mockRestore();
+    await fs.rm(root, { recursive: true, force: true, maxRetries: 5 });
+  }
+});
 
 it('reports a Classic phase context estimate separately from trace measurements without writing workflow state', async () => {
   const repository = process.env.COMET_TEST_PACKAGE_ROOT ?? path.resolve('.');
