@@ -1,0 +1,14 @@
+schema: comet.native.children.v2
+children:
+  - name: classic-context
+    depends_on: []
+    covers: [A1, A2]
+  - name: native-evidence
+    depends_on: []
+    covers: [A3, A4]
+  - name: eval-comparison
+    depends_on: [classic-context]
+    covers: [A5, A6]
+  - name: dashboard-attention
+    depends_on: [native-evidence]
+    covers: [A7, A8]
