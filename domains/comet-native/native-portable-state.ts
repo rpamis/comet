@@ -5,7 +5,8 @@ import {
   parseNativeBuilderAcceptanceReview,
 } from './native-builder-acceptance-review.js';
 import { parseNativeChildrenContract } from './native-children-contract.js';
-import { NATIVE_BUILDER_CHECK_RESULTS, NATIVE_VERIFIER_VERDICTS } from './native-input-enum.js';
+import { NATIVE_REPORTED_CHECK_RESULTS, NATIVE_VERIFIER_VERDICTS } from './native-input-enum.js';
+import { redactNativeCredentialText } from './native-redaction.js';
 
 import { stringify } from 'yaml';
 import { parseRuntimeAction } from '../engine/runtime-action.js';
@@ -378,29 +379,58 @@ function parseAcceptance(value: unknown, index: number): NativePortableAcceptanc
 function parseBuilderCheck(value: unknown, index: number): NativeBuilderCheckSummary {
   const label = `Native builder_handoff.checks[${index}]`;
   const root = record(value, label);
-  rejectUnknown(root, new Set(['name', 'result', 'note']), label);
+  rejectUnknown(root, new Set(['name', 'result', 'note', 'acceptance_ids', 'reason']), label);
+  const ids =
+    root.acceptance_ids === undefined
+      ? undefined
+      : stringArray(root.acceptance_ids, `${label}.acceptance_ids`);
+  if (ids) assertUnique(ids, `${label}.acceptance_ids`);
   return {
     name: parsePortableText(root.name, `${label}.name`),
-    result: enumValue(root.result, NATIVE_BUILDER_CHECK_RESULTS, `${label}.result`),
+    result: enumValue(root.result, NATIVE_REPORTED_CHECK_RESULTS, `${label}.result`),
     note: root.note === null ? null : parsePortableText(root.note, `${label}.note`),
+    ...(ids ? { acceptance_ids: ids } : {}),
+    ...(root.reason === undefined
+      ? {}
+      : { reason: parsePortableText(root.reason, `${label}.reason`) }),
   };
 }
 
 /** Platform-tool results are business reports, not Runtime execution receipts. */
-export function parseNativeReportedChecks(value: unknown): NativeBuilderCheckSummary[] {
+export function parseNativeReportedChecks(
+  value: unknown,
+  acceptance?: readonly { id: string }[],
+): NativeBuilderCheckSummary[] {
+  const known = acceptance && new Set(acceptance.map(({ id }) => id));
+  const reportedText = (input: unknown, label: string) =>
+    toNativePortableText(redactNativeCredentialText(stringValue(input, label)));
   return arrayValue(value, 'Native reported checks', (entry, index) => {
     const check = record(entry, `Native reported checks[${index}]`);
-    return parseBuilderCheck(
+    const parsed = parseBuilderCheck(
       {
-        name: toNativePortableText(stringValue(check.name, 'Reported check name')),
+        name: reportedText(check.name, 'Reported check name'),
         result: check.result,
         note:
-          check.note == null
+          check.note == null || check.note === ''
             ? null
-            : toNativePortableText(stringValue(check.note, 'Reported check note')),
+            : reportedText(check.note, 'Reported check note'),
+        ...(check.acceptanceIds === undefined ? {} : { acceptance_ids: check.acceptanceIds }),
+        ...(check.reason === undefined
+          ? {}
+          : { reason: reportedText(check.reason, 'Reported check reason') }),
       },
       index,
     );
+    for (const id of parsed.acceptance_ids ?? []) {
+      const validId =
+        ACCEPTANCE_ID_PATTERN.test(id) ||
+        (id.startsWith('child:') && NAME_PATTERN.test(id.slice('child:'.length)));
+      if (!validId || (known && !known.has(id)))
+        throw new Error(
+          `Native reported checks[${index}].acceptanceIds contains unknown ID: ${id}`,
+        );
+    }
+    return parsed;
   });
 }
 

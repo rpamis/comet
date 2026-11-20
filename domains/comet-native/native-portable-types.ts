@@ -75,8 +75,10 @@ export interface NativePortableAcceptanceState {
 
 export interface NativeBuilderCheckSummary {
   name: NativePortableText;
-  result: 'passed' | 'failed' | 'not-run';
+  result: (typeof import('./native-input-enum.js').NATIVE_REPORTED_CHECK_RESULTS)[number];
   note: NativePortableText | null;
+  acceptance_ids?: string[];
+  reason?: NativePortableText;
 }
 
 export interface NativeBuilderHandoff {

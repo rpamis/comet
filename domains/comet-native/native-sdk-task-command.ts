@@ -18,8 +18,13 @@ import { parseNativePortableState } from './native-portable-state.js';
 import { loadOwnedNativeSdkRuntime } from './native-runtime-ownership.js';
 import { collectNativeSdkShapeProposal } from './native-sdk-application.js';
 import {
+  nativeSdkReportedCheckView,
+  projectNativeSdkAcceptanceEvidence,
+} from './native-sdk-acceptance-evidence.js';
+import {
   nativeSdkTaskResultTemplate,
   nativeSdkActionContextRequest,
+  nativeSdkEvidenceInstruction,
 } from './native-sdk-continuation.js';
 import { advanceNativeSdkChange } from './native-sdk-next.js';
 import { nativeSdkRequiresIndependentReview } from './native-sdk-review.js';
@@ -283,7 +288,23 @@ async function projectTaskResult(
         session: currentTask.claim?.sessionId ?? null,
         readOnly: verifierTask(currentTask),
         ...(verifierTask(currentTask)
-          ? { requireIndependentReview: nativeSdkRequiresIndependentReview(run, currentTask) }
+          ? {
+              requireIndependentReview: nativeSdkRequiresIndependentReview(run, currentTask),
+              acceptanceEvidence: projectNativeSdkAcceptanceEvidence(
+                run,
+                state,
+                options.projectRoot,
+                activation(currentTask)?.child,
+              ),
+            }
+          : {}),
+        ...(builderTask(currentTask) || verifierTask(currentTask)
+          ? {
+              acceptanceEvidenceInstruction: nativeSdkEvidenceInstruction(
+                state.language,
+                verifierTask(currentTask),
+              ),
+            }
           : {}),
         ...(claimed &&
         verifierTask(currentTask) &&
@@ -324,11 +345,7 @@ async function projectTaskResult(
         ...(state.builder_handoff
           ? {
               candidateId: state.builder_handoff.candidate_id,
-              checks: state.builder_handoff.checks.map((check) => ({
-                name: check.name.text,
-                result: check.result,
-                note: check.note?.text ?? null,
-              })),
+              checks: state.builder_handoff.checks.map(nativeSdkReportedCheckView),
             }
           : {}),
         instruction:

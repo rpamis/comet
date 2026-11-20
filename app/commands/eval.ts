@@ -18,8 +18,11 @@ import {
   type ResolvedEvalContext,
   listBuiltinDatasets,
   inspectBuiltinDataset,
+  compareEvalRuns,
+  readEvalRun,
   type DatasetPlan,
 } from '../../domains/eval/index.js';
+import { workflowRegressionCases } from '../../domains/eval/workflow-regression.js';
 import {
   evalProjectIdentity,
   recordEvalProcessTermination,
@@ -47,6 +50,12 @@ interface EvalCommandOptions {
   skillName?: string;
   profile?: string;
   task?: string;
+  workflowRegression?: true | string;
+  workflowRegressionCase?: (typeof workflowRegressionCases)[number];
+  compare?: string;
+  baseline?: string;
+  baselineContextCost?: string;
+  candidateContextCost?: string;
   reportConfig?: string;
   html?: boolean;
   quick?: boolean;
@@ -92,6 +101,7 @@ function hasEvalHarness(root: string, suite: EvalSuite): boolean {
 }
 
 function evalRoot(options: EvalCommandOptions, suite: EvalSuite): string {
+  if (options.workflowRegressionCase) return path.join(packageRoot, 'eval');
   const projectHarness = options.project
     ? path.join(path.resolve(options.project), 'eval')
     : undefined;
@@ -301,6 +311,8 @@ async function buildEvalArgs(
       `--treatment=${options.datasetPlan.treatment}`,
       `--count=${options.datasetPlan.count}`,
     );
+  if (options.workflowRegressionCase)
+    args.push(`--treatment=${options.workflowRegressionCase.treatment}`);
 
   if (context.manifestPath) {
     args.push(`--eval-manifest=${context.manifestPath}`);
@@ -539,6 +551,9 @@ async function executeEval(options: EvalCommandOptions, collectOnly: boolean): P
         ...(details.model !== 'default' ? { model: details.model } : {}),
         suite: details.suite,
         ...(options.task ? { task: options.task } : {}),
+        ...(options.workflowRegressionCase
+          ? { workflowRegressionCase: options.workflowRegressionCase.id }
+          : {}),
         ...(options.quick ? { quick: true } : {}),
         ...(options.profile ? { profile: options.profile } : {}),
         ...(details.judge
@@ -623,6 +638,100 @@ export async function evalCommand(
   target?: string,
   options: EvalCommandOptions = {},
 ): Promise<number> {
+  if (
+    options.compare ||
+    options.baseline ||
+    options.baselineContextCost ||
+    options.candidateContextCost
+  ) {
+    if (
+      !options.compare ||
+      target ||
+      options.workflowRegression ||
+      options.collect ||
+      options.dataset ||
+      options.listDatasets ||
+      options.fetchDataset ||
+      options.manifest ||
+      options.skillPath ||
+      options.task
+    )
+      throw new Error('Use --compare <run> with an optional --baseline <run> and --project <dir>.');
+    const project = path.resolve(options.project ?? '.');
+    const candidate = !options.baseline
+      ? await readEvalRun(project, options.compare, { includeCaseContent: false })
+      : null;
+    const baseline = options.baseline ?? candidate?.boundBaselineRunId ?? candidate?.baselineRunId;
+    if (!baseline)
+      throw new Error('No baseline is set for this case set; provide --baseline <run>.');
+    console.log(
+      JSON.stringify(
+        await compareEvalRuns(project, options.compare, baseline, {
+          baselineContextCost: options.baselineContextCost,
+          candidateContextCost: options.candidateContextCost,
+        }),
+        null,
+        2,
+      ),
+    );
+    return 0;
+  }
+  if (options.workflowRegression) {
+    if (
+      target ||
+      options.manifest ||
+      options.skillPath ||
+      options.skillName ||
+      options.task ||
+      options.quick ||
+      options.profile ||
+      options.dataset ||
+      options.listDatasets ||
+      options.fetchDataset ||
+      options.count ||
+      options.datasetRoot ||
+      options.datasetTreatment ||
+      options.acceptDatasetLicense ||
+      (options.suite && options.suite !== 'local')
+    )
+      throw new Error(
+        'A workflow regression case uses its fixed task, Skill, treatment and local suite.',
+      );
+    const cases = workflowRegressionCases.filter(
+      (item) => options.workflowRegression === true || item.id === options.workflowRegression,
+    );
+    if (!cases.length)
+      throw new Error(`Unknown workflow regression case: ${options.workflowRegression}`);
+    if (options.collect) {
+      console.log(
+        JSON.stringify(
+          {
+            schema: 'comet.eval.workflow-regression.v1',
+            cases: cases.map((item) => ({
+              ...item,
+              commandArgs: ['comet', 'eval', '--workflow-regression', item.id],
+            })),
+          },
+          null,
+          2,
+        ),
+      );
+      return 0;
+    }
+    if (options.workflowRegression === true)
+      throw new Error(
+        'Select one workflow regression case. View available cases with --workflow-regression --collect.',
+      );
+    const selected = cases[0];
+    await evalRunCommand({
+      ...options,
+      workflowRegressionCase: selected,
+      project: options.project ?? process.cwd(),
+      skillPath: path.join(packageRoot, 'assets/skills', `comet-${selected.workflow}`),
+      task: selected.task,
+    });
+    return 0;
+  }
   if (options.listDatasets) {
     console.log(JSON.stringify(listBuiltinDatasets(), null, 2));
     return 0;

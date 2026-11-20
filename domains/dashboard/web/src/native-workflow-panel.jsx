@@ -190,6 +190,8 @@ function acceptanceProgress(change) {
 
 export function NativeWorkflowPanel({
   summaryTarget,
+  linkedChange,
+  onLeaveLinkedChange,
   summaryData,
   summaryFilter,
   onSummaryAction,
@@ -349,6 +351,7 @@ export function NativeWorkflowPanel({
     });
   }, [selectableChanges]);
   const selectedSummary =
+    linkedChange ??
     selectableChanges.find((change) => changeKey(change) === selectedKey) ??
     selectableChanges[0] ??
     null;
@@ -365,22 +368,29 @@ export function NativeWorkflowPanel({
     : selectedSummary;
   const locatedSummaryTarget = useRef(null);
   useEffect(() => {
+    const target = linkedChange ?? summaryTarget;
     if (
-      locatedSummaryTarget.current === summaryTarget ||
-      !summaryTarget ||
+      locatedSummaryTarget.current === target ||
+      !target ||
       !selected ||
-      changeKey(summaryTarget) !== changeKey(selected)
+      changeKey(target) !== changeKey(selected)
     )
       return;
-    locatedSummaryTarget.current = summaryTarget;
-    const frame = requestAnimationFrame(() =>
-      document.querySelector('.native-change-detail')?.scrollIntoView({
+    locatedSummaryTarget.current = target;
+    const frame = requestAnimationFrame(() => {
+      const detail = document.querySelector('.native-change-detail');
+      const element =
+        target.section === 'evidence'
+          ? (detail?.querySelector('[data-workflow-evidence]') ?? detail)
+          : detail;
+      if (target.section === 'evidence') element?.focus({ preventScroll: true });
+      element?.scrollIntoView({
         block: 'start',
         behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-      }),
-    );
+      });
+    });
     return () => cancelAnimationFrame(frame);
-  }, [summaryTarget, selected]);
+  }, [linkedChange, summaryTarget, selected]);
   const detailPending = Boolean(selectedSummary && !selected && (detailLoading || !detailError));
   const hasNativeChanges = Boolean(native && native.totalChangeCount > 0);
   const isEmptyView = !pageLoading && visibleChanges.length === 0;
@@ -388,14 +398,6 @@ export function NativeWorkflowPanel({
 
   return (
     <div className="mx-auto min-w-0 max-w-dashboard">
-      <SectionHead
-        title={t('项目概览')}
-        hint={
-          native
-            ? t('Native 状态生成于 {0}', [formatTimestamp(native.generatedAt)])
-            : t('当前项目尚无 Native 状态')
-        }
-      />
       <NativeWorkflowSuggestion change={selected ?? selectedSummary} />
       <NativeSummaryCards
         native={native}
@@ -405,8 +407,8 @@ export function NativeWorkflowPanel({
         onAction={onSummaryAction}
       />
       <SummaryFilterBar filter={summaryFilter} summary={summaryData} onClear={() => onTab('all')} />
-      <SectionHead title={t('Native 变更工作区')} hint={t('查看循环、验收、阻塞与恢复状态')} />
       <DashboardWorkspaceRegion
+        label={t('Native 变更工作区')}
         stableFrame
         leftClassName="native-workspace-left"
         left={
@@ -417,7 +419,10 @@ export function NativeWorkflowPanel({
             query={query}
             tab={tab}
             onTab={onTab}
-            onSelect={(change) => setSelectedKey(changeKey(change))}
+            onSelect={(change) => {
+              onLeaveLinkedChange?.();
+              setSelectedKey(changeKey(change));
+            }}
             listRef={listRef}
             loadMoreRef={loadMoreRef}
             hasMore={hasMoreChanges}
@@ -426,13 +431,13 @@ export function NativeWorkflowPanel({
           />
         }
         center={
-          isEmptyView && summaryFilter ? (
+          !linkedChange && isEmptyView && summaryFilter ? (
             <section className="dashboard-workspace-empty-panel">
               <Empty
                 description={t(summaryData.error ? '统计读取失败' : '没有符合当前筛选的变更')}
               />
             </section>
-          ) : isEmptyView ? (
+          ) : !linkedChange && isEmptyView ? (
             <NativeEmptyChangeDetail
               native={native}
               tab={tab}
@@ -440,7 +445,7 @@ export function NativeWorkflowPanel({
               onTab={onTab}
               emptyProject={!hasNativeChanges}
             />
-          ) : isLoadingView || detailPending ? (
+          ) : (!linkedChange && isLoadingView) || detailPending ? (
             <NativeChangeDetailSkeleton />
           ) : selected ? (
             <NativeChangeDetail
@@ -463,9 +468,9 @@ export function NativeWorkflowPanel({
           )
         }
         right={
-          isEmptyView ? (
+          !linkedChange && isEmptyView ? (
             <NativeEmptySidePanel />
-          ) : isLoadingView || detailPending ? (
+          ) : (!linkedChange && isLoadingView) || detailPending ? (
             <NativeSidePanelSkeleton />
           ) : selected ? (
             <NativeSidePanel change={selected} git={git} />
@@ -556,18 +561,6 @@ function NativeWorkflowSuggestion({ change }) {
   );
 }
 
-function SectionHead({ title, hint }) {
-  useDashboardLanguage();
-  return (
-    <div className="mb-4 mt-6 flex flex-wrap items-baseline gap-3 first:mt-2">
-      <h2 className="dashboard-section-heading text-[20px] font-semibold leading-[1.3] tracking-[-0.018em]">
-        {title}
-      </h2>
-      <span className="dashboard-section-hint text-[13px] leading-5 text-muted">{hint}</span>
-    </div>
-  );
-}
-
 function NativeSummaryCards({ native, loadedChanges = [], unavailable, selectedKey, onAction }) {
   useDashboardLanguage();
 
@@ -626,7 +619,10 @@ function NativeSummaryCards({ native, loadedChanges = [], unavailable, selectedK
     ],
   ];
   return (
-    <section className="dashboard-summary-strip dashboard-overview-summary-strip native-summary-strip">
+    <section
+      className="dashboard-summary-strip dashboard-overview-summary-strip native-summary-strip"
+      aria-label={t('项目概览')}
+    >
       {cards.map(([label, value, note, tag, Icon], index) => (
         <NativeSummaryCard
           key={label}
@@ -976,6 +972,7 @@ const NativeChangeDetail = React.memo(function NativeChangeDetail({
           </div>
           <div className="mt-1 flex flex-wrap gap-3 text-xs text-meta">
             <span>native</span>
+            {change.supervisorParent && <span>Supervisor · {change.supervisorParent}</span>}
             <span>
               {change.status === 'archived'
                 ? t('归档于 {0}', [change.archivedAt ?? t('未知时间')])
@@ -1183,9 +1180,17 @@ function NativeAcceptanceCard({ change }) {
   useDashboardLanguage();
   const acceptance = change.acceptance;
   const progress = acceptanceProgress(change);
-  const page = useDetailPage(change.acceptanceItems ?? []);
+  const evidence = change.acceptanceEvidence;
+  const previous = evidence?.previousCandidate;
+  const evidenceItems = previous?.items ?? evidence?.items;
+  const items = evidenceItems?.length ? evidenceItems : (change.acceptanceItems ?? []);
+  const page = useDetailPage(items);
   return (
-    <article className="rounded-xl border border-border-soft bg-bg px-5 py-4">
+    <article
+      data-workflow-evidence
+      tabIndex={-1}
+      className="rounded-xl border border-border-soft bg-bg px-5 py-4"
+    >
       <div className="flex flex-wrap items-center gap-3">
         <h4 className="text-lg font-semibold tracking-tight">{t('验收状态')}</h4>
         <Pill tone={acceptanceTone(acceptance)}>
@@ -1206,7 +1211,8 @@ function NativeAcceptanceCard({ change }) {
         <AcceptanceMetric label={t('阻塞')} value={acceptance?.blocked ?? 0} />
         <AcceptanceMetric label={t('待验证')} value={acceptance?.pending ?? 0} />
       </div>
-      {(change.acceptanceItems ?? []).length > 0 && (
+      {previous && <p className="mt-4 text-sm text-muted">{t('上一个候选的验收结果')}</p>}
+      {items.length > 0 && (
         <ul className="mt-4 space-y-2 border-t border-border-soft pt-4">
           {page.items.map((item) => (
             <li key={item.id} className="rounded-lg bg-surface px-3 py-3 text-xs">
@@ -1217,7 +1223,42 @@ function NativeAcceptanceCard({ change }) {
                   {ACCEPTANCE_LABELS[item.result]}
                 </Pill>
               </div>
-              {item.reason && <p className="mt-2 pl-8 text-muted">{portableText(item.reason)}</p>}
+              {item.reason && (
+                <p className="mt-2 break-words pl-8 text-muted">
+                  {typeof item.reason === 'string' ? item.reason : portableText(item.reason)}
+                </p>
+              )}
+              {item.gap && (
+                <p className="mt-2 pl-8 text-muted">
+                  {t(item.gap === 'no-candidate' ? '当前没有待验收的候选' : '当前候选缺少关联证据')}
+                </p>
+              )}
+              {item.evidence?.map((entry, index) => (
+                <p key={index} className="mt-2 break-words pl-8 text-fg-2">
+                  {entry}
+                </p>
+              ))}
+              {Boolean(item.checks?.length) && (
+                <ul className="mt-2 space-y-2 pl-8 text-muted">
+                  {item.checks.map((check, index) => (
+                    <li key={index} className="break-words">
+                      <strong>{check.name}</strong>
+                      {' · '}
+                      {t(
+                        {
+                          passed: '通过',
+                          failed: '失败',
+                          'not-run': '未执行',
+                          timeout: '超时',
+                          unknown: '状态未知',
+                        }[check.result] ?? '状态未知',
+                      )}
+                      {check.reason && <p>{check.reason}</p>}
+                      {check.note && <p>{check.note}</p>}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </li>
           ))}
         </ul>

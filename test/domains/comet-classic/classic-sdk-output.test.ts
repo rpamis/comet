@@ -236,7 +236,11 @@ describe('Classic next-step source projection', () => {
         'demo',
         '--json',
       ]);
-      expect(build.current.actions[0].contextRequest).toEqual(build.contextRequest);
+      expect(build.current.actions[0].contextRequest).toMatchObject({
+        phase: 'build',
+        operation: 'edit',
+        commandArgs: expect.arrayContaining(['--operation', 'edit']),
+      });
       expect(build.contextRequest?.instruction).toContain('已确认的执行方式');
       expect(run).toEqual(before);
 
@@ -251,6 +255,11 @@ describe('Classic next-step source projection', () => {
       };
       const verify = classicSdkContinuation(run, root, 'demo');
       expect(verify.contextRequest?.phase).toBe('verify');
+      expect(verify.current.actions[0].contextRequest).toMatchObject({
+        phase: 'verify',
+        operation: 'verify',
+        commandArgs: expect.arrayContaining(['--operation', 'verify']),
+      });
       expect(verify.current.actions[0].contextRequest?.commandArgs).toContain('review-session');
       expect(verify.current.actions[0].inputHash).toBe(before.actions[0].inputHash);
       expect(verify.mode).toBe('wait');

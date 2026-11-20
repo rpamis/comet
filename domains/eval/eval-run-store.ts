@@ -24,6 +24,13 @@ import type {
 import { validateApplicationEvaluationCompletion } from '../workflow-application/index.js';
 import { evalRubricScores } from './eval-score-adapter.js';
 import {
+  classicContextMetricsOf,
+  compareWorkflowMetrics,
+  mergeWorkflowMetrics,
+  workflowMetricsOf,
+  workflowRegressionCaseOf,
+} from './workflow-regression.js';
+import {
   parseEvaluationMatrix,
   validateEvaluationCase,
   createEvaluationCaseValidator,
@@ -273,6 +280,7 @@ function normalizeCase(id: string, raw: Json, root: string, includeContent = tru
     )
       ? String(events.dataset_comparison_identity)
       : null,
+    workflowMetrics: workflowMetricsOf(events, redactEvalOutput),
     artifacts,
   };
   item.task = excerpt(item.task, 1024);
@@ -1081,7 +1089,15 @@ export async function readEvalRun(
     datasetScope ??
     (cases.length && cases.every((item) => item.caseHash && item.validatorHash)
       ? evalValueHash([
-          targetId,
+          targetType === 'skill' &&
+          managed?.config.workflowRegressionCase &&
+          cases.every(
+            (item) =>
+              workflowRegressionCaseOf(item.task, item.treatment)?.id ===
+              managed.config.workflowRegressionCase,
+          )
+            ? 'comet.eval.workflow-regression.v1'
+            : targetId,
           cases
             .map((item) => [
               item.task,
@@ -1481,10 +1497,30 @@ export async function compareEvalRuns(
   project: string,
   candidateId: string,
   baselineId: string,
+  contextFiles: { baselineContextCost?: string; candidateContextCost?: string } = {},
 ): Promise<EvalRunComparison> {
   const [candidate, baseline] = await Promise.all([
     readEvalRun(project, candidateId, { includeCaseContent: false }),
     readEvalRun(project, baselineId, { includeCaseContent: false }),
+  ]);
+  const readContext = async (run: EvalRunDetail, filename?: string) => {
+    if (!filename) return null;
+    if (
+      run.cases.length !== 1 ||
+      workflowRegressionCaseOf(run.cases[0].task, run.cases[0].treatment)?.workflow !== 'classic'
+    )
+      throw new EvalRunError(
+        'Classic context cost requires a saved run with exactly one fixed Classic case.',
+      );
+    const input = await readEvalJson(path.resolve(filename));
+    const metrics = classicContextMetricsOf(input?.data ?? input, redactEvalOutput);
+    if (!metrics || !Object.values(metrics).some((metric) => metric !== null))
+      throw new EvalRunError('Expected an exported Classic context-cost report with measurements.');
+    return metrics;
+  };
+  const [candidateMetrics, baselineMetrics] = await Promise.all([
+    readContext(candidate, contextFiles.candidateContextCost),
+    readContext(baseline, contextFiles.baselineContextCost),
   ]);
   const reasons: string[] = [];
   const datasetComparison = Boolean(
@@ -1519,6 +1555,7 @@ export async function compareEvalRuns(
     'profile',
     'quick',
     'task',
+    'workflowRegressionCase',
     'timeoutSeconds',
     'maxTurns',
     'dataset',
@@ -1552,8 +1589,26 @@ export async function compareEvalRuns(
     );
     const baselineScore = other?.scores['dataset-score'] ?? null;
     const candidateScore = item.scores['dataset-score'] ?? null;
+    const fixed = workflowRegressionCaseOf(item.task, item.treatment);
+    const sameCase =
+      !reasons.length &&
+      other !== undefined &&
+      item.treatment === other.treatment &&
+      item.caseHash === other.caseHash &&
+      item.validatorHash === other.validatorHash;
     return {
       task: item.task,
+      treatment: item.treatment,
+      ...(fixed ? { workflowRegressionCase: fixed.id } : {}),
+      metrics: compareWorkflowMetrics(
+        mergeWorkflowMetrics(baselineMetrics, other?.workflowMetrics),
+        mergeWorkflowMetrics(candidateMetrics, item.workflowMetrics),
+        sameCase,
+        item.agent !== null &&
+          item.model !== null &&
+          item.agent === other?.agent &&
+          item.model === other?.model,
+      ),
       repetition: item.repetition,
       baseline: datasetComparison
         ? baselineScore === null

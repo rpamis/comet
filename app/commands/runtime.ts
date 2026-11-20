@@ -25,6 +25,7 @@ import {
   type SdkApplication,
 } from '../../domains/workflow-contract/change-runtime-owner.js';
 import type { CometProjectWorkflow } from '../../domains/workflow-contract/types.js';
+import type { taskContextRequest } from '../../domains/workflow-contract/task-context.js';
 import type { ApplicationIdentity } from '../../domains/workflow-application/index.js';
 import { projectCliAgentObservation } from '../../domains/workflow-contract/output-envelope.js';
 import { collectCometTaskContextResult } from './comet-task-context.js';
@@ -36,6 +37,7 @@ export interface RuntimeCommandOptions {
   applicationFile?: string;
   rootDir?: string;
   projectRoot?: string;
+  path?: string;
   json?: boolean;
   details?: boolean;
 }
@@ -412,12 +414,14 @@ function dispatch(
 async function claimedTaskContext(
   run: WorkflowRun,
   request: ReturnType<typeof parseRequest>,
-  descriptor: unknown,
+  contextRequest:
+    | Pick<ReturnType<typeof taskContextRequest>, 'phase' | 'task' | 'operation' | 'commandArgs'>
+    | undefined,
+  contextPath?: string,
 ) {
-  if (request.operation !== 'claim' || !descriptor) return {};
+  if (request.operation !== 'claim' || !contextRequest) return {};
   const action = run.actions.find((entry) => entry.id === request.actionId);
   if (action?.status !== 'running' || !action.claim?.sessionId) return {};
-  const contextRequest = descriptor as { phase: string; task?: string; commandArgs: string[] };
   const args = contextRequest.commandArgs;
   const projectRoot = args[2];
   const flag = (name: string) => args[args.indexOf(name) + 1];
@@ -426,6 +430,11 @@ async function claimedTaskContext(
   if (!projectRoot || !change || !['native', 'classic'].includes(workflow)) return {};
   const task = contextRequest.task ?? run.runId.replaceAll('-', ' ');
   const sessionId = action.claim.sessionId;
+  const operation = contextRequest.operation;
+  const selectors = {
+    ...(operation === undefined ? {} : { operation }),
+    ...(contextPath === undefined ? {} : { path: contextPath }),
+  };
   const base = [
     'comet',
     'task',
@@ -434,6 +443,8 @@ async function claimedTaskContext(
     task,
     '--phase',
     contextRequest.phase,
+    ...(operation === undefined ? [] : ['--operation', operation]),
+    ...(contextPath === undefined ? [] : ['--path', contextPath]),
     '--session',
     sessionId,
     '--workflow',
@@ -449,6 +460,7 @@ async function claimedTaskContext(
         task,
         sessionId,
         phase: contextRequest.phase,
+        ...selectors,
         contextMode: 'incremental',
         charBudget: 6000,
       },
@@ -469,6 +481,7 @@ async function claimedTaskContext(
             : 'empty',
       sessionId,
       phase: contextRequest.phase,
+      ...selectors,
       contextMode: 'incremental',
       instruction:
         (run.state as { language?: string }).language === 'zh-CN'
@@ -490,6 +503,7 @@ async function nativeCliResponse(
   request: ReturnType<typeof parseRequest>,
   projectRoot: string,
   applicationId: string,
+  contextPath?: string,
   executors?: readonly import('../../domains/engine/runtime.js').RuntimeExecutor[],
 ) {
   // inspect 保持完整 SDK Run；所有推进响应均使用同一当前续行投影。
@@ -557,7 +571,7 @@ async function nativeCliResponse(
     });
     const data = {
       ...projection,
-      ...(await claimedTaskContext(response.data, request, projection.contextRequest)),
+      ...(await claimedTaskContext(response.data, request, projection.contextRequest, contextPath)),
     };
     return {
       ...response,
@@ -721,6 +735,24 @@ export async function runtimeDispatchCommand(
     requestId = (request.requestId as string | undefined) ?? requestId;
     const application = options.application;
     const builtIn = (SDK_APPLICATIONS as readonly string[]).includes(application ?? '');
+    let contextPath: string | undefined;
+    if (options.path !== undefined) {
+      if (
+        request.operation !== 'claim' ||
+        options.details ||
+        (!application && !options.applicationFile)
+      )
+        invalid('--path 仅用于 Native 或内置 Classic 的紧凑 Action 领取响应');
+      const { normalizeWorkflowRelativePath } =
+        await import('../../domains/workflow-contract/project-config.js');
+      try {
+        const target = options.path.trim();
+        if (path.win32.parse(target).root) throw new Error('--path must be project-relative');
+        contextPath = normalizeWorkflowRelativePath(target.replace(/[/\\]$/u, ''), '--path');
+      } catch (error) {
+        invalid((error as Error).message);
+      }
+    }
     if (request.operation.endsWith('storage-index')) {
       if (
         !application ||
@@ -842,6 +874,8 @@ export async function runtimeDispatchCommand(
         runId: request.runId as string | undefined,
         readOnly: request.operation === 'inspect',
       });
+      if (contextPath !== undefined && loaded.identity.base !== 'native')
+        invalid('--path 仅用于 Native 或内置 Classic 的 Action 领取');
       const runtime = createRuntime({ ...loaded.implementation, store: loaded.store });
       const context = { requestId, projectRoot, invocationCwd, environment };
       const data = await withCometRuntimeProgress(() => dispatch(runtime, request, context));
@@ -867,6 +901,7 @@ export async function runtimeDispatchCommand(
                   request,
                   projectRoot,
                   loaded.identity.id,
+                  contextPath,
                   loaded.implementation.executors,
                 )
               : (() => {
@@ -1196,10 +1231,22 @@ export async function runtimeDispatchCommand(
           status: data.status,
           workflow: data.workflow,
           ...projection,
+          run: {
+            ...projection.run,
+            waits: projection.run.waits.map(({ proposal, ...wait }, index) => ({
+              ...wait,
+              ...(proposal === undefined
+                ? {}
+                : {
+                    proposalRef: `/data/continuation/current/waits/${index}/proposal`,
+                  }),
+            })),
+          },
           ...(await claimedTaskContext(
             data,
             request,
             current && 'contextRequest' in current ? current.contextRequest : undefined,
+            contextPath,
           )),
         };
         return {
@@ -1229,7 +1276,15 @@ export async function runtimeDispatchCommand(
       exitCode: 0,
       response,
       ...(host.output === 'compact' && !options.details && application === 'native'
-        ? { cliResponse: await nativeCliResponse(response, request, projectRoot, application) }
+        ? {
+            cliResponse: await nativeCliResponse(
+              response,
+              request,
+              projectRoot,
+              application,
+              contextPath,
+            ),
+          }
         : {}),
     };
   } catch (error) {

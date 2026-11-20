@@ -1987,7 +1987,7 @@ test('Any retries and pages one application creation history without losing deli
   await expect(page.locator('.any-run-identity')).toHaveText('运行轨迹 run-127');
   await page.getByRole('menuitem', { name: 'Comet Any' }).click();
   await page
-    .locator('.any-workspace-heading')
+    .locator('.any-context-application')
     .getByRole('button', { name: '查看自定义工作流', exact: true })
     .click();
   await expect(page.locator('.any-run-identity')).toHaveText('运行轨迹 run-127');

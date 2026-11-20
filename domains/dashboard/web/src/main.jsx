@@ -91,6 +91,7 @@ import {
   runMermaid,
 } from './markdown-preview.js';
 import { NativeWorkflowPanel } from './native-workflow-panel.jsx';
+import { WorkflowAttentionDrawer } from './workflow-attention.jsx';
 import { AnyWorkflowPanel } from './any-workflow-panel.jsx';
 import { EvalPanel } from './eval-panel.jsx';
 import { EvalSettings } from './eval-settings.jsx';
@@ -538,6 +539,31 @@ function DashboardApp({
   const [snapshot, setSnapshot] = useState(null);
   const [activeProjectId, setActiveProjectId] = useState(null);
   const [workflow, setWorkflow] = useState(() => (useDemo ? 'classic' : null));
+  const [attentionOpen, setAttentionOpen] = useState(false);
+  const linkedChange = useMemo(
+    () =>
+      navigation.projectId === activeProjectId &&
+      navigation.workflow === workflow &&
+      navigation.changeLocator
+        ? {
+            workflow,
+            locator: navigation.changeLocator,
+            section: navigation.changeSection,
+            status: 'active',
+            name: '',
+          }
+        : null,
+    [activeProjectId, navigation, workflow],
+  );
+  const linkedChangeRef = useRef(linkedChange);
+  linkedChangeRef.current = linkedChange;
+  const clearLinkedChange = useCallback(() => {
+    if (linkedChange)
+      navigateDashboard(
+        { view: 'workflow', projectId: activeProjectId, workflow },
+        { replace: true },
+      );
+  }, [activeProjectId, linkedChange, workflow]);
   const [workflowSource, setWorkflowSource] = useState(null);
   const [pluginSelection, setPluginSelection] = useState(() =>
     !embedded && navigation.view === 'plugin' ? navigation.pluginId : null,
@@ -617,6 +643,7 @@ function DashboardApp({
       setSummaryDialog(key);
       return;
     }
+    clearLinkedChange();
     clearSearch();
     if (['active', 'archived'].includes(key)) {
       setSummaryFilter(null);
@@ -818,10 +845,14 @@ function DashboardApp({
           )
             return;
           if (refreshingClassic) {
-            const nextId = pickSelectedFromPage(
-              queryChanged && currentTab !== 'active' ? nextPages[currentTab] : currentPage,
-              selectedIdRef.current,
-            );
+            const nextId =
+              (linkedChangeRef.current?.workflow === 'classic'
+                ? linkedChangeRef.current.locator
+                : null) ??
+              pickSelectedFromPage(
+                queryChanged && currentTab !== 'active' ? nextPages[currentTab] : currentPage,
+                selectedIdRef.current,
+              );
             const previousSelectedId = selectedIdRef.current;
             setSelectedId(nextId);
             selectedIdRef.current = nextId;
@@ -1608,7 +1639,11 @@ function DashboardApp({
     [toast],
   );
 
-  const selected = selectedDetail;
+  const selected =
+    linkedChange?.workflow === 'classic' &&
+    (!selectedDetail || dashboardChangeKey(selectedDetail) !== linkedChange.locator)
+      ? null
+      : selectedDetail;
   const visible = useMemo(
     () =>
       summaryFilter
@@ -1683,6 +1718,10 @@ function DashboardApp({
 
   useEffect(() => {
     if (useDemo || workflow !== 'classic' || !snapshot || !activeProjectId) return;
+    if (linkedChange) {
+      if (selectedId !== linkedChange.locator) void selectChange(linkedChange.locator);
+      return;
+    }
     if (
       !shouldAutoLoadDashboardDetail({
         detailLoading,
@@ -1708,6 +1747,7 @@ function DashboardApp({
     activeProjectId,
     detailLoading,
     detailError,
+    linkedChange,
     selectChange,
     selectedDetail,
     selectedId,
@@ -1717,10 +1757,14 @@ function DashboardApp({
     workflow,
   ]);
 
-  const selectTab = useCallback((nextTab) => {
-    setSummaryFilter(null);
-    setTab(nextTab);
-  }, []);
+  const selectTab = useCallback(
+    (nextTab) => {
+      clearLinkedChange();
+      setSummaryFilter(null);
+      setTab(nextTab);
+    },
+    [clearLinkedChange],
+  );
 
   const resetSelectedProject = useCallback((nextProjectId) => {
     requestedSearchRef.current = null;
@@ -1773,7 +1817,7 @@ function DashboardApp({
     <main
       className={`dashboard-workbench min-h-screen bg-surface text-fg antialiased lg:grid lg:grid-cols-[var(--rail-w)_1fr]${
         sidebarCollapsed ? ' is-sidebar-collapsed' : ''
-      }${embedded ? ' is-embedded' : ''}`}
+      }${embedded ? ' is-embedded' : ''}${useDemo ? ' is-demo' : ''}`}
     >
       <AntSidebar
         embedded={embedded}
@@ -1945,6 +1989,11 @@ function DashboardApp({
                 : undefined
           }
           onMenu={() => setRailOpen(true)}
+          onAttention={
+            !embedded && !useDemo && activeProjectId && snapshot
+              ? () => setAttentionOpen(true)
+              : undefined
+          }
           onRefresh={async () => {
             if (contextUsageOpen) {
               setPluginRefreshToken((value) => value + 1);
@@ -2086,6 +2135,8 @@ function DashboardApp({
             ) : workflow === 'native' ? (
               <NativeWorkflowPanel
                 native={snapshot.native}
+                linkedChange={linkedChange}
+                onLeaveLinkedChange={clearLinkedChange}
                 summaryTarget={summaryTarget}
                 summaryData={summaryData}
                 summaryFilter={summaryFilter}
@@ -2118,6 +2169,7 @@ function DashboardApp({
               />
             ) : workflow === 'classic' ? (
               <Dashboard
+                linkedChange={linkedChange}
                 summaryTarget={summaryTarget}
                 summaryData={summaryData}
                 summaryFilter={summaryFilter}
@@ -2129,7 +2181,10 @@ function DashboardApp({
                 selectedId={selectedId}
                 tab={tab}
                 onTab={selectTab}
-                onSelect={selectChange}
+                onSelect={(id) => {
+                  clearLinkedChange();
+                  return selectChange(id);
+                }}
                 hasMore={!summaryFilter && Boolean(activePage?.nextCursor)}
                 pageLoading={summaryFilter ? summaryData.loading : pageLoading === tab}
                 onLoadMore={() => loadPage(tab, true)}
@@ -2143,6 +2198,26 @@ function DashboardApp({
             )}
           </div>
         </div>
+        {!embedded && !useDemo && (
+          <WorkflowAttentionDrawer
+            open={attentionOpen}
+            projectId={activeProjectId}
+            onClose={() => setAttentionOpen(false)}
+            onOpen={(item, section) => {
+              setAttentionOpen(false);
+              setTab('active');
+              setSummaryFilter(null);
+              clearSearch();
+              navigateDashboard({
+                view: 'workflow',
+                projectId: activeProjectId,
+                workflow: item.workflow,
+                changeLocator: item.locator,
+                changeSection: section,
+              });
+            }}
+          />
+        )}
         {!embedded && !useDemo && (
           <DashboardUpdateModal
             open={updateOpen}
@@ -2341,6 +2416,7 @@ function Topbar({
   onProjectSelect,
   onProjectForget,
   onMenu,
+  onAttention,
   onRefresh,
 }) {
   useDashboardLanguage();
@@ -2456,6 +2532,13 @@ function Topbar({
         </div>
       )}
       <div className="comet-header-actions">
+        {onAttention && (
+          <Tooltip title={t('待关注变更')}>
+            <Button icon={<FlagOutlined />} aria-label={t('待关注变更')} onClick={onAttention}>
+              <span className="hidden sm:inline">{t('待关注变更')}</span>
+            </Button>
+          </Tooltip>
+        )}
         <Tooltip title={t('立即刷新')}>
           <Button
             className="comet-refresh-button"
@@ -2472,6 +2555,7 @@ function Topbar({
 }
 
 function Dashboard({
+  linkedChange,
   summaryTarget,
   summaryData,
   summaryFilter,
@@ -2495,22 +2579,28 @@ function Dashboard({
   useDashboardLanguage();
   const locatedSummaryTarget = useRef(null);
   useEffect(() => {
+    const target = linkedChange ?? summaryTarget;
     if (
-      locatedSummaryTarget.current === summaryTarget ||
-      !summaryTarget ||
+      locatedSummaryTarget.current === target ||
+      !target ||
       !selected ||
-      dashboardChangeKey(summaryTarget) !== dashboardChangeKey(selected)
+      dashboardChangeKey(target) !== dashboardChangeKey(selected)
     )
       return;
-    locatedSummaryTarget.current = summaryTarget;
-    const frame = requestAnimationFrame(() =>
-      document.querySelector('.classic-change-detail')?.scrollIntoView({
+    locatedSummaryTarget.current = target;
+    const frame = requestAnimationFrame(() => {
+      const change = document.querySelector('.classic-change-detail');
+      const evidence =
+        target.section === 'evidence' && change?.querySelector('[data-workflow-evidence]');
+      const element = evidence || change;
+      element?.scrollIntoView({
         block: 'start',
         behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-      }),
-    );
+      });
+      if (evidence) evidence.click();
+    });
     return () => cancelAnimationFrame(frame);
-  }, [summaryTarget, selected]);
+  }, [linkedChange, summaryTarget, selected]);
   const hasClassicChanges = snapshot.summary.activeChanges + snapshot.summary.archivedChanges > 0;
   const classicWarning = snapshot.classicError && hasClassicChanges;
   const detailPending = shouldShowDashboardDetailLoading({
@@ -2519,14 +2609,10 @@ function Dashboard({
     selectedDetailId: selected?.id ?? null,
     failedDetailId: detailError?.id ?? null,
   });
-  const isEmptyView = !pageLoading && visible.length === 0;
-  const isLoadingView = pageLoading && visible.length === 0;
+  const isEmptyView = !linkedChange && !pageLoading && visible.length === 0;
+  const isLoadingView = !linkedChange && pageLoading && visible.length === 0;
   return (
     <div className="mx-auto min-w-0 max-w-dashboard">
-      <SectionHead
-        title={t('项目概览')}
-        hint={t('生成于 {0}', [formatTimestamp(snapshot.project.generatedAt)])}
-      />
       <WorkflowSuggestion
         command={selected?.next?.command}
         description={t(selected?.next?.description)}
@@ -2538,13 +2624,13 @@ function Dashboard({
         onAction={onSummaryAction}
       />
       <SummaryFilterBar filter={summaryFilter} summary={summaryData} onClear={() => onTab('all')} />
-      <SectionHead title={t('变更工作区')} hint={t('查看文件产物与项目进度')} />
       {snapshot.classicError && !hasClassicChanges ? (
         <ClassicErrorState error={snapshot.classicError} />
       ) : (
         <>
           {classicWarning ? <ClassicWarning error={snapshot.classicError} /> : null}
           <DashboardWorkspaceRegion
+            label={t('变更工作区')}
             leftClassName="dashboard-workspace-left-inner-scroll"
             stableFrame
             left={
@@ -2774,6 +2860,7 @@ function ArtifactRow({ artifact, preview, onPreview }) {
         exists ? 'cursor-pointer hover:bg-surface' : 'cursor-default opacity-50'
       }`}
       disabled={!exists}
+      data-workflow-evidence={artifact.key === 'verifyReport' && exists ? true : undefined}
       onClick={() => onPreview({ key: artifact.key, name: artifact.label, preview })}
     >
       {/* status dot */}
@@ -5003,35 +5090,34 @@ function ContextUsageCenter({
   }, [projectId, demo, demoPages, refreshToken, retryToken, loadPage, readCachedPage, coordinator]);
   const usageSnapshot = sections[selectedSource]?.page?.data?.contextUsage;
   return (
-    <div className="dashboard-context-usage-page min-w-0" aria-label={t('可观测')}>
-      <header className="dashboard-context-usage-page-heading">
-        <div>
-          <h2>{t('可观测')}</h2>
-        </div>
+    <section className="dashboard-context-usage-page min-w-0" aria-label={t('可观测')}>
+      <div className="dashboard-observability-controls">
+        <Tabs
+          className="usage-source-tabs"
+          activeKey={selectedSource}
+          onChange={setSelectedSource}
+          tabBarExtraContent={
+            (usageSnapshot?.demo || (usageSnapshot?.available && usageSnapshot.truncated)) && (
+              <div className="dashboard-context-usage-heading">
+                {usageSnapshot.demo && <Tag>{t('演示数据')}</Tag>}
+                {usageSnapshot.available && usageSnapshot.truncated && (
+                  <Tag color="warning">{t('记录已截断')}</Tag>
+                )}
+              </div>
+            )
+          }
+          items={[
+            { key: 'runtime-performance', label: t('运行性能') },
+            { key: 'change-trace', label: t('Change 链路') },
+            ...DASHBOARD_PLUGIN_NAV_PLACEHOLDERS.map(({ pluginId, label }) => ({
+              key: pluginId,
+              label: t(label),
+            })),
+          ]}
+          aria-label={t('统计来源')}
+        />
         <ObservabilityTimeFilter value={timeSelection} onChange={setTimeSelection} />
-      </header>
-      <Tabs
-        className="usage-source-tabs"
-        activeKey={selectedSource}
-        onChange={setSelectedSource}
-        tabBarExtraContent={
-          <div className="dashboard-context-usage-heading">
-            {usageSnapshot?.demo && <Tag>{t('演示数据')}</Tag>}
-            {usageSnapshot?.available && usageSnapshot.truncated && (
-              <Tag color="warning">{t('记录已截断')}</Tag>
-            )}
-          </div>
-        }
-        items={[
-          { key: 'runtime-performance', label: t('运行性能') },
-          { key: 'change-trace', label: t('Change 链路') },
-          ...DASHBOARD_PLUGIN_NAV_PLACEHOLDERS.map(({ pluginId, label }) => ({
-            key: pluginId,
-            label: t(label),
-          })),
-        ]}
-        aria-label={t('统计来源')}
-      />
+      </div>
       <div className="dashboard-context-usage-grid">
         {selectedSource === 'change-trace' && (
           <ChangeTracePanel
@@ -5103,7 +5189,7 @@ function ContextUsageCenter({
           );
         })}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -10006,7 +10092,10 @@ function AntSummaryCards({ snapshot, summaryData, selectedKey, onAction }) {
     ],
   ];
   return (
-    <section className="dashboard-summary-strip dashboard-overview-summary-strip">
+    <section
+      className="dashboard-summary-strip dashboard-overview-summary-strip"
+      aria-label={t('项目概览')}
+    >
       {cards.map(([title, value, note, status, Icon], index) => (
         <AntSummaryCard
           key={title}
@@ -10291,9 +10380,7 @@ function AntChangeDetail({ change, onPreview }) {
         description={t(change.next?.description)}
       />
       <div className="change-detail-panels grid min-w-0 gap-4">
-        <AntCard size="small" title={t('关键产物')}>
-          <ArtifactList change={change} onPreview={onPreview} />
-        </AntCard>
+        <ArtifactList change={change} onPreview={onPreview} />
         <TaskProgress change={change} />
       </div>
     </AntCard>

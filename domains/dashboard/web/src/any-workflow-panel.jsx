@@ -915,6 +915,22 @@ export function AnyWorkflowPanel({
   const indexingProgress = page?.sourceCount
     ? Math.min(100, Math.max(0, (page.indexedCount / page.sourceCount) * 100))
     : 0;
+  const workspaceSwitch = (
+    <Button
+      className="any-workspace-switch"
+      disabled={!applicationWorkspace && Boolean(applicationId) && !selectedGroup?.runs.length}
+      onClick={() =>
+        onNavigateWorkspace?.(
+          applicationWorkspace ? 'any' : 'application',
+          applicationWorkspace
+            ? (selectedGroup?.creators[0]?.locator ?? locator)
+            : selectedGroup?.runs[0]?.locator,
+        )
+      }
+    >
+      {t(applicationWorkspace ? '管理创作与分发' : '查看自定义工作流')}
+    </Button>
+  );
 
   return (
     <section
@@ -923,31 +939,6 @@ export function AnyWorkflowPanel({
       data-dashboard-motion="page"
       aria-label={t(applicationWorkspace ? '自定义工作流工作区' : 'Comet Any 工作区')}
     >
-      <div className="any-workspace-heading">
-        <div>
-          <h1>{t(applicationWorkspace ? '自定义工作流' : 'Comet Any')}</h1>
-          <p>
-            {t(
-              applicationWorkspace
-                ? '每次运行，一条独立的流程与轨迹'
-                : '从需求、方案与确认，到构建、验证和交付',
-            )}
-          </p>
-        </div>
-        <Button
-          disabled={!applicationWorkspace && Boolean(applicationId) && !selectedGroup?.runs.length}
-          onClick={() =>
-            onNavigateWorkspace?.(
-              applicationWorkspace ? 'any' : 'application',
-              applicationWorkspace
-                ? (selectedGroup?.creators[0]?.locator ?? locator)
-                : selectedGroup?.runs[0]?.locator,
-            )
-          }
-        >
-          {t(applicationWorkspace ? '管理创作与分发' : '查看自定义工作流')}
-        </Button>
-      </div>
       <div className="any-columns">
         <aside className="any-panel any-explorer" data-dashboard-scroll="any-explorer">
           <div className="any-panel-heading">
@@ -1154,6 +1145,7 @@ export function AnyWorkflowPanel({
               onMore={loadRoster}
               onRetry={() => setTick((value) => value + 1)}
               versionHistory={applicationWorkspace ? null : versionHistory}
+              workspaceSwitch={workspaceSwitch}
             />
           )}
           {(parentStack.current.length > 0 || detail?.parentLocator) && (
@@ -1168,6 +1160,7 @@ export function AnyWorkflowPanel({
           )}
           {!selectedSummary ? (
             <div className="any-run-empty">
+              <div className="any-workspace-actions">{workspaceSwitch}</div>
               {pageLoading ? (
                 <Skeleton active paragraph={{ rows: 8 }} />
               ) : (

@@ -253,6 +253,10 @@ export async function classicRecoveryContext(
               root,
               undefined,
               path.basename(directory),
+              nextAction.kind === 'verify' ||
+                (nextAction.kind === 'reconcile-task' && nextAction.taskId)
+                ? (projection.run?.currentStep ?? undefined)
+                : undefined,
             ),
           }
         : {}),

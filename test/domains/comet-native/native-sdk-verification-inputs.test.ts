@@ -4,6 +4,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   defaultProjectConfig,
@@ -45,8 +46,10 @@ type FixtureCommand = {
 };
 type Report = {
   name: string;
-  result: 'passed' | 'failed' | 'not-run';
+  result: 'passed' | 'failed' | 'not-run' | 'unknown' | 'timeout';
   note: string;
+  acceptanceIds?: string[];
+  reason?: string;
 };
 const roots: string[] = [];
 afterEach(async () => {
@@ -118,6 +121,7 @@ async function candidate(
     files?: Record<string, string>;
     prepareProject?: (root: string) => Promise<void>;
     builderOverrides?: Record<string, unknown>;
+    omitBuilderReview?: boolean;
     documentWrites?: 'allow' | 'revert';
   } = {},
 ) {
@@ -257,7 +261,7 @@ Run focused Native checks.
     {
       summary: 'SIMULATED Agent implements the approved candidate.',
       addressedAcceptanceIds: ['A1'],
-      acceptanceReview: fixtureAcceptanceReview(['A1']),
+      ...(options.omitBuilderReview ? {} : { acceptanceReview: fixtureAcceptanceReview(['A1']) }),
       checks: observations.map(({ name, result, note }) => ({
         name,
         result,
@@ -299,7 +303,13 @@ async function verify(
     {
       candidateId: state.builder_handoff!.candidate_id,
       verifierExecutionRef: session,
-      checks: checks.map(({ name, result, note }) => ({ name, result, note })),
+      checks: checks.map(({ name, result, note, acceptanceIds, reason }) => ({
+        name,
+        result,
+        note,
+        ...(acceptanceIds ? { acceptanceIds } : {}),
+        ...(reason ? { reason } : {}),
+      })),
       response: {
         kind: 'final-result',
         result: {
@@ -333,6 +343,142 @@ async function approve(f: Fixture, run: WorkflowRun, id = 'SIMULATED-USER-result
     decisionId: id,
   });
 }
+
+it('shows current acceptance evidence to the independent Native Verifier and on cold status', async () => {
+  const f = await candidate({
+    builderOverrides: {
+      acceptanceReview: [
+        {
+          id: 'A1',
+          status: 'implemented-with-evidence',
+          evidence: ['value.ts exports the selected value'],
+          note: 'Observed the implemented export',
+        },
+      ],
+      checks: [
+        {
+          name: 'Read value.ts',
+          result: 'passed',
+          note: 'The fixture printed verified.',
+          acceptanceIds: ['A1'],
+        },
+      ],
+    },
+  });
+  const verifier = f.run.actions.find((action) => action.stepId === 'verify.verifier')!;
+  const claim = await runNativeCli([
+    'next',
+    f.run.runId,
+    '--action',
+    verifier.id,
+    '--session',
+    'independent-fixture-verifier',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  const cold = await runNativeCli(['status', f.run.runId, '--project-root', f.root, '--json']);
+  const expected = {
+    runId: f.run.runId,
+    candidateId: (f.run.state as NativePortableState).builder_handoff!.candidate_id,
+    child: null,
+    items: [
+      {
+        id: 'A1',
+        evidence: ['value.ts exports the selected value'],
+        gap: null,
+        result: 'pending',
+        checks: [{ name: 'Read value.ts', result: 'passed', stage: 'build' }],
+      },
+    ],
+  };
+  expect(claim.exitCode ?? 0).toBe(0);
+  expect(JSON.parse(claim.stdout).data).toMatchObject({
+    task: { readOnly: true, acceptanceEvidence: expected },
+  });
+  expect(JSON.parse(cold.stdout).data).toMatchObject({ acceptanceEvidence: expected });
+  const bundle = fileURLToPath(
+    new URL('../../../assets/skills/comet-native/scripts/comet-native-status.mjs', import.meta.url),
+  );
+  const fromBundle = execFileSync(
+    process.execPath,
+    [bundle, f.run.runId, '--project-root', f.root, '--json'],
+    { encoding: 'utf8' },
+  );
+  expect(JSON.parse(fromBundle).data.acceptanceEvidence).toMatchObject(expected);
+});
+
+it('keeps unlinked historical reports visible and renders why a Verifier repeated a check', async () => {
+  const f = await candidate({ omitBuilderReview: true });
+  const before = await runNativeCli(['status', f.run.runId, '--project-root', f.root, '--json']);
+  expect(JSON.parse(before.stdout).data).toMatchObject({
+    acceptanceEvidence: { items: [{ id: 'A1', gap: 'no-linked-evidence', checks: [] }] },
+  });
+  const run = await verify(f, f.run, 'pass', [
+    {
+      name: 'Read value.ts',
+      result: 'passed',
+      note: 'Fresh invocation observed the selected value.',
+      reason: 'The previously reported check did not cover the generated output.',
+      acceptanceIds: ['A1'],
+    },
+  ]);
+  await refreshNativeSdkVerificationReport(f.root, run);
+  const after = await runNativeCli(['status', f.run.runId, '--project-root', f.root, '--json']);
+  expect(JSON.parse(after.stdout).data).toMatchObject({
+    acceptanceEvidence: {
+      items: [
+        {
+          id: 'A1',
+          gap: null,
+          result: 'passed',
+          checks: [
+            {
+              stage: 'verify',
+              reason: 'The previously reported check did not cover the generated output.',
+            },
+          ],
+        },
+      ],
+    },
+  });
+  const markdown = await fs.readFile(path.join(f.changeDir, 'verification.md'), 'utf8');
+  expect(markdown).toContain('The previously reported check did not cover the generated output.');
+});
+
+it('does not carry old evidence into a repaired candidate or turn unchecked results into success', async () => {
+  const f = await candidate();
+  const originalId = (f.run.state as NativePortableState).builder_handoff!.candidate_id;
+  const checks = (['unknown', 'timeout', 'not-run'] as const).map((result) => ({
+    name: result + ' check',
+    result,
+    note: 'This check did not pass.',
+    acceptanceIds: ['A1'],
+  }));
+  await expect(verify(f, f.run, 'pass', checks, 'invalid-pass')).rejects.toThrow(/pass|checks/u);
+  const claimed = await f.runtime.inspect(f.run.runId);
+  const failed = await verify(f, claimed, 'fail', checks, 'actual-failure');
+  expect(
+    (failed.state as NativePortableState).verification?.reported_checks?.map(
+      ({ result }) => result,
+    ),
+  ).toEqual(['unknown', 'timeout', 'not-run']);
+  const building = await runNativeCli(['status', f.run.runId, '--project-root', f.root, '--json']);
+  expect(JSON.parse(building.stdout).data.acceptanceEvidence).toMatchObject({
+    candidateId: null,
+    items: [{ id: 'A1', gap: 'no-candidate', checks: [], evidence: [] }],
+    previousCandidate: {
+      candidateId: originalId,
+      items: [{ id: 'A1', result: 'failed', reason: expect.any(String) }],
+    },
+  });
+  await builder(f, failed, [], 'successor-candidate');
+  const successor = await runNativeCli(['status', f.run.runId, '--project-root', f.root, '--json']);
+  const evidence = JSON.parse(successor.stdout).data.acceptanceEvidence;
+  expect(evidence.candidateId).not.toBe(originalId);
+  expect(evidence.items).toMatchObject([{ id: 'A1', result: 'pending', checks: [] }]);
+  expect(evidence).not.toHaveProperty('previousCandidate');
+});
 async function archive(f: Fixture, run: WorkflowRun) {
   if (run.waits.at(-1)?.status === 'pending') run = await approve(f, run);
   for (const executorId of [

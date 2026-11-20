@@ -48,6 +48,7 @@ export function WorkflowEmptyIllustration({ compact = false }) {
 }
 
 export function DashboardWorkspaceRegion({
+  label,
   left,
   center,
   right,
@@ -82,8 +83,9 @@ export function DashboardWorkspaceRegion({
   const style = centerHeight > 0 ? { '--dashboard-center-height': `${centerHeight}px` } : undefined;
 
   return (
-    <div
+    <section
       className={`${WORKSPACE_GRID_CLASS} ${stableFrame ? 'dashboard-workspace-region-stable' : ''}`.trim()}
+      aria-label={label}
       style={style}
     >
       <div className={`dashboard-workspace-side dashboard-workspace-left ${leftClassName}`.trim()}>
@@ -95,6 +97,6 @@ export function DashboardWorkspaceRegion({
       <div className="dashboard-workspace-side dashboard-workspace-right xl:col-start-2 2xl:col-start-auto">
         {right}
       </div>
-    </div>
+    </section>
   );
 }

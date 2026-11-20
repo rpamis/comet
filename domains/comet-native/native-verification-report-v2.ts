@@ -141,13 +141,15 @@ export function renderNativeVerificationReport(
         `| ${tableCell(entry.id)} | ${tableCell(entry.result)} | ${tableCell(entry.source)} | ${tableCell(entry.text)} | ${tableCell(display(entry.reason))} |`,
     )
     .join('\n');
-  const checks = state.verification.reported_checks
+  const reported = state.verification.reported_checks;
+  const extendedChecks = reported?.some((check) => check.reason || check.acceptance_ids?.length);
+  const checks = reported
     ? [
-        `| ${localized('Agent-reported check', 'Agent 报告的检查')} | ${localized('Result', '结果')} | ${localized('Execution and evidence', '执行与证据')} |`,
-        '| --- | --- | --- |',
-        ...state.verification.reported_checks.map(
+        `| ${localized('Agent-reported check', 'Agent 报告的检查')} | ${localized('Result', '结果')} | ${localized('Execution and evidence', '执行与证据')} |${extendedChecks ? ` ${localized('Acceptance', '验收项')} | ${localized('Why it ran', '执行原因')} |` : ''}`,
+        `| --- | --- | --- |${extendedChecks ? ' --- | --- |' : ''}`,
+        ...reported.map(
           (check) =>
-            `| ${tableCell(display(check.name))} | ${check.result} | ${tableCell(display(check.note))} |`,
+            `| ${tableCell(display(check.name))} | ${check.result} | ${tableCell(display(check.note))} |${extendedChecks ? ` ${tableCell(check.acceptance_ids?.join(', ') || '—')} | ${tableCell(display(check.reason ?? null))} |` : ''}`,
         ),
       ].join('\n')
     : state.verification.checks.length === 0

@@ -661,6 +661,20 @@ program
   .option('--html', 'Enable HTML report output')
   .option('--quick', 'Use the default quick smoke task where applicable')
   .option('--collect', 'Collect targets without executing Claude or Docker workloads')
+  .option(
+    '--workflow-regression [case]',
+    'Select a fixed Native/Classic workflow regression case; list with --collect',
+  )
+  .option('--compare <run>', 'Compare a saved Eval run with a baseline without executing Eval')
+  .option('--baseline <run>', 'Baseline run ID for --compare (defaults to the saved baseline)')
+  .option(
+    '--baseline-context-cost <file>',
+    'Attach an exported Classic phase context report to the baseline case',
+  )
+  .option(
+    '--candidate-context-cost <file>',
+    'Attach an exported Classic phase context report to the candidate case',
+  )
   .option('--list-datasets', '列出内置数据集及固定来源')
   .option('--fetch-dataset', '下载固定版本数据集到 dataset-root，不执行评测')
   .option('--dataset <id>', '使用内置数据集评测 Native 或 Goal')

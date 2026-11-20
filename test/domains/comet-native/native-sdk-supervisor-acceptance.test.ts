@@ -9,7 +9,15 @@ import {
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
-import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
+import {
+  createNativePortableState,
+  parseNativePortableState,
+} from '../../../domains/comet-native/native-portable-state.js';
+import {
+  nativeSdkActionContextRequest,
+  projectNativeSdkDispatchResult,
+} from '../../../domains/comet-native/native-sdk-continuation.js';
+import { projectNativeSdkAcceptanceEvidence } from '../../../domains/comet-native/native-sdk-acceptance-evidence.js';
 import {
   collectNativeSdkShapeProposal,
   defineNativeWorkflowApplication,
@@ -30,7 +38,10 @@ const git = (root: string, ...args: string[]) =>
     ['-c', 'user.name=SIMULATED-Agent', '-c', 'user.email=fixture@example.invalid', ...args],
     { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
   ).trim();
-async function fixture() {
+async function fixture(
+  builderReport: Record<string, RuntimeValue> = {},
+  useSyntheticCriterion = false,
+) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-current-child-acceptance-'));
   roots.push(root);
   const name = 'child-acceptance',
@@ -48,7 +59,11 @@ async function fixture() {
   );
   await fs.writeFile(
     path.join(dir, 'children.yaml'),
-    'schema: comet.native.children.v2\nacceptance_index:\n  A1:\n    source: brief.md\n    text: The first behavior works.\n  A2:\n    source: brief.md\n    text: The second behavior works.\nchildren:\n  - name: core\n    depends_on: []\n    covers: [A1, A2]\n  - name: tail\n    depends_on: [core]\n    covers: [A2]\n',
+    'schema: comet.native.children.v2\nacceptance_index:\n  A1:\n    source: brief.md\n    text: The first behavior works.\n  A2:\n    source: brief.md\n    text: The second behavior works.\nchildren:\n  - name: core\n    depends_on: []\n    covers: ' +
+      (useSyntheticCriterion ? '[]' : '[A1, A2]') +
+      '\n  - name: tail\n    depends_on: [core]\n    covers: ' +
+      (useSyntheticCriterion ? '[A1, A2]' : '[A2]') +
+      '\n',
   );
   await fs.writeFile(
     path.join(root, '.gitignore'),
@@ -153,6 +168,7 @@ async function fixture() {
       candidateCommit: commit,
       checks: [],
       requireIndependentReview: true,
+      ...builderReport,
     },
     'builder',
   );
@@ -183,6 +199,109 @@ async function fixture() {
     context,
   };
 }
+
+it('links Supervisor checks to the authorized synthetic child criterion only', async () => {
+  const report = (id: string) => ({
+    checks: [{ name: 'Inspect child file', result: 'passed', acceptanceIds: [id] }],
+  });
+  const f = await fixture(report('child:core'), true);
+  expect(
+    projectNativeSdkAcceptanceEvidence(
+      f.run,
+      parseNativePortableState(f.run.state),
+      f.root,
+      'core',
+    ),
+  ).toMatchObject({
+    items: [{ id: 'child:core', checks: [{ stage: 'build', result: 'passed' }] }],
+  });
+  const verifierResult = (id: string) => ({
+    candidateCommit: f.commit,
+    verdict: 'pass',
+    evidence: {
+      summary: 'SIMULATED independent review of child behavior.',
+      acceptance: [{ id: 'child:core', result: 'passed', reason: 'Observed the child behavior.' }],
+      ...report(id),
+    },
+  });
+  await expect(
+    f.runtime.recordOutcome(request(f, verifierResult('child:tail'), 'other-child-check')),
+  ).rejects.toThrow(/unknown ID: child:tail/u);
+  const verified = await f.runtime.recordOutcome(request(f, verifierResult('child:core')));
+  expect(
+    projectNativeSdkAcceptanceEvidence(
+      verified,
+      parseNativePortableState(verified.state),
+      f.root,
+      'core',
+    ),
+  ).toMatchObject({
+    items: [{ id: 'child:core', checks: [{ stage: 'build' }, { stage: 'verify' }] }],
+  });
+  await expect(fixture(report('child:tail'), true)).rejects.toThrow(/unknown ID: child:tail/u);
+});
+
+it('shows only the current child candidate evidence in the independently claimed task', async () => {
+  const f = await fixture({
+    acceptanceReview: [
+      {
+        id: 'A1',
+        status: 'implemented-with-evidence',
+        evidence: ['Child feature.txt contains the first behavior'],
+        note: 'The worktree contains the feature file.',
+      },
+    ],
+    checks: [
+      {
+        name: 'Inspect child file',
+        result: 'unknown',
+        note: 'Platform result unavailable',
+        acceptanceIds: ['A2'],
+      },
+    ],
+  });
+  const projection = await projectNativeSdkDispatchResult({
+    projectRoot: f.root,
+    run: f.run,
+    state: parseNativePortableState(f.run.state),
+    actionId: f.verifier.id,
+  });
+  expect(projection).toMatchObject({
+    acceptanceEvidence: {
+      runId: f.name,
+      candidateId: f.builder.id,
+      candidateCommit: f.commit,
+      child: 'core',
+      projectRoot: f.worktree,
+      items: [
+        {
+          id: 'A1',
+          evidence: ['Child feature.txt contains the first behavior'],
+          gap: null,
+          checks: [],
+        },
+        {
+          id: 'A2',
+          evidence: [],
+          gap: 'no-linked-evidence',
+          checks: [{ result: 'unknown', stage: 'build' }],
+        },
+      ],
+    },
+  });
+  expect(
+    projectNativeSdkAcceptanceEvidence(
+      f.run,
+      parseNativePortableState(f.run.state),
+      f.root,
+      'tail',
+    ),
+  ).toMatchObject({
+    candidateId: null,
+    items: [{ id: 'A2', gap: 'no-candidate', checks: [], evidence: [] }],
+  });
+});
+
 const acceptance = (first: 'passed' | 'failed' | 'blocked' = 'passed') => [
   { id: 'A1', result: first, reason: 'SIMULATED independent first behavior inspection.' },
   { id: 'A2', result: 'passed', reason: 'SIMULATED independent second behavior inspection.' },
@@ -207,6 +326,27 @@ function request(
     context: f.context,
   };
 }
+it('uses the Supervisor Child role for context even while the parent is in Build', async () => {
+  const { root, run, builder, verifier, worktree } = await fixture();
+  const state = parseNativePortableState(run.state);
+  expect(state.phase).toBe('build');
+  expect(nativeSdkActionContextRequest(builder, state, root)).toMatchObject({
+    phase: 'build',
+    operation: 'edit',
+    commandArgs: expect.arrayContaining([worktree, '--operation', 'edit']),
+  });
+  expect(nativeSdkActionContextRequest(verifier, state, root)).toMatchObject({
+    phase: 'verify',
+    operation: 'verify',
+    commandArgs: expect.arrayContaining([
+      worktree,
+      '--operation',
+      'verify',
+      'independent-verifier',
+    ]),
+  });
+});
+
 it.each(['fail', 'blocked'] as const)(
   'records current Child %s without inventing a checker receipt or a successful integration',
   async (verdict) => {

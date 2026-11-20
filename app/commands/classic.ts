@@ -2,6 +2,7 @@ import { compactCliStdout } from '../../domains/workflow-contract/compact-output
 import { splitCompactOutputArgs } from './compact-output.js';
 import type { ClassicCommandResult } from '../../domains/comet-classic/classic-cli.js';
 import { withProjectIdentityScope } from '../../platform/paths/project-identity.js';
+import path from 'node:path';
 
 export const PUBLIC_CLASSIC_COMMANDS = ['state', 'guard', 'handoff', 'archive', 'check'] as const;
 
@@ -42,6 +43,7 @@ export async function runClassicGroupFacade(args: readonly string[]): Promise<nu
         '',
         'Commands:',
         '  state current | state next <name>    Inspect the current change or next workflow action',
+        '  context-cost <name> [--trace <file>]  Report the current phase context costs (read-only)',
         '  state complete-build <name> --checks <file>  Submit platform check reports for a new Run',
         '  guard <name> verify --report <ref> --apply --checks <file>  Submit acceptance and check reports',
         '  check run <name> <build|verify> ...  Execute a managed check for a legacy Run',
@@ -67,6 +69,7 @@ export async function runClassicGroupFacade(args: readonly string[]): Promise<nu
     return 0;
   }
   const command = args[0] ?? 'classic';
+  if (command === 'context-cost') return runClassicContextCost(args.slice(1));
   const outputArgs = splitCompactOutputArgs(args, args[0] !== 'openspec');
   let integration: ClassicIntegrationArgs;
   try {
@@ -91,6 +94,106 @@ export async function runClassicGroupFacade(args: readonly string[]): Promise<nu
   if (result.stdout) process.stdout.write(compactCliStdout(result.stdout, outputArgs.compact)!);
   if (result.stderr) process.stderr.write(result.stderr);
   return result.exitCode;
+}
+
+async function runClassicContextCost(args: readonly string[]): Promise<number> {
+  const usage =
+    'Usage: comet classic context-cost <name> [--project-root <dir>] [--trace <file>] [--json]';
+  if (args.includes('--help') || args.includes('-h')) {
+    process.stdout.write(
+      `${usage}\n\n` +
+        'Shows bundled Rule and stage file byte estimates and one read-only state next response. ' +
+        'The byte estimates describe selected package files and CLI output. They do not measure model input or platform customization.\n\n' +
+        'Use --trace with a JSON summary of actual platform measurements. Copy scope from the JSON report.\n' +
+        'Example: {"schema":"comet.classic.context-trace.v1","scope":{"projectRoot":"/project","change":"my-change","phase":"build"},\n' +
+        '          "source":"platform-trace-export","metrics":{"inputTokens":1200,"toolRoundTrips":4,"waitMs":250},\n' +
+        '          "categories":{"cli":{"contextBytes":420}}}\n' +
+        'Omit any measurement not available from the trace.\n',
+    );
+    return 0;
+  }
+  const json = args.includes('--json');
+  let exitCode = 64;
+  try {
+    const [change, ...options] = args.filter((arg) => arg !== '--json');
+    if (!change || change.startsWith('-')) throw new Error(usage);
+    const flags = new Map<string, string>();
+    for (let index = 0; index < options.length; index += 2) {
+      const flag = options[index];
+      const value = options[index + 1];
+      if (
+        !['--project-root', '--trace'].includes(flag) ||
+        !value ||
+        value.startsWith('--') ||
+        flags.has(flag)
+      )
+        throw new Error(usage);
+      flags.set(flag, value);
+    }
+    exitCode = 1;
+    const [
+      { runClassicCli },
+      { discoverClassicProject },
+      { classicContextCost },
+      { getAssetsDir },
+    ] = await Promise.all([
+      import('../../domains/comet-classic/classic-cli.js'),
+      import('../../domains/comet-classic/classic-layout.js'),
+      import('../../domains/comet-classic/classic-context-cost.js'),
+      import('../../domains/skill/platform-install.js'),
+    ]);
+    const requestedRoot = flags.get('--project-root');
+    const projectRoot = requestedRoot
+      ? path.resolve(requestedRoot)
+      : await discoverClassicProject(process.cwd());
+    const current = await runClassicCli(['state', 'next', change, '--json'], undefined, {
+      projectRoot,
+      readOnly: true,
+      ...(requestedRoot ? { invocationCwd: projectRoot } : {}),
+    });
+    const { data, stderr } = JSON.parse(current.stdout ?? '{}');
+    if (current.exitCode !== 0)
+      throw new Error(stderr?.trim() || 'Unable to read the Classic change.');
+    const report = await classicContextCost({
+      assetsRoot: getAssetsDir(),
+      projectRoot: data.projectRoot ?? projectRoot,
+      change,
+      phase: data.phase,
+      configuration: data.configuration,
+      cliBytes: Buffer.byteLength(current.stdout!),
+      traceFile: flags.get('--trace'),
+    });
+    if (json) {
+      process.stdout.write(
+        `${JSON.stringify({ command: 'context-cost', exitCode: 0, data: report })}\n`,
+      );
+    } else {
+      const format = (metric: { value: number; unit: string; kind: string } | null | undefined) =>
+        metric ? `${metric.value} ${metric.unit} (${metric.kind})` : 'unavailable';
+      process.stdout.write(
+        [
+          `Classic context costs for ${report.scope.change} (${report.scope.phase})`,
+          ...Object.entries(report.categories).map(([category, row]) => {
+            const actual = Object.entries(row.observed).map(
+              ([name, metric]) => `${name}: ${format(metric)}`,
+            );
+            return `  ${category}: ${format(row.estimate)}; trace: ${actual.join(', ') || 'unavailable'}`;
+          }),
+          ...Object.entries(report.metrics).map(([name, metric]) => `  ${name}: ${format(metric)}`),
+          '',
+        ].join('\n'),
+      );
+    }
+    return 0;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (json)
+      process.stdout.write(
+        `${JSON.stringify({ command: 'context-cost', exitCode, stderr: message })}\n`,
+      );
+    else process.stderr.write(`${message}\n`);
+    return exitCode;
+  }
 }
 
 function shouldRecordClassicResult(

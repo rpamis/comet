@@ -15,6 +15,246 @@ type DashboardTestWindow = typeof window & {
   summaryRefreshValues: (string | null)[];
 };
 
+test('opens current-project attention, follows a Supervisor child evidence link, and restores it on reload', async ({
+  page,
+}) => {
+  const { DEMO_SNAPSHOT } = await import('../../../domains/dashboard/web/demo.js');
+  const childLocator = 'fixture:worktree-child';
+  const classicLocator = 'fixture:classic';
+  const recoveryLocator = 'fixture:recovery';
+  const repairLocator = 'fixture:repair';
+  const report = {
+    key: 'verifyReport',
+    label: '验证报告',
+    source: 'superpowers',
+    exists: true,
+    path: '/fixture/classic/verify-result.md',
+  };
+  const classic = {
+    ...DEMO_SNAPSHOT.changes.active[0],
+    name: 'attention-confirmation',
+    displayName: 'attention-confirmation',
+    locator: classicLocator,
+    artifacts: { grouped: [report] },
+    artifactPreviews: [{ ...report, content: '# Classic report from linked worktree' }],
+  };
+  const recovery = {
+    ...classic,
+    name: 'recover-this-run',
+    displayName: 'recover-this-run',
+    locator: recoveryLocator,
+  };
+  const child = {
+    ...DEMO_SNAPSHOT.native.changes.find((entry) => entry.status === 'active'),
+    name: 'attention-child',
+    locator: childLocator,
+    supervisorParent: 'attention-parent',
+    workspace: { id: 'child', label: 'child/worktree', branch: 'child/worktree', current: false },
+    acceptanceEvidence: {
+      runId: 'attention-parent-run',
+      candidateId: 'attention-parent-run:6',
+      child: 'attention-child',
+      items: [
+        {
+          id: 'A2',
+          text: 'Child criterion',
+          result: 'pending',
+          gap: null,
+          evidence: ['Child implementation evidence'],
+          checks: [],
+        },
+      ],
+    },
+  };
+  const repair = {
+    ...child,
+    name: 'repair-this-candidate',
+    locator: repairLocator,
+    supervisorParent: null,
+    phase: 'build',
+    acceptanceEvidence: {
+      runId: 'repair-run',
+      child: null,
+      candidateId: null,
+      items: [],
+      previousCandidate: {
+        candidateId: 'repair-run:6',
+        items: [
+          {
+            id: 'A1',
+            text: 'Repair criterion',
+            result: 'failed',
+            reason: 'The previous candidate missed the requested behavior.',
+          },
+        ],
+      },
+    },
+  };
+  const { changes: _changes, ...snapshot } = DEMO_SNAPSHOT;
+  const selectedRequests: string[] = [];
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects')
+      return route.fulfill({
+        json: {
+          currentProjectId: 'attention-project',
+          projects: [
+            {
+              id: 'attention-project',
+              name: 'Attention fixture',
+              path: '/attention-project',
+              availability: 'available',
+              isCurrent: true,
+              workflow: 'classic',
+            },
+          ],
+        },
+      });
+    if (url.pathname.endsWith('/overview'))
+      return route.fulfill({
+        json: {
+          ...snapshot,
+          initialChanges: { items: [], total: 0 },
+          native: { ...snapshot.native, changes: [], activeChangeCount: 1 },
+        },
+      });
+    if (url.pathname.endsWith('/workflow-attention'))
+      return route.fulfill({
+        json: {
+          items: [
+            {
+              workflow: 'native',
+              name: repair.name,
+              locator: repairLocator,
+              workspace: repair.workspace,
+              status: 'verification-blocker',
+              reason: 'verification',
+              hasEvidence: true,
+            },
+            {
+              workflow: 'classic',
+              name: 'attention-confirmation',
+              locator: classicLocator,
+              workspace: { label: 'classic/worktree' },
+              status: 'awaiting-user',
+              reason: 'decision',
+              related: [],
+              hasEvidence: true,
+            },
+            {
+              workflow: 'classic',
+              name: recovery.name,
+              locator: recoveryLocator,
+              workspace: { label: 'classic/worktree' },
+              status: 'recovery-required',
+              reason: 'failed-run',
+            },
+            {
+              workflow: 'native',
+              name: child.name,
+              locator: childLocator,
+              workspace: child.workspace,
+              supervisorParent: child.supervisorParent,
+              status: 'waiting',
+              reason: 'dependency',
+              related: ['upstream-child'],
+              runId: 'attention-parent-run',
+              hasEvidence: true,
+            },
+            {
+              workflow: 'native',
+              name: 'unexplained-child',
+              locator: 'fixture:unexplained',
+              workspace: child.workspace,
+              supervisorParent: child.supervisorParent,
+              status: 'waiting',
+              reason: 'unknown',
+            },
+          ],
+          unavailable: ['native'],
+        },
+      });
+    if (url.pathname.endsWith('/native-change')) {
+      const locator = url.searchParams.get('changeLocator');
+      selectedRequests.push(locator ?? '');
+      if (locator === repairLocator) return route.fulfill({ json: repair });
+      return route.fulfill({ status: locator === childLocator ? 200 : 404, json: child });
+    }
+    if (url.pathname.endsWith('/change')) {
+      const locator = url.searchParams.get('changeLocator');
+      selectedRequests.push(locator ?? '');
+      if (locator === recoveryLocator) return route.fulfill({ json: recovery });
+      return route.fulfill({ status: locator === classicLocator ? 200 : 404, json: classic });
+    }
+    return route.fulfill({ json: { items: [], pages: [], total: 0 } });
+  });
+  await page.setViewportSize({ width: 400, height: 900 });
+  await page.goto('/');
+  await page.getByRole('button', { name: /待关注|Workflow attention/ }).press('Enter');
+  const drawer = page.getByRole('dialog', { name: /待关注|Workflow attention/ });
+  await expect(drawer.getByText('attention-confirmation')).toBeVisible();
+  await expect(drawer.getByRole('alert')).toContainText(
+    /部分工作流状态读取失败|Some workflow states could not be read/,
+  );
+  await expect(
+    drawer
+      .getByRole('region', { name: /需要恢复|Recovery required/ })
+      .getByRole('link', { name: recovery.name }),
+  ).toBeVisible();
+  await expect(drawer.getByText(/upstream-child/)).toBeVisible();
+  await expect(drawer.getByText(/等待原因未知|Waiting reason unknown/)).toBeVisible();
+  await expect(drawer.getByText('child/worktree').first()).toBeVisible();
+  const evidence = drawer
+    .getByRole('listitem')
+    .filter({ hasText: child.name })
+    .getByRole('link', {
+      name: /查看验收证据|View acceptance evidence/,
+    });
+  const href = await evidence.getAttribute('href');
+  await evidence.press('Enter');
+  await expect(page.getByRole('heading', { name: 'attention-child' })).toBeVisible();
+  await expect(page.getByText('Child implementation evidence')).toBeVisible();
+  await expect(page.locator('[data-workflow-evidence]')).toBeInViewport();
+  expect(selectedRequests).toContain(childLocator);
+  await page.goto(href!);
+  await expect(page.getByRole('heading', { name: 'attention-child' })).toBeVisible();
+  await expect(page.getByText('Child implementation evidence')).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByRole('button', { name: /待关注|Workflow attention/ }).click();
+  await drawer
+    .getByRole('listitem')
+    .filter({ hasText: classic.name })
+    .getByRole('link', {
+      name: /查看验收证据|View acceptance evidence/,
+    })
+    .press('Enter');
+  await expect(page.locator('.classic-change-detail')).toContainText(classic.name);
+  await expect(
+    page.getByRole('heading', { name: 'Classic report from linked worktree' }),
+  ).toBeVisible();
+  expect(selectedRequests).toContain(classicLocator);
+  await page.keyboard.press('Escape');
+  await expect(
+    page.getByRole('heading', { name: 'Classic report from linked worktree' }),
+  ).toBeHidden();
+  await page.getByRole('button', { name: /待关注|Workflow attention/ }).click();
+  await drawer.getByRole('link', { name: recovery.name }).click();
+  await expect(page.locator('.classic-change-detail')).toContainText(recovery.name);
+  expect(selectedRequests).toContain(recoveryLocator);
+  await page.getByRole('button', { name: /待关注|Workflow attention/ }).click();
+  await drawer
+    .getByRole('listitem')
+    .filter({ hasText: repair.name })
+    .getByRole('link', { name: /查看验收证据|View acceptance evidence/ })
+    .click();
+  await expect(
+    page.getByText(/上一个候选的验收结果|Previous candidate’s acceptance results/),
+  ).toBeVisible();
+  await expect(
+    page.getByText('The previous candidate missed the requested behavior.'),
+  ).toBeVisible();
+});
+
 async function setDashboardTheme(page: Page, theme: 'light' | 'dark') {
   const settings = page.getByRole('button', { name: /^(设置|Settings)$/ });
   if (!(await settings.isVisible()))
@@ -1685,7 +1925,7 @@ test('drags the font slider in dark mode and scales Tailwind, code and AntD cont
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('menuitem', { name: '外观' }).click();
   const selectors = [
-    '.dashboard-section-heading',
+    '.classic-change-detail .change-detail-panels article:first-child h4',
     '.dashboard-workbench code',
     '.dashboard-font-size-actions .ant-btn',
   ];
@@ -1934,7 +2174,7 @@ test('switches the interface language across workspaces and keeps the choice aft
   const language = page.locator('.comet-language-switch');
   await language.getByText('EN', { exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('lang', 'en-US');
-  await expect(page.getByText('Project overview', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Project overview', exact: true })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'Project knowledge' })).toBeVisible();
   const messages = JSON.parse(
     await readFile('domains/dashboard/web/src/messages.en.json', 'utf8'),
@@ -1967,7 +2207,9 @@ test('switches the interface language across workspaces and keeps the choice aft
   };
   await checkInterface();
   await page.getByRole('menuitem', { name: 'Native workflow' }).click();
-  await expect(page.getByText('Native change workspace', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Native change workspace', exact: true }),
+  ).toBeVisible();
   await checkInterface();
   await page.getByRole('menuitem', { name: 'Personal memory' }).click();
   await expect(page.getByLabel('Search personal memories')).toBeVisible();
@@ -3464,7 +3706,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
     .getByRole('dialog', { name: '卸载项目知识插件？' })
     .getByRole('button', { name: /卸\s*载/u })
     .click();
-  await expect(page.getByRole('heading', { name: '项目概览' })).toBeVisible();
+  await expect(page.getByRole('region', { name: '项目概览', exact: true })).toBeVisible();
   await expect(page.getByLabel('项目规则设置')).toHaveCount(0);
   await expect(page.getByRole('menuitem', { name: '项目知识' })).toHaveCount(0);
 });
@@ -4322,12 +4564,12 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
     )
     .toBe(true);
   await expect(page.getByText('Comet', { exact: true }).first()).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Native 变更工作区' })).toBeHidden();
+  await expect(page.getByRole('region', { name: 'Native 变更工作区', exact: true })).toBeHidden();
 
   const nativeWorkflow = page.getByRole('menuitem', { name: 'Native 工作流' });
   await nativeWorkflow.click();
   await expect(nativeWorkflow).toHaveClass(/ant-menu-item-selected/);
-  await expect(page.getByRole('heading', { name: 'Native 变更工作区' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Native 变更工作区', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: '循环与恢复' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '变更范围' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '验收状态' })).toBeVisible();
@@ -4450,7 +4692,7 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   const classicWorkflow = page.getByRole('menuitem', { name: 'Classic 工作流' });
   await classicWorkflow.click();
   await expect(classicWorkflow).toHaveClass(/ant-menu-item-selected/);
-  await expect(page.getByRole('heading', { name: 'Native 变更工作区' })).toBeHidden();
+  await expect(page.getByRole('region', { name: 'Native 变更工作区', exact: true })).toBeHidden();
   const classicSelectedRow = page
     .locator('.dashboard-change-row')
     .filter({ hasText: 'add-auth-rate-limiting' });
@@ -4579,7 +4821,10 @@ test('keeps shared typography and memory reading space at medium and mobile widt
 }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto('/?demo');
-  await expect(page.locator('.dashboard-section-heading').first()).toHaveCSS('font-size', '24px');
+  await expect(page.getByRole('heading', { name: '关键产物', exact: true })).toHaveCSS(
+    'font-size',
+    '16px',
+  );
   await expect(page.getByRole('heading', { name: '下一步建议', exact: true })).toHaveCSS(
     'font-size',
     '16px',
@@ -5063,8 +5308,72 @@ test('keeps the demo Native detail visible after selecting a child change', asyn
   await expect(page.getByRole('button', { name: 'brief 需求简报' })).toBeVisible();
   await expect(page.getByText('100% 已处理', { exact: true })).toBeVisible();
   await expect(page.getByText('准备工作区已完成并归档。', { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Native 变更工作区' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Native 变更工作区', exact: true })).toBeVisible();
   expect(consoleErrors).toEqual([]);
+});
+
+test('keeps the Classic demo next-step notice compact and readable', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.addInitScript(() => localStorage.setItem('comet-dashboard-font-family', 'homepage'));
+  await page.goto('/?demo');
+  const notice = page.locator('.classic-change-detail .dashboard-next-step-alert');
+  await expect(notice).toContainText('下一步：comet build');
+  await expect(notice).toContainText('全部任务完成后即可进入 Verify');
+  await expect(notice).toHaveCSS('font-family', /Segoe UI Variable Text/u);
+  await expect(notice.locator('.ant-alert-title')).toHaveCSS('font-size', '14px');
+  await expect(notice.locator('.ant-alert-description')).toHaveCSS('font-size', '13px');
+  for (const width of [1600, 1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const layout = await notice.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        height: element.getBoundingClientRect().height,
+        marginTop: Number.parseFloat(style.marginTop),
+        marginBottom: Number.parseFloat(style.marginBottom),
+        overflow: element.scrollWidth - element.clientWidth,
+      };
+    });
+    expect(layout.height).toBeLessThanOrEqual(width === 390 ? 104 : 72);
+    expect(layout.marginTop).toBeLessThanOrEqual(16);
+    expect(layout.marginBottom).toBeLessThanOrEqual(16);
+    expect(layout.overflow).toBeLessThanOrEqual(1);
+    const position = await notice.evaluate((element) => {
+      const phases = element.previousElementSibling!.getBoundingClientRect();
+      const panels = element.nextElementSibling!.getBoundingClientRect();
+      const alert = element.getBoundingClientRect();
+      return { before: alert.top - phases.bottom, after: panels.top - alert.bottom };
+    });
+    expect(position.before).toBeGreaterThanOrEqual(12);
+    expect(position.after).toBeGreaterThanOrEqual(16);
+  }
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.locator('.classic-change-detail').screenshot({
+    path: testInfo.outputPath('classic-demo-next-step.png'),
+    animations: 'disabled',
+  });
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  const settings = page.getByRole('dialog');
+  await settings.getByRole('menuitem', { name: '外观' }).click();
+  await expect(settings.getByRole('slider')).toBeVisible();
+  await expect(settings.getByText('界面字体', { exact: true })).toHaveCount(0);
+});
+
+test('renders one Classic key artifacts title and keeps preview available', async ({ page }) => {
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await page.goto('/?demo');
+
+  const detail = page.locator('.classic-change-detail');
+  await expect(detail.getByText('关键产物', { exact: true })).toHaveCount(1);
+  const artifacts = detail
+    .getByRole('heading', { name: '关键产物', exact: true })
+    .locator('xpath=ancestor::article[1]');
+  await expect(artifacts.getByText('6/10', { exact: true })).toBeVisible();
+  await artifacts.getByRole('button', { name: /proposal/u }).click();
+  await expect(
+    page.locator('.dashboard-artifact-preview-panel').getByRole('heading', {
+      name: 'Proposal: 为认证接口增加分布式限流',
+    }),
+  ).toBeVisible();
 });
 
 test('keeps Classic task progress inside the change detail column', async ({ page }) => {
@@ -5500,8 +5809,6 @@ test('keeps Classic and Native overview metrics visually aligned and selectable'
 test('balances heading scale and change-row density for dashboard scanning', async ({ page }) => {
   await page.goto('/?demo');
 
-  await expect(page.getByRole('heading', { name: '项目概览' })).toHaveCSS('font-size', '24px');
-  await expect(page.locator('.dashboard-section-hint').first()).toHaveCSS('font-size', '13px');
   await expect(page.locator('.dashboard-summary-card .dashboard-summary-metric').first()).toHaveCSS(
     'font-size',
     '30px',
@@ -5512,6 +5819,71 @@ test('balances heading scale and change-row density for dashboard scanning', asy
   if (!firstChangeBox) throw new Error('Expected the first Change row to have measurable bounds');
   expect(firstChangeBox.height).toBeGreaterThanOrEqual(64);
 });
+
+for (const width of [1600, 1280, 390]) {
+  test(`keeps workspace content compact at ${width}px`, async ({ page }, testInfo) => {
+    const english = width === 390;
+    await page.setViewportSize({ width, height: 900 });
+    if (english) {
+      await page.addInitScript(() => {
+        localStorage.setItem('comet-dashboard-language', 'en');
+        localStorage.setItem('comet-theme', 'dark');
+        localStorage.setItem('comet-dashboard-font-scale', '125');
+      });
+    }
+    await page.goto('/?demo');
+
+    const navigate = async (name: string) => {
+      if (width === 390) {
+        await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+      }
+      await page.getByRole('menuitem', { name }).click();
+    };
+    const capture = async (name: string) => {
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+        .toBeLessThanOrEqual(width);
+      await page.screenshot({ path: testInfo.outputPath(`${name}.png`), animations: 'disabled' });
+    };
+
+    for (const native of [false, true]) {
+      if (native) await navigate(english ? 'Native workflow' : 'Native 工作流');
+      const title = english
+        ? `${native ? 'Native change' : 'Change'} workspace`
+        : `${native ? 'Native ' : ''}变更工作区`;
+      await expect(page.getByRole('heading', { name: /项目概览|Project overview/u })).toBeHidden();
+      await expect(page.getByRole('heading', { name: title, exact: true })).toBeHidden();
+      await expect(page.getByRole('region', { name: title, exact: true })).toBeVisible();
+      await capture(native ? 'native' : 'classic');
+    }
+
+    for (const any of [false, true]) {
+      const title = any ? 'Comet Any' : english ? 'Custom workflows' : '自定义工作流';
+      await navigate(title);
+      await expect(page.getByRole('heading', { name: title, exact: true })).toBeHidden();
+      await expect(
+        page
+          .locator('.any-context-application')
+          .getByRole('button', {
+            name: any
+              ? /查看自定义工作流|View custom workflows/u
+              : /管理创作与分发|Manage creation/u,
+            exact: true,
+          })
+          .first(),
+      ).toBeVisible();
+      await expect(page.locator('.any-explorer')).toBeVisible();
+      await capture(any ? 'comet-any' : 'custom-workflows');
+    }
+
+    const observability = english ? 'Observability' : '可观测';
+    await navigate(observability);
+    await expect(page.getByRole('heading', { name: observability, exact: true })).toBeHidden();
+    await expect(page.getByRole('tab', { name: /运行性能|Runtime performance/u })).toBeVisible();
+    await expect(page.getByRole('button', { name: /时间范围|Time range/u })).toBeInViewport();
+    await capture('observability');
+  });
+}
 
 test('keeps workbench detail text comfortably readable without enlarging the overview', async ({
   page,
@@ -5529,11 +5901,42 @@ test('keeps workbench detail text comfortably readable without enlarging the ove
 });
 
 test('keeps the next-step alert clear of its neighboring detail sections', async ({ page }) => {
-  await page.goto('/?demo');
+  const { DEMO_SNAPSHOT } = await import('../../../domains/dashboard/web/demo.js');
+  const change = DEMO_SNAPSHOT.changes.active[0];
+  const { changes: _changes, ...snapshot } = DEMO_SNAPSHOT;
+  await page.route('**/api/dashboard/**', async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname.endsWith('/projects')) {
+      return route.fulfill({
+        json: {
+          currentProjectId: 'next-step-fixture',
+          projects: [
+            {
+              id: 'next-step-fixture',
+              name: 'Next step fixture',
+              path: '/next-step-fixture',
+              availability: 'available',
+              isCurrent: true,
+              workflow: 'classic',
+            },
+          ],
+        },
+      });
+    }
+    const initialChanges = { items: [change], total: 1, nextCursor: null };
+    if (pathname.endsWith('/overview'))
+      return route.fulfill({ json: { ...snapshot, initialChanges } });
+    if (pathname.endsWith('/changes')) return route.fulfill({ json: initialChanges });
+    if (pathname.endsWith('/change')) return route.fulfill({ json: change });
+    return route.fulfill({ json: { pages: [] } });
+  });
+  await page.goto('/');
+  const nextStep = page.locator('.classic-change-detail .dashboard-next-step-alert');
+  await expect(nextStep).toBeVisible();
 
   const [stepsBox, alertBox, panelsBox] = await Promise.all([
     page.locator('.dashboard-phase-track').boundingBox(),
-    page.getByRole('alert').boundingBox(),
+    nextStep.boundingBox(),
     page.locator('.change-detail-panels').boundingBox(),
   ]);
   if (!stepsBox || !alertBox || !panelsBox) {

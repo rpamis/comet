@@ -31,11 +31,13 @@ export interface ClassicCommandOptions {
   json: boolean;
   invocationCwd?: string;
   projectRoot?: string;
+  readOnly?: boolean;
 }
 
 export interface ClassicCliRunOptions {
   invocationCwd?: string;
   projectRoot?: string;
+  readOnly?: boolean;
 }
 
 export type ClassicCommandHandler = (
@@ -125,6 +127,7 @@ async function dispatch(
 
   try {
     const invoke = () => handler(args, options);
+    if (options.readOnly) return await invoke();
     const result =
       command === 'hook-guard'
         ? await invoke()
@@ -141,11 +144,12 @@ async function dispatch(
           );
     return await withSdkErrorContext(command, args, options, result);
   } catch (error) {
-    return withSdkErrorContext(command, args, options, {
+    const result = {
       exitCode: error instanceof ClassicProjectConfigError ? 1 : 70,
       stderr: error instanceof Error ? error.message : String(error),
       data: { issues: [classicIssue(error)] },
-    });
+    };
+    return options.readOnly ? result : withSdkErrorContext(command, args, options, result);
   }
 }
 
@@ -268,6 +272,11 @@ export async function runClassicCli(
       !owns(index) || !((json && argument === '--json') || (compact && argument === '--compact')),
   );
   const command = args.shift();
+  if (
+    runOptions.readOnly &&
+    (command !== 'state' || args[0] !== 'next' || args.includes('--continue'))
+  )
+    throw new Error('Read-only Classic inspection requires state next without --continue');
   const invoke = () =>
     dispatch(
       command,
@@ -276,6 +285,7 @@ export async function runClassicCli(
         json,
         invocationCwd: runOptions.invocationCwd ?? process.cwd(),
         ...(runOptions.projectRoot ? { projectRoot: runOptions.projectRoot } : {}),
+        ...(runOptions.readOnly ? { readOnly: true } : {}),
       },
       handlers,
     );

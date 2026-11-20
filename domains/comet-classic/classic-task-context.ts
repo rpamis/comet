@@ -6,11 +6,18 @@ export function classicTaskContextRequest(
   projectRoot: string,
   sessionId?: string,
   change?: string,
+  stepId?: string,
 ) {
+  const operation = stepId?.endsWith('.build.execute')
+    ? 'edit'
+    : stepId?.endsWith('.verify.run')
+      ? 'verify'
+      : undefined;
   return taskContextRequest({
     workflow: 'classic',
     change,
     phase: state.phase,
+    operation,
     language: state.language ?? 'en',
     projectRoot,
     sessionId,

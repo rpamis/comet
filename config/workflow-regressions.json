@@ -54649,6 +54649,326 @@
       ]
     },
     {
+      "id": "dashboard-supervisor-archive-contract-grouping",
+      "behavior": "归档的 Supervisor 按同一 Run 归并子任务的历次归档，子任务详情打开父档确认的契约快照。",
+      "sources": ["https://github.com/rpamis/comet/issues/577"],
+      "coverageLevel": "runtime",
+      "reproduction": "Comet 0.5.4 的 Aevomi Dashboard 显示 25 个顶层归档，父档的 children 为空。隔离夹具使用引用式 v2 children.yaml、同一 Run 的两个日期快照和另一 Run 的同名快照，在 c458764e 返回 4 个顶层条目，期望 2 个。",
+      "expected": "归档列表计入父 Change 和无关归档。展开父档可以查看子任务和当前契约的归档。此前快照仍可按原归档名查询。",
+      "forbidden": "把同一 Run 历次子档计作独立 Change、将其他 Run 的同名子档归入该父档，或将子任务链接到已替代的契约快照。",
+      "rootCause": "父档读取引用式子任务契约时只传验收 ID，缺少验收目录，解析错误被当作空子列表。旧匹配逻辑只按子任务名定位，无法区分同名归档。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/native-collector.test.ts",
+          "namePattern": "^Native Dashboard v2 collector groups dated Supervisor child snapshots under the archived parent by Run and contract$",
+          "requiredNames": [
+            "Native Dashboard v2 collector groups dated Supervisor child snapshots under the archived parent by Run and contract"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "Windows Chromium using comet dashboard",
+          "status": "verified",
+          "evidence": [
+            "2026-11-19: On the original project through the installed 0.5.4 CLI, the Archived badge showed 25 and tools-browser was a top-level row. On the built 0.5.6 CLI, the badge showed 1, aevomi-platform expanded to 13 child rows, and clicking tools-browser opened 2026-11-19-tools-browser through the actual detail API."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard-supervisor-running-child-detail",
+      "behavior": "Dashboard 可从父 Run 打开没有独立状态文件的进行中 SDK Supervisor 子任务详情。",
+      "sources": ["https://github.com/rpamis/comet/issues/577"],
+      "coverageLevel": "runtime",
+      "reproduction": "Comet 0.5.4 的 Aevomi 父 change 下 platform-review 显示进行中，但是详情定位符为空，浏览器按钮禁用。在隔离夹具内，c458764e 的同一 running Builder Action 返回 locator: null。",
+      "expected": "点击子任务能查看其实际执行者、执行状态与分配到的验收范围，父项之外不增加顶层计数。",
+      "forbidden": "禁用正在执行的子任务、显示其他子任务或父任务的验收结果、暴露内部领取令牌、让已取消的 Action 继续通过旧链接打开，或写入独立子状态。",
+      "rootCause": "Dashboard 能从父 Run 计算 SDK 子任务进度，但定位详情只接受有独立 Native 目录的候选；实际子任务以父 Run 的 Action 保存。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/native-collector.test.ts",
+          "namePattern": "^Native Dashboard v2 collector opens a running SDK Supervisor child directly from its parent Run$",
+          "requiredNames": [
+            "Native Dashboard v2 collector opens a running SDK Supervisor child directly from its parent Run"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "Windows Chromium using comet dashboard",
+          "status": "verified",
+          "evidence": [
+            "2026-11-19: On the original project via the installed 0.5.4 CLI, the platform-review row was disabled. Through the built 0.5.6 CLI, Chromium clicked the same running row and rendered its own platform-review detail, Supervisor parent, and claimed execution status."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard-classic-single-key-artifacts-title",
+      "behavior": "Classic 变更详情只显示一次关键产物标题，计数和预览保留在同一产物列表内。",
+      "sources": ["report:2026-11-20-classic-key-artifacts-duplicate-title"],
+      "coverageLevel": "unit",
+      "reproduction": "在以 35d42195 为基线的本地 056 Dashboard 打开内置 Classic 演示变更。修复前 Chromium 在同一详情中找到 2 个‘关键产物’，预期为 1 个。",
+      "expected": "关键产物列表显示一个标题及就绪计数，点击已存在的产物仍可打开原预览。",
+      "forbidden": "外层容器重复同一标题，或精简标题后丢失产物计数或预览入口。",
+      "rootCause": "AntChangeDetail 的外层 AntCard 设置了关键产物标题，ArtifactList 自己又渲染了同名标题和计数。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/web-source.test.ts",
+          "namePattern": "^dashboard web source contracts uses one title for the Classic key artifacts list and its count$",
+          "requiredNames": [
+            "dashboard web source contracts uses one title for the Classic key artifacts list and its count"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "Windows Chromium Dashboard",
+          "status": "verified",
+          "evidence": [
+            "2026-11-20: pnpm test:dashboard-e2e --workers=1 --grep 'renders one Classic key artifacts title and keeps preview available' 在修复前得到 2 个标题并失败。重新构建相同演示数据后，同一案例通过，显示 1 个标题和 6/10，点击 proposal 打开原提案预览。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-context-cost-read-only",
+      "behavior": "Classic 成本报告只读，遇到未同步设置或缺失 Run 记录时提示恢复。",
+      "sources": ["https://github.com/rpamis/comet/pull/583#discussion_r4641742305"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 19ff1683 的临时 SDK 项目写入尚未导入的语言设置，运行 comet classic context-cost；报告成功并同步了状态。也检查缺失本地 Run 记录时不恢复。",
+      "expected": "同步后仍可生成报告。未同步或缺失记录时返回恢复方向，保持 YAML 和 Run 记录。",
+      "forbidden": "成本报告导入设置、增加 Run revision、重建缺失历史或覆盖 YAML。",
+      "rootCause": "报告调用默认 state next，使用可写的 SDK 状态检查和所有权恢复。",
+      "tests": [
+        {
+          "file": "test/app/classic-context-cost.test.ts",
+          "namePattern": "^reports a Classic phase context estimate separately from trace measurements without writing workflow state$",
+          "requiredNames": [
+            "reports a Classic phase context estimate separately from trace measurements without writing workflow state"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-compat-context-step",
+      "behavior": "Classic Compat 的上下文请求根据已有 Build 或 Verify 步骤指定操作。",
+      "sources": ["https://github.com/rpamis/comet/pull/583#discussion_r4641742315"],
+      "coverageLevel": "runtime",
+      "reproduction": "19ff1683 中为已有 Compat Run 保存 Build execute 或 Verify run 步骤，读取 state next，两种输出均缺少 --operation。",
+      "expected": "Build execute 接收 edit，Verify run 接收 verify。无步骤时保持阶段级回退。",
+      "forbidden": "已知操作时使用无范围的上下文请求。",
+      "rootCause": "恢复投影读取了 Compat Run，却没有将 currentStep 传给上下文请求。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-recovery-contract.test.ts",
+          "namePattern": "^(?:Classic compact recovery and task reconciliation scopes Compat context to the recorded build step|Classic compact recovery and task reconciliation scopes Compat context to the recorded verify step)$",
+          "requiredNames": [
+            "Classic compact recovery and task reconciliation scopes Compat context to the recorded build step",
+            "Classic compact recovery and task reconciliation scopes Compat context to the recorded verify step"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-context-cost-effective-language",
+      "behavior": "Classic 成本报告按有效语言选择 Rule 和阶段 Skill。",
+      "sources": ["https://github.com/rpamis/comet/pull/583#discussion_r4641742323"],
+      "coverageLevel": "public-cli",
+      "reproduction": "Compat YAML 的 language 为空且 COMET_LANGUAGE=zh-CN，成本报告应选中文包文件。",
+      "expected": "显式语言优先，空值复用 Classic 的环境、项目和全局默认值。",
+      "forbidden": "在有效语言为中文时计量英文 Rule 或阶段 Skill。",
+      "rootCause": "成本计算将没有显式语言的配置直接按英语处理。",
+      "tests": [
+        {
+          "file": "test/app/classic-context-cost.test.ts",
+          "namePattern": "^reports a Classic phase context estimate separately from trace measurements without writing workflow state$",
+          "requiredNames": [
+            "reports a Classic phase context estimate separately from trace measurements without writing workflow state"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-repair-previous-acceptance-evidence",
+      "behavior": "Native 退回 Build 修复时展示上一候选的验收失败与原因。",
+      "sources": ["https://github.com/rpamis/comet/pull/583#discussion_r4641742332"],
+      "coverageLevel": "runtime",
+      "reproduction": "19ff1683 的 Verifier 判失败后返回 Build，status 的验收投影只有 no-candidate，既有失败不再显示。",
+      "expected": "修复阶段标记上一候选的失败及原因，下一候选的验收从待验证开始。",
+      "forbidden": "把上一候选的结果绑定到当前或后继候选，或者在修复阶段隐藏失败原因。",
+      "rootCause": "投影只读取 Verify 和 Archive 的 handoff，丢弃了 Build 修复阶段仍持久化的失败记录。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^does not carry old evidence into a repaired candidate or turn unchecked results into success$",
+          "requiredNames": [
+            "does not carry old evidence into a repaired candidate or turn unchecked results into success"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "Windows Chromium Dashboard",
+          "status": "verified",
+          "evidence": [
+            "2026-11-20: `pnpm test:dashboard-e2e --workers=1 --grep 'opens current-project attention'` passed. The previous-candidate label and exact failure reason were visible in the Native Build detail."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-supervisor-synthetic-check-criterion",
+      "behavior": "Supervisor 子任务能将检查关联到自身的合成验收项。",
+      "sources": ["https://github.com/rpamis/comet/pull/583#discussion_r4641742340"],
+      "coverageLevel": "runtime",
+      "reproduction": "19ff1683 中，covers 为空的 core 子任务提交关联 child:core 的 Builder 检查，Runtime 拒绝该 ID。",
+      "expected": "Builder 和独立 Verifier 可关联授权的 child:core，证据仍由这个子任务展示。",
+      "forbidden": "关联另一个子任务的合成 ID，或把合成 ID 添加到普通 A 编号验收项。",
+      "rootCause": "检查解析器只接受 A 编号，子任务的验收投影也只读取父验收列表。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-acceptance.test.ts",
+          "namePattern": "^links Supervisor checks to the authorized synthetic child criterion only$",
+          "requiredNames": [
+            "links Supervisor checks to the authorized synthetic child criterion only"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard-native-attention-partial-scan",
+      "behavior": "待关注变更提示 Native 扫描出错，同时显示仍可读取的项目。",
+      "sources": ["https://github.com/rpamis/comet/pull/583#discussion_r4641742344"],
+      "coverageLevel": "runtime",
+      "reproduction": "19ff1683 中，用一个文件挡住 Native archive 目录并保留活跃 change，扫描吞掉错误，待关注列表不显示异常。",
+      "expected": "保留活跃数据并报告 Native 读取异常，路径修复后清除异常。",
+      "forbidden": "把部分失败表示成无待关注项或丢弃同一来源中可读取的活跃变更。",
+      "rootCause": "来源内扫描合在 Promise.all，单个目录失败清空整个来源，且索引缺少可用性结果。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/native-collector.test.ts",
+          "namePattern": "^Native Dashboard v2 collector reports a failed Native archive scan while preserving active attention items$",
+          "requiredNames": [
+            "Native Dashboard v2 collector reports a failed Native archive scan while preserving active attention items"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "Windows Chromium Dashboard",
+          "status": "verified",
+          "evidence": [
+            "2026-11-20: `pnpm test:dashboard-e2e --workers=1 --grep 'opens current-project attention'` passed. The drawer rendered the partial-failure warning and still offered working change links."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard-supervisor-archive-workspace-binding",
+      "behavior": "同名 Supervisor 归档只链接各自工作区的子档。",
+      "sources": ["https://github.com/rpamis/comet/pull/583#discussion_r4641742353"],
+      "coverageLevel": "runtime",
+      "reproduction": "19ff1683 中两个 worktree 各有 release:12 和同名 platform-review 子归档，main 的父项选到了 other 的较新快照。",
+      "expected": "各工作区的父档打开自身 Run 当前契约的子快照，旧的同工作区快照仍能按日期读取。",
+      "forbidden": "跨工作区选择或隐藏同名归档，即使 Run ID 与契约引用文本相同。",
+      "rootCause": "归档来源匹配只检查父 Run ID 与契约，未限制工作区。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/native-collector.test.ts",
+          "namePattern": "^Native Dashboard v2 collector groups dated Supervisor child snapshots under the archived parent by Run and contract$",
+          "requiredNames": [
+            "Native Dashboard v2 collector groups dated Supervisor child snapshots under the archived parent by Run and contract"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "Windows Chromium Dashboard",
+          "status": "verified",
+          "evidence": [
+            "2026-11-20: Chromium against the built local Dashboard server loaded two real Git worktrees with the same release Run and contract. Clicking platform-review under main opened 2026-08-10-platform-review from main; under other it opened 2026-08-14-platform-review from other. Verified both detail responses and rendered headings."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard-attention-failed-run-recovery",
+      "behavior": "待关注变更展示需要恢复的失败 Run，并保留原 Run 链接。",
+      "sources": ["https://github.com/rpamis/comet/pull/583#discussion_r4641742360"],
+      "coverageLevel": "runtime",
+      "reproduction": "19ff1683 中把持久化 Run 置为 failed，且没有待执行的父 Action，待关注列表没有父项。",
+      "expected": "失败 Run 显示需要恢复并链接原详情，Run 恢复后移除该状态。",
+      "forbidden": "把历史失败当作正在阻塞的 Run，或使当前失败 Run 从待关注列表消失。",
+      "rootCause": "待关注投影按 Action 和 Wait 判定，没有读取 Run 状态。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/native-collector.test.ts",
+          "namePattern": "^Native Dashboard v2 collector opens a running SDK Supervisor child directly from its parent Run$",
+          "requiredNames": [
+            "Native Dashboard v2 collector opens a running SDK Supervisor child directly from its parent Run"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "Windows Chromium Dashboard",
+          "status": "verified",
+          "evidence": [
+            "2026-11-20: `pnpm test:dashboard-e2e --workers=1 --grep 'opens current-project attention'` passed. A failed Classic Run appeared under Recovery required and its link opened the matching detail."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-compat-context-recommended-action",
+      "behavior": "Classic Compat 推荐转入 Archive 时不附带已完成 Verify 的操作范围。",
+      "sources": ["https://github.com/rpamis/comet/pull/583#discussion_r4642106092"],
+      "coverageLevel": "runtime",
+      "reproduction": "9e3d1143 中 Compat Verify 已接受，缺少报告时记录步骤仍为 hotfix.verify.run，而续行推荐 transition。调用 state next，仍返回 --operation verify。",
+      "expected": "已接受的 Verify 推进到下一阶段时保留阶段级上下文请求。执行 Build 和 Verify 时继续附带对应操作。",
+      "forbidden": "对仅需推进状态或恢复其他工作的续行注入已经完成的执行操作。",
+      "rootCause": "恢复投影只用记录步骤推导上下文操作，忽略本次实际推荐的续行动作。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-recovery-contract.test.ts",
+          "namePattern": "^Classic compact recovery and task reconciliation omits a Verify operation when Compat already recommends transitioning to Archive$",
+          "requiredNames": [
+            "Classic compact recovery and task reconciliation omits a Verify operation when Compat already recommends transitioning to Archive"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard-supervisor-archive-standalone-collision",
+      "behavior": "另一个工作区同日同名的独立归档保留顶层入口。",
+      "sources": ["https://github.com/rpamis/comet/pull/583#discussion_r4642106100"],
+      "coverageLevel": "runtime",
+      "reproduction": "在 9e3d1143 的两个 Git worktree 中，一个有 Supervisor 子档，另一个有同日同名的独立归档，归档列表只有 3 个顶层条目而非 4 个。",
+      "expected": "显示独立归档入口，父档仍打开自身契约绑定的子归档。",
+      "forbidden": "按日期和名称去重时隐藏同名独立归档，或将独立档链接到父 Run。",
+      "rootCause": "先按日期名称去重再移除已被父项拥有的快照，使另一 workspace 的候选未参与顶层项目选择。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/native-collector.test.ts",
+          "namePattern": "^Native Dashboard v2 collector groups dated Supervisor child snapshots under the archived parent by Run and contract$",
+          "requiredNames": [
+            "Native Dashboard v2 collector groups dated Supervisor child snapshots under the archived parent by Run and contract"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "Windows Chromium Dashboard",
+          "status": "verified",
+          "evidence": [
+            "2026-11-20: Chromium against the built Dashboard server opened the standalone 2026-08-10-platform-review in other, the same-dated Supervisor child in main, and the current 2026-08-14 child under the other Supervisor. Checked actual detail response archive names, workspace labels, and child headings."
+          ]
+        }
+      ]
+    },
+    {
       "id": "native-562-build-material-deletions",
       "behavior": "首次 Build 交接精确同步已批准材料，保留源工作区对已提交 Spec 的删除。",
       "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581585323"],

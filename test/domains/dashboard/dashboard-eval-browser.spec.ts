@@ -190,7 +190,7 @@ test.describe('Dashboard Eval', () => {
     await page.goForward();
     await expect(page.getByRole('tab', { name: '用例结果' })).toBeVisible();
     await page.getByRole('menuitem', { name: 'Classic 工作流' }).click();
-    await expect(page.getByRole('heading', { name: '项目概览', exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: '项目概览', exact: true })).toBeVisible();
     expect(await page.evaluate(() => history.state.cometDashboard.view)).toBe('workflow');
     await page.goBack();
     await expect.poll(() => page.evaluate(() => history.state.cometDashboard.view)).toBe('eval');

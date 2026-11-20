@@ -1,5 +1,8 @@
 import { resolveClassicStateFile } from '../workflow-contract/classic-state-file.js';
 import { inspectClassicProjectTarget } from '../comet-classic/classic-protected-path.js';
+import { inspectClassicSdkRun } from '../comet-classic/classic-sdk-status.js';
+import { readWorkflowApplicationRun } from '../workflow-application/application-run-record.js';
+import { readChangeRuntimeOwner } from '../workflow-contract/change-runtime-owner.js';
 import { promises as fs } from 'fs';
 import { runWithHookReadCache } from '../../platform/process/hook-read-cache.js';
 import path from 'path';
@@ -9,7 +12,14 @@ import { fingerprintDashboardFiles, fingerprintDashboardFileGroups } from './sou
 import {
   collectNativeDashboardOverview,
   collectNativeDashboardProjection,
+  collectNativeDashboardWorkflowAttention,
 } from './native-collector.js';
+import {
+  workflowAttentionFromRun,
+  type DashboardWorkflowAttention,
+  type WorkflowAttentionItem,
+  type WorkflowAttentionState,
+} from './workflow-attention.js';
 import { recommendNextAction } from './next-action.js';
 import { buildChangeRisks, buildProjectRisks } from './risk.js';
 import { parseTasksMarkdown } from './task-parser.js';
@@ -21,6 +31,7 @@ import {
   dashboardWorkspaceIdentity,
   encodeDashboardChangeLocator,
   parseDashboardChangeLocator,
+  sameDashboardPath,
   type DashboardWorkspaceIdentity,
   type DashboardWorkspaceSource,
 } from './workspace.js';
@@ -171,6 +182,8 @@ interface ClassicChangeCandidate {
   projectRoot: string;
   workspace: DashboardWorkspaceIdentity;
   bindingState: 'aligned' | 'unbound' | 'drifted';
+  archivedState: boolean;
+  legacyDecision: boolean;
 }
 
 interface ClassicCandidateCollection {
@@ -214,6 +227,84 @@ export async function collectDashboardChangeSummary(
       limit,
     );
   });
+}
+
+export async function collectDashboardWorkflowAttention(
+  projectPath: string,
+): Promise<DashboardWorkflowAttention> {
+  return withDashboardReadScope(projectPath, async () => {
+    const root = path.resolve(projectPath);
+    const [classic, native] = await Promise.all([
+      collectClassicChangeCandidates(root).catch(() => null),
+      collectNativeDashboardWorkflowAttention(root).catch(() => null),
+    ]);
+    const classicRows = await Promise.all((classic?.active ?? []).map(classicWorkflowAttention));
+    return {
+      items: [
+        ...(native?.items ?? []),
+        ...classicRows.filter((row): row is WorkflowAttentionItem => row !== null),
+      ],
+      unavailable: [
+        ...(!classic || classic.errors.length ? ['classic' as const] : []),
+        ...(!native || native.unavailable ? ['native' as const] : []),
+      ],
+    };
+  });
+}
+
+async function classicWorkflowAttention(
+  change: ClassicChangeCandidate,
+): Promise<WorkflowAttentionItem | null> {
+  const item = {
+    workflow: 'classic' as const,
+    locator: change.locator,
+    name: change.displayName,
+    workspace: change.workspace,
+    hasEvidence: change.verify.reportExists,
+  };
+  let runId: string | null = null;
+  let attention: WorkflowAttentionState | null;
+  try {
+    const owner = await readChangeRuntimeOwner(change.projectRoot, 'classic', change.name, {
+      readOnly: true,
+    });
+    if (owner?.format === 'sdk') {
+      runId = owner.runId;
+      const run = ['classic-full', 'classic-hotfix', 'classic-tweak'].includes(owner.application)
+        ? (await inspectClassicSdkRun(change.projectRoot, change.name, { owner, readOnly: true }))
+            .run
+        : await readWorkflowApplicationRun(change.projectRoot, owner.application, owner.runId);
+      const input = run?.input as { change?: string; changeDir?: string } | undefined;
+      if (
+        !run ||
+        input?.change !== change.name ||
+        !input.changeDir ||
+        !sameDashboardPath(path.resolve(change.projectRoot, input.changeDir), change.dir)
+      )
+        return { ...item, runId, status: 'unknown-outcome', reason: 'unknown' };
+      if (['completed', 'cancelled'].includes(run.status)) return null;
+      const state = run.state as { verifyResult?: string; archived?: boolean };
+      if (state.archived) return null;
+      attention = workflowAttentionFromRun(
+        run.status,
+        run.actions,
+        run.waits,
+        state.verifyResult === 'fail',
+        run.evidenceWaits,
+      );
+    } else {
+      if (change.archivedState) return null;
+      attention =
+        change.verify.result === 'fail'
+          ? { status: 'verification-blocker', reason: 'verification' }
+          : change.legacyDecision
+            ? { status: 'awaiting-user', reason: 'decision' }
+            : { status: 'unknown-outcome', reason: 'unknown' };
+    }
+  } catch {
+    attention = { status: 'unknown-outcome', reason: 'unknown' };
+  }
+  return attention ? { ...item, runId, ...attention } : null;
 }
 
 async function collectDashboardChangePageUncached(
@@ -728,6 +819,8 @@ async function buildChangeCandidate(
     projectRoot: input.projectRoot,
     workspace: dashboardWorkspaceIdentity(input.source),
     bindingState,
+    archivedState: yaml.archived === 'true',
+    legacyDecision: yaml.archive_confirmation === 'pending' || yaml.build_pause === 'plan-ready',
   };
 }
 

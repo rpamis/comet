@@ -47,6 +47,7 @@ function refreshContext(tab = 'active') {
     queryRef: { current: '' },
     tabRef: { current: tab },
     workflowRef: { current: 'classic' },
+    linkedChangeRef: { current: null as { workflow: string; locator: string } | null },
     selectedIdRef: { current: 'change-59' },
     lastLoadedQueryRef: { current: '' },
     pagesRef: {
@@ -211,6 +212,19 @@ describe('Classic refresh callbacks', () => {
       id: 'change-59',
       revision: 'fresh',
     });
+  });
+
+  it('keeps a directly linked Classic detail when it is outside the refreshed page', async () => {
+    const context = refreshContext();
+    context.linkedChangeRef.current = { workflow: 'classic', locator: 'linked-detail' };
+    const refresh = await dashboardCallback('refresh', context);
+    await refresh(true);
+    expect(context.setSelectedId).toHaveBeenLastCalledWith('linked-detail');
+    expect(context.setSelectedDetail).toHaveBeenLastCalledWith({
+      id: 'linked-detail',
+      revision: 'fresh',
+    });
+    expect(context.toast).toHaveBeenCalledWith('状态已刷新');
   });
 
   it('does not overwrite a changed search or tab after an overview completes', async () => {

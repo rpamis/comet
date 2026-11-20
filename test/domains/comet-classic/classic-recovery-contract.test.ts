@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { parseDocument } from 'yaml';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { withClassicCommandContext } from '../../../domains/comet-classic/classic-command-context.js';
 import { readClassicProjectFile } from '../../../domains/comet-classic/classic-protected-path.js';
@@ -56,6 +57,42 @@ describe('Classic compact recovery and task reconciliation', () => {
     expect(JSON.parse(result.stdout!).agent.continuation.contextRequest).toEqual(
       data.continuation.contextRequest,
     );
+  });
+
+  it.each([
+    ['build', 'edit'],
+    ['verify', 'verify'],
+  ])('scopes Compat context to the recorded %s step', async (phase, operation) => {
+    const statePath = path.join(change, '.comet.yaml');
+    const state = parseDocument(await fs.readFile(statePath, 'utf8'));
+    state.set('phase', phase);
+    state.set('isolation', 'current');
+    state.set('build_mode', 'direct');
+    state.set('tdd_mode', 'direct');
+    state.set('verify_mode', 'light');
+    await fs.writeFile(statePath, state.toString());
+    await ensureClassicRuntimeRun(change);
+    const result = await cli('state', 'next', 'demo', '--json');
+    expect(result.exitCode, result.stdout).toBe(0);
+    const request = JSON.parse(result.stdout!).data.continuation.contextRequest;
+    expect(request).toMatchObject({ phase, operation });
+    expect(request.commandArgs).toEqual(expect.arrayContaining(['--operation', operation]));
+  });
+
+  it('omits a Verify operation when Compat already recommends transitioning to Archive', async () => {
+    const statePath = path.join(change, '.comet.yaml');
+    const state = parseDocument(await fs.readFile(statePath, 'utf8'));
+    state.set('phase', 'verify');
+    state.set('verify_result', 'pass');
+    await fs.writeFile(statePath, state.toString());
+    const { run } = await ensureClassicRuntimeRun(change);
+    expect(run?.currentStep).toBe('hotfix.verify.run');
+    const result = await cli('state', 'next', 'demo', '--json');
+    expect(result.exitCode, result.stdout).toBe(0);
+    const { data } = JSON.parse(result.stdout!);
+    expect(data.nextAction.kind).toBe('transition');
+    expect(data.continuation.contextRequest).not.toHaveProperty('operation');
+    expect(data.continuation.contextRequest.commandArgs).not.toContain('--operation');
   });
 
   it.each(['drift', 'unbound-detached'] as const)(

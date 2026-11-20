@@ -309,9 +309,11 @@ export async function runManagedEvalWorker(project: string, id: string): Promise
               '--count',
               String(config.count ?? 1),
             ]
-          : preview.retry?.manifestPath
-            ? ['--manifest', preview.retry.manifestPath]
-            : [config.target]),
+          : config.workflowRegressionCase
+            ? ['--workflow-regression', config.workflowRegressionCase]
+            : preview.retry?.manifestPath
+              ? ['--manifest', preview.retry.manifestPath]
+              : [config.target]),
         '--project',
         project,
         '--html',
@@ -330,7 +332,8 @@ export async function runManagedEvalWorker(project: string, id: string): Promise
         ['task', '--task'],
         ['profile', '--profile'],
       ] as const)
-        if (config[key]) args.push(flag, config[key]!);
+        if (config[key] && !(key === 'task' && config.workflowRegressionCase))
+          args.push(flag, config[key]!);
       if (config.quick) args.push('--quick');
       await execute(process.execPath, args, {
         cwd: project,

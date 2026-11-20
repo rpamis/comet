@@ -1,4 +1,5 @@
 import type {
+  NativeBuilderCheckSummary,
   NativePortableAcceptanceResult,
   NativePortableBlockerState,
   NativePortableCheckSummary,
@@ -13,6 +14,7 @@ import type {
   NativePortableVerificationResult,
 } from '../comet-native/native-portable-types.js';
 import type { NativeChildDerivedStatus } from '../comet-native/native-children.js';
+import type { projectNativeSdkAcceptanceEvidence } from '../comet-native/native-sdk-acceptance-evidence.js';
 import type { DashboardWorkspaceIdentity } from './workspace.js';
 
 export const NATIVE_DASHBOARD_SCHEMA = 'comet.dashboard.native.v2' as const;
@@ -96,7 +98,7 @@ export interface NativeDashboardBuilderHandoffSummary {
   addressedAcceptanceIds: string[];
   checks: Array<{
     name: NativePortableText;
-    result: 'passed' | 'failed' | 'not-run';
+    result: NativeBuilderCheckSummary['result'];
     note: NativePortableText | null;
   }>;
   checksTruncated: boolean;
@@ -179,6 +181,8 @@ interface NativeDashboardChangeIdentity {
 export type NativeDashboardChangeListItem = NativeDashboardChangeIdentity;
 
 export interface NativeDashboardChangeProjection extends NativeDashboardChangeIdentity {
+  supervisorParent?: string;
+  acceptanceEvidence?: ReturnType<typeof projectNativeSdkAcceptanceEvidence>;
   artifacts: NativeDashboardArtifactPreview[];
   specs: NativeDashboardSpecSummary;
   acceptanceItems: NativeDashboardAcceptanceItem[];

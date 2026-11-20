@@ -19,6 +19,7 @@ export function ApplicationHistorySelector({
   onMore,
   onRetry,
   versionHistory,
+  workspaceSwitch,
 }) {
   const [filter, setFilter] = useDashboardViewState(viewScope, 'historyVersion', null);
   const selectedVersion = selected?.application
@@ -88,10 +89,13 @@ export function ApplicationHistorySelector({
       aria-label={t(applicationWorkspace ? '应用运行记录' : '应用版本与创作记录')}
     >
       <div className="any-context-application">
-        <span className="any-context-application-icon" aria-hidden="true">
-          {group?.id ? <AppstoreOutlined /> : <FileTextOutlined />}
-        </span>
-        <strong>{group?.title ?? selected?.title}</strong>
+        <div className="any-context-identity">
+          <span className="any-context-application-icon" aria-hidden="true">
+            {group?.id ? <AppstoreOutlined /> : <FileTextOutlined />}
+          </span>
+          <strong>{group?.title ?? selected?.title}</strong>
+        </div>
+        {workspaceSwitch}
       </div>
       <div className="any-context-fields">
         <label>

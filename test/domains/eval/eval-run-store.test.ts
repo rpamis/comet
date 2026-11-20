@@ -4,6 +4,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
+import { classicContextCost } from '../../../domains/comet-classic/classic-context-cost.js';
 import {
   readEvalRun,
   readEvalCasePage,
@@ -831,6 +832,85 @@ describe('Eval run history and baselines', () => {
       candidate: 'model-b',
     });
     expect((await readEvalRun(project, 'baseline')).isBaseline).toBe(true);
+  });
+  it('pairs captured workflow metrics by source, unit and phase without comparing estimates to observations', async () => {
+    const task = 'comet-classic-full-recovery';
+    const treatment = 'COMET_CLASSIC_DOCS_LAYOUT';
+    const scope = { projectRoot: project, phase: 'build', change: 'classic-fixture' };
+    const traceFile = path.join(project, 'context-trace.json');
+    await fs.writeFile(
+      traceFile,
+      JSON.stringify({
+        schema: 'comet.classic.context-trace.v1',
+        scope,
+        source: 'fixture-observer',
+        metrics: { contextBytes: 420, waitMs: 80 },
+      }),
+    );
+    for (const [id, passed, cliBytes] of [
+      ['baseline', false, 160],
+      ['candidate', true, 100],
+    ] as const) {
+      const root = await report(id, [passed]);
+      const file = path.join(root, 'reports/case-0_report.json');
+      const raw = JSON.parse(await fs.readFile(file, 'utf8'));
+      raw.name = `${task}-${treatment}`;
+      raw.events_summary.task = task;
+      raw.events_summary.treatment = treatment;
+      raw.events_summary.input_tokens = passed ? 0 : 24;
+      raw.events_summary.classic_context_cost = await classicContextCost({
+        assetsRoot: path.resolve('assets'),
+        ...scope,
+        cliBytes,
+        ...(passed ? { traceFile } : {}),
+      });
+      await fs.writeFile(file, JSON.stringify(raw));
+      await fs.writeFile(
+        path.join(root, 'expected-case-matrix.json'),
+        JSON.stringify(expectedMatrix([{ rep: 1, task, treatment }])),
+      );
+    }
+    const comparison = await compareEvalRuns(project, 'candidate', 'baseline');
+    expect(
+      comparison.reasons,
+      JSON.stringify([comparison.baseline.diagnostics, comparison.candidate.diagnostics]),
+    ).toEqual([]);
+    expect(comparison).toMatchObject({
+      comparable: true,
+      improved: 1,
+      cases: [
+        {
+          task,
+          treatment,
+          repetition: 1,
+          workflowRegressionCase: 'classic-scope-reconfirmation',
+          baseline: false,
+          candidate: true,
+          change: 'improved',
+          metrics: {
+            contextBytes: {
+              baseline: { kind: 'estimated', unit: 'bytes', phase: 'build' },
+              candidate: { kind: 'observed', value: 420, unit: 'bytes' },
+              delta: null,
+              reason: 'different-measurement',
+            },
+            inputTokens: {
+              baseline: { value: 24, unit: 'tokens', kind: 'observed' },
+              candidate: { value: 0 },
+              delta: -24,
+              reason: null,
+            },
+            toolRoundTrips: { baseline: null, candidate: null, delta: null, reason: 'unavailable' },
+            waitMs: {
+              baseline: null,
+              candidate: { value: 80, source: 'fixture-observer' },
+              delta: null,
+              reason: 'unavailable',
+            },
+          },
+        },
+      ],
+    });
   });
   it('rejects traversal and only exposes contained artifact files', async () => {
     await report('run-a', [true]);

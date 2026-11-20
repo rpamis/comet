@@ -116,6 +116,7 @@ export function SummaryFilterBar({ filter, onClear, summary }) {
     <>
       {summary.error && (
         <Alert
+          className="mb-4"
           type="warning"
           showIcon
           message={t('统计读取失败')}

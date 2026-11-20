@@ -6,6 +6,11 @@
  */
 
 export const NATIVE_BUILDER_CHECK_RESULTS = ['passed', 'failed', 'not-run'] as const;
+export const NATIVE_REPORTED_CHECK_RESULTS = [
+  ...NATIVE_BUILDER_CHECK_RESULTS,
+  'unknown',
+  'timeout',
+] as const;
 
 export const NATIVE_VERIFIER_VERDICTS = ['pass', 'fail', 'blocked'] as const;
 

@@ -5670,7 +5670,7 @@ body {
 .dashboard-overview-summary-strip {
   gap: 12px;
   overflow: visible;
-  margin-bottom: 28px;
+  margin-bottom: 20px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -6461,6 +6461,31 @@ body {
   margin-block: 32px !important;
   border-color: #d7e4fa !important;
   background: #f5f9ff !important;
+}
+
+.dashboard-workbench.is-demo .dashboard-next-step-alert {
+  margin-block: 12px 16px !important;
+  padding: 8px 12px;
+  column-gap: 8px;
+}
+
+.dashboard-workbench.is-demo .dashboard-next-step-alert .ant-alert-icon {
+  margin-block-start: 2px;
+  margin-inline-end: 0;
+  font-size: calc(16px * var(--dashboard-font-scale, 1));
+}
+
+.dashboard-workbench.is-demo .dashboard-next-step-alert .ant-alert-title {
+  margin-block-end: 2px;
+  font-size: calc(14px * var(--dashboard-font-scale, 1));
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.dashboard-workbench.is-demo .dashboard-next-step-alert .ant-alert-description {
+  font-size: calc(13px * var(--dashboard-font-scale, 1));
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .ant-tabs .ant-tabs-ink-bar {
@@ -9658,7 +9683,7 @@ body {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 14px;
-  margin-top: 16px;
+  margin-bottom: 16px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   color: var(--color-fg-2);
