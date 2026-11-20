@@ -23,6 +23,7 @@ import {
   type DatasetPlan,
 } from './builtin-datasets.js';
 import { requireDatasetCache } from './dataset-downloads.js';
+import { workflowRegressionCases } from './workflow-regression.js';
 
 export interface EvalRunPreview {
   config: EvalRunConfig;
@@ -86,6 +87,7 @@ const FIELDS = new Set([
   'judgeBaseUrl',
   'suite',
   'task',
+  'workflowRegressionCase',
   'quick',
   'profile',
   'goal',
@@ -104,6 +106,24 @@ export function normalizeEvalRunConfig(project: string, value: unknown): EvalRun
   const input = { ...value } as Record<string, unknown>;
   for (const key of Object.keys(input))
     if (!FIELDS.has(key)) throw new EvalRunError(`不支持的 Eval 配置字段：${key}`);
+  if (input.workflowRegressionCase !== undefined) {
+    const selected = workflowRegressionCases.find(
+      (entry) => entry.id === input.workflowRegressionCase,
+    );
+    if (!selected) throw new EvalRunError('未知工作流回归用例');
+    if (
+      input.dataset ||
+      input.quick ||
+      input.profile ||
+      (input.task && input.task !== selected.task) ||
+      (input.suite && input.suite !== 'local')
+    )
+      throw new EvalRunError('工作流回归用例使用固定任务、Skill 和 local 报告');
+    input.target = path.join(evalPackageRoot, 'assets/skills', `comet-${selected.workflow}`);
+    input.targetType = 'skill';
+    input.task = selected.task;
+    input.suite = 'local';
+  }
   if (input.dataset !== undefined) {
     if (input.datasetRoot !== undefined) {
       if (typeof input.datasetRoot !== 'string' || !input.datasetRoot.trim())
