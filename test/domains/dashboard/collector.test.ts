@@ -13,6 +13,7 @@ import {
   collectDashboardChangeSummary,
   collectDashboardOverview,
   collectDashboardSnapshot,
+  collectDashboardWorkflowAttention,
 } from '../../../domains/dashboard/collector.js';
 
 interface ChangeFixture {
@@ -666,6 +667,24 @@ describe('collectDashboardSnapshot', () => {
     expect(items.map(({ name }) => name)).toEqual(['independent-change', 'independent-change']);
     expect(items.map(({ workspace }) => workspace.label)).toEqual(['classic/a', 'classic/b']);
     expect(new Set(items.map(({ locator }) => locator)).size).toBe(2);
+    await writeChange(root, {
+      name: '2026-08-09-done',
+      status: 'archived',
+      yaml: { phase: 'archive' },
+    });
+    const attention = await collectDashboardWorkflowAttention(root);
+    expect(attention.items).toEqual(
+      expect.arrayContaining(
+        items.map(({ locator, workspace }) =>
+          expect.objectContaining({
+            locator,
+            workspace,
+            workflow: 'classic',
+          }),
+        ),
+      ),
+    );
+    expect(attention.items.some(({ name }) => name.includes('done'))).toBe(false);
 
     const details = await Promise.all(
       items.map(({ locator }) => collectDashboardChangeDetail(root, locator)),

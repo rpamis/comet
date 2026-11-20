@@ -15,6 +15,167 @@ type DashboardTestWindow = typeof window & {
   summaryRefreshValues: (string | null)[];
 };
 
+test('opens current-project attention, follows a Supervisor child evidence link, and restores it on reload', async ({
+  page,
+}) => {
+  const { DEMO_SNAPSHOT } = await import('../../../domains/dashboard/web/demo.js');
+  const childLocator = 'fixture:worktree-child';
+  const classicLocator = 'fixture:classic';
+  const report = {
+    key: 'verifyReport',
+    label: '验证报告',
+    source: 'superpowers',
+    exists: true,
+    path: '/fixture/classic/verify-result.md',
+  };
+  const classic = {
+    ...DEMO_SNAPSHOT.changes.active[0],
+    name: 'attention-confirmation',
+    displayName: 'attention-confirmation',
+    locator: classicLocator,
+    artifacts: { grouped: [report] },
+    artifactPreviews: [{ ...report, content: '# Classic report from linked worktree' }],
+  };
+  const child = {
+    ...DEMO_SNAPSHOT.native.changes.find((entry) => entry.status === 'active'),
+    name: 'attention-child',
+    locator: childLocator,
+    supervisorParent: 'attention-parent',
+    workspace: { id: 'child', label: 'child/worktree', branch: 'child/worktree', current: false },
+    acceptanceEvidence: {
+      runId: 'attention-parent-run',
+      candidateId: 'attention-parent-run:6',
+      child: 'attention-child',
+      items: [
+        {
+          id: 'A2',
+          text: 'Child criterion',
+          result: 'pending',
+          gap: null,
+          evidence: ['Child implementation evidence'],
+          checks: [],
+        },
+      ],
+    },
+  };
+  const { changes: _changes, ...snapshot } = DEMO_SNAPSHOT;
+  const selectedRequests: string[] = [];
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects')
+      return route.fulfill({
+        json: {
+          currentProjectId: 'attention-project',
+          projects: [
+            {
+              id: 'attention-project',
+              name: 'Attention fixture',
+              path: '/attention-project',
+              availability: 'available',
+              isCurrent: true,
+              workflow: 'classic',
+            },
+          ],
+        },
+      });
+    if (url.pathname.endsWith('/overview'))
+      return route.fulfill({
+        json: {
+          ...snapshot,
+          initialChanges: { items: [], total: 0 },
+          native: { ...snapshot.native, changes: [], activeChangeCount: 1 },
+        },
+      });
+    if (url.pathname.endsWith('/workflow-attention'))
+      return route.fulfill({
+        json: {
+          items: [
+            {
+              workflow: 'classic',
+              name: 'attention-confirmation',
+              locator: classicLocator,
+              workspace: { label: 'classic/worktree' },
+              status: 'awaiting-user',
+              reason: 'decision',
+              related: [],
+              hasEvidence: true,
+            },
+            {
+              workflow: 'native',
+              name: child.name,
+              locator: childLocator,
+              workspace: child.workspace,
+              supervisorParent: child.supervisorParent,
+              status: 'waiting',
+              reason: 'dependency',
+              related: ['upstream-child'],
+              runId: 'attention-parent-run',
+              hasEvidence: true,
+            },
+            {
+              workflow: 'native',
+              name: 'unexplained-child',
+              locator: 'fixture:unexplained',
+              workspace: child.workspace,
+              supervisorParent: child.supervisorParent,
+              status: 'waiting',
+              reason: 'unknown',
+            },
+          ],
+          unavailable: [],
+        },
+      });
+    if (url.pathname.endsWith('/native-change')) {
+      const locator = url.searchParams.get('changeLocator');
+      selectedRequests.push(locator ?? '');
+      return route.fulfill({ status: locator === childLocator ? 200 : 404, json: child });
+    }
+    if (url.pathname.endsWith('/change')) {
+      const locator = url.searchParams.get('changeLocator');
+      selectedRequests.push(locator ?? '');
+      return route.fulfill({ status: locator === classicLocator ? 200 : 404, json: classic });
+    }
+    return route.fulfill({ json: { items: [], pages: [], total: 0 } });
+  });
+  await page.setViewportSize({ width: 400, height: 900 });
+  await page.goto('/');
+  await page.getByRole('button', { name: /待关注|Workflow attention/ }).press('Enter');
+  const drawer = page.getByRole('dialog', { name: /待关注|Workflow attention/ });
+  await expect(drawer.getByText('attention-confirmation')).toBeVisible();
+  await expect(drawer.getByText(/upstream-child/)).toBeVisible();
+  await expect(drawer.getByText(/等待原因未知|Waiting reason unknown/)).toBeVisible();
+  await expect(drawer.getByText('child/worktree').first()).toBeVisible();
+  const evidence = drawer
+    .getByRole('listitem')
+    .filter({ hasText: child.name })
+    .getByRole('link', {
+      name: /查看验收证据|View acceptance evidence/,
+    });
+  const href = await evidence.getAttribute('href');
+  await evidence.press('Enter');
+  await expect(page.getByRole('heading', { name: 'attention-child' })).toBeVisible();
+  await expect(page.getByText('Child implementation evidence')).toBeVisible();
+  await expect(page.locator('[data-workflow-evidence]')).toBeInViewport();
+  expect(selectedRequests).toContain(childLocator);
+  await page.goto(href!);
+  await expect(page.getByRole('heading', { name: 'attention-child' })).toBeVisible();
+  await expect(page.getByText('Child implementation evidence')).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByRole('button', { name: /待关注|Workflow attention/ }).click();
+  await drawer
+    .getByRole('listitem')
+    .filter({ hasText: classic.name })
+    .getByRole('link', {
+      name: /查看验收证据|View acceptance evidence/,
+    })
+    .press('Enter');
+  await expect(page.locator('.classic-change-detail')).toContainText(classic.name);
+  await expect(
+    page.getByRole('heading', { name: 'Classic report from linked worktree' }),
+  ).toBeVisible();
+  expect(selectedRequests).toContain(classicLocator);
+});
+
 async function setDashboardTheme(page: Page, theme: 'light' | 'dark') {
   const settings = page.getByRole('button', { name: /^(设置|Settings)$/ });
   if (!(await settings.isVisible()))

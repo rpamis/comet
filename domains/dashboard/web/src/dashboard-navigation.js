@@ -60,6 +60,10 @@ function normalize(value) {
     if (['steps', 'history', 'artifacts', 'evidence'].includes(value.runTab))
       route.runTab = value.runTab;
   }
+  if (['native', 'classic'].includes(route.workflow) && id(value.changeLocator)) {
+    route.changeLocator = id(value.changeLocator);
+    if (value.changeSection === 'evidence') route.changeSection = 'evidence';
+  }
   return route;
 }
 
@@ -67,6 +71,14 @@ export function readDashboardNavigation(browser = window) {
   const query = new URLSearchParams(browser.location.search);
   if (query.get('view') === 'eval')
     return normalize({ view: 'eval', projectId: query.get('project'), runId: query.get('run') });
+  if (query.get('view') === 'workflow' && query.has('change'))
+    return normalize({
+      view: 'workflow',
+      projectId: query.get('project'),
+      workflow: query.get('workflow'),
+      changeLocator: query.get('change'),
+      changeSection: query.get('section'),
+    });
   return normalize(browser.history.state?.cometDashboard);
 }
 
@@ -81,7 +93,8 @@ export function navigateDashboard(
   const route =
     (restore && workspaceRoutes.get(browser)?.get(workspaceKey(requested))) || requested;
   const url = new URL(browser.location.href);
-  for (const key of ['view', 'project', 'run']) url.searchParams.delete(key);
+  for (const key of ['view', 'project', 'run', 'workflow', 'change', 'section'])
+    url.searchParams.delete(key);
   const state = { ...browser.history.state, cometDashboard: route };
   const current = browser.history.state?.cometDashboard;
   const same = current && JSON.stringify(normalize(current)) === JSON.stringify(route);
@@ -104,8 +117,8 @@ export function useDashboardNavigation({ embedded = false } = {}) {
     };
     window.addEventListener('popstate', update);
     window.addEventListener(EVENT, update);
-    // Keep bookmarked Eval links working, then move their identity into history state.
-    if (new URLSearchParams(window.location.search).get('view') === 'eval') {
+    const query = new URLSearchParams(window.location.search);
+    if (query.get('view') === 'eval' || (query.get('view') === 'workflow' && query.has('change'))) {
       navigateDashboard(readDashboardNavigation(), { replace: true });
     } else if (!window.history.state?.cometDashboard) {
       navigateDashboard(readDashboardNavigation(), { replace: true });

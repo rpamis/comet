@@ -38,6 +38,7 @@ import * as dashboardWorkspace from '../../../domains/dashboard/workspace.js';
 import type { WorkflowRun } from '../../../domains/engine/runtime.js';
 import * as applicationRunStore from '../../../domains/workflow-application/application-run-record.js';
 import * as changeOwnership from '../../../domains/workflow-contract/change-runtime-owner.js';
+import { collectDashboardWorkflowAttention } from '../../../domains/dashboard/collector.js';
 
 const NOW = '2026-08-09T08:00:00.000Z';
 const LEGACY_ARCHIVE_FIXTURE = path.resolve('docs/comet/archive/2026-07-21-classic-config-block');
@@ -326,6 +327,7 @@ describe('Native Dashboard v2 collector', () => {
       children: [
         { name: 'platform-review', depends_on: [], covers: ['A2'] },
         { name: 'follow-up', depends_on: ['platform-review'], covers: ['A1'] },
+        { name: 'unexplained-child', depends_on: [], covers: ['A1'] },
       ],
     };
     const state = parseNativePortableState({
@@ -392,6 +394,45 @@ describe('Native Dashboard v2 collector', () => {
       acceptanceItems: [{ id: 'A2', text: 'Acceptance A2', result: 'pending' }],
     });
     expect(JSON.stringify(detail)).not.toContain('internal-claim');
+    const attention = await collectDashboardWorkflowAttention(projectRoot);
+    const waiting = attention.items.find(({ name }) => name === 'follow-up');
+    expect(attention.items.find(({ name }) => name === 'unexplained-child')).toMatchObject({
+      status: 'waiting',
+      reason: 'unknown',
+    });
+    expect(waiting).toMatchObject({
+      status: 'waiting',
+      reason: 'dependency',
+      related: ['platform-review'],
+      runId: state.name,
+      supervisorParent: state.name,
+      locator: expect.any(String),
+    });
+    await expect(
+      collectNativeDashboardChangeDetail(projectRoot, {
+        status: 'active',
+        name: 'follow-up',
+        locator: waiting!.locator,
+      }),
+    ).resolves.toMatchObject({
+      name: 'follow-up',
+      acceptanceEvidence: {
+        runId: state.name,
+        child: 'follow-up',
+        items: [{ id: 'A1', gap: 'no-candidate' }],
+      },
+    });
+    action.status = 'unknown';
+    const unknown = (await collectDashboardWorkflowAttention(projectRoot)).items.find(
+      ({ name }) => name === 'platform-review',
+    );
+    expect(unknown).toMatchObject({ status: 'unknown-outcome', reason: 'unknown' });
+    action.stepId = 'supervisor.child.integrate';
+    action.status = 'pending';
+    const integrating = (await collectDashboardWorkflowAttention(projectRoot)).items.find(
+      ({ name }) => name === 'platform-review',
+    );
+    expect(integrating).toMatchObject({ status: 'waiting', reason: 'integration' });
     action.status = 'cancelled';
     await expect(
       collectNativeDashboardChangeDetail(projectRoot, {
