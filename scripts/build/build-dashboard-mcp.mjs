@@ -16,6 +16,10 @@ export function renderDashboardMcpHtml(template, script, style = '') {
 
 export async function buildDashboardMcp({ outputRoot, version }) {
   await fs.mkdir(outputRoot, { recursive: true });
+  await fs.copyFile(
+    resolveRepositoryPath('domains/dashboard/web/public/fonts/OFL.txt'),
+    path.join(outputRoot, 'dashboard-fonts-OFL.txt'),
+  );
   const logo = await fs.readFile(resolveRepositoryPath('plugin/codex/icon.png'), 'base64');
   const client = await buildWeb({
     configFile: resolveRepositoryPath('domains/dashboard/web/vite.config.mjs'),

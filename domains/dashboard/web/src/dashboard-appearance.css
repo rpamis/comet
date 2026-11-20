@@ -1,3 +1,10 @@
+.dashboard-font-options.ant-radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 10px;
+}
+
 .dashboard-theme-heading {
   margin-bottom: 16px;
 }

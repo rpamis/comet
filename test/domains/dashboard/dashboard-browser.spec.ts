@@ -1846,7 +1846,7 @@ test('drags the font slider in dark mode and scales Tailwind, code and AntD cont
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('menuitem', { name: '外观' }).click();
   const selectors = [
-    '.dashboard-section-heading',
+    '.classic-change-detail .change-detail-panels article:first-child h4',
     '.dashboard-workbench code',
     '.dashboard-font-size-actions .ant-btn',
   ];
@@ -4742,7 +4742,10 @@ test('keeps shared typography and memory reading space at medium and mobile widt
 }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto('/?demo');
-  await expect(page.locator('.dashboard-section-heading').first()).toHaveCSS('font-size', '24px');
+  await expect(page.getByRole('heading', { name: '关键产物', exact: true })).toHaveCSS(
+    'font-size',
+    '16px',
+  );
   await expect(page.getByRole('heading', { name: '下一步建议', exact: true })).toHaveCSS(
     'font-size',
     '16px',
@@ -5228,6 +5231,53 @@ test('keeps the demo Native detail visible after selecting a child change', asyn
   await expect(page.getByText('准备工作区已完成并归档。', { exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Native 变更工作区', exact: true })).toBeVisible();
   expect(consoleErrors).toEqual([]);
+});
+
+test('renders the homepage fonts locally in Chinese and English', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const fontRequests = new Set<string>();
+  page.on('request', (request) => {
+    if (request.resourceType() === 'font') fontRequests.add(request.url());
+  });
+  await page.goto('/?demo');
+
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('DOM.enable');
+  await cdp.send('CSS.enable');
+  const renderedFonts = async (selector: string) => {
+    await page.evaluate(() => document.fonts.ready);
+    const { root } = await cdp.send('DOM.getDocument');
+    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector });
+    const { fonts } = await cdp.send('CSS.getPlatformFontsForNode', { nodeId });
+    return fonts.filter((font) => font.isCustomFont).map((font) => font.familyName);
+  };
+
+  const heading = '.classic-change-detail .change-detail-panels article:first-child h4';
+  await expect(page.locator(heading)).toHaveText('关键产物');
+  await expect
+    .poll(() => renderedFonts(heading))
+    .toEqual(expect.arrayContaining([expect.stringMatching(/Noto Serif SC/u)]));
+  await page.screenshot({
+    path: testInfo.outputPath('homepage-fonts-zh.png'),
+    animations: 'disabled',
+  });
+
+  await page.locator('.comet-language-switch').getByText('EN', { exact: true }).click();
+  await expect(page.locator(heading)).toHaveText('Key artifacts');
+  await expect
+    .poll(() => renderedFonts(heading))
+    .toEqual(expect.arrayContaining([expect.stringMatching(/^Newsreader\b/u)]));
+  await expect
+    .poll(() => renderedFonts('.dashboard-sidebar-brand-copy > strong'))
+    .toEqual(expect.arrayContaining([expect.stringMatching(/Source Serif 4/u)]));
+  expect(fontRequests.size).toBeGreaterThanOrEqual(3);
+  expect([...fontRequests].every((url) => new URL(url).origin === new URL(page.url()).origin)).toBe(
+    true,
+  );
+  await page.screenshot({
+    path: testInfo.outputPath('homepage-fonts-en.png'),
+    animations: 'disabled',
+  });
 });
 
 test('renders one Classic key artifacts title and keeps preview available', async ({ page }) => {

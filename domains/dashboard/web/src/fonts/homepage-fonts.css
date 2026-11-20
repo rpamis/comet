@@ -1,0 +1,25 @@
+@font-face {
+  font-family: 'Newsreader';
+  src: url('./newsreader-latin.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Source Serif 4';
+  src: url('./source-serif-4-latin.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+}
+
+/* The bundled CJK subset covers the Dashboard UI and demos. Other glyphs use the system fallback. */
+@font-face {
+  font-family: 'Noto Serif SC';
+  src: url('./noto-serif-sc-dashboard.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  unicode-range: U+3000-303F, U+3400-9FFF, U+F900-FAFF, U+FF00-FFEF;
+}

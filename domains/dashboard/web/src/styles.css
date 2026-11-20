@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import './fonts/homepage-fonts.css';
 
 @theme {
   /* UI sizes are pixels: the rem baseline also controls spacing. */
@@ -64,12 +65,14 @@
 :root {
   --rail-w: 228px;
   --dashboard-context-registry-columns: 218px minmax(360px, 1fr) clamp(300px, 24vw, 390px);
-  --font-ui:
+  --font-system-ui:
     'Segoe UI Variable Text', 'Segoe UI Variable', Inter, 'SF Pro Text', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-  --font-display:
+  --font-system-display:
     'Segoe UI Variable Display', 'Segoe UI Variable', Inter, 'SF Pro Display', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-ui: 'Source Serif 4', var(--font-system-ui);
+  --font-display: 'Newsreader', 'Noto Serif SC', 'Source Serif 4', var(--font-system-display);
   --font-mono:
     paperMono, ui-monospace, 'SFMono-Regular', Menlo, Monaco, 'Cascadia Mono', Consolas, monospace;
   font-family: var(--font-ui);
@@ -83,6 +86,12 @@
     'liga' 1,
     'calt' 1;
   text-rendering: optimizeLegibility;
+}
+
+:root[data-dashboard-font='system'],
+:host([data-dashboard-font='system']) {
+  --font-ui: var(--font-system-ui);
+  --font-display: var(--font-system-display);
 }
 
 /* Theme changes update the whole workbench. Keep that paint immediate so a

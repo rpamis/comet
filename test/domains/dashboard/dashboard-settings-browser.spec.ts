@@ -188,6 +188,41 @@ test('changes the interface language in settings without leaving the panel and p
   await expect(restored.locator('.dashboard-language-select')).toContainText('English');
 });
 
+test('defaults to homepage fonts and preserves a switch to the original system fonts', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto('/?demo');
+  const dialog = await openSettings(page);
+  await dialog.getByRole('menuitem', { name: '外观' }).click();
+  const homepage = dialog.getByRole('radio', { name: '官网字体（默认）', exact: true });
+  const system = dialog.getByRole('radio', { name: '原版系统字体', exact: true });
+  const preview = dialog.locator('.dashboard-type-preview');
+
+  await expect(homepage).toBeChecked();
+  await expect(preview.locator('strong')).toHaveCSS('font-family', /Newsreader/u);
+  const initialMono = await preview
+    .locator('code')
+    .evaluate((el) => getComputedStyle(el).fontFamily);
+  await page.screenshot({
+    path: testInfo.outputPath('dashboard-font-options.png'),
+    animations: 'disabled',
+  });
+  await system.check();
+  await expect(preview.locator('strong')).toHaveCSS('font-family', /Segoe UI Variable Display/u);
+  await expect(preview.locator('strong')).not.toHaveCSS('font-family', /Newsreader/u);
+  await expect(preview.locator('p')).not.toHaveCSS('font-family', /Source Serif 4/u);
+  await expect(preview.locator('code')).toHaveCSS('font-family', initialMono);
+
+  await page.reload();
+  const restored = await openSettings(page);
+  await restored.getByRole('menuitem', { name: '外观' }).click();
+  await expect(system).toBeChecked();
+  await expect(preview.locator('strong')).not.toHaveCSS('font-family', /Newsreader/u);
+  await homepage.check();
+  await expect(preview.locator('strong')).toHaveCSS('font-family', /Newsreader/u);
+});
+
 test('scales the type preview once with the font slider and restores its original hierarchy', async ({
   page,
 }) => {
