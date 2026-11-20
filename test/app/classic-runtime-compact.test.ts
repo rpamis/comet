@@ -95,12 +95,14 @@ it('keeps Classic CLI history out of compact tool replies while preserving curre
     const inspected = await dispatch({ operation: 'inspect', runId: 'compact-demo' });
     const compact = await dispatch({ operation: 'next', runId: 'compact-demo' });
     const text = JSON.stringify(compact);
+    const decisionCopies = text.split('CURRENT_COMPLETE_DESIGN').length - 1;
     if (process.env.COMET_TEST_CONTEXT_METRICS_FILE) {
       await fs.writeFile(
         process.env.COMET_TEST_CONTEXT_METRICS_FILE,
         JSON.stringify({
           compactBytes: Buffer.byteLength(text),
           inspectBytes: Buffer.byteLength(JSON.stringify(inspected)),
+          decisionCopies,
         }),
       );
     }
@@ -122,6 +124,11 @@ it('keeps Classic CLI history out of compact tool replies while preserving curre
     const original = inspected.data.waits.find(
       (wait: { status: string }) => wait.status === 'pending',
     );
+    expect(decisionCopies).toBe(1);
+    expect(compact.data.run.waits[0]).toMatchObject({
+      id: current.id,
+      proposalRef: '/data/continuation/current/waits/0/proposal',
+    });
     expect(current.proposal).toEqual(original.proposal);
     expect(current.proposalHash).toBe(original.proposalHash);
     expect(current.request).toMatchObject({
@@ -182,7 +189,8 @@ it('keeps Classic CLI history out of compact tool replies while preserving curre
     await fs.mkdir(path.join(project, 'docs'), { recursive: true });
     await fs.writeFile(
       path.join(project, designDoc),
-      '# Approved design\nImplement the complete requested scope.\n',
+      '---\ncomet_change: compact-demo\nrole: technical-design\ncanonical_spec: openspec\n---\n' +
+        '# Approved design\nImplement the complete requested scope.\n',
     );
     const recorded = await dispatch({
       operation: 'record-outcome',
@@ -209,6 +217,120 @@ it('keeps Classic CLI history out of compact tool replies while preserving curre
     ).toMatchObject({
       status: 'succeeded',
       outcome: { output: { designDoc } },
+    });
+    const resumed = cli('state', 'next', 'compact-demo', '--continue');
+    expect(resumed.data.phase).toBe('build');
+    expect(resumed.data.workspace.projectRoot).toBe(project);
+    const config = 'build-configuration.json';
+    await fs.writeFile(
+      path.join(project, config),
+      JSON.stringify({
+        build_mode: 'executing-plans',
+        tdd_mode: 'tdd',
+        review_mode: 'standard',
+        subagent_dispatch: null,
+      }),
+    );
+    const plan = 'docs/superpowers/plans/plan.md';
+    await fs.mkdir(path.dirname(path.join(project, plan)), { recursive: true });
+    await fs.writeFile(
+      path.join(directory, 'tasks.md'),
+      '- [x] Implement the approved change <!-- comet-task:impl -->\n',
+    );
+    await fs.writeFile(
+      path.join(project, plan),
+      '<!-- comet-task-authority: openspec/changes/compact-demo/tasks.md -->\n' +
+        '# Plan\n<!-- comet-task-ref:impl -->\nImplement and verify the approved change.\n',
+    );
+    const configuration = cli('state', 'propose-build', 'compact-demo', '--file', config);
+    cli(
+      'state',
+      'decide-build',
+      'compact-demo',
+      '--proposal-hash',
+      configuration.data.wait.proposalHash,
+      '--choice',
+      'approved',
+    );
+    cli('state', 'submit-plan', 'compact-demo', '--plan', plan);
+    const checks = '.comet/agent-checks.json';
+    const recordCheck = async (name: string, argv: string[]) => {
+      execFileSync(process.execPath, argv, { cwd: project, stdio: 'ignore' });
+      await fs.writeFile(
+        path.join(project, checks),
+        JSON.stringify({
+          checks: [{ name, result: 'passed', note: `Observed successful ${name} command.` }],
+        }),
+      );
+    };
+    await fs.writeFile(path.join(project, 'result.cjs'), 'module.exports = 1;\n');
+    await recordCheck('build syntax', ['--check', 'result.cjs']);
+    cli(
+      'state',
+      'complete-build',
+      'compact-demo',
+      '--checks',
+      checks,
+      '--session',
+      'fixture-builder',
+    );
+    const verify = cli('state', 'next', 'compact-demo');
+    expect(verify.data.phase).toBe('verify');
+    const pendingVerify = verify.data.continuation.current.actions[0];
+    expect(pendingVerify).toMatchObject({
+      stepId: 'full.verify.run',
+      status: 'pending',
+    });
+    // The fixture uses distinct Builder and Verifier execution references.
+    const verifying = await dispatch({
+      operation: 'claim',
+      runId: 'compact-demo',
+      actionId: pendingVerify.id,
+      attempt: pendingVerify.attempt,
+      inputHash: pendingVerify.inputHash,
+      executorId: 'classic-host',
+      sessionId: 'fixture-verifier',
+      claimToken: 'fixture-verifier-claim',
+    });
+    await recordCheck('verify behavior', [
+      '-e',
+      'require("node:assert").strictEqual(require("./result.cjs"), 1)',
+    ]);
+    const report = 'docs/superpowers/reports/verify.md';
+    await fs.mkdir(path.dirname(path.join(project, report)), { recursive: true });
+    await fs.writeFile(
+      path.join(project, report),
+      '# Verification\nIndependent CLI behavior assertion passed.\n',
+    );
+    const actualChecks = JSON.parse(await fs.readFile(path.join(project, checks), 'utf8'));
+    await dispatch({
+      operation: 'record-outcome',
+      runId: 'compact-demo',
+      expectedRevision: verifying.data.revision,
+      outcome: {
+        actionId: pendingVerify.id,
+        attempt: pendingVerify.attempt,
+        inputHash: pendingVerify.inputHash,
+        claimToken: 'fixture-verifier-claim',
+        outcomeId: 'fixture-verifier-result',
+        status: 'succeeded',
+        output: { event: 'verification-ready', verificationReport: report, ...actualChecks },
+      },
+    });
+    cli('guard', 'compact-demo', 'verify', '--report', report, '--apply', '--checks', checks);
+    const verified = await dispatch({ operation: 'inspect', runId: 'compact-demo' });
+    expect(verified.data.state).toMatchObject({ phase: 'archive', verifyResult: 'pass' });
+    const builderAction = verified.data.actions.find(
+      (entry: { stepId: string }) => entry.stepId === 'full.build.execute',
+    );
+    const verifierAction = verified.data.actions.find(
+      (entry: { stepId: string }) => entry.stepId === 'full.verify.run',
+    );
+    expect(builderAction.claim.sessionId).toBe('fixture-builder');
+    expect(verifierAction).toMatchObject({
+      status: 'succeeded',
+      claim: { sessionId: 'fixture-verifier' },
+      outcome: { output: actualChecks },
     });
   } finally {
     await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
