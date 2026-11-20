@@ -1231,6 +1231,17 @@ export async function runtimeDispatchCommand(
           status: data.status,
           workflow: data.workflow,
           ...projection,
+          run: {
+            ...projection.run,
+            waits: projection.run.waits.map(({ proposal, ...wait }, index) => ({
+              ...wait,
+              ...(proposal === undefined
+                ? {}
+                : {
+                    proposalRef: `/data/continuation/current/waits/${index}/proposal`,
+                  }),
+            })),
+          },
           ...(await claimedTaskContext(
             data,
             request,
