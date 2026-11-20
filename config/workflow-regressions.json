@@ -54922,6 +54922,53 @@
       ]
     },
     {
+      "id": "classic-compat-context-recommended-action",
+      "behavior": "Classic Compat 推荐转入 Archive 时不附带已完成 Verify 的操作范围。",
+      "sources": ["https://github.com/rpamis/comet/pull/583#discussion_r4642106092"],
+      "coverageLevel": "runtime",
+      "reproduction": "9e3d1143 中 Compat Verify 已接受，缺少报告时记录步骤仍为 hotfix.verify.run，而续行推荐 transition。调用 state next，仍返回 --operation verify。",
+      "expected": "已接受的 Verify 推进到下一阶段时保留阶段级上下文请求。执行 Build 和 Verify 时继续附带对应操作。",
+      "forbidden": "对仅需推进状态或恢复其他工作的续行注入已经完成的执行操作。",
+      "rootCause": "恢复投影只用记录步骤推导上下文操作，忽略本次实际推荐的续行动作。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-recovery-contract.test.ts",
+          "namePattern": "^Classic compact recovery and task reconciliation omits a Verify operation when Compat already recommends transitioning to Archive$",
+          "requiredNames": [
+            "Classic compact recovery and task reconciliation omits a Verify operation when Compat already recommends transitioning to Archive"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard-supervisor-archive-standalone-collision",
+      "behavior": "另一个工作区同日同名的独立归档保留顶层入口。",
+      "sources": ["https://github.com/rpamis/comet/pull/583#discussion_r4642106100"],
+      "coverageLevel": "runtime",
+      "reproduction": "在 9e3d1143 的两个 Git worktree 中，一个有 Supervisor 子档，另一个有同日同名的独立归档，归档列表只有 3 个顶层条目而非 4 个。",
+      "expected": "显示独立归档入口，父档仍打开自身契约绑定的子归档。",
+      "forbidden": "按日期和名称去重时隐藏同名独立归档，或将独立档链接到父 Run。",
+      "rootCause": "先按日期名称去重再移除已被父项拥有的快照，使另一 workspace 的候选未参与顶层项目选择。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/native-collector.test.ts",
+          "namePattern": "^Native Dashboard v2 collector groups dated Supervisor child snapshots under the archived parent by Run and contract$",
+          "requiredNames": [
+            "Native Dashboard v2 collector groups dated Supervisor child snapshots under the archived parent by Run and contract"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "Windows Chromium Dashboard",
+          "status": "verified",
+          "evidence": [
+            "2026-11-20: Chromium against the built Dashboard server opened the standalone 2026-08-10-platform-review in other, the same-dated Supervisor child in main, and the current 2026-08-14 child under the other Supervisor. Checked actual detail response archive names, workspace labels, and child headings."
+          ]
+        }
+      ]
+    },
+    {
       "id": "native-562-build-material-deletions",
       "behavior": "首次 Build 交接精确同步已批准材料，保留源工作区对已提交 Spec 的删除。",
       "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581585323"],

@@ -79,6 +79,22 @@ describe('Classic compact recovery and task reconciliation', () => {
     expect(request.commandArgs).toEqual(expect.arrayContaining(['--operation', operation]));
   });
 
+  it('omits a Verify operation when Compat already recommends transitioning to Archive', async () => {
+    const statePath = path.join(change, '.comet.yaml');
+    const state = parseDocument(await fs.readFile(statePath, 'utf8'));
+    state.set('phase', 'verify');
+    state.set('verify_result', 'pass');
+    await fs.writeFile(statePath, state.toString());
+    const { run } = await ensureClassicRuntimeRun(change);
+    expect(run?.currentStep).toBe('hotfix.verify.run');
+    const result = await cli('state', 'next', 'demo', '--json');
+    expect(result.exitCode, result.stdout).toBe(0);
+    const { data } = JSON.parse(result.stdout!);
+    expect(data.nextAction.kind).toBe('transition');
+    expect(data.continuation.contextRequest).not.toHaveProperty('operation');
+    expect(data.continuation.contextRequest.commandArgs).not.toContain('--operation');
+  });
+
   it.each(['drift', 'unbound-detached'] as const)(
     'rejects all task writes on %s workspaces without changing files',
     async (mode) => {

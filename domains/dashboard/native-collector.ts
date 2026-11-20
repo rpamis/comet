@@ -244,7 +244,7 @@ function nativeDashboardCandidateLocator(
 // Bump when the rebuild starts reading new facts or filtering candidates
 // differently. A stored index from another revision is rebuilt on the next read,
 // because its refreshPaths cannot notice the facts it never tracked.
-const NATIVE_DASHBOARD_INDEX_REVISION = 4;
+const NATIVE_DASHBOARD_INDEX_REVISION = 5;
 interface NativeDashboardIndex {
   revision?: number;
   runtimeDataRoot?: string;
@@ -808,10 +808,8 @@ async function rebuildNativeDashboardIndex(
   ].sort();
   const before = await nativeDashboardIndexFingerprint(refreshPaths, workspaces);
   raw.active = await withoutCancelledNativeCandidates(raw.active);
-  const [active, archived] = await Promise.all([
-    selectActiveNativeCandidates(raw.active),
-    Promise.resolve(selectArchivedNativeCandidates(raw.archived)),
-  ]);
+  const active = await selectActiveNativeCandidates(raw.active);
+  const archived = selectArchivedNativeCandidates(raw.archived);
   const archiveLocators = new Set(archived.map(({ locator }) => locator));
   const selected = [...active, ...archived];
   const all = [...selected, ...raw.archived.filter(({ locator }) => !archiveLocators.has(locator))];
@@ -826,31 +824,36 @@ async function rebuildNativeDashboardIndex(
   const [activeChildren, archivedParents] = await Promise.all([
     Promise.all(active.map((candidate) => activeParentChildren(candidate, selected))),
     Promise.all(
-      archived.map((candidate) =>
-        archivedParentChildren(
-          candidate,
-          archivesByWorkspace.get(candidate.source.workspace.id) ?? [],
-          archiveOrigins,
-        ),
+      raw.archived.map(
+        async (candidate) =>
+          [
+            candidate.locator,
+            await archivedParentChildren(
+              candidate,
+              archivesByWorkspace.get(candidate.source.workspace.id) ?? [],
+              archiveOrigins,
+            ),
+          ] as const,
       ),
     ),
   ]);
-  const archivedChildren = archivedParents.map(({ children }) => children);
+  const archivedChildren = new Map(archivedParents);
   const suppressed = new Set([
-    ...archivedParents.flatMap(({ ownedLocators }) => ownedLocators),
-    ...[...activeChildren, ...archivedChildren].flatMap((children) =>
-      children.flatMap(({ locator }) => (locator ? [locator] : [])),
+    ...archivedParents.flatMap(([, { ownedLocators }]) => ownedLocators),
+    ...[...activeChildren, ...archivedParents.map(([, { children }]) => children)].flatMap(
+      (children) => children.flatMap(({ locator }) => (locator ? [locator] : [])),
     ),
   ]);
-  const rootCandidates = (
-    candidates: readonly NativeDashboardCandidate[],
-    children: readonly NativeDashboardChildSummary[][],
-  ): NativeDashboardRootCandidate[] =>
-    candidates
-      .map((candidate, index) => ({ ...candidate, children: [...children[index]] }))
-      .filter(({ locator }) => !suppressed.has(locator));
-  const rootActive = rootCandidates(active, activeChildren);
-  const rootArchived = rootCandidates(archived, archivedChildren);
+  const rootActive = active
+    .map((candidate, index) => ({ ...candidate, children: activeChildren[index] }))
+    .filter(({ locator }) => !suppressed.has(locator));
+  // Group child archives before choosing a root for a shared dated name.
+  const rootArchived = selectArchivedNativeCandidates(
+    raw.archived.filter(({ locator }) => !suppressed.has(locator)),
+  ).map((candidate) => ({
+    ...candidate,
+    children: archivedChildren.get(candidate.locator)?.children ?? [],
+  }));
   const after = await nativeDashboardIndexFingerprint(refreshPaths, workspaces);
   const discoveryAfter = await nativeDashboardIndexFingerprint(discoveryPaths, workspaces);
   const unavailable = raw.unavailable || discovery.unavailable;

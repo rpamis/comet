@@ -294,6 +294,12 @@ describe('Native Dashboard v2 collector', () => {
     await archive('platform-review', '2026-08-09-platform-review', source('release', 6, 2));
     await archive('platform-review', '2026-08-10-platform-review', source('release', 14, 12));
     await archive('platform-review', '2026-08-11-platform-review', source('different-run', 14, 12));
+    await archive(
+      'platform-review',
+      '2026-08-10-platform-review',
+      undefined,
+      otherPaths.archiveDir,
+    );
     const otherParent = await archive(
       'release',
       '2026-08-15-release',
@@ -312,12 +318,17 @@ describe('Native Dashboard v2 collector', () => {
     );
 
     const page = await collectNativeDashboardChangePage(projectRoot, { status: 'archived' });
-    expect(page.total).toBe(3);
+    expect(page.total).toBe(4);
     expect(page.items.map(({ archiveName }) => archiveName)).toEqual([
       '2026-08-12-release',
       '2026-08-11-platform-review',
       '2026-08-15-release',
+      '2026-08-10-platform-review',
     ]);
+    expect(page.items[3]).toMatchObject({
+      name: 'platform-review',
+      workspace: { branch: 'other' },
+    });
     expect(page.items[2].children).toMatchObject([
       { name: 'platform-review', archiveName: '2026-08-14-platform-review', covers: ['A1'] },
     ]);
@@ -496,6 +507,11 @@ describe('Native Dashboard v2 collector', () => {
       locator: page.items[0].locator,
     });
     run.status = 'running';
+    run.actions.push({
+      id: 'sdk-parent:3',
+      stepId: 'supervisor.parent.builder',
+      status: 'failed',
+    } as WorkflowRun['actions'][number]);
     expect((await collectDashboardWorkflowAttention(projectRoot)).items).not.toContainEqual(
       expect.objectContaining({ name: state.name, reason: 'failed-run' }),
     );
