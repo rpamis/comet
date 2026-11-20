@@ -1,3 +1,5 @@
+import type { WorkflowMetricComparison, WorkflowMetrics } from './workflow-regression.js';
+
 export type EvalExecutionStatus =
   | 'queued'
   | 'preparing'
@@ -28,6 +30,7 @@ export interface EvalRunConfig {
   judgeBaseUrl?: string;
   suite?: 'local' | 'langsmith' | 'langfuse';
   task?: string;
+  workflowRegressionCase?: string;
   quick?: boolean;
   profile?: string;
   goal?: string;
@@ -81,6 +84,7 @@ export interface EvalCaseResult {
   caseHash: string | null;
   validatorHash: string | null;
   datasetComparisonIdentity?: string | null;
+  workflowMetrics?: WorkflowMetrics;
   artifacts: Array<{ id: string; label: string }>;
 }
 export interface EvalRunDetail {
@@ -203,6 +207,9 @@ export interface EvalRunComparison {
   configurationChanges: Array<{ field: string; baseline: unknown; candidate: unknown }>;
   cases: Array<{
     task: string;
+    treatment?: string;
+    workflowRegressionCase?: string;
+    metrics?: WorkflowMetricComparison;
     repetition: number;
     baseline: boolean | null;
     candidate: boolean | null;
