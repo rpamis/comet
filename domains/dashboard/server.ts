@@ -10,6 +10,7 @@ import {
   collectDashboardChangeSummary,
   collectDashboardOverview,
   collectDashboardSnapshot,
+  collectDashboardWorkflowAttention,
   DashboardChangeQueryError,
 } from './collector.js';
 import {
@@ -490,6 +491,11 @@ async function handleRequest(
         query: url.searchParams.get('q') ?? undefined,
       });
       respondJson(res, req.method, 200, overview);
+      return;
+    }
+
+    if (subpath === '/workflow-attention') {
+      respondJson(res, req.method, 200, await collectDashboardWorkflowAttention(project.path));
       return;
     }
 

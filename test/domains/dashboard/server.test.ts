@@ -17,6 +17,7 @@ import {
 } from '../../../domains/comet-native/native-config.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import { nativeChangeDir } from '../../../domains/comet-native/native-change.js';
+import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 
 interface HttpResult {
   status: number;
@@ -76,6 +77,213 @@ describe('startDashboardServer', () => {
     await fs.rm(projectDir, { recursive: true, force: true });
     await fs.rm(webDir, { recursive: true, force: true });
   });
+
+  it('serves combined attention with exact evidence for a persisted Supervisor child Run', async () => {
+    const git = (root: string, ...args: string[]) =>
+      execFileSync(
+        'git',
+        ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', ...args],
+        { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+      ).trim();
+    git(projectDir, 'init', '-b', 'main');
+    const config = defaultProjectConfig('docs', 'en');
+    await writeProjectConfig(projectDir, {
+      ...config,
+      native: { ...config.native, max_parallel_children: 1 },
+    });
+    git(projectDir, 'add', '.comet/config.yaml');
+    git(projectDir, 'commit', '-m', 'Fixture project root');
+    const name = 'attention-parent';
+    async function cli(...args: string[]) {
+      const result = await runNativeCli([...args, '--project-root', projectDir, '--json']);
+      expect(result.exitCode, result.stdout || result.stderr).toBe(0);
+      return JSON.parse(result.stdout).data;
+    }
+    await cli('new', name);
+    const native = await nativeProjectPaths(projectDir, 'docs');
+    const changeDir = nativeChangeDir(native, name);
+    await fs.mkdir(path.join(changeDir, 'specs', 'feature'), { recursive: true });
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Target\nFixture.\n# Acceptance examples\n- The selected child supplies evidence.\n- Dependent evidence can be found.\n',
+    );
+    await fs.writeFile(
+      path.join(changeDir, 'specs/feature/spec.md'),
+      '# Feature\nEvidence for linked changes.',
+    );
+    await fs.writeFile(
+      path.join(changeDir, 'children.yaml'),
+      [
+        'schema: comet.native.children.v2',
+        'children:',
+        '  - name: proof-child',
+        '    depends_on: []',
+        '    covers: [A1]',
+        '  - name: dependent-child',
+        '    depends_on: [proof-child]',
+        '    covers: [A2]',
+        '  - name: queued-child',
+        '    depends_on: []',
+        '    covers: [A2]',
+        '',
+      ].join('\n'),
+    );
+    const shape = await cli(
+      'next',
+      name,
+      '--summary',
+      'Fixture plan',
+      '--expected-action',
+      'prepare-shape-confirmation',
+      '--expected-state-version',
+      '1',
+    );
+    const confirmed = await cli(
+      'next',
+      name,
+      '--summary',
+      'SIMULATED user approved fixture',
+      '--confirmed',
+      '--coordination-mode',
+      'multi-session',
+      '--expected-action',
+      'confirm-shape',
+      '--expected-state-version',
+      String(shape.stateVersion),
+    );
+    const builder = confirmed.pendingActions.find(
+      ({ stepId }: { stepId: string }) => stepId === 'supervisor.child.builder',
+    );
+    const claimed = await cli('next', name, '--action', builder.id, '--session', 'fixture-builder');
+    const worktree = claimed.task.projectRoot;
+    await fs.writeFile(path.join(worktree, 'result.txt'), 'observed child work');
+    git(worktree, 'add', 'result.txt');
+    git(worktree, 'commit', '-m', 'Child candidate');
+    const candidateCommit = git(worktree, 'rev-parse', 'HEAD');
+    const resultPath = path.join(webDir, 'builder-result.json');
+    await fs.writeFile(
+      resultPath,
+      JSON.stringify({
+        status: 'succeeded',
+        output: {
+          summary: 'Fixture implementation evidence',
+          candidateCommit,
+          checks: [
+            {
+              name: 'Read result',
+              result: 'passed',
+              acceptanceIds: ['A1'],
+              note: 'Observed child work',
+            },
+          ],
+          acceptanceReview: [
+            {
+              id: 'A1',
+              status: 'implemented-with-evidence',
+              evidence: ['Child result.txt'],
+              note: 'Candidate worktree',
+            },
+          ],
+          requireIndependentReview: true,
+        },
+      }),
+    );
+    await cli(
+      'next',
+      name,
+      '--action',
+      builder.id,
+      '--session',
+      'fixture-builder',
+      '--result',
+      resultPath,
+    );
+
+    const classicDir = path.join(projectDir, 'openspec', 'changes', 'classic-review');
+    await fs.mkdir(classicDir, { recursive: true });
+    await fs.writeFile(
+      path.join(classicDir, '.comet.yaml'),
+      'phase: verify\nverify_result: fail\n',
+    );
+    const handle = await startDashboardServer({
+      projectPath: projectDir,
+      webRoot: webDir,
+      port: 0,
+    });
+    handles.push(handle);
+    const { currentProjectId } = JSON.parse(
+      (await request(handle.port, '/api/dashboard/projects')).body,
+    );
+    const prefix = `/api/dashboard/projects/${currentProjectId}`;
+    const response = await request(handle.port, `${prefix}/workflow-attention`);
+    expect(response.status, response.body).toBe(200);
+    const attention = JSON.parse(response.body);
+    expect(attention.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          workflow: 'classic',
+          name: 'classic-review',
+          status: 'verification-blocker',
+        }),
+        expect.objectContaining({
+          workflow: 'native',
+          name: 'proof-child',
+          runId: name,
+          status: 'ready',
+          workspace: expect.objectContaining({
+            branch: 'comet/supervisor/attention-parent/proof-child',
+          }),
+        }),
+        expect.objectContaining({
+          name: 'dependent-child',
+          status: 'waiting',
+          reason: 'dependency',
+          related: ['proof-child'],
+        }),
+        expect.objectContaining({
+          name: 'queued-child',
+          status: 'waiting',
+          reason: 'dispatch-slot',
+        }),
+      ]),
+    );
+    const proof = attention.items.find((item: { name: string }) => item.name === 'proof-child');
+    const selected = await request(
+      handle.port,
+      `${prefix}/native-change?status=active&changeLocator=${encodeURIComponent(proof.locator)}`,
+    );
+    expect(selected.status, selected.body).toBe(200);
+    expect(JSON.parse(selected.body)).toMatchObject({
+      name: 'proof-child',
+      acceptanceEvidence: {
+        runId: name,
+        candidateCommit,
+        projectRoot: worktree,
+        child: 'proof-child',
+        items: [
+          {
+            id: 'A1',
+            evidence: ['Child result.txt'],
+            checks: [{ name: 'Read result', stage: 'build' }],
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(attention)).not.toContain('claimToken');
+    expect(
+      (
+        await request(
+          handle.port,
+          `${prefix}/workflow-attention`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+          },
+          {},
+        )
+      ).status,
+    ).toBe(405);
+  }, 60_000);
 
   it.skipIf(process.platform !== 'linux')(
     'closes static file descriptors after aborted responses',

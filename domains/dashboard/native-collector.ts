@@ -15,6 +15,7 @@ import {
 import { NATIVE_CHANGE_STATE_FILE, readNativeChangeFile } from '../comet-native/native-change.js';
 import { nativeProjectPaths, resolveContainedNativePath } from '../comet-native/native-paths.js';
 import { readNativePortableState } from '../comet-native/native-portable-state.js';
+import { projectNativeSdkAcceptanceEvidence } from '../comet-native/native-sdk-acceptance-evidence.js';
 import {
   isNativeSdkChangeCancellationComplete,
   nativeSdkChangeCancellationPaths,
@@ -49,10 +50,12 @@ import { DashboardIndexReconciler } from './index-reconciler.js';
 import { nativeSupervisorStateFile } from '../comet-native/native-supervisor-state.js';
 import {
   adaptNativeDashboardSdkChild,
+  nativeDashboardSdkAttention,
   readNativeDashboardSdkProjection,
   type NativeDashboardSdkChild,
   type NativeDashboardSdkProjection,
 } from './native-sdk-projection.js';
+import type { WorkflowAttentionItem, WorkflowAttentionState } from './workflow-attention.js';
 import {
   collectDashboardWorkspaceSources,
   withDashboardReadScope,
@@ -445,6 +448,7 @@ function sdkChildSummary(
   sdk: NativeDashboardSdkProjection,
   child: NativeDashboardSdkChild,
   candidates: readonly NativeDashboardCandidate[],
+  planned = false,
 ): NativeDashboardChildSummary {
   const candidate = child.archiveName
     ? (candidates.find(
@@ -458,7 +462,9 @@ function sdkChildSummary(
           sameDashboardPath(source.workspace.projectRoot, child.projectRoot),
       ) ?? null);
   const summary = childSummary(child, candidate);
-  if (candidate || (child.status !== 'active' && child.status !== 'blocked')) return summary;
+  if (!planned && (candidate || (child.status !== 'active' && child.status !== 'blocked')))
+    return summary;
+  if (planned && child.status === 'integrated') return summary;
   const parentWorkspace = parent.source.workspace;
   const childWorkspace = child.projectRoot
     ? collectDashboardWorkspaceSources(parentWorkspace.projectRoot).find(({ projectRoot }) =>
@@ -469,7 +475,7 @@ function sdkChildSummary(
     ...summary,
     locator: encodeDashboardChangeLocator(
       parentWorkspace.id,
-      `${SDK_CHILD_LOCATOR_PREFIX}${parent.entry.name}:${child.name}:${sdk.state.children_contract_ref}`,
+      `${SDK_CHILD_LOCATOR_PREFIX}${parent.entry.name}:${child.name}:${sdk.state.children_contract_ref}${planned ? ':planned' : ''}`,
     ),
     changeStatus: 'active',
     workspace: dashboardWorkspaceIdentity(childWorkspace ?? parentWorkspace),
@@ -1096,12 +1102,19 @@ async function collectNativeChange(
       return adaptLegacyNativeDashboardChange({ state: read.state, ...common, artifacts });
     }
     if (sdk)
-      return adaptNativeDashboardChange({
-        state: read.state,
-        ...common,
-        artifacts,
-        localExecutionSummary: sdk.localExecution,
-      });
+      return {
+        ...adaptNativeDashboardChange({
+          state: read.state,
+          ...common,
+          artifacts,
+          localExecutionSummary: sdk.localExecution,
+        }),
+        acceptanceEvidence: projectNativeSdkAcceptanceEvidence(
+          sdk.run,
+          sdk.state,
+          paths.projectRoot,
+        ),
+      };
     return adaptNativeDashboardChange({
       state: read.state,
       ...common,
@@ -1115,6 +1128,76 @@ async function collectNativeChange(
       message: error instanceof Error ? error.message : 'Native state is unreadable.',
     });
   }
+}
+
+export async function collectNativeDashboardWorkflowAttention(
+  projectRoot: string,
+): Promise<WorkflowAttentionItem[]> {
+  const index = await buildNativeDashboardIndex(projectRoot, { refreshIfChanged: true });
+  if (!index) return [];
+  const rows = await Promise.all(
+    index.active.map(async (candidate): Promise<WorkflowAttentionItem[]> => {
+      const { source, entry, locator } = candidate;
+      const item = {
+        workflow: 'native' as const,
+        name: entry.name,
+        locator,
+        workspace: dashboardWorkspaceIdentity(source.workspace),
+      };
+      try {
+        const { read, sdk } = await readEntryState(source.paths, entry);
+        if (read.kind === 'invalid' || !matchesEntry(entry, read.state))
+          return [{ ...item, runId: null, status: 'unknown-outcome', reason: 'unknown' }];
+        if (!sdk) {
+          const status = read.kind === 'portable' ? read.state.status : null;
+          if (status === 'done' || read.state.archived) return [];
+          const attention: WorkflowAttentionState = ['fail', 'blocked'].includes(
+            read.state.verification_result,
+          )
+            ? { status: 'verification-blocker', reason: 'verification' }
+            : status === 'await-user'
+              ? { status: 'awaiting-user', reason: 'decision' }
+              : { status: 'unknown-outcome', reason: 'unknown' };
+          return [{ ...item, runId: null, ...attention }];
+        }
+        const runId = sdk.run.runId;
+        if (['completed', 'cancelled'].includes(sdk.run.status) || sdk.state.archived) return [];
+        const focus = nativeDashboardSdkAttention(sdk);
+        const children = sdk.children.flatMap((child): WorkflowAttentionItem[] => {
+          if (!child.attention) return [];
+          const current = sdkChildSummary(candidate, sdk, child, index.all);
+          const identity =
+            current.locator && parseDashboardChangeLocator(current.locator)?.identity;
+          const summary =
+            identity && identity.startsWith(SDK_CHILD_LOCATOR_PREFIX)
+              ? current
+              : sdkChildSummary(candidate, sdk, child, index.all, true);
+          if (!summary.locator || !summary.workspace) return [];
+          return [
+            {
+              ...item,
+              ...child.attention,
+              runId,
+              name: child.name,
+              locator: summary.locator,
+              workspace: summary.workspace,
+              supervisorParent: sdk.state.name,
+              hasEvidence: child.covers.length > 0,
+            },
+          ];
+        });
+        return focus
+          ? [
+              { ...item, ...focus, runId, hasEvidence: sdk.state.acceptance.length > 0 },
+              ...children,
+            ]
+          : children;
+      } catch {
+        return [{ ...item, runId: null, status: 'unknown-outcome', reason: 'unknown' }];
+      }
+    }),
+  );
+  return rows.flat();
 }
 export interface NativeDashboardChangePageOptions {
   status: DashboardChangeTab;
@@ -1232,9 +1315,10 @@ async function collectNativeDashboardChangeDetailUncached(
       ).catch(() => null);
       const child = sdk?.children.find(({ name }) => name === childName);
       if (!sdk || !child) return null;
-      const summary = sdkChildSummary(parent, sdk, child, index.all);
+      const planned = parsed.identity.endsWith(':planned');
+      const summary = sdkChildSummary(parent, sdk, child, index.all, planned);
       return summary.locator === options.locator
-        ? adaptNativeDashboardSdkChild(sdk.state, child, summary)
+        ? adaptNativeDashboardSdkChild(sdk, child, summary, parent.source.paths.projectRoot)
         : null;
     }
     candidate = index.all.find(({ locator }) => locator === options.locator);
