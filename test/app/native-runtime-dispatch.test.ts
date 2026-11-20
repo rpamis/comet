@@ -27,6 +27,10 @@ import * as taskContext from '../../app/commands/comet-task-context.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
+import { LocalProjectKnowledgeProvider } from '../../domains/project-knowledge/local-provider.js';
+import { createUserProjectKnowledgeRecord } from '../../domains/project-knowledge/records.js';
+import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
+import { defaultProjectKnowledgeStorageRoot } from '../../platform/paths/project-knowledge-storage.js';
 
 function identifiedResultRequest(
   request: { receipt: string; result: { status: string; output: unknown } },
@@ -48,6 +52,116 @@ afterEach(async () => {
 });
 
 describe('Claim context delivery', () => {
+  it('delivers a scoped policy on claim and keeps its selectors for expansion and restoration', async () => {
+    const { root, name, requestFile } = await builderFixture();
+    await ensureCliBuilt(path.resolve('.'));
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-scoped-claim-home-'));
+    roots.push(home);
+    const source = 'src/storage/migration.ts';
+    await fs.mkdir(path.join(root, path.dirname(source)), { recursive: true });
+    await fs.writeFile(path.join(root, source), 'export const preserveSchema = true;\n');
+    const policy = createUserProjectKnowledgeRecord(
+      {
+        type: 'constraint',
+        title: 'Workflow resumes with a compatible schema',
+        summary: 'Preserve the previous schema for staged migrations.',
+        phases: ['build'],
+        operations: ['edit'],
+        applicablePaths: ['src/storage/'],
+        sources: [{ source }],
+      },
+      resolveStableProjectId(root),
+    );
+    const provider = new LocalProjectKnowledgeProvider({
+      projectRoot: root,
+      cacheRoot: defaultProjectKnowledgeStorageRoot(home),
+      corpus: [],
+    });
+    try {
+      await provider.apply({ kind: 'upsert', record: policy });
+    } finally {
+      provider.close();
+    }
+    const invoke = async (args: string[]) => {
+      const { stdout, stderr } = await promisify(execFile)(
+        process.execPath,
+        [path.resolve('bin/comet.js'), ...args],
+        {
+          env: {
+            ...process.env,
+            HOME: home,
+            USERPROFILE: home,
+            XDG_CACHE_HOME: path.join(home, '.cache'),
+            LOCALAPPDATA: path.join(home, 'AppData', 'Local'),
+          },
+          windowsHide: true,
+          timeout: 30_000,
+        },
+      );
+      return { ...JSON.parse(stdout), cliStderr: stderr };
+    };
+    const claim = [
+      'runtime',
+      'dispatch',
+      '--application',
+      'native',
+      '--project-root',
+      root,
+      '--request',
+      requestFile,
+    ];
+    const selected = (
+      context: Array<{ applications: Array<{ candidateId: string; delivery: string }> }>,
+    ) =>
+      context
+        .flatMap(({ applications }) => applications)
+        .find(({ candidateId }) => candidateId === policy.id);
+
+    await expect(invoke([...claim, '--path', '../outside.ts'])).rejects.toMatchObject({
+      code: 64,
+      stdout: expect.stringContaining('must stay inside its declared path base'),
+    });
+    expect(
+      (await inspectNativeSdkRun(root, name)).run.actions.find(
+        ({ stepId }) => stepId === 'build.builder',
+      )?.status,
+    ).toBe('pending');
+
+    const scoped = await invoke([...claim, '--path', source]);
+    expect(scoped.data.contextDelivery, scoped.cliStderr).toMatchObject({
+      status: 'delivered',
+      phase: 'build',
+      operation: 'edit',
+      path: source,
+      sessionId: 'builder-session',
+    });
+    expect(selected(scoped.data.context)).toMatchObject({ delivery: 'full' });
+    const restore = scoped.data.contextActions.restore.commandArgs.slice(1) as string[];
+    const restored = await invoke(restore);
+    expect(selected(restored.context)).toMatchObject({ delivery: 'full' });
+    const expansion = scoped.data.contextActions.expand.commandArgs
+      .slice(1)
+      .map((arg: string) =>
+        arg === '<expansion-id>' ? `comet.project-knowledge::${policy.id}` : arg,
+      );
+    expect((await invoke(expansion)).expansion.content).toContain(policy.summary);
+    const unscoped = await invoke(claim);
+    expect(selected(unscoped.data.context)?.delivery).toBe('manifest');
+    const unrelated = await invoke([...claim, '--path', 'src/routing/route.ts']);
+    expect(selected(unrelated.data.context)).toBeUndefined();
+    const independent = [...restore];
+    independent[independent.indexOf('--session') + 1] = 'new-builder';
+    expect(selected((await invoke(independent)).context)).toMatchObject({ delivery: 'full' });
+    const wrongRole = [...independent];
+    wrongRole[wrongRole.indexOf('--operation') + 1] = 'verify';
+    expect(selected((await invoke(wrongRole)).context)).toBeUndefined();
+    const run = (await inspectNativeSdkRun(root, name)).run;
+    expect(run.actions.filter(({ stepId }) => stepId === 'build.builder')).toHaveLength(1);
+    expect(run.actions.find(({ stepId }) => stepId === 'build.builder')?.input).not.toHaveProperty(
+      'path',
+    );
+  }, 90_000);
+
   it('delivers real memory once per receiver and restores it explicitly through the public CLI', async () => {
     const { root, requestFile } = await builderFixture();
     await ensureCliBuilt(path.resolve('.'));

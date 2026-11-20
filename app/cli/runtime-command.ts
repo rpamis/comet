@@ -26,6 +26,10 @@ export function registerRuntimeCommand(program: Command, quietErrors = false): C
       'Directory for persistent Runtime state; fixed for built-in applications',
     )
     .option('--project-root <dir>', 'Project context passed to this request', '.')
+    .option(
+      '--path <path>',
+      'Known project-relative target for context on a Native or built-in Classic claim',
+    )
     .option('--json', 'Output as JSON (default)')
     .option(
       '--details',

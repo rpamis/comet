@@ -85,6 +85,7 @@ export function nativeBuilderRepairContext(
 /** 只描述宿主何时获取上下文；不在状态读取或 Guard 中执行检索。 */
 export function nativeTaskContextRequest(options: {
   phase: NativePortableState['phase'];
+  operation?: 'edit' | 'verify';
   language: NativePortableState['language'];
   projectRoot?: string;
   sessionId?: string;

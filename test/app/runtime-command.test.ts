@@ -151,14 +151,22 @@ describe('Runtime JSON command', () => {
       .mockResolvedValue({ status: 'available', context: [] });
     try {
       const result = await runtimeDispatchCommand(
-        { application: 'classic-full', projectRoot, request },
+        { application: 'classic-full', projectRoot, request, path: 'src/classic/' },
         { output: 'compact' },
       );
       expect(result.response.status).toBe('succeeded');
       expect(result.cliResponse).toMatchObject({
         data: {
           context: [],
-          contextDelivery: { status: 'empty', sessionId: 'classic-receiver', phase: 'open' },
+          contextDelivery: {
+            status: 'empty',
+            sessionId: 'classic-receiver',
+            phase: 'open',
+            path: 'src/classic',
+          },
+          contextActions: {
+            restore: { commandArgs: expect.arrayContaining(['--path', 'src/classic']) },
+          },
         },
       });
       if (result.response.status !== 'succeeded') throw new Error(JSON.stringify(result.response));
@@ -198,6 +206,7 @@ describe('Runtime JSON command', () => {
         expect.objectContaining({
           sessionId: 'classic-receiver',
           phase: 'open',
+          path: 'src/classic',
           contextMode: 'incremental',
         }),
         { workflow: 'classic', change: 'classic-context' },

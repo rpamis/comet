@@ -240,6 +240,7 @@ export function classicSdkContinuation(
               projectRoot,
               action.claim?.sessionId,
               run.runId,
+              action.stepId,
             ),
           }
         : {}),

@@ -9,7 +9,11 @@ import {
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
-import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
+import {
+  createNativePortableState,
+  parseNativePortableState,
+} from '../../../domains/comet-native/native-portable-state.js';
+import { nativeSdkActionContextRequest } from '../../../domains/comet-native/native-sdk-continuation.js';
 import {
   collectNativeSdkShapeProposal,
   defineNativeWorkflowApplication,
@@ -207,6 +211,27 @@ function request(
     context: f.context,
   };
 }
+it('uses the Supervisor Child role for context even while the parent is in Build', async () => {
+  const { root, run, builder, verifier, worktree } = await fixture();
+  const state = parseNativePortableState(run.state);
+  expect(state.phase).toBe('build');
+  expect(nativeSdkActionContextRequest(builder, state, root)).toMatchObject({
+    phase: 'build',
+    operation: 'edit',
+    commandArgs: expect.arrayContaining([worktree, '--operation', 'edit']),
+  });
+  expect(nativeSdkActionContextRequest(verifier, state, root)).toMatchObject({
+    phase: 'verify',
+    operation: 'verify',
+    commandArgs: expect.arrayContaining([
+      worktree,
+      '--operation',
+      'verify',
+      'independent-verifier',
+    ]),
+  });
+});
+
 it.each(['fail', 'blocked'] as const)(
   'records current Child %s without inventing a checker receipt or a successful integration',
   async (verdict) => {

@@ -327,6 +327,7 @@ export async function projectNativeSdkDispatchResult(options: {
               ? {
                   contextRequest: {
                     phase: contextRequest.phase,
+                    ...(contextRequest.operation ? { operation: contextRequest.operation } : {}),
                     ...('task' in contextRequest ? { task: contextRequest.task } : {}),
                     contextMode: contextRequest.contextMode,
                     commandArgs: contextRequest.commandArgs,
@@ -677,9 +678,17 @@ export function nativeSdkActionContextRequest(
   } | null;
   const scope = input?.activation ?? input;
   const worktree = scope?.worktree;
+  const verifying = action.ref?.includes('verifier');
+  const editing = [
+    'build.builder',
+    'supervisor.child.builder',
+    'supervisor.child.integration-repair',
+    'supervisor.parent.builder',
+  ].includes(action.stepId);
   return nativeTaskContextRequest({
     name: state.name,
-    phase: action.ref?.includes('verifier') ? 'verify' : 'build',
+    phase: verifying ? 'verify' : 'build',
+    operation: verifying ? 'verify' : editing ? 'edit' : undefined,
     language: state.language,
     projectRoot: typeof worktree === 'string' ? worktree : projectRoot,
     sessionId: action.claim?.sessionId,
