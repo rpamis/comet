@@ -1,0 +1,116 @@
+schema: comet.native.v4
+name: eval-comparison
+language: zh-CN
+phase: archive
+status: done
+state_version: 1
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/supervisor/workflow-experience/eval-comparison
+  target_branch: "056"
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A5
+    source: brief.md
+    text: Eval 通过现有入口和报告结构使用固定小套件，可用确定性用例检查中断恢复、独立
+      Verify、范围变化后重新确认，标明每个用例适用的工作流和配对身份。
+    result: passed
+    reason:
+      text: Built CLI statically lists three fixed cases using matching actual
+        Native/Classic task and treatment identities, supports one named case,
+        rejects unknown IDs and leaves temporary workspace and HOME untouched.
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: Eval 对匹配的用例报告 outcome 差异及可观测的工具往返、等待耗时和上下文量。缺数保持未知，确定性验证覆盖正常配对和不可比较样本。
+    result: passed
+    reason:
+      text: Compared saved matched reports with real Classic exporter data, unchanged
+        stored reports, compatible estimate and observed measurements, known
+        zero, unknown data and different phase handling. Wait is cumulative tool
+        duration, not wall time.
+      truncated: false
+builder_handoff:
+  candidate_id: 9721494f6862ae82275c49202b10e92064722606
+  identity_provider: skill-coordinated
+  builder_execution_ref: codex-collaboration:01a1f444-25f4-7640-91f1-294ed7dfa666:/root/classic_context:eval-comparison
+  iteration: 1
+  summary:
+    text: "A5/A6: Public fixed three-case workflow regression catalog, and a
+      read-only saved-report comparison using current baselines and optional
+      actual Classic CLI cost exports. Compatible metrics preserve provenance
+      and missing data."
+    truncated: false
+  addressed_acceptance_ids:
+    - A5
+    - A6
+  checks: []
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-11-20T11:51:31+08:00
+blockers: []
+verification:
+  candidate_id: 9721494f6862ae82275c49202b10e92064722606
+  identity_provider: skill-coordinated
+  verifier_execution_ref: codex-collaboration:01a1f444-25f4-7640-91f1-294ed7dfa666:/root/verify_eval
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks: []
+  reported_checks:
+    - name:
+        text: Eval public CLI and stored-run tests
+        truncated: false
+      result: passed
+      note:
+        text: 47 tests passed across eval-workflow-regression and eval-run-store, two
+          existing skips.
+        truncated: false
+    - name:
+        text: Existing workflow scenario contracts
+        truncated: false
+      result: passed
+      note:
+        text: Reviewed native interrupted/independent and Classic scope-reconfirmation
+          task, treatment and validator sources; checked static and report
+          comparison short-circuit before the launcher.
+        truncated: false
+  summary:
+    text: Independent public CLI and stored-evidence checks passed for the fixed
+      workflow regression catalog and matched-run comparison. No real evaluation
+      was launched.
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-11-20T11:51:31+08:00
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-11-20T11:51:31+08:00
