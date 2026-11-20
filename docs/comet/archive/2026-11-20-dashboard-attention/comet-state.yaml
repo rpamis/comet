@@ -1,0 +1,115 @@
+schema: comet.native.v4
+name: dashboard-attention
+language: zh-CN
+phase: archive
+status: done
+state_version: 1
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/supervisor/workflow-experience/dashboard-attention
+  target_branch: "056"
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A7
+    source: brief.md
+    text: Dashboard 对同一项目的进行中 Native 和 Classic
+      条目呈现等待用户、可执行、结论未知或验收受阻。验证工作树身份、旧资料兼容和已完成历史条目的过滤。
+    result: passed
+    reason:
+      text: Mixed current-project Classic and Native attention correctly classified
+        blockers and execution/wait states, excluded archives, kept same-name
+        linked worktrees distinct and showed unknown with missing reasons.
+      truncated: false
+  - id: A8
+    source: brief.md
+    text: 浏览器验证从待关注项进入原始 change、Supervisor
+      子变更和证据详情。等待依赖、派发或集成的说明源自权威状态，缺少原因时明确显示未知，审批和恢复仍走现有入口。
+    result: passed
+    reason:
+      text: Real HTTP route resolved exact original parent and child
+        worktree/candidate evidence and rejected POST; Chromium confirmed
+        keyboard navigation, direct cold link, history, reload and Classic
+        linked report.
+      truncated: false
+builder_handoff:
+  candidate_id: c73b0338557bdfb8731915e50006231ee24c2716
+  identity_provider: skill-coordinated
+  builder_execution_ref: codex-collaboration:01a1f444-25f4-7640-91f1-294ed7dfa666:/root/native_evidence:dashboard-attention
+  iteration: 1
+  summary:
+    text: "A7/A8: Current-project Dashboard attention drawer across active Classic
+      and Native changes, exact worktree and child links, authoritative
+      Supervisor reasons or visible unknowns, and original candidate acceptance
+      evidence."
+    truncated: false
+  addressed_acceptance_ids:
+    - A7
+    - A8
+  checks: []
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-11-20T11:51:23+08:00
+blockers: []
+verification:
+  candidate_id: c73b0338557bdfb8731915e50006231ee24c2716
+  identity_provider: skill-coordinated
+  verifier_execution_ref: codex-collaboration:01a1f444-25f4-7640-91f1-294ed7dfa666:/root/verify_native:dashboard-attention
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks: []
+  reported_checks:
+    - name:
+        text: Dashboard persisted HTTP and collector tests
+        truncated: false
+      result: passed
+      note:
+        text: Seven focused tests across actual Supervisor HTTP and collector files.
+        truncated: false
+    - name:
+        text: Chromium Dashboard navigation
+        truncated: false
+      result: passed
+      note:
+        text: Two committed browser tests and a temporary independent
+          Back/Forward/Reload probe passed; dashboard bundle build succeeded.
+        truncated: false
+  summary:
+    text: Independent HTTP and Chromium verification passed for current-project
+      attention, exact worktree/candidate evidence links, read-only behavior and
+      navigation recovery.
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-11-20T11:51:23+08:00
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-11-20T11:51:23+08:00
