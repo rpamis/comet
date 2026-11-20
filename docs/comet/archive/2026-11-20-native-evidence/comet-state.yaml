@@ -1,0 +1,119 @@
+schema: comet.native.v4
+name: native-evidence
+language: zh-CN
+phase: archive
+status: done
+state_version: 1
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/supervisor/workflow-experience/native-evidence
+  target_branch: "056"
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A3
+    source: brief.md
+    text: Native 在交接、独立 Verify 及冷恢复中为每条已确认验收呈现候选证据或缺口。普通变更和 Supervisor 子变更从同一权威 Run
+      读取，不复用错候选证据。
+    result: passed
+    reason:
+      text: Independent public task claim, cold status and generated bundle returned
+        the same scoped evidence in an ordinary Run. Supervisor live status
+        returned the same parent Run and bound child candidate/worktree.
+        Separate child and repaired candidate fixtures rejected cross-candidate
+        evidence.
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: Native Verifier 在现有报告留下新增或重跑检查的原因，旧 Run
+      可读，失败、未知和未执行仍按实际状态展示。当前候选独立验收继续覆盖全部验收项。
+    result: passed
+    reason:
+      text: Unlinked historical checks read as gaps; repeat rationale persisted in
+        report and cold status. Unknown, timeout and not-run prevented a passing
+        verdict; child still required all scoped criteria and passing reported
+        checks.
+      truncated: false
+builder_handoff:
+  candidate_id: 95f8779677388b85d989d2fc345bed18c89bc487
+  identity_provider: skill-coordinated
+  builder_execution_ref: codex-collaboration:01a1f444-25f4-7640-91f1-294ed7dfa666:/root/native_evidence
+  iteration: 1
+  summary:
+    text: "A3/A4: Current-candidate evidence and gaps for ordinary and Supervisor
+      Native handoff, status and recovery. Persisted repeat-check reasons,
+      compatibility with unlinked historical reports, and accurate
+      failed/unknown/timeout/not-run states."
+    truncated: false
+  addressed_acceptance_ids:
+    - A3
+    - A4
+  checks: []
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-11-20T11:30:12+08:00
+blockers: []
+verification:
+  candidate_id: 95f8779677388b85d989d2fc345bed18c89bc487
+  identity_provider: skill-coordinated
+  verifier_execution_ref: codex-collaboration:01a1f444-25f4-7640-91f1-294ed7dfa666:/root/verify_native
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks: []
+  reported_checks:
+    - name:
+        text: Focused Native Vitest selection
+        truncated: false
+      result: passed
+      note:
+        text: Five scenarios passed across the Native SDK verification inputs and
+          Supervisor acceptance tests.
+        truncated: false
+    - name:
+        text: Generated native-status CLI
+        truncated: false
+      result: passed
+      note:
+        text: Read the ordinary fixture cold and live Supervisor from the control
+          workspace, observing the exact native-evidence candidate commit, child
+          worktree and only A3/A4.
+        truncated: false
+  summary:
+    text: Independent review verified current-candidate evidence for ordinary and
+      Supervisor Native verification, with explicit gaps and preserved
+      verification outcomes.
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-11-20T11:30:12+08:00
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-11-20T11:30:12+08:00
