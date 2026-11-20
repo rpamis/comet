@@ -1,0 +1,118 @@
+schema: comet.native.v4
+name: classic-context
+language: zh-CN
+phase: archive
+status: done
+state_version: 1
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/supervisor/workflow-experience/classic-context
+  target_branch: "056"
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: Classic 在只读报告中将常驻 Rule、阶段 Skill 或引用、CLI
+      响应分别归因，可区分静态估算、真实追踪用量和缺失数据。普通聊天维持原行为。
+    result: passed
+    reason:
+      text: Report separately attributes Rule, stage and CLI UTF-8 estimates, accepts
+        scope-matched trace measurements including zero, emits null for unknown
+        metrics, rejects mismatched trace scope, and preserves state and Run
+        revision.
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: 使用同一个完整 Classic fixture
+      对比，至少一项可避免的上下文重复交付下降。报告给出可比口径和结果，同一工作区仍能完成批准、恢复及独立验收，双语流程语义一致。
+    result: passed
+    reason:
+      text: Proposal reference resolves to the same confirmed proposal; original
+        workspace, claims, revision and full inspect retained. Normal CLI
+        fixture resumed through Build and independent Verify. Compact response
+        was 2133 bytes smaller (14.0%).
+      truncated: false
+builder_handoff:
+  candidate_id: 61bda4813f3a423802fa8badd834d14086dde74c
+  identity_provider: skill-coordinated
+  builder_execution_ref: codex-collaboration:01a1f444-25f4-7640-91f1-294ed7dfa666:/root/classic_context
+  iteration: 1
+  summary:
+    text: "A1/A2: Added read-only context cost breakdown with explicit opt-in
+      observed trace and unknown metrics. Normal Classic Compact CLI reduces
+      repeated proposal text from two copies to one, saving 2,133 UTF-8 bytes in
+      the confirmed full fixture and retaining original workspace, resume and
+      independent verification."
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+  checks: []
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-11-20T11:33:10+08:00
+blockers: []
+verification:
+  candidate_id: 61bda4813f3a423802fa8badd834d14086dde74c
+  identity_provider: skill-coordinated
+  verifier_execution_ref: codex-collaboration:01a1f444-25f4-7640-91f1-294ed7dfa666:/root/verify_native:classic-context
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks: []
+  reported_checks:
+    - name:
+        text: Built Classic CLI focused fixtures
+        truncated: false
+      result: passed
+      note:
+        text: Two public CLI tests passed on the candidate (47.46 seconds), including
+          independent Builder and Verifier claims and executed behavior checks.
+        truncated: false
+    - name:
+        text: Matched base/candidate compact response
+        truncated: false
+      result: passed
+      note:
+        text: Same fixture against built ab75ecc4 measured 15249 UTF-8 JSON bytes and
+          two proposal copies, versus 13116 bytes and one copy. Full inspect was
+          188894 bytes on both.
+        truncated: false
+  summary:
+    text: Independent baseline and candidate CLI verification passed for attribution
+      and repeat-free approval context within the same full Classic fixture.
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-11-20T11:33:10+08:00
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-11-20T11:33:10+08:00
