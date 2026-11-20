@@ -13,7 +13,11 @@ import {
   createNativePortableState,
   parseNativePortableState,
 } from '../../../domains/comet-native/native-portable-state.js';
-import { nativeSdkActionContextRequest } from '../../../domains/comet-native/native-sdk-continuation.js';
+import {
+  nativeSdkActionContextRequest,
+  projectNativeSdkDispatchResult,
+} from '../../../domains/comet-native/native-sdk-continuation.js';
+import { projectNativeSdkAcceptanceEvidence } from '../../../domains/comet-native/native-sdk-acceptance-evidence.js';
 import {
   collectNativeSdkShapeProposal,
   defineNativeWorkflowApplication,
@@ -34,7 +38,7 @@ const git = (root: string, ...args: string[]) =>
     ['-c', 'user.name=SIMULATED-Agent', '-c', 'user.email=fixture@example.invalid', ...args],
     { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
   ).trim();
-async function fixture() {
+async function fixture(builderReport: Record<string, RuntimeValue> = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-current-child-acceptance-'));
   roots.push(root);
   const name = 'child-acceptance',
@@ -157,6 +161,7 @@ async function fixture() {
       candidateCommit: commit,
       checks: [],
       requireIndependentReview: true,
+      ...builderReport,
     },
     'builder',
   );
@@ -187,6 +192,68 @@ async function fixture() {
     context,
   };
 }
+
+it('shows only the current child candidate evidence in the independently claimed task', async () => {
+  const f = await fixture({
+    acceptanceReview: [
+      {
+        id: 'A1',
+        status: 'implemented-with-evidence',
+        evidence: ['Child feature.txt contains the first behavior'],
+        note: 'The worktree contains the feature file.',
+      },
+    ],
+    checks: [
+      {
+        name: 'Inspect child file',
+        result: 'unknown',
+        note: 'Platform result unavailable',
+        acceptanceIds: ['A2'],
+      },
+    ],
+  });
+  const projection = await projectNativeSdkDispatchResult({
+    projectRoot: f.root,
+    run: f.run,
+    state: parseNativePortableState(f.run.state),
+    actionId: f.verifier.id,
+  });
+  expect(projection).toMatchObject({
+    acceptanceEvidence: {
+      runId: f.name,
+      candidateId: f.builder.id,
+      candidateCommit: f.commit,
+      child: 'core',
+      projectRoot: f.worktree,
+      items: [
+        {
+          id: 'A1',
+          evidence: ['Child feature.txt contains the first behavior'],
+          gap: null,
+          checks: [],
+        },
+        {
+          id: 'A2',
+          evidence: [],
+          gap: 'no-linked-evidence',
+          checks: [{ result: 'unknown', stage: 'build' }],
+        },
+      ],
+    },
+  });
+  expect(
+    projectNativeSdkAcceptanceEvidence(
+      f.run,
+      parseNativePortableState(f.run.state),
+      f.root,
+      'tail',
+    ),
+  ).toMatchObject({
+    candidateId: null,
+    items: [{ id: 'A2', gap: 'no-candidate', checks: [], evidence: [] }],
+  });
+});
+
 const acceptance = (first: 'passed' | 'failed' | 'blocked' = 'passed') => [
   { id: 'A1', result: first, reason: 'SIMULATED independent first behavior inspection.' },
   { id: 'A2', result: 'passed', reason: 'SIMULATED independent second behavior inspection.' },

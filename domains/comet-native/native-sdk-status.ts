@@ -8,6 +8,10 @@ import { resolveWorkspaceRuntimeRootSync } from '../workflow-contract/workspace-
 import { projectNativePortableWorkspace } from './native-portable-status.js';
 import { nativePortableStateSummary } from './native-portable-summary.js';
 import { inspectNativeSdkRun } from './native-runtime-ownership.js';
+import {
+  nativeSdkAcceptanceEvidenceChildren,
+  projectNativeSdkAcceptanceEvidence,
+} from './native-sdk-acceptance-evidence.js';
 import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
 import { projectNativeSdkContinuation } from './native-sdk-continuation.js';
 import { inspectNativeSdkRunDiagnostics } from './native-sdk-diagnostics.js';
@@ -131,6 +135,7 @@ async function projectNativeSdkStatusOnce(
     ];
   });
   const reportWarning = await nativeSdkArchivedReportWarning(options.projectRoot, run);
+  const children = nativeSdkAcceptanceEvidenceChildren(run, state);
   return {
     schema: 'comet.native.sdk-status.v1' as const,
     diagnostics: await inspectNativeSdkRunDiagnostics(options.projectRoot, run, {}),
@@ -153,6 +158,18 @@ async function projectNativeSdkStatusOnce(
     status: cancellation?.status ?? state.status,
     stateVersion: state.state_version,
     acceptance: summary.acceptance,
+    ...(state.phase === 'shape'
+      ? {}
+      : {
+          acceptanceEvidence: projectNativeSdkAcceptanceEvidence(run, state, options.projectRoot),
+        }),
+    ...(children.length
+      ? {
+          childAcceptanceEvidence: children.map((child) =>
+            projectNativeSdkAcceptanceEvidence(run, state, options.projectRoot, child),
+          ),
+        }
+      : {}),
     unresolvedAcceptanceIds: summary.unresolved_acceptance_ids,
     verificationResult: state.verification_result,
     candidateId: state.builder_handoff?.candidate_id ?? null,

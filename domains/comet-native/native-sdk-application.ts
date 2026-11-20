@@ -647,7 +647,7 @@ function verifierResultState(
       identity,
       payload: output.response,
     }),
-    reportedChecks: parseNativeReportedChecks(output.checks ?? []),
+    reportedChecks: parseNativeReportedChecks(output.checks ?? [], state.acceptance),
     maxVerifyFailures: maxVerifyFailures as number,
   });
   if (

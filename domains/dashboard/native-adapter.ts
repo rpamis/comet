@@ -1,4 +1,5 @@
 import type {
+  NativeBuilderCheckSummary,
   NativePortableAcceptanceResult,
   NativePortableBlockerState,
   NativePortableCheckSummary,
@@ -96,7 +97,7 @@ export interface NativeDashboardBuilderHandoffSummary {
   addressedAcceptanceIds: string[];
   checks: Array<{
     name: NativePortableText;
-    result: 'passed' | 'failed' | 'not-run';
+    result: NativeBuilderCheckSummary['result'];
     note: NativePortableText | null;
   }>;
   checksTruncated: boolean;

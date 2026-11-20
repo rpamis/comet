@@ -6,7 +6,12 @@ import {
   type NativeBuilderAcceptanceReview,
 } from './native-builder-acceptance-review.js';
 
-import { appendNativePortableHistory, parseNativePortableState } from './native-portable-state.js';
+import { NATIVE_REPORTED_CHECK_RESULTS } from './native-input-enum.js';
+import {
+  appendNativePortableHistory,
+  parseNativePortableState,
+  parseNativeReportedChecks,
+} from './native-portable-state.js';
 import { toNativePortableText } from './native-portable-text.js';
 import type {
   NativeBuilderCheckSummary,
@@ -39,7 +44,13 @@ export interface NativeBuilderCandidateInput {
   summary: string;
   addressedAcceptanceIds: string[];
   acceptanceReview?: NativeBuilderAcceptanceReview[];
-  checks?: Array<{ name: string; result: 'passed' | 'failed' | 'not-run'; note?: string | null }>;
+  checks?: Array<{
+    name: string;
+    result: NativeBuilderCheckSummary['result'];
+    note?: string | null;
+    acceptanceIds?: string[];
+    reason?: string;
+  }>;
   knownLimits?: string[];
   review?: {
     status: 'passed';
@@ -75,14 +86,6 @@ function pendingAcceptance(
 
 function pendingAcceptanceIds(state: NativePortableState): string[] {
   return state.acceptance.filter(({ result }) => result === 'pending').map(({ id }) => id);
-}
-
-function builderChecks(checks: NativeBuilderCandidateInput['checks']): NativeBuilderCheckSummary[] {
-  return (checks ?? []).map((check) => ({
-    name: reportedText(check.name),
-    result: check.result,
-    note: check.note ? reportedText(check.note) : null,
-  }));
 }
 
 function historyEntry(options: {
@@ -216,11 +219,11 @@ export function submitNativeBuilderCandidate(options: {
   for (const [index, check] of (input.checks ?? []).entries()) {
     if (!check || typeof check.name !== 'string')
       errors.push('Native Builder checks[' + index + '].name must be a string');
-    if (!check || !['passed', 'failed', 'not-run'].includes(String(check.result)))
+    if (!check || !NATIVE_REPORTED_CHECK_RESULTS.includes(check.result))
       errors.push(
         'Native Builder checks[' +
           index +
-          '].result must be passed, failed, or not-run; received ' +
+          '].result must be passed, failed, not-run, unknown, or timeout; received ' +
           JSON.stringify(check?.result),
       );
     if (check?.note != null && typeof check.note !== 'string')
@@ -255,7 +258,7 @@ export function submitNativeBuilderCandidate(options: {
       summary: reportedText(input.summary),
       addressed_acceptance_ids: addressed,
       acceptance_review: acceptanceReview,
-      checks: builderChecks(input.checks),
+      checks: parseNativeReportedChecks(input.checks ?? [], state.acceptance),
       checks_truncated: false,
       known_limits: (input.knownLimits ?? []).map((entry) => reportedText(entry)),
       known_limits_truncated: false,
