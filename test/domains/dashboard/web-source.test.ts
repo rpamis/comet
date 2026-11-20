@@ -634,6 +634,21 @@ describe('dashboard web source contracts', () => {
     },
   );
 
+  it('uses one title for the Classic key artifacts list and its count', async () => {
+    const source = await readDashboardSource();
+    const artifactList = source.match(
+      /function ArtifactList\([\s\S]*?(?=function ArtifactGroup)/u,
+    )?.[0];
+    const detailPanels = source.match(
+      /<div className="change-detail-panels [^"]*">([\s\S]*?)<\/div>/u,
+    )?.[1];
+
+    expect(artifactList).toContain("{t('关键产物')}");
+    expect(artifactList).toContain('{ready}/{total}');
+    expect(detailPanels).toContain('<ArtifactList change={change} onPreview={onPreview} />');
+    expect(detailPanels).not.toContain("{t('关键产物')}");
+  });
+
   it('uses the change-detail width to switch between stacked and two-column panels', async () => {
     const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
 
@@ -805,8 +820,12 @@ describe('dashboard web source contracts', () => {
   it('keeps Classic detail and inspector frames visible when the selected view is empty', async () => {
     const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
 
-    expect(source).toContain('const isEmptyView = !pageLoading && visible.length === 0');
-    expect(source).toContain('const isLoadingView = pageLoading && visible.length === 0');
+    expect(source).toContain(
+      'const isEmptyView = !linkedChange && !pageLoading && visible.length === 0',
+    );
+    expect(source).toContain(
+      'const isLoadingView = !linkedChange && pageLoading && visible.length === 0',
+    );
     expect(source).toContain('<ClassicWorkspaceEmptyDetail');
     expect(source).toContain('<ClassicWorkspaceEmptySidePanel />');
     expect(source).toContain('<ClassicWorkspaceLoadingDetail />');

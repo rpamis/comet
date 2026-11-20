@@ -54705,6 +54705,34 @@
       ]
     },
     {
+      "id": "dashboard-classic-single-key-artifacts-title",
+      "behavior": "Classic 变更详情只显示一次关键产物标题，计数和预览保留在同一产物列表内。",
+      "sources": ["report:2026-11-20-classic-key-artifacts-duplicate-title"],
+      "coverageLevel": "unit",
+      "reproduction": "在以 35d42195 为基线的本地 056 Dashboard 打开内置 Classic 演示变更。修复前 Chromium 在同一详情中找到 2 个‘关键产物’，预期为 1 个。",
+      "expected": "关键产物列表显示一个标题及就绪计数，点击已存在的产物仍可打开原预览。",
+      "forbidden": "外层容器重复同一标题，或精简标题后丢失产物计数或预览入口。",
+      "rootCause": "AntChangeDetail 的外层 AntCard 设置了关键产物标题，ArtifactList 自己又渲染了同名标题和计数。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/web-source.test.ts",
+          "namePattern": "^dashboard web source contracts uses one title for the Classic key artifacts list and its count$",
+          "requiredNames": [
+            "dashboard web source contracts uses one title for the Classic key artifacts list and its count"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "Windows Chromium Dashboard",
+          "status": "verified",
+          "evidence": [
+            "2026-11-20: pnpm test:dashboard-e2e --workers=1 --grep 'renders one Classic key artifacts title and keeps preview available' 在修复前得到 2 个标题并失败。重新构建相同演示数据后，同一案例通过，显示 1 个标题和 6/10，点击 proposal 打开原提案预览。"
+          ]
+        }
+      ]
+    },
+    {
       "id": "native-562-build-material-deletions",
       "behavior": "首次 Build 交接精确同步已批准材料，保留源工作区对已提交 Spec 的删除。",
       "sources": ["https://github.com/rpamis/comet/pull/562#discussion_r4581585323"],

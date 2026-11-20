@@ -148,7 +148,9 @@ test('renders the packaged Dashboard without frames or browser network access un
       await page.setViewportSize({ width, height: 900 });
       await expect(dashboard.locator('body')).toContainText('sidebar-project', { timeout: 8_000 });
       await expect(dashboard.locator('body')).toContainText('Native');
-      await expect(dashboard.getByText('Native 变更工作区', { exact: true })).toBeVisible({
+      await expect(
+        dashboard.getByRole('region', { name: 'Native 变更工作区', exact: true }),
+      ).toBeVisible({
         timeout: 45_000,
       });
       await expect(dashboard.getByText('sidebar-change', { exact: true }).first()).toBeVisible({

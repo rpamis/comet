@@ -2095,7 +2095,7 @@ test('switches the interface language across workspaces and keeps the choice aft
   const language = page.locator('.comet-language-switch');
   await language.getByText('EN', { exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('lang', 'en-US');
-  await expect(page.getByText('Project overview', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Project overview', exact: true })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'Project knowledge' })).toBeVisible();
   const messages = JSON.parse(
     await readFile('domains/dashboard/web/src/messages.en.json', 'utf8'),
@@ -2128,7 +2128,9 @@ test('switches the interface language across workspaces and keeps the choice aft
   };
   await checkInterface();
   await page.getByRole('menuitem', { name: 'Native workflow' }).click();
-  await expect(page.getByText('Native change workspace', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Native change workspace', exact: true }),
+  ).toBeVisible();
   await checkInterface();
   await page.getByRole('menuitem', { name: 'Personal memory' }).click();
   await expect(page.getByLabel('Search personal memories')).toBeVisible();
@@ -3625,7 +3627,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
     .getByRole('dialog', { name: '卸载项目知识插件？' })
     .getByRole('button', { name: /卸\s*载/u })
     .click();
-  await expect(page.getByRole('heading', { name: '项目概览' })).toBeVisible();
+  await expect(page.getByRole('region', { name: '项目概览', exact: true })).toBeVisible();
   await expect(page.getByLabel('项目规则设置')).toHaveCount(0);
   await expect(page.getByRole('menuitem', { name: '项目知识' })).toHaveCount(0);
 });
@@ -4483,12 +4485,12 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
     )
     .toBe(true);
   await expect(page.getByText('Comet', { exact: true }).first()).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Native 变更工作区' })).toBeHidden();
+  await expect(page.getByRole('region', { name: 'Native 变更工作区', exact: true })).toBeHidden();
 
   const nativeWorkflow = page.getByRole('menuitem', { name: 'Native 工作流' });
   await nativeWorkflow.click();
   await expect(nativeWorkflow).toHaveClass(/ant-menu-item-selected/);
-  await expect(page.getByRole('heading', { name: 'Native 变更工作区' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Native 变更工作区', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: '循环与恢复' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '变更范围' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '验收状态' })).toBeVisible();
@@ -4611,7 +4613,7 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   const classicWorkflow = page.getByRole('menuitem', { name: 'Classic 工作流' });
   await classicWorkflow.click();
   await expect(classicWorkflow).toHaveClass(/ant-menu-item-selected/);
-  await expect(page.getByRole('heading', { name: 'Native 变更工作区' })).toBeHidden();
+  await expect(page.getByRole('region', { name: 'Native 变更工作区', exact: true })).toBeHidden();
   const classicSelectedRow = page
     .locator('.dashboard-change-row')
     .filter({ hasText: 'add-auth-rate-limiting' });
@@ -5224,8 +5226,26 @@ test('keeps the demo Native detail visible after selecting a child change', asyn
   await expect(page.getByRole('button', { name: 'brief 需求简报' })).toBeVisible();
   await expect(page.getByText('100% 已处理', { exact: true })).toBeVisible();
   await expect(page.getByText('准备工作区已完成并归档。', { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Native 变更工作区' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Native 变更工作区', exact: true })).toBeVisible();
   expect(consoleErrors).toEqual([]);
+});
+
+test('renders one Classic key artifacts title and keeps preview available', async ({ page }) => {
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await page.goto('/?demo');
+
+  const detail = page.locator('.classic-change-detail');
+  await expect(detail.getByText('关键产物', { exact: true })).toHaveCount(1);
+  const artifacts = detail
+    .getByRole('heading', { name: '关键产物', exact: true })
+    .locator('xpath=ancestor::article[1]');
+  await expect(artifacts.getByText('6/10', { exact: true })).toBeVisible();
+  await artifacts.getByRole('button', { name: /proposal/u }).click();
+  await expect(
+    page.locator('.dashboard-artifact-preview-panel').getByRole('heading', {
+      name: 'Proposal: 为认证接口增加分布式限流',
+    }),
+  ).toBeVisible();
 });
 
 test('keeps Classic task progress inside the change detail column', async ({ page }) => {
@@ -5661,8 +5681,6 @@ test('keeps Classic and Native overview metrics visually aligned and selectable'
 test('balances heading scale and change-row density for dashboard scanning', async ({ page }) => {
   await page.goto('/?demo');
 
-  await expect(page.getByRole('heading', { name: '项目概览' })).toHaveCSS('font-size', '24px');
-  await expect(page.locator('.dashboard-section-hint').first()).toHaveCSS('font-size', '13px');
   await expect(page.locator('.dashboard-summary-card .dashboard-summary-metric').first()).toHaveCSS(
     'font-size',
     '30px',
@@ -5673,6 +5691,71 @@ test('balances heading scale and change-row density for dashboard scanning', asy
   if (!firstChangeBox) throw new Error('Expected the first Change row to have measurable bounds');
   expect(firstChangeBox.height).toBeGreaterThanOrEqual(64);
 });
+
+for (const width of [1600, 1280, 390]) {
+  test(`keeps workspace content compact at ${width}px`, async ({ page }, testInfo) => {
+    const english = width === 390;
+    await page.setViewportSize({ width, height: 900 });
+    if (english) {
+      await page.addInitScript(() => {
+        localStorage.setItem('comet-dashboard-language', 'en');
+        localStorage.setItem('comet-theme', 'dark');
+        localStorage.setItem('comet-dashboard-font-scale', '125');
+      });
+    }
+    await page.goto('/?demo');
+
+    const navigate = async (name: string) => {
+      if (width === 390) {
+        await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+      }
+      await page.getByRole('menuitem', { name }).click();
+    };
+    const capture = async (name: string) => {
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+        .toBeLessThanOrEqual(width);
+      await page.screenshot({ path: testInfo.outputPath(`${name}.png`), animations: 'disabled' });
+    };
+
+    for (const native of [false, true]) {
+      if (native) await navigate(english ? 'Native workflow' : 'Native 工作流');
+      const title = english
+        ? `${native ? 'Native change' : 'Change'} workspace`
+        : `${native ? 'Native ' : ''}变更工作区`;
+      await expect(page.getByRole('heading', { name: /项目概览|Project overview/u })).toBeHidden();
+      await expect(page.getByRole('heading', { name: title, exact: true })).toBeHidden();
+      await expect(page.getByRole('region', { name: title, exact: true })).toBeVisible();
+      await capture(native ? 'native' : 'classic');
+    }
+
+    for (const any of [false, true]) {
+      const title = any ? 'Comet Any' : english ? 'Custom workflows' : '自定义工作流';
+      await navigate(title);
+      await expect(page.getByRole('heading', { name: title, exact: true })).toBeHidden();
+      await expect(
+        page
+          .locator('.any-context-application')
+          .getByRole('button', {
+            name: any
+              ? /查看自定义工作流|View custom workflows/u
+              : /管理创作与分发|Manage creation/u,
+            exact: true,
+          })
+          .first(),
+      ).toBeVisible();
+      await expect(page.locator('.any-explorer')).toBeVisible();
+      await capture(any ? 'comet-any' : 'custom-workflows');
+    }
+
+    const observability = english ? 'Observability' : '可观测';
+    await navigate(observability);
+    await expect(page.getByRole('heading', { name: observability, exact: true })).toBeHidden();
+    await expect(page.getByRole('tab', { name: /运行性能|Runtime performance/u })).toBeVisible();
+    await expect(page.getByRole('button', { name: /时间范围|Time range/u })).toBeInViewport();
+    await capture('observability');
+  });
+}
 
 test('keeps workbench detail text comfortably readable without enlarging the overview', async ({
   page,

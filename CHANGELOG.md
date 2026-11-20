@@ -12,8 +12,13 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Workflow regression comparison**: Inspect fixed Native and Classic cases and compare saved outcomes, tool round trips, wait time, and context cost against a baseline ([#581](https://github.com/rpamis/comet/issues/581)).
 - **Workflow attention in Dashboard**: See active Native and Classic changes that need attention in the selected project, with Supervisor waiting reasons and direct links to the matching change and its acceptance evidence ([#582](https://github.com/rpamis/comet/issues/582)).
 
+### Changed
+
+- **Simpler Dashboard workspaces**: Show workflow cards, application lists, and observability charts closer to the top, with compact controls for workspace navigation and time filters.
+
 ### Fixed
 
+- **Classic artifact heading**: Show one Key artifacts heading in change details, with the artifact count and previews in the same panel.
 - **Supervisor children in the Native Dashboard**: Group archived children under their Supervisor and open the snapshot for the confirmed plan, even after the children were archived again on a later date. Open running children to inspect their own acceptance scope and progress when execution is stored in the parent Run ([#577](https://github.com/rpamis/comet/issues/577)).
 
 ## What's Changed [0.5.5] - 2026-11-18

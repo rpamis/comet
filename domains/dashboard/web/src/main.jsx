@@ -2613,10 +2613,6 @@ function Dashboard({
   const isLoadingView = !linkedChange && pageLoading && visible.length === 0;
   return (
     <div className="mx-auto min-w-0 max-w-dashboard">
-      <SectionHead
-        title={t('项目概览')}
-        hint={t('生成于 {0}', [formatTimestamp(snapshot.project.generatedAt)])}
-      />
       <WorkflowSuggestion
         command={selected?.next?.command}
         description={t(selected?.next?.description)}
@@ -2628,13 +2624,13 @@ function Dashboard({
         onAction={onSummaryAction}
       />
       <SummaryFilterBar filter={summaryFilter} summary={summaryData} onClear={() => onTab('all')} />
-      <SectionHead title={t('变更工作区')} hint={t('查看文件产物与项目进度')} />
       {snapshot.classicError && !hasClassicChanges ? (
         <ClassicErrorState error={snapshot.classicError} />
       ) : (
         <>
           {classicWarning ? <ClassicWarning error={snapshot.classicError} /> : null}
           <DashboardWorkspaceRegion
+            label={t('变更工作区')}
             leftClassName="dashboard-workspace-left-inner-scroll"
             stableFrame
             left={
@@ -5094,35 +5090,34 @@ function ContextUsageCenter({
   }, [projectId, demo, demoPages, refreshToken, retryToken, loadPage, readCachedPage, coordinator]);
   const usageSnapshot = sections[selectedSource]?.page?.data?.contextUsage;
   return (
-    <div className="dashboard-context-usage-page min-w-0" aria-label={t('可观测')}>
-      <header className="dashboard-context-usage-page-heading">
-        <div>
-          <h2>{t('可观测')}</h2>
-        </div>
+    <section className="dashboard-context-usage-page min-w-0" aria-label={t('可观测')}>
+      <div className="dashboard-observability-controls">
+        <Tabs
+          className="usage-source-tabs"
+          activeKey={selectedSource}
+          onChange={setSelectedSource}
+          tabBarExtraContent={
+            (usageSnapshot?.demo || (usageSnapshot?.available && usageSnapshot.truncated)) && (
+              <div className="dashboard-context-usage-heading">
+                {usageSnapshot.demo && <Tag>{t('演示数据')}</Tag>}
+                {usageSnapshot.available && usageSnapshot.truncated && (
+                  <Tag color="warning">{t('记录已截断')}</Tag>
+                )}
+              </div>
+            )
+          }
+          items={[
+            { key: 'runtime-performance', label: t('运行性能') },
+            { key: 'change-trace', label: t('Change 链路') },
+            ...DASHBOARD_PLUGIN_NAV_PLACEHOLDERS.map(({ pluginId, label }) => ({
+              key: pluginId,
+              label: t(label),
+            })),
+          ]}
+          aria-label={t('统计来源')}
+        />
         <ObservabilityTimeFilter value={timeSelection} onChange={setTimeSelection} />
-      </header>
-      <Tabs
-        className="usage-source-tabs"
-        activeKey={selectedSource}
-        onChange={setSelectedSource}
-        tabBarExtraContent={
-          <div className="dashboard-context-usage-heading">
-            {usageSnapshot?.demo && <Tag>{t('演示数据')}</Tag>}
-            {usageSnapshot?.available && usageSnapshot.truncated && (
-              <Tag color="warning">{t('记录已截断')}</Tag>
-            )}
-          </div>
-        }
-        items={[
-          { key: 'runtime-performance', label: t('运行性能') },
-          { key: 'change-trace', label: t('Change 链路') },
-          ...DASHBOARD_PLUGIN_NAV_PLACEHOLDERS.map(({ pluginId, label }) => ({
-            key: pluginId,
-            label: t(label),
-          })),
-        ]}
-        aria-label={t('统计来源')}
-      />
+      </div>
       <div className="dashboard-context-usage-grid">
         {selectedSource === 'change-trace' && (
           <ChangeTracePanel
@@ -5194,7 +5189,7 @@ function ContextUsageCenter({
           );
         })}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -10097,7 +10092,10 @@ function AntSummaryCards({ snapshot, summaryData, selectedKey, onAction }) {
     ],
   ];
   return (
-    <section className="dashboard-summary-strip dashboard-overview-summary-strip">
+    <section
+      className="dashboard-summary-strip dashboard-overview-summary-strip"
+      aria-label={t('项目概览')}
+    >
       {cards.map(([title, value, note, status, Icon], index) => (
         <AntSummaryCard
           key={title}
@@ -10382,9 +10380,7 @@ function AntChangeDetail({ change, onPreview }) {
         description={t(change.next?.description)}
       />
       <div className="change-detail-panels grid min-w-0 gap-4">
-        <AntCard size="small" title={t('关键产物')}>
-          <ArtifactList change={change} onPreview={onPreview} />
-        </AntCard>
+        <ArtifactList change={change} onPreview={onPreview} />
         <TaskProgress change={change} />
       </div>
     </AntCard>

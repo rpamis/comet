@@ -398,14 +398,6 @@ export function NativeWorkflowPanel({
 
   return (
     <div className="mx-auto min-w-0 max-w-dashboard">
-      <SectionHead
-        title={t('项目概览')}
-        hint={
-          native
-            ? t('Native 状态生成于 {0}', [formatTimestamp(native.generatedAt)])
-            : t('当前项目尚无 Native 状态')
-        }
-      />
       <NativeWorkflowSuggestion change={selected ?? selectedSummary} />
       <NativeSummaryCards
         native={native}
@@ -415,8 +407,8 @@ export function NativeWorkflowPanel({
         onAction={onSummaryAction}
       />
       <SummaryFilterBar filter={summaryFilter} summary={summaryData} onClear={() => onTab('all')} />
-      <SectionHead title={t('Native 变更工作区')} hint={t('查看循环、验收、阻塞与恢复状态')} />
       <DashboardWorkspaceRegion
+        label={t('Native 变更工作区')}
         stableFrame
         leftClassName="native-workspace-left"
         left={
@@ -569,18 +561,6 @@ function NativeWorkflowSuggestion({ change }) {
   );
 }
 
-function SectionHead({ title, hint }) {
-  useDashboardLanguage();
-  return (
-    <div className="mb-4 mt-6 flex flex-wrap items-baseline gap-3 first:mt-2">
-      <h2 className="dashboard-section-heading text-[20px] font-semibold leading-[1.3] tracking-[-0.018em]">
-        {title}
-      </h2>
-      <span className="dashboard-section-hint text-[13px] leading-5 text-muted">{hint}</span>
-    </div>
-  );
-}
-
 function NativeSummaryCards({ native, loadedChanges = [], unavailable, selectedKey, onAction }) {
   useDashboardLanguage();
 
@@ -639,7 +619,10 @@ function NativeSummaryCards({ native, loadedChanges = [], unavailable, selectedK
     ],
   ];
   return (
-    <section className="dashboard-summary-strip dashboard-overview-summary-strip native-summary-strip">
+    <section
+      className="dashboard-summary-strip dashboard-overview-summary-strip native-summary-strip"
+      aria-label={t('项目概览')}
+    >
       {cards.map(([label, value, note, tag, Icon], index) => (
         <NativeSummaryCard
           key={label}

@@ -2,32 +2,19 @@
   font-family: var(--font-ui);
   font-size: 14px;
   line-height: 1.6;
-  --any-pane-height: max(560px, calc(100dvh - 188px));
+  --any-pane-height: max(560px, calc(100dvh - 152px));
   min-width: 0;
   color: var(--color-fg);
 }
-.any-workspace-heading {
+.any-workspace-actions {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  margin: 4px 0 24px;
+  justify-content: flex-end;
+  margin-bottom: 12px;
 }
-.any-workspace-heading h1 {
-  font-family: var(--font-display);
-  font-size: 24px;
-  font-weight: 600;
-  line-height: 1.4;
-  letter-spacing: -0.018em;
-}
-.any-workspace-heading p {
-  font-size: 14px;
-  color: var(--color-muted);
-  margin-top: 6px;
-  line-height: 1.6;
-}
-.any-workspace-heading > .ant-btn {
+.any-workspace-switch.ant-btn {
   border-radius: 9px;
+  max-width: 100%;
+  margin-inline-start: auto;
 }
 .any-workspace.is-application .any-columns {
   grid-template-columns: 238px minmax(0, 1fr);
@@ -45,9 +32,15 @@
 }
 .any-context-application {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 16px;
+}
+.any-context-identity {
+  display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 16px;
   min-width: 0;
 }
 .any-context-application-icon {
@@ -243,11 +236,7 @@
   }
 }
 @media (max-width: 760px) {
-  .any-workspace-heading {
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
-  .any-workspace-heading > .ant-btn {
+  .any-workspace-switch.ant-btn {
     height: auto;
     min-height: 32px;
     white-space: normal;

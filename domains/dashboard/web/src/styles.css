@@ -5670,7 +5670,7 @@ body {
 .dashboard-overview-summary-strip {
   gap: 12px;
   overflow: visible;
-  margin-bottom: 28px;
+  margin-bottom: 20px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -9658,7 +9658,7 @@ body {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 14px;
-  margin-top: 16px;
+  margin-bottom: 16px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   color: var(--color-fg-2);

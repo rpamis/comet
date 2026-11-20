@@ -3,28 +3,20 @@
   font-family: var(--font-ui);
   font-size: 14px;
 }
-.dashboard-context-usage-page-heading {
+.dashboard-observability-controls {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 20px;
-  margin-bottom: 10px;
+  gap: 8px 16px;
+  margin-bottom: 16px;
 }
-.dashboard-context-usage-page-heading h2 {
-  margin: 0;
-  font-size: 24px;
-  line-height: 1.4;
-  font-weight: 600;
-}
-.dashboard-context-usage-page-heading > .ant-tag {
-  margin: 0;
-  padding: 3px 10px;
-  border-color: var(--color-border);
-  background: var(--color-bg);
-  color: var(--color-muted);
+.usage-source-tabs {
+  flex: 1 1 480px;
+  min-width: 0;
 }
 .observability-time-filter {
   max-width: min(100%, 440px);
+  margin-inline-start: auto;
 }
 .observability-time-filter > span:not(.anticon) {
   overflow: hidden;
@@ -43,7 +35,7 @@
   }
 }
 .usage-source-tabs .ant-tabs-nav {
-  margin-bottom: 20px;
+  margin: 0;
 }
 .dashboard-context-usage-column,
 .dashboard-context-usage {
