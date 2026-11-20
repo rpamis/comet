@@ -7,10 +7,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Added
 
 - **Scoped workflow context**: Deliver applicable project policies and personal memory to Native and Classic implementers and verifiers using the operation assigned to their Action. Pass `--path` to `comet runtime dispatch` when a claim has a known project-relative target. Expanding or restoring context keeps the claim's selectors ([#578](https://github.com/rpamis/comet/issues/578)).
-- **Classic context costs**: Inspect estimated Rule, phase Skill, and CLI response sizes alongside reported trace measurements. Compact Classic Runtime responses include each pending approval proposal once ([#579](https://github.com/rpamis/comet/issues/579)).
-- **Native acceptance evidence**: See evidence or gaps for each confirmed criterion in the current candidate at handoff and on resume, including Supervisor children. Verification reports can show why a check was added or repeated ([#580](https://github.com/rpamis/comet/issues/580)).
+- **Classic context costs**: Inspect estimated Rule, phase Skill, and CLI response sizes for the effective language alongside reported trace measurements. The report leaves workflow state untouched. Compact Classic Runtime responses include each pending approval proposal once ([#579](https://github.com/rpamis/comet/issues/579)).
+- **Native acceptance evidence**: See evidence or gaps for each confirmed criterion in the current candidate at handoff and on resume, including Supervisor children. During Build repair, see the previous candidate’s failed results and reasons. Verification reports can show why a check was added or repeated ([#580](https://github.com/rpamis/comet/issues/580)).
 - **Workflow regression comparison**: Inspect fixed Native and Classic cases and compare saved outcomes, tool round trips, wait time, and context cost against a baseline ([#581](https://github.com/rpamis/comet/issues/581)).
-- **Workflow attention in Dashboard**: See active Native and Classic changes that need attention in the selected project, with Supervisor waiting reasons and direct links to the matching change and its acceptance evidence ([#582](https://github.com/rpamis/comet/issues/582)).
+- **Workflow attention in Dashboard**: See active Native and Classic changes that need attention in the selected project, including failed Runs that need recovery. Follow direct links to the matching change and its acceptance evidence ([#582](https://github.com/rpamis/comet/issues/582)).
 
 ### Changed
 
@@ -20,7 +20,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Fixed
 
 - **Classic artifact heading**: Show one Key artifacts heading in change details, with the artifact count and previews in the same panel.
-- **Supervisor children in the Native Dashboard**: Group archived children under their Supervisor and open the snapshot for the confirmed plan, even after the children were archived again on a later date. Open running children to inspect their own acceptance scope and progress when execution is stored in the parent Run ([#577](https://github.com/rpamis/comet/issues/577)).
+- **Supervisor children in the Native Dashboard**: Group archived children under their Supervisor and open the snapshot for the confirmed plan in the matching worktree, even after the children were archived again on a later date. Open running children to inspect their own acceptance scope and progress when execution is stored in the parent Run ([#577](https://github.com/rpamis/comet/issues/577)).
 
 ## What's Changed [0.5.5] - 2026-11-18
 

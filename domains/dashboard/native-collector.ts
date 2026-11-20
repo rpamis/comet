@@ -244,12 +244,13 @@ function nativeDashboardCandidateLocator(
 // Bump when the rebuild starts reading new facts or filtering candidates
 // differently. A stored index from another revision is rebuilt on the next read,
 // because its refreshPaths cannot notice the facts it never tracked.
-const NATIVE_DASHBOARD_INDEX_REVISION = 3;
+const NATIVE_DASHBOARD_INDEX_REVISION = 4;
 interface NativeDashboardIndex {
   revision?: number;
   runtimeDataRoot?: string;
   refreshPaths?: string[];
   fingerprint?: string | null;
+  unavailable: boolean;
   active: NativeDashboardRootCandidate[];
   archived: NativeDashboardRootCandidate[];
   all: NativeDashboardCandidate[];
@@ -262,8 +263,9 @@ function nativeDashboardRuntimeDataRoot(): string {
 async function discoverNativeDashboardSources(
   projectRoot: string,
   workspaces = collectDashboardWorkspaceSources(projectRoot),
-): Promise<NativeDashboardSource[]> {
+) {
   const sources: NativeDashboardSource[] = [];
+  let unavailable = false;
   for (const workspace of workspaces) {
     try {
       const config = await readWorkflowProjectConfig(workspace.projectRoot);
@@ -275,41 +277,49 @@ async function discoverNativeDashboardSources(
         }),
       });
     } catch (error) {
+      unavailable = true;
       console.warn(
         `[dashboard] skipping Native workspace "${workspace.label}": ${(error as Error).message ?? error}`,
       );
     }
   }
-  return sources;
+  return { sources, unavailable };
 }
 async function rawNativeDashboardCandidates(sources: readonly NativeDashboardSource[]): Promise<{
   active: NativeDashboardCandidate[];
   archived: NativeDashboardCandidate[];
+  unavailable: boolean;
 }> {
+  let unavailable = false;
   const collections = await Promise.all(
     sources.map(async (source) => {
-      try {
-        const [active, archived] = await Promise.all([
-          listActiveNativeEntries(source.paths),
-          listArchivedNativeEntries(source.paths),
-        ]);
-        const adapt = (entry: NativeDashboardEntry): NativeDashboardCandidate => ({
-          source,
-          entry,
-          locator: nativeDashboardCandidateLocator(source, entry),
-        });
-        return { active: active.map(adapt), archived: archived.map(adapt) };
-      } catch (error) {
+      const [active, archived] = await Promise.allSettled([
+        listActiveNativeEntries(source.paths),
+        listArchivedNativeEntries(source.paths),
+      ]);
+      const adapt = (
+        status: 'active' | 'archived',
+        result: PromiseSettledResult<NativeDashboardEntry[]>,
+      ): NativeDashboardCandidate[] => {
+        if (result.status === 'fulfilled')
+          return result.value.map((entry) => ({
+            source,
+            entry,
+            locator: nativeDashboardCandidateLocator(source, entry),
+          }));
+        unavailable = true;
         console.warn(
-          `[dashboard] skipping Native workspace "${source.workspace.label}": ${(error as Error).message ?? error}`,
+          `[dashboard] cannot list ${status} Native changes in "${source.workspace.label}": ${result.reason}`,
         );
-        return { active: [], archived: [] };
-      }
+        return [];
+      };
+      return { active: adapt('active', active), archived: adapt('archived', archived) };
     }),
   );
   return {
     active: collections.flatMap(({ active }) => active),
     archived: collections.flatMap(({ archived }) => archived),
+    unavailable,
   };
 }
 /** 与 `comet native status` 一致：取消已完成的 change 以 SDK Run 为准离开活跃列表；读取失败时保留。 */
@@ -610,6 +620,7 @@ async function childArchiveOrigin(candidate: NativeDashboardCandidate) {
 async function archivedParentChildren(
   candidate: NativeDashboardCandidate,
   candidates: readonly NativeDashboardCandidate[],
+  archiveOrigins: Map<string, ReturnType<typeof childArchiveOrigin>>,
 ): Promise<{ children: NativeDashboardChildSummary[]; ownedLocators: string[] }> {
   const empty = { children: [], ownedLocators: [] };
   try {
@@ -634,13 +645,23 @@ async function archivedParentChildren(
       )?.contract;
     if (!contract) return empty;
     const names = new Set(contract.children.map(({ name }) => name));
-    const snapshots = candidates
-      .filter(({ entry }) => entry.status === 'archived' && names.has(entry.name))
-      .sort((left, right) => right.entry.archiveName!.localeCompare(left.entry.archiveName!));
-    const origins = await Promise.all(snapshots.map(childArchiveOrigin));
+    const snapshots = candidates.filter(({ entry }) => names.has(entry.name));
+    const origins = await Promise.all(
+      snapshots.map((snapshot) => {
+        let origin = archiveOrigins.get(snapshot.locator);
+        if (!origin) {
+          origin = childArchiveOrigin(snapshot);
+          archiveOrigins.set(snapshot.locator, origin);
+        }
+        return origin;
+      }),
+    );
     const owned = origins
       .filter((origin) => origin !== null)
-      .filter(({ parentRun }) => parentRun === state.name);
+      .filter(({ parentRun }) => parentRun === state.name)
+      .sort((left, right) =>
+        right.candidate.entry.archiveName!.localeCompare(left.candidate.entry.archiveName!),
+      );
     const children = contract.children.map((child) => {
       const progress: NativeChildStatusProjection = {
         name: child.name,
@@ -745,8 +766,9 @@ async function rebuildNativeDashboardIndex(
   projectRoot: string,
 ): Promise<NativeDashboardIndex | null> {
   const workspaces = collectDashboardWorkspaceSources(projectRoot);
-  const sources = await discoverNativeDashboardSources(projectRoot, workspaces);
-  if (sources.length === 0) return null;
+  const discovery = await discoverNativeDashboardSources(projectRoot, workspaces);
+  const { sources } = discovery;
+  if (sources.length === 0 && !discovery.unavailable) return null;
   const discoveryPaths = [
     ...new Set([
       nativeDashboardRuntimeDataRoot(),
@@ -790,10 +812,28 @@ async function rebuildNativeDashboardIndex(
     selectActiveNativeCandidates(raw.active),
     Promise.resolve(selectArchivedNativeCandidates(raw.archived)),
   ]);
-  const all = [...active, ...archived];
+  const archiveLocators = new Set(archived.map(({ locator }) => locator));
+  const selected = [...active, ...archived];
+  const all = [...selected, ...raw.archived.filter(({ locator }) => !archiveLocators.has(locator))];
+  const archivesByWorkspace = new Map<string, NativeDashboardCandidate[]>();
+  for (const candidate of raw.archived) {
+    const id = candidate.source.workspace.id;
+    const entries = archivesByWorkspace.get(id) ?? [];
+    entries.push(candidate);
+    archivesByWorkspace.set(id, entries);
+  }
+  const archiveOrigins = new Map<string, ReturnType<typeof childArchiveOrigin>>();
   const [activeChildren, archivedParents] = await Promise.all([
-    Promise.all(active.map((candidate) => activeParentChildren(candidate, all))),
-    Promise.all(archived.map((candidate) => archivedParentChildren(candidate, all))),
+    Promise.all(active.map((candidate) => activeParentChildren(candidate, selected))),
+    Promise.all(
+      archived.map((candidate) =>
+        archivedParentChildren(
+          candidate,
+          archivesByWorkspace.get(candidate.source.workspace.id) ?? [],
+          archiveOrigins,
+        ),
+      ),
+    ),
   ]);
   const archivedChildren = archivedParents.map(({ children }) => children);
   const suppressed = new Set([
@@ -813,11 +853,14 @@ async function rebuildNativeDashboardIndex(
   const rootArchived = rootCandidates(archived, archivedChildren);
   const after = await nativeDashboardIndexFingerprint(refreshPaths, workspaces);
   const discoveryAfter = await nativeDashboardIndexFingerprint(discoveryPaths, workspaces);
+  const unavailable = raw.unavailable || discovery.unavailable;
   return {
     revision: NATIVE_DASHBOARD_INDEX_REVISION,
     runtimeDataRoot: nativeDashboardRuntimeDataRoot(),
     refreshPaths,
-    fingerprint: before === after && discoveryBefore === discoveryAfter ? after : null,
+    fingerprint:
+      !unavailable && before === after && discoveryBefore === discoveryAfter ? after : null,
+    unavailable,
     active: rootActive,
     archived: rootArchived,
     all,
@@ -1132,9 +1175,9 @@ async function collectNativeChange(
 
 export async function collectNativeDashboardWorkflowAttention(
   projectRoot: string,
-): Promise<WorkflowAttentionItem[]> {
+): Promise<{ items: WorkflowAttentionItem[]; unavailable: boolean }> {
   const index = await buildNativeDashboardIndex(projectRoot, { refreshIfChanged: true });
-  if (!index) return [];
+  if (!index) return { items: [], unavailable: false };
   const rows = await Promise.all(
     index.active.map(async (candidate): Promise<WorkflowAttentionItem[]> => {
       const { source, entry, locator } = candidate;
@@ -1197,7 +1240,7 @@ export async function collectNativeDashboardWorkflowAttention(
       }
     }),
   );
-  return rows.flat();
+  return { items: rows.flat(), unavailable: index.unavailable };
 }
 export interface NativeDashboardChangePageOptions {
   status: DashboardChangeTab;

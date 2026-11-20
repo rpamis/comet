@@ -184,6 +184,7 @@ export function nativeDashboardSdkAttention(
   );
   const waits = run.waits?.filter(({ stepId }) => !stepId.startsWith('supervisor.child.')) ?? [];
   return workflowAttentionFromRun(
+    run.status,
     actions,
     waits,
     ['fail', 'blocked'].includes(state.verification_result) ||

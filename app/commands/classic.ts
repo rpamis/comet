@@ -148,6 +148,7 @@ async function runClassicContextCost(args: readonly string[]): Promise<number> {
       : await discoverClassicProject(process.cwd());
     const current = await runClassicCli(['state', 'next', change, '--json'], undefined, {
       projectRoot,
+      readOnly: true,
       ...(requestedRoot ? { invocationCwd: projectRoot } : {}),
     });
     const { data, stderr } = JSON.parse(current.stdout ?? '{}');

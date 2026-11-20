@@ -253,6 +253,7 @@ export async function classicRecoveryContext(
               root,
               undefined,
               path.basename(directory),
+              projection.run?.currentStep ?? undefined,
             ),
           }
         : {}),

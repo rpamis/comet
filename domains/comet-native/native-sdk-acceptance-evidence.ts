@@ -9,6 +9,7 @@ import type { NativeBuilderCheckSummary, NativePortableState } from './native-po
 import { redactNativeCredentialText } from './native-redaction.js';
 import { nativeSdkSupervisorParentCandidateCommit } from './native-sdk-supervisor-parent.js';
 import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
+import { supervisorAcceptanceScope } from './native-supervisor-model.js';
 
 type Criterion = Pick<NativePortableState['acceptance'][number], 'id' | 'source' | 'text'>;
 type Verdict = {
@@ -118,8 +119,12 @@ export function projectNativeSdkAcceptanceEvidence(
   child?: string,
 ) {
   if (child) {
-    const plan = confirmedChildren(run, state)?.children.find(({ name }) => name === child);
-    const criteria = state.acceptance.filter(({ id }) => plan?.covers.includes(id));
+    const contract = confirmedChildren(run, state);
+    const plan = contract?.children.find(({ name }) => name === child);
+    const criteria =
+      contract && plan && plan.covers.length === 0
+        ? supervisorAcceptanceScope(contract, child)
+        : state.acceptance.filter(({ id }) => plan?.covers.includes(id));
     const actions = currentNativeSdkSupervisorActions(run)
       .filter((action) => {
         const activation = childActivation(action);
@@ -181,44 +186,47 @@ export function projectNativeSdkAcceptanceEvidence(
     };
   }
 
-  const handoff =
-    state.phase === 'verify' || state.phase === 'archive' ? state.builder_handoff : null;
+  const handoff = state.builder_handoff;
   const verification =
     handoff && state.verification?.candidate_id === handoff.candidate_id
       ? state.verification
       : null;
+  const current = state.phase === 'verify' || state.phase === 'archive' ? handoff : null;
+  const previous = state.phase === 'build' && verification?.verdict === 'fail' ? handoff : null;
+  const candidateItems =
+    handoff && (current || previous)
+      ? projectItems(state.acceptance, {
+          builderReview: handoff.acceptance_review,
+          buildChecks: handoff.checks,
+          verifyChecks: verification?.reported_checks,
+          verdicts: verification
+            ? state.acceptance.map(({ id, result, reason }) => ({
+                id,
+                result,
+                reason: reason?.text ?? null,
+              }))
+            : undefined,
+        })
+      : undefined;
   const supervisor = state.children_contract_ref
     ? (run.outputs['supervisor.prepare']?.value as { integrationWorktree?: string } | undefined)
     : undefined;
   const parentBuilder =
-    supervisor && handoff
+    supervisor && current
       ? run.actions.find(
           (action) =>
-            action.id === handoff.candidate_id && action.stepId === 'supervisor.parent.builder',
+            action.id === current.candidate_id && action.stepId === 'supervisor.parent.builder',
         )
       : undefined;
   return {
     runId: run.runId,
-    candidateId: handoff?.candidate_id ?? null,
+    candidateId: current?.candidate_id ?? null,
     candidateCommit: parentBuilder ? nativeSdkSupervisorParentCandidateCommit(parentBuilder) : null,
     projectRoot: supervisor?.integrationWorktree ?? projectRoot,
     child: null,
-    items: projectItems(
-      state.acceptance,
-      handoff
-        ? {
-            builderReview: handoff.acceptance_review,
-            buildChecks: handoff.checks,
-            verifyChecks: verification?.reported_checks,
-            verdicts: verification
-              ? state.acceptance.map(({ id, result, reason }) => ({
-                  id,
-                  result,
-                  reason: reason?.text ?? null,
-                }))
-              : undefined,
-          }
-        : undefined,
-    ),
+    items: current && candidateItems ? candidateItems : projectItems(state.acceptance),
+    ...(previous && candidateItems
+      ? { previousCandidate: { candidateId: previous.candidate_id, items: candidateItems } }
+      : {}),
   };
 }

@@ -422,7 +422,10 @@ export function parseNativeReportedChecks(
       index,
     );
     for (const id of parsed.acceptance_ids ?? []) {
-      if (!ACCEPTANCE_ID_PATTERN.test(id) || (known && !known.has(id)))
+      const validId =
+        ACCEPTANCE_ID_PATTERN.test(id) ||
+        (id.startsWith('child:') && NAME_PATTERN.test(id.slice('child:'.length)));
+      if (!validId || (known && !known.has(id)))
         throw new Error(
           `Native reported checks[${index}].acceptanceIds contains unknown ID: ${id}`,
         );

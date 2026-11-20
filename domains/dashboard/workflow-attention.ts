@@ -1,13 +1,19 @@
 import type { DashboardWorkspaceIdentity } from './workspace.js';
 
 export type WorkflowAttentionStatus =
-  'awaiting-user' | 'ready' | 'unknown-outcome' | 'verification-blocker' | 'waiting';
+  | 'awaiting-user'
+  | 'ready'
+  | 'unknown-outcome'
+  | 'verification-blocker'
+  | 'recovery-required'
+  | 'waiting';
 
 export type WorkflowAttentionReason =
   | 'decision'
   | 'execution'
   | 'unknown'
   | 'verification'
+  | 'failed-run'
   | 'dependency'
   | 'dispatch-slot'
   | 'integration';
@@ -34,6 +40,7 @@ export interface DashboardWorkflowAttention {
 }
 
 export function workflowAttentionFromRun(
+  runStatus: string,
   actions: readonly { status: string }[],
   waits: readonly { status: string }[],
   verificationBlocked: boolean,
@@ -41,6 +48,7 @@ export function workflowAttentionFromRun(
 ): WorkflowAttentionState | null {
   if (actions.some(({ status }) => status === 'unknown'))
     return { status: 'unknown-outcome', reason: 'unknown' };
+  if (runStatus === 'failed') return { status: 'recovery-required', reason: 'failed-run' };
   if (verificationBlocked) return { status: 'verification-blocker', reason: 'verification' };
   if (waits.some(({ status }) => status === 'pending'))
     return { status: 'awaiting-user', reason: 'decision' };

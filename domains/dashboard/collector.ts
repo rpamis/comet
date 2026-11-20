@@ -241,12 +241,12 @@ export async function collectDashboardWorkflowAttention(
     const classicRows = await Promise.all((classic?.active ?? []).map(classicWorkflowAttention));
     return {
       items: [
-        ...(native ?? []),
+        ...(native?.items ?? []),
         ...classicRows.filter((row): row is WorkflowAttentionItem => row !== null),
       ],
       unavailable: [
         ...(!classic || classic.errors.length ? ['classic' as const] : []),
-        ...(!native ? ['native' as const] : []),
+        ...(!native || native.unavailable ? ['native' as const] : []),
       ],
     };
   });
@@ -286,6 +286,7 @@ async function classicWorkflowAttention(
       const state = run.state as { verifyResult?: string; archived?: boolean };
       if (state.archived) return null;
       attention = workflowAttentionFromRun(
+        run.status,
         run.actions,
         run.waits,
         state.verifyResult === 'fail',

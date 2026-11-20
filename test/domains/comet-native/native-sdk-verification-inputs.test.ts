@@ -467,12 +467,17 @@ it('does not carry old evidence into a repaired candidate or turn unchecked resu
   expect(JSON.parse(building.stdout).data.acceptanceEvidence).toMatchObject({
     candidateId: null,
     items: [{ id: 'A1', gap: 'no-candidate', checks: [], evidence: [] }],
+    previousCandidate: {
+      candidateId: originalId,
+      items: [{ id: 'A1', result: 'failed', reason: expect.any(String) }],
+    },
   });
   await builder(f, failed, [], 'successor-candidate');
   const successor = await runNativeCli(['status', f.run.runId, '--project-root', f.root, '--json']);
   const evidence = JSON.parse(successor.stdout).data.acceptanceEvidence;
   expect(evidence.candidateId).not.toBe(originalId);
   expect(evidence.items).toMatchObject([{ id: 'A1', result: 'pending', checks: [] }]);
+  expect(evidence).not.toHaveProperty('previousCandidate');
 });
 async function archive(f: Fixture, run: WorkflowRun) {
   if (run.waits.at(-1)?.status === 'pending') run = await approve(f, run);

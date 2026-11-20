@@ -1181,7 +1181,9 @@ function NativeAcceptanceCard({ change }) {
   const acceptance = change.acceptance;
   const progress = acceptanceProgress(change);
   const evidence = change.acceptanceEvidence;
-  const items = evidence?.items?.length ? evidence.items : (change.acceptanceItems ?? []);
+  const previous = evidence?.previousCandidate;
+  const evidenceItems = previous?.items ?? evidence?.items;
+  const items = evidenceItems?.length ? evidenceItems : (change.acceptanceItems ?? []);
   const page = useDetailPage(items);
   return (
     <article
@@ -1209,6 +1211,7 @@ function NativeAcceptanceCard({ change }) {
         <AcceptanceMetric label={t('阻塞')} value={acceptance?.blocked ?? 0} />
         <AcceptanceMetric label={t('待验证')} value={acceptance?.pending ?? 0} />
       </div>
+      {previous && <p className="mt-4 text-sm text-muted">{t('上一个候选的验收结果')}</p>}
       {items.length > 0 && (
         <ul className="mt-4 space-y-2 border-t border-border-soft pt-4">
           {page.items.map((item) => (

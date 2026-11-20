@@ -135,6 +135,7 @@ import {
 import { FIELD_ENUMS, MACHINE_OWNED_FIELDS, SETTABLE_FIELDS } from './classic-state-options.js';
 import {
   classicStateToDocument,
+  hasClassicManagedRunMarker,
   parseClassicStateDocument,
   type ClassicProfile,
   type ClassicState,
@@ -279,7 +280,7 @@ async function changeDirectory(name: string): Promise<{
 }> {
   return resolveClassicChangeDirectory(name, classicCommandProjectRoot());
 }
-async function readDocument(file: string): Promise<Document> {
+async function readDocument(file: string, unownedChange?: string): Promise<Document> {
   let source: string;
   const projectRoot = classicCommandProjectRoot();
   try {
@@ -294,6 +295,10 @@ async function readDocument(file: string): Promise<Document> {
     }
     throw error;
   }
+  if (unownedChange && hasClassicManagedRunMarker(source))
+    fail(
+      `Classic SDK Run ${unownedChange} requires recovery: no Run ownership was found. Run comet state next ${unownedChange} --json in ${projectRoot} to recover it.`,
+    );
   const document = parseDocument(source, { uniqueKeys: false });
   if (document.errors.length > 0)
     fail(`ERROR: Invalid ${path.basename(file)}: ${document.errors[0].message}`);
@@ -419,11 +424,13 @@ async function projectConfigValue(
 ): Promise<string | null> {
   return (await readClassicConfigValue(field, { cwd: classicCommandProjectRoot() }))?.value ?? null;
 }
-async function projectLanguageDefault(): Promise<string> {
+export async function projectLanguageDefault(
+  projectRoot = classicCommandProjectRoot(),
+): Promise<string> {
   if (process.env.COMET_LANGUAGE)
     return validateLanguage(process.env.COMET_LANGUAGE, 'COMET_LANGUAGE');
   const configured = await readClassicConfigValue('language', {
-    cwd: classicCommandProjectRoot(),
+    cwd: projectRoot,
   });
   if (configured) return validateLanguage(configured.value, configured.source);
   return 'en';
@@ -1115,14 +1122,19 @@ async function next(
   name: string,
   details = false,
   continueRun = false,
+  readOnly = false,
 ): Promise<void> {
   validateChangeName(name);
-  const owner = await resolveClassicChangeRuntimeOwner(classicCommandProjectRoot(), name);
+  const projectRoot = classicCommandProjectRoot();
+  const owner = readOnly
+    ? await readChangeRuntimeOwner(projectRoot, 'classic', name, { readOnly: true })
+    : await resolveClassicChangeRuntimeOwner(projectRoot, name);
   const sdkWorkspace =
     owner?.format === 'compat'
       ? null
-      : await findClassicSdkWorkspace(classicCommandProjectRoot(), name, {
+      : await findClassicSdkWorkspace(projectRoot, name, {
           owner: owner?.format === 'sdk' ? owner : undefined,
+          readOnly,
         });
   if (sdkWorkspace) {
     if (continueRun) {
@@ -1146,7 +1158,10 @@ async function next(
   const { file, label, directory } = await stateFile(name);
   if (!(await exists(file)))
     fail(`ERROR: ${path.basename(file)} not found at ${label}/${path.basename(file)}`);
-  const record = (await readDocument(file)).toJS() as Record<string, unknown>;
+  const record = (await readDocument(file, readOnly && !owner ? name : undefined)).toJS() as Record<
+    string,
+    unknown
+  >;
   const phase = scalar(record.phase);
   const workflow = scalar(record.workflow);
   const automatic = await readRecordField(record, 'auto_transition');
@@ -3111,7 +3126,13 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         requiredExact(rest, 0, 'Usage: comet state clear-selection');
         await clearSelection(output);
       } else if (subcommand === 'next') {
-        await next(output, rest[0], rest.includes('--details'), rest.includes('--continue'));
+        await next(
+          output,
+          rest[0],
+          rest.includes('--details'),
+          rest.includes('--continue'),
+          options.readOnly,
+        );
       } else {
         fail(`Unknown subcommand: ${subcommand ?? ''}`);
       }

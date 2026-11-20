@@ -38,7 +38,10 @@ const git = (root: string, ...args: string[]) =>
     ['-c', 'user.name=SIMULATED-Agent', '-c', 'user.email=fixture@example.invalid', ...args],
     { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
   ).trim();
-async function fixture(builderReport: Record<string, RuntimeValue> = {}) {
+async function fixture(
+  builderReport: Record<string, RuntimeValue> = {},
+  useSyntheticCriterion = false,
+) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-current-child-acceptance-'));
   roots.push(root);
   const name = 'child-acceptance',
@@ -56,7 +59,11 @@ async function fixture(builderReport: Record<string, RuntimeValue> = {}) {
   );
   await fs.writeFile(
     path.join(dir, 'children.yaml'),
-    'schema: comet.native.children.v2\nacceptance_index:\n  A1:\n    source: brief.md\n    text: The first behavior works.\n  A2:\n    source: brief.md\n    text: The second behavior works.\nchildren:\n  - name: core\n    depends_on: []\n    covers: [A1, A2]\n  - name: tail\n    depends_on: [core]\n    covers: [A2]\n',
+    'schema: comet.native.children.v2\nacceptance_index:\n  A1:\n    source: brief.md\n    text: The first behavior works.\n  A2:\n    source: brief.md\n    text: The second behavior works.\nchildren:\n  - name: core\n    depends_on: []\n    covers: ' +
+      (useSyntheticCriterion ? '[]' : '[A1, A2]') +
+      '\n  - name: tail\n    depends_on: [core]\n    covers: ' +
+      (useSyntheticCriterion ? '[A1, A2]' : '[A2]') +
+      '\n',
   );
   await fs.writeFile(
     path.join(root, '.gitignore'),
@@ -192,6 +199,47 @@ async function fixture(builderReport: Record<string, RuntimeValue> = {}) {
     context,
   };
 }
+
+it('links Supervisor checks to the authorized synthetic child criterion only', async () => {
+  const report = (id: string) => ({
+    checks: [{ name: 'Inspect child file', result: 'passed', acceptanceIds: [id] }],
+  });
+  const f = await fixture(report('child:core'), true);
+  expect(
+    projectNativeSdkAcceptanceEvidence(
+      f.run,
+      parseNativePortableState(f.run.state),
+      f.root,
+      'core',
+    ),
+  ).toMatchObject({
+    items: [{ id: 'child:core', checks: [{ stage: 'build', result: 'passed' }] }],
+  });
+  const verifierResult = (id: string) => ({
+    candidateCommit: f.commit,
+    verdict: 'pass',
+    evidence: {
+      summary: 'SIMULATED independent review of child behavior.',
+      acceptance: [{ id: 'child:core', result: 'passed', reason: 'Observed the child behavior.' }],
+      ...report(id),
+    },
+  });
+  await expect(
+    f.runtime.recordOutcome(request(f, verifierResult('child:tail'), 'other-child-check')),
+  ).rejects.toThrow(/unknown ID: child:tail/u);
+  const verified = await f.runtime.recordOutcome(request(f, verifierResult('child:core')));
+  expect(
+    projectNativeSdkAcceptanceEvidence(
+      verified,
+      parseNativePortableState(verified.state),
+      f.root,
+      'core',
+    ),
+  ).toMatchObject({
+    items: [{ id: 'child:core', checks: [{ stage: 'build' }, { stage: 'verify' }] }],
+  });
+  await expect(fixture(report('child:tail'), true)).rejects.toThrow(/unknown ID: child:tail/u);
+});
 
 it('shows only the current child candidate evidence in the independently claimed task', async () => {
   const f = await fixture({

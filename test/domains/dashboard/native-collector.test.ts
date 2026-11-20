@@ -243,9 +243,22 @@ describe('Native Dashboard v2 collector', () => {
 
   it('groups dated Supervisor child snapshots under the archived parent by Run and contract', async () => {
     const paths = await enableNative();
-    async function archive(name: string, archiveName: string, provenance?: string) {
+    git(projectRoot, ['init', '-q', '-b', 'main']);
+    git(projectRoot, ['config', 'user.email', 'comet@test.local']);
+    git(projectRoot, ['config', 'user.name', 'Comet Test']);
+    git(projectRoot, ['add', '.comet/config.yaml']);
+    git(projectRoot, ['commit', '-q', '-m', 'test: seed worktree config']);
+    const otherRoot = path.join(projectRoot, '.worktrees', 'other');
+    git(projectRoot, ['worktree', 'add', '-q', '-b', 'other', otherRoot]);
+    const otherPaths = await nativeProjectPaths(otherRoot, 'docs');
+    async function archive(
+      name: string,
+      archiveName: string,
+      provenance?: string,
+      archiveDir = paths.archiveDir,
+    ) {
       const state = activeShapeState(name);
-      const directory = path.join(paths.archiveDir, archiveName);
+      const directory = path.join(archiveDir, archiveName);
       await fs.mkdir(directory, { recursive: true });
       await writeNativePortableState(path.join(directory, NATIVE_CHANGE_STATE_FILE), {
         ...state,
@@ -281,12 +294,32 @@ describe('Native Dashboard v2 collector', () => {
     await archive('platform-review', '2026-08-09-platform-review', source('release', 6, 2));
     await archive('platform-review', '2026-08-10-platform-review', source('release', 14, 12));
     await archive('platform-review', '2026-08-11-platform-review', source('different-run', 14, 12));
+    const otherParent = await archive(
+      'release',
+      '2026-08-15-release',
+      undefined,
+      otherPaths.archiveDir,
+    );
+    await fs.copyFile(
+      path.join(parentDir, 'children.yaml'),
+      path.join(otherParent, 'children.yaml'),
+    );
+    await archive(
+      'platform-review',
+      '2026-08-14-platform-review',
+      source('release', 14, 12),
+      otherPaths.archiveDir,
+    );
 
     const page = await collectNativeDashboardChangePage(projectRoot, { status: 'archived' });
-    expect(page.total).toBe(2);
+    expect(page.total).toBe(3);
     expect(page.items.map(({ archiveName }) => archiveName)).toEqual([
       '2026-08-12-release',
       '2026-08-11-platform-review',
+      '2026-08-15-release',
+    ]);
+    expect(page.items[2].children).toMatchObject([
+      { name: 'platform-review', archiveName: '2026-08-14-platform-review', covers: ['A1'] },
     ]);
     expect(page.items[0].children).toMatchObject([
       { name: 'platform-review', archiveName: '2026-08-10-platform-review', covers: ['A1'] },
@@ -307,6 +340,23 @@ describe('Native Dashboard v2 collector', () => {
         archiveName: '2026-08-09-platform-review',
       }),
     ).resolves.toMatchObject({ archiveName: '2026-08-09-platform-review' });
+  });
+
+  it('reports a failed Native archive scan while preserving active attention items', async () => {
+    const paths = await enableNative();
+    await writeActiveState(activeShapeState('healthy-change'));
+    await fs.writeFile(paths.archiveDir, 'A file prevents listing the archive directory.');
+    const attention = await collectDashboardWorkflowAttention(projectRoot);
+    expect(attention.unavailable).toContain('native');
+    expect(attention.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'healthy-change', workflow: 'native' }),
+      ]),
+    );
+    await fs.unlink(paths.archiveDir);
+    await expect(collectDashboardWorkflowAttention(projectRoot)).resolves.toMatchObject({
+      unavailable: [],
+    });
   });
 
   it('opens a running SDK Supervisor child directly from its parent Run', async () => {
@@ -360,8 +410,9 @@ describe('Native Dashboard v2 collector', () => {
       input: { activation: { child: 'platform-review', contractRef: state.children_contract_ref } },
       claim: { executorId: 'fixture', token: 'internal-claim' },
     };
-    vi.spyOn(nativeRunStore, 'readNativeSdkRunRecord').mockResolvedValue({
+    const run = {
       runId: state.name,
+      status: 'running',
       workflow: { id: 'comet-native' },
       input: { name: state.name },
       state,
@@ -370,7 +421,8 @@ describe('Native Dashboard v2 collector', () => {
         { id: state.children_contract_ref, stepId: 'shape.prepare', status: 'succeeded' },
         action,
       ],
-    } as unknown as WorkflowRun);
+    } as unknown as WorkflowRun;
+    vi.spyOn(nativeRunStore, 'readNativeSdkRunRecord').mockResolvedValue(run);
 
     const page = await collectNativeDashboardChangePage(projectRoot, { status: 'active' });
     expect(page.total).toBe(1);
@@ -433,6 +485,20 @@ describe('Native Dashboard v2 collector', () => {
       ({ name }) => name === 'platform-review',
     );
     expect(integrating).toMatchObject({ status: 'waiting', reason: 'integration' });
+    run.status = 'failed';
+    const needsRecovery = (await collectDashboardWorkflowAttention(projectRoot)).items.find(
+      ({ name }) => name === state.name,
+    );
+    expect(needsRecovery).toMatchObject({
+      status: 'recovery-required',
+      reason: 'failed-run',
+      runId: state.name,
+      locator: page.items[0].locator,
+    });
+    run.status = 'running';
+    expect((await collectDashboardWorkflowAttention(projectRoot)).items).not.toContainEqual(
+      expect.objectContaining({ name: state.name, reason: 'failed-run' }),
+    );
     action.status = 'cancelled';
     await expect(
       collectNativeDashboardChangeDetail(projectRoot, {

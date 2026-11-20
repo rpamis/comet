@@ -6,6 +6,7 @@ import { useDashboardLanguage } from './dashboard-language.jsx';
 const groups = [
   ['awaiting-user', '等待用户', 'gold'],
   ['verification-blocker', '验收受阻', 'red'],
+  ['recovery-required', '需要恢复', 'red'],
   ['unknown-outcome', '结论未知', 'default'],
   ['ready', '可执行', 'blue'],
   ['waiting', '等待工作流推进', 'default'],

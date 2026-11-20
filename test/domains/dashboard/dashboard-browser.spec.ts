@@ -21,6 +21,8 @@ test('opens current-project attention, follows a Supervisor child evidence link,
   const { DEMO_SNAPSHOT } = await import('../../../domains/dashboard/web/demo.js');
   const childLocator = 'fixture:worktree-child';
   const classicLocator = 'fixture:classic';
+  const recoveryLocator = 'fixture:recovery';
+  const repairLocator = 'fixture:repair';
   const report = {
     key: 'verifyReport',
     label: '验证报告',
@@ -35,6 +37,12 @@ test('opens current-project attention, follows a Supervisor child evidence link,
     locator: classicLocator,
     artifacts: { grouped: [report] },
     artifactPreviews: [{ ...report, content: '# Classic report from linked worktree' }],
+  };
+  const recovery = {
+    ...classic,
+    name: 'recover-this-run',
+    displayName: 'recover-this-run',
+    locator: recoveryLocator,
   };
   const child = {
     ...DEMO_SNAPSHOT.native.changes.find((entry) => entry.status === 'active'),
@@ -56,6 +64,30 @@ test('opens current-project attention, follows a Supervisor child evidence link,
           checks: [],
         },
       ],
+    },
+  };
+  const repair = {
+    ...child,
+    name: 'repair-this-candidate',
+    locator: repairLocator,
+    supervisorParent: null,
+    phase: 'build',
+    acceptanceEvidence: {
+      runId: 'repair-run',
+      child: null,
+      candidateId: null,
+      items: [],
+      previousCandidate: {
+        candidateId: 'repair-run:6',
+        items: [
+          {
+            id: 'A1',
+            text: 'Repair criterion',
+            result: 'failed',
+            reason: 'The previous candidate missed the requested behavior.',
+          },
+        ],
+      },
     },
   };
   const { changes: _changes, ...snapshot } = DEMO_SNAPSHOT;
@@ -91,6 +123,15 @@ test('opens current-project attention, follows a Supervisor child evidence link,
         json: {
           items: [
             {
+              workflow: 'native',
+              name: repair.name,
+              locator: repairLocator,
+              workspace: repair.workspace,
+              status: 'verification-blocker',
+              reason: 'verification',
+              hasEvidence: true,
+            },
+            {
               workflow: 'classic',
               name: 'attention-confirmation',
               locator: classicLocator,
@@ -99,6 +140,14 @@ test('opens current-project attention, follows a Supervisor child evidence link,
               reason: 'decision',
               related: [],
               hasEvidence: true,
+            },
+            {
+              workflow: 'classic',
+              name: recovery.name,
+              locator: recoveryLocator,
+              workspace: { label: 'classic/worktree' },
+              status: 'recovery-required',
+              reason: 'failed-run',
             },
             {
               workflow: 'native',
@@ -122,17 +171,19 @@ test('opens current-project attention, follows a Supervisor child evidence link,
               reason: 'unknown',
             },
           ],
-          unavailable: [],
+          unavailable: ['native'],
         },
       });
     if (url.pathname.endsWith('/native-change')) {
       const locator = url.searchParams.get('changeLocator');
       selectedRequests.push(locator ?? '');
+      if (locator === repairLocator) return route.fulfill({ json: repair });
       return route.fulfill({ status: locator === childLocator ? 200 : 404, json: child });
     }
     if (url.pathname.endsWith('/change')) {
       const locator = url.searchParams.get('changeLocator');
       selectedRequests.push(locator ?? '');
+      if (locator === recoveryLocator) return route.fulfill({ json: recovery });
       return route.fulfill({ status: locator === classicLocator ? 200 : 404, json: classic });
     }
     return route.fulfill({ json: { items: [], pages: [], total: 0 } });
@@ -142,6 +193,14 @@ test('opens current-project attention, follows a Supervisor child evidence link,
   await page.getByRole('button', { name: /待关注|Workflow attention/ }).press('Enter');
   const drawer = page.getByRole('dialog', { name: /待关注|Workflow attention/ });
   await expect(drawer.getByText('attention-confirmation')).toBeVisible();
+  await expect(drawer.getByRole('alert')).toContainText(
+    /部分工作流状态读取失败|Some workflow states could not be read/,
+  );
+  await expect(
+    drawer
+      .getByRole('region', { name: /需要恢复|Recovery required/ })
+      .getByRole('link', { name: recovery.name }),
+  ).toBeVisible();
   await expect(drawer.getByText(/upstream-child/)).toBeVisible();
   await expect(drawer.getByText(/等待原因未知|Waiting reason unknown/)).toBeVisible();
   await expect(drawer.getByText('child/worktree').first()).toBeVisible();
@@ -174,6 +233,26 @@ test('opens current-project attention, follows a Supervisor child evidence link,
     page.getByRole('heading', { name: 'Classic report from linked worktree' }),
   ).toBeVisible();
   expect(selectedRequests).toContain(classicLocator);
+  await page.keyboard.press('Escape');
+  await expect(
+    page.getByRole('heading', { name: 'Classic report from linked worktree' }),
+  ).toBeHidden();
+  await page.getByRole('button', { name: /待关注|Workflow attention/ }).click();
+  await drawer.getByRole('link', { name: recovery.name }).click();
+  await expect(page.locator('.classic-change-detail')).toContainText(recovery.name);
+  expect(selectedRequests).toContain(recoveryLocator);
+  await page.getByRole('button', { name: /待关注|Workflow attention/ }).click();
+  await drawer
+    .getByRole('listitem')
+    .filter({ hasText: repair.name })
+    .getByRole('link', { name: /查看验收证据|View acceptance evidence/ })
+    .click();
+  await expect(
+    page.getByText(/上一个候选的验收结果|Previous candidate’s acceptance results/),
+  ).toBeVisible();
+  await expect(
+    page.getByText('The previous candidate missed the requested behavior.'),
+  ).toBeVisible();
 });
 
 async function setDashboardTheme(page: Page, theme: 'light' | 'dark') {

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { samePath } from '../../platform/paths/git-worktree.js';
 import type { ClassicState } from './classic-state.js';
+import { projectLanguageDefault } from './classic-state-command.js';
 
 const units = {
   contextBytes: 'bytes',
@@ -138,7 +139,7 @@ export async function classicContextCost(options: {
     phase: options.phase,
   });
   const { configuration } = options;
-  const language = configuration?.language ?? 'en';
+  const language = configuration?.language ?? (await projectLanguageDefault(scope.projectRoot));
   const root = path.join(options.assetsRoot, language === 'zh-CN' ? 'skills-zh' : 'skills');
   const ruleRefs = [`comet/rules/comet-workflow-guard${language === 'en' ? '.en' : ''}.md`];
   const skill =

@@ -2575,6 +2575,7 @@
   "默认 2；单会话固定为 1。调整从下一轮派发生效，不中断已派发的子任务。": "Defaults to 2; single-session always uses 1. Changes apply at the next dispatch without interrupting dispatched children.",
   "待关注变更": "Workflow attention",
   "验收受阻": "Verification blocked",
+  "需要恢复": "Recovery required",
   "结论未知": "Outcome unknown",
   "可执行": "Ready to run",
   "等待工作流推进": "Waiting on workflow",
@@ -2588,6 +2589,7 @@
   "当前项目没有待关注变更": "No changes in this project need attention",
   "查看验收证据": "View acceptance evidence",
   "当前没有待验收的候选": "No current candidate to verify",
+  "上一个候选的验收结果": "Previous candidate’s acceptance results",
   "当前候选缺少关联证据": "No linked evidence for the current candidate",
   "未执行": "Not run",
   "超时": "Timed out"

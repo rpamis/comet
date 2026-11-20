@@ -158,6 +158,21 @@ it('compares saved reports and attaches Classic phase costs without modifying ei
       });
     }
     await setEvalBaseline(project, 'before');
+    const runsDir = path.join(project, '.comet/eval/runs');
+    const snapshotRuns = async () => {
+      const entries = await fs.readdir(runsDir, { recursive: true, withFileTypes: true });
+      return new Map(
+        await Promise.all(
+          entries
+            .filter((entry) => entry.isFile())
+            .map(async (entry) => {
+              const file = path.join(entry.parentPath, entry.name);
+              return [path.relative(runsDir, file), await fs.readFile(file)] as const;
+            }),
+        ),
+      );
+    };
+    const savedRuns = await snapshotRuns();
     const compare = () =>
       spawnSync(
         process.execPath,
@@ -177,6 +192,7 @@ it('compares saved reports and attaches Classic phase costs without modifying ei
       );
     const compared = compare();
     expect(compared.status, compared.stderr).toBe(0);
+    expect(await snapshotRuns()).toEqual(savedRuns);
     expect(JSON.parse(compared.stdout)).toMatchObject({
       comparable: true,
       improved: 1,
@@ -198,6 +214,7 @@ it('compares saved reports and attaches Classic phase costs without modifying ei
     await write(afterCost, changed);
     const differentPhase = compare();
     expect(differentPhase.status, differentPhase.stderr).toBe(0);
+    expect(await snapshotRuns()).toEqual(savedRuns);
     expect(JSON.parse(differentPhase.stdout).cases[0].metrics.contextBytes).toMatchObject({
       delta: null,
       reason: 'different-measurement',

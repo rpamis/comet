@@ -25,6 +25,7 @@ it('reports a Classic phase context estimate separately from trace measurements 
     XDG_CACHE_HOME: path.join(home, 'xdg-cache'),
     XDG_CONFIG_HOME: path.join(home, 'xdg-config'),
     COMET_DAEMON: '0',
+    COMET_LANGUAGE: 'en',
   };
   const cli = (...args: string[]) =>
     spawnSync(process.execPath, [path.join(repository, 'bin/comet.js'), ...args, '--json'], {
@@ -127,6 +128,49 @@ it('reports a Classic phase context estimate separately from trace measurements 
     expect(
       JSON.parse(cli('classic', 'state', 'next', 'context-demo').stdout).data.run.revision,
     ).toBe(JSON.parse(original.stdout).data.run.revision);
+
+    const revision = JSON.parse(original.stdout).data.run.revision;
+    const edited = (await fs.readFile(stateFile, 'utf8')).replace(
+      /language: .+/u,
+      'language: zh-CN',
+    );
+    expect(edited).not.toBe(originalState);
+    await fs.writeFile(stateFile, edited);
+    const recovery = cli('classic', 'context-cost', 'context-demo');
+    expect(recovery.status, recovery.stdout).not.toBe(0);
+    expect(JSON.parse(recovery.stdout).stderr).toMatch(/settings have not been imported/u);
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(edited);
+    const importSettings = cli('classic', 'state', 'next', 'context-demo');
+    expect(JSON.parse(importSettings.stdout).data.run.revision).toBe(revision + 1);
+    expect(cli('classic', 'context-cost', 'context-demo').status).toBe(0);
+
+    const workspaceRoot = path.join(env.COMET_DATA_DIR, 'workspaces');
+    const [workspace] = await fs.readdir(workspaceRoot);
+    const history = path.join(workspaceRoot, workspace, 'runtime', 'sdk-runs', 'classic');
+    const missingHistoryState = await fs.readFile(stateFile, 'utf8');
+    await fs.rename(history, `${history}-backup`);
+    const missing = cli('classic', 'context-cost', 'context-demo');
+    expect(missing.status, missing.stdout).not.toBe(0);
+    expect(JSON.parse(missing.stdout).stderr).toMatch(/requires recovery/u);
+    await expect(fs.stat(history)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(missingHistoryState);
+    await fs.rename(`${history}-backup`, history);
+    expect(cli('classic', 'context-cost', 'context-demo').status).toBe(0);
+
+    expect(
+      cli('classic', 'state', 'init', 'compat-demo', 'full', '--runtime', 'compat').status,
+    ).toBe(0);
+    const compatFile = path.join(project, 'openspec/changes/compat-demo/.comet.yaml');
+    await fs.writeFile(
+      compatFile,
+      (await fs.readFile(compatFile, 'utf8')).replace(/language: .+/u, 'language: null'),
+    );
+    Object.assign(env, { COMET_LANGUAGE: 'zh-CN' });
+    const inherited = cli('classic', 'context-cost', 'compat-demo');
+    expect(inherited.status, inherited.stderr || inherited.stdout).toBe(0);
+    expect(JSON.parse(inherited.stdout).data.categories.rule.references).toEqual([
+      'comet/rules/comet-workflow-guard.md',
+    ]);
   } finally {
     await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
