@@ -1,6 +1,7 @@
 import { inspectGitWorktree, resolveGitRef, samePath } from '../../platform/paths/git-worktree.js';
 import { runGitCommand } from '../../platform/process/git.js';
 import type { RuntimeValidator } from '../engine/runtime.js';
+import { parseNativeBuilderAcceptanceReview } from './native-builder-acceptance-review.js';
 import { nativeSupervisorContractRef } from './native-children-contract.js';
 import { parseNativeReportedChecks, parseNativePortableState } from './native-portable-state.js';
 import { nativeSdkRequiresIndependentReview } from './native-sdk-review.js';
@@ -67,7 +68,15 @@ export const nativeSdkSupervisorBuilderValidator: RuntimeValidator = {
       ) {
         throw new Error('Native SDK Supervisor Builder candidate does not match its worktree');
       }
-      parseNativeReportedChecks(output.checks ?? []);
+      const acceptance = supervisorAcceptanceScope(plan.contract, activation.child);
+      parseNativeReportedChecks(output.checks ?? [], acceptance);
+      if (output.acceptanceReview !== undefined)
+        parseNativeBuilderAcceptanceReview(
+          output.acceptanceReview,
+          acceptance,
+          'acceptanceReview',
+          false,
+        );
       runGitCommand(activation.worktree, [
         'merge-base',
         '--is-ancestor',
@@ -130,14 +139,13 @@ export const nativeSdkSupervisorVerifierValidator: RuntimeValidator = {
           'Native SDK Supervisor Verifier lacks a bound result or required independent session',
         );
       }
-      const reported = parseNativeReportedChecks(evidence.checks);
+      const scope = supervisorAcceptanceScope(plan.contract, activation.child);
+      const reported = parseNativeReportedChecks(evidence.checks, scope);
       const acceptance = parseNativeVerifierAcceptance(evidence.acceptance);
       validateAndScopeNativeVerifierFinalResult(
         { verdict: output.verdict as 'pass' | 'fail' | 'blocked', acceptance },
         {
-          acceptanceIds: supervisorAcceptanceScope(plan.contract, activation.child).map(
-            ({ id }) => id,
-          ),
+          acceptanceIds: scope.map(({ id }) => id),
           requiredChecksPassed: reported.every((check) => check.result === 'passed'),
         },
       );

@@ -96,7 +96,11 @@ export const nativeSdkSupervisorIntegrationRepairValidator: RuntimeValidator = {
         input.integrationCommit,
         output.integrationCommit,
       ]);
-      if (parseNativeReportedChecks(output.checks ?? []).some((check) => check.result === 'failed'))
+      if (
+        parseNativeReportedChecks(output.checks ?? []).some(({ result }) =>
+          ['failed', 'unknown', 'timeout'].includes(result),
+        )
+      )
         throw new Error('Resolve failed platform checks before submitting integration repair');
       return { accepted: true };
     } catch (error) {

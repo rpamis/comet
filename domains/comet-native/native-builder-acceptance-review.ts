@@ -35,6 +35,7 @@ export function parseNativeBuilderAcceptanceReview(
   value: unknown,
   acceptance?: readonly { id: string }[],
   field = 'acceptance_review',
+  requireComplete = true,
 ): NativeBuilderAcceptanceReview[] {
   if (!Array.isArray(value)) throw new Error(`Native Builder ${field} must be an array`);
   const errors: string[] = [];
@@ -80,15 +81,17 @@ export function parseNativeBuilderAcceptanceReview(
     const note = read(() => text(row.note, `${detail}.note`));
     return id && status && evidence && note ? [{ id, status, evidence, note }] : [];
   });
-  if (acceptance && !errors.length) {
+  if (acceptance && requireComplete && !errors.length) {
     assertNativeBuilderAcceptanceComplete(acceptance, reviews);
     return reviews;
   }
   if (acceptance) {
     for (const { index, id } of unknownIds)
       errors.push(`Native Builder ${field}[${index}].id contains unknown ID: ${id}`);
-    const missing = acceptance.filter(({ id }) => !ids.includes(id)).map(({ id }) => id);
-    if (missing.length) errors.push(`Native Builder ${field} missing: ${missing.join(', ')}`);
+    if (requireComplete) {
+      const missing = acceptance.filter(({ id }) => !ids.includes(id)).map(({ id }) => id);
+      if (missing.length) errors.push(`Native Builder ${field} missing: ${missing.join(', ')}`);
+    }
   }
   if (errors.length) throw new Error(errors.join('\n'));
   return reviews;
