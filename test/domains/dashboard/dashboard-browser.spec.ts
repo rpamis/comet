@@ -5337,6 +5337,14 @@ test('keeps the Classic demo next-step notice compact and readable', async ({ pa
     expect(layout.marginTop).toBeLessThanOrEqual(16);
     expect(layout.marginBottom).toBeLessThanOrEqual(16);
     expect(layout.overflow).toBeLessThanOrEqual(1);
+    const position = await notice.evaluate((element) => {
+      const phases = element.previousElementSibling!.getBoundingClientRect();
+      const panels = element.nextElementSibling!.getBoundingClientRect();
+      const alert = element.getBoundingClientRect();
+      return { before: alert.top - phases.bottom, after: panels.top - alert.bottom };
+    });
+    expect(position.before).toBeGreaterThanOrEqual(12);
+    expect(position.after).toBeGreaterThanOrEqual(16);
   }
   await page.setViewportSize({ width: 1600, height: 900 });
   await page.locator('.classic-change-detail').screenshot({
@@ -5893,11 +5901,42 @@ test('keeps workbench detail text comfortably readable without enlarging the ove
 });
 
 test('keeps the next-step alert clear of its neighboring detail sections', async ({ page }) => {
-  await page.goto('/?demo');
+  const { DEMO_SNAPSHOT } = await import('../../../domains/dashboard/web/demo.js');
+  const change = DEMO_SNAPSHOT.changes.active[0];
+  const { changes: _changes, ...snapshot } = DEMO_SNAPSHOT;
+  await page.route('**/api/dashboard/**', async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname.endsWith('/projects')) {
+      return route.fulfill({
+        json: {
+          currentProjectId: 'next-step-fixture',
+          projects: [
+            {
+              id: 'next-step-fixture',
+              name: 'Next step fixture',
+              path: '/next-step-fixture',
+              availability: 'available',
+              isCurrent: true,
+              workflow: 'classic',
+            },
+          ],
+        },
+      });
+    }
+    const initialChanges = { items: [change], total: 1, nextCursor: null };
+    if (pathname.endsWith('/overview'))
+      return route.fulfill({ json: { ...snapshot, initialChanges } });
+    if (pathname.endsWith('/changes')) return route.fulfill({ json: initialChanges });
+    if (pathname.endsWith('/change')) return route.fulfill({ json: change });
+    return route.fulfill({ json: { pages: [] } });
+  });
+  await page.goto('/');
+  const nextStep = page.locator('.classic-change-detail .dashboard-next-step-alert');
+  await expect(nextStep).toBeVisible();
 
   const [stepsBox, alertBox, panelsBox] = await Promise.all([
     page.locator('.dashboard-phase-track').boundingBox(),
-    page.getByRole('alert').boundingBox(),
+    nextStep.boundingBox(),
     page.locator('.change-detail-panels').boundingBox(),
   ]);
   if (!stepsBox || !alertBox || !panelsBox) {
