@@ -153,10 +153,10 @@ describe('CI workflows', () => {
       expect(steps[sync]['working-directory']).toBe('eval');
     }
   });
-  it('validates pull requests and master pushes without duplicating development branch runs', async () => {
+  it('runs complete CI for pull requests and manual requests without replaying it after merges', async () => {
     for (const name of ['ci.yml', 'security.yml']) {
       const workflow = parse(await readWorkflow(name));
-      expect(workflow.on.push.branches).toEqual(['master']);
+      expect(workflow.on).not.toHaveProperty('push');
       expect(workflow.on).toHaveProperty('pull_request');
       expect(workflow.on).not.toHaveProperty('paths');
       expect(workflow.on.pull_request?.paths).toBeUndefined();
@@ -166,6 +166,141 @@ describe('CI workflows', () => {
     const security = parse(await readWorkflow('security.yml'));
     expect(ci.on).toHaveProperty('workflow_dispatch');
     expect(security.on.schedule).toEqual([{ cron: '31 2 * * 4' }]);
+  });
+
+  it('publishes only a successful PR coverage report for the exact merged master tree', async () => {
+    const ci = parse(await readWorkflow('ci.yml'));
+    const workflow = parse(await readWorkflow('master-coverage.yml'));
+    expect(workflow.on).toEqual({ push: { branches: ['master'] } });
+    expect(workflow.permissions).toEqual({
+      actions: 'read',
+      contents: 'read',
+      'pull-requests': 'read',
+    });
+    expect(Object.keys(workflow.jobs)).toEqual(['publish']);
+    const quality = ci.jobs.quality.steps;
+    const recordCoverage = quality.findIndex(
+      (step: { name?: string }) => step.name === 'Record tested PR and Git tree',
+    );
+    expect(recordCoverage).toBeGreaterThan(
+      quality.findIndex((step: { id?: string }) => step.id === 'tests'),
+    );
+    expect(recordCoverage).toBeLessThan(
+      quality.findIndex((step: { name?: string }) => step.name === 'Upload coverage report'),
+    );
+    expect(quality[recordCoverage].if).toContain("steps.tests.outcome == 'success'");
+    expect(quality[recordCoverage].run).toContain("git rev-parse 'HEAD^{tree}'");
+    expect(
+      quality.find((step: { name?: string }) => step.name === 'Upload coverage to Codecov').if,
+    ).toContain("github.ref == 'refs/heads/master'");
+    const steps = workflow.jobs.publish.steps;
+    const checkout = steps.find((step: { uses?: string }) =>
+      step.uses?.startsWith('actions/checkout@'),
+    );
+    expect(checkout.with['persist-credentials']).toBe(false);
+    const download = steps.find((step: { uses?: string }) =>
+      step.uses?.startsWith('actions/download-artifact@'),
+    );
+    expect(download.with).toMatchObject({
+      name: 'coverage',
+      'run-id': '${{ steps.source.outputs.run_id }}',
+    });
+    const matchTree = steps.findIndex(
+      (step: { name?: string }) => step.name === 'Verify coverage source',
+    );
+    const upload = steps.findIndex((step: { uses?: string }) =>
+      step.uses?.startsWith('codecov/codecov-action@'),
+    );
+    expect(matchTree).toBeGreaterThan(steps.indexOf(download));
+    expect(matchTree).toBeLessThan(upload);
+    for (const step of [checkout, download, steps[matchTree], steps[upload]]) {
+      expect(step.if).toBe("steps.source.outputs.run_id != ''");
+    }
+    expect(steps[matchTree].run).toContain("git rev-parse 'HEAD^{tree}'");
+    expect(steps[matchTree].run).toContain('pr-revision');
+    expect(steps[matchTree].run).toContain('exit 1');
+    expect(steps[upload].with).toMatchObject({
+      override_commit: '${{ github.sha }}',
+      override_branch: 'master',
+      flags: 'unittests',
+      disable_search: true,
+      fail_ci_if_error: true,
+    });
+    expect(steps.map((step: { run?: string }) => step.run).join(' ')).not.toMatch(
+      /pnpm|npm|pytest/u,
+    );
+  });
+
+  it('selects successful CI for the PR that produced the pushed master commit', async () => {
+    const workflow = parse(await readWorkflow('master-coverage.yml'));
+    const script = workflow.jobs.publish.steps.find((step: { id?: string }) => step.id === 'source')
+      .with.script;
+    const repo = { owner: 'rpamis', repo: 'comet' };
+    const merged = {
+      number: 83,
+      merged_at: '2026-11-20T10:00:00Z',
+      merge_commit_sha: 'merged',
+      base: { ref: 'master' },
+      head: { sha: 'reviewed', ref: '056', repo: { id: 42 } },
+    };
+    const sourceRun = {
+      id: 222,
+      pull_requests: [{ number: 83 }],
+      head_repository: { id: 42 },
+      head_branch: '056',
+    };
+    const unrelated = {
+      id: 111,
+      pull_requests: [{ number: 19 }],
+      head_repository: { id: 42 },
+      head_branch: '056',
+    };
+    const notices: string[] = [];
+    async function findSource(prs: unknown[], runs: unknown[]) {
+      const outputs: Record<string, unknown> = {};
+      await runInNewContext(`(async () => {\n${script}\n})()`, {
+        context: { sha: 'merged', repo },
+        core: {
+          notice: (message: string) => notices.push(message),
+          setOutput: (key: string, value: unknown) => {
+            outputs[key] = value;
+          },
+        },
+        github: {
+          rest: {
+            repos: {
+              listPullRequestsAssociatedWithCommit: async (query: unknown) => {
+                expect(query).toMatchObject({ ...repo, commit_sha: 'merged' });
+                return { data: prs };
+              },
+            },
+            actions: {
+              listWorkflowRuns: async (query: unknown) => {
+                expect(query).toMatchObject({
+                  ...repo,
+                  workflow_id: 'ci.yml',
+                  event: 'pull_request',
+                  head_sha: 'reviewed',
+                  status: 'success',
+                });
+                return { data: { workflow_runs: runs } };
+              },
+            },
+          },
+        },
+      });
+      return outputs;
+    }
+    await expect(
+      findSource([{ ...merged, merge_commit_sha: 'old' }, merged], [unrelated, sourceRun]),
+    ).resolves.toEqual({ pr_number: 83, run_id: 222 });
+    await expect(findSource([merged], [{ ...sourceRun, pull_requests: [] }])).resolves.toEqual({
+      pr_number: 83,
+      run_id: 222,
+    });
+    await expect(findSource([{ ...merged, merge_commit_sha: 'old' }], [])).resolves.toEqual({});
+    expect(notices).toEqual([expect.stringMatching(/coverage reuse skipped/iu)]);
+    await expect(findSource([merged], [unrelated])).rejects.toThrow(/successful PR CI/u);
   });
 
   it('uploads Dashboard browser reports and traces from the configured root coverage directory', async () => {

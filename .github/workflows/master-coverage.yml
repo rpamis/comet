@@ -1,0 +1,84 @@
+name: Master coverage
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: read
+
+jobs:
+  publish:
+    name: Reuse verified PR coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Find the successful PR CI run
+        id: source
+        uses: actions/github-script@d746ffe35508b1917358783b479e04febd2b8f71 # v9.0.0
+        with:
+          script: |
+            const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              ...context.repo,
+              commit_sha: context.sha,
+            });
+            const pr = prs.find((entry) =>
+              entry.merged_at && entry.base.ref === 'master' && entry.merge_commit_sha === context.sha,
+            );
+            if (!pr) {
+              core.notice('Coverage reuse skipped because no merged pull request produced this master commit.');
+              return;
+            }
+
+            const { data } = await github.rest.actions.listWorkflowRuns({
+              ...context.repo,
+              workflow_id: 'ci.yml',
+              event: 'pull_request',
+              head_sha: pr.head.sha,
+              status: 'success',
+            });
+            const run = data.workflow_runs.find((entry) =>
+              entry.pull_requests.length > 0
+                ? entry.pull_requests.some(({ number }) => number === pr.number)
+                : entry.head_repository.id === pr.head.repo?.id && entry.head_branch === pr.head.ref,
+            );
+            if (!run) throw new Error(`No successful PR CI run for #${pr.number}. Run CI manually on master to publish coverage.`);
+            core.setOutput('pr_number', pr.number);
+            core.setOutput('run_id', run.id);
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        if: steps.source.outputs.run_id != ''
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        if: steps.source.outputs.run_id != ''
+        with:
+          name: coverage
+          path: ${{ runner.temp }}/pr-coverage
+          run-id: ${{ steps.source.outputs.run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify coverage source
+        if: steps.source.outputs.run_id != ''
+        shell: bash
+        env:
+          PR_NUMBER: ${{ steps.source.outputs.pr_number }}
+          COVERAGE_DIR: ${{ runner.temp }}/pr-coverage
+        run: |
+          expected="$PR_NUMBER $(git rev-parse 'HEAD^{tree}')"
+          if [[ ! -s "$COVERAGE_DIR/lcov.info" || ! -f "$COVERAGE_DIR/pr-revision" ]] ||
+             [[ $(< "$COVERAGE_DIR/pr-revision") != "$expected" ]]; then
+            echo '::error::Coverage is missing or belongs to another PR or Git tree. Run CI manually on master to publish coverage.'
+            exit 1
+          fi
+      - name: Publish the verified master coverage baseline
+        if: steps.source.outputs.run_id != ''
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ${{ runner.temp }}/pr-coverage/lcov.info
+          override_commit: ${{ github.sha }}
+          override_branch: master
+          flags: unittests
+          disable_search: true
+          fail_ci_if_error: true
