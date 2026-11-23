@@ -70,7 +70,7 @@ If `supervisor.parent.deliver`, `archive.execute`, `archive.finalize`, or `super
 
 ## Memory integration
 
-When a claim response includes `data.contextDelivery`, read `data.context[].text` and start work without executing `contextRequest` again. `empty` means no new delivery; continue the explicit task after `unavailable`. Use `data.contextActions.expand` for full text, `data.contextActions.restore` after context loss, and `data.contextActions.complete` with an actual learning file at completion. New Agents use their own session IDs rather than another executor’s context receipts.
+When a claim response includes `data.contextDelivery`, read `data.context[].text` and start work without executing `contextRequest` again. `empty` means no new delivery. Continue the explicit task after `unavailable`. Use `data.contextActions.expand` for full text and `data.contextActions.restore` after context loss. Use `data.contextActions.complete` when submitting a batch learning file. New Agents use their own session IDs.
 
 Without automatic delivery, after entering the change workspace and obtaining its current `phase`, prefer the current task packet's `contextRequest`, including Compat `supervisorTask.contextRequest`; use `continuation.contextRequest` when no task-specific request exists. SDK Builders, Verifiers and children use the `contextRequest` of their corresponding `pendingActions[]` or `activeActions[]`, after the receiver successfully claims the Action. Supply the original user request and the receiving Agent's own stable session ID. If the original request is missing, first recover the goal from the current brief.
 
@@ -110,7 +110,7 @@ The observation JSON `learning.result` reports `candidate-created`, `candidate-p
 
 After actually using an item, obtain its identifier from JSON `applications[].applicationId` (`application_id` in Hook text). Once the outcome is known, record it with `comet task <project-root> --task "<original user request>" --application "<application-id>" --outcome used-successfully|ignored|overridden|corrected|contributed-to-failure --json`. Never report successful use of an unused item.
 
-If verification, compilation, or linting fails, address the error and rerun. At task completion, call `comet task <project-root> --task "<original user request>" --complete --workflow native --change <change-id> --learning-check submitted|no-observation|not-run --project-learning-check submitted|no-observation|not-run [--memory <slug>] --json` to record completion. The two checks cover Personal Memory and project experience independently. An unavailable command, empty result, or failed automatic retrieval does not block the task. On platforms without Hooks, this Skill calls the same interfaces; `comet memory context` is a compatibility entry only.
+If verification, compilation, or linting fails, address the error and rerun. When the task is complete, record it with `comet task <project-root> --task "<original user request>" --complete --workflow native --change <change-id> --json`. The learning checks default to `not-run`. When submitting learning, record the actual receipts as described in [Task learning](../../comet/reference/task-learning.md). Continue if a context command is unavailable or retrieval returns no content. On platforms without Hooks, this Skill calls the same interfaces. `comet memory context` is available for compatibility.
 
 ## User Hook writes
 

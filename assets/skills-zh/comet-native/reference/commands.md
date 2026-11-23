@@ -70,7 +70,7 @@ Builder 已部分执行且原 Action 已提交 `failed` 时，保留工作区和
 
 ## 记忆接入
 
-领取响应含 `data.contextDelivery` 时，读取 `data.context[].text` 后直接工作，无需再执行 `contextRequest`；`empty` 表示没有新增交付，`unavailable` 时按明确任务继续。需要正文时使用 `data.contextActions.expand`，上下文丢失时使用 `data.contextActions.restore`，收尾时使用 `data.contextActions.complete` 并填写实际学习文件。新 Agent 使用自己的会话标识，不复用其他执行者的上下文回执。
+领取响应含 `data.contextDelivery` 时，读取 `data.context[].text` 后直接工作，无需再执行 `contextRequest`；`empty` 表示没有新增交付，`unavailable` 时按明确任务继续。需要正文时使用 `data.contextActions.expand`，上下文丢失时使用 `data.contextActions.restore`。需要用学习文件批量提交时，使用 `data.contextActions.complete`。新 Agent 使用自己的会话标识，不复用其他执行者的上下文回执。
 
 没有自动交付时，进入 change 工作区并取得当前 `phase` 后，优先执行当前任务包的 `contextRequest`（包括 Compat 的 `supervisorTask.contextRequest`）；没有任务专属请求时使用 `continuation.contextRequest`。SDK 的 Builder、Verifier 和子任务使用对应 `pendingActions[]` 或 `activeActions[]` 中的 `contextRequest`，由接收方在领取成功后执行。命令中的任务填用户原始请求，会话填接收 Agent 自己的稳定标识；原始请求缺失时先从当前 brief 恢复目标。
 
@@ -110,7 +110,7 @@ comet knowledge remember <project-root> --title "<简明标题>" --text "<现象
 
 实际使用某条上下文后，从 JSON 的 `applications[].applicationId`（Hook 文本中的 `application_id`）取得标识。使用结果明确时，运行 `comet task <project-root> --task "<用户原始请求>" --application "<application-id>" --outcome used-successfully|ignored|overridden|corrected|contributed-to-failure --json` 记录结果；没有实际使用的条目不能标为成功。
 
-验证、编译或 linter 失败时，按错误信息修复并重跑。任务结束时，调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow native --change <change-id> --learning-check submitted|no-observation|not-run --project-learning-check submitted|no-observation|not-run [--memory <slug>] --json` 保存任务完成记录。两个检查分别表示个人记忆和项目经验，不能互相替代。命令不可用、没有返回内容或自动检索失败时，继续处理任务。没有 Hook 的平台由本 Skill 调用相同接口；`comet memory context` 只作为兼容入口。
+验证、编译或 linter 失败时，按错误信息修复并重跑。任务完成时，调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow native --change <change-id> --json` 保存完成记录。学习状态默认使用 `not-run`；需要提交学习内容时，按[任务学习指引](../../comet/reference/task-learning.md)填写实际回执。命令不可用、没有返回内容或自动检索失败时，继续处理任务。没有 Hook 的平台由本 Skill 调用相同接口；`comet memory context` 只作为兼容入口。
 
 ## 用户 Hook 写入
 
