@@ -71,6 +71,7 @@ export async function nativeVerificationFixture(
     'initial',
   );
   const config = defaultProjectConfig('docs', 'zh-CN');
+  config.native.archive_confirmation = 'required';
   await writeProjectConfig(root, config);
   const invoke = async (...args: string[]) => {
     if (cliPath) {

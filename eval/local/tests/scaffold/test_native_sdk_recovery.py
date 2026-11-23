@@ -296,6 +296,7 @@ def pending(run, step):
 def build_recovery(driver):
     # Current Runs report platform checks; historical managed-check evidence is
     # still checked by the validator's legacy branch and receipt unit tests.
+    # Keep the explicit simulated acceptance used by this recovery exercise.
     state_module = (ROOT / "dist/domains/comet-native/native-application.js").as_uri()
     initial_state = json.loads(
         driver.run([
@@ -303,7 +304,9 @@ def build_recovery(driver):
             "const {createNativeApplicationState}=await import(process.argv[1]);"
             "const {defaultProjectConfig,writeProjectConfig}="
             "await import(new URL('./native-config.js',process.argv[1]));"
-            "await writeProjectConfig(process.argv[3],defaultProjectConfig('docs','en'));"
+            "const config=defaultProjectConfig('docs','en');"
+            "config.native.archive_confirmation='required';"
+            "await writeProjectConfig(process.argv[3],config);"
             "console.log(JSON.stringify(createNativeApplicationState({"
             "name:process.argv[2],language:'en',nextAction:'prepare-shape-confirmation'})));",
             state_module, driver.name, str(driver.root),

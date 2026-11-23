@@ -86,6 +86,7 @@ async function blockedFixture(
     native: {
       ...config.native,
       document_writes: options.documentWrites ?? 'revert',
+      archive_confirmation: 'required',
     },
   });
   await fs.writeFile(

@@ -274,7 +274,7 @@ async function fixture() {
   const config = defaultProjectConfig('docs', 'en');
   await writeProjectConfig(root, {
     ...config,
-    native: { ...config.native, document_writes: 'revert' },
+    native: { ...config.native, document_writes: 'revert', archive_confirmation: 'required' },
   });
   const paths = await nativeProjectPaths(root, 'docs');
   await ensureNativeDirectories(paths);
@@ -325,7 +325,7 @@ async function allowAgentDocumentReview(root: string) {
   const config = defaultProjectConfig('docs', 'en');
   await writeProjectConfig(root, {
     ...config,
-    native: { ...config.native, document_writes: 'allow' },
+    native: { ...config.native, document_writes: 'allow', archive_confirmation: 'required' },
   });
 }
 

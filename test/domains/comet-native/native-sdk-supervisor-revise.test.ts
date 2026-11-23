@@ -40,7 +40,9 @@ async function supervisor() {
   roots.push(root);
   const project = path.join(root, 'project');
   await fs.mkdir(project);
-  await writeProjectConfig(project, defaultProjectConfig('docs', 'en'));
+  const config = defaultProjectConfig('docs', 'en');
+  config.native.archive_confirmation = 'required';
+  await writeProjectConfig(project, config);
   const name = 'build-revision';
   const change = path.join(project, 'docs/comet/changes', name);
   await fs.mkdir(path.join(change, 'specs/workflow'), { recursive: true });
