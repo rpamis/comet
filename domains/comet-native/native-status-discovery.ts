@@ -19,12 +19,17 @@ import {
 import { nativeProjectPaths } from './native-paths.js';
 import { listNativeSdkChangeNames, loadOwnedNativeSdkRuntime } from './native-runtime-ownership.js';
 import { inspectPristineNativeSdkChange } from './native-sdk-create.js';
-import { inspectNativeSdkStatus, type NativeSdkStatusProjection } from './native-sdk-status.js';
+import {
+  inspectNativeSdkStatus,
+  projectNativeSdkStatus,
+  type NativeSdkStatusProjection,
+} from './native-sdk-status.js';
 import {
   hasNativeManagedRunMarker,
   NativeSdkRunRecoveryRequiredError,
   hasNativePortableRunCheckpoint,
   findNativeSdkArchivedStateFile,
+  inspectNativeSdkSupervisorArchive,
 } from './native-sdk-state-store.js';
 import { nativePortableStateFile } from './native-portable-storage.js';
 import {
@@ -816,11 +821,23 @@ export async function inspectDiscoveredNativeStatus(options: {
   }
   for (const source of sources) {
     const archivedFile = await findNativeSdkArchivedStateFile(source.paths, options.name);
-    if (
+    const candidate = candidates[0];
+    const archive =
       archivedFile &&
-      (await hasNativeManagedRunMarker(archivedFile)) &&
-      (await hasNativePortableRunCheckpoint(archivedFile, options.name))
+      (await inspectNativeSdkSupervisorArchive(source.paths, archivedFile, options.name));
+    if (
+      archive &&
+      candidate?.record?.file === archivedFile &&
+      !candidate.inspectionError &&
+      !candidate.finishJournal
     ) {
+      if (options.detailsCursor) throw new Error('SDK Native status details do not use --cursor');
+      return projectNativeSdkStatus(
+        { ...options, projectRoot: source.projectRoot, portableArchiveRef: archive.archiveRef },
+        archive,
+      );
+    }
+    if (archivedFile && archive !== undefined) {
       // Validate the original fixed application and checkpoint without restoring
       // either. Corrupt packages or missing Supervisor worktrees remain visible.
       await (

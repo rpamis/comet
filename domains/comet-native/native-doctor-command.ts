@@ -64,7 +64,11 @@ import {
 import { inspectPendingNativeTransitionSchema } from './native-transition-journal.js';
 import type { NativeProjectPaths } from './native-types.js';
 import { listNativeArchivedStatusRecords } from './native-archived-status.js';
-import { hasNativeManagedRunMarker } from './native-sdk-state-store.js';
+import {
+  findNativeSdkArchivedStateFile,
+  hasNativeManagedRunMarker,
+  inspectNativeSdkSupervisorArchive,
+} from './native-sdk-state-store.js';
 import path from 'node:path';
 import { createFileRuntimeStore, type WorkflowRun } from '../engine/runtime.js';
 import { resolveWorkspaceRuntimeRootSync } from '../workflow-contract/workspace-runtime.js';
@@ -350,7 +354,7 @@ export async function nativeDoctorCommand(
       exitCode: historyFindings.length ? 65 : 0,
     };
   }
-  let owner = await readSdkChangeOwner(projectRoot, 'native', name);
+  let owner = await readSdkChangeOwner(projectRoot, 'native', name, { readOnly: !repair });
   const missingSdkRun = () =>
     success('doctor', {
       healthy: false,
@@ -430,18 +434,33 @@ export async function nativeDoctorCommand(
       const archived = (await listNativeArchivedStatusRecords(paths, undefined, name)).filter(
         (record) => record.state.name === name,
       );
-      if (!archived.length) throw error;
-      if (archived.length !== 1)
+      if (archived.length > 1)
         throw new Error('同名 Native 归档不唯一，请核对原归档路径；诊断不会选择或迁移其中一个。', {
           cause: error,
         });
-      if (await hasNativeManagedRunMarker(archived[0].file)) return missingSdkRun();
+      const archive = archived[0];
+      const exactFile = await findNativeSdkArchivedStateFile(paths, name);
+      if (exactFile && (await hasNativeManagedRunMarker(exactFile))) {
+        const inspection = await inspectNativeSdkSupervisorArchive(paths, exactFile, name);
+        if (!inspection) return missingSdkRun();
+        const projected = await projectNativeSdkStatus(
+          { projectRoot, name, portableArchiveRef: inspection.archiveRef },
+          inspection,
+        );
+        return success('doctor', {
+          ...projected,
+          healthy: projected.diagnostics.healthy,
+          repaired,
+        });
+      }
+      if (!archive) throw error;
+      if (await hasNativeManagedRunMarker(archive.file)) return missingSdkRun();
       return success('doctor', {
         healthy: true,
         repaired,
         runtimeFormat: 'compat',
         change: name,
-        state: nativePortableStateSummary(archived[0].state, paths),
+        state: nativePortableStateSummary(archive.state, paths),
       });
     }
     const findings = [];

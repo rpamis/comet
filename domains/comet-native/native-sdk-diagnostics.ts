@@ -11,17 +11,20 @@ import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
 export async function inspectNativeSdkRunDiagnostics(
   projectRoot: string,
   run: WorkflowRun,
-  _options: object = {},
+  options: { portableArchive?: boolean } = {},
 ) {
-  const owner = await readSdkChangeOwner(projectRoot, 'native', run.runId, { readOnly: true });
-  const disposition =
-    owner && owner.application !== 'native'
+  const owner = options.portableArchive
+    ? null
+    : await readSdkChangeOwner(projectRoot, 'native', run.runId, { readOnly: true });
+  const disposition = options.portableArchive
+    ? null
+    : owner && owner.application !== 'native'
       ? await readWorkflowApplicationStorageDisposition(projectRoot, owner.application, run.runId)
       : await createFileRuntimeStore<WorkflowRun>({
           singleWriter: true,
           rootDir: path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'sdk-runs/native'),
         }).readPartitionMetadata(run.runId);
-  const storageSettled = ['active', 'closed'].includes(disposition);
+  const storageSettled = disposition === null || ['active', 'closed'].includes(disposition);
   const unknown = run.actions.filter((action) => action.status === 'unknown');
   let cancelledArchive = run.actions.some(
     (action) =>

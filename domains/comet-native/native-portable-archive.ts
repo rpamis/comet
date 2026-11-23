@@ -823,14 +823,27 @@ export async function inspectNativeSdkArchiveFinalization(options: {
   verificationResultHash?: string;
   allowMissingReport?: boolean;
 }): Promise<NativeSdkArchiveReceipt> {
-  const { paths, state, runId } = options;
-  let receipt: NativeSdkArchiveReceipt;
+  const { paths, runId } = options;
+  let receipt: unknown;
   try {
     receipt = JSON.parse(await fs.readFile(sdkArchiveReceiptFile(paths, runId), 'utf8'));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || !options.archiveRef) throw error;
     receipt = await readPortableArchiveReceipt(paths, options.archiveRef);
   }
+  return validateNativeSdkArchiveReceipt(options, receipt);
+}
+export async function validateNativeSdkArchiveReceipt(
+  options: {
+    paths: NativeProjectPaths;
+    state: NativePortableState;
+    runId: string;
+    archiveRef?: string;
+  },
+  value: unknown,
+): Promise<NativeSdkArchiveReceipt> {
+  const { paths, state, runId } = options;
+  const receipt = value as NativeSdkArchiveReceipt | undefined;
   if (
     !receipt ||
     receipt.runId !== runId ||

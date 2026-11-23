@@ -1,5 +1,8 @@
 import { readNativeBuildWorkspace } from './native-build-workspace-record.js';
-import { commitNativeSdkArchiveFailure } from './native-portable-archive.js';
+import {
+  commitNativeSdkArchiveFailure,
+  validateNativeSdkArchiveReceipt,
+} from './native-portable-archive.js';
 import { observeWorkflowRunStore } from '../workflow-application/run-trace.js';
 import {
   resolveWorkspaceRuntimeRoot,
@@ -29,6 +32,7 @@ import {
 import {
   createFileRuntimeStore,
   createPortableRunCheckpoint,
+  createRuntime,
   encodePortableRunCheckpoint,
   PORTABLE_RUN_CHECKPOINT_KEY,
   readPortableRunCheckpoint,
@@ -57,6 +61,7 @@ import {
   nativeSupervisorIntegrationWorktree,
 } from './native-supervisor-workspace.js';
 import type { NativePortableState } from './native-portable-types.js';
+import type { NativeProjectPaths } from './native-types.js';
 import { nativeSdkRequiresIndependentReview } from './native-sdk-review.js';
 import type { ApplicationIdentity } from '../workflow-application/index.js';
 import { hashRuntimeValue } from '../engine/runtime.js';
@@ -238,6 +243,108 @@ export async function hasNativePortableRunCheckpoint(
   const data = parseNativeStateDocument(source, 'Native state file') as Record<string, unknown>;
   return readPortableRunCheckpoint(data[PORTABLE_RUN_CHECKPOINT_KEY], runId) !== null;
 }
+async function readPortableSource(projectRoot: string, file: string): Promise<string> {
+  return (
+    await readProtectedProjectFile(
+      projectRoot,
+      path.relative(projectRoot, file),
+      Number.MAX_SAFE_INTEGER,
+      { label: 'Native portable state' },
+    )
+  ).bytes.toString('utf8');
+}
+function validatePortableNativeRun(
+  paths: NativeProjectPaths,
+  data: Record<string, unknown>,
+  saved: WorkflowRun,
+  archivedFile: boolean,
+  identity?: ApplicationIdentity,
+): NativePortableState {
+  if (
+    hashRuntimeValue((data.application_checkpoint ?? null) as never) !==
+    hashRuntimeValue((identity ?? null) as never)
+  ) {
+    throw new Error('Native portable checkpoint requires its original fixed Application package');
+  }
+  const state = parseNativePortableState(data);
+  const input = saved.input as { name?: unknown; artifactRootRef?: unknown } | null;
+  if (
+    state.name !== saved.runId ||
+    !sameState(parseNativePortableState(saved.state), state) ||
+    input?.name !== saved.runId ||
+    input.artifactRootRef !== paths.artifactRootRef ||
+    saved.workflow.id !== 'comet-native' ||
+    (archivedFile && !state.archived)
+  ) {
+    throw new Error(`Native portable Run checkpoint for ${saved.runId} does not match its state`);
+  }
+  return state;
+}
+async function upgradeBuiltinNativeCheckpoint(saved: WorkflowRun, rootRunId?: string) {
+  if (rootRunId === saved.runId && saved.lineage.length > 0)
+    throw new Error('Native Child Run must be restored through its original parent');
+  const [{ nativeSdkApplicationForRun }, { upgradeNativeRun }] = await Promise.all([
+    import('./native-sdk-application.js'),
+    import('./native-sdk-run-upgrade.js'),
+  ]);
+  const definition = nativeSdkApplicationForRun(null);
+  const run = upgradeNativeRun(saved, definition.workflow, definition.transitionHandler);
+  return { definition, run };
+}
+/** Read the committed Supervisor result without restoring the workspace's Run or owner. */
+export async function inspectNativeSdkSupervisorArchive(
+  paths: NativeProjectPaths,
+  file: string,
+  name: string,
+) {
+  const source = await readPortableSource(paths.projectRoot, file);
+  if (!hasNativeManagedRunMarkerText(source)) return;
+  const data = parseNativeStateDocument(source, 'Native state file') as Record<string, unknown>;
+  const saved = readPortableRunCheckpoint(data[PORTABLE_RUN_CHECKPOINT_KEY], name, {
+    preserveSourceRevision: true,
+  });
+  if (!saved) return;
+  const actionStatus = new Map(saved.actions.map((action) => [action.stepId, action.status]));
+  if (
+    data.application_checkpoint != null ||
+    saved.status !== 'completed' ||
+    !['archive.prepare', 'archive.execute', 'archive.finalize', 'supervisor.cleanup'].every(
+      (stepId) => actionStatus.get(stepId) === 'succeeded',
+    ) ||
+    (await readNativeSdkRunRecord(paths.projectRoot, name))
+  )
+    return null;
+
+  const state = validatePortableNativeRun(paths, data, saved, true);
+  const { definition, run } = await upgradeBuiltinNativeCheckpoint(saved, name);
+  await createRuntime({
+    ...definition,
+    workflows: [definition.workflow],
+    transitionHandlers: [definition.transitionHandler],
+    store: { read: async () => run, compareAndSwap: async () => false },
+  }).inspect(name);
+  const receipt = await validateNativeSdkArchiveReceipt(
+    { paths, state, runId: name, archiveRef: path.basename(path.dirname(file)) },
+    data.archive_receipt,
+  );
+  const applied = run.outputs['archive.execute']?.value as Record<string, unknown> | undefined;
+  if (
+    state.phase !== 'archive' ||
+    state.status !== 'done' ||
+    state.loop.stage !== 'done' ||
+    applied?.archiveRef !== receipt.archiveRef ||
+    applied.transactionId !== receipt.transactionId ||
+    !isDeepStrictEqual(run.outputs['archive.finalize']?.value, receipt)
+  )
+    throw new Error('Native SDK Archive receipt does not match its completed Run');
+  return {
+    run,
+    state,
+    artifactRootRef: paths.artifactRootRef,
+    application: null,
+    archiveRef: path.relative(paths.projectRoot, file).replaceAll('\\', '/'),
+  };
+}
 export async function writeNativeManagedRunState(
   file: string,
   state: NativePortableState,
@@ -316,17 +423,6 @@ export function createNativeSdkStateStore(
   function parseProjection(_file: string, source: string): Record<string, unknown> {
     return parseNativeStateDocument(source, 'Native portable state') as Record<string, unknown>;
   }
-  async function readPortableSource(file: string): Promise<string> {
-    // 既有 portable 读取不设大小上限；保留完整内容并在恢复与普通读取中校验路径竞态。
-    return (
-      await readProtectedProjectFile(
-        projectRoot,
-        path.relative(projectRoot, file),
-        Number.MAX_SAFE_INTEGER,
-        { label: 'Native portable state' },
-      )
-    ).bytes.toString('utf8');
-  }
   async function recoverFromPortableFile(
     runId: string,
     interrupted?: WorkflowRun,
@@ -343,13 +439,13 @@ export function createNativeSdkStateStore(
     let file = activeFile;
     let source: string;
     try {
-      source = await readPortableSource(file);
+      source = await readPortableSource(projectRoot, file);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       const archivedFile = await findNativeSdkArchivedStateFile(paths, runId);
       if (!archivedFile) return null;
       file = archivedFile;
-      source = await readPortableSource(file);
+      source = await readPortableSource(projectRoot, file);
     }
     if (!hasNativeManagedRunMarkerText(source)) return null;
     const data = parseNativeStateDocument(source, 'Native state file') as Record<string, unknown>;
@@ -357,36 +453,14 @@ export function createNativeSdkStateStore(
       preserveSourceRevision: true,
     });
     if (!saved) return null;
-    if (
-      hashRuntimeValue((data.application_checkpoint ?? null) as never) !==
-      hashRuntimeValue((options.identity ?? null) as never)
-    ) {
-      throw new Error('Native portable checkpoint requires its original fixed Application package');
-    }
-    const state = parseNativePortableState(data);
-    const input = saved.input as {
-      name?: unknown;
-      artifactRootRef?: unknown;
-    } | null;
-    if (
-      !sameState(parseNativePortableState(saved.state), state) ||
-      input?.name !== runId ||
-      input.artifactRootRef !== paths.artifactRootRef ||
-      saved.workflow.id !== 'comet-native' ||
-      (file !== activeFile && !state.archived)
-    ) {
-      throw new Error(`Native portable Run checkpoint for ${runId} does not match its state`);
-    }
-    if (!options.identity) {
-      const [{ nativeSdkApplicationForRun }, { upgradeNativeRun }] = await Promise.all([
-        import('./native-sdk-application.js'),
-        import('./native-sdk-run-upgrade.js'),
-      ]);
-      if (options.rootRunId === runId && saved.lineage.length > 0)
-        throw new Error('Native Child Run must be restored through its original parent');
-      const definition = nativeSdkApplicationForRun(null);
-      upgradeNativeRun(saved, definition.workflow, definition.transitionHandler);
-    }
+    const state = validatePortableNativeRun(
+      paths,
+      data,
+      saved,
+      file !== activeFile,
+      options.identity,
+    );
+    if (!options.identity) await upgradeBuiltinNativeCheckpoint(saved, options.rootRunId);
     // 已取消 Run 只恢复原记录并封存，不会在新分支派发任务。
     if (
       !options.allowBranchRebind &&
@@ -469,7 +543,7 @@ export function createNativeSdkStateStore(
     }
     let source: string | null = null;
     try {
-      source = await readPortableSource(file);
+      source = await readPortableSource(projectRoot, file);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }

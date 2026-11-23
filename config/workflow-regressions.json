@@ -2,6 +2,44 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "native-586-merged-supervisor-archive-status",
+      "behavior": "按名称查询已合并的终态 Native Supervisor 归档时直接返回归档详情。",
+      "sources": ["https://github.com/rpamis/comet/issues/586"],
+      "coverageLevel": "public-cli",
+      "reproduction": "0.5.6 在含归档但没有本地 Run 的 checkout 中列出 archive/done；按名称调用 native status --details 返回 73。057 修复前的回归测试从合并后的 linked worktree 和独立 clone 复现相同结果。",
+      "expected": "归档收据与完成清理的 Run checkpoint 匹配时，status 返回 archive/done、归档路径和原 Run 的 completed 状态及详情。",
+      "forbidden": "要求恢复已经完成的 Run、写入本地 Run 或 owner，或将重复归档、身份冲突、损坏 checkpoint 和未完成清理识别为正常终态。",
+      "rootCause": "没有本地 owner 时，按名称查询会用工作区 Runtime 校验 checkpoint，并将有效终态也报告为需要恢复。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(merged-archive-inspection\\)$",
+          "requiredNames": [
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (merged-archive-inspection)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-586-merged-supervisor-archive-doctor",
+      "behavior": "按名称诊断已合并的终态 Native Supervisor 归档时报告 healthy。",
+      "sources": ["https://github.com/rpamis/comet/issues/586"],
+      "coverageLevel": "public-cli",
+      "reproduction": "0.5.6 和修复前的 057 在含归档但没有本地 Run 的 checkout 中均报告 healthy=false 和 runtime-recovery-required。",
+      "expected": "有效终态归档的只读 doctor 返回 healthy=true、repaired=false；缺失本地 Run 的非终态仍提示恢复。",
+      "forbidden": "为已完成归档建议修复、写入本地 Run 或 owner，或将重复归档、身份冲突、损坏 checkpoint 和未完成清理报告为健康。",
+      "rootCause": "没有本地 owner 时，doctor 只根据归档的受管标记报告 Run 丢失，未核对终态证据。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(merged-archive-inspection\\)$",
+          "requiredNames": [
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (merged-archive-inspection)"
+          ]
+        }
+      ]
+    },
+    {
       "id": "windows-npm-upgrade-with-running-comet-daemon",
       "behavior": "Windows 上，Comet 后台进程运行时，npm 可以替换全局安装目录。",
       "sources": ["report:2026-11-23-windows-npm-comet-ebusy"],
