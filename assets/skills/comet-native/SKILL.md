@@ -45,7 +45,7 @@ Both runtimes use the latest `continuation`; `--runner-input` and legacy Archive
 
 Read the section for the current action. Follow links within it only when their stated conditions apply; do not load the entire command reference or all references at once.
 
-- Shape: read and follow [clarification](reference/clarification.md#clarification), using Sequential or Batch steps according to project configuration. For large requests, follow its Supervisor decomposition and confirmation link before final confirmation.
+- Shape: read and follow [clarification](reference/clarification.md#clarification), using Sequential or Batch steps according to project configuration.
 - Before editing the brief, Specs, or `children.yaml`, or checking an acceptance report, read [formal artifacts](reference/artifacts.md#formal-artifacts). A file, attachment, link, or local path supplied as a requirements source requires [source-document full coverage](reference/artifacts.md#source-document-full-coverage). Material used only for debugging, evidence gathering, review, or implementation reference does not trigger this automatically.
 - Read the relevant part of [SDK Action protocol](reference/commands.md#sdk-action-claims-and-outcomes), [SDK Builder handoff](reference/commands.md#sdk-builder-handoff), or [SDK Verify protocol](reference/commands.md#sdk-verify-protocol) when needed fields are missing or the task uses an older SDK Run or fixed application.
 - Before first filling a Compat Runner template or returning through `returnAction`, read [filling command inputs](reference/commands.md#filling-command-inputs), then the applicable [Builder handoff](reference/commands.md#builder-handoff) or [Verify protocol](reference/commands.md#verify-protocol).
@@ -56,6 +56,8 @@ Read the section for the current action. Follow links within it only when their 
 ## Shape
 
 Investigate facts that can be established without the user. Ask only about decisions that change user-visible outcomes and cannot be inferred reliably. For simple requests, list unresolved questions and dependencies; maintain a decision tree only when several decisions affect one another. Before asking under `native.clarification_mode`, save this round's unresolved questions in the brief. Immediately copy confirmed conclusions into the relevant brief sections and complete target Specs. Keep unanswered parts `[blocking]`.
+
+While shaping a large request, assess it using [Supervisor decomposition and confirmation](reference/clarification.md#supervisor-decomposition-and-confirmation). When the work splits cleanly, recommend a Supervisor Change first and explain the main dependencies and who verifies each result.
 
 Record the user's explicitly requested file locations, required sections, and artifact formats in the brief constraints, and prepare those contents as requested. Do not move them to another file because of a default location in a template. During handoff and recovery, check artifacts against these confirmed constraints rather than retaining only the business examples.
 

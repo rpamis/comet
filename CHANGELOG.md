@@ -2,7 +2,7 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.5.7] - 2026-11-23
+## What's Changed [0.5.7] - 2026-11-24
 
 ### Added
 
@@ -13,6 +13,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **On-demand memory**: Native and Classic Skills guide Agents to look up relevant lessons while troubleshooting and save reusable fixes after verification. Agents can save individual lessons and explicit preferences directly. Routine completion uses a short command with the default learning status.
 - **Workflow resume**: A request naming the change can show the original worktree, pending decision, or claimed action directly. The Classic Dashboard shows the SDK Run's next step, including when a proposal is waiting for a decision.
 - **Native handoffs**: Ordinary Shape uses the task response for submission and confirmation. A continuing Agent session can retrieve newly applicable context and request a full snapshot when taking over or recovering lost context.
+- **Native Supervisor recommendations**: Shape recommends a Supervisor Change for large requests that can be split into independently verifiable work. The recommended coordination option is labeled Multi-session / Agent Teams to reflect the execution options available on each platform.
 - **Classic verification reports**: Enter check results once and let Verify fill the report's marked check section from the recorded results.
 
 ### Fixed

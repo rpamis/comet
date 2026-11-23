@@ -45,7 +45,7 @@ Native 在项目中保存需求和验收结论。先确认 change 的运行格�
 
 只读取当前动作对应的章节。章节中的链接写明了适用条件，满足条件时再读取链接内容；不一次加载整份命令参考或所有参考。
 
-- Shape：必须读取并执行[澄清](reference/clarification.md#澄清)，按项目配置选择 Sequential 或 Batch 的提问步骤。大型需求在最终确认前，必须按该节链接读取 Supervisor 拆分与确认要求。
+- Shape：必须读取并执行[澄清](reference/clarification.md#澄清)，按项目配置选择 Sequential 或 Batch 的提问步骤。
 - 编辑 brief/Spec/`children.yaml` 或核对验收报告前，必须读取[正式产物](reference/artifacts.md#正式产物)。文件、附件、链接或本地路径作为需求来源时，必须进入[源文档完整覆盖模式](reference/artifacts.md#源文档完整覆盖)；仅用于排错、取证、审查或实现参考的材料不自动触发。
 - 高层任务响应缺少所需字段，或使用旧 SDK、固定应用时，读取[平台 Action 协议](reference/commands.md#sdk-action-领取与回报)、[SDK Builder 交接](reference/commands.md#sdk-builder-交接)或[SDK Verify 协议](reference/commands.md#sdk-verify-协议)中当前需要的章节。
 - Compat 首次填写 Runner 模板或通过 `returnAction` 回传前，读取[填写命令输入](reference/commands.md#填写命令输入)，再按阶段读取[Builder 交接](reference/commands.md#builder-交接)或[Verify 协议](reference/commands.md#verify-协议)。
@@ -56,6 +56,8 @@ Native 在项目中保存需求和验收结论。先确认 change 的运行格�
 ## Shape
 
 Agent 先调查能够查明的事实，只询问会改变用户可见结果、又无法可靠推断的决定。简单问题列出未决项及其依赖关系；多个决定相互影响时才建立决策树。按 `native.clarification_mode` 提问前，先把本轮尚未解决的问题写入 brief。用户确认的结论立即同步到 brief 的相关章节和完整目标规格；未明确回答的部分保持 `[blocking]`。
+
+大型需求在形成方案时先按 [Supervisor 拆分与确认](reference/clarification.md#supervisor-拆分与确认)评估拆分。有合适的子任务划分时，把 Supervisor Change 作为首选方案向用户提出，说明主要依赖和验收责任。
 
 把用户明确指定的文件位置、必需章节和产物格式写入 brief 的约束，按原要求准备这些内容；不能因模板默认位置而改放其他文件。交接和恢复时以这些已确认约束核对产物，不能只保留业务示例。
 

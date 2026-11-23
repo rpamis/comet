@@ -28,7 +28,7 @@ Verify 回报默认停在用户接受结果。只有用户已明确委托“全�
 
 新 Run 的 Verify 通过后直接等待接受，报告由 Runtime 生成阅读视图。报告写入失败时按 warning 继续或重试 `next`，保留已保存的验收结论。接受后普通流程在 Archive 准备时核对候选和实际输入；候选变化必须重新处理。Supervisor 交付仍使用自己的执行步骤。
 
-普通 SDK Shape 按[任务结果回报](#任务结果回报)使用当前任务响应。当前 Run 返回 SDK 自有 Action 或需要 Supervisor 协调决定时，完成正式 brief 和完整目标 Spec 后按其 continuation 继续，直到出现待处理的 `shape.confirm` 或 `supervisor.shape.confirm`。向用户展示完整 Shape；Supervisor 还要展示 Child 计划，并让用户选择多会话或单会话推进。得到明确确认后，按当前 `continuation.commandAlternatives` 的状态版本和动作执行对应命令；Agent 判断目标、验收或授权发生实质变化时重新提案。之后一次 `next` 连续执行已获授权的 Runtime 内部 Action，遇到用户决定、Agent 任务、失败或未知结果时返回；查看返回的 `pendingActions` 处理全部待办，`pendingAction` 只表示其中第一项。对 `build.builder`、`verify.verifier`、`supervisor.child.builder`、`supervisor.child.verifier`、`supervisor.child.integration-repair` 和 `supervisor.parent.builder`，高层任务响应不可用时，按下文协议领取并回报各自的 Action。多个 Child 可以并行工作，集成 Action 与集成结果提交按 Run 顺序串行推进；提交后使用同次响应里的 Action、Wait 和状态。
+普通 SDK Shape 按[任务结果回报](#任务结果回报)使用当前任务响应。当前 Run 返回 SDK 自有 Action 或需要 Supervisor 协调决定时，完成正式 brief 和完整目标 Spec 后按其 continuation 继续，直到出现待处理的 `shape.confirm` 或 `supervisor.shape.confirm`。向用户展示完整 Shape。Supervisor 还要按[拆分与确认](clarification.md#supervisor-拆分与确认)展示 Child 计划，以及“多会话/Agent Teams”和“单会话推进”两种方式。得到明确确认后，按当前 `continuation.commandAlternatives` 的状态版本和动作执行对应命令；Agent 判断目标、验收或授权发生实质变化时重新提案。之后一次 `next` 连续执行已获授权的 Runtime 内部 Action，遇到用户决定、Agent 任务、失败或未知结果时返回；查看返回的 `pendingActions` 处理全部待办，`pendingAction` 只表示其中第一项。对 `build.builder`、`verify.verifier`、`supervisor.child.builder`、`supervisor.child.verifier`、`supervisor.child.integration-repair` 和 `supervisor.parent.builder`，高层任务响应不可用时，按下文协议领取并回报各自的 Action。多个 Child 可以并行工作，集成 Action 与集成结果提交按 Run 顺序串行推进；提交后使用同次响应里的 Action、Wait 和状态。
 
 Supervisor Child 的 Verifier 明确判定失败时，在原 Child worktree 修复并提交新的候选，再提交平台检查与验收结果。结果未知时先核对原平台任务。Git 集成冲突或中断沿同一 Action 和原现场恢复，不把未知结果当作失败后重放合并；Runtime 继续核对实际提交、分支和祖先关系。
 
@@ -233,7 +233,7 @@ Runtime 为每个子任务返回 worktree、集成分支的当前提交、角色
 
 子任务不单独执行 Archive；原先通过 `finish=merge` 完成的合入步骤现由 Runtime 负责。只有经过 `active → verified → integrated`，且所选集成检查通过，才算完成集成。执行任务的 Agent 声称完成，或 worktree 中仍有未提交修改，都不能证明已经集成。
 
-选择多会话协作时，当前会话只负责分配任务、检查进度、处理阻塞、集成和 Supervisor 主任务的最终 Verify，不直接实现子任务。需要修改文件的子任务，只能使用 Runtime 为它创建的 worktree。不得为同一子任务另建 worktree，也不得写入 Supervisor 主任务或其他子任务的 worktree。
+选择“多会话/Agent Teams”时，当前会话只负责分配任务、检查进度、处理阻塞、集成和 Supervisor 主任务的最终 Verify，不直接实现子任务。需要修改文件的子任务，只能使用 Runtime 为它创建的 worktree。不得为同一子任务另建 worktree，也不得写入 Supervisor 主任务或其他子任务的 worktree。
 
 分配任务时必须说明子任务角色、任务包、worktree、基线提交、`runId`、验收项的编号与引用、依赖关系和停止条件，并明确结果返回主 Agent，由主 Agent 顺序提交。主 Agent 使用实际接收者的会话身份领取，保留原 Action、领取身份和结果模板；子任务只写自己的 worktree，不直接推进父 Run。只启动 `readyChildren` 中列出的任务；不得让独立会话中的 Agent 或团队成员自行领取尚未满足启动条件的子任务。执行期间持续查看各会话的进度。发现实现偏离需求、权限或环境阻塞、需求范围不明确，或出现会改变用户可见结果的新决定时，立即反馈并处理，不等全部任务结束后再检查。
 

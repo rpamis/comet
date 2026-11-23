@@ -545,11 +545,12 @@ describe('Comet Native Skills', () => {
       {
         language: 'zh' as const,
         required: [
-          '检查是否需要由 Supervisor Change 统筹多个子任务',
+          '主动把 Supervisor Change 作为首选方案推荐给用户',
           '可独立实现和验证',
+          '集成验收由父级负责',
           '最终 Shape 确认',
           '确认前不得创建子 change',
-          '多会话协作（推荐）',
+          '多会话/Agent Teams（推荐）',
           '单会话推进',
           '自动改用 subagent',
           '不再询问推进方式',
@@ -562,11 +563,12 @@ describe('Comet Native Skills', () => {
       {
         language: 'en' as const,
         required: [
-          'decomposition preflight',
+          'proactively recommend a Supervisor Change as the first option',
           'implemented and verified independently',
+          'Leave cross-child integration criteria with the parent',
           'final Shape confirmation',
           'Before confirmation, do not create child changes',
-          'Multi-session coordination (recommended)',
+          'Multi-session / Agent Teams (recommended)',
           'Single-session progression',
           'automatically switch to a subagent',
           'do not ask for the coordination mode again',
@@ -712,7 +714,8 @@ describe('Comet Native Skills', () => {
     expect(table).toHaveLength(4);
     expect(table.every((row) => row.length === 3)).toBe(true);
     expect(table.slice(2).map((row) => row[0])).toEqual(['A', 'B']);
-    expect(table[2][1]).toContain('多会话协作');
+    expect(table[2][1]).toBe('多会话/Agent Teams（推荐）');
+    expect(table[2][2]).toContain('Agent Teams');
     expect(table[2][2]).toContain('自动改用 subagent');
     expect(table[3][1]).toContain('单会话推进');
     expect(table[3][2]).toContain('由当前会话依次处理');
@@ -738,6 +741,8 @@ describe('Comet Native Skills', () => {
     expect(enRows).toHaveLength(4);
     expect(enRows.every((row) => row.length === 3)).toBe(true);
     expect(enRows.slice(2).map((row) => row[0])).toEqual(['A', 'B']);
+    expect(enRows[2][1]).toBe('Multi-session / Agent Teams (recommended)');
+    expect(enRows[2][2]).toContain('Agent Team members');
     expect(enRows[2][2]).toContain('automatically switch to a subagent');
     expect(enRows[3][2]).toContain('current session handles all children sequentially');
     expect(enSupervisor).toContain('show both A and B');
