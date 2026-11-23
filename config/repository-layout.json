@@ -516,6 +516,7 @@
       "domains/comet-native/native-sdk-continuation.ts",
       "domains/comet-native/native-sdk-supervisor-plan.ts",
       "domains/comet-native/native-sdk-state-store.ts",
+      "domains/comet-native/native-state-document.ts",
       "domains/comet-native/native-supervisor-state.ts",
       "domains/comet-native/native-sdk-status.ts",
       "domains/comet-native/native-sdk-cancellation.ts",

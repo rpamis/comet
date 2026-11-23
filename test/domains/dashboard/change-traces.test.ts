@@ -13,9 +13,16 @@ import {
 } from '../../../platform/process/runtime-trace.js';
 import {
   createFileRuntimeStore,
+  createMemoryRuntimeStore,
   createRuntime,
   type WorkflowRun,
 } from '../../../domains/engine/runtime.js';
+import {
+  defaultProjectConfig,
+  writeProjectConfig,
+} from '../../../domains/comet-native/native-config.js';
+import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
+import { writeNativeManagedRunState } from '../../../domains/comet-native/native-sdk-state-store.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { startDashboardServer } from '../../../domains/dashboard/server.js';
 
@@ -144,6 +151,131 @@ describe('Change trace observation', () => {
     );
     expect(await fs.readdir(root)).toEqual(before);
   });
+  it('lists Changes beyond the first hundred traces and retrieves their scoped records', async () => {
+    const root = { parentSpanId: null, kind: 'workflow' } as const;
+    await recordRuntimeTraceSpans(project, [
+      ...Array.from({ length: 101 }, (_, index) =>
+        span('root', 20, 30, { ...root, traceId: `recent-${index}`, change: 'recent' }),
+      ),
+      span('root', 0, 10, { ...root, traceId: 'older', change: 'older', updatedAt: at(500) }),
+    ]);
+    const server = await startDashboardServer({ projectPath: project, port: 0 });
+    try {
+      const base = `http://127.0.0.1:${server.port}/api/dashboard/projects`;
+      const projects = await (await fetch(base)).json();
+      const url = `${base}/${projects.currentProjectId}/change-traces`;
+      const all = await (await fetch(url)).json();
+      expect(all.traces).toHaveLength(100);
+      expect(all.traces.every((trace: { change: string }) => trace.change === 'recent')).toBe(true);
+      expect(all.changes).toEqual(['native:recent', 'native:older']);
+
+      const selected = await (await fetch(`${url}?change=native%3Aolder`)).json();
+      expect(selected.changes).toEqual(all.changes);
+      expect(selected.traces).toEqual([expect.objectContaining({ traceId: 'older' })]);
+      expect(selected.truncated).toBe(false);
+
+      const range = new URLSearchParams({ change: 'native:older', from: at(20), to: at(100) });
+      const outsideRange = await (await fetch(`${url}?${range}`)).json();
+      expect(outsideRange.changes).toEqual(['native:recent']);
+      expect(outsideRange.traces).toEqual([]);
+      const otherWorkflow = await (
+        await fetch(`${url}?workflow=classic&change=native%3Aolder`)
+      ).json();
+      expect(otherWorkflow.changes).toEqual([]);
+      expect(otherWorkflow.traces).toEqual([]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('includes a copied Native archive checkpoint in all-time Change traces without restoring its Run', async () => {
+    await writeProjectConfig(project, defaultProjectConfig('docs', 'en'));
+    const name = 'archived-supervisor';
+    const archiveRef = '2026-11-23-' + name;
+    const nativeRoot = path.join(project, 'docs', 'comet');
+    const archiveDirectory = path.join(nativeRoot, 'archive', archiveRef);
+    await fs.mkdir(archiveDirectory, { recursive: true });
+    const initial = createNativePortableState({ name, language: 'en' });
+    const state = {
+      ...initial,
+      phase: 'archive',
+      status: 'done',
+      archived: true,
+      loop: { ...initial.loop, stage: 'done' },
+    } as const;
+    const workflow = { id: 'comet-native', version: '1' };
+    const runtime = createRuntime({
+      store: createMemoryRuntimeStore<WorkflowRun>(),
+      workflows: [
+        {
+          ...workflow,
+          entry: 'archive',
+          steps: { archive: { type: 'call_tool', ref: 'archive' } },
+        },
+      ],
+    });
+    const initialRun = await runtime.start({
+      runId: name,
+      workflow,
+      input: { name, artifactRootRef: 'docs' },
+      initialState: state,
+    });
+    const action = initialRun.actions[0];
+    const actionIdentity = {
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      claimToken: 'archive-claim',
+    };
+    await runtime.claim({ runId: name, executorId: 'host', ...actionIdentity });
+    const run = await runtime.recordOutcome({
+      runId: name,
+      outcome: { ...actionIdentity, outcomeId: 'archived', status: 'succeeded', output: null },
+    });
+    const stateFile = path.join(archiveDirectory, 'comet-state.yaml');
+    const receipt = {
+      runId: name,
+      change: name,
+      archiveRef,
+      transactionId: 'archive-test',
+      stateVersion: state.state_version,
+      specs: [],
+    };
+    await writeNativeManagedRunState(stateFile, state, nativeRoot, run, receipt);
+
+    const traceId = 'workflow:native:' + name;
+    const index = await collectChangeTraceIndex(project);
+    expect(index.changes).toEqual(['native:' + name]);
+    expect(index.traces).toEqual([
+      expect.objectContaining({ traceId, snapshot: true, startedAt: null, endedAt: null }),
+    ]);
+    const detail = await collectChangeTrace(project, traceId);
+    expect(detail).toMatchObject({
+      snapshot: true,
+      nodes: expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'action',
+          name: 'archive',
+          status: 'succeeded',
+          timing: 'unknown',
+        }),
+      ]),
+    });
+    expect(
+      (await collectChangeTraceIndex(project, 'native', { from: at(0), to: at(1000) })).changes,
+    ).toEqual([]);
+    await expect(fs.stat(resolveWorkspaceRuntimeRootSync(project))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+
+    await writeNativeManagedRunState(stateFile, state, nativeRoot, run, {
+      ...receipt,
+      runId: 'different-run',
+    });
+    expect(await collectChangeTraceIndex(project)).toMatchObject({ changes: [], unreadable: 1 });
+    expect(await collectChangeTrace(project, traceId)).toBeNull();
+  });
+
   it('serves only project-scoped GET/HEAD reads and rejects missing identities and mutations', async () => {
     const server = await startDashboardServer({ projectPath: project, port: 0 });
     try {

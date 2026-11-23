@@ -82,6 +82,109 @@
       ]
     },
     {
+      "id": "dashboard-all-time-native-archive-checkpoint-traces",
+      "behavior": "Change 链路的全部时间范围展示项目中已完成的 Native Archive checkpoint。",
+      "sources": ["report:2026-11-23-dashboard-aevomi-change-traces"],
+      "coverageLevel": "runtime",
+      "reproduction": "Aevomi 主工作区的归档已保存独立 Change 和四个 Supervisor 的 Run checkpoint，但本地运行库只有三个 Run。旧链路会遗漏仅随项目归档保留的两个 Supervisor。",
+      "expected": "全部时间可打开有效归档的链路结构和结果，保留已采集的本地链路，归档快照的开始时间和耗时显示为未知。",
+      "forbidden": "忽略有效的归档 checkpoint、展示身份不匹配的归档、把未知时间造为实测时间，或在只读观察时恢复本地 Run。",
+      "rootCause": "历史链路仅从当前工作区 SQLite 和 SDK Run Store 收集，没有读取项目归档中的正式 Run checkpoint。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/change-traces.test.ts",
+          "namePattern": "^Change trace observation includes a copied Native archive checkpoint in all-time Change traces without restoring its Run$",
+          "requiredNames": [
+            "Change trace observation includes a copied Native archive checkpoint in all-time Change traces without restoring its Run"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard-change-trace-selector-beyond-record-limit",
+      "behavior": "Change 链路可选择当前范围内排在最近 100 条执行记录之外的 Change。",
+      "sources": ["report:2026-11-23-dashboard-aevomi-change-traces"],
+      "coverageLevel": "runtime",
+      "reproduction": "在 Aevomi 主工作区读取全部时间的链路：本地有 3 个 Change 的 200 条执行记录，最近 100 条只包含 2 个 Change，旧下拉框遗漏 aevomi-platform。",
+      "expected": "在现有可读索引里生成 Change 选项，选择某个 Change 后可读取其记录，时间与工作流范围继续生效。",
+      "forbidden": "让未出现在第一页的 Change 无法选择，或返回该 Change 在当前时间和工作流范围之外的记录。",
+      "rootCause": "前端从后端已截断的执行记录推导下拉选项，且后端不支持在截断前按 Change 筛选。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/change-traces.test.ts",
+          "namePattern": "^Change trace observation lists Changes beyond the first hundred traces and retrieves their scoped records$",
+          "requiredNames": [
+            "Change trace observation lists Changes beyond the first hundred traces and retrieves their scoped records"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "browser",
+          "status": "verified",
+          "evidence": [
+            "test/domains/dashboard/dashboard-browser.spec.ts: opens a Change whose traces are outside the first page of execution records"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard-eval-list-loading-skeleton",
+      "behavior": "Eval 切换筛选或首次读取记录时，在当前结果就绪前显示骨架。",
+      "sources": ["report:2026-11-23-dashboard-eval-list-flicker"],
+      "coverageLevel": "unit",
+      "reproduction": "在 057 的 Dashboard 切换 Eval 筛选，延迟新请求并先返回一页仍在索引的空结果。旧页面保留上一筛选的行，随后短暂显示蓝色同步条和空表格。",
+      "expected": "显示骨架直到当前筛选的结果可以渲染，再显示真实记录或空状态。",
+      "forbidden": "显示上一筛选的记录、空表格或 0 / 0 的同步提示作为加载状态。",
+      "rootCause": "加载状态未绑定当前列表请求，索引响应则无条件在表格上方渲染同步提示。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/eval-list-loading.test.ts",
+          "namePattern": "^Eval list loading holds the list in a skeleton until the selected results are ready$",
+          "requiredNames": [
+            "Eval list loading holds the list in a skeleton until the selected results are ready"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "browser",
+          "status": "verified",
+          "evidence": [
+            "test/domains/dashboard/dashboard-eval-browser.spec.ts: shows a skeleton across Eval filter changes until indexed results are ready"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard-eval-indexing-keeps-table-position",
+      "behavior": "Eval 在后台索引已有部分结果时，表格保持原位。",
+      "sources": ["report:2026-11-23-dashboard-eval-list-flicker"],
+      "coverageLevel": "unit",
+      "reproduction": "在 057 的浏览器隔离数据中先返回带列表项的索引响应，再返回索引完成。旧实现撤掉表格上方的蓝条时，表格向上移动。",
+      "expected": "已有结果保持可读，索引进度可由辅助技术读取，表格位置在同步结束前后相同。",
+      "forbidden": "为后台同步插入会移动表格的提示行，或用骨架覆盖已有结果。",
+      "rootCause": "同步进度占用文档中的独立提示行，索引完成时移除该行。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/eval-list-loading.test.ts",
+          "namePattern": "^Eval list loading keeps available results while reporting real indexing progress$",
+          "requiredNames": [
+            "Eval list loading keeps available results while reporting real indexing progress"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "browser",
+          "status": "verified",
+          "evidence": [
+            "test/domains/dashboard/dashboard-eval-browser.spec.ts: keeps partial Eval results in place while the list finishes indexing"
+          ]
+        }
+      ]
+    },
+    {
       "id": "windows-npm-upgrade-with-running-comet-daemon",
       "behavior": "Windows 上，Comet 后台进程运行时，npm 可以替换全局安装目录。",
       "sources": ["report:2026-11-23-windows-npm-comet-ebusy"],

@@ -855,6 +855,49 @@ test('explores a change trace tree, retries and filters without writing, includi
   expect(writes).toEqual([]);
 });
 
+test('opens a Change whose traces are outside the first page of execution records', async ({
+  page,
+}) => {
+  const { DEMO_PLUGIN_PAGES } = await import('../../../domains/dashboard/web/demo.js');
+  const { DEMO_CHANGE_TRACE_INDEX, DEMO_CHANGE_TRACES } =
+    await import('../../../domains/dashboard/web/src/change-trace-demo.js');
+  const [latest] = DEMO_CHANGE_TRACE_INDEX.traces;
+  const older = { ...latest, change: 'older-change', traceId: 'older-trace' };
+  const changes = [`${latest.workflow}:${latest.change}`, `${older.workflow}:${older.change}`];
+  const requests: Array<string | null> = [];
+  await stubContextPages(page, (id) => DEMO_PLUGIN_PAGES.find((entry) => entry.pluginId === id));
+  await page.route('**/change-traces?*', (route) => {
+    const change = new URL(route.request().url()).searchParams.get('change');
+    requests.push(change);
+    return route.fulfill({
+      json: {
+        ...DEMO_CHANGE_TRACE_INDEX,
+        traces: change === changes[1] ? [older] : [latest],
+        changes,
+        truncated: change === null,
+      },
+    });
+  });
+  await page.route('**/change-trace?*', (route) =>
+    route.fulfill({ json: DEMO_CHANGE_TRACES[latest.traceId] }),
+  );
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: '可观测' }).click();
+  await page.getByRole('tab', { name: 'Change 链路', exact: true }).click();
+  const panel = page.getByRole('region', { name: 'Change 链路', exact: true });
+  const records = panel.getByRole('complementary', { name: 'Change 执行记录' });
+  await expect(records).toContainText(latest.change);
+  await expect(records).not.toContainText(older.change);
+  await panel.getByRole('combobox', { name: '选择 Change' }).click();
+  await page
+    .locator('.ant-select-dropdown:visible .ant-select-item-option')
+    .filter({ hasText: older.change })
+    .click();
+  await expect(records).toContainText(older.change);
+  await expect(records).not.toContainText(latest.change);
+  expect(requests).toContain(changes[1]);
+});
+
 test('retains the selected trace node and cached data during a failed refresh', async ({
   page,
 }) => {
