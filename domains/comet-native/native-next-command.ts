@@ -12,7 +12,8 @@ import {
   type DispatchResult,
 } from './native-cli-shared.js';
 import { readProjectConfig } from './native-config.js';
-import { isNativePortableChange } from './native-portable-storage.js';
+import { NativeAcceptanceInputError } from './native-portable-acceptance.js';
+import { isNativePortableChange, nativePortableChangeDir } from './native-portable-storage.js';
 import type {
   NativePortableExpectedContinuation,
   NativePortableExpectedContinuationAction,
@@ -22,6 +23,7 @@ import {
   type NativeSupervisorCoordinationMode,
 } from './native-portable-types.js';
 import { resolveNativeChangeRuntimeOwner } from './native-runtime-ownership.js';
+import { nativeRecoveryCommand, type NativeRecovery } from './native-recovery.js';
 import { advanceNativeSdkChange } from './native-sdk-next.js';
 import { advanceNativeSdkTask } from './native-sdk-task-command.js';
 import type { NativeWorkspaceFinish } from './native-workspace.js';
@@ -63,6 +65,44 @@ export async function nativeNextCommand(
   projectRoot: string,
 ): Promise<DispatchResult> {
   const originalArgs = [...args];
+  try {
+    return await advanceNativeNext(args, projectRoot, originalArgs);
+  } catch (error) {
+    if (!(error instanceof NativeAcceptanceInputError)) throw error;
+    const name = originalArgs[0];
+    const { paths } = await configuredPaths(projectRoot, name);
+    const affectedPath = path.join(nativePortableChangeDir(paths, name), error.source);
+    const recovery: NativeRecovery = {
+      schema: 'comet.native.recovery.v1',
+      code: 'acceptance-input-invalid',
+      reason: error.message,
+      affectedPaths: [affectedPath],
+      owner: null,
+      diagnosticArgs: [],
+      recoveryArgs: nativeRecoveryCommand(
+        originalArgs.includes('--confirmed')
+          ? ['comet', 'native', 'next', name]
+          : ['comet', 'native', 'next', ...originalArgs],
+        paths.projectRoot,
+      ),
+      preconditions: [`Correct the acceptance criteria in ${affectedPath}.`],
+      preserved: { candidateId: null, shapeConfirmationHash: null },
+    };
+    return {
+      command: 'next',
+      exitCode: 65,
+      executionCwd: paths.projectRoot,
+      data: { recovery },
+      error: { code: 'invalid-data', message: error.message },
+    };
+  }
+}
+
+async function advanceNativeNext(
+  args: string[],
+  projectRoot: string,
+  originalArgs: string[],
+): Promise<DispatchResult> {
   const name = requiredPositional(args, 'change name');
   const resultFile = takeOption(args, '--result');
   const sessionId = takeOption(args, '--session');
@@ -179,7 +219,7 @@ export async function nativeNextCommand(
     async function executeSdk(operation: () => Promise<DispatchResult>): Promise<DispatchResult> {
       if (await readNativeBuildWorkspace(projectRoot, name)) {
         const target = await prepareNativeBuildWorkspace(projectRoot, name);
-        if (resultFile !== undefined)
+        if (resultFile !== undefined && resultFile !== '-')
           originalArgs[originalArgs.indexOf('--result') + 1] = path.resolve(
             projectRoot,
             resultFile,

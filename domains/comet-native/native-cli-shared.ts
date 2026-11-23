@@ -252,14 +252,17 @@ export async function readBoundedEvidenceFile(filePath: string, maxBytes: number
   }
 }
 
-export async function readBoundedEvidenceStdin(maxBytes: number): Promise<string> {
+export async function readBoundedEvidenceStdin(
+  maxBytes: number,
+  label = 'Acceptance evidence entries',
+): Promise<string> {
   const chunks: Buffer[] = [];
   let total = 0;
   for await (const chunk of process.stdin) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
     total += buffer.byteLength;
     if (total > maxBytes) {
-      throw new Error(`Acceptance evidence entries on stdin exceed ${maxBytes} bytes`);
+      throw new Error(`${label} on stdin exceed ${maxBytes} bytes`);
     }
     chunks.push(buffer);
   }

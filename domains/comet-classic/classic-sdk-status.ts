@@ -1,5 +1,6 @@
 import { upgradeClassicRun } from './classic-sdk-run-upgrade.js';
 export { inspectClassicSdkRunDiagnostics } from './classic-sdk-diagnostics.js';
+export { hasClassicManagedRunMarker } from './classic-state.js';
 import { isClassicSdkApprovedUpgrade } from './classic-sdk-profile.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';

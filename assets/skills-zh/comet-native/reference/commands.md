@@ -8,7 +8,7 @@ Runtime 不再以 PID、进程创建身份或线程绑定决定恢复。进程�
 
 ### 任务结果回报
 
-新建内置 SDK 的普通任务与 Supervisor 任务用 `comet native next <change> --session <实际会话标识> --json` 领取。当前响应是 `comet.native.task-result.v1` 时直接使用 `task`、`resultTemplate` 和 `next.commandArgs`；`--details` 才附带完整 SDK 状态。结果文件只保存实际 `status`、`output` 和需要的业务结果字段，命令中的 `--action` 绑定原任务，`--session` 绑定实际领取者。结果文件放在临时目录；没有 Git 跟踪信息时放在项目之外，避免它成为候选输入。
+新建内置 SDK 的普通任务与 Supervisor 任务用 `comet native next <change> --session <实际会话标识> --json` 领取。当前响应是 `comet.native.task-result.v1` 时直接使用 `task`、`resultTemplate` 和 `next.commandArgs`；`--details` 才附带完整 SDK 状态。按模板填写实际 `status`、`output` 和需要的业务字段。有标准输入时改用 `--result -`，传入一个 UTF-8 JSON 对象。使用文件时以项目外的临时路径替换占位符。保留命令中绑定原任务的 `--action` 和绑定实际领取者的 `--session`。
 
 `shape.prepare` 任务由 Agent 从正式文档整理验收项，按 `resultTemplate` 提交 `output.acceptance`，每项填写实际 `source` 与 `text`。来源使用 brief 或已声明的目标 Spec；CLI 分配稳定验收 ID。自由格式文档无需补固定章节，提交后仍须展示完整方案并取得用户确认。
 
@@ -28,7 +28,7 @@ Verify 回报默认停在用户接受结果。只有用户已明确委托“全�
 
 新 Run 的 Verify 通过后直接等待接受，报告由 Runtime 生成阅读视图。报告写入失败时按 warning 继续或重试 `next`，保留已保存的验收结论。接受后普通流程在 Archive 准备时核对候选和实际输入；候选变化必须重新处理。Supervisor 交付仍使用自己的执行步骤。
 
-完成正式 brief 和完整目标 Spec 后，运行 `comet native next <change> --json`，直到 `run.waits` 出现待处理的 `shape.confirm` 或 `supervisor.shape.confirm`。向用户展示完整 Shape；Supervisor 还要展示 Child 计划，并让用户选择多会话或单会话推进。得到明确确认后，按当前 `continuation.commandAlternatives` 的状态版本和动作执行对应命令；Agent 判断目标、验收或授权发生实质变化时重新提案。之后一次 `next` 连续执行已获授权的 Runtime 内部 Action，遇到用户决定、Agent 任务、失败或未知结果时返回；查看返回的 `pendingActions` 处理全部待办，`pendingAction` 只表示其中第一项。对 `build.builder`、`verify.verifier`、`supervisor.child.builder`、`supervisor.child.verifier`、`supervisor.child.integration-repair` 和 `supervisor.parent.builder`，按下文协议领取并回报各自的 Action；多个 Child 可以并行工作，但集成 Action 与集成结果提交按 Run 顺序串行推进。每次提交后重新读取 Action、Wait 和状态。
+普通 SDK Shape 按[任务结果回报](#任务结果回报)使用当前任务响应。当前 Run 返回 SDK 自有 Action 或需要 Supervisor 协调决定时，完成正式 brief 和完整目标 Spec 后按其 continuation 继续，直到出现待处理的 `shape.confirm` 或 `supervisor.shape.confirm`。向用户展示完整 Shape；Supervisor 还要展示 Child 计划，并让用户选择多会话或单会话推进。得到明确确认后，按当前 `continuation.commandAlternatives` 的状态版本和动作执行对应命令；Agent 判断目标、验收或授权发生实质变化时重新提案。之后一次 `next` 连续执行已获授权的 Runtime 内部 Action，遇到用户决定、Agent 任务、失败或未知结果时返回；查看返回的 `pendingActions` 处理全部待办，`pendingAction` 只表示其中第一项。对 `build.builder`、`verify.verifier`、`supervisor.child.builder`、`supervisor.child.verifier`、`supervisor.child.integration-repair` 和 `supervisor.parent.builder`，高层任务响应不可用时，按下文协议领取并回报各自的 Action。多个 Child 可以并行工作，集成 Action 与集成结果提交按 Run 顺序串行推进；提交后使用同次响应里的 Action、Wait 和状态。
 
 Supervisor Child 的 Verifier 明确判定失败时，在原 Child worktree 修复并提交新的候选，再提交平台检查与验收结果。结果未知时先核对原平台任务。Git 集成冲突或中断沿同一 Action 和原现场恢复，不把未知结果当作失败后重放合并；Runtime 继续核对实际提交、分支和祖先关系。
 
@@ -74,7 +74,7 @@ Builder 已部分执行且原 Action 已提交 `failed` 时，保留工作区和
 
 没有自动交付时，进入 change 工作区并取得当前 `phase` 后，优先执行当前任务包的 `contextRequest`（包括 Compat 的 `supervisorTask.contextRequest`）；没有任务专属请求时使用 `continuation.contextRequest`。SDK 的 Builder、Verifier 和子任务使用对应 `pendingActions[]` 或 `activeActions[]` 中的 `contextRequest`，由接收方在领取成功后执行。命令中的任务填用户原始请求，会话填接收 Agent 自己的稳定标识；原始请求缺失时先从当前 brief 恢复目标。
 
-首次进入阶段、交接给新 Agent、上下文压缩或新会话恢复后，各执行一次完整读取。旧响应没有 `contextRequest` 时使用：
+同一会话仍保留已交付的内容时，阶段、路径或操作变化只取新增适用项，将命令模板改为 `--context-mode incremental`。首次交付给本会话、换 Agent 或上下文丢失时使用 `--context-mode snapshot`。旧响应没有 `contextRequest` 时可用下列命令，按实际情况选择模式：
 
 ```text
 comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --session "<接收 Agent 的稳定标识>" --context-mode snapshot --json

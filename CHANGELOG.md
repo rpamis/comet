@@ -4,13 +4,21 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ## What's Changed [0.5.7] - 2026-11-23
 
+### Added
+
+- **Workflow CLI shortcuts**: Submit a Native task result directly from standard input with `--result -`. Use `comet state init --select` to initialize and select a Classic change in one call.
+
 ### Changed
 
 - **On-demand memory**: Native and Classic Skills guide Agents to look up relevant lessons while troubleshooting and save reusable fixes after verification. Single lessons and explicit preferences can be saved directly, and routine completion uses the default learning status.
+- **Workflow resume**: A request naming the change can show the original worktree, pending decision, or claimed action directly. The Classic Dashboard shows the SDK Run's next step, including when a proposal is waiting for a decision.
+- **Native handoffs**: Ordinary Shape uses the task response for submission and confirmation. A continuing Agent session can retrieve newly applicable context and request a full snapshot when taking over or recovering lost context.
+- **Classic verification reports**: Enter check results once and let Verify fill the report's marked check section from the recorded results.
 
 ### Fixed
 
 - **Durable project lessons**: Keep project memory and knowledge available after source edits. Expanded lessons show source references and identify files missing from the current worktree. Looking up a lesson no longer retires it in other worktrees ([#584](https://github.com/rpamis/comet/issues/584)).
+- **Actionable CLI guidance**: Native Shape acceptance errors point to the input to correct and the command to retry. Classic's top-level help describes `comet check` as platform guidance.
 
 ## What's Changed [0.5.6] - 2026-11-20
 

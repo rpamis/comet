@@ -2,6 +2,116 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "native-resume-returns-pending-decision",
+      "behavior": "指定唯一 Native 需求恢复时，可直接识别原 Run 的待确认问题。",
+      "sources": ["report:2026-11-23-comet-workflow-guidance-review"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 c4aa7f91 的临时项目领取并提交 Native Shape，保持待用户决定。公开 resume-probe 只返回 /comet-native，status 文本只显示 await-user。",
+      "expected": "返回同一工作区、Run、待确认步骤和 Runtime 问题，status 文本提示同一决定。",
+      "forbidden": "将确认命令作为待执行动作，或在未指定目标的恢复请求中交付继续指引，或修改原 Run。",
+      "rootCause": "恢复输出只选择 Skill，状态文本只显示命令，没有呈现 Runtime 已有的用户决定。",
+      "tests": [
+        {
+          "file": "test/app/workflow-resume-guidance.test.ts",
+          "namePattern": "^resumes a Native change with the original pending user decision$",
+          "requiredNames": ["resumes a Native change with the original pending user decision"]
+        }
+      ]
+    },
+    {
+      "id": "native-resume-identifies-claimed-action",
+      "behavior": "Native 恢复能识别已领取动作并提示核对原执行。",
+      "sources": ["report:2026-11-23-comet-workflow-guidance-review"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 c4aa7f91 的临时项目通过 native next 领取 Shape，然后在另一次 CLI 调用中指名恢复。旧输出只有 Skill 和阶段。",
+      "expected": "返回原动作和工作区，说明需等待或核对原执行。",
+      "forbidden": "显示新的领取命令，或改变原 Run 的领取记录。",
+      "rootCause": "恢复探针读取了 Run，但没有投影其已领取动作和等待指引。",
+      "tests": [
+        {
+          "file": "test/app/workflow-resume-guidance.test.ts",
+          "namePattern": "^identifies the running Native Action for reconciliation without claiming it again$",
+          "requiredNames": [
+            "identifies the running Native Action for reconciliation without claiming it again"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-resume-returns-pending-sdk-decision",
+      "behavior": "Classic 恢复返回当前 SDK 提案的决策步骤和可选决定。",
+      "sources": ["report:2026-11-23-comet-workflow-guidance-review"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 c4aa7f91 的临时 Classic SDK 项目中批准隔离夹具 Open 并提交 Design 提案。resume-probe 仅返回 /comet-classic。",
+      "expected": "恢复输出返回原 Run、工作区、确认步骤和可选决定。",
+      "forbidden": "返回替用户批准的命令或修改待确认状态。",
+      "rootCause": "Classic 恢复发现阶段时没有携带已读 Run 的当前 Wait。",
+      "tests": [
+        {
+          "file": "test/app/workflow-resume-guidance.test.ts",
+          "namePattern": "^resumes Classic at the stored SDK decision and shows it in the Dashboard$",
+          "requiredNames": [
+            "resumes Classic at the stored SDK decision and shows it in the Dashboard"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-dashboard-shows-pending-sdk-decision",
+      "behavior": "Classic Dashboard 详情在 SDK 等待决定时显示明确的待确认建议。",
+      "sources": ["report:2026-11-23-comet-workflow-guidance-review"],
+      "coverageLevel": "runtime",
+      "reproduction": "在 c4aa7f91 用公开 CLI 提交 Classic Design 提案后收集 Dashboard 详情。旧详情使用 /comet-design；浏览器在无执行命令时只展示通用空提示。",
+      "expected": "详情使用当前 SDK Run 的决策状态，显示待用户确认。",
+      "forbidden": "继续把阶段 Skill 或通用无待办作为当前待确认决定的替代。",
+      "rootCause": "详情根据阶段和文档推导建议，页面在无命令时忽略具体原因。",
+      "tests": [
+        {
+          "file": "test/app/workflow-resume-guidance.test.ts",
+          "namePattern": "^resumes Classic at the stored SDK decision and shows it in the Dashboard$",
+          "requiredNames": [
+            "resumes Classic at the stored SDK decision and shows it in the Dashboard"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-shape-acceptance-input-retry",
+      "behavior": "Native 缺少 Shape 验收项时提示修正输入并重试原命令。",
+      "sources": ["report:2026-11-23-comet-workflow-guidance-review"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 c4aa7f91 新建 Native 需求并提交 Shape，保持 brief.md 的验收示例为空。错误正文要求补验收项，next 却指向 Doctor。",
+      "expected": "公开 CLI 和 next bundle 提供当前验收文档路径及原提交命令，补齐后可进入待确认。",
+      "forbidden": "将可就地修改的验收项错误引向 Doctor 或自动批准提案。",
+      "rootCause": "验收输入错误以普通 Error 抛出，被统一包装成 Runtime 恢复。",
+      "tests": [
+        {
+          "file": "test/app/workflow-resume-guidance.test.ts",
+          "namePattern": "^points missing Native Shape acceptance back to the original command and brief$",
+          "requiredNames": [
+            "points missing Native Shape acceptance back to the original command and brief"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-root-help-describes-check-guidance",
+      "behavior": "顶层帮助准确说明 Classic check 只提供平台检查指引。",
+      "sources": ["report:2026-11-23-comet-workflow-guidance-review"],
+      "coverageLevel": "public-cli",
+      "reproduction": "c4aa7f91 的 comet --help 宣称 check 执行并记录检查，comet check --help 说明命令只返回指引。",
+      "expected": "顶层帮助把 check 描述为 Agent 平台指引。",
+      "forbidden": "宣称命令自身会执行或记录检查。",
+      "rootCause": "命令列表沿用旧检查器描述，未随子命令行为更新。",
+      "tests": [
+        {
+          "file": "test/app/cli-help.test.ts",
+          "namePattern": "^CLI help text describes Classic check as guidance in the root help$",
+          "requiredNames": ["CLI help text describes Classic check as guidance in the root help"]
+        }
+      ]
+    },
+    {
       "id": "issue-584-project-memory-source-edits",
       "behavior": "项目记忆在来源文件无关章节编辑后仍可从任务索引定位并展开。",
       "sources": ["https://github.com/rpamis/comet/issues/584"],

@@ -35,6 +35,11 @@ test('opens current-project attention, follows a Supervisor child evidence link,
     name: 'attention-confirmation',
     displayName: 'attention-confirmation',
     locator: classicLocator,
+    next: {
+      command: null,
+      reason: '等待用户确认当前提案。',
+      description: '核对当前提案和授权范围，按原工作流记录用户决定。',
+    },
     artifacts: { grouped: [report] },
     artifactPreviews: [{ ...report, content: '# Classic report from linked worktree' }],
   };
@@ -229,6 +234,9 @@ test('opens current-project attention, follows a Supervisor child evidence link,
     })
     .press('Enter');
   await expect(page.locator('.classic-change-detail')).toContainText(classic.name);
+  await expect(page.locator('.classic-change-detail .ant-alert-title')).toHaveText(
+    /等待用户确认当前提案|Waiting for a user decision on the current proposal/u,
+  );
   await expect(
     page.getByRole('heading', { name: 'Classic report from linked worktree' }),
   ).toBeVisible();

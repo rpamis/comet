@@ -26,6 +26,65 @@ async function readChineseReference(name: string): Promise<string> {
   return fs.readFile(path.join(zhSkillRoot, 'comet-classic', 'reference', `${name}.md`), 'utf8');
 }
 
+describe.each([
+  {
+    language: 'zh',
+    root: zhSkillRoot,
+    confirmation: '### 最终确认',
+    reconfirmation: '### 需求变化后的重新确认',
+    context: '## 记忆接入',
+    projectMemory: '### 项目记忆',
+  },
+  {
+    language: 'en',
+    root: skillRoot,
+    confirmation: '### Final confirmation',
+    reconfirmation: '### Reconfirmation after requirement changes',
+    context: '## Memory integration',
+    projectMemory: '### Project memory',
+  },
+])(
+  '$language workflow mainline contracts',
+  ({ root, confirmation, reconfirmation, context, projectMemory }) => {
+    it('uses the single-call Classic start and generates check rows from the submitted results', async () => {
+      for (const [name, profile] of [
+        ['comet-open', 'full'],
+        ['comet-hotfix', 'hotfix'],
+        ['comet-tweak', 'tweak'],
+      ]) {
+        const skill = await readSkill(root, name);
+        expect(skill).toContain(
+          `comet state init <name> ${profile} --isolation <selected-isolation> --select --json`,
+        );
+      }
+      const verify = await readSkill(root, 'comet-verify');
+      expect(verify).toContain('<!-- comet-check-results -->');
+      expect(verify).toContain('<!-- /comet-check-results -->');
+    });
+
+    it('uses Native task replies for ordinary Shape and incremental delivery for a continuous session', async () => {
+      const readNative = (name: string) =>
+        fs.readFile(path.join(root, 'comet-native/reference', name + '.md'), 'utf8');
+      const clarification = section(
+        await readNative('clarification'),
+        confirmation,
+        reconfirmation,
+      );
+      expect(clarification).toContain('resultTemplate');
+      expect(clarification).toContain('next.commandArgs');
+      expect(clarification.split('2.')[0]).not.toContain('`--summary`');
+      const commands = await readNative('commands');
+      expect(commands).toContain('`--result -`');
+      const contextGuide = section(commands, context, projectMemory);
+      expect(contextGuide).toContain('`--context-mode incremental`');
+      expect(contextGuide).toContain('`--context-mode snapshot`');
+      expect(contextGuide).not.toMatch(
+        /各执行一次完整读取|full snapshot once on first entering a phase/u,
+      );
+    });
+  },
+);
+
 describe('Chinese Classic efficiency contracts', () => {
   it('offers direct memory commands at troubleshooting and after verified fixes', async () => {
     const learning = await fs.readFile(

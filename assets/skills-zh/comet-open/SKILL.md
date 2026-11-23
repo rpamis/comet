@@ -37,7 +37,7 @@ comet classic workspace resolve <change-name> --json
 comet state select <change-name>
 ```
 
-创建新 change 时，在创建 OpenSpec 基础目录后立即初始化 SDK Run，再运行上述 select 命令；初始化前不得手工写入 change 选择记录。
+创建新 change 时，在创建 OpenSpec 基础目录后按步骤 2 一次初始化并选择；初始化前不手工写入选择记录。
 
 ### 0b. Open 前工作区决策与准备
 
@@ -132,11 +132,10 @@ resolved brief 或 change 名称仍不明确时不得运行 `comet classic opens
 change 的基础目录和文件创建后，立即初始化 SDK Run，以便中断后恢复；不能等所有产物都生成后才初始化（入口状态验证统一在 Step 3 执行，这里不重复）：
 
 ```bash
-comet state init <name> full --isolation <selected-isolation>
-comet state select <name> --json
+comet state init <name> full --isolation <selected-isolation> --select --json
 ```
 
-任一命令失败都停止。选择结果必须返回 `runtimeFormat: sdk`、`phase: open` 和当前 Run 的待执行 Action；缺少这些字段时才运行 `comet state next <name> --json` 补读。随后运行一次 `comet classic openspec --agent-json -- status --change "<name>" --json` 并执行兼容性预检：
+初始化并选择成功后，直接使用同次响应的 `runtimeFormat: sdk`、`phase: open` 和待执行 Action；缺少字段时才运行 `comet state next <name> --json` 补读。命令报错时先检查原因和已有 Run，已有 Run 时用选择命令续行。随后运行一次 `comet classic openspec --agent-json -- status --change "<name>" --json` 并执行兼容性预检：
 
 - `changeRoot` 解析后必须等于路径解析器绑定的 `<classic-change-dir>`，`planningHome`（如存在）也必须位于当前仓库；不支持仓库外的产物路径
 - `artifacts` 必须包含 Classic 必需 ID `proposal`、`tasks`，其他要求沿 `requires` 递归展开

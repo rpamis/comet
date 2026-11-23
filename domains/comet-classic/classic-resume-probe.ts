@@ -9,6 +9,7 @@ import { readDir } from '../../platform/fs/file-system.js';
 import type { ClassicDiagnostic } from './classic-diagnostics.js';
 import { readClassicState } from './classic-store.js';
 import { hasClassicManagedRunMarker } from './classic-sdk-state-store.js';
+import { classicSdkNextAction } from './classic-sdk-status.js';
 import { PORTABLE_RUN_CHECKPOINT_KEY, readPortableRunCheckpoint } from '../engine/runtime.js';
 import { parseDocument } from 'yaml';
 import { inspectPristineClassicSdkState } from './classic-runtime-ownership.js';
@@ -59,6 +60,12 @@ export interface CometResumeProbeResult {
   confidence: CometResumeProbeConfidence;
   reason: string;
   evidence: CometResumeProbeEvidence[];
+  sdk?: ClassicResumeRun;
+}
+
+interface ClassicResumeRun {
+  id: string;
+  nextAction: NonNullable<ReturnType<typeof classicSdkNextAction>>;
 }
 
 interface ActiveProbeChange {
@@ -74,6 +81,7 @@ interface ActiveProbeChange {
   text: string;
   missingCometState: boolean;
   cancellationPending?: boolean;
+  sdk?: ClassicResumeRun;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -110,6 +118,7 @@ function result(
   confidence: CometResumeProbeConfidence,
   reason: string,
   evidence: CometResumeProbeEvidence[] = [],
+  includeSdk = action === 'auto_resume',
 ): CometResumeProbeResult {
   return {
     schema_version: COMET_RESUME_PROBE_SCHEMA_VERSION,
@@ -121,6 +130,7 @@ function result(
     confidence,
     reason,
     evidence,
+    ...(includeSdk && change?.sdk ? { sdk: change.sdk } : {}),
   };
 }
 
@@ -245,6 +255,7 @@ async function inspectManagedRun(
   state: ClassicState | null;
   lostRun: boolean;
   cancellation?: 'complete' | 'pending';
+  sdk?: ClassicResumeRun;
 }> {
   const source = await readClassicProjectFile(projectRoot, stateFile, {
     label: 'Classic change state',
@@ -305,7 +316,12 @@ async function inspectManagedRun(
     const state = parseClassicStateDocument(
       classicStateToDocument(run.state as unknown as ClassicState),
     ).classic;
-    return state ? observe(run, state) : { state: null, lostRun: true };
+    if (!state) return { state: null, lostRun: true };
+    const nextAction = classicSdkNextAction(run);
+    return {
+      ...observe(run, state),
+      ...(nextAction ? { sdk: { id: run.runId, nextAction } } : {}),
+    };
   } catch {
     return { state: null, lostRun: true };
   }
@@ -394,6 +410,7 @@ async function discoverActiveChanges(projectRoot: string): Promise<ActiveProbeCh
       archived: classic?.archived ?? false,
       text: '',
       missingCometState: false,
+      ...(managed.sdk ? { sdk: managed.sdk } : {}),
       ...(managed.cancellation === 'pending' ? { cancellationPending: true } : {}),
     };
     change.text = await changeSearchText(projectRoot, changeDir, change);
@@ -668,7 +685,7 @@ export async function resolveCometResumeProbe(
       ]);
     }
     return hasDecisionPoint(named)
-      ? result('ask_user', named, 'low', 'active change is at a decision point')
+      ? result('ask_user', named, 'low', 'active change is at a decision point', [], true)
       : result('auto_resume', named, 'high', 'request names an active change', [
           { source: 'user', quote: named.name },
         ]);
@@ -700,9 +717,14 @@ export async function resolveCometResumeProbe(
     if (change.missingCometState) {
       return result('ask_user', change, 'low', 'active OpenSpec change is missing Comet state');
     }
-    return result('ask_user', change, 'low', 'active change is at a decision point', [
-      { source: 'state', quote: `phase: ${change.phase}` },
-    ]);
+    return result(
+      'ask_user',
+      change,
+      'low',
+      'active change is at a decision point',
+      [{ source: 'state', quote: `phase: ${change.phase}` }],
+      true,
+    );
   }
 
   const resumeLike = includesAny(lower, RESUME_WORDS);

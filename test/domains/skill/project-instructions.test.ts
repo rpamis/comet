@@ -84,6 +84,19 @@ describe('Comet project instructions', () => {
     );
   });
 
+  it.each(['zh', 'en'] as const)(
+    'uses the probe continuation in installed %s instructions',
+    async (language) => {
+      await installCometProjectInstructions(tmpDir, language);
+      const instructions = await fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8');
+      const automatic = instructions.split(/\r?\n/u).find((line) => line.includes('`auto_resume`'));
+      expect(automatic).toContain('`nextCommand`');
+      expect(automatic).toContain('`resume`');
+      const question = instructions.split(/\r?\n/u).find((line) => line.includes('`ask_user`'));
+      expect(question).toContain('`resume.question`');
+    },
+  );
+
   it.each(['@AGENTS.md', '@./AGENTS.md'])(
     'keeps a direct %s import in CLAUDE.md single-sourced',
     async (importPath) => {

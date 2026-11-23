@@ -33,7 +33,7 @@ Native 在项目中保存需求和验收结论。先确认 change 的运行格�
 
 先读取并执行[普通命令与检查](../comet/reference/platform-execution.md)。旧业务数据自动适配，沿用原 Run 和有效批准。普通任务和 Supervisor 任务使用 `native next <change> --session <真实会话标识> --json` 领取。Shape 中由 Agent 提取验收条目并提交，等待用户明确确认后进入 Build。响应 `comet.native.task-result.v1` 给出阶段、实际工作区、验收正文、结果模板和下一步，直接照此执行。多个任务可领取时，从 `availableTasks` 选择真实执行范围，并用其 Action 和实际会话领取；按 `task.child`、`task.scope` 和工作区完成当前任务。
 
-1. Builder 完成实现后，将 `resultTemplate` 的实际业务结果写入临时 UTF-8 JSON，用返回的 `next.commandArgs` 提交。保留命令中的 `--action` 和真实 `--session`。Agent 使用平台工具运行必要检查，等待真实结果，并在 checks 的 name/result/note 中记录命令、目录、结果和日志引用。Builder 一次回报实现与检查；Verifier 的 output.checks 填写本次采信的实际结果。失败、未运行和未知结果不能算通过，不提交 verificationChecks、request-checks 或自制收据。旧检查调度不再执行，使用当前返回的业务模板。当前会话继续验收时使用 `--review current-session`，另请审查者时使用 `--review independent`，由接收者以自己的真实会话领取。
+1. Builder 完成实现后，使用当前 `resultTemplate` 和 `next.commandArgs` [一次回报实现与检查](reference/commands.md#任务结果回报)。保留命令中的 `--action` 和真实 `--session`。Agent 使用平台工具运行必要检查，等待真实结果，并在 checks 的 name/result/note 中记录命令、目录、结果和日志引用。Verifier 的 output.checks 填写本次采信的实际结果。失败、未运行和未知结果不能算通过，不提交 verificationChecks、request-checks 或自制收据。旧检查调度不再执行，使用当前返回的业务模板。当前会话继续验收时使用 `--review current-session`，另请审查者时使用 `--review independent`，由接收者以自己的真实会话领取。
 2. Verify 覆盖全部验收项，复用有效检查，只补缺失证据；提交实际结论后，Runtime 返回用户接受结果的步骤。用户明确要求独立审查时必须选择独立会话。
 3. 只有用户事前明确委托“验收通过后接受并归档”时，才在本次 Verify 回报中加 `--accept-on-pass <用户授权摘要>`。该摘要绑定本次通过结果。其他情况等待用户接受，再执行返回的确认命令。Git 交付仍使用已有的对应授权。
 

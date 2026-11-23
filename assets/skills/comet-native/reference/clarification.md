@@ -81,9 +81,9 @@ Before final confirmation of a large request, assess [Supervisor decomposition a
 
 Completion requires every outcome-affecting decision to be confirmed, relevant facts and implicit assumptions to be checked, no `[blocking]` in the brief, a complete directory structure under `# Scope` (see [formal artifacts](artifacts.md#formal-artifacts)), and specific, verifiable, nonduplicative acceptance items. Then:
 
-1. Execute `prepare-shape-confirmation` from the current continuation. Submit outcome, scope, key decisions, acceptance criteria, and non-goals through `--summary`; do not create another confirmation blocker.
-2. After Runtime saves the summary and returns `await-user`, show the complete summary and `userCommunication`, and wait for explicit confirmation. When reconfirming changed requirements, first explain changes and effects under [reconfirmation after requirement changes](#reconfirmation-after-requirement-changes), then show the complete summary.
-3. If the user adds to or rejects the summary, update formal artifacts and prepare confirmation again. Only after explicit confirmation may you execute the current `commandAlternatives` command with `--confirmed` and its state-version and expected-action guards.
+1. For an ordinary SDK task, fill the complete acceptance criteria and actual summary in the current `comet.native.task-result.v1` response's `resultTemplate`, then submit with `next.commandArgs`. For an older protocol, use the current Run's continuation to prepare confirmation. In either path, do not create another confirmation blocker.
+2. When Runtime requests confirmation, present the complete current Shape: outcome, scope, key decisions, acceptance criteria, and non-goals. Relay `next.askUser` or `userCommunication` and wait for explicit confirmation. For changed requirements, first explain the changes and their effects under [reconfirmation after requirement changes](#reconfirmation-after-requirement-changes).
+3. If the user adds to or rejects the proposal, update the formal artifacts and prepare a fresh confirmation from the current response. After explicit confirmation, execute the command returned for this proposal with its state version and expected action.
 
 The initial request does not replace final confirmation. Ordinary implementation choices belong in formal requirements only when they affect user-visible behavior.
 

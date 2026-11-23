@@ -200,8 +200,13 @@ function displayPortableNativeChange(
   if (change.workspace.bindingState !== 'aligned') {
     console.log(`     workspace: ${change.workspace.message ?? change.workspace.bindingState}`);
   }
-  if (change.continuation.commandArgs) {
-    console.log(`     next: ${displayCommandArgs(change.continuation.commandArgs)}`);
+  const { continuation } = change;
+  if (continuation.requiresUserDecision && continuation.userCommunication.message) {
+    console.log(`     next: ${continuation.userCommunication.message}`);
+  } else if (continuation.commandArgs) {
+    console.log(`     next: ${displayCommandArgs(continuation.commandArgs)}`);
+  } else if (continuation.mode === 'wait' || continuation.mode === 'reconcile') {
+    console.log(`     next: ${continuation.userCommunication.agentInstruction}`);
   }
   console.log();
 }

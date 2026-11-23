@@ -37,7 +37,7 @@ comet classic workspace resolve <change-name> --json
 comet state select <change-name>
 ```
 
-For a new change, initialize the SDK Run immediately after creating the basic OpenSpec directory, then select it. Never write a selection before initialization.
+For a new change, follow Step 2 after creating the basic OpenSpec directory to initialize and select it together. Runtime writes the selection after initialization.
 
 ### 0b. Choose and prepare the workspace before Open
 
@@ -132,11 +132,10 @@ Use that resolved brief to populate the artifacts. Return to the skill's questio
 Initialize a recoverable SDK Run immediately after creating the initial structure; do not wait for every artifact to be generated (the entry check runs once in Step 3, not here):
 
 ```bash
-comet state init <name> full --isolation <selected-isolation>
-comet state select <name> --json
+comet state init <name> full --isolation <selected-isolation> --select --json
 ```
 
-Stop if any command fails. The selection response must include `runtimeFormat: sdk`, `phase: open`, and the current Run Action; run `comet state next <name> --json` only if these fields are missing. Then run `comet classic openspec --agent-json -- status --change "<name>" --json` once and check compatibility:
+Use `runtimeFormat: sdk`, `phase: open`, and the current Run Action from the same response. Query `comet state next <name> --json` only when those fields are missing. If the command fails, inspect the cause and check whether the Run already exists. If it does, resume through the selection command. Then run `comet classic openspec --agent-json -- status --change "<name>" --json` once and check compatibility:
 
 - Resolved `changeRoot` must equal the bound `<classic-change-dir>`. `planningHome`, when present, must also be inside the repository. External artifact paths are unsupported.
 - `artifacts` must include Classic's required IDs `proposal` and `tasks`; recursively follow their `requires`.

@@ -27,7 +27,10 @@ import {
 } from './classic-sdk-output.js';
 import { inspectClassicSdkRun } from './classic-sdk-status.js';
 import type { ClassicState } from './classic-state.js';
-import { classicVerificationReportReceipt } from './classic-verification-report.js';
+import {
+  readClassicVerificationReport,
+  writeClassicVerificationChecks,
+} from './classic-verification-report.js';
 type ClassicSdkInspection = Awaited<ReturnType<typeof inspectClassicSdkRun>>;
 interface ClassicSdkOpenGuardOptions {
   inspected?: ClassicSdkInspection;
@@ -570,10 +573,10 @@ export async function classicSdkVerifyGuard(options: {
       guardAttempt,
     );
   }
-  let receipt: Awaited<ReturnType<typeof classicVerificationReportReceipt>>;
+  let receipt: Awaited<ReturnType<typeof readClassicVerificationReport>>;
   try {
     await assertClassicBuildReady(projectRoot, changeDirRef(run), state, run);
-    receipt = await classicVerificationReportReceipt(projectRoot, reportRef, state.language);
+    receipt = await readClassicVerificationReport(projectRoot, reportRef);
   } catch (error) {
     return guardResult(
       change,
@@ -668,6 +671,13 @@ export async function classicSdkVerifyGuard(options: {
     (wait) => wait.stepId === `${profile}.verify.report.evidence` && wait.status === 'pending',
   );
   if (pendingReport) {
+    const reported = run.actions.find((action) => action.id === currentVerify?.id)?.outcome?.output;
+    await writeClassicVerificationChecks(
+      projectRoot,
+      receipt,
+      reported as Awaited<ReturnType<typeof readClassicAgentCheckReports>> | undefined,
+      state.language,
+    );
     run = await runtime.recordEvidence({
       runId: run.runId,
       expectedRevision: run.revision,

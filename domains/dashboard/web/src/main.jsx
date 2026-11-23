@@ -2615,6 +2615,7 @@ function Dashboard({
     <div className="mx-auto min-w-0 max-w-dashboard">
       <WorkflowSuggestion
         command={selected?.next?.command}
+        reason={t(selected?.next?.reason)}
         description={t(selected?.next?.description)}
       />
       <AntSummaryCards
@@ -2689,7 +2690,7 @@ function Dashboard({
   );
 }
 
-function WorkflowSuggestion({ command, description }) {
+function WorkflowSuggestion({ command, reason, description }) {
   useDashboardLanguage();
   return (
     <section className="dashboard-priority-banner" role="status" aria-label={t('工作流建议')}>
@@ -2705,7 +2706,7 @@ function WorkflowSuggestion({ command, description }) {
             {description ? `，${description}` : t('，完成当前工作流阶段。')}
           </>
         ) : (
-          t('当前变更没有待执行动作，可以继续检查产物与验证结果。')
+          reason || t('当前变更没有待执行动作，可以继续检查产物与验证结果。')
         )}
       </p>
     </section>
@@ -3043,7 +3044,7 @@ function NextAction({ change }) {
         <span className="text-success">$ </span>
         {change.next?.command ?? '—'}
       </div>
-      <p className="text-sm text-fg-2">{change.next?.reason ?? t('暂无建议')}</p>
+      <p className="text-sm text-fg-2">{t(change.next?.reason ?? '暂无建议')}</p>
       <p className="text-[13px] leading-relaxed text-muted">{t(change.next?.description ?? '')}</p>
     </Card>
   );
@@ -10332,7 +10333,7 @@ function AntChangeDetail({ change, onPreview }) {
         title={
           change.next?.command
             ? t('下一步：{0}', [change.next.command])
-            : t('该变更没有待执行的下一步')
+            : t(change.next?.reason ?? '该变更没有待执行的下一步')
         }
         description={t(change.next?.description)}
       />

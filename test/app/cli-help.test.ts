@@ -67,6 +67,13 @@ describe('CLI help text', () => {
     expect(help.stdout).not.toMatch(/[\u3400-\u9fff]/u);
   });
 
+  it('describes Classic check as guidance in the root help', () => {
+    const help = runCli('--help');
+    expect(help.status, help.stderr).toBe(0);
+    expect(help.stdout).toMatch(/^\s+check \[args\.\.\.\]\s+.*guidance/mu);
+    expect(help.stdout).not.toMatch(/^\s+check \[args\.\.\.\]\s+Execute/mu);
+  });
+
   it.each(['-v', '--version'])('returns the current package version for %s', (flag) => {
     const pkg = JSON.parse(readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8'));
     const result = runCli(flag);

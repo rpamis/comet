@@ -695,7 +695,7 @@ const classicDescriptions: Record<PublicClassicCommand, string> = {
   guard: 'Validate Classic phase requirements; --apply advances after checks pass',
   handoff: 'Create or inspect Classic workflow handoffs',
   archive: 'Archive completed Classic workflow changes',
-  check: 'Execute and record Classic build or verification checks',
+  check: 'Show Agent platform guidance for Classic build or verification checks',
 };
 
 for (const command of PUBLIC_CLASSIC_COMMANDS) {
