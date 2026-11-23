@@ -16,7 +16,9 @@ Supervisor 响应中的 `task.child`、`task.scope` 和 `workspace.projectRoot` 
 
 普通任务、Child 和父级任务由 Agent 使用平台工具执行检查，读取真实结果后填写 checks 的 name/result/note，记录命令、目录、结果和日志引用。Builder 一次提交实现与结果；Verifier 普通任务填写 output.checks，Child 填写 evidence.checks。checks 可为空，但未运行与失败不能当作通过；验收者负责判断证据是否充分。v4 不提交 verificationChecks、integrationChecks、request-checks 或自制收据，Runtime 不再重复执行普通检查。旧 Run 自动适配业务数据，沿用原批准、任务和候选，使用当前返回的报告模板。`--review current-session` 由当前真实会话领取 Verify；`--review independent` 保留待领取任务，由独立接收者填写自己的会话身份后执行返回命令。用户明确要求独立审查时选择后者。一次响应只执行其当前下一步，完整验收正文不能裁掉。
 
-Verify 回报默认停在用户接受结果。只有用户已明确委托“全部通过后接受并归档”时，才添加 `--accept-on-pass <授权摘要>`；Runtime 只在本次结果通过且对应当前确认时接受，保存该摘要，并连续归档。该选项不授权 Git merge、push、PR 或清理，也不改变旧 `--accept-result` 的提案绑定。重复结果使用原 Action 和相同内容，错误会话、不同结果、候选漂移按原 Runtime 协议拒绝。
+内置 SDK Run 的完整验收通过且只剩接受决定时，`native.archive_confirmation: automatic` 允许 Runtime 按项目策略接受当前结果并继续归档。按返回的下一步推进。如果 Runtime 仍要求用户接受，先展示结论并等待明确确认。固定应用按自身的决定协议推进。
+
+只有用户已明确委托“全部通过后接受并归档”时，才添加 `--accept-on-pass <授权摘要>`。Runtime 把该授权绑定到当前通过结果与确认。这个选项不授权 Git merge、push、PR 或清理，也不改变旧 `--accept-result` 的提案绑定。重复结果使用原 Action 和相同内容，错误会话、不同结果、候选漂移按原 Runtime 协议拒绝。
 
 以下底层协议只供旧 Run、固定应用、明确异常或调试使用。当前高层响应已充分时直接继续。
 
@@ -26,7 +28,7 @@ Verify 回报默认停在用户接受结果。只有用户已明确委托“全�
 
 普通 `status` 只读取当前业务状态；需要历史执行记录时使用 `--details` 或 `doctor`。正常推进直接使用当前响应，遇到实际错误再读取恢复说明。本地 SDK Run 保存每次推进；Portable 检查点在用户等待、Agent 交接和结束等边界写入，内部无副作用步骤不要求同步投影，外部命令执行前仍保存恢复边界。不要手动修改检查点来推进流程。
 
-新 Run 的 Verify 通过后直接等待接受，报告由 Runtime 生成阅读视图。报告写入失败时按 warning 继续或重试 `next`，保留已保存的验收结论。接受后普通流程在 Archive 准备时核对候选和实际输入；候选变化必须重新处理。Supervisor 交付仍使用自己的执行步骤。
+新 Run 的 Verify 通过后，按[任务结果回报](#任务结果回报)中的归档策略继续。报告由 Runtime 生成，下一步以当前 continuation 为准。报告写入失败时按 warning 继续或重试 `next`，保留已保存的验收结论。接受后普通流程在 Archive 准备时核对候选和实际输入。候选变化必须重新处理。Supervisor 交付仍使用自己的执行步骤。
 
 普通 SDK Shape 按[任务结果回报](#任务结果回报)使用当前任务响应。当前 Run 返回 SDK 自有 Action 或需要 Supervisor 协调决定时，完成正式 brief 和完整目标 Spec 后按其 continuation 继续，直到出现待处理的 `shape.confirm` 或 `supervisor.shape.confirm`。向用户展示完整 Shape。Supervisor 还要按[拆分与确认](clarification.md#supervisor-拆分与确认)展示 Child 计划，以及“多会话/Agent Teams”和“单会话推进”两种方式。得到明确确认后，按当前 `continuation.commandAlternatives` 的状态版本和动作执行对应命令；Agent 判断目标、验收或授权发生实质变化时重新提案。之后一次 `next` 连续执行已获授权的 Runtime 内部 Action，遇到用户决定、Agent 任务、失败或未知结果时返回；查看返回的 `pendingActions` 处理全部待办，`pendingAction` 只表示其中第一项。对 `build.builder`、`verify.verifier`、`supervisor.child.builder`、`supervisor.child.verifier`、`supervisor.child.integration-repair` 和 `supervisor.parent.builder`，高层任务响应不可用时，按下文协议领取并回报各自的 Action。多个 Child 可以并行工作，集成 Action 与集成结果提交按 Run 顺序串行推进；提交后使用同次响应里的 Action、Wait 和状态。
 
@@ -58,7 +60,7 @@ Builder 开始本轮实现前、Verifier 开始验收前，复制当前 Action �
 
 ### 用户决定、Archive 与恢复
 
-`verify.confirm` 待处理时，先展示实际验收结论并等待用户决定。只用当前 `run.waits[].proposalHash`、`stateVersion` 和对应 `--expected-action`，执行 `native next <change> --accept-result|--revise-implementation --summary <text> --proposal-hash <hash> --expected-state-version <n> --expected-action <action>`；Runtime 将接受决定绑定到当前候选和结构化验收结果。新 Run 的 Markdown 报告作为阅读视图；旧 Run 保留原报告与执行关联，不根据当前文件字节重新验收。用户修改需求或验收标准时，先说明重新确认 Shape 的影响，得到明确选择后使用当前状态版本执行 `native next <change> --revise-requirements --summary <text> --expected-state-version <n> --expected-action revise-requirements`；该 SDK 命令通过版本化命令替换当前未领取的工作，不使用 Verify 的提案哈希。从新的 Shape 继续，不复用原验收。Archive 中 `archive.execute` 尚未成功时也可修订；已执行归档后不得倒退修改。`verify.retry` 待处理时，用户明确选择重试后才以相同保护参数执行 `--retry-verifier`，继续使用原候选和有效检查。
+`verify.confirm` 待处理且 continuation 要求用户决定时，先展示实际验收结论并等待用户选择。只用当前 `run.waits[].proposalHash`、`stateVersion` 和对应 `--expected-action`，执行 `native next <change> --accept-result|--revise-implementation --summary <text> --proposal-hash <hash> --expected-state-version <n> --expected-action <action>`；Runtime 将接受决定绑定到当前候选和结构化验收结果。新 Run 的 Markdown 报告作为阅读视图；旧 Run 保留原报告与执行关联，不根据当前文件字节重新验收。用户修改需求或验收标准时，先说明重新确认 Shape 的影响，得到明确选择后使用当前状态版本执行 `native next <change> --revise-requirements --summary <text> --expected-state-version <n> --expected-action revise-requirements`；该 SDK 命令通过版本化命令替换当前未领取的工作，不使用 Verify 的提案哈希。从新的 Shape 继续，不复用原验收。Archive 中 `archive.execute` 尚未成功时也可修订；已执行归档后不得倒退修改。`verify.retry` 待处理时，用户明确选择重试后才以相同保护参数执行 `--retry-verifier`，继续使用原候选和有效检查。
 
 进入 Archive 后直接执行当前 continuation 返回的 `native archive <change> --json` 命令；Runtime 会按顺序组合执行可安全推进的 `archive.prepare`、`archive.execute`、`archive.finalize`，并保留每个 Action 的真实结果。仅需预览或诊断时使用 `native archive <change> --dry-run --json`。每次只按返回的最新 continuation 继续，不固定重复 Archive，不用旧状态版本重放。Supervisor 还会有 `supervisor.cleanup`：Runtime 只在目标分支仍是已验收提交、临时 worktree 干净且分支已合入时清理本次创建的 Child 和集成 worktree；遇到脏 worktree 或结果未知，保留现场并按原 Action 核对，不强制删除。只有 SDK Run 为 `completed` 且业务状态为 `done` 才说 SDK 归档完成。merge、push、PR 和非 Supervisor 临时工作区的收尾仍按用户授权分别执行和核对，SDK 归档不自动证明这些外部交付已完成。
 
