@@ -1,3 +1,4 @@
+import '../../helpers/isolated-agent-home.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -5,6 +6,11 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { parseDocument } from 'yaml';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+import {
+  readProjectConfig,
+  writeProjectConfig,
+} from '../../../domains/comet-native/native-config.js';
+import type { NativeArchiveConfirmation } from '../../../domains/comet-native/native-types.js';
 import {
   createNativeSdkRuntime,
   inspectNativeSdkRun,
@@ -45,7 +51,11 @@ it('creates an agent-managed Native Run without a project content snapshot', asy
   ).toBe(false);
 });
 
-async function builderFixture(boundary: 'source' | 'bundle' = 'source', branch?: string) {
+async function builderFixture(
+  boundary: 'source' | 'bundle' = 'source',
+  branch?: string,
+  archiveConfirmation: NativeArchiveConfirmation = 'required',
+) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-agent-report-'));
   roots.push(root);
   if (branch) {
@@ -79,7 +89,13 @@ async function builderFixture(boundary: 'source' | 'bundle' = 'source', branch?:
       : await runNativeCli(argv);
     return { ...result, envelope: JSON.parse(result.stdout) };
   };
-  expect((await cli(['new', name])).exitCode).toBe(0);
+  const created = await cli(['new', name]);
+  expect(created.exitCode, created.stdout).toBe(0);
+  const config = (await readProjectConfig(root))!;
+  await writeProjectConfig(root, {
+    ...config,
+    native: { ...config.native, archive_confirmation: archiveConfirmation },
+  });
   const change = path.join(root, 'docs/comet/changes', name);
   await fs.writeFile(path.join(change, 'brief.md'), 'Implement the approved workflow behavior.');
   await fs.mkdir(path.join(change, 'specs/workflow'), { recursive: true });
@@ -433,7 +449,7 @@ it('keeps active Native recovery bound to its original branch', async () => {
 it.each(['failed', 'not-run'])(
   'does not pass acceptance with a %s platform check',
   async (result) => {
-    const f = await builderFixture();
+    const f = await builderFixture('source', undefined, 'automatic');
     const built = await f.submit(f.builder.task.actionId, {
       summary: 'Implemented.',
       addressedAcceptanceIds: ['A1'],
@@ -451,7 +467,65 @@ it.each(['failed', 'not-run'])(
     });
     const rejected = await f.submit(built.envelope.data.task.actionId, output);
     expect(rejected.exitCode).not.toBe(0);
-    expect((await f.runtime.inspect(f.name)).status).not.toBe('completed');
+    const run = await f.runtime.inspect(f.name);
+    expect(run.status).not.toBe('completed');
+    expect(run.actions.some((action) => action.stepId.startsWith('archive.'))).toBe(false);
+  },
+);
+
+it.each([
+  ['source', 'result submission', 'automatic'],
+  ['bundle', 'result submission', 'automatic'],
+  ['bundle', 'resume', 'required'],
+] as const)(
+  'archives a complete Native Verify pass under the automatic project policy (%s, %s)',
+  async (boundary, entry, initialPolicy) => {
+    const f = await builderFixture(boundary, 'archive-automatic', initialPolicy);
+    const built = await f.submit(f.builder.task.actionId, {
+      summary: 'Implemented.',
+      addressedAcceptanceIds: ['A1'],
+      checks: [],
+      knownLimits: [],
+    });
+    expect(built.exitCode, built.stdout).toBe(0);
+    const output = built.envelope.data.resultTemplate.output;
+    Object.assign(output.response.result, {
+      verdict: 'pass',
+      acceptance: [{ id: 'A1', result: 'passed', reason: 'Observed actual behavior.' }],
+      risks: [],
+      summary: 'Verified.',
+    });
+    const passed = await f.submit(built.envelope.data.task.actionId, output);
+    expect(passed.exitCode, passed.stdout).toBe(0);
+    if (entry === 'resume') {
+      const waiting = await f.runtime.inspect(f.name);
+      expect(waiting.status).toBe('waiting');
+      expect(passed.envelope.data.next.askUser).toBeTruthy();
+      const config = (await readProjectConfig(f.root))!;
+      await writeProjectConfig(f.root, {
+        ...config,
+        native: { ...config.native, archive_confirmation: 'automatic' },
+      });
+      const status = await f.cli(['status', f.name]);
+      expect(status.envelope.data.continuation).toMatchObject({
+        requiresUserDecision: false,
+        commandArgs: expect.arrayContaining(['comet', 'native', 'next', f.name]),
+      });
+      expect((await f.runtime.inspect(f.name)).revision).toBe(waiting.revision);
+      const resumed = await f.cli(['next', f.name]);
+      expect(resumed.exitCode, resumed.stdout).toBe(0);
+    }
+    const run = await f.runtime.inspect(f.name);
+    expect(run.status).toBe('completed');
+    expect(run.state).toMatchObject({ phase: 'archive', archived: true });
+    expect(run.waits.at(-1)).toMatchObject({
+      stepId: 'verify.confirm',
+      status: 'resolved',
+      decision: { choice: 'approved', reason: expect.stringContaining('archive_confirmation') },
+    });
+    expect(await fs.readdir(path.join(f.root, 'docs/comet/archive'))).toEqual([
+      expect.stringMatching(new RegExp(`-${f.name}$`)),
+    ]);
   },
 );
 

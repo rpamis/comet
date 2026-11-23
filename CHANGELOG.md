@@ -17,6 +17,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Native automatic Archive**: Built-in Native changes honor the project's automatic archive policy once all Verify criteria pass. Projects can still require explicit result acceptance.
 - **Merged Native Supervisor archives**: Use `comet native status` and `comet native doctor` to inspect a completed Supervisor archive from the receiving checkout without restoring its Run or original worktree ([#586](https://github.com/rpamis/comet/issues/586)).
 - **Windows npm upgrades**: Global npm upgrades can replace the installed Comet package while a daemon from this version is running.
 - **Durable project lessons**: Keep project memory and knowledge available after source edits. Expanded lessons show source references and identify files missing from the current worktree. Looking up a lesson no longer retires it in other worktrees ([#584](https://github.com/rpamis/comet/issues/584)).

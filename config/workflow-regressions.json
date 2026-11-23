@@ -2,6 +2,48 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "native-automatic-archive-after-verify-pass",
+      "behavior": "内置 Native Change 在项目设为 automatic 时，提交完整通过的 Verify 结果后继续归档。",
+      "sources": ["report:2026-11-23-native-automatic-archive-waits"],
+      "coverageLevel": "public-cli",
+      "reproduction": "使用 npm 0.5.6 或修复前 057 在隔离项目创建 Native Change，保留 archive_confirmation: automatic，通过 native next 提交全部通过的验收结果。旧 Runtime 停在 verify.confirm，未创建归档。",
+      "expected": "automatic 在原 Run 保存项目授权决定并完成归档；required 仍等待接受结果。",
+      "forbidden": "再询问 automatic 下已完整通过的候选，因失败或未运行的必要检查而归档，或复用另一会话提交的结果。",
+      "rootCause": "旧 SDK 仅在 Agent 提供本次结果的显式委托时自动接受，未读取项目归档策略。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "namePattern": "^(?:archives a complete Native Verify pass under the automatic project policy \\((?:source|bundle), result submission\\)|waits for user acceptance and rejects another session reporting the original task|does not pass acceptance with a (?:failed|not-run) platform check)$",
+          "requiredNames": [
+            "archives a complete Native Verify pass under the automatic project policy (source, result submission)",
+            "archives a complete Native Verify pass under the automatic project policy (bundle, result submission)",
+            "waits for user acceptance and rejects another session reporting the original task",
+            "does not pass acceptance with a failed platform check",
+            "does not pass acceptance with a not-run platform check"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-automatic-archive-resumes-original-wait",
+      "behavior": "改为 automatic 后，已完整通过且等待接受的 Native Change 可沿原 Run 归档。",
+      "sources": ["report:2026-11-23-native-automatic-archive-waits"],
+      "coverageLevel": "public-cli",
+      "reproduction": "先设 required 并提交通过结果，再改为 automatic。旧 Native status 继续要求用户决定，执行 next 后仍在同一个 Wait。",
+      "expected": "status 只读返回可执行的 next，随后按最新项目策略接受原 Verify Wait 并完成归档。",
+      "forbidden": "在 status 中写入 Run、创建第二个 Run 或绕过原 Verify 结果绑定。",
+      "rootCause": "SDK 展示和推进都把已有 verify.confirm 无条件当作逐次人工决定。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "namePattern": "^archives a complete Native Verify pass under the automatic project policy \\(bundle, resume\\)$",
+          "requiredNames": [
+            "archives a complete Native Verify pass under the automatic project policy (bundle, resume)"
+          ]
+        }
+      ]
+    },
+    {
       "id": "native-586-merged-supervisor-archive-status",
       "behavior": "按名称查询已合并的终态 Native Supervisor 归档时直接返回归档详情。",
       "sources": ["https://github.com/rpamis/comet/issues/586"],

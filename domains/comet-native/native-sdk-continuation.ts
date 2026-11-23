@@ -6,6 +6,7 @@ import {
   type RuntimeValue,
   type WorkflowRun,
 } from '../engine/runtime.js';
+import { readProjectConfig } from './native-config.js';
 import {
   NATIVE_REPORTED_CHECK_RESULTS,
   NATIVE_REQUEST_REVIEW_RESULTS,
@@ -43,6 +44,7 @@ import {
 } from './native-sdk-revise.js';
 import { nativeSdkChildVerifierRetryWaits } from './native-sdk-supervisor-verifier-recovery.js';
 import {
+  nativeSdkArchiveApprovalWait,
   nativeSdkVerifyDecisions,
   nativeSdkVerifyWaitDecisions,
 } from './native-sdk-verify-decision.js';
@@ -1083,6 +1085,23 @@ async function projectNativeSdkContinuationValue(options: {
     };
   } else if (verifyWait?.stepId === 'verify.stop') {
     continuation = sdkLoopStopContinuation(run, state, verifyWait.proposalHash);
+  } else if (
+    verifyWait &&
+    !options.applicationId &&
+    nativeSdkArchiveApprovalWait(run, state) &&
+    (await readProjectConfig(projectRoot))?.native.archive_confirmation === 'automatic'
+  ) {
+    continuation = {
+      ...base,
+      action: 'archive',
+      commandArgs: ['comet', 'native', 'next', state.name],
+      userCommunication: communication(
+        localized(
+          'Verification passed. The project authorizes automatic Archive. Continue with the returned command.',
+          '验收已通过，项目已授权自动归档。执行返回的命令继续归档。',
+        ),
+      ),
+    };
   } else if (verifyWait) {
     const retry = verifyWait.stepId === 'verify.retry';
     const decisions = nativeSdkVerifyDecisions(run, state).filter(
