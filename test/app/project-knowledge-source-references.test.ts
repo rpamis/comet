@@ -119,6 +119,19 @@ it('expands historical project memory with a missing source diagnostic', async (
   expect(expand(project, 'project-memory:cache-recovery').content).toContain('moved.md');
 });
 
+it('checks anchored memory evidence against its file and keeps the anchor in diagnostics', async () => {
+  const { project, remember, expand } = await fixture();
+  const evidence = `${source}#retry`;
+  remember(evidence);
+  const content = expand(project, 'project-memory:cache-recovery').content;
+  expect(content).toContain(evidence);
+  expect(content).not.toMatch(/找不到来源|source not found|来源无法访问|source unavailable/i);
+  await fs.rename(path.join(project, source), path.join(project, 'moved.md'));
+  const missing = expand(project, 'project-memory:cache-recovery').content;
+  expect(missing).toMatch(/找不到来源|source not found/i);
+  expect(missing).toContain(evidence);
+});
+
 it('expands shared knowledge after a worktree source edit without retiring it', async () => {
   const { root, project, cacheRoot, run, expand } = await fixture();
   const worktree = path.join(root, 'linked');

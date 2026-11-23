@@ -12,7 +12,10 @@ import {
   FileMemoryRepository,
   PersonalMemoryService,
 } from '../../../domains/comet-memory/index.js';
-import { readProjectMemoryEntries } from '../../../domains/project-knowledge/index.js';
+import {
+  readProjectMemoryEntries,
+  removeProjectMemory,
+} from '../../../domains/project-knowledge/index.js';
 import { ProjectKnowledgeHostReview } from '../../../domains/project-knowledge/index.js';
 import { createDefaultCometPluginBridge } from '../../../domains/comet-plugin/comet.js';
 import { resolveStableProjectId } from '../../../platform/paths/project-identity.js';
@@ -83,16 +86,24 @@ test('submits both learning owners once and verifies durable receipts on retry',
     const state = await memories.status();
     expect(state.counts.trial).toBe(1);
     await fs.writeFile(path.join(projectRoot, 'evidence.md'), '# Changed migration\n');
-    const staleReceipt = await submitTaskLearning({
-      ...request,
-      input: {
-        schema: input.schema,
-        personal: { check: 'no-observation' },
-        project: { check: 'submitted', memorySlugs: first.memorySlugs },
-      },
+    const verifyReceipt = () =>
+      submitTaskLearning({
+        ...request,
+        input: {
+          schema: input.schema,
+          personal: { check: 'no-observation' },
+          project: { check: 'submitted', memorySlugs: first.memorySlugs },
+        },
+      });
+    await expect(verifyReceipt()).resolves.toMatchObject({
+      status: 'accepted',
+      projectLearning: { submissionVerified: true },
     });
-    expect(staleReceipt.projectLearning.submissionVerified).toBe(false);
-    expect(staleReceipt.status).toBe('accepted');
+    expect(await removeProjectMemory(projectRoot, first.memorySlugs[0], cacheRoot)).toBe(true);
+    await expect(verifyReceipt()).resolves.toMatchObject({
+      status: 'accepted',
+      projectLearning: { submissionVerified: false },
+    });
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
   }
@@ -217,7 +228,11 @@ test('retains successful entries when one lesson fails and reports partial compl
           check: 'submitted',
           memories: [
             { title: 'Valid decision', text: 'The team confirmed this reusable decision.' },
-            { title: 'Missing evidence', text: 'A source-bound lesson.', evidence: ['missing.md'] },
+            {
+              title: 'Invalid evidence',
+              text: 'A source-bound lesson.',
+              evidence: ['../outside.md'],
+            },
           ],
         },
       },

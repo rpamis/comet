@@ -2,6 +2,7 @@ import {
   isNativeSdkCancellationComplete,
   projectNativeSdkStatus,
 } from '../comet-native/native-sdk-status.js';
+import { nativeSdkNextAction } from '../comet-native/native-sdk-continuation.js';
 import { measureCometGitCommandAsync } from '../../platform/process/runtime-metrics.js';
 import { execFile } from 'child_process';
 import { promises as fs } from 'fs';
@@ -573,10 +574,10 @@ function classicResumeGuidance(
 
 function nativeResumeGuidance(
   status: Awaited<ReturnType<typeof projectNativeSdkStatus>> | NativePortableStatusProjection,
+  runnable?: ReturnType<typeof nativeSdkNextAction>,
 ): ResumeGuidance {
   const { continuation } = status;
   const sdk = 'run' in status ? status : undefined;
-  const runnable = sdk?.run.actions.find((action) => action.status === 'pending');
   const active = sdk?.run.actions.filter((action) =>
     ['running', 'unknown'].includes(action.status),
   );
@@ -934,7 +935,10 @@ async function resolveNativeResumeProbe(
       ? await projectNativeSdkStatus({ projectRoot, name: target.name }, targetSdk)
       : targetPortableStatus;
     resume = status
-      ? nativeResumeGuidance(status)
+      ? nativeResumeGuidance(
+          status,
+          targetSdk && nativeSdkNextAction(targetSdk.run, targetSdk.state),
+        )
       : recoverableCheckpoint
         ? {
             projectRoot,

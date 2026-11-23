@@ -121,6 +121,20 @@ describe('remote project knowledge provider contract', () => {
     expect(JSON.stringify(envelopes[2])).toContain('"sourcePaths":["docs/legacy.md"]');
   });
 
+  test('returns an apply diagnostic without sending an invalid upsert record', async () => {
+    const { instance, requests } = provider({});
+    const invalid = {
+      ...record(),
+      authority: 'unsupported' as ProjectKnowledgeRecord['authority'],
+    };
+    await expect(instance.apply({ kind: 'upsert', record: invalid })).resolves.toMatchObject({
+      kind: 'upsert',
+      changed: false,
+      diagnostics: [expect.objectContaining({ code: 'remote-schema' })],
+    });
+    expect(requests).toEqual([]);
+  });
+
   test('parses Record query results and preserves bounded diagnostics', async () => {
     const { instance } = provider({
       kind: 'list',

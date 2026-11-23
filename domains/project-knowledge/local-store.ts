@@ -101,14 +101,7 @@ function normalizedSemanticText(value: string): string {
 
 function orderedSourceReferences(record: ProjectKnowledgeRecord): string[] {
   const references = recordSourceReferences(record);
-  const generatedModule = isGeneratedModuleRecord(record);
-  return [
-    ...new Set(
-      references.map((source) =>
-        JSON.stringify(generatedModule ? stableGeneratedModuleSource(source) : source),
-      ),
-    ),
-  ].sort();
+  return [...new Set(references.map((source) => JSON.stringify(source)))].sort();
 }
 
 function isGeneratedModuleRecord(record: ProjectKnowledgeRecord): boolean {

@@ -310,7 +310,7 @@ test('keeps completion usable when a mismatched helper returns an invalid learni
   }
 });
 
-test('checks completion receipts in the real helper process after a source edit', async () => {
+test('checks real helper receipts after source edits and rejects deleted memory', async () => {
   const { home, project } = await fixture('completion');
   await fs.writeFile(path.join(project, 'retry.ts'), 'retry(1);');
   await fs.writeFile(
@@ -357,6 +357,24 @@ test('checks completion receipts in the real helper process after a source edit'
   const afterEdit = JSON.parse((await run(home, project, options)).stdout);
   expect(afterEdit.projectLearning.submissionVerified).toBe(true);
   expect(afterEdit.projectLearning.memories).toEqual([{ slug: receipt.slug, verified: true }]);
+  await fs.writeFile(
+    path.join(root, 'forget.mjs'),
+    `
+    import { projectKnowledgeForgetCommand } from './knowledge.mjs';
+    await projectKnowledgeForgetCommand(process.argv[2], { memory: process.argv[3], json: true });
+  `,
+  );
+  const forgotten = await execFileAsync(
+    process.execPath,
+    [path.join(root, 'forget.mjs'), project, receipt.slug],
+    { env: fixtureEnvironment(home), timeout: 18_000, windowsHide: true },
+  );
+  expect(JSON.parse(forgotten.stdout)).toMatchObject({ removed: true });
+  const afterRemoval = JSON.parse((await run(home, project, options)).stdout);
+  expect(afterRemoval.projectLearning.submissionVerified).toBe(false);
+  expect(afterRemoval.projectLearning.memories).toMatchObject([
+    { slug: receipt.slug, verified: false },
+  ]);
 }, 45_000);
 
 test('a new change still recalls user preferences and persists their application for later feedback', async () => {

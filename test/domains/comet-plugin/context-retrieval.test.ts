@@ -358,7 +358,7 @@ describe('task context retrieval', () => {
     });
   });
 
-  test('searches the lesson body while excluding stale source-bound lessons', async () => {
+  test('keeps the source-bound lesson body searchable after its file changes', async () => {
     await withProject(async ({ root, cacheRoot, bridge }) => {
       await fs.writeFile(path.join(root, 'evidence.md'), 'Current behavior.');
       await writeProjectMemory(
@@ -382,7 +382,7 @@ describe('task context retrieval', () => {
         (await bridge.collectContext(request))
           .flatMap((entry) => entry.applications)
           .some((entry) => entry.candidateId.startsWith('project-memory:')),
-      ).toBe(false);
+      ).toBe(true);
     });
   });
 });

@@ -536,7 +536,7 @@ describe('project knowledge local store', () => {
         conclusions: [
           {
             text: '外部调用方：app/alpha、domains/zeta。',
-            sources: [{ source: 'app/alpha/main.ts' }, { source: 'domains/zeta/caller.ts' }],
+            sources: [{ source: 'app/alpha/index.ts' }, { source: 'domains/zeta/index.ts' }],
           },
         ],
         updatedAt: '2026-08-22T00:10:00.000Z',
@@ -545,6 +545,19 @@ describe('project knowledge local store', () => {
       await expect(store.apply({ kind: 'upsert', record: reordered })).resolves.toMatchObject({
         changed: false,
         record: expect.objectContaining({ id: initial.id }),
+      });
+      const renamed = record({
+        ...reordered,
+        conclusions: [
+          {
+            text: '外部调用方：app/alpha、domains/zeta。',
+            sources: [{ source: 'app/alpha/main.ts' }, { source: 'domains/zeta/caller.ts' }],
+          },
+        ],
+      });
+      await expect(store.apply({ kind: 'upsert', record: renamed })).resolves.toMatchObject({
+        changed: true,
+        record: expect.objectContaining({ id: initial.id, conclusions: renamed.conclusions }),
       });
       expect(
         store.list().filter((candidate) => candidate.id.startsWith(`${initial.id}-v-`)),

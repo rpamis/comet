@@ -513,6 +513,7 @@
       "domains/comet-native/native-portable-types.ts",
       "domains/comet-native/native-runtime-ownership.ts",
       "domains/comet-native/native-sdk-acceptance-evidence.ts",
+      "domains/comet-native/native-sdk-continuation.ts",
       "domains/comet-native/native-sdk-supervisor-plan.ts",
       "domains/comet-native/native-sdk-state-store.ts",
       "domains/comet-native/native-supervisor-state.ts",

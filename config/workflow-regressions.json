@@ -12246,7 +12246,47 @@
             "checks completion receipts in the real helper process and refuses stale-source lessons"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "#584 撤下因来源普通内容编辑而拒绝已保存记忆回执的策略。真实 helper 验证可读记忆与删除后失效，保留 CLI 缺失记录的独立错误断言。",
+        "authorization": "report:2026-11-23-retire-stale-source-ci",
+        "record": "docs/research/2026-11-23-project-memory-source-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/app/comet-task-context-process.test.ts",
+            "namePattern": "an unavailable project memory expansion returns a CLI diagnostic without a Node stack",
+            "requiredNames": [
+              "an unavailable project memory expansion returns a CLI diagnostic without a Node stack"
+            ]
+          },
+          {
+            "file": "test/app/comet-task-context-process.test.ts",
+            "namePattern": "checks real helper receipts after source edits and rejects deleted memory",
+            "requiredNames": [
+              "checks real helper receipts after source edits and rejects deleted memory"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-23-project-memory-source-retirement-registry.json",
+            "sha256": "3225da38a2437ea9dcf6aae3f292ded010b225098eadf03b60afa18c21c2b372"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-23-project-memory-source-retirement-tests.json",
+            "sha256": "f3e1400b7a63b0d73f1c2882f6cd50f8dd27b14ed0f1edc5514881c5e434950f"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-23-project-memory-source-retirement-mapping.json",
+            "sha256": "1cb745f639b482616d6a18003eda2eaa8849a3b3e193c73897624dde35c326a1"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-23-project-memory-source-retirement.patch",
+            "sha256": "f71e7c32b55a2ad6c3da20249daa1526eb5490c4ef469dbb97991e9da9066c04"
+          }
+        }
+      }
     },
     {
       "id": "knowledge-get-without-index-refresh",

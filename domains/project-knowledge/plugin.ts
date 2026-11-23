@@ -1220,7 +1220,8 @@ async function sourceReferenceNotices(
   const notices = await Promise.all(
     [...new Set(sources)].map(async (source) => {
       try {
-        const reference = await inspectProtectedProjectPath(projectRoot, source, {
+        const filePath = source.split('#', 1)[0];
+        const reference = await inspectProtectedProjectPath(projectRoot, filePath, {
           label: 'Project Knowledge source',
           expected: 'file',
         });
