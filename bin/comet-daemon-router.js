@@ -165,7 +165,9 @@ function startServer(module, endpoint, buildId, projectRoot, automatic = false) 
       // 独立 CLI 进程也共享冷却时间；即使子进程启动失败并移除锁，也不会反复拉起。
       writeLaunchRetry(retryPath);
     }
-    const cwd = fileURLToPath(new URL('../', import.meta.url));
+    // A Windows daemon holds its working directory open until it exits.
+    // Keep it outside both the project workspace and the replaceable npm package.
+    const cwd = path.dirname(lockPath);
     const env = {
       ...process.env,
       COMET_DAEMON_ENVIRONMENT_FINGERPRINT: endpoint.environmentFingerprint,
@@ -184,9 +186,6 @@ function startServer(module, endpoint, buildId, projectRoot, automatic = false) 
     }
     const lockIdentity = lstatSync(lockPath);
     const child = spawn(process.execPath, [entry, endpoint.endpoint, buildId, projectRoot], {
-      // Keep the detached server out of the project workspace. A daemon must
-      // not keep a temporary project root as its process cwd after the client
-      // command exits, otherwise Windows cannot remove that workspace.
       cwd,
       detached: true,
       stdio: 'ignore',

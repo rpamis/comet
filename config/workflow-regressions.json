@@ -2,6 +2,25 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "windows-npm-upgrade-with-running-comet-daemon",
+      "behavior": "Windows 上，Comet 后台进程运行时，npm 可以替换全局安装目录。",
+      "sources": ["report:2026-11-23-windows-npm-comet-ebusy"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 Windows 使用 npm 发布的 0.5.5 或 057 分支修复前的 CLI 启动后台进程。进程运行时，npm 全局升级或直接重命名隔离安装目录会报 EBUSY。",
+      "expected": "后台进程仍运行时可以重命名安装目录和项目目录，恢复原路径后仍可查询并正常停止该进程。",
+      "forbidden": "后台进程的工作目录锁住 npm 安装目录或项目工作区，导致无法重命名。",
+      "rootCause": "后台进程以 npm 安装目录为当前工作目录，Windows 在进程退出前禁止重命名该目录。",
+      "tests": [
+        {
+          "file": "test/app/comet-daemon-router.test.ts",
+          "namePattern": "^CLI daemon router allows replacing the CLI installation and moving the project while its daemon runs$",
+          "requiredNames": [
+            "CLI daemon router allows replacing the CLI installation and moving the project while its daemon runs"
+          ]
+        }
+      ]
+    },
+    {
       "id": "native-resume-returns-pending-decision",
       "behavior": "指定唯一 Native 需求恢复时，可直接识别原 Run 的待确认问题。",
       "sources": ["report:2026-11-23-comet-workflow-guidance-review"],
