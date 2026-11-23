@@ -28,7 +28,7 @@ async function tempRoot(prefix: string): Promise<string> {
 const fixedNow = (iso: string) => () => new Date(iso);
 
 describe('project memory store', () => {
-  test('does not expand stale memory into an Agent policy, while keeping the note readable', async () => {
+  test('expands an existing lesson as a historical reference when its source is removed', async () => {
     const root = await tempRoot('comet-project-memory-stale-');
     const cacheRoot = await tempRoot('comet-project-memory-cache-');
     try {
@@ -48,8 +48,10 @@ describe('project memory store', () => {
       );
       const request = { task: 'Use retry policy', projectId: resolveStableProjectId(root) };
       expect(await module.resolveContext?.(`project-memory:${saved.slug}`, request)).not.toBeNull();
-      await fs.writeFile(path.join(root, 'retry.ts'), 'retry(2);');
-      expect(await module.resolveContext?.(`project-memory:${saved.slug}`, request)).toBeNull();
+      await fs.unlink(path.join(root, 'retry.ts'));
+      expect(await module.resolveContext?.(`project-memory:${saved.slug}`, request)).toMatchObject({
+        content: expect.stringMatching(/找不到来源：retry\.ts[\s\S]*Always retry once\./u),
+      });
       expect((await readProjectMemory(root, saved.slug, cacheRoot))?.body).toBe(
         'Always retry once.',
       );
@@ -95,7 +97,7 @@ describe('project memory store', () => {
     }
   });
 
-  test('captures evidence content and marks a lesson stale when same-size source content changes', async () => {
+  test('stores evidence paths without a version and retains them after same-size edits', async () => {
     const root = await tempRoot('comet-project-memory-evidence-');
     const cacheRoot = await tempRoot('comet-project-memory-cache-');
     try {
@@ -110,14 +112,14 @@ describe('project memory store', () => {
         },
         { cacheRoot },
       );
-      const current = await readProjectMemory(root, saved.slug, cacheRoot);
-      expect(current?.sourceVersions).toHaveLength(1);
-      expect(current?.sourceStatus).toBe('current');
+      expect(await fs.readFile(saved.file, 'utf8')).toContain('evidence: ["retry.ts"]');
+      expect(await fs.readFile(saved.file, 'utf8')).not.toContain('sourceVersions');
       await fs.writeFile(path.join(root, 'retry.ts'), 'retry(2);');
       await fs.utimes(path.join(root, 'retry.ts'), original.atime, original.mtime);
-      const stale = await readProjectMemory(root, saved.slug, cacheRoot);
-      expect(stale?.sourceStatus).toBe('changed');
-      expect(stale?.body).toBe('The retry count is one.');
+      expect(await readProjectMemory(root, saved.slug, cacheRoot)).toMatchObject({
+        evidence: ['retry.ts'],
+        body: 'The retry count is one.',
+      });
     } finally {
       await fs.rm(root, { recursive: true, force: true });
       await fs.rm(cacheRoot, { recursive: true, force: true });

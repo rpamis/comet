@@ -106,7 +106,7 @@ function sanitizeRecord(record: ProjectKnowledgeRecord): ProjectKnowledgeRecord 
 
 function sanitizeMutation(mutation: ProjectKnowledgeMutation): ProjectKnowledgeMutation {
   if (mutation.kind === 'upsert')
-    return { kind: 'upsert', record: sanitizeRecord(mutation.record) };
+    return { kind: 'upsert', record: sanitizeRecord(parseProjectKnowledgeRecord(mutation.record)) };
   if (mutation.kind !== 'experience-delta') return mutation;
   const delta = mutation.delta;
   let payload = delta.payload;

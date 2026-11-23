@@ -31,14 +31,6 @@ export interface ProjectKnowledgeRecordSource {
   readonly evidence?: string;
 }
 
-export interface ProjectKnowledgeRecordSourceVersion {
-  readonly source: string;
-  readonly size: number;
-  readonly modifiedAt: number;
-  /** Full source content digest used for freshness, independent of mtime. */
-  readonly digest?: string;
-}
-
 export interface ProjectKnowledgeRecordConclusion {
   readonly text: string;
   readonly sources: readonly ProjectKnowledgeRecordSource[];
@@ -69,7 +61,7 @@ export interface ProjectKnowledgeRecord {
   readonly conclusions: readonly ProjectKnowledgeRecordConclusion[];
   readonly relations: readonly ProjectKnowledgeRecordRelation[];
   readonly verification: readonly ProjectKnowledgeRecordVerification[];
-  readonly sourceVersions: readonly ProjectKnowledgeRecordSourceVersion[];
+  readonly sourcePaths?: readonly string[];
   readonly applicationCount: number;
   readonly successCount: number;
   readonly failureCount: number;
@@ -98,7 +90,7 @@ const MAX_RELATIONS = 16;
 const MAX_VERIFICATIONS = 16;
 const MAX_SOURCES_PER_ENTRY = 32;
 const MAX_TOTAL_REFERENCES = 128;
-const MAX_SOURCE_VERSIONS = 32;
+const MAX_SOURCE_PATHS = 32;
 
 const RECORD_TYPES = new Set<ProjectKnowledgeRecordType>([
   'topology',
@@ -179,7 +171,7 @@ function requiredBoundedList<T>(
   return value.map((entry, index) => parse(entry, index));
 }
 
-function safeProjectPath(value: unknown, label: string): string {
+export function parseProjectKnowledgePath(value: unknown, label: string): string {
   const source = boundedString(value, label, MAX_PATH_LENGTH).replaceAll('\\', '/');
   if (
     path.posix.isAbsolute(source) ||
@@ -194,7 +186,7 @@ function safeProjectPath(value: unknown, label: string): string {
 
 function pathList(value: unknown, label: string, max = MAX_PATHS): string[] {
   return boundedList(value, label, max, (entry, index) =>
-    safeProjectPath(entry, `${label}[${index}]`),
+    parseProjectKnowledgePath(entry, `${label}[${index}]`),
   );
 }
 
@@ -245,7 +237,7 @@ function parseSource(value: unknown, label: string): ProjectKnowledgeRecordSourc
   const anchor = optionalBoundedString(record.anchor, `${label}.anchor`, 256);
   const evidence = optionalBoundedString(record.evidence, `${label}.evidence`, 1024);
   return {
-    source: safeProjectPath(record.source, `${label}.source`),
+    source: parseProjectKnowledgePath(record.source, `${label}.source`),
     ...(anchor === undefined ? {} : { anchor }),
     ...(parsedLineStart === undefined ? {} : { lineStart: parsedLineStart }),
     ...(parsedLineEnd === undefined ? {} : { lineEnd: parsedLineEnd }),
@@ -297,20 +289,6 @@ function parseVerification(value: unknown, index: number): ProjectKnowledgeRecor
   };
 }
 
-function parseSourceVersion(value: unknown, index: number): ProjectKnowledgeRecordSourceVersion {
-  const record = objectRecord(value, `sourceVersions[${index}]`);
-  const digest = record.digest;
-  if (digest !== undefined && (typeof digest !== 'string' || !/^[a-f0-9]{64}$/u.test(digest))) {
-    throw new Error(`sourceVersions[${index}].digest must be a SHA-256 hash`);
-  }
-  return {
-    source: safeProjectPath(record.source, `sourceVersions[${index}].source`),
-    size: nonNegativeInteger(record.size, `sourceVersions[${index}].size`),
-    modifiedAt: nonNegativeInteger(record.modifiedAt, `sourceVersions[${index}].modifiedAt`),
-    ...(digest === undefined ? {} : { digest }),
-  };
-}
-
 function totalReferenceCount(
   conclusions: readonly ProjectKnowledgeRecordConclusion[],
   relations: readonly ProjectKnowledgeRecordRelation[],
@@ -357,14 +335,21 @@ export function validateProjectKnowledgeRecordShape(value: unknown): ProjectKnow
   if (totalReferenceCount(conclusions, relations) > MAX_TOTAL_REFERENCES) {
     throw new Error('conclusions/relations sources exceed the bounded total reference count');
   }
-  const sourceVersions = boundedList(
-    record.sourceVersions,
-    'sourceVersions',
-    MAX_SOURCE_VERSIONS,
-    parseSourceVersion,
-  );
-  if (new Set(sourceVersions.map((version) => version.source)).size !== sourceVersions.length) {
-    throw new Error('sourceVersions must not contain duplicate sources');
+  const sourcePaths = new Set(pathList(record.sourcePaths, 'sourcePaths', MAX_SOURCE_PATHS));
+  if (record.sourcePaths === undefined) {
+    for (const source of boundedList(
+      record.sourceVersions,
+      'sourceVersions',
+      MAX_SOURCE_PATHS,
+      (entry, index) => {
+        const label = `sourceVersions[${index}]`;
+        return parseProjectKnowledgePath(objectRecord(entry, label).source, `${label}.source`);
+      },
+    ))
+      sourcePaths.add(source);
+  }
+  for (const entry of [...conclusions, ...relations]) {
+    for (const reference of entry.sources) sourcePaths.delete(reference.source);
   }
   return {
     id: stableId(record.id, 'id'),
@@ -385,7 +370,7 @@ export function validateProjectKnowledgeRecordShape(value: unknown): ProjectKnow
       MAX_VERIFICATIONS,
       parseVerification,
     ),
-    sourceVersions,
+    ...(sourcePaths.size === 0 ? {} : { sourcePaths: [...sourcePaths] }),
     applicationCount: nonNegativeInteger(record.applicationCount, 'applicationCount'),
     successCount: nonNegativeInteger(record.successCount, 'successCount'),
     failureCount: nonNegativeInteger(record.failureCount, 'failureCount'),
@@ -398,6 +383,16 @@ export function validateProjectKnowledgeRecordShape(value: unknown): ProjectKnow
 
 export function parseProjectKnowledgeRecord(value: unknown): ProjectKnowledgeRecord {
   return validateProjectKnowledgeRecordShape(value);
+}
+
+export function projectKnowledgeRecordSourceReferences(
+  record: ProjectKnowledgeRecord,
+): readonly ProjectKnowledgeRecordSource[] {
+  return [
+    ...record.conclusions.flatMap((conclusion) => conclusion.sources),
+    ...record.relations.flatMap((relation) => relation.sources),
+    ...(record.sourcePaths ?? []).map((source) => ({ source })),
+  ];
 }
 
 export function createUserProjectKnowledgeRecord(
@@ -421,7 +416,6 @@ export function createUserProjectKnowledgeRecord(
     conclusions: sources.length > 0 ? [{ text: input.summary, sources }] : [],
     relations: [],
     verification: input.verification ?? [],
-    sourceVersions: [],
     applicationCount: 0,
     successCount: 0,
     failureCount: 0,
@@ -460,6 +454,7 @@ export function mergeProjectKnowledgeRecord(
       conclusions: validatedCurrent.conclusions,
       relations: validatedCurrent.relations,
       verification: validatedCurrent.verification,
+      sourcePaths: validatedCurrent.sourcePaths,
       applicationCount: validatedCurrent.applicationCount,
       successCount: validatedCurrent.successCount,
       failureCount: validatedCurrent.failureCount,

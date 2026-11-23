@@ -1,8 +1,13 @@
-# Task learning completion
+# Use and save memory on demand
 
-Before finishing a task, the Agent checks personal preferences and project experience separately. When there is no qualifying observation, reusable lesson, known pending review, or actual-use feedback to submit, do not create an empty learning file or call review just to confirm an empty queue. Keep the current session and task arguments and complete with `--complete --learning-check no-observation --project-learning-check no-observation`. Use `not-run` for checks that were not performed; do not claim they occurred. If completion reports pending work for this change, follow its returned instructions.
+- **Look up lessons when troubleshooting.** Check the context already delivered. If an error looks like a recurring project issue or you need to confirm a project convention, run `comet knowledge query <project-root> --task "<error or convention>" --json`. Add `--path` when you know the relevant file or directory. Expand a relevant summary when you need details and check the lesson against current evidence. Use `comet memory retrieve` when you need to confirm a personal preference.
+- **Save reusable lessons after a fix passes verification.** Decide whether the approach could save investigation on a future task. If so, use `comet knowledge remember` and record the symptom, when the approach applies, what worked, and the actual verification result. Include `--workflow` and `--change` when known, and keep the returned slug. When the user explicitly asks you to remember a long-term preference, save it immediately with `comet memory remember` using the scope they gave you.
 
-When there is actual content to submit, prepare a temporary UTF-8 JSON file. The user does not write this JSON. Keep the file out of change artifacts and commits.
+Use the workflow's completion command. When there is no learning submission, use the default `not-run` and finish without creating an empty learning file or calling review to check an empty queue. If you checked both areas and found nothing to submit, you can use `--complete --learning-check no-observation --project-learning-check no-observation`. For checks you skipped, do not claim they occurred.
+
+## Batch submission
+
+Use a temporary UTF-8 JSON file when submitting several observations or lessons together, or when combining known pending review decisions or actual-use feedback. The Agent prepares the file and keeps it in a temporary location.
 
 ```json
 {
@@ -32,7 +37,7 @@ comet task <project-root> --task "<original user request>" --complete --workflow
 
 When using a file, do not also pass `--learning-check`, `--project-learning-check`, or `--memory`. The command binds workflow and change; do not repeat them inside array items.
 
-Completion requires `learningSubmission.status` to be `applied`, the personal check to be verified, `projectLearning.submissionVerified` to be `true`, and both pending project review and processing counts to be zero. `accepted` means work remains pending; `partial` means some writes failed. Read `personalObservations`, `errors`, and `learningSubmission.nextActions`, address the actual cause, and resubmit the same file after correction; existing receipts prevent duplicate creation. Explain ignored or skipped observations. After confirming that no qualifying observation exists, remove it and declare `no-observation`; do not create placeholder memories. Report `not-run`, delays, changed sources, and failed calls explicitly. Incomplete learning does not block an otherwise completed development task.
+Report the result using `learningSubmission.status`. `applied` means the submission took effect, `accepted` means it was received with work still pending, and `partial` means some writes failed. When more work is needed, use `personalObservations`, `errors`, and `learningSubmission.nextActions` to decide what to do. You can resubmit the same file after correcting the failing items. Existing receipts are reused. Development can finish while learning is still pending.
 
 Implicit workflow events enter the existing learning queue without waiting for maintenance on the advancement path. Continue pending observations with `comet memory sync`; queued does not mean effective, and does not require repeatedly submitting the same learning file. Explicit remember/forget requests and evidenced adoption feedback still run immediately. Platforms without an idle-event adapter require an explicit sync; installing the plugin does not connect every chat automatically.
 

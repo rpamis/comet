@@ -3944,25 +3944,6 @@ function ProjectKnowledgeSourcePreviewModal({
                                       ))}
                                     </ul>
                                   )}
-                                  {record.sourceVersions?.length > 0 && (
-                                    <small>
-                                      {t('版本依据：')}
-                                      {record.sourceVersions
-                                        .filter(
-                                          (version) => version.source === selectedSource.source,
-                                        )
-                                        .map((version) =>
-                                          t('{0} · {1} · 内容摘要 {2}', [
-                                            formatFileSize(version.size) ?? t('未知大小'),
-                                            formatTimestamp(
-                                              new Date(version.modifiedAt).toISOString(),
-                                            ),
-                                            version.digest?.slice(0, 12) ?? t('旧记录未保存'),
-                                          ]),
-                                        )
-                                        .join('、') || t('未记录')}
-                                    </small>
-                                  )}
                                 </div>
                               );
                             })}
@@ -4613,10 +4594,7 @@ function formatTimestamp(iso) {
 }
 
 function projectKnowledgeRecordSources(record) {
-  const references = [
-    ...(record.conclusions ?? []).flatMap((conclusion) => conclusion.sources ?? []),
-    ...(record.relations ?? []).flatMap((relation) => relation.sources ?? []),
-  ];
+  const references = projectKnowledgeRecordSourceReferences(record);
   return [
     ...new Set(
       references.map((source) => {
@@ -4631,7 +4609,7 @@ function projectKnowledgeRecordSources(record) {
 }
 
 function projectKnowledgeRecordSourceReferences(record, sourcePath) {
-  return [
+  const references = [
     ...(record.conclusions ?? []).flatMap((conclusion) =>
       (conclusion.sources ?? []).map((source) => ({ ...source, role: t('结论') })),
     ),
@@ -4641,7 +4619,11 @@ function projectKnowledgeRecordSourceReferences(record, sourcePath) {
         role: t('关系：{0} → {1}', [relation.type, relation.targetId]),
       })),
     ),
-  ].filter((source) => projectKnowledgeSourcePath(source.source) === sourcePath);
+    ...(record.sourcePaths ?? []).map((source) => ({ source, role: t('来源') })),
+  ];
+  return sourcePath === undefined
+    ? references
+    : references.filter((source) => projectKnowledgeSourcePath(source.source) === sourcePath);
 }
 
 function projectKnowledgeRecordLogicalId(record) {
@@ -7340,19 +7322,8 @@ function ProjectKnowledgeInspector({
   }
 
   const sources = projectKnowledgeRecordSources(record);
-  const references = [
-    ...(record.conclusions ?? []).flatMap((conclusion) =>
-      (conclusion.sources ?? []).map((source) => ({ ...source, role: t('结论') })),
-    ),
-    ...(record.relations ?? []).flatMap((relation) =>
-      (relation.sources ?? []).map((source) => ({
-        ...source,
-        role: t('关系：{0} → {1}', [relation.type, relation.targetId]),
-      })),
-    ),
-  ];
+  const references = projectKnowledgeRecordSourceReferences(record);
   const verification = projectKnowledgeVerificationLines(record);
-  const sourceVersions = Array.isArray(record.sourceVersions) ? record.sourceVersions : [];
   const applicablePaths = record.applicablePaths ?? [];
   const operations = record.operations ?? [];
   const needsEvidence =
@@ -7494,26 +7465,6 @@ function ProjectKnowledgeInspector({
                       : t('仅支持此结论，不参与全文检索')}
                   </small>
                   {reference.evidence && <em>{reference.evidence}</em>}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-      <section>
-        <h4>{t('来源版本')}</h4>
-        {sourceVersions.length === 0 ? (
-          <p className="dashboard-knowledge-inspector-muted">{t('尚未记录来源版本')}</p>
-        ) : (
-          <ul className="dashboard-knowledge-verification-list">
-            {sourceVersions.map((version) => (
-              <li key={version.source}>
-                <FileTextOutlined aria-hidden="true" />
-                <code>{version.source}</code>
-                <span>
-                  {formatFileSize(version.size) ?? t('未知大小')} ·{' '}
-                  {formatTimestamp(new Date(version.modifiedAt).toISOString())}
-                  {t(' · 内容摘要')} {version.digest?.slice(0, 12) ?? t('旧记录未保存')}
                 </span>
               </li>
             ))}
@@ -8314,6 +8265,12 @@ function ProjectMemoryPanel({ summary, readOnly = false, onInvoke, viewScope }) 
                   <div>
                     <span>{t('来源')}</span>
                     <strong>{selectedEntry.source}</strong>
+                  </div>
+                )}
+                {(selectedEntry.evidence ?? []).length > 0 && (
+                  <div>
+                    <span>{t('证据来源')}</span>
+                    <strong>{selectedEntry.evidence.join('、')}</strong>
                   </div>
                 )}
               </div>

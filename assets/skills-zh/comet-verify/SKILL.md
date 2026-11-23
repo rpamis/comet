@@ -19,7 +19,7 @@ description: '验证 Classic change 并记录结果。在用户调用 /comet-ver
 
 1. 按 SDK 方法参考的风险评估、最终集成审查和 light/full 验证方法检查当前 change，但以 SDK Run 的状态和证据为准；不调用旧 `state scale`、`state set`、`comet handoff` 或旧 `comet check` 证据路径。实施或任务记录需要修复时，先报告具体失败项；只有当前待执行的是 `<profile>.verify.run`（`<profile>` 为 full、hotfix 或 tweak），才运行 `comet state transition <change-name> verify-fail --reason "<failure-reason>"`。此命令将失败原因作为同一 Run 的 Verify Action 结果并返回 Build；按同次响应的当前 Build Action 继续；缺少续行信息时才读取 `state next --json`。已有检查失败或结果未明时先读取其 Action，不另报一次 Verify 失败。
 2. 验证结论合格后，将实际检查项、证据引用、审查结论及可接受偏差写入仓库内的验证报告 `<report-ref>`，运行 `comet guard <change-name> verify --report <report-ref> --apply --checks <checks-json-file>` 提交。Guard 核对同一 Run 的报告和验收要求，不重复执行命令。失败或结果未明时使用返回的当前 Action 核对原任务；缺少续行时才读 `state next --json`，不把失败解释为通过。
-3. Guard 通过后直接使用同次响应；缺少 phase 或 nextAction 时才运行 `comet state next <change-name> --json`。只有 phase 为 `archive` 且 `nextAction.kind` 指向 Archive，才加载 `/comet-archive`。Verify 通过不等于用户已经授权归档；由 Archive Skill 获取并记录当前交付决定。
+3. Guard 通过后直接使用同次响应；缺少 phase 或 nextAction 时才运行 `comet state next <change-name> --json`。本轮修复已复验通过且做法值得复用时，由负责修复收尾的 Agent 按[按需使用与记录记忆](../comet/reference/task-learning.md)保存。只有 phase 为 `archive` 且 `nextAction.kind` 指向 Archive，才加载 `/comet-archive`。Verify 通过不等于用户已经授权归档；由 Archive Skill 获取并记录当前交付决定。
 
 ## Compat 路径
 

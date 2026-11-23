@@ -23,7 +23,7 @@ async function fixture() {
   return { base, project, homeDirectory, cacheRoot };
 }
 
-test('verifies actual current-change memory receipts and rejects old or changed-source receipts', async () => {
+test('verifies current-change memory receipts after source removal and rejects receipts from another change', async () => {
   const { base, project, homeDirectory, cacheRoot } = await fixture();
   try {
     await fs.writeFile(path.join(project, 'retry.ts'), 'retry(1);');
@@ -53,12 +53,9 @@ test('verifies actual current-change memory receipts and rejects old or changed-
       { slug: saved.slug, verified: false, reason: 'different-change' },
     ]);
     await fs.unlink(path.join(project, 'retry.ts'));
-    const stale = await readProjectLearningStatus(project, request);
-    expect(stale.submissionVerified).toBe(false);
-    expect(stale.memories).toEqual([
-      { slug: saved.slug, verified: false, reason: 'source-changed' },
-    ]);
-    expect(stale.nextActions.some((action) => action.includes('--evidence'))).toBe(true);
+    const historical = await readProjectLearningStatus(project, request);
+    expect(historical.submissionVerified).toBe(true);
+    expect(historical.memories).toEqual([{ slug: saved.slug, verified: true }]);
   } finally {
     await fs.rm(base, { recursive: true, force: true });
   }

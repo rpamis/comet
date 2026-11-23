@@ -14,59 +14,67 @@ export interface ProjectKnowledgeReadinessOptions {
   readonly provider: ProjectKnowledgeProvider;
   readonly language?: MemoryLanguage;
   readonly reportDiagnostic?: ProjectKnowledgeDiagnosticReporter;
-  /** Query callers validate selected sources at delivery instead of refreshing all records. */
-  readonly refreshSources?: boolean;
+  readonly refreshIndex?: boolean;
+  readonly rebuildModel?: boolean;
 }
 
 export async function ensureProjectKnowledgeReady(
   options: ProjectKnowledgeReadinessOptions,
-): Promise<void> {
+): Promise<boolean> {
   // Local model maintenance must not turn Remote inspection into uploads.
-  if (options.provider instanceof RemoteProjectKnowledgeProvider) return;
+  if (options.provider instanceof RemoteProjectKnowledgeProvider) return false;
   try {
-    await prepareProjectKnowledge(options);
+    return await prepareProjectKnowledge(options);
   } catch (error) {
     options.reportDiagnostic?.({
       code: 'readiness-failed',
       message: `项目知识准备未完成：${error instanceof Error ? error.message : String(error)}`,
     });
+    return false;
   }
 }
 
-async function prepareProjectKnowledge(options: ProjectKnowledgeReadinessOptions): Promise<void> {
+async function prepareProjectKnowledge(
+  options: ProjectKnowledgeReadinessOptions,
+): Promise<boolean> {
   try {
     await fs.access(options.projectRoot);
   } catch {
-    return;
+    return false;
   }
+  let changed = false;
   const projectId = resolveStableProjectId(options.projectRoot);
-  if (options.refreshSources !== false) {
+  if (options.refreshIndex !== false) {
     const refreshed = await options.provider.apply({ kind: 'refresh', projectId });
+    changed = refreshed.changed;
     for (const diagnostic of refreshed.diagnostics) options.reportDiagnostic?.(diagnostic);
   }
   const expectedIds = await discoverExpectedProjectModelRecordIds({
     projectRoot: options.projectRoot,
     reportDiagnostic: options.reportDiagnostic,
   });
-  const activeIds = new Set<string>();
+  const recordIds: string[] = [];
   for (const id of expectedIds) {
-    const response = await options.provider.query({ kind: 'get', projectId, id });
-    for (const diagnostic of response.diagnostics) options.reportDiagnostic?.(diagnostic);
-    if (response.kind === 'get' && response.record && response.record.state !== 'superseded')
-      activeIds.add(id);
+    if (!options.rebuildModel) {
+      const response = await options.provider.query({ kind: 'get', projectId, id });
+      for (const diagnostic of response.diagnostics) options.reportDiagnostic?.(diagnostic);
+      if (response.kind === 'get' && response.record && response.record.state !== 'superseded')
+        continue;
+    }
+    recordIds.push(id);
   }
-  const missingIds = expectedIds.filter((id) => !activeIds.has(id));
-  if (missingIds.length === 0) return;
+  if (recordIds.length === 0) return changed;
   const candidates = await extractDeterministicProjectRecords({
     projectRoot: options.projectRoot,
-    preferredRecordIds: missingIds,
-    recordIds: missingIds,
+    preferredRecordIds: recordIds,
+    recordIds,
     language: options.language ?? 'zh-CN',
     reportDiagnostic: options.reportDiagnostic,
   });
   for (const record of candidates.slice(0, 66)) {
     try {
       const result = await options.provider.apply({ kind: 'upsert', record });
+      changed ||= result.changed;
       for (const diagnostic of result.diagnostics) options.reportDiagnostic?.(diagnostic);
     } catch (error) {
       options.reportDiagnostic?.({
@@ -75,4 +83,5 @@ async function prepareProjectKnowledge(options: ProjectKnowledgeReadinessOptions
       });
     }
   }
+  return changed;
 }

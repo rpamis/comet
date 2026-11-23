@@ -142,7 +142,7 @@ describe('Native 中文记忆接入契约', () => {
     expect(commands).toContain('comet knowledge remember <project-root>');
     expect(commands).toContain('同一标题默认更新');
     expect(commands).toContain('--expand-context "project-memory:<slug>"');
-    expect(commands).toContain('展开并核对当前来源');
+    expect(commands).toContain('用当前证据核对适用条件');
     expect(commands).toContain('任务摘要、一次性命令输出和未验证的猜测不得写入');
     expect(commands).toContain('--learning-check submitted|no-observation|not-run');
   });
@@ -176,7 +176,7 @@ describe('English memory integration contract', () => {
     expect(nativeCommands).toContain('comet knowledge remember <project-root>');
     expect(nativeCommands).toContain('The same title updates the existing entry');
     expect(nativeCommands).toContain('--expand-context "project-memory:<slug>"');
-    expect(nativeCommands).toContain('check its current sources');
+    expect(nativeCommands).toContain('check its applicability against current evidence');
     expect(nativeCommands).toContain(
       'Never save task summaries, one-off command output, or unverified guesses',
     );

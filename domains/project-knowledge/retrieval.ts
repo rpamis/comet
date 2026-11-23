@@ -1,5 +1,5 @@
 import { contextPathMatches } from '../agent-learning/index.js';
-import { readProjectMemory, readProjectMemorySearchEntries } from './project-memory.js';
+import { readProjectMemorySearchEntries } from './project-memory.js';
 import { independentQueryTermCount, queryContainsTerm } from './query.js';
 import type {
   ProjectKnowledgeProvider,
@@ -42,9 +42,7 @@ export async function searchProjectKnowledge(options: {
         left.index - right.index,
     );
   const memories: ProjectKnowledgeResult[] = [];
-  for (const { entry, score } of matches) {
-    const memory = await readProjectMemory(options.projectRoot, entry.slug, options.cacheRoot);
-    if (!memory || memory.sourceStatus === 'changed') continue;
+  for (const { entry: memory, score } of matches) {
     if (
       query.path !== undefined &&
       memory.paths.length > 0 &&

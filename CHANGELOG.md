@@ -2,6 +2,16 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.5.7] - 2026-11-23
+
+### Changed
+
+- **On-demand memory**: Native and Classic Skills guide Agents to look up relevant lessons while troubleshooting and save reusable fixes after verification. Single lessons and explicit preferences can be saved directly, and routine completion uses the default learning status.
+
+### Fixed
+
+- **Durable project lessons**: Keep project memory and knowledge available after source edits. Expanded lessons show source references and identify files missing from the current worktree. Looking up a lesson no longer retires it in other worktrees ([#584](https://github.com/rpamis/comet/issues/584)).
+
 ## What's Changed [0.5.6] - 2026-11-20
 
 ### Added

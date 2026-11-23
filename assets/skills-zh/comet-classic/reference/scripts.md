@@ -108,7 +108,7 @@ comet archive <change-name>
 
 ## 任务上下文与产物语言
 
-任务结束先按[任务学习收尾](../../comet/reference/task-learning.md)检查是否有可提交内容。有个人观察、项目经验、待评审动作或实际使用反馈时，优先用 `comet task --complete --learning-file <file>` 一次提交；没有这些内容时不创建空学习文件，用实际检查结果完成收尾。本节后面的分步命令供即时保存、单项纠正及旧版兼容；采用学习文件时无需重复执行。
+排查可能遇过的故障、核对项目惯例，或刚通过复验且经验值得复用时，参照[按需使用与记录记忆](../../comet/reference/task-learning.md)。优先用下方单项命令；有多项需要合并提交时再用 `comet task --complete --learning-file <file>`，没有这些内容时不创建空学习文件。
 
 所有 OpenSpec 和 Superpowers 产物都必须使用 Comet 配置的产物语言，配置值为规范化语言 ID：`en` 或 `zh-CN`。已有 change 优先使用本次有效入口返回的 `configuration.language`；仅入口未提供该字段时，才通过 `comet state get <name> language` 读取实际状态文件中的 `language`。新旧两种状态文件均不存在时，依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `classic.language`；两处都没有配置时，才使用当前用户请求的语言。调用外部 OpenSpec/Superpowers Skill 时，必须把最终确定的语言明确写入提示词或 ARGUMENTS。
 
@@ -128,17 +128,14 @@ comet archive <change-name>
 
 用户明确要求长期记住偏好或项目约定时，调用 `comet memory remember ... --scope global|project`。用户明确限定适用阶段时，添加可重复的 `--phase`，例如 `--phase build --phase verify`；修改已有记录用 `comet memory correct <project-root> --id <id> --phase build --phase verify --json`。只保存明确的阶段条件，不自行扩展适用范围。用户没有明确要求、但协作方式稳定且可跨任务复用时，才调用 `comet memory observe --text "<偏好内容>" --workflow <classic|native> --change <change-id> --candidate-key <change-id>-<行为短名>`（三个选项均为必需；`--candidate-key` 用 change ID 加行为短名生成稳定标识）。两者都不得保存任务摘要、进展、命令输出或测试结果。
 
-项目记忆与个人记忆独立保存。任务结束前，把本次验证过且未来任务仍可复用的经验写入项目记忆：`comet knowledge remember <project-root> --title "<简明标题>" --text "<现象、做法、验证结果>" --type <fact|decision|pattern|procedure|constraint|failure-resolution> --workflow classic --change <change-id> --evidence "<来源文件，逗号分隔>" --json`。同一标题默认更新已有条目。`--evidence` 绑定支持结论的项目内文件；没有文件依据的协作决策可省略。采用已有经验前，追加 `--expand-context "project-memory:<slug>"` 展开并核对来源；来源变化或不可读取时先验证并更新。任务摘要、一次性命令输出和未验证的猜测不得写入。
+项目记忆与个人记忆独立保存。经验证且未来仍可复用的项目经验，用 `comet knowledge remember <project-root> --title "<简明标题>" --text "<现象、做法、验证结果>" --type <fact|decision|pattern|procedure|constraint|failure-resolution> --workflow classic --change <change-id> --evidence "<来源文件，逗号分隔>" --json` 保存。同一标题默认更新已有条目。`--evidence` 引用支持结论的项目内文件，没有文件依据的协作决策可省略。采用已有经验前，追加 `--expand-context "project-memory:<slug>"` 展开，再用当前证据核对适用条件。发现来源不可用或结论变化时，复核后更新原条目。任务摘要、一次性命令输出和未验证的猜测不得写入。
 
-任务结束前，Agent 独立完成项目学习检查：
+任务结束时调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow classic --change <change-id> --json` 记录完成。没有合格观察、可复用经验或已知待评审时，使用默认的 `not-run`，不调用 review，不创建空动作文件。
 
-1. 本次没有合格观察、可复用经验或已知待评审时，直接声明 `no-observation`；不调用 review，不创建空动作文件。只有当前完成响应或已有回执提示本次 change 有待评审时，运行 `comet knowledge review <project-root> --workflow classic --change <change-id> --json`。
-2. 有待评审时，根据返回的 `recordFields` 和来源证据编写动作文件，用 `--id <id> --file <actions.json>` 提交；真实评审没有可复用结论时可提交 `[]`。用户无需编写 JSON。核对 `submission.status` 为 `applied`；`accepted` 只表示已接收。只处理本次 change，后续完成响应新出现的待评审仍按该规则处理。
-3. 保存本次项目记忆后，在完成命令中传 `--project-learning-check submitted --memory <返回的 slug>`；多个回执用逗号分隔。无可复用经验时传 `no-observation`，未检查时传 `not-run`。
-4. 完成响应的 `projectLearning.submissionVerified` 为 `true`，`pendingHostReviewCount` 和 `pendingReflectionCount` 都为 `0`，才报告项目学习检查完成；否则按 `nextActions` 处理并说明未完成项。学习失败不阻断已完成的开发任务。
+有学习内容时按实际回执填写。已提交个人观察时，用 `--learning-check submitted`；已保存项目经验时，用 `--project-learning-check submitted --memory <返回的 slug>`，多个 slug 用逗号分隔。分别检查过且确认没有内容时才用 `no-observation`。首次隐式观察进入 `trial`，不同 change 的第二次独立成功观察才可能晋级。
 
-每次任务结束前完成一次学习检查：有明确后续复用条件的用户纠正、偏好或协作习惯先调用 `comet memory observe`，再在完成命令中传 `--learning-check submitted`；确认没有合格观察时传 `--learning-check no-observation`，没有执行检查时传 `--learning-check not-run`。首次观察只形成 `trial` 候选，来自不同 change 的第二次独立成功观察才可能晋级。观察 JSON 的 `learning.result` 和 `status.learning.lastCheck` 是诊断依据。
+处理已知待评审时，用 `comet knowledge review <project-root> --workflow classic --change <change-id> --json` 获取 `recordFields` 和来源，按回执用 `--id <id> --file <actions.json>` 提交。只处理本次 change。实际评审后没有可复用结论时可提交 `[]`。`applied` 表示已应用，`accepted` 表示已接收，待处理项按返回的 `nextActions` 维护。学习失败不阻断已完成的开发任务。
 
-实际使用某条内容并已得知结果后，使用返回的 `applications[].applicationId`（Hook 文本中的 `application_id`）运行 `comet task <project-root> --task "<用户原始请求>" --application "<application-id>" --outcome used-successfully|ignored|overridden|corrected|contributed-to-failure --json`，如实记录使用结果；不得把未使用的条目标为使用成功。任务结束时，运行带 `--complete --workflow classic --change <change-id> --learning-check submitted|no-observation|not-run --project-learning-check submitted|no-observation|not-run [--memory <slug>]` 的 `comet task`，分别记录个人记忆和项目学习检查。
+有明确的实际使用结果时，用返回的 `applications[].applicationId`（Hook 文本中的 `application_id`）提交 `comet task --application <id> --outcome <结果>`。成功使用需要实际采用决定和通过的验证证据，参数见 `comet task --help`。
 
 没有 Hook 时，由 Skill 调用相同接口。`comet memory context` 只保留为兼容入口；插件未返回结果或调用失败，不会阻止工作流继续。

@@ -221,6 +221,8 @@ describe('comet knowledge commands', () => {
     const { root, cacheRoot } = await projectFixture();
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
+      const manifest = path.join(root, 'package.json');
+      await fs.writeFile(manifest, JSON.stringify({ scripts: { test: 'vitest run' } }));
       await expect(
         projectKnowledgeStatusCommand(root, { json: true, cacheRoot }),
       ).resolves.toMatchObject({
@@ -228,11 +230,22 @@ describe('comet knowledge commands', () => {
         status: { healthy: true, writable: true },
       });
 
+      await fs.writeFile(manifest, JSON.stringify({ scripts: { lint: 'eslint .' } }));
       await expect(
         projectKnowledgeRebuildCommand(root, { json: true, cacheRoot }),
       ).resolves.toMatchObject({
         provider: 'local',
-        result: { kind: 'refresh' },
+        result: {
+          kind: 'refresh',
+          changed: true,
+          records: expect.arrayContaining([
+            expect.objectContaining({
+              id: 'generated-build-test',
+              state: 'proven',
+              verification: [{ command: 'npm run lint', expected: '成功' }],
+            }),
+          ]),
+        },
       });
 
       await expect(

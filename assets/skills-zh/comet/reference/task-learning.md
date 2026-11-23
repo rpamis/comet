@@ -1,8 +1,13 @@
-# 任务学习收尾
+# 按需使用与记录记忆
 
-任务结束前，由 Agent 分别检查个人偏好与项目经验。没有合格观察、可复用经验、已知待评审或待提交的实际使用反馈时，不创建空学习文件，也不为确认空队列运行 review；沿用当前会话与任务参数，用 `--complete --learning-check no-observation --project-learning-check no-observation` 完成收尾。未执行检查时用 `not-run`，不能声明已经检查；完成响应若列出本次 change 的待处理项，仍按返回指引处理。
+- **排查时按需查。** 先看本次已经收到的上下文。遇到像是项目旧问题的报错，或需要确认项目惯例时，运行 `comet knowledge query <project-root> --task "<报错或待确认的惯例>" --json`，已知目标文件或目录时加 `--path`。摘要相关且需要详情时再展开，用当前证据核对适用条件。需要确认个人偏好时，按需调用 `comet memory retrieve`。
+- **复验通过后按需记。** 判断这次的做法能否帮下次任务省掉排查。值得复用就用 `comet knowledge remember` 记录现象、适用条件、有效做法和实际复验结果。本次属于已知工作流和 change 时，带上 `--workflow` 和 `--change`，保存返回的 slug。用户明确要求长期记住的偏好，用 `comet memory remember` 当场保存，沿用用户给出的适用范围。
 
-有实际内容需要提交时，准备一个临时 UTF-8 JSON 文件。用户无需编写 JSON；文件不放进 change 产物或提交。
+正常收尾沿用工作流的完成命令。没有学习提交时，使用默认的 `not-run`，不创建空学习文件，也不为确认空队列运行 review。已经分别检查且确认没有可提交内容时，可以用 `--complete --learning-check no-observation --project-learning-check no-observation`；未执行检查时不能声明已经检查。
+
+## 批量提交
+
+有多条观察或经验，或者已有待评审动作、实际使用反馈需要合并提交时，准备一个临时 UTF-8 JSON 文件。用户无需编写 JSON，文件留在临时位置。
 
 ```json
 {
@@ -32,7 +37,7 @@ comet task <project-root> --task "<用户原始请求>" --complete --workflow <n
 
 使用文件时不再重复传 `--learning-check`、`--project-learning-check` 或 `--memory`。workflow 与 change 由命令绑定，不在数组中另填。
 
-完成标准：`learningSubmission.status` 为 `applied`，个人检查已核验，`projectLearning.submissionVerified` 为 `true`，项目待评审与待处理数量均为 0。`accepted` 表示仍有待处理项，`partial` 表示部分写入失败；读取 `personalObservations`、`errors` 和 `learningSubmission.nextActions`，按实际原因处理，修正后可重交同一文件，已有回执不会重复创建。观察被忽略或跳过时说明原因；确认没有合格观察后，移除该观察并声明 `no-observation`，不创建占位记忆。`not-run`、延迟、来源变化或调用失败需明确说明，学习未完成不阻断已完成的开发任务。
+根据返回的 `learningSubmission.status` 报告结果。`applied` 表示已应用，`accepted` 表示已接收且仍有待处理项，`partial` 表示部分写入失败。确需继续处理时，参考 `personalObservations`、`errors` 和 `learningSubmission.nextActions`。修正失败项后可重交同一文件，已有回执会复用。学习未完成不阻断已完成的开发任务。
 
 隐式工作流事件只写入现有学习队列，不在推进路径等待整理。待处理观察使用 `comet memory sync` 继续；排队不代表记忆已生效，也无需反复提交同一学习文件。显式记住、忘记和有证据的实际采用反馈仍立即处理。平台没有空闲事件适配时，需要显式运行 sync；安装插件不代表所有聊天都已自动接入。
 

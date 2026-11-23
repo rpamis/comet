@@ -310,7 +310,7 @@ test('keeps completion usable when a mismatched helper returns an invalid learni
   }
 });
 
-test('checks completion receipts in the real helper process and refuses stale-source lessons', async () => {
+test('checks completion receipts in the real helper process after a source edit', async () => {
   const { home, project } = await fixture('completion');
   await fs.writeFile(path.join(project, 'retry.ts'), 'retry(1);');
   await fs.writeFile(
@@ -354,11 +354,9 @@ test('checks completion receipts in the real helper process and refuses stale-so
     pendingReflectionCount: 0,
   });
   await fs.writeFile(path.join(project, 'retry.ts'), 'retry(2);');
-  const stale = JSON.parse((await run(home, project, options)).stdout);
-  expect(stale.projectLearning.submissionVerified).toBe(false);
-  expect(stale.projectLearning.memories).toEqual([
-    { slug: receipt.slug, verified: false, reason: 'source-changed' },
-  ]);
+  const afterEdit = JSON.parse((await run(home, project, options)).stdout);
+  expect(afterEdit.projectLearning.submissionVerified).toBe(true);
+  expect(afterEdit.projectLearning.memories).toEqual([{ slug: receipt.slug, verified: true }]);
 }, 45_000);
 
 test('a new change still recalls user preferences and persists their application for later feedback', async () => {

@@ -98,7 +98,6 @@ async function runFormationEval(): Promise<AgentLearningFormationEvalCase[]> {
     JSON.stringify({ scripts: { test: 'vitest run' } }),
     'utf8',
   );
-  const sourceStat = await fs.stat(sourcePath);
   const memory = new PersonalMemoryService({
     language: 'zh-CN',
     repository: new FileMemoryRepository(memoryRoot, {
@@ -205,13 +204,6 @@ async function runFormationEval(): Promise<AgentLearningFormationEvalCase[]> {
             ],
             relations: [],
             verification: [],
-            sourceVersions: [
-              {
-                source: 'src/main.ts',
-                size: sourceStat.size,
-                modifiedAt: Math.trunc(sourceStat.mtimeMs),
-              },
-            ],
             applicationCount: 0,
             successCount: 0,
             failureCount: 0,

@@ -23,7 +23,7 @@ export interface ProjectLearningStatus {
   readonly memories: readonly {
     slug: string;
     verified: boolean;
-    reason?: 'missing' | 'different-change' | 'source-changed';
+    reason?: 'missing' | 'different-change';
   }[];
   readonly pendingHostReviewCount: number;
   readonly pendingReflectionCount: number;
@@ -47,9 +47,7 @@ export async function readProjectLearningStatus(
         ? 'missing'
         : entry.workflow !== request.workflow || entry.change !== request.change
           ? 'different-change'
-          : entry.sourceStatus === 'changed'
-            ? 'source-changed'
-            : undefined;
+          : undefined;
     memories.push({
       slug,
       verified: reason === undefined,
@@ -103,10 +101,6 @@ export async function readProjectLearningStatus(
         ? saved.length === 0
         : false);
   const nextActions: string[] = [];
-  if (memories.some((entry) => entry.reason === 'source-changed'))
-    nextActions.push(
-      '来源已变化或不可读取：重新核验当前文件与结论，更新记忆时传 --evidence <来源文件> 重新绑定内容；不再适用的经验用 comet knowledge forget --memory <slug> 删除。',
-    );
   if (pendingReviews.length > 0)
     nextActions.push(
       '运行 comet knowledge review <project-root> --workflow <workflow> --change <change-id> --json；由 Agent 读取证据、提交有依据的评审动作，无可复用经验时提交 []，并确认 submission.status 为 applied。用户无需编写 JSON。',

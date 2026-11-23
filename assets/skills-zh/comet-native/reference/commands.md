@@ -88,9 +88,7 @@ comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --sess
 
 若 `<active_policies>` 中包含 `<verification command="...">`，将这些命令加入当前 Verify 的检查，并记录实际结果。只有对应命令成功执行后，Runtime 才会将该策略设为强制执行。
 
-记忆按以下规则保存：
-
-本次确有可复用观察或经验时，按[任务学习收尾](../../comet/reference/task-learning.md)准备学习文件，用 `comet task --complete --learning-file <file>` 一次提交个人观察、项目经验、待评审动作和实际使用反馈。下面的分步保存、评审与完成命令供即时保存、单项纠正及旧版兼容；采用学习文件时无需重复执行。
+排查可能遇过的故障、核对项目惯例，或刚通过复验且经验值得复用时，参照[按需使用与记录记忆](../../comet/reference/task-learning.md)。优先用下方单项命令；有多项需要合并提交时再用 `comet task --complete --learning-file <file>`。
 
 - 用户明确要求长期记住偏好或项目约定时，调用 `comet memory remember <project-root> --text "<偏好或约定>" --scope global|project --json`，立即保存为用户明确指定的记忆。用户明确限定阶段时追加可重复的 `--phase`，例如 `--phase build --phase verify`；纠正适用阶段使用 `comet memory correct <project-root> --id <id> --phase <phase> --json`。保留用户原话，不把当前阶段自动当作长期适用条件。
 - 用户没有提出长期记忆要求，但协作方式已经稳定、可供以后任务复用时，才调用 `comet memory observe <project-root> --text "<协作方式>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`。
@@ -98,13 +96,13 @@ comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --sess
 
 ### 项目记忆
 
-项目记忆与个人记忆独立保存。当前项目中已经验证、未来任务仍可复用的事实、决策、模式、步骤、约束或失败处理，任务结束前写入项目记忆：
+只有当前项目已经验证且将来仍有复用价值的经验才写入项目记忆。修复类经验写清现象、有效做法与复验结果。
 
 ```text
 comet knowledge remember <project-root> --title "<简明标题>" --text "<现象、做法、验证结果>" --type <fact|decision|pattern|procedure|constraint|failure-resolution> --workflow native --change <change-id> --evidence "<来源文件，逗号分隔>" --json
 ```
 
-同一标题默认更新已有条目，不重复创建；没有可复用经验时跳过。`--evidence` 绑定实际支持结论的项目内文件；没有文件依据的协作决策可省略。返回的 `slug` 是本次写入回执。采用已有经验前，用同一任务参数追加 `--expand-context "project-memory:<slug>"` 展开并核对当前来源；来源变化或不可读取时，先验证并更新经验。任务摘要、一次性命令输出和未验证的猜测不得写入。
+同一标题默认更新已有条目。只记录经验证、可复用的经验。`--evidence` 引用支持结论的项目内文件，没有文件依据的协作决策可省略。返回的 `slug` 是写入回执。采用已有经验前，用同一任务参数追加 `--expand-context "project-memory:<slug>"` 展开，再用当前证据核对适用条件。发现来源不可用或结论变化时，复核后更新原条目。任务摘要、一次性命令输出和未验证的猜测不得写入。
 
 只有明确的用户纠正、长期记忆要求或已验证的可复用经验才触发学习提交。没有这些内容时直接记录任务完成，学习标记使用 `not-run`，不另查队列或提交空评审来证明没有观察。已提交内容保留真实回执；待评审和反思队列留给异步维护，学习失败不阻断已完成的开发任务。用户明确要求维护记忆时，再查询和处理相关队列。
 

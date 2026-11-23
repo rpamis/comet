@@ -7748,6 +7748,7 @@ for (const scenario of ['stable reads', 'loading spacing'] as const) {
       created: '2026-09-20T09:12:00.000Z',
       updated: '2026-09-20T09:12:00.000Z',
       body: `项目记忆 ${index + 1} 的完整内容。`,
+      evidence: ['docs/comet/specs/recovery/spec.md'],
     }));
     const knowledgePage = {
       pluginId: 'comet.project-knowledge',
@@ -7858,6 +7859,7 @@ for (const scenario of ['stable reads', 'loading spacing'] as const) {
     await page.getByRole('tab', { name: '项目记忆' }).click();
 
     const inspector = page.getByRole('complementary', { name: '项目记忆详情' });
+    await expect(inspector).toContainText('docs/comet/specs/recovery/spec.md');
     if (scenario === 'loading spacing') {
       try {
         const skeleton = inspector.locator('.ant-skeleton');

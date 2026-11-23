@@ -2,6 +2,59 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "issue-584-project-memory-source-edits",
+      "behavior": "项目记忆在来源文件无关章节编辑后仍可从任务索引定位并展开。",
+      "sources": ["https://github.com/rpamis/comet/issues/584"],
+      "coverageLevel": "public-cli",
+      "reproduction": "0.5.5 和 0.5.6 的公开 CLI 用带来源版本的记忆记录一个 Spec 中的经验，修改 Spec 的另一个章节。任务索引仍可见，展开返回 Unknown or unavailable context。",
+      "expected": "旧记忆可按原 slug 展开，保留正文和项目相对来源路径。",
+      "forbidden": "仅因来源文件内容变化拒绝展开，或要求重建原记录。",
+      "rootCause": "文件型记忆将整文件摘要作为读出条件，索引却只读取静态摘要。",
+      "tests": [
+        {
+          "file": "test/app/project-knowledge-source-references.test.ts",
+          "namePattern": "^expands legacy project memory after an unrelated source edit$",
+          "requiredNames": ["expands legacy project memory after an unrelated source edit"]
+        }
+      ]
+    },
+    {
+      "id": "issue-584-project-memory-missing-source",
+      "behavior": "项目记忆来源移走时可读历史正文，并给出来源路径和复核提示。",
+      "sources": ["https://github.com/rpamis/comet/issues/584"],
+      "coverageLevel": "public-cli",
+      "reproduction": "0.5.5 和 0.5.6 中将已记录为来源的 Spec 移走。已保存记忆与不存在的 slug 都得到通用展开错误。",
+      "expected": "已保存记忆仍可展开，显示当前工作区缺失的路径，可在复核后用原 slug 更新来源。",
+      "forbidden": "把找不到来源当成找不到记忆，或写入新的文件版本作为更新条件。",
+      "rootCause": "来源读取失败与版本不匹配共用一个判定，展开层丢弃正文和具体原因。",
+      "tests": [
+        {
+          "file": "test/app/project-knowledge-source-references.test.ts",
+          "namePattern": "^expands historical project memory with a missing source diagnostic$",
+          "requiredNames": ["expands historical project memory with a missing source diagnostic"]
+        }
+      ]
+    },
+    {
+      "id": "issue-584-project-knowledge-worktree-source-edits",
+      "behavior": "同仓库的另一 worktree 编辑知识来源后，展开经验不改变共享记录的生命周期。",
+      "sources": ["https://github.com/rpamis/comet/issues/584"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 0.5.6 发布包让两个 Git worktree 共享一条已成功应用的记录。只改第二个 worktree 的无关章节，展开失败并将共享记录写为 superseded，主 worktree 随后也无法展开。",
+      "expected": "两个 worktree 均可展开，记录保持原 ID、状态、更新时间和成功应用次数。",
+      "forbidden": "把当前工作区来源的哈希差异写成整个仓库的知识退役状态。",
+      "rootCause": "Local Provider 在查询和展开中运行刷新，整文件摘要差异会触发共享数据库的生命周期更新。",
+      "tests": [
+        {
+          "file": "test/app/project-knowledge-source-references.test.ts",
+          "namePattern": "^expands shared knowledge after a worktree source edit without retiring it$",
+          "requiredNames": [
+            "expands shared knowledge after a worktree source edit without retiring it"
+          ]
+        }
+      ]
+    },
+    {
       "id": "issue-569-fixed-application-distribution",
       "behavior": "Comet 升级后可导出旧固定包并安装到项目级或用户级，再从安装记录启动应用。",
       "sources": ["https://github.com/rpamis/comet/issues/569"],

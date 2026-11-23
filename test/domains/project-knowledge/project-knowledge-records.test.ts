@@ -33,13 +33,6 @@ function sampleRecord(): ProjectKnowledgeRecord {
       },
     ],
     verification: [{ command: 'npx vitest run test/domains/project-knowledge/*.test.ts' }],
-    sourceVersions: [
-      {
-        source: 'domains/project-knowledge/types.ts',
-        size: 2048,
-        modifiedAt: 1_723_456_789_000,
-      },
-    ],
     applicationCount: 0,
     successCount: 0,
     failureCount: 0,
@@ -48,16 +41,16 @@ function sampleRecord(): ProjectKnowledgeRecord {
 }
 
 describe('project knowledge records', () => {
-  test('rejects duplicate source versions', () => {
-    expect(() =>
-      parseProjectKnowledgeRecord({
-        ...sampleRecord(),
-        sourceVersions: [
-          { source: 'docs/process.md', size: 10, modifiedAt: 1 },
-          { source: 'docs/process.md', size: 10, modifiedAt: 1 },
-        ],
-      }),
-    ).toThrow(/duplicate sources/u);
+  test('preserves extra legacy references and discards version metadata', () => {
+    const parsed = parseProjectKnowledgeRecord({
+      ...sampleRecord(),
+      sourceVersions: [
+        { source: 'package.json', size: 10, modifiedAt: 1 },
+        { source: 'docs/process.md', digest: 'legacy', size: 10, modifiedAt: 1 },
+        { source: 'docs/process.md', size: 20, modifiedAt: 2 },
+      ],
+    });
+    expect(parsed).toEqual({ ...sampleRecord(), sourcePaths: ['docs/process.md'] });
   });
 
   test('creates a user record from structured input and preserves optional evidence', () => {
@@ -93,7 +86,6 @@ describe('project knowledge records', () => {
         },
       ],
       verification: [{ command: 'pnpm test --filter project-knowledge' }],
-      sourceVersions: [],
       updatedAt: '2026-08-23T10:00:00.000Z',
     });
   });
@@ -181,7 +173,7 @@ describe('project knowledge records', () => {
     });
   });
 
-  test('rejects unsafe ids, excessive references, and malformed source versions', () => {
+  test('rejects unsafe ids, excessive references, and unsafe legacy source paths', () => {
     expect(() =>
       parseProjectKnowledgeRecord({
         ...sampleRecord(),

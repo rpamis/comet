@@ -653,15 +653,13 @@ describe('project knowledge learning', () => {
           .filter((record) => record.id.startsWith('learned-'))
           .map((record) => record.type),
       ).toEqual(['constraint']);
-      expect(listed.records.find((record) => record.type === 'constraint')).toMatchObject({
+      const constraint = listed.records.find((record) => record.type === 'constraint');
+      expect(constraint).toMatchObject({
         state: 'enforced',
         verification: [{ command: 'pnpm test', expected: 'pass' }],
-        sourceVersions: [
-          expect.objectContaining({
-            digest: createHash('sha256').update('export const main = true;\n').digest('hex'),
-          }),
-        ],
+        conclusions: [expect.objectContaining({ sources: [{ source: 'src/main.ts' }] })],
       });
+      expect(constraint).not.toHaveProperty('sourceVersions');
     } finally {
       provider.close();
       await fs.rm(root, { recursive: true, force: true });
@@ -727,7 +725,9 @@ describe('project knowledge learning', () => {
         service.processEvent(event('verification.completed', verifiedPayload())),
       ).resolves.toMatchObject({
         persisted: expect.not.arrayContaining([invalidId]),
-        diagnostics: [expect.objectContaining({ code: 'source-changed', source: 'src/main.ts' })],
+        diagnostics: [
+          expect.objectContaining({ code: 'source-unverified', source: 'src/main.ts' }),
+        ],
       });
       await expect(provider.query({ kind: 'get', id: invalidId })).resolves.toMatchObject({
         record: null,

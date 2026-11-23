@@ -27,9 +27,7 @@ Native 在项目中保存需求和验收结论。先确认 change 的运行格�
 2. 没有对应 active change 时，按[工作区选择参考](reference/workspace.md#创建-change)确定隔离方式，运行 `native new`，用 `--task` 传入用户原始请求，不先改写成方案摘要，再进入 `preparation.projectRoot`。准备失败时，保留已创建的分支和目录，按返回的原因处理。
 3. 进入工作区并取得 `phase` 后，按[记忆接入](reference/commands.md#记忆接入)获取适用上下文。进入新阶段、交接给新 Agent 或恢复上下文时，由接收方执行 `contextRequest`，重新取得当前适用偏好和项目约束；同一阶段连续执行无需重复获取。任务结束时按该节分别处理项目记忆和个人记忆，再调用 `comet task --complete`。
 
-仅在出现明确的用户纠正、长期记忆要求或已验证的可复用经验时提交学习内容。普通收尾无需调用工具证明没有观察，也无需清空学习队列。任务摘要、进展、命令输出和测试结果不写入个人记忆。
-
-项目经验与个人偏好分开保存：可由当前项目验证、且未来任务仍可复用的经验在任务结束前执行 `comet knowledge remember` 写入项目记忆；用户偏好和稳定协作习惯才进入个人记忆。两者的命令和完成条件见[记忆接入](reference/commands.md#记忆接入)。
+明确的长期用户偏好按[记忆接入](reference/commands.md#记忆接入)保存为个人记忆。任务摘要、进展、命令输出和测试结果不写入个人记忆。工程经验经验证且值得复用时，用 `comet knowledge remember` 写入项目记忆。
 
 ## SDK Run 路径
 
@@ -72,6 +70,8 @@ Build、Verify 或待归档阶段发生编辑时，按[编辑后续行](referenc
 ## Build ↔ Verify Loop
 
 Builder 完成实现并用平台工具执行检查后，一次提交候选与实际结果，再由领取 Verify Action 的 Agent 完成验收。未通过则回 Build 修复并重新提交；全部通过后，等待用户接受验收结果。
+
+排查像是已经遇过的问题时，按[记忆接入](reference/commands.md#记忆接入)查询经验。修复复验通过且做法值得复用时，由负责修复收尾的 Agent 记录。
 
 Verifier 先读原始请求，再对照 Spec 和实现，核对有无遗漏、未经授权的范围缩减或接口行为变化。SDK Run 使用同一份验收结果中的 `requestReview` 说明结论；有冲突或仍影响交付的疑问时，保留 fail 或 blocked。旧 Run 和 Compat 没有保存原始请求时，从交接材料和用户记录补查，不把新生成的 Spec 当成唯一需求来源；Compat 沿用原结果结构。语义核对沿用当前 Verifier，不增加 Agent 或固定测试轮次。
 

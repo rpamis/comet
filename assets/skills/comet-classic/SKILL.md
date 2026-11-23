@@ -43,9 +43,7 @@ Reuse results and context for the same tasks. Follow returned state and `agent.c
 
 On workspace/phase entry, phase changes, Agent handoff or recovery, follow [Task Context and Artifact Language](reference/scripts.md#task-context-and-artifact-language). Take one snapshot using the continuation or claimed Action's `contextRequest`; use the configured artifact language and expand only missing Context Manifest content. Report actual usage outcomes and save a checkpoint at task end.
 
-Before completion, record the task-context learning check as `submitted`, `no-observation`, or `not-run`. Personal Memory stores reusable user information, never task summaries, progress, command output, or test results.
-
-Save validated project experience with `comet knowledge remember`. Project experience and personal preferences are stored separately; Personal Memory holds user preferences and stable collaboration habits. Commands and filtering rules: [Task Context and Artifact Language](reference/scripts.md#task-context-and-artifact-language).
+Project experience and personal preferences are stored separately. When a past lesson might save investigation, look it up using [Task Context and Artifact Language](reference/scripts.md#task-context-and-artifact-language). After a fix passes verification, use `comet knowledge remember` if the lesson is worth reusing. Use `comet memory remember` for preferences the user explicitly asks you to remember long term. Never save task summaries, progress, command output, or test results in Personal Memory.
 
 - new full / open: `/comet-open`: clarify scope, create required artifacts, and obtain the user's review and confirmation
 - design: `/comet-design`: resolve technical tradeoffs and confirm the formal design

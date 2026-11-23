@@ -1,4 +1,3 @@
-import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 
@@ -15,7 +14,11 @@ import {
   readProtectedProjectFile,
 } from '../workflow-contract/protected-project-path.js';
 import { extractDeterministicProjectRecords } from './deterministic-extractors.js';
-import { validateProjectKnowledgeRecordShape, type ProjectKnowledgeRecord } from './records.js';
+import {
+  projectKnowledgeRecordSourceReferences,
+  validateProjectKnowledgeRecordShape,
+  type ProjectKnowledgeRecord,
+} from './records.js';
 import { projectKnowledgeSourceReferenceMatchesText } from './source-validity.js';
 import type { ProjectKnowledgeProvider } from './types.js';
 import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
@@ -28,7 +31,6 @@ const MAX_SOURCE_BYTES = 48 * 1024;
 const MAX_SOURCE_TOTAL_BYTES = 256 * 1024;
 const MAX_HINT_STRING = 512;
 const MAX_REVIEW_ACTIONS = 16;
-const MAX_SOURCE_VALIDATION_BYTES = 1024 * 1024;
 
 export interface ProjectKnowledgeChangedHint {
   readonly eventName: string;
@@ -388,12 +390,6 @@ function experiencePolicyRecord(
     conclusions: sourceRefs.length === 0 ? [] : [{ text: summary, sources: sourceRefs }],
     relations: [],
     verification,
-    sourceVersions: packet.sources.slice(0, 8).map((source) => ({
-      source: source.source,
-      size: source.size,
-      modifiedAt: Math.trunc(source.modifiedAt),
-      digest: source.digest,
-    })),
     applicationCount: 0,
     successCount: 0,
     failureCount: 0,
@@ -425,74 +421,15 @@ async function reviewSourcesStillCurrent(
   return null;
 }
 
-async function recordSourcesStillCurrent(
+function unverifiedRecordReference(
   record: ProjectKnowledgeRecord,
-  projectRoot: string,
-): Promise<string | null> {
-  for (const version of record.sourceVersions) {
-    try {
-      const inspected = await inspectProtectedProjectPath(projectRoot, version.source, {
-        label: version.source,
-        expected: 'file',
-      });
-      if (!inspected.exists) return version.source;
-      if (version.digest !== undefined) {
-        const current = await hashProtectedProjectFile(projectRoot, version.source, {
-          label: version.source,
-        });
-        if (Number(current.stat.size) !== version.size || current.digest !== version.digest) {
-          return version.source;
-        }
-      } else {
-        const stat = await fs.stat(inspected.target);
-        if (
-          Number(stat.size) !== version.size ||
-          Math.trunc(Number(stat.mtimeMs)) !== version.modifiedAt
-        ) {
-          return version.source;
-        }
-      }
-    } catch {
-      return version.source;
-    }
-  }
-  const references = [
-    ...record.conclusions.flatMap((conclusion) => conclusion.sources),
-    ...record.relations.flatMap((relation) => relation.sources),
-  ];
-  const versionSources = new Set(record.sourceVersions.map((version) => version.source));
-  const referencesBySource = new Map<string, typeof references>();
-  for (const reference of references) {
-    if (!versionSources.has(reference.source)) return reference.source;
-    const current = referencesBySource.get(reference.source) ?? [];
-    referencesBySource.set(reference.source, [...current, reference]);
-  }
-  for (const [source, sourceReferences] of referencesBySource) {
-    const preciseReferences = sourceReferences.filter(
-      (reference) =>
-        reference.anchor !== undefined ||
-        reference.lineStart !== undefined ||
-        reference.lineEnd !== undefined,
-    );
-    if (preciseReferences.length === 0) continue;
-    try {
-      const text = (
-        await readProtectedProjectFile(projectRoot, source, MAX_SOURCE_VALIDATION_BYTES, {
-          label: source,
-        })
-      ).bytes.toString('utf8');
-      if (
-        !preciseReferences.every((reference) =>
-          projectKnowledgeSourceReferenceMatchesText(text, reference),
-        )
-      ) {
-        return source;
-      }
-    } catch {
-      return source;
-    }
-  }
-  return null;
+  packet: ProjectKnowledgeReviewPacket,
+): string | undefined {
+  const sources = new Map(packet.sources.map(({ source, text }) => [source, text]));
+  return projectKnowledgeRecordSourceReferences(record).find((reference) => {
+    const text = sources.get(reference.source);
+    return text === undefined || !projectKnowledgeSourceReferenceMatchesText(text, reference);
+  })?.source;
 }
 
 export class ProjectKnowledgeLearningService {
@@ -537,15 +474,6 @@ export class ProjectKnowledgeLearningService {
     for (const candidate of candidates.slice(0, 66)) {
       try {
         const record = validateProjectKnowledgeRecordShape(candidate);
-        const changedSource = await recordSourcesStillCurrent(record, this.projectRoot);
-        if (changedSource !== null) {
-          report({
-            code: 'source-changed',
-            message: '首次建模期间项目来源发生变化，已跳过本次记录。',
-            source: changedSource,
-          });
-          continue;
-        }
         const result = await this.provider.apply({ kind: 'upsert', record });
         for (const diagnostic of result.diagnostics) report(diagnostic);
         if (result.changed) persisted.push(record.id);
@@ -648,15 +576,6 @@ export class ProjectKnowledgeLearningService {
         const record = validateProjectKnowledgeRecordShape({
           ...candidate,
         });
-        const changedRecordSource = await recordSourcesStillCurrent(record, this.projectRoot);
-        if (changedRecordSource !== null) {
-          report({
-            code: 'source-changed',
-            message: '确定性记录校验期间项目来源发生变化，已跳过本次记录。',
-            source: changedRecordSource,
-          });
-          continue;
-        }
         deltas.push(projectRecordDelta(event, record));
       } catch {
         report({ code: 'record-invalid', message: '项目知识记录无效，已跳过该记录。' });
@@ -689,12 +608,12 @@ export class ProjectKnowledgeLearningService {
           successCount: 0,
           failureCount: 0,
         });
-        const changedRecordSource = await recordSourcesStillCurrent(record, this.projectRoot);
-        if (changedRecordSource !== null) {
+        const unverifiedReference = unverifiedRecordReference(record, packet);
+        if (unverifiedReference !== undefined) {
           report({
-            code: 'source-changed',
-            message: '语义记录校验期间项目来源发生变化，已跳过本次记录。',
-            source: changedRecordSource,
+            code: 'source-unverified',
+            message: '记录引用了评审材料中无法定位的来源，已跳过该记录。',
+            source: unverifiedReference,
           });
           continue;
         }

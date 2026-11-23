@@ -27,9 +27,7 @@ On a new task or Agent platform change, check public CLI availability and result
 2. If there is no matching active change, select isolation using [workspace selection](reference/workspace.md#create-a-change). Run `native new` with the user's original request in `--task`, without first rewriting it as a solution summary, then enter `preparation.projectRoot`. If preparation fails, preserve any branches and directories already created and address the reported cause.
 3. After entering the workspace and obtaining `phase`, retrieve applicable context using [memory integration](reference/commands.md#memory-integration). On a phase change, handoff to a new Agent, or context recovery, the receiver executes `contextRequest` to obtain current preferences and project constraints. Uninterrupted work in the same phase needs no repeated retrieval. Handle Project Memory and Personal Memory separately at task completion, then call `comet task --complete` as specified there.
 
-Submit learning only for an explicit user correction, a long-term memory request, or a verified reusable lesson. Ordinary completion needs no tool call to prove that there is nothing to learn and no queue draining. Never save task summaries, progress, command output, or test results as Personal Memory.
-
-Project experience and personal preferences are stored separately: use `comet knowledge remember` for reusable verified project facts and Personal Memory for stable user preferences. See [memory integration](reference/commands.md#memory-integration) for completion conditions.
+Project experience and personal preferences are stored separately. Follow [memory integration](reference/commands.md#memory-integration) to save explicit long-term preferences in Personal Memory. Never save task summaries, progress, command output, or test results as Personal Memory. Use `comet knowledge remember` for verified engineering lessons worth reusing.
 
 ## SDK Run path
 
@@ -72,6 +70,8 @@ When files change during Build, Verify, or before Archive, the current Agent fol
 ## Build ↔ Verify Loop
 
 The Builder implements and runs checks with platform tools, then submits the candidate and actual results together. The Agent claiming Verify evaluates acceptance. On failure, return to Build, repair, and resubmit. Once every item passes, wait for the user to accept the result.
+
+When troubleshooting a problem that looks familiar, use [memory integration](reference/commands.md#memory-integration) to look for an existing lesson. After a fix passes verification, the Agent finishing the repair saves a lesson if the approach is worth reusing.
 
 The Verifier reads the original request before comparing the Spec and implementation, checking for omissions, unauthorized scope reductions and interface behavior changes. SDK Runs record the conclusion in `requestReview` in the same verification result; retain fail or blocked for conflicts or unresolved questions affecting delivery. For older Runs and Compat without a saved original request, consult handoff materials and user records rather than treating the generated Spec as the only requirements source; Compat keeps its existing result format. Use the current Verifier for this semantic review; add no Agent or fixed test rounds.
 

@@ -88,9 +88,7 @@ Include the receiver's `contextRequest` in handoffs, preserving the user's wordi
 
 If `<active_policies>` includes `<verification command="...">`, include those commands in current Verify checks and record actual results. Runtime makes the policy mandatory only after its command executes successfully.
 
-Save memory as follows:
-
-When this task has reusable observations or lessons, use [Task learning completion](../../comet/reference/task-learning.md): prepare one learning file and use `comet task --complete --learning-file <file>` to submit personal observations, project lessons, pending review decisions, and actual-use feedback together. The separate save, review, and completion commands below remain available for immediate saves, individual corrections, and older versions; do not repeat them when using a learning file.
+When troubleshooting a familiar issue, checking a project convention, or saving a reusable lesson after a fix passes verification, see [Use and save memory on demand](../../comet/reference/task-learning.md). Prefer the single-item commands below. Use `comet task --complete --learning-file <file>` when combining several items.
 
 - When the user explicitly asks to remember a preference or project convention long term, call `comet memory remember <project-root> --text "<preference or convention>" --scope global|project --json` to save it immediately as explicit user memory. Add repeatable `--phase` only when the user explicitly limits applicability, for example `--phase build --phase verify`. Correct phase applicability with `comet memory correct <project-root> --id <id> --phase <phase> --json`. Preserve the user's wording; do not automatically limit a preference to the current phase.
 - Only when the user has not requested long-term memory, but a collaboration practice is stable and reusable in future tasks, call `comet memory observe <project-root> --text "<collaboration practice>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`.
@@ -98,13 +96,13 @@ When this task has reusable observations or lessons, use [Task learning completi
 
 ### Project memory
 
-Project Memory is separate from Personal Memory. Before task completion, write facts, decisions, patterns, procedures, constraints, or failure resolutions that are verified in the current project and reusable in future tasks:
+Save lessons when they are verified in the current project and useful for future tasks. For a repair, record the symptom, what worked, and the verification result.
 
 ```text
 comet knowledge remember <project-root> --title "<concise title>" --text "<symptom, approach, verification>" --type <fact|decision|pattern|procedure|constraint|failure-resolution> --workflow native --change <change-id> --evidence "<source files, comma-separated>" --json
 ```
 
-The same title updates the existing entry instead of creating a duplicate. Skip the write when nothing is reusable. `--evidence` binds project files that support the conclusion; omit it for collaboration decisions without file evidence. The returned `slug` is the write receipt. Before applying an existing lesson, expand it with the same task arguments plus `--expand-context "project-memory:<slug>"` and check its current sources. Verify and update the lesson when a source changes or becomes unreadable. Never save task summaries, one-off command output, or unverified guesses.
+The same title updates the existing entry. Save verified lessons that can be reused. Use `--evidence` to reference supporting project files, and omit it for collaboration decisions without file evidence. The returned `slug` is the write receipt. Before applying a lesson, expand it with the same task arguments plus `--expand-context "project-memory:<slug>"` and check its applicability against current evidence. If a reference is unavailable or the conclusion has changed, review the lesson and update the existing entry. Never save task summaries, one-off command output, or unverified guesses.
 
 Only explicit user corrections, long-term memory requests, or verified reusable lessons trigger learning submissions. Otherwise record task completion using `not-run` learning markers, without querying queues or submitting empty reviews to prove there is no observation. Preserve actual submission receipts. Pending review and reflection queues remain for asynchronous maintenance, and learning failures do not block completed development work. Query and process relevant queues when the user explicitly requests memory maintenance.
 
