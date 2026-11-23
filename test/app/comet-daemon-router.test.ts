@@ -90,7 +90,10 @@ describe('CLI daemon router', () => {
   });
 
   it('allows replacing the CLI installation and moving the project while its daemon runs', async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-daemon-upgrade-'));
+    // Keep the complete fixture socket pathname within macOS's Unix socket limit.
+    const root = await fs.mkdtemp(
+      path.join(process.platform === 'win32' ? os.tmpdir() : '/tmp', 'cdu-'),
+    );
     temporary.push(root);
     const installation = path.join(root, 'node_modules', '@rpamis', 'comet');
     const entry = path.join(installation, 'bin', 'comet.js');
@@ -115,7 +118,9 @@ describe('CLI daemon router', () => {
     ]);
     const env = {
       ...isolatedBenchmarkEnvironment(home),
-      ...(process.platform === 'win32' ? { TEMP: temp, TMP: temp } : {}),
+      TEMP: temp,
+      TMP: temp,
+      TMPDIR: temp,
       COMET_DAEMON: 'on',
       COMET_DAEMON_IDLE_TIMEOUT_MS: '30000',
     };

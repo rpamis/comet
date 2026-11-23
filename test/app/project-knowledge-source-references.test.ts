@@ -6,6 +6,7 @@ import path from 'node:path';
 import { afterEach, beforeAll, expect, it } from 'vitest';
 import { ProjectKnowledgeLocalStore } from '../../domains/project-knowledge/local-store.js';
 import { openProjectKnowledgeDatabase } from '../../domains/project-knowledge/sqlite.js';
+import { defaultProjectKnowledgeStorageRoot } from '../../platform/paths/project-knowledge-storage.js';
 import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
 
 beforeAll(() => ensureCliBuilt(path.resolve('.')), 180_000);
@@ -24,7 +25,7 @@ async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-knowledge-reference-'));
   roots.push(root);
   const project = path.join(root, 'project');
-  const cacheRoot = path.join(root, 'cache');
+  const cacheRoot = defaultProjectKnowledgeStorageRoot(root);
   await fs.mkdir(path.dirname(path.join(project, source)), { recursive: true });
   await fs.mkdir(path.join(project, '.comet'));
   await fs.writeFile(path.join(project, source), original);
