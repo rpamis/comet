@@ -22,6 +22,15 @@ export interface NativePortableSpecAcceptanceInput {
   markdown: string;
 }
 
+export class NativeAcceptanceInputError extends Error {
+  constructor(
+    readonly source: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 const ACCEPTANCE_ID_PATTERN = /^A[1-9]\d*$/u;
 
 function portableRef(value: string, label: string): string {
@@ -90,7 +99,8 @@ export function buildNativePortableAcceptance(options: {
       if (scenario.briefAcceptanceRef !== undefined) {
         const index = Number(scenario.briefAcceptanceRef.slice(1)) - 1;
         if (!Number.isSafeInteger(index) || index < 0 || index >= briefCount) {
-          throw new Error(
+          throw new NativeAcceptanceInputError(
+            source,
             `Native Spec references unknown brief acceptance ${scenario.briefAcceptanceRef}: ${source}`,
           );
         }
@@ -109,12 +119,16 @@ export function buildNativePortableAcceptance(options: {
     // archived state keeps its persisted A1..An identities unchanged.
     const duplicateKey = item.text;
     if (seen.has(duplicateKey)) {
-      throw new Error(`Native acceptance contains a duplicate criterion: ${item.text}`);
+      throw new NativeAcceptanceInputError(
+        item.source,
+        `Native acceptance contains a duplicate criterion: ${item.text}`,
+      );
     }
     seen.add(duplicateKey);
   }
   if (derived.length === 0) {
-    throw new Error(
+    throw new NativeAcceptanceInputError(
+      briefSource,
       `Native change must define at least one acceptance criterion. In ${briefSource}, write each criterion as a top-level Markdown list item under Acceptance examples, for example: "- Input hello prints Words: 1." Keep requested tables; a table alone does not create formal acceptance items. Alternatively use complete Scenario: blocks in the target Specs. Add the explicit criteria without changing their meaning, then retry the same Shape step; do not recreate the change.`,
     );
   }

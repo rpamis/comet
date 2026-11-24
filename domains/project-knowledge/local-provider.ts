@@ -21,6 +21,7 @@ import { projectKnowledgeHistoryRequested } from './query.js';
 import {
   parseProjectKnowledgeRecord,
   projectKnowledgeRecordFamily,
+  projectKnowledgeRecordSourceReferences,
   type ProjectKnowledgeRecord,
   type ProjectKnowledgeRecordType,
 } from './records.js';
@@ -259,7 +260,7 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
       const active =
         request.state === 'all'
           ? records
-          : records.filter((record) => record.state !== 'superseded');
+          : records.filter((record) => store?.canDeliverRecord(record));
       return {
         kind: 'manifest',
         items: active.map((record) => ({
@@ -274,11 +275,7 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
           operations: [...record.operations],
           phases: [...(record.phases ?? [])],
           sourceTypes: [
-            ...new Set(
-              record.conclusions.flatMap((conclusion) =>
-                conclusion.sources.map((source) => source.source),
-              ),
-            ),
+            ...new Set(projectKnowledgeRecordSourceReferences(record).map(({ source }) => source)),
           ],
           verification: record.verification.map((verification) => ({ ...verification })),
         })),
@@ -287,19 +284,12 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
       };
     }
     if (request.kind === 'expand') {
-      if (store) {
-        await store.apply({
-          kind: 'refresh',
-          id: request.id,
-          ...(request.projectId === undefined ? {} : { projectId: request.projectId }),
-        });
-      }
       const record = store?.read(request.id) ?? null;
       return {
         kind: 'expand',
         record:
           record &&
-          record.state !== 'superseded' &&
+          store?.canDeliverRecord(record) &&
           (!request.projectId || record.projectId === request.projectId)
             ? record
             : null,
@@ -407,14 +397,10 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
     const recordResults: ProjectKnowledgeResult[] = [];
     let droppedRecords = false;
     if (store) {
-      // Inspect candidates before delivery; unrelated history is maintained by refresh/rebuild.
       const candidates = store.searchRecords(request.query);
       for (const [index, candidate] of candidates.entries()) {
-        if (!candidate.record) continue;
-        await store.apply({ kind: 'refresh', id: candidate.record.id });
-        const current = store.read(candidate.record.id);
-        if (!current || current.state === 'superseded') continue;
-        recordResults.push({ ...candidate, record: current });
+        if (!candidate.record || !store.canDeliverRecord(candidate.record)) continue;
+        recordResults.push(candidate);
         if (recordResults.length >= 2) {
           droppedRecords = candidates.length > index + 1;
           break;
@@ -886,7 +872,7 @@ function projectKnowledgeMutationFromDelta(
     conclusions: sources.length > 0 ? [{ text: delta.statement, sources }] : [],
     relations: current?.relations ?? [],
     verification: delta.verification ?? current?.verification ?? [],
-    sourceVersions: current?.sourceVersions ?? [],
+    sourcePaths: current?.sourcePaths,
     applicationCount: current?.applicationCount ?? 0,
     successCount: current?.successCount ?? 0,
     failureCount: current?.failureCount ?? 0,

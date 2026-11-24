@@ -12,7 +12,7 @@ Records use one lifecycle:
 - `trial`: a single credible inference available for low-priority retrieval;
 - `proven`: a stable explicit project convention, current deterministic fact, or successfully reused record;
 - `enforced`: only a Project Policy bound to a deterministic verification command that still exists and has passed;
-- `superseded`: no longer injected because its source became stale, its command disappeared, it was corrected, or a higher-priority decision replaced it.
+- `superseded`: a correction, retirement, or replacement moved the record into history.
 
 Project Policy is not a second Rule-file system. Existing repository AGENTS files, Rules, source, configuration, tests, and checks remain higher-priority evidence. Comet builds a retrievable model and activations without silently rewriting those files.
 
@@ -44,7 +44,7 @@ knowledge:
       - architecture/**/decisions-*.md
 ```
 
-Patterns are relative to the project root and multiple globs are supported. Sources are checked again before injection. When a file changes, disappears, or no longer matches its selector, the old record becomes `superseded` and new evidence creates a new version.
+Patterns are relative to the project root and multiple globs are supported. The document index tracks each worktree. Project Knowledge and file-backed Project Memory keep source paths. Knowledge can also cite a heading or line range. Lessons remain searchable and expandable after edits. Expansion identifies missing or inaccessible sources. Check current evidence before applying a lesson. An enforced policy is withheld from the current task when its previously successful verification command is missing in that worktree.
 
 Teams can instead configure a mutually exclusive Remote Provider:
 

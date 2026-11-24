@@ -1876,7 +1876,7 @@ test('readiness reports provider failures without rejecting context callers', as
   try {
     await expect(
       ensureProjectKnowledgeReady({ projectRoot: root, provider, reportDiagnostic }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(false);
     expect(reportDiagnostic).toHaveBeenCalledWith(
       expect.objectContaining({ code: 'readiness-failed' }),
     );

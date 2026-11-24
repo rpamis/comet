@@ -1,5 +1,5 @@
 import { projectPathSelectorMatches } from '../../platform/paths/project-path-selector.js';
-import { closeSync, mkdirSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
+import { mkdirSync, readFileSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 
@@ -17,7 +17,7 @@ import {
   parseProjectKnowledgeRecord,
   type ProjectKnowledgeRecord,
   type ProjectKnowledgeRecordSource,
-  type ProjectKnowledgeRecordSourceVersion,
+  projectKnowledgeRecordSourceReferences as recordSourceReferences,
 } from './records.js';
 import {
   ProjectKnowledgeIndexStore,
@@ -27,10 +27,8 @@ import {
   type ProjectKnowledgeIndexOptions,
 } from './index-store.js';
 import type { ProjectKnowledgeDocument } from './types.js';
-import { projectKnowledgeSourceReferenceMatchesText } from './source-validity.js';
 import { openProjectKnowledgeDatabase, type ProjectKnowledgeDatabase } from './sqlite.js';
 import type { AgentContextOutcomeStatus } from '../agent-learning/index.js';
-import { hashProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 
 export interface ProjectKnowledgeLocalStoreOptions extends Omit<
   ProjectKnowledgeIndexOptions,
@@ -92,35 +90,18 @@ interface SharedDatabaseEntry {
   refs: number;
 }
 
-const MAX_SOURCE_VALIDATION_BYTES = 1024 * 1024;
+// Preserve the legacy NOT NULL column when writing existing databases.
+const EMPTY_LEGACY_SOURCE_VERSIONS = '[]';
 const PROJECT_KNOWLEDGE_SCHEMA_VERSION = '4';
 const GENERATED_RECORD_MAINTENANCE = 'generated-record-maintenance-v2';
 
-function equalSourceVersions(left: ProjectKnowledgeRecord, right: ProjectKnowledgeRecord): boolean {
-  if (left.sourceVersions.length !== right.sourceVersions.length) return false;
-  const rightVersions = new Map(right.sourceVersions.map((version) => [version.source, version]));
-  return left.sourceVersions.every((version) => {
-    const other = rightVersions.get(version.source);
-    if (!other || version.size !== other.size || version.modifiedAt !== other.modifiedAt)
-      return false;
-    if (version.digest === undefined || other.digest === undefined) {
-      return version.digest === undefined && other.digest === undefined;
-    }
-    return version.digest === other.digest;
-  });
-}
-
-function recordSourceReferences(
-  record: ProjectKnowledgeRecord,
-): readonly ProjectKnowledgeRecordSource[] {
-  return [
-    ...record.conclusions.flatMap((conclusion) => conclusion.sources),
-    ...record.relations.flatMap((relation) => relation.sources),
-  ];
-}
-
 function normalizedSemanticText(value: string): string {
   return value.trim().replace(/\s+/gu, ' ');
+}
+
+function orderedSourceReferences(record: ProjectKnowledgeRecord): string[] {
+  const references = recordSourceReferences(record);
+  return [...new Set(references.map((source) => JSON.stringify(source)))].sort();
 }
 
 function isGeneratedModuleRecord(record: ProjectKnowledgeRecord): boolean {
@@ -247,108 +228,6 @@ function archivedGeneratedRecord(
     state: 'superseded',
     relations: record.relations.filter((relation) => relation.type !== 'supersedes'),
   });
-}
-
-function sourceReferenceIsCurrent(
-  absolutePath: string,
-  source: ProjectKnowledgeRecordSource,
-): boolean {
-  if (
-    source.anchor === undefined &&
-    source.lineStart === undefined &&
-    source.lineEnd === undefined
-  ) {
-    return true;
-  }
-  const stat = statSync(absolutePath);
-  const byteLength = Math.min(Number(stat.size), MAX_SOURCE_VALIDATION_BYTES);
-  const buffer = Buffer.alloc(byteLength);
-  const descriptor = openSync(absolutePath, 'r');
-  try {
-    readSync(descriptor, buffer, 0, byteLength, 0);
-  } finally {
-    closeSync(descriptor);
-  }
-  const text = buffer.toString('utf8');
-  return projectKnowledgeSourceReferenceMatchesText(text, source);
-}
-
-interface SourceInspection {
-  readonly current: boolean;
-  readonly complete: boolean;
-  readonly sourceVersions: readonly ProjectKnowledgeRecordSourceVersion[];
-}
-
-async function sourceContentDigest(projectRoot: string, source: string): Promise<string> {
-  const { digest } = await hashProtectedProjectFile(projectRoot, source, {
-    label: `Project Knowledge source ${source}`,
-  });
-  return digest;
-}
-
-async function inspectRecordSources(
-  projectRoot: string,
-  record: ProjectKnowledgeRecord,
-  acceptCurrentVersions: boolean,
-): Promise<SourceInspection> {
-  const references = recordSourceReferences(record);
-  const referenceSources = new Set(references.map((reference) => reference.source));
-  const sources = [
-    ...referenceSources,
-    ...record.sourceVersions
-      .map((version) => version.source)
-      .filter((source) => !referenceSources.has(source)),
-  ];
-  if (sources.length === 0) {
-    return { current: false, complete: true, sourceVersions: record.sourceVersions };
-  }
-  const storedVersions = new Map(record.sourceVersions.map((version) => [version.source, version]));
-  const sourceVersions: ProjectKnowledgeRecordSourceVersion[] = [];
-  let isCurrent = true;
-  let complete = true;
-  for (const source of sources) {
-    try {
-      const absolutePath = path.join(projectRoot, ...source.split('/'));
-      const fileStat = statSync(absolutePath);
-      if (!fileStat.isFile()) {
-        complete = false;
-        continue;
-      }
-      const version = {
-        source,
-        size: fileStat.size,
-        modifiedAt: Math.trunc(fileStat.mtimeMs),
-        digest: await sourceContentDigest(projectRoot, source),
-      };
-      sourceVersions.push(version);
-      if (
-        !references
-          .filter((reference) => reference.source === source)
-          .every((reference) => sourceReferenceIsCurrent(absolutePath, reference))
-      ) {
-        isCurrent = false;
-      }
-      const stored = storedVersions.get(source);
-      if (
-        !acceptCurrentVersions &&
-        (stored === undefined || stored.digest === undefined || stored.digest !== version.digest)
-      ) {
-        isCurrent = false;
-      }
-    } catch {
-      isCurrent = false;
-      complete = false;
-    }
-  }
-  return {
-    current: isCurrent,
-    complete,
-    sourceVersions: complete ? sourceVersions : record.sourceVersions,
-  };
-}
-
-function recordUsesSourceEvidence(record: ProjectKnowledgeRecord): boolean {
-  return recordSourceReferences(record).length > 0 || record.sourceVersions.length > 0;
 }
 
 function verificationCommandsAreAvailable(
@@ -675,7 +554,7 @@ export class ProjectKnowledgeLocalStore {
         incoming.state,
         incoming.authority,
         JSON.stringify(incoming),
-        JSON.stringify(incoming.sourceVersions),
+        EMPTY_LEGACY_SOURCE_VERSIONS,
         incoming.updatedAt,
       );
       imported += Number(result.changes);
@@ -691,7 +570,7 @@ export class ProjectKnowledgeLocalStore {
       incoming.state,
       incoming.authority,
       JSON.stringify(incoming),
-      JSON.stringify(incoming.sourceVersions),
+      EMPTY_LEGACY_SOURCE_VERSIONS,
       incoming.updatedAt,
     ]);
     const database = this.requireDatabase();
@@ -837,51 +716,8 @@ export class ProjectKnowledgeLocalStore {
     mutation: Exclude<ProjectKnowledgeMutation, { readonly kind: 'experience-delta' }>,
   ): Promise<ProjectKnowledgeApplyResult> {
     if (mutation.kind === 'refresh') {
-      const candidates = this.list({ projectId: mutation.projectId });
-      let changed = false;
-      for (const candidate of candidates) {
-        if (candidate.state === 'superseded' || (mutation.id && mutation.id !== candidate.id))
-          continue;
-        const inspection = await inspectRecordSources(
-          this.projectRoot,
-          candidate,
-          candidate.authority === 'user' && candidate.sourceVersions.length === 0,
-        );
-        const verificationCurrent = verificationCommandsAreAvailable(this.projectRoot, candidate);
-        const state: ProjectKnowledgeRecord['state'] = !verificationCurrent
-          ? 'superseded'
-          : candidate.authority === 'user' && !recordUsesSourceEvidence(candidate)
-            ? candidate.state === 'enforced'
-              ? 'enforced'
-              : 'proven'
-            : inspection.current
-              ? candidate.state
-              : 'superseded';
-        if (
-          state !== candidate.state ||
-          (inspection.current &&
-            JSON.stringify(inspection.sourceVersions) !== JSON.stringify(candidate.sourceVersions))
-        ) {
-          const hasLegacySourceVersion = candidate.sourceVersions.some(
-            (version) => version.digest === undefined,
-          );
-          const nextSourceVersions =
-            inspection.complete && (inspection.current || hasLegacySourceVersion)
-              ? inspection.sourceVersions
-              : candidate.sourceVersions;
-          this.write({
-            ...candidate,
-            state,
-            sourceVersions: nextSourceVersions,
-            updatedAt: new Date().toISOString(),
-          });
-          changed ||=
-            state !== candidate.state ||
-            JSON.stringify(nextSourceVersions) !== JSON.stringify(candidate.sourceVersions);
-        }
-      }
       const records = this.list({ projectId: mutation.projectId });
-      return { kind: mutation.kind, changed, records, diagnostics: [] };
+      return { kind: mutation.kind, changed: false, records, diagnostics: [] };
     }
     if (mutation.kind === 'verify') {
       const successful = new Set(mutation.commands.map((command) => command.trim()));
@@ -922,20 +758,14 @@ export class ProjectKnowledgeLocalStore {
       if (current && current.authority === 'user' && incoming.authority !== 'user') {
         return { kind: mutation.kind, changed: false, record: current, diagnostics: [] };
       }
-      if (
-        current?.state === 'superseded' &&
-        incoming.authority !== 'user' &&
-        equalSourceVersions(current, incoming)
-      ) {
-        return { kind: mutation.kind, changed: false, record: current, diagnostics: [] };
-      }
       if (current && incoming.authority !== 'user') {
         const currentSemantic = projectKnowledgeRecordSemanticFingerprint(current);
         const incomingSemantic = projectKnowledgeRecordSemanticFingerprint(incoming);
         if (
-          current.state !== 'superseded' &&
           currentSemantic === incomingSemantic &&
-          equalSourceVersions(current, incoming)
+          (current.state === 'superseded' ||
+            JSON.stringify(orderedSourceReferences(current)) ===
+              JSON.stringify(orderedSourceReferences(incoming)))
         ) {
           return { kind: mutation.kind, changed: false, record: current, diagnostics: [] };
         }
@@ -961,9 +791,7 @@ export class ProjectKnowledgeLocalStore {
         const archived = archivedGeneratedRecord(incoming.id, current);
         const existingArchive = this.read(archived.id);
         if (!existingArchive || !generatedRecordHasFeedback(existingArchive)) this.write(archived);
-        const relationSource =
-          recordSourceReferences(incoming)[0] ??
-          (incoming.sourceVersions[0] ? { source: incoming.sourceVersions[0].source } : undefined);
+        const relationSource = recordSourceReferences(incoming)[0];
         const next = parseProjectKnowledgeRecord({
           ...incoming,
           relations:
@@ -1015,7 +843,7 @@ export class ProjectKnowledgeLocalStore {
       this.write(next);
       return { kind: mutation.kind, changed: true, record: next, diagnostics: [] };
     }
-    const correctedBase = parseProjectKnowledgeRecord({
+    const corrected = parseProjectKnowledgeRecord({
       ...current,
       ...(mutation.title !== undefined ? { title: mutation.title } : {}),
       ...(mutation.summary !== undefined ? { summary: mutation.summary } : {}),
@@ -1031,20 +859,15 @@ export class ProjectKnowledgeLocalStore {
       state: 'proven',
       updatedAt: mutation.updatedAt,
     });
-    const corrected = parseProjectKnowledgeRecord({ ...correctedBase, state: 'proven' });
-    const inspection = await inspectRecordSources(this.projectRoot, corrected, true);
-    const next = parseProjectKnowledgeRecord({
-      ...corrected,
-      state:
-        corrected.authority === 'user' && !recordUsesSourceEvidence(corrected)
-          ? corrected.state
-          : inspection.current
-            ? corrected.state
-            : 'trial',
-      sourceVersions: inspection.current ? inspection.sourceVersions : corrected.sourceVersions,
-    });
-    this.write(next);
-    return { kind: mutation.kind, changed: true, record: next, diagnostics: [] };
+    this.write(corrected);
+    return { kind: mutation.kind, changed: true, record: corrected, diagnostics: [] };
+  }
+
+  canDeliverRecord(record: ProjectKnowledgeRecord): boolean {
+    return (
+      record.state !== 'superseded' &&
+      (record.state !== 'enforced' || verificationCommandsAreAvailable(this.projectRoot, record))
+    );
   }
 
   async syncCorpus(
@@ -1264,7 +1087,7 @@ export class ProjectKnowledgeLocalStore {
         record.state,
         record.authority,
         JSON.stringify(record),
-        JSON.stringify(record.sourceVersions),
+        EMPTY_LEGACY_SOURCE_VERSIONS,
         record.updatedAt,
       );
   }

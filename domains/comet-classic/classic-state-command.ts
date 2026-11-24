@@ -738,6 +738,7 @@ async function init(
   workflow: string,
   isolation: string | null = null,
   runtimeFormat: 'compat' | 'sdk' = 'compat',
+  select = false,
 ): Promise<void> {
   validateChangeName(name);
   validateEnum(workflow, PROFILES);
@@ -810,6 +811,7 @@ async function init(
         encodePortableRunCheckpoint(createPortableRunCheckpoint(run)),
       );
       await atomicWrite(file, CLASSIC_MANAGED_RUN_MARKER + document.toString());
+      if (select) await selectCurrentChange(projectRoot, name);
       output.data = {
         ...(await sdkEntryData(name, { run, projectRoot })),
       };
@@ -822,6 +824,7 @@ async function init(
         change: name,
         format: 'compat',
       });
+      if (select) await selectCurrentChange(projectRoot, name);
       output.stdout.push(green(`Initialized: ${label}/.comet.yaml (workflow=${workflow})`));
     }
   });
@@ -2484,28 +2487,23 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
       if (subcommand === 'init') {
         required(rest, 2, 'Usage: comet state init <change-name> <workflow>');
         const initOptions = rest.slice(2);
+        const usage =
+          'Usage: comet state init <change-name> <workflow> [--isolation <mode>] [--runtime compat|sdk] [--select]';
         let isolation: string | null = null;
         let runtimeFormat: 'compat' | 'sdk' | null = null;
+        let select = false;
         const seen = new Set<string>();
-        if (initOptions.length % 2 !== 0) {
-          fail(
-            'Usage: comet state init <change-name> <workflow> [--isolation <mode>] [--runtime compat|sdk]',
-          );
-        }
-        for (let index = 0; index < initOptions.length; index += 2) {
+        for (let index = 0; index < initOptions.length; index++) {
           const option = initOptions[index];
-          const value = initOptions[index + 1];
-          if (
-            seen.has(option) ||
-            !['--isolation', '--runtime'].includes(option) ||
-            !value ||
-            value.startsWith('--')
-          ) {
-            fail(
-              'Usage: comet state init <change-name> <workflow> [--isolation <mode>] [--runtime compat|sdk]',
-            );
-          }
+          if (seen.has(option)) fail(usage);
           seen.add(option);
+          if (option === '--select') {
+            select = true;
+            continue;
+          }
+          const value = initOptions[++index];
+          if (!['--isolation', '--runtime'].includes(option) || !value || value.startsWith('--'))
+            fail(usage);
           if (option === '--isolation') isolation = value;
           else {
             validateEnum(value, ['compat', 'sdk']);
@@ -2514,7 +2512,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         }
         const gitWorkTree = isGitWorkTree(classicCommandProjectRoot());
         runtimeFormat ??= gitWorkTree ? 'sdk' : 'compat';
-        await init(output, rest[0], rest[1], isolation, runtimeFormat);
+        await init(output, rest[0], rest[1], isolation, runtimeFormat, select);
         initializedSdk = runtimeFormat === 'sdk';
       } else if (subcommand === 'restore') {
         requiredExact(rest, 2, 'Usage: comet state restore <change-name> --confirmed');

@@ -2,10 +2,7 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-import {
-  hashProtectedProjectFile,
-  readProtectedProjectFile,
-} from '../workflow-contract/protected-project-path.js';
+import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
 import type { MemoryLanguage } from '../comet-memory/types.js';
 import type { ProjectKnowledgeDiagnosticReporter } from './types.js';
@@ -87,7 +84,6 @@ type ProjectKnowledgeRecordDraft = Omit<
   | 'projectId'
   | 'state'
   | 'authority'
-  | 'sourceVersions'
   | 'applicationCount'
   | 'successCount'
   | 'failureCount'
@@ -754,30 +750,6 @@ async function extractDraftRecords(
   return records;
 }
 
-async function sourceVersions(
-  root: string,
-  sources: readonly ProjectKnowledgeRecordSource[],
-): Promise<readonly ProjectKnowledgeRecord['sourceVersions'][number][]> {
-  const unique = [...new Map(sources.map((entry) => [entry.source, entry.source])).values()];
-  const versions: ProjectKnowledgeRecord['sourceVersions'][number][] = [];
-  for (const relativePath of unique.slice(0, 32)) {
-    try {
-      const hashed = await hashProtectedProjectFile(root, relativePath, {
-        label: `Project Knowledge source ${relativePath}`,
-      });
-      versions.push({
-        source: relativePath,
-        size: Number(hashed.stat.size),
-        modifiedAt: Math.trunc(Number(hashed.stat.mtimeMs)),
-        digest: hashed.digest,
-      });
-    } catch {
-      // Current-source validation will reject a source that disappeared before persistence.
-    }
-  }
-  return versions;
-}
-
 export async function extractDeterministicProjectRecords(
   options: DeterministicProjectRecordExtractionOptions,
 ): Promise<readonly ProjectKnowledgeRecord[]> {
@@ -785,21 +757,14 @@ export async function extractDeterministicProjectRecords(
   const drafts = await extractDraftRecords(options);
   const projectId = resolveStableProjectId(root);
   const updatedAt = new Date().toISOString();
-  const records: ProjectKnowledgeRecord[] = [];
-  for (const draft of drafts) {
-    const sources = [...draft.conclusions, ...draft.relations].flatMap((entry) => entry.sources);
-    const fingerprints = await sourceVersions(root, sources);
-    records.push({
-      ...draft,
-      projectId,
-      state: 'proven',
-      authority: 'repository',
-      sourceVersions: fingerprints,
-      applicationCount: 0,
-      successCount: 0,
-      failureCount: 0,
-      updatedAt,
-    });
-  }
-  return records;
+  return drafts.map((draft) => ({
+    ...draft,
+    projectId,
+    state: 'proven',
+    authority: 'repository',
+    applicationCount: 0,
+    successCount: 0,
+    failureCount: 0,
+    updatedAt,
+  }));
 }

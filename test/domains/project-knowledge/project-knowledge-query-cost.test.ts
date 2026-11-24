@@ -294,7 +294,7 @@ test('rejects an ancestor replaced by an in-project link after the index snapsho
   }
 });
 
-test('bounds source inspection to relevant records and still detects a same-metadata edit', async () => {
+test('recalls durable knowledge without hashing evidence files', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-knowledge-query-cost-'));
   const root = path.join(directory, 'project');
   await fs.mkdir(root);
@@ -327,7 +327,6 @@ test('bounds source inspection to relevant records and still detects a same-meta
           conclusions: [{ text: 'Supported behavior', sources: [{ source }] }],
           relations: [],
           verification: [],
-          sourceVersions: [],
           applicationCount: 0,
           successCount: 0,
           failureCount: 0,
@@ -336,20 +335,23 @@ test('bounds source inspection to relevant records and still detects a same-meta
       });
     }
     inspect.mockClear();
-    await ensureProjectKnowledgeReady({ projectRoot: root, provider, refreshSources: false });
+    await ensureProjectKnowledgeReady({ projectRoot: root, provider, refreshIndex: false });
     const request = {
       kind: 'search' as const,
       query: createProjectKnowledgeQuery({ task: 'TargetNeedle' }),
     };
     const first = await provider.query(request);
     expect(first.kind === 'search' && first.records.map((entry) => entry.id)).toEqual(['record-0']);
-    expect(inspect.mock.calls.length).toBeLessThanOrEqual(2);
+    expect(inspect).not.toHaveBeenCalled();
     const source = path.join(root, 'source-0.md');
     const before = await fs.stat(source);
     await fs.writeFile(source, '# Source 0\n\nVersion two\n');
     await fs.utimes(source, before.atime, before.mtime);
     const changed = await provider.query(request);
-    expect(changed.kind === 'search' && changed.records).toEqual([]);
+    expect(changed.kind === 'search' && changed.records.map((entry) => entry.id)).toEqual([
+      'record-0',
+    ]);
+    expect(inspect).not.toHaveBeenCalled();
   } finally {
     inspect.mockRestore();
     provider.close();

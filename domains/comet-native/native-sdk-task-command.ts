@@ -9,7 +9,12 @@ import {
   type WorkflowRun,
 } from '../engine/runtime.js';
 import { formatCliCommandArgs } from '../workflow-contract/output-envelope.js';
-import { NativeUsageError, success, type DispatchResult } from './native-cli-shared.js';
+import {
+  NativeUsageError,
+  readBoundedEvidenceStdin,
+  success,
+  type DispatchResult,
+} from './native-cli-shared.js';
 import { hasNativeCompletedWork } from './native-experience.js';
 import { nativeProjectPaths } from './native-paths.js';
 import type { NativePortableAcceptanceInput } from './native-portable-acceptance.js';
@@ -115,10 +120,17 @@ function taskScope(run: WorkflowRun, action: RuntimeAction, projectRoot: string)
 async function readTaskResult(
   file: string,
 ): Promise<Pick<RuntimeOutcome, 'status' | 'output' | 'summary' | 'artifacts' | 'event'>> {
-  const { bytes } = await readFileRaceSafe(file, Number.MAX_SAFE_INTEGER, {
-    label: 'Native task result',
-  });
-  const result = JSON.parse(stripUtf8Bom(bytes.toString('utf8'))) as Record<string, unknown>;
+  if (file === '-' && process.stdin.isTTY)
+    throw new NativeUsageError('Pipe one UTF-8 JSON result to --result -.');
+  const text =
+    file === '-'
+      ? await readBoundedEvidenceStdin(Number.MAX_SAFE_INTEGER, 'Native task results')
+      : stripUtf8Bom(
+          (
+            await readFileRaceSafe(file, Number.MAX_SAFE_INTEGER, { label: 'Native task result' })
+          ).bytes.toString('utf8'),
+        );
+  const result = JSON.parse(text) as Record<string, unknown>;
   if (
     !result ||
     typeof result !== 'object' ||
@@ -548,7 +560,8 @@ export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<
       );
     reportedByIndependentVerifier =
       verifierTask(action) && builderSession(run, action) !== options.sessionId;
-    const file = path.resolve(options.projectRoot, options.resultFile);
+    const file =
+      options.resultFile === '-' ? '-' : path.resolve(options.projectRoot, options.resultFile);
     const original = await readTaskResult(file);
     const previousOutput = action.outcome?.output as {
       requireIndependentReview?: boolean;

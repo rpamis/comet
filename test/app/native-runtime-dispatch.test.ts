@@ -301,7 +301,7 @@ async function builderFixture() {
   const config = defaultProjectConfig('docs', 'en');
   await writeProjectConfig(root, {
     ...config,
-    native: { ...config.native, document_writes: 'revert' },
+    native: { ...config.native, document_writes: 'revert', archive_confirmation: 'required' },
   });
   await fs.mkdir(path.join(root, 'docs/comet/changes', name), { recursive: true });
   await registerSdkChangeOwner(root, {

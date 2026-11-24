@@ -4,8 +4,7 @@ import path from 'node:path';
 import { readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
 
 import { resolveProjectKnowledgeStorageLocation } from '../../platform/paths/project-knowledge-storage.js';
-import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
-import type { ProjectKnowledgeRecordSourceVersion } from './records.js';
+import { parseProjectKnowledgePath } from './records.js';
 
 export const PROJECT_MEMORY_TYPES = [
   'fact',
@@ -47,8 +46,7 @@ export interface ProjectMemoryEntry {
   readonly source?: string;
   readonly workflow?: string;
   readonly change?: string;
-  readonly sourceVersions?: readonly ProjectKnowledgeRecordSourceVersion[];
-  readonly sourceStatus?: 'current' | 'changed';
+  readonly evidence?: readonly string[];
   readonly body: string;
 }
 
@@ -150,29 +148,31 @@ function serializeMemoryDocument(entry: ProjectMemoryEntry): string {
     ...(entry.workflow === undefined
       ? []
       : [`workflow: ${entry.workflow}`, `change: ${entry.change}`]),
-    ...(entry.sourceVersions === undefined
-      ? []
-      : [`sourceVersions: ${JSON.stringify(entry.sourceVersions)}`]),
+    ...(entry.evidence === undefined ? [] : [`evidence: ${JSON.stringify(entry.evidence)}`]),
   ];
   return `---\n${frontmatter.join('\n')}\n---\n\n${entry.body.replace(/\r\n/gu, '\n').trim()}\n`;
 }
 
-interface ParsedMemoryDocument {
-  readonly slug: string;
-  readonly title: string;
-  readonly description: string;
-  readonly type: ProjectMemoryType;
-  readonly created: string;
-  readonly updated: string;
-  readonly paths: readonly string[];
-  readonly source?: string;
-  readonly workflow?: string;
-  readonly change?: string;
-  readonly sourceVersions?: readonly ProjectKnowledgeRecordSourceVersion[];
-  readonly body: string;
+function parseMemoryEvidence(fields: ReadonlyMap<string, string>): readonly string[] | undefined {
+  const evidence = fields.get('evidence');
+  const raw = evidence ?? fields.get('sourceVersions');
+  if (raw === undefined) return undefined;
+  try {
+    const entries: unknown = JSON.parse(raw);
+    if (!Array.isArray(entries) || entries.length > MAX_PATHS) return undefined;
+    return [
+      ...new Set(
+        entries.map((entry) =>
+          parseProjectKnowledgePath(evidence === undefined ? entry?.source : entry, 'evidence'),
+        ),
+      ),
+    ];
+  } catch {
+    return undefined;
+  }
 }
 
-function parseMemoryDocument(raw: string): ParsedMemoryDocument | null {
+function parseMemoryDocument(raw: string): ProjectMemoryEntry | null {
   const lines = raw.replace(/\r\n/gu, '\n').split('\n');
   if (lines[0]?.trim() !== '---') return null;
   const closing = lines.findIndex((line, index) => index > 0 && line.trim() === '---');
@@ -209,33 +209,7 @@ function parseMemoryDocument(raw: string): ParsedMemoryDocument | null {
   const change = fields.get('change');
   if ((workflow === undefined) !== (change === undefined) || workflow === '' || change === '')
     return null;
-  let sourceVersions: readonly ProjectKnowledgeRecordSourceVersion[] | undefined;
-  if (fields.has('sourceVersions')) {
-    try {
-      const versions: unknown = JSON.parse(fields.get('sourceVersions')!);
-      if (
-        !Array.isArray(versions) ||
-        versions.length > MAX_PATHS ||
-        versions.some(
-          (version) =>
-            !version ||
-            typeof version.source !== 'string' ||
-            !version.source ||
-            typeof version.digest !== 'string' ||
-            !/^[a-f0-9]{64}$/u.test(version.digest) ||
-            !Number.isSafeInteger(version.size) ||
-            version.size < 0 ||
-            typeof version.modifiedAt !== 'number' ||
-            !Number.isFinite(version.modifiedAt) ||
-            version.modifiedAt < 0,
-        )
-      )
-        return null;
-      sourceVersions = versions;
-    } catch {
-      return null;
-    }
-  }
+  const evidence = parseMemoryEvidence(fields);
   return {
     slug,
     title,
@@ -246,7 +220,7 @@ function parseMemoryDocument(raw: string): ParsedMemoryDocument | null {
     paths,
     ...(source === undefined ? {} : { source }),
     ...(workflow === undefined ? {} : { workflow, change }),
-    ...(sourceVersions === undefined ? {} : { sourceVersions }),
+    ...(evidence === undefined ? {} : { evidence }),
     body: lines
       .slice(closing + 1)
       .join('\n')
@@ -305,16 +279,14 @@ async function withProjectMemoryLock<T>(
   }
 }
 
-async function scanProjectMemoryEntries(
-  directory: string,
-): Promise<readonly ParsedMemoryDocument[]> {
+async function scanProjectMemoryEntries(directory: string): Promise<readonly ProjectMemoryEntry[]> {
   let names: string[];
   try {
     names = await readdir(directory);
   } catch {
     return [];
   }
-  const entries: ParsedMemoryDocument[] = [];
+  const entries: ProjectMemoryEntry[] = [];
   for (const name of names
     .filter((name) => name.endsWith('.md') && name !== PROJECT_MEMORY_INDEX_FILE)
     .slice(0, MAX_MEMORIES)) {
@@ -418,40 +390,7 @@ export async function readProjectMemory(
     return null;
   }
   const parsed = parseMemoryDocument(raw);
-  if (parsed === null || parsed.slug !== slug) return null;
-  if (!parsed.sourceVersions?.length) return parsed;
-  const sourceStatus = (await projectMemorySourcesCurrent(projectRoot, parsed.sourceVersions))
-    ? 'current'
-    : 'changed';
-  return { ...parsed, sourceStatus };
-}
-
-async function captureMemorySource(
-  projectRoot: string,
-  source: string,
-): Promise<ProjectKnowledgeRecordSourceVersion> {
-  const read = await readProtectedProjectFile(projectRoot, source, 1024 * 1024, { label: source });
-  return {
-    source,
-    size: Number(read.stat.size),
-    modifiedAt: Number(read.stat.mtimeMs),
-    digest: createHash('sha256').update(read.bytes).digest('hex'),
-  };
-}
-
-async function projectMemorySourcesCurrent(
-  projectRoot: string,
-  sources: readonly ProjectKnowledgeRecordSourceVersion[],
-): Promise<boolean> {
-  for (const source of sources) {
-    try {
-      const current = await captureMemorySource(projectRoot, source.source);
-      if (current.digest !== source.digest) return false;
-    } catch {
-      return false;
-    }
-  }
-  return true;
+  return parsed?.slug === slug ? parsed : null;
 }
 
 export interface ProjectMemoryEntrySummary {
@@ -463,6 +402,7 @@ export interface ProjectMemoryEntrySummary {
   readonly updated: string;
   readonly paths: readonly string[];
   readonly source?: string;
+  readonly evidence?: readonly string[];
   readonly workflow?: string;
   readonly change?: string;
 }
@@ -487,6 +427,7 @@ export async function readProjectMemoryEntries(
       updated: entry.updated,
       paths: entry.paths,
       ...(entry.source === undefined ? {} : { source: entry.source }),
+      ...(entry.evidence === undefined ? {} : { evidence: entry.evidence }),
       ...(entry.workflow === undefined ? {} : { workflow: entry.workflow, change: entry.change }),
     }));
 }
@@ -523,13 +464,8 @@ export async function writeProjectMemory(
     throw new Error('项目记忆必须同时提供非空 workflow 和 change');
   }
   if (input.evidence && input.evidence.length > MAX_PATHS)
-    throw new Error(`项目记忆最多绑定 ${MAX_PATHS} 个来源文件`);
-  const sourceVersions =
-    input.evidence === undefined
-      ? undefined
-      : await Promise.all(
-          [...new Set(input.evidence)].map((file) => captureMemorySource(projectRoot, file)),
-        );
+    throw new Error(`项目记忆最多引用 ${MAX_PATHS} 个来源文件`);
+  const evidence = input.evidence?.map((file) => parseProjectKnowledgePath(file, 'evidence'));
   const explicitSlug = input.slug?.trim().toLowerCase();
   if (explicitSlug !== undefined && explicitSlug !== '' && !isValidSlug(explicitSlug)) {
     throw new Error('项目记忆 slug 只能包含小写字母、数字和中划线，且不超过 64 个字符');
@@ -554,6 +490,7 @@ export async function writeProjectMemory(
       slug = candidate;
     }
     const previous = existing.find((entry) => entry.slug === slug);
+    const references = evidence === undefined ? previous?.evidence : [...new Set(evidence)];
     if (previous === undefined && existing.length >= MAX_MEMORIES) {
       throw new Error(
         `项目记忆已达上限（${MAX_MEMORIES} 条）；请先合并或用 comet knowledge forget --memory <slug> 删除过时记忆`,
@@ -573,9 +510,7 @@ export async function writeProjectMemory(
       ...(workflow === undefined && previous?.workflow === undefined
         ? {}
         : { workflow: workflow ?? previous?.workflow, change: change ?? previous?.change }),
-      ...(sourceVersions === undefined && previous?.sourceVersions === undefined
-        ? {}
-        : { sourceVersions: sourceVersions ?? previous?.sourceVersions }),
+      ...(references === undefined ? {} : { evidence: references }),
       body,
     };
     const file = path.join(directory, memoryFileName(slug));
@@ -659,8 +594,8 @@ export function renderProjectMemoryIndexContext(
   const heading = language === 'en' ? '## Project memory index' : '## 项目记忆索引';
   const hint =
     language === 'en'
-      ? 'Each line locates a recorded project lesson. Before applying it, expand the full note with the same task arguments plus --expand-context "project-memory:<slug>" and check its current sources; stale source-bound notes cannot be expanded.'
-      : '以下每行用于定位项目经验。采用前，用同一任务参数追加 --expand-context "project-memory:<slug>" 展开并核对当前来源；绑定来源已变化的记忆不会展开。';
+      ? 'Each line locates a recorded project lesson. Add --expand-context "project-memory:<slug>" to the same task command to read it. Check its applicability against current evidence before use.'
+      : '以下每行用于定位项目经验。用同一任务参数追加 --expand-context "project-memory:<slug>" 展开，采用前根据当前证据核对适用条件。';
   const lines = [heading, hint];
   for (const entry of entries.slice(0, options.complete ? MAX_MEMORIES : MAX_CONTEXT_ENTRIES)) {
     const line = `- ${singleLine(entry.title, MAX_TITLE_CHARS)} — ${singleLine(

@@ -608,7 +608,10 @@ describe('skills', () => {
         'Ambiguous, partial, or missing answers remain `[blocking]`',
       );
       expect(enClarification).toContain(
-        'Only after explicit confirmation may you execute the current `commandAlternatives` command with `--confirmed` and its state-version and expected-action guards',
+        'After explicit confirmation, execute the command returned for this proposal with its state version and expected action',
+      );
+      expect(enMain).toContain(
+        'Execute the matching `commandAlternatives`, retaining `--expected-state-version` and `--expected-action`',
       );
       expect(enClarification).toContain('Read this section on entering Shape');
       expect(enClarification).toContain(

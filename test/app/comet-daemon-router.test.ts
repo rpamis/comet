@@ -17,8 +17,8 @@ const repositoryRoot = path.resolve('.');
 const cli = path.join(repositoryRoot, 'bin/comet.js');
 const temporary: string[] = [];
 
-function runCli(projectRoot: string, env: NodeJS.ProcessEnv, args: readonly string[]) {
-  return spawnSync(process.execPath, [cli, ...args], {
+function runCli(projectRoot: string, env: NodeJS.ProcessEnv, args: readonly string[], entry = cli) {
+  return spawnSync(process.execPath, [entry, ...args], {
     cwd: projectRoot,
     env,
     encoding: 'utf8',
@@ -88,6 +88,67 @@ describe('CLI daemon router', () => {
     expect(shouldAutoStartCometDaemon({ COMET_DAEMON: 'on' })).toBe(true);
     expect(shouldAutoStartCometDaemon({ COMET_DAEMON: 'off' })).toBe(false);
   });
+
+  it('allows replacing the CLI installation and moving the project while its daemon runs', async () => {
+    // Keep the complete fixture socket pathname within macOS's Unix socket limit.
+    const root = await fs.mkdtemp(
+      path.join(process.platform === 'win32' ? os.tmpdir() : '/tmp', 'cdu-'),
+    );
+    temporary.push(root);
+    const installation = path.join(root, 'node_modules', '@rpamis', 'comet');
+    const entry = path.join(installation, 'bin', 'comet.js');
+    const project = path.join(root, 'project');
+    const home = path.join(root, 'home');
+    const temp = path.join(root, 'temp');
+    await Promise.all(
+      [installation, project, home, temp].map((directory) =>
+        fs.mkdir(directory, { recursive: true }),
+      ),
+    );
+    await Promise.all([
+      ...['bin', 'dist', 'package.json'].map((file) =>
+        fs.cp(path.join(repositoryRoot, file), path.join(installation, file), { recursive: true }),
+      ),
+      fs.symlink(
+        path.join(repositoryRoot, 'node_modules'),
+        path.join(installation, 'node_modules'),
+        'junction',
+      ),
+      writeProjectConfig(project, defaultProjectConfig('docs', 'en')),
+    ]);
+    const env = {
+      ...isolatedBenchmarkEnvironment(home),
+      TEMP: temp,
+      TMP: temp,
+      TMPDIR: temp,
+      COMET_DAEMON: 'on',
+      COMET_DAEMON_IDLE_TIMEOUT_MS: '30000',
+    };
+    const daemonCommand = (action: 'start' | 'status' | 'stop') =>
+      runCli(project, env, ['daemon', action, '--project-root', project, '--json'], entry);
+
+    const started = daemonCommand('start');
+    expect(started.status, started.stderr).toBe(0);
+    const { pid } = JSON.parse(started.stdout) as { pid: number };
+    try {
+      const retired = path.join(path.dirname(installation), '.comet-retired');
+      await fs.rename(installation, retired);
+      await fs.rename(retired, installation);
+
+      const moved = path.join(root, 'moved-project');
+      await fs.rename(project, moved);
+      await fs.rename(moved, project);
+
+      const status = daemonCommand('status');
+      expect(status.status, status.stderr).toBe(0);
+      expect(JSON.parse(status.stdout)).toMatchObject({ running: true, pid });
+    } finally {
+      const stopped = daemonCommand('stop');
+      expect(stopped.status, stopped.stderr).toBe(0);
+      // The daemon acknowledges stop before its process releases the working directory.
+      await fs.rm(temp, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+    }
+  }, 60_000);
 
   it.runIf(process.platform === 'win32').each([
     ['', 'native'],

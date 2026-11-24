@@ -52,3 +52,19 @@ export function nativeSdkVerifyDecisions(run: Readonly<WorkflowRun>, state: Nati
       nativeSdkVerifyWaitDecisions(state, wait, run).map((decision) => ({ ...decision, wait })),
     );
 }
+
+/** A project may accept a final pass once the original Verify decision is the only wait. */
+export function nativeSdkArchiveApprovalWait(
+  run: Readonly<WorkflowRun>,
+  state: NativePortableState,
+): RuntimeWait | undefined {
+  if (
+    state.verification_result !== 'pass' ||
+    run.waits.filter((wait) => wait.status === 'pending').length !== 1 ||
+    run.evidenceWaits?.some((wait) => wait.status === 'pending') ||
+    run.actions.some((action) => ['running', 'unknown'].includes(action.status))
+  )
+    return;
+  return nativeSdkVerifyDecisions(run, state).find(({ action }) => action === 'accept-result')
+    ?.wait;
+}

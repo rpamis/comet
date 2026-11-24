@@ -9,6 +9,7 @@ import { readDir } from '../../platform/fs/file-system.js';
 import type { ClassicDiagnostic } from './classic-diagnostics.js';
 import { readClassicState } from './classic-store.js';
 import { hasClassicManagedRunMarker } from './classic-sdk-state-store.js';
+import { classicSdkNextAction } from './classic-sdk-status.js';
 import { PORTABLE_RUN_CHECKPOINT_KEY, readPortableRunCheckpoint } from '../engine/runtime.js';
 import { parseDocument } from 'yaml';
 import { inspectPristineClassicSdkState } from './classic-runtime-ownership.js';
@@ -19,7 +20,10 @@ import {
   type ClassicState,
   type ClassicStateProjection,
 } from './classic-state.js';
-import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
+import {
+  readChangeRuntimeOwner,
+  readSdkChangeOwner,
+} from '../workflow-contract/change-runtime-owner.js';
 import { createFileRuntimeStore, type WorkflowRun } from '../engine/runtime.js';
 import { readClassicDelivery } from './classic-progress.js';
 import { inspectClassicActiveChangeDirectory, openSpecChangeNameError } from './classic-paths.js';
@@ -59,6 +63,12 @@ export interface CometResumeProbeResult {
   confidence: CometResumeProbeConfidence;
   reason: string;
   evidence: CometResumeProbeEvidence[];
+  sdk?: ClassicResumeRun;
+}
+
+interface ClassicResumeRun {
+  id: string;
+  nextAction: NonNullable<ReturnType<typeof classicSdkNextAction>>;
 }
 
 interface ActiveProbeChange {
@@ -74,6 +84,7 @@ interface ActiveProbeChange {
   text: string;
   missingCometState: boolean;
   cancellationPending?: boolean;
+  sdk?: ClassicResumeRun;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -110,6 +121,7 @@ function result(
   confidence: CometResumeProbeConfidence,
   reason: string,
   evidence: CometResumeProbeEvidence[] = [],
+  includeSdk = action === 'auto_resume',
 ): CometResumeProbeResult {
   return {
     schema_version: COMET_RESUME_PROBE_SCHEMA_VERSION,
@@ -121,6 +133,7 @@ function result(
     confidence,
     reason,
     evidence,
+    ...(includeSdk && change?.sdk ? { sdk: change.sdk } : {}),
   };
 }
 
@@ -220,23 +233,6 @@ function diagnosticFromProjection(
   };
 }
 
-async function hasOpenSpecChangeFiles(projectRoot: string, changeDir: string): Promise<boolean> {
-  return (
-    (await classicProjectTargetExists(projectRoot, `${changeDir}/proposal.md`, {
-      label: 'Classic proposal',
-      expected: 'file',
-    })) ||
-    (await classicProjectTargetExists(projectRoot, `${changeDir}/design.md`, {
-      label: 'Classic design',
-      expected: 'file',
-    })) ||
-    (await classicProjectTargetExists(projectRoot, `${changeDir}/tasks.md`, {
-      label: 'Classic tasks',
-      expected: 'file',
-    }))
-  );
-}
-
 async function inspectManagedRun(
   projectRoot: string,
   name: string,
@@ -245,6 +241,7 @@ async function inspectManagedRun(
   state: ClassicState | null;
   lostRun: boolean;
   cancellation?: 'complete' | 'pending';
+  sdk?: ClassicResumeRun;
 }> {
   const source = await readClassicProjectFile(projectRoot, stateFile, {
     label: 'Classic change state',
@@ -305,7 +302,12 @@ async function inspectManagedRun(
     const state = parseClassicStateDocument(
       classicStateToDocument(run.state as unknown as ClassicState),
     ).classic;
-    return state ? observe(run, state) : { state: null, lostRun: true };
+    if (!state) return { state: null, lostRun: true };
+    const nextAction = classicSdkNextAction(run);
+    return {
+      ...observe(run, state),
+      ...(nextAction ? { sdk: { id: run.runId, nextAction } } : {}),
+    };
   } catch {
     return { state: null, lostRun: true };
   }
@@ -329,7 +331,19 @@ async function discoverActiveChanges(projectRoot: string): Promise<ActiveProbeCh
     const changeDir = active.directory;
     const hasCometState = active.stateExists;
     if (!hasCometState) {
-      if (!(await hasOpenSpecChangeFiles(projectRoot, changeDir))) continue;
+      const owner = await readChangeRuntimeOwner(projectRoot, 'classic', entry, { readOnly: true });
+      if (
+        !owner &&
+        !(await classicProjectTargetExists(
+          projectRoot,
+          path.join(changeDir, '.comet/run-state.json'),
+          {
+            label: 'Classic legacy Run state',
+            expected: 'file',
+          },
+        ))
+      )
+        continue;
       const missingStateChange: ActiveProbeChange = {
         name: entry,
         workflow: 'unknown',
@@ -394,6 +408,7 @@ async function discoverActiveChanges(projectRoot: string): Promise<ActiveProbeCh
       archived: classic?.archived ?? false,
       text: '',
       missingCometState: false,
+      ...(managed.sdk ? { sdk: managed.sdk } : {}),
       ...(managed.cancellation === 'pending' ? { cancellationPending: true } : {}),
     };
     change.text = await changeSearchText(projectRoot, changeDir, change);
@@ -431,12 +446,16 @@ async function discoverPendingArchivedChanges(projectRoot: string): Promise<Acti
         });
         if (!inspection.exists) return null;
 
+        const stateFile = await resolveClassicStateFile(inspection.target);
+        if (
+          !(await classicProjectTargetExists(projectRoot, stateFile, {
+            label: `Classic archived change ${entry} state`,
+            expected: 'file',
+          }))
+        )
+          return null;
         const projection = await readClassicState(inspection.target, { migrate: false });
-        const managed = await inspectManagedRun(
-          projectRoot,
-          name,
-          await resolveClassicStateFile(inspection.target),
-        );
+        const managed = await inspectManagedRun(projectRoot, name, stateFile);
         if (managed.cancellation === 'complete') return null;
         if (managed.state) projection.classic = managed.state;
         const classic = projection.classic;
@@ -445,6 +464,15 @@ async function discoverPendingArchivedChanges(projectRoot: string): Promise<Acti
           evidence: false,
         });
         if (['complete', 'local-verified'].includes(delivery.verification.status)) return null;
+        // Compatibility archives could record completion before delivery authorization existed.
+        if (
+          classic.branchStatus === 'handled' &&
+          !managed.state &&
+          !managed.lostRun &&
+          delivery.verification.status === 'needsAuthorization' &&
+          !('invalidated' in delivery.verification)
+        )
+          return null;
 
         const baseDiagnostic = diagnosticFromProjection(inspection.target, name, projection);
         const diagnostic = managed.lostRun
@@ -668,7 +696,7 @@ export async function resolveCometResumeProbe(
       ]);
     }
     return hasDecisionPoint(named)
-      ? result('ask_user', named, 'low', 'active change is at a decision point')
+      ? result('ask_user', named, 'low', 'active change is at a decision point', [], true)
       : result('auto_resume', named, 'high', 'request names an active change', [
           { source: 'user', quote: named.name },
         ]);
@@ -700,9 +728,14 @@ export async function resolveCometResumeProbe(
     if (change.missingCometState) {
       return result('ask_user', change, 'low', 'active OpenSpec change is missing Comet state');
     }
-    return result('ask_user', change, 'low', 'active change is at a decision point', [
-      { source: 'state', quote: `phase: ${change.phase}` },
-    ]);
+    return result(
+      'ask_user',
+      change,
+      'low',
+      'active change is at a decision point',
+      [{ source: 'state', quote: `phase: ${change.phase}` }],
+      true,
+    );
   }
 
   const resumeLike = includesAny(lower, RESUME_WORDS);

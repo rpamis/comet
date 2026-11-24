@@ -4,6 +4,7 @@ paths:
   - 'app/commands/project-knowledge.ts'
   - 'test/domains/project-knowledge/**/*.ts'
   - 'test/app/project-knowledge-command.test.ts'
+  - 'test/app/project-knowledge-source-references.test.ts'
   - 'scripts/benchmark/project-knowledge-*.mjs'
 ---
 
@@ -13,7 +14,8 @@ paths:
 
 - 当前源码、配置、测试和 Runtime 状态是项目事实直接来源；Project Knowledge 是带来源的可检索理解，不是第二套 Rule 系统。
 - Project Model 只记录 topology、fact 和 dependency；Project Policy 记录 decision、pattern、procedure、constraint 和 failure-resolution。
-- Project Memory 是 Agent 通过 `comet knowledge remember` 或任务学习文件写入的文件层经验：`<知识缓存>/Comet/project-knowledge/<repositoryId>/memory/` 下 `MEMORY.md` 索引加单条 Markdown。标题、摘要和正文参与统一任务检索；上下文预算不足时保留可展开的完整索引入口，单条按 `project-memory:<slug>` 按需展开。该层独立于 Local/Remote Provider 选择，不受语义评审队列约束，来源变化的条目不进入有效建议。
+- Project Memory 是 Agent 通过 `comet knowledge remember` 或任务学习文件写入的文件层经验：`<知识缓存>/Comet/project-knowledge/<repositoryId>/memory/` 下 `MEMORY.md` 索引加单条 Markdown。标题、摘要和正文参与统一任务检索；上下文预算不足时保留完整索引入口，单条按 `project-memory:<slug>` 展开。文件层独立于 Local/Remote Provider 和语义评审队列。
+- 长期记录以路径、标题或行范围引用来源。展开时提示当前工作区找不到的来源，Agent 根据当前证据复核适用性。召回、展开和索引刷新只读取长期记录；纠正、取代和应用反馈负责更新生命周期。
 - repository identity 可跨 worktree 归组，workspace 相关索引和来源状态必须保持隔离并可重建。
 - 查询或后台学习失败时不注入失败内容、不阻塞当前任务；Remote 失败不能静默切换 Local。
 - 不把完整仓库、完整 diff、凭据、Personal Memory 或原始日志发送给 Remote Provider。

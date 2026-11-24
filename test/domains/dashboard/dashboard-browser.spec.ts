@@ -35,6 +35,11 @@ test('opens current-project attention, follows a Supervisor child evidence link,
     name: 'attention-confirmation',
     displayName: 'attention-confirmation',
     locator: classicLocator,
+    next: {
+      command: null,
+      reason: '等待用户确认当前提案。',
+      description: '核对当前提案和授权范围，按原工作流记录用户决定。',
+    },
     artifacts: { grouped: [report] },
     artifactPreviews: [{ ...report, content: '# Classic report from linked worktree' }],
   };
@@ -229,6 +234,9 @@ test('opens current-project attention, follows a Supervisor child evidence link,
     })
     .press('Enter');
   await expect(page.locator('.classic-change-detail')).toContainText(classic.name);
+  await expect(page.locator('.classic-change-detail .ant-alert-title')).toHaveText(
+    /等待用户确认当前提案|Waiting for a user decision on the current proposal/u,
+  );
   await expect(
     page.getByRole('heading', { name: 'Classic report from linked worktree' }),
   ).toBeVisible();
@@ -845,6 +853,49 @@ test('explores a change trace tree, retries and filters without writing, includi
   await mobileDetails.getByRole('button', { name: '关闭窗口', exact: true }).click();
   await expect(mobileDetails).toBeHidden();
   expect(writes).toEqual([]);
+});
+
+test('opens a Change whose traces are outside the first page of execution records', async ({
+  page,
+}) => {
+  const { DEMO_PLUGIN_PAGES } = await import('../../../domains/dashboard/web/demo.js');
+  const { DEMO_CHANGE_TRACE_INDEX, DEMO_CHANGE_TRACES } =
+    await import('../../../domains/dashboard/web/src/change-trace-demo.js');
+  const [latest] = DEMO_CHANGE_TRACE_INDEX.traces;
+  const older = { ...latest, change: 'older-change', traceId: 'older-trace' };
+  const changes = [`${latest.workflow}:${latest.change}`, `${older.workflow}:${older.change}`];
+  const requests: Array<string | null> = [];
+  await stubContextPages(page, (id) => DEMO_PLUGIN_PAGES.find((entry) => entry.pluginId === id));
+  await page.route('**/change-traces?*', (route) => {
+    const change = new URL(route.request().url()).searchParams.get('change');
+    requests.push(change);
+    return route.fulfill({
+      json: {
+        ...DEMO_CHANGE_TRACE_INDEX,
+        traces: change === changes[1] ? [older] : [latest],
+        changes,
+        truncated: change === null,
+      },
+    });
+  });
+  await page.route('**/change-trace?*', (route) =>
+    route.fulfill({ json: DEMO_CHANGE_TRACES[latest.traceId] }),
+  );
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: '可观测' }).click();
+  await page.getByRole('tab', { name: 'Change 链路', exact: true }).click();
+  const panel = page.getByRole('region', { name: 'Change 链路', exact: true });
+  const records = panel.getByRole('complementary', { name: 'Change 执行记录' });
+  await expect(records).toContainText(latest.change);
+  await expect(records).not.toContainText(older.change);
+  await panel.getByRole('combobox', { name: '选择 Change' }).click();
+  await page
+    .locator('.ant-select-dropdown:visible .ant-select-item-option')
+    .filter({ hasText: older.change })
+    .click();
+  await expect(records).toContainText(older.change);
+  await expect(records).not.toContainText(latest.change);
+  expect(requests).toContain(changes[1]);
 });
 
 test('retains the selected trace node and cached data during a failed refresh', async ({
@@ -7748,6 +7799,7 @@ for (const scenario of ['stable reads', 'loading spacing'] as const) {
       created: '2026-09-20T09:12:00.000Z',
       updated: '2026-09-20T09:12:00.000Z',
       body: `项目记忆 ${index + 1} 的完整内容。`,
+      evidence: ['docs/comet/specs/recovery/spec.md'],
     }));
     const knowledgePage = {
       pluginId: 'comet.project-knowledge',
@@ -7858,6 +7910,7 @@ for (const scenario of ['stable reads', 'loading spacing'] as const) {
     await page.getByRole('tab', { name: '项目记忆' }).click();
 
     const inspector = page.getByRole('complementary', { name: '项目记忆详情' });
+    await expect(inspector).toContainText('docs/comet/specs/recovery/spec.md');
     if (scenario === 'loading spacing') {
       try {
         const skeleton = inspector.locator('.ant-skeleton');

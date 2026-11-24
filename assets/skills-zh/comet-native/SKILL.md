@@ -27,17 +27,15 @@ Native 在项目中保存需求和验收结论。先确认 change 的运行格�
 2. 没有对应 active change 时，按[工作区选择参考](reference/workspace.md#创建-change)确定隔离方式，运行 `native new`，用 `--task` 传入用户原始请求，不先改写成方案摘要，再进入 `preparation.projectRoot`。准备失败时，保留已创建的分支和目录，按返回的原因处理。
 3. 进入工作区并取得 `phase` 后，按[记忆接入](reference/commands.md#记忆接入)获取适用上下文。进入新阶段、交接给新 Agent 或恢复上下文时，由接收方执行 `contextRequest`，重新取得当前适用偏好和项目约束；同一阶段连续执行无需重复获取。任务结束时按该节分别处理项目记忆和个人记忆，再调用 `comet task --complete`。
 
-仅在出现明确的用户纠正、长期记忆要求或已验证的可复用经验时提交学习内容。普通收尾无需调用工具证明没有观察，也无需清空学习队列。任务摘要、进展、命令输出和测试结果不写入个人记忆。
-
-项目经验与个人偏好分开保存：可由当前项目验证、且未来任务仍可复用的经验在任务结束前执行 `comet knowledge remember` 写入项目记忆；用户偏好和稳定协作习惯才进入个人记忆。两者的命令和完成条件见[记忆接入](reference/commands.md#记忆接入)。
+明确的长期用户偏好按[记忆接入](reference/commands.md#记忆接入)保存为个人记忆。任务摘要、进展、命令输出和测试结果不写入个人记忆。工程经验经验证且值得复用时，用 `comet knowledge remember` 写入项目记忆。
 
 ## SDK Run 路径
 
 先读取并执行[普通命令与检查](../comet/reference/platform-execution.md)。旧业务数据自动适配，沿用原 Run 和有效批准。普通任务和 Supervisor 任务使用 `native next <change> --session <真实会话标识> --json` 领取。Shape 中由 Agent 提取验收条目并提交，等待用户明确确认后进入 Build。响应 `comet.native.task-result.v1` 给出阶段、实际工作区、验收正文、结果模板和下一步，直接照此执行。多个任务可领取时，从 `availableTasks` 选择真实执行范围，并用其 Action 和实际会话领取；按 `task.child`、`task.scope` 和工作区完成当前任务。
 
-1. Builder 完成实现后，将 `resultTemplate` 的实际业务结果写入临时 UTF-8 JSON，用返回的 `next.commandArgs` 提交。保留命令中的 `--action` 和真实 `--session`。Agent 使用平台工具运行必要检查，等待真实结果，并在 checks 的 name/result/note 中记录命令、目录、结果和日志引用。Builder 一次回报实现与检查；Verifier 的 output.checks 填写本次采信的实际结果。失败、未运行和未知结果不能算通过，不提交 verificationChecks、request-checks 或自制收据。旧检查调度不再执行，使用当前返回的业务模板。当前会话继续验收时使用 `--review current-session`，另请审查者时使用 `--review independent`，由接收者以自己的真实会话领取。
-2. Verify 覆盖全部验收项，复用有效检查，只补缺失证据；提交实际结论后，Runtime 返回用户接受结果的步骤。用户明确要求独立审查时必须选择独立会话。
-3. 只有用户事前明确委托“验收通过后接受并归档”时，才在本次 Verify 回报中加 `--accept-on-pass <用户授权摘要>`。该摘要绑定本次通过结果。其他情况等待用户接受，再执行返回的确认命令。Git 交付仍使用已有的对应授权。
+1. Builder 完成实现后，使用当前 `resultTemplate` 和 `next.commandArgs` [一次回报实现与检查](reference/commands.md#任务结果回报)。保留命令中的 `--action` 和真实 `--session`。Agent 使用平台工具运行必要检查，等待真实结果，并在 checks 的 name/result/note 中记录命令、目录、结果和日志引用。Verifier 的 output.checks 填写本次采信的实际结果。失败、未运行和未知结果不能算通过，不提交 verificationChecks、request-checks 或自制收据。旧检查调度不再执行，使用当前返回的业务模板。当前会话继续验收时使用 `--review current-session`，另请审查者时使用 `--review independent`，由接收者以自己的真实会话领取。
+2. Verify 覆盖全部验收项，复用有效检查，只补缺失证据。用户明确要求独立审查时必须选择独立会话。提交结论后执行 Runtime 返回的下一步。
+3. 完整验收通过后，按[归档策略](reference/commands.md#任务结果回报)处理。如果内置 SDK Run 按项目策略自动归档，直接执行返回的下一步；如果 Runtime 仍要求用户接受，先展示结论并等待确认。仅在用户事前明确委托本轮通过后接受并归档时使用 `--accept-on-pass <用户授权摘要>`。Git 交付仍使用已有的对应授权。
 
 新建内置任务无需读取底层协议。并行子任务只在各自 worktree 工作并返回结果；主 Agent 按原 Action、真实子会话和领取身份顺序提交，保留原 `resultTemplate` 或 `resultRequest`，不重新领取或改用主会话。Supervisor 回报后，Runtime 连续处理 Git 集成和子归档；接收下一个子任务需使用其真实执行会话。父级验收保留全部要求，复用适用的子结果并补足集成缺口。当前响应为旧 `comet.native.sdk-status.v1`、`comet.native.dispatch-result.v1`、`comet.native.run-view.v1`，且高层入口不适用，或属于固定应用时，读取[SDK Run 命令与恢复](reference/commands.md#sdk-run)。完整协议需要时用 `--details`，不额外查询 status 来识别已有响应。
 
@@ -47,7 +45,7 @@ Native 在项目中保存需求和验收结论。先确认 change 的运行格�
 
 只读取当前动作对应的章节。章节中的链接写明了适用条件，满足条件时再读取链接内容；不一次加载整份命令参考或所有参考。
 
-- Shape：必须读取并执行[澄清](reference/clarification.md#澄清)，按项目配置选择 Sequential 或 Batch 的提问步骤。大型需求在最终确认前，必须按该节链接读取 Supervisor 拆分与确认要求。
+- Shape：必须读取并执行[澄清](reference/clarification.md#澄清)，按项目配置选择 Sequential 或 Batch 的提问步骤。
 - 编辑 brief/Spec/`children.yaml` 或核对验收报告前，必须读取[正式产物](reference/artifacts.md#正式产物)。文件、附件、链接或本地路径作为需求来源时，必须进入[源文档完整覆盖模式](reference/artifacts.md#源文档完整覆盖)；仅用于排错、取证、审查或实现参考的材料不自动触发。
 - 高层任务响应缺少所需字段，或使用旧 SDK、固定应用时，读取[平台 Action 协议](reference/commands.md#sdk-action-领取与回报)、[SDK Builder 交接](reference/commands.md#sdk-builder-交接)或[SDK Verify 协议](reference/commands.md#sdk-verify-协议)中当前需要的章节。
 - Compat 首次填写 Runner 模板或通过 `returnAction` 回传前，读取[填写命令输入](reference/commands.md#填写命令输入)，再按阶段读取[Builder 交接](reference/commands.md#builder-交接)或[Verify 协议](reference/commands.md#verify-协议)。
@@ -58,6 +56,8 @@ Native 在项目中保存需求和验收结论。先确认 change 的运行格�
 ## Shape
 
 Agent 先调查能够查明的事实，只询问会改变用户可见结果、又无法可靠推断的决定。简单问题列出未决项及其依赖关系；多个决定相互影响时才建立决策树。按 `native.clarification_mode` 提问前，先把本轮尚未解决的问题写入 brief。用户确认的结论立即同步到 brief 的相关章节和完整目标规格；未明确回答的部分保持 `[blocking]`。
+
+大型需求在形成方案时先按 [Supervisor 拆分与确认](reference/clarification.md#supervisor-拆分与确认)评估拆分。有合适的子任务划分时，把 Supervisor Change 作为首选方案向用户提出，说明主要依赖和验收责任。
 
 把用户明确指定的文件位置、必需章节和产物格式写入 brief 的约束，按原要求准备这些内容；不能因模板默认位置而改放其他文件。交接和恢复时以这些已确认约束核对产物，不能只保留业务示例。
 
@@ -71,7 +71,9 @@ Build、Verify 或待归档阶段发生编辑时，按[编辑后续行](referenc
 
 ## Build ↔ Verify Loop
 
-Builder 完成实现并用平台工具执行检查后，一次提交候选与实际结果，再由领取 Verify Action 的 Agent 完成验收。未通过则回 Build 修复并重新提交；全部通过后，等待用户接受验收结果。
+Builder 完成实现并用平台工具执行检查后，一次提交候选与实际结果，再由领取 Verify Action 的 Agent 完成验收。未通过则回 Build 修复并重新提交；全部通过后，按 Runtime 返回的接受或归档步骤继续。
+
+排查像是已经遇过的问题时，按[记忆接入](reference/commands.md#记忆接入)查询经验。修复复验通过且做法值得复用时，由负责修复收尾的 Agent 记录。
 
 Verifier 先读原始请求，再对照 Spec 和实现，核对有无遗漏、未经授权的范围缩减或接口行为变化。SDK Run 使用同一份验收结果中的 `requestReview` 说明结论；有冲突或仍影响交付的疑问时，保留 fail 或 blocked。旧 Run 和 Compat 没有保存原始请求时，从交接材料和用户记录补查，不把新生成的 Spec 当成唯一需求来源；Compat 沿用原结果结构。语义核对沿用当前 Verifier，不增加 Agent 或固定测试轮次。
 

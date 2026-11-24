@@ -148,7 +148,7 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'Clears the current change selection; does not delete change artifacts.',
     ],
     init: [
-      'comet state init <change-name> <full|hotfix|tweak> [--isolation <current|branch|worktree>]',
+      'comet state init <change-name> <full|hotfix|tweak> [--isolation <current|branch|worktree>] [--select]',
       'Creates Classic workflow state. Follow the Open workflow for required user decisions.',
     ],
     scale: [

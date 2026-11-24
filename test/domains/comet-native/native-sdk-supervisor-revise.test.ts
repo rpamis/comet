@@ -35,12 +35,12 @@ afterEach(async () => {
   }
 });
 
-async function supervisor() {
+async function supervisor(config = defaultProjectConfig('docs', 'en')) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-sdk-build-revision-'));
   roots.push(root);
   const project = path.join(root, 'project');
   await fs.mkdir(project);
-  await writeProjectConfig(project, defaultProjectConfig('docs', 'en'));
+  await writeProjectConfig(project, config);
   const name = 'build-revision';
   const change = path.join(project, 'docs/comet/changes', name);
   await fs.mkdir(path.join(change, 'specs/workflow'), { recursive: true });
@@ -959,7 +959,9 @@ it('reintegrates an already included Child after public Shape reconfirmation (sa
 }, 360000);
 
 it('preserves integrated and uncommitted Child work, then rechecks every Child in the new Shape cycle', async () => {
-  const f = await supervisor();
+  const config = defaultProjectConfig('docs', 'en');
+  config.native.archive_confirmation = 'required';
+  const f = await supervisor(config);
   await f.submitChild(f.run, f.baselineCli);
   let run = await f.next(f.baselineCli);
   await f.verifyChild(run, f.baselineCli);

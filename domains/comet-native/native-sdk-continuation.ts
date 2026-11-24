@@ -6,6 +6,7 @@ import {
   type RuntimeValue,
   type WorkflowRun,
 } from '../engine/runtime.js';
+import { readProjectConfig } from './native-config.js';
 import {
   NATIVE_REPORTED_CHECK_RESULTS,
   NATIVE_REQUEST_REVIEW_RESULTS,
@@ -43,6 +44,7 @@ import {
 } from './native-sdk-revise.js';
 import { nativeSdkChildVerifierRetryWaits } from './native-sdk-supervisor-verifier-recovery.js';
 import {
+  nativeSdkArchiveApprovalWait,
   nativeSdkVerifyDecisions,
   nativeSdkVerifyWaitDecisions,
 } from './native-sdk-verify-decision.js';
@@ -499,11 +501,11 @@ function sdkShapeContinuation(
     userCommunication: {
       required: true,
       message: chinese
-        ? '请确认完整 Shape，并选择推进方式：多会话协作（推荐）或单会话推进。'
-        : 'Confirm the complete Shape and choose multi-session coordination (recommended) or single-session progression.',
+        ? '请确认完整 Shape，并选择推进方式：多会话/Agent Teams（推荐）或单会话推进。'
+        : 'Confirm the complete Shape and choose Multi-session / Agent Teams (recommended) or Single-session progression.',
       suggestedReply: chinese
-        ? '确认 Shape，选择多会话协作'
-        : 'Confirm Shape with multi-session coordination',
+        ? '确认 Shape，选择多会话/Agent Teams'
+        : 'Confirm Shape with Multi-session / Agent Teams',
       agentInstruction: chinese
         ? '先简要展示目标、范围、关键决定、验收标准、非目标及 Child 计划，再转述 message。只有用户明确确认当前完整 Shape 并选定推进方式后，才执行对应的 commandAlternatives；补充或修改要求不算确认。'
         : 'Summarize the target, scope, key decisions, acceptance criteria, non-goals, and child plan before relaying message. Execute the matching commandAlternative only after the user explicitly confirms the complete current Shape and chooses a coordination mode; additions or corrections are not confirmation.',
@@ -1083,6 +1085,23 @@ async function projectNativeSdkContinuationValue(options: {
     };
   } else if (verifyWait?.stepId === 'verify.stop') {
     continuation = sdkLoopStopContinuation(run, state, verifyWait.proposalHash);
+  } else if (
+    verifyWait &&
+    !options.applicationId &&
+    nativeSdkArchiveApprovalWait(run, state) &&
+    (await readProjectConfig(projectRoot))?.native.archive_confirmation === 'automatic'
+  ) {
+    continuation = {
+      ...base,
+      action: 'archive',
+      commandArgs: ['comet', 'native', 'next', state.name],
+      userCommunication: communication(
+        localized(
+          'Verification passed. The project authorizes automatic Archive. Continue with the returned command.',
+          '验收已通过，项目已授权自动归档。执行返回的命令继续归档。',
+        ),
+      ),
+    };
   } else if (verifyWait) {
     const retry = verifyWait.stepId === 'verify.retry';
     const decisions = nativeSdkVerifyDecisions(run, state).filter(

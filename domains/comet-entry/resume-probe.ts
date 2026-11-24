@@ -1,4 +1,8 @@
-import { isNativeSdkCancellationComplete } from '../comet-native/native-sdk-status.js';
+import {
+  isNativeSdkCancellationComplete,
+  projectNativeSdkStatus,
+} from '../comet-native/native-sdk-status.js';
+import { nativeSdkNextAction } from '../comet-native/native-sdk-continuation.js';
 import { measureCometGitCommandAsync } from '../../platform/process/runtime-metrics.js';
 import { execFile } from 'child_process';
 import { promises as fs } from 'fs';
@@ -85,11 +89,26 @@ export interface CometEntryResumeProbeResult {
   phase: string | null;
   nextCommand: '/comet-native' | '/comet-classic' | null;
   diagnosticCommand?: string;
+  resume?: ResumeGuidance;
   confidence: CometResumeProbeConfidence;
   reasonCode: string;
   reason: string;
   evidence: CometResumeProbeEvidence[];
   candidates: CometEntryResumeProbeCandidate[];
+}
+
+interface ResumeGuidance {
+  projectRoot: string;
+  runId?: string;
+  kind: 'continue' | 'decision' | 'reconcile' | 'blocked';
+  stepId?: string;
+  actionId?: string;
+  skill?: string;
+  commandArgs?: readonly string[];
+  question?: string;
+  choices?: readonly string[];
+  instruction?: string;
+  requiredInputs?: readonly string[];
 }
 
 interface ResultOptions {
@@ -102,6 +121,7 @@ interface ResultOptions {
   reasonCode: string;
   reason: string;
   diagnosticCommand?: string;
+  resume?: ResumeGuidance;
   evidence?: CometResumeProbeEvidence[];
   candidates?: CometEntryResumeProbeCandidate[];
 }
@@ -299,6 +319,7 @@ function result(options: ResultOptions): CometEntryResumeProbeResult {
     phase: options.change?.phase ?? null,
     nextCommand,
     ...(options.diagnosticCommand ? { diagnosticCommand: options.diagnosticCommand } : {}),
+    ...(options.resume ? { resume: options.resume } : {}),
     confidence: options.confidence,
     reasonCode: options.reasonCode,
     reason: options.reason,
@@ -312,9 +333,7 @@ function requireAmbientResumeConfirmation(
   intent: ResumeIntent,
 ): CometEntryResumeProbeResult {
   if (probe.action !== 'auto_resume' || !probe.changeName) return probe;
-  const explicitTarget =
-    intent.currentChange || namesInUtterance(intent.positiveText, [probe.changeName]).length > 0;
-  if (explicitTarget && (intent.resumeLike || intent.commitLike)) return probe;
+  if (explicitResumeTarget(intent, probe.changeName)) return probe;
   return {
     ...probe,
     action: 'ask_user',
@@ -322,6 +341,13 @@ function requireAmbientResumeConfirmation(
     reasonCode: 'ambient-resume-confirmation-required',
     reason: `${probe.reason} Confirm whether this request should continue the ${probe.workflow} change ${probe.changeName} before entering its workflow.`,
   };
+}
+
+function explicitResumeTarget(intent: ResumeIntent, name: string): boolean {
+  return (
+    (intent.resumeLike || intent.commitLike) &&
+    (intent.currentChange || namesInUtterance(intent.positiveText, [name]).length > 0)
+  );
 }
 
 function escapeRegExp(value: string): string {
@@ -500,6 +526,89 @@ function mapClassicResult(
         ? [{ name: classic.changeName, phase: classic.phase, selected: false }]
         : [],
   });
+}
+
+function classicResumeGuidance(
+  projectRoot: string,
+  classic: Awaited<ReturnType<typeof resolveClassicResumeProbe>>,
+  locale: string,
+): ResumeGuidance {
+  const run = classic.sdk;
+  const next = run?.nextAction;
+  const workspace = { projectRoot, ...(run ? { runId: run.id } : {}) };
+  if (next?.kind === 'decision') {
+    return {
+      ...workspace,
+      kind: 'decision',
+      stepId: next.stepId,
+      question: locale.startsWith('zh')
+        ? `请确认当前 Classic ${classic.phase} 提案如何继续。`
+        : `How should the current Classic ${classic.phase} proposal proceed?`,
+      choices: next.choices,
+      instruction: next.instruction,
+    };
+  }
+  if (next?.kind === 'reconcile' && 'actionId' in next) {
+    return {
+      ...workspace,
+      kind: 'reconcile',
+      stepId: next.stepId,
+      actionId: next.actionId,
+      instruction: locale.startsWith('zh')
+        ? '先核对原 Classic 动作的结果，沿用原领取记录。'
+        : 'Check the original Classic Action and preserve its claim before continuing.',
+    };
+  }
+  return {
+    ...workspace,
+    kind: next?.kind === 'evidence' ? 'blocked' : 'continue',
+    ...(next && 'stepId' in next ? { stepId: next.stepId } : {}),
+    ...(next?.kind === 'action' && 'ref' in next && next.ref?.startsWith('comet-')
+      ? { skill: next.ref }
+      : {}),
+    ...(run && classic.changeName
+      ? { commandArgs: ['comet', 'state', 'next', classic.changeName, '--json'] }
+      : {}),
+  };
+}
+
+function nativeResumeGuidance(
+  status: Awaited<ReturnType<typeof projectNativeSdkStatus>> | NativePortableStatusProjection,
+  runnable?: ReturnType<typeof nativeSdkNextAction>,
+): ResumeGuidance {
+  const { continuation } = status;
+  const sdk = 'run' in status ? status : undefined;
+  const active = sdk?.run.actions.filter((action) =>
+    ['running', 'unknown'].includes(action.status),
+  );
+  const waits = sdk?.run.waits.filter((wait) => wait.status === 'pending');
+  const wait = waits?.length === 1 ? waits[0] : undefined;
+  const needsDecision = continuation.requiresUserDecision;
+  const original = active?.length === 1 ? active[0] : undefined;
+  const action = needsDecision ? undefined : active?.length ? original : runnable;
+  const stepId = needsDecision ? wait?.stepId : action?.stepId;
+  return {
+    projectRoot: status.workspace.projectRoot,
+    ...(sdk ? { runId: sdk.run.id } : {}),
+    kind: needsDecision
+      ? 'decision'
+      : active?.length || continuation.mode === 'wait'
+        ? 'reconcile'
+        : continuation.disposition === 'blocked'
+          ? 'blocked'
+          : 'continue',
+    ...(stepId ? { stepId } : {}),
+    ...(action ? { actionId: action.id } : {}),
+    ...(needsDecision && continuation.userCommunication.message
+      ? { question: continuation.userCommunication.message }
+      : {}),
+    ...(needsDecision && wait ? { choices: wait.choices } : {}),
+    instruction: continuation.userCommunication.agentInstruction,
+    ...(continuation.requiredInputs.length ? { requiredInputs: continuation.requiredInputs } : {}),
+    ...(!needsDecision && continuation.commandArgs
+      ? { commandArgs: continuation.commandArgs }
+      : {}),
+  };
 }
 
 async function resolveNativeResumeProbe(
@@ -686,6 +795,7 @@ async function resolveNativeResumeProbe(
 
   const target = candidates.find((change) => change.name === targetName);
   let targetState: NativeChangeState | NativePortableState | null = null;
+  let targetSdk: Awaited<ReturnType<typeof inspectNativeSdkRun>> | undefined;
   let targetPortableStatus: NativePortableStatusProjection | null = null;
   let targetStateError: string | null = null;
   let recoverableCheckpoint = false;
@@ -698,6 +808,7 @@ async function resolveNativeResumeProbe(
             'Native cancellation is incomplete; confirm the original execution has stopped with comet native doctor before continuing',
           );
         targetState = inspected.state;
+        targetSdk = inspected;
       } else if (await isNativePortableChange(paths, target.name)) {
         const recoverable = await inspectPristineNativeSdkChange(paths, target.name);
         if (!recoverable) await assertNativePortableChangeNotOrphaned(paths, target.name);
@@ -818,11 +929,38 @@ async function resolveNativeResumeProbe(
   }
 
   const dirtyFiles = await gitDirtyFiles(projectRoot);
+  let resume: ResumeGuidance | undefined;
+  if (explicitResumeTarget(intent, target.name)) {
+    const status = targetSdk
+      ? await projectNativeSdkStatus({ projectRoot, name: target.name }, targetSdk)
+      : targetPortableStatus;
+    resume = status
+      ? nativeResumeGuidance(
+          status,
+          targetSdk && nativeSdkNextAction(targetSdk.run, targetSdk.state),
+        )
+      : recoverableCheckpoint
+        ? {
+            projectRoot,
+            kind: 'blocked',
+            commandArgs: [
+              'comet',
+              'native',
+              'doctor',
+              target.name,
+              '--project-root',
+              projectRoot,
+              '--json',
+            ],
+          }
+        : { projectRoot, kind: 'continue' };
+  }
   return result({
     workflow: 'native',
     skill: 'comet-native',
     entrySource,
     action: 'auto_resume',
+    resume,
     change: { name: target.name, phase: target.phase },
     confidence: 'high',
     reasonCode: recoverableCheckpoint
@@ -932,10 +1070,8 @@ async function resolveCometEntryResumeProbeImpl(
       agent_context: input.agent_context,
     };
     try {
-      const classic = mapClassicResult(
-        await resolveClassicResumeProbe(projectRoot, classicInput),
-        entry.source,
-      );
+      const observed = await resolveClassicResumeProbe(projectRoot, classicInput);
+      const classic = mapClassicResult(observed, entry.source);
       if (classic.action === 'none') return classic;
       const names = classic.candidates.map(({ name }) => name);
       if (intent.excludesCurrentChange || namesInUtterance(intent.negativeText, names).length > 0) {
@@ -951,16 +1087,23 @@ async function resolveCometEntryResumeProbeImpl(
         });
       }
       const scopeDecision = requestScopeDecision(intent, names);
-      return scopeDecision
-        ? result({
-            workflow: 'classic',
-            skill: 'comet-classic',
-            entrySource: entry.source,
-            ...scopeDecision,
-            evidence: [{ source: 'user', quote: utterance }],
-            candidates: classic.candidates,
-          })
-        : requireAmbientResumeConfirmation(classic, intent);
+      if (scopeDecision)
+        return result({
+          workflow: 'classic',
+          skill: 'comet-classic',
+          entrySource: entry.source,
+          ...scopeDecision,
+          evidence: [{ source: 'user', quote: utterance }],
+          candidates: classic.candidates,
+        });
+      const resolved = requireAmbientResumeConfirmation(classic, intent);
+      if (
+        resolved.changeName &&
+        explicitResumeTarget(intent, resolved.changeName) &&
+        (resolved.action === 'auto_resume' || observed.sdk?.nextAction.kind === 'decision')
+      )
+        return { ...resolved, resume: classicResumeGuidance(projectRoot, observed, input.locale) };
+      return resolved;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return result({

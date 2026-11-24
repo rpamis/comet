@@ -79,6 +79,24 @@ async function fixture(profile: 'hotfix' | 'tweak', completed = true) {
   return { root, directory, proposal, cli, ok, check };
 }
 
+it('renders the check table during a direct Classic Verify submission', async () => {
+  const { root, ok, check } = await fixture('hotfix');
+  expect((await ok('guard', 'example', 'build', ...check)).phase).toBe('verify');
+  const report = 'docs/superpowers/reports/example.md';
+  await fs.mkdir(path.dirname(path.join(root, report)), { recursive: true });
+  await fs.writeFile(
+    path.join(root, report),
+    '# Verification\nThe approved behavior was verified.\n\n' +
+      '<!-- comet-check-results -->\n<!-- /comet-check-results -->\n',
+  );
+  expect((await ok('guard', 'example', 'verify', '--report', report, ...check)).phase).toBe(
+    'archive',
+  );
+  const rendered = await fs.readFile(path.join(root, report), 'utf8');
+  expect(rendered).toContain('The approved behavior was verified.');
+  expect(rendered).toContain('| Actual platform Node exit 0 | passed |');
+});
+
 describe.each(['hotfix', 'tweak'] as const)('%s approved scope', (profile) => {
   it('allows public task ID assignment and completion without another scope approval', async () => {
     const { ok, check } = await fixture(profile, false);

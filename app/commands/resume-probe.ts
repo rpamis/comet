@@ -6,6 +6,7 @@ import {
   type CometEntryResumeProbeResult,
 } from '../../domains/comet-entry/resume-probe.js';
 import { readWorkflowProjectConfigDocument } from '../../domains/workflow-contract/project-config-reader.js';
+import { formatCliCommandArgs } from '../../domains/workflow-contract/output-envelope.js';
 
 interface ResumeProbeOptions {
   utterance?: string;
@@ -36,6 +37,17 @@ function formatText(result: CometEntryResumeProbeResult): string {
   if (result.changeName) lines.push(`change: ${result.changeName}`);
   if (result.phase) lines.push(`phase: ${result.phase}`);
   if (result.nextCommand) lines.push(`next: ${result.nextCommand}`);
+  if (result.resume) {
+    const { projectRoot, kind, stepId, question, choices, instruction, commandArgs, skill } =
+      result.resume;
+    lines.push(`worktree: ${projectRoot}`, `resume: ${kind}`);
+    if (stepId) lines.push(`step: ${stepId}`);
+    if (question) lines.push(`ask user: ${question}`);
+    if (choices?.length) lines.push(`options: ${choices.join(', ')}`);
+    if (instruction) lines.push(instruction);
+    if (skill) lines.push(`current skill: ${skill}`);
+    if (commandArgs) lines.push(`continue with: ${formatCliCommandArgs(commandArgs)}`);
+  }
   return `${lines.join('\n')}\n`;
 }
 

@@ -27,6 +27,7 @@ import { createProjectKnowledgeQuery } from './query.js';
 import { searchProjectKnowledge } from './retrieval.js';
 import {
   createUserProjectKnowledgeRecord,
+  projectKnowledgeRecordSourceReferences,
   type ProjectKnowledgeRecord,
   type ProjectKnowledgeRecordSource,
   type ProjectKnowledgeRecordType,
@@ -62,7 +63,10 @@ import {
 import { resolveProjectKnowledgeStorageLocation } from '../../platform/paths/project-knowledge-storage.js';
 import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
 import { RaceSafeReadError } from '../../platform/fs/race-safe-read.js';
-import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
+import {
+  inspectProtectedProjectPath,
+  readProtectedProjectFile,
+} from '../workflow-contract/protected-project-path.js';
 import { DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG } from '../workflow-contract/project-config.js';
 
 export const PROJECT_KNOWLEDGE_PLUGIN_ID = 'comet.project-knowledge';
@@ -293,7 +297,7 @@ async function createProjectKnowledgeModule(
       provider,
       language: options.language,
       reportDiagnostic,
-      refreshSources: !queryOnly,
+      refreshIndex: !queryOnly,
     });
   };
   const persistChangedHint = async (hint: ProjectKnowledgeChangedHint): Promise<void> => {
@@ -838,11 +842,23 @@ async function createProjectKnowledgeModule(
           });
         }
         if (capability === 'refresh') {
-          return await activeProvider.apply({
+          const id = typeof value.id === 'string' ? value.id.trim() : '';
+          const modelChanged =
+            !id &&
+            (await ensureProjectKnowledgeReady({
+              projectRoot: options.projectRoot,
+              provider: activeProvider,
+              language: options.language,
+              reportDiagnostic,
+              refreshIndex: false,
+              rebuildModel: true,
+            }));
+          const result = await activeProvider.apply({
             kind: 'refresh',
             projectId,
-            ...(typeof value.id === 'string' && value.id.trim() ? { id: value.id.trim() } : {}),
+            ...(id ? { id } : {}),
           });
+          return { ...result, changed: modelChanged || result.changed };
         }
         throw new Error(`Unknown project knowledge capability: ${capability}`);
       } finally {
@@ -917,15 +933,10 @@ async function createProjectKnowledgeModule(
         const slug = id.slice(PROJECT_MEMORY_EXPANSION_PREFIX.length);
         const entry = await readProjectMemory(options.projectRoot, slug, options.cacheRoot);
         if (entry === null) return null;
-        if (entry.sourceStatus === 'changed') {
-          reportDiagnostic({
-            code: 'project-memory-source-changed',
-            message: `项目记忆 ${slug} 的来源已变化或不可读取；请核对当前来源并更新记忆后再使用。`,
-          });
-          await diagnosticWrite;
-          return null;
-        }
-        return projectMemoryEntryCandidate(entry, request.projectId, options.language);
+        return withSourceReferenceNotices(
+          projectMemoryEntryCandidate(entry, request.projectId, options.language),
+          await sourceReferenceNotices(options.projectRoot, entry.evidence ?? [], options.language),
+        );
       }
       let activeProvider: ProjectKnowledgeProvider | null = null;
       try {
@@ -933,7 +944,7 @@ async function createProjectKnowledgeModule(
         const projectId = resolveStableProjectId(options.projectRoot);
         const response = await activeProvider.query({ kind: 'expand', id, projectId });
         if (response.kind === 'expand' && response.record !== null) {
-          return projectKnowledgeContextCandidate(
+          const candidate = projectKnowledgeContextCandidate(
             {
               source: `record:${response.record.id}`,
               title: response.record.title,
@@ -942,6 +953,14 @@ async function createProjectKnowledgeModule(
             },
             request.projectId,
             options.language,
+          );
+          return withSourceReferenceNotices(
+            candidate,
+            await sourceReferenceNotices(
+              options.projectRoot,
+              projectKnowledgeRecordSourceReferences(response.record).map(({ source }) => source),
+              options.language,
+            ),
           );
         }
       } finally {
@@ -1057,6 +1076,7 @@ function projectKnowledgeContextCandidate(
               .map((source) => [source.source, source.anchor].filter(Boolean).join('#'))
               .join(', ')}`,
         ),
+        ...(record.sourcePaths ?? []).map((source) => `- Source: ${source}`),
       ].join('\n'),
       selectors: {
         projectId: record.projectId,
@@ -1064,13 +1084,11 @@ function projectKnowledgeContextCandidate(
         operations: record.operations,
         phases: record.phases ?? [],
       },
-      sources: record.conclusions.flatMap((conclusion) =>
-        conclusion.sources.map((source) => ({
-          type: 'repository' as const,
-          source: source.source,
-          anchor: source.anchor,
-        })),
-      ),
+      sources: projectKnowledgeRecordSourceReferences(record).map(({ source, anchor }) => ({
+        type: 'repository',
+        source,
+        anchor,
+      })),
       verification: record.verification,
       priority,
       ...(activation?.kind === 'verification'
@@ -1169,6 +1187,9 @@ function projectMemoryEntryCandidate(
     ...(entry.source === undefined
       ? []
       : [english ? `Source: ${entry.source}` : `来源：${entry.source}`]),
+    ...(entry.evidence?.length
+      ? [english ? `Evidence: ${entry.evidence.join(', ')}` : `证据：${entry.evidence.join('、')}`]
+      : []),
   ];
   return {
     id: `${PROJECT_MEMORY_EXPANSION_PREFIX}${entry.slug}`,
@@ -1182,10 +1203,52 @@ function projectMemoryEntryCandidate(
     summary: entry.description,
     content: `${entry.description}\n\n${header.join('\n')}\n\n${entry.body}`,
     selectors: { ...(projectId === undefined ? {} : { projectId }), paths: entry.paths },
-    sources:
-      entry.source === undefined ? [] : [{ type: 'workflow' as const, source: entry.source }],
+    sources: [
+      ...(entry.source === undefined ? [] : [{ type: 'workflow' as const, source: entry.source }]),
+      ...(entry.evidence ?? []).map((source) => ({ type: 'repository' as const, source })),
+    ],
     verification: [],
   };
+}
+
+async function sourceReferenceNotices(
+  projectRoot: string,
+  sources: readonly string[],
+  language?: 'zh-CN' | 'en',
+): Promise<readonly string[]> {
+  const english = language === 'en';
+  const notices = await Promise.all(
+    [...new Set(sources)].map(async (source) => {
+      try {
+        const filePath = source.split('#', 1)[0];
+        const reference = await inspectProtectedProjectPath(projectRoot, filePath, {
+          label: 'Project Knowledge source',
+          expected: 'file',
+        });
+        if (reference.exists) return null;
+        return english ? `Source not found: ${source}` : `找不到来源：${source}`;
+      } catch {
+        return english ? `Source unavailable: ${source}` : `来源无法访问：${source}`;
+      }
+    }),
+  );
+  const issues = notices.filter((notice): notice is string => notice !== null);
+  if (issues.length === 0) return [];
+  return [
+    ...issues,
+    english
+      ? 'This is a historical reference. Verify the lesson against current evidence and update its sources if needed.'
+      : '这是历史参考。采用前请用当前证据复核结论，需要时更新来源。',
+  ];
+}
+
+function withSourceReferenceNotices(
+  candidate: AgentContextCandidate,
+  notices: readonly string[],
+): AgentContextCandidate {
+  return notices.length === 0
+    ? candidate
+    : { ...candidate, content: [...notices, '', candidate.content].join('\n') };
 }
 
 function projectPolicyActivation(

@@ -22,7 +22,7 @@ For a new full, hotfix, or tweak change, first check required capabilities under
 
 1. Check the current directory, Runtime ownership, and existing OpenSpec change. If an SDK Run exists, resume its current Action and fill missing artifacts; do not repeat OpenSpec `new change` or `state init`.
 2. For a genuinely new change, create the OpenSpec base directory first; load the creation Skill below only in this case. If that directory exists after interrupted initialization, inspect its actual artifacts with OpenSpec `status --change <name> --json`, confirm ownership, and finish initialization while preserving files.
-3. After base creation succeeds, immediately run `comet state init <name> <full|hotfix|tweak> --isolation <selected-isolation>`, then `comet state select <name>`. Do not initialize Runtime before OpenSpec `new change`, which rejects an existing directory. Preserve the OpenSpec directory on failure and resume only unfinished steps.
+3. After OpenSpec creates the base directory, run `comet state init <name> <full|hotfix|tweak> --isolation <selected-isolation> --select --json` and continue Open from the same response. Run OpenSpec `new change` before initializing Runtime. Preserve the OpenSpec directory on failure and resume from the first unfinished step.
 4. Once the SDK Run exists, fill the currently required artifacts through `status` and `instructions`, then preview Open and obtain approval through the phase entry. Stop to establish ownership if unclear; do not overwrite files or create a second Run.
 
 When creating the base directory for a genuinely new change:
@@ -107,7 +107,7 @@ After the skill loads, review the current final diff, reuse valid independent re
 
 After the skill loads, use `comet classic openspec -- <args...>` and bound `<classic-*>` paths. Check tasks, proposal, capability scenarios, high-level and technical design, and consistency between delta specs and design.
 
-Write actual results, evidence, independent review, unexecuted checks, and accepted deviations into the report. Return clearly repairable failures to Build automatically within the first three failures. CRITICAL/IMPORTANT findings cannot be waived. Ask about WARNING/SUGGESTION findings involving behavior, scope, or risk tradeoffs; repair safe local issues directly. At verify_failures >= 3, ask whether to continue repairs or stop the workflow for an external decision. Failure, timeout, blocked, and unexecuted results never count as passed.
+Write acceptance conclusions, evidence, independent review conclusions, and accepted deviations in the report. Enter checks and reasons for skipped checks in the checks JSON, then follow the Verify Skill to generate the report's check results from that submission. Return clearly repairable failures to Build automatically within the first three failures. CRITICAL/IMPORTANT findings cannot be waived. Ask about WARNING/SUGGESTION findings involving behavior, scope, or risk tradeoffs and repair safe local issues directly. At verify_failures >= 3, ask whether to continue repairs or stop the workflow for an external decision. Failure, timeout, blocked, and unexecuted results never count as passed.
 
 ## Check reuse
 

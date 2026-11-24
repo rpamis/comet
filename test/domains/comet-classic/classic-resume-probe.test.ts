@@ -156,6 +156,7 @@ describe('resolveCometResumeProbe', () => {
         'workflow: full',
         'phase: archive',
         'archived: true',
+        'branch_status: handled',
         'verify_result: pass',
         'design_doc: null',
         'plan: null',
@@ -305,10 +306,11 @@ describe('resolveCometResumeProbe', () => {
     expect(result.reason).toContain('looks unrelated');
   });
 
-  it('asks when an OpenSpec change exists without Comet state', async () => {
+  it('asks when a legacy Classic Run exists without Comet state', async () => {
     const root = path.join(tmpDir, 'openspec', 'changes', 'cache-ttl');
     await writeFile(path.join(root, 'proposal.md'), 'Improve cache ttl\n');
     await writeFile(path.join(root, 'tasks.md'), '- [ ] Update cache ttl\n');
+    await writeFile(path.join(root, '.comet/run-state.json'), '{}\n');
 
     const result = await resolveCometResumeProbe(tmpDir, {
       schema_version: 'comet.resume_probe.v1',

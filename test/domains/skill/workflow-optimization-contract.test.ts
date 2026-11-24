@@ -26,8 +26,110 @@ async function readChineseReference(name: string): Promise<string> {
   return fs.readFile(path.join(zhSkillRoot, 'comet-classic', 'reference', `${name}.md`), 'utf8');
 }
 
-// 中文确认后同步英文，保留两个语言版本的安全约束。
+describe.each([
+  {
+    language: 'zh',
+    root: zhSkillRoot,
+    confirmation: '### 最终确认',
+    reconfirmation: '### 需求变化后的重新确认',
+    context: '## 记忆接入',
+    projectMemory: '### 项目记忆',
+  },
+  {
+    language: 'en',
+    root: skillRoot,
+    confirmation: '### Final confirmation',
+    reconfirmation: '### Reconfirmation after requirement changes',
+    context: '## Memory integration',
+    projectMemory: '### Project memory',
+  },
+])(
+  '$language workflow mainline contracts',
+  ({ root, confirmation, reconfirmation, context, projectMemory }) => {
+    it('uses the single-call Classic start and generates check rows from the submitted results', async () => {
+      for (const [name, profile] of [
+        ['comet-open', 'full'],
+        ['comet-hotfix', 'hotfix'],
+        ['comet-tweak', 'tweak'],
+      ]) {
+        const skill = await readSkill(root, name);
+        expect(skill).toContain(
+          `comet state init <name> ${profile} --isolation <selected-isolation> --select --json`,
+        );
+      }
+      const verify = await readSkill(root, 'comet-verify');
+      expect(verify).toContain('<!-- comet-check-results -->');
+      expect(verify).toContain('<!-- /comet-check-results -->');
+    });
+
+    it('uses Native task replies for ordinary Shape and incremental delivery for a continuous session', async () => {
+      const readNative = (name: string) =>
+        fs.readFile(path.join(root, 'comet-native/reference', name + '.md'), 'utf8');
+      const clarification = section(
+        await readNative('clarification'),
+        confirmation,
+        reconfirmation,
+      );
+      expect(clarification).toContain('resultTemplate');
+      expect(clarification).toContain('next.commandArgs');
+      expect(clarification.split('2.')[0]).not.toContain('`--summary`');
+      const commands = await readNative('commands');
+      expect(commands).toContain('`--result -`');
+      const contextGuide = section(commands, context, projectMemory);
+      expect(contextGuide).toContain('`--context-mode incremental`');
+      expect(contextGuide).toContain('`--context-mode snapshot`');
+      expect(contextGuide).not.toMatch(
+        /各执行一次完整读取|full snapshot once on first entering a phase/u,
+      );
+    });
+  },
+);
+
 describe('Chinese Classic efficiency contracts', () => {
+  it('offers direct memory commands at troubleshooting and after verified fixes', async () => {
+    const learning = await fs.readFile(
+      path.join(zhSkillRoot, 'comet/reference/task-learning.md'),
+      'utf8',
+    );
+    const immediate = learning.split('## 批量提交')[0];
+    expect(immediate).toContain('排查时按需查');
+    expect(immediate).toContain('comet knowledge query <project-root>');
+    expect(immediate).toContain('复验通过后按需记');
+    expect(immediate).toContain('comet knowledge remember');
+    expect(immediate).toContain('comet memory remember');
+    expect(immediate).toContain('没有学习提交时，使用默认的 `not-run`');
+    expect(immediate).not.toContain('--learning-file');
+    const scripts = await readChineseReference('scripts');
+    expect(scripts).toContain('(../../comet/reference/task-learning.md)');
+    expect(scripts).not.toContain('每次任务结束前完成一次学习检查');
+    const verify = await readSkill(zhSkillRoot, 'comet-verify');
+    expect(verify).toMatch(
+      /复验通过且做法值得复用时[^\n]*\(\.\.\/comet\/reference\/task-learning\.md\)/u,
+    );
+    const native = await readSkill(zhSkillRoot, 'comet-native');
+    expect(native).toMatch(/排查[^\n]*\(reference\/commands\.md#记忆接入\)[^\n]*复验通过/u);
+
+    const english = await fs.readFile(
+      path.join(skillRoot, 'comet/reference/task-learning.md'),
+      'utf8',
+    );
+    const englishImmediate = english.split('## Batch submission')[0];
+    expect(englishImmediate).toContain('comet knowledge query <project-root>');
+    expect(englishImmediate).toContain('Save reusable lessons after a fix passes verification');
+    expect(englishImmediate).toContain('comet knowledge remember');
+    expect(englishImmediate).toContain('comet memory remember');
+    expect(englishImmediate).toContain('use the default `not-run`');
+    expect(englishImmediate).not.toContain('--learning-file');
+    const englishVerify = await readSkill(skillRoot, 'comet-verify');
+    expect(englishVerify).toMatch(
+      /After a fix passes verification[^\n]*\(\.\.\/comet\/reference\/task-learning\.md\)/u,
+    );
+    const englishNative = await readSkill(skillRoot, 'comet-native');
+    expect(englishNative).toMatch(
+      /When troubleshooting[^\n]*\(reference\/commands\.md#memory-integration\)[^\n]*After a fix passes verification/u,
+    );
+  });
+
   it('skips empty learning maintenance while preserving current-change reviews and failure reporting', async () => {
     const scripts = await readChineseReference('scripts');
     expect(scripts).toContain('没有合格观察、可复用经验或已知待评审');
@@ -50,6 +152,7 @@ describe('Chinese Classic efficiency contracts', () => {
     );
     expect(english).toContain('without calling review or creating an empty actions file');
     expect(english).toContain('Process only this change');
+    expect(english).not.toContain('Before every task ends, complete one learning check');
     const englishLearning = await fs.readFile(
       path.join(skillRoot, 'comet/reference/task-learning.md'),
       'utf8',

@@ -1,0 +1,28 @@
+{
+  "schema": "comet.workflow.migration-mapping.v1",
+  "base": "39a79564ea5afc499d3554d51dfd9d41784a2eb5",
+  "cases": [
+    {
+      "id": "task-unavailable-context-cli-diagnostic",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-23-retire-stale-source-ci",
+      "record": "docs/research/2026-11-23-project-memory-source-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/app/comet-task-context-process.test.ts",
+          "namePattern": "an unavailable project memory expansion returns a CLI diagnostic without a Node stack",
+          "requiredNames": [
+            "an unavailable project memory expansion returns a CLI diagnostic without a Node stack"
+          ]
+        },
+        {
+          "file": "test/app/comet-task-context-process.test.ts",
+          "namePattern": "checks real helper receipts after source edits and rejects deleted memory",
+          "requiredNames": [
+            "checks real helper receipts after source edits and rejects deleted memory"
+          ]
+        }
+      ]
+    }
+  ]
+}

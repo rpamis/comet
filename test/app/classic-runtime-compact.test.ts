@@ -298,10 +298,10 @@ it('keeps Classic CLI history out of compact tool replies while preserving curre
     ]);
     const report = 'docs/superpowers/reports/verify.md';
     await fs.mkdir(path.dirname(path.join(project, report)), { recursive: true });
-    await fs.writeFile(
-      path.join(project, report),
-      '# Verification\nIndependent CLI behavior assertion passed.\n',
-    );
+    const reportDraft =
+      '# Verification\nIndependent CLI behavior assertion passed.\n\n' +
+      '<!-- comet-check-results -->\n<!-- /comet-check-results -->\n';
+    await fs.writeFile(path.join(project, report), reportDraft);
     const actualChecks = JSON.parse(await fs.readFile(path.join(project, checks), 'utf8'));
     await dispatch({
       operation: 'record-outcome',
@@ -317,7 +317,15 @@ it('keeps Classic CLI history out of compact tool replies while preserving curre
         output: { event: 'verification-ready', verificationReport: report, ...actualChecks },
       },
     });
-    cli('guard', 'compact-demo', 'verify', '--report', report, '--apply', '--checks', checks);
+    cli('guard', 'compact-demo', 'verify', '--report', report);
+    expect(await fs.readFile(path.join(project, report), 'utf8')).toBe(reportDraft);
+    cli('guard', 'compact-demo', 'verify', '--report', report, '--apply');
+    const verification = await fs.readFile(path.join(project, report), 'utf8');
+    expect(verification).toContain('Independent CLI behavior assertion passed.');
+    expect(verification).toContain(
+      '| verify behavior | passed | Observed successful verify behavior command. |',
+    );
+    expect(verification).not.toContain('build syntax');
     const verified = await dispatch({ operation: 'inspect', runId: 'compact-demo' });
     expect(verified.data.state).toMatchObject({ phase: 'archive', verifyResult: 'pass' });
     const builderAction = verified.data.actions.find(

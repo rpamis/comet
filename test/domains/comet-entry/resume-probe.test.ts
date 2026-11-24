@@ -547,6 +547,49 @@ describe('Comet entry resume probe v2', () => {
     });
   });
 
+  it('names the prioritized Native Action in resume guidance', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    const name = 'resume-archive-priority';
+    await createNativeSdkChange({
+      paths,
+      name,
+      language: 'en',
+      workspaceBinding: { isolation: 'current', changeBranch: null, targetBranch: null },
+    });
+    const { run } = await inspectNativeSdkRun(projectRoot, name, { readOnly: true });
+    const store = createFileRuntimeStore<WorkflowRun>({
+      singleWriter: true,
+      rootDir: path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'sdk-runs', 'native'),
+    });
+    // Isolated fixture with an earlier pending Action and a Child Archive that takes priority.
+    const sequence = run.sequence + 1;
+    const archive = {
+      ...run.actions[0],
+      id: `${name}:${sequence}`,
+      stepId: 'supervisor.child.archive',
+      type: 'call_tool' as const,
+      ref: 'native-supervisor-child-archive',
+    };
+    const queued: WorkflowRun = {
+      ...run,
+      revision: run.revision + 1,
+      sequence,
+      actions: [...run.actions, archive],
+      actionContexts: { ...run.actionContexts, [archive.id]: { sequence, results: {} } },
+    };
+    expect(await store.compareAndSwap(name, run.revision, queued)).toBe(true);
+    await expect(
+      resolveCometEntryResumeProbe(projectRoot, input(`继续 ${name}`)),
+    ).resolves.toMatchObject({
+      resume: {
+        actionId: archive.id,
+        stepId: archive.stepId,
+        commandArgs: expect.arrayContaining(['native', 'next', name]),
+      },
+    });
+  });
+
   it('does not initialize Runtime storage for an empty Native resume probe', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);

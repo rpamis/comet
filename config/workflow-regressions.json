@@ -2,6 +2,430 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "classic-587-resume-skips-archives-without-state",
+      "behavior": "Classic 自动恢复跳过不含 Comet 状态的旧 OpenSpec 归档。",
+      "sources": ["https://github.com/rpamis/comet/issues/587"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在启用 ambient_resume 的旧目录布局放入只有 proposal.md 的 OpenSpec 历史归档。向公开 resume-probe 传入“继续”，npm 0.5.6 和修复前 057 均返回 ENOENT 和 ask_user。",
+      "expected": "不存在其他候选时返回 action: none，并保留历史归档原样。",
+      "forbidden": "因无状态的 OpenSpec 归档中断整次扫描，或创建补位状态文件。",
+      "rootCause": "归档扫描在核对状态文件是否存在前就尝试读取受管 Run。",
+      "tests": [
+        {
+          "file": "test/app/resume-probe.test.ts",
+          "namePattern": "^Classic resume-probe discovery skips a legacy OpenSpec archive without Comet state$",
+          "requiredNames": [
+            "Classic resume-probe discovery skips a legacy OpenSpec archive without Comet state"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-587-resume-excludes-delivered-legacy-archives",
+      "behavior": "Classic 自动恢复尊重缺少现代交付记录的旧归档中已处理的交付状态。",
+      "sources": ["https://github.com/rpamis/comet/issues/587"],
+      "coverageLevel": "public-cli",
+      "reproduction": "放入两个 archived: true、branch_status: handled 且缺少现代交付记录的旧归档。npm 0.5.6 和修复前 057 将两者加入候选，要求用户指定变更名。",
+      "expected": "已处理的旧归档退出候选，待交付的旧归档和有现代待核验交付记录的归档仍显示。",
+      "forbidden": "把已处理的旧归档当作待交付，或用旧 YAML 标记掩盖现代待核验记录。",
+      "rootCause": "探针仅检查现代交付记录，未兼容没有该记录的旧归档。",
+      "tests": [
+        {
+          "file": "test/app/resume-probe.test.ts",
+          "namePattern": "^Classic resume-probe discovery (?:excludes handled legacy archives without receipts and keeps pending delivery visible|retains pending sealed delivery even when archived YAML says handled)$",
+          "requiredNames": [
+            "Classic resume-probe discovery excludes handled legacy archives without receipts and keeps pending delivery visible",
+            "Classic resume-probe discovery retains pending sealed delivery even when archived YAML says handled"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-587-resume-ignores-unmanaged-active-openspec",
+      "behavior": "Classic 自动恢复区分未托管 OpenSpec 变更和丢失状态的受管变更。",
+      "sources": ["https://github.com/rpamis/comet/issues/587"],
+      "coverageLevel": "public-cli",
+      "reproduction": "仅在活动目录中创建 OpenSpec proposal.md 和 tasks.md。npm 0.5.6 和修复前 057 的 status 显示未托管，resume-probe 却将其报告为 invalid。",
+      "expected": "未托管 OpenSpec 不进入恢复候选。存在 Classic 归属但丢失状态时仍只读报告缺失。",
+      "forbidden": "把普通 OpenSpec 变更当作损坏的 Classic 变更、自动继续缺状态的受管变更或为其构造可执行命令。",
+      "rootCause": "探针把普通 OpenSpec 文件当成了 Classic 归属证据。",
+      "tests": [
+        {
+          "file": "test/app/resume-probe.test.ts",
+          "namePattern": "^Classic resume-probe discovery (?:ignores unmanaged active OpenSpec changes in agreement with status|reports missing state for a change with a Classic runtime owner)$",
+          "requiredNames": [
+            "Classic resume-probe discovery ignores unmanaged active OpenSpec changes in agreement with status",
+            "Classic resume-probe discovery reports missing state for a change with a Classic runtime owner"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-automatic-archive-after-verify-pass",
+      "behavior": "内置 Native Change 在项目设为 automatic 时，提交完整通过的 Verify 结果后继续归档。",
+      "sources": ["report:2026-11-23-native-automatic-archive-waits"],
+      "coverageLevel": "public-cli",
+      "reproduction": "使用 npm 0.5.6 或修复前 057 在隔离项目创建 Native Change，保留 archive_confirmation: automatic，通过 native next 提交全部通过的验收结果。旧 Runtime 停在 verify.confirm，未创建归档。",
+      "expected": "automatic 在原 Run 保存项目授权决定并完成归档；required 仍等待接受结果。",
+      "forbidden": "再询问 automatic 下已完整通过的候选，因失败或未运行的必要检查而归档，或复用另一会话提交的结果。",
+      "rootCause": "旧 SDK 仅在 Agent 提供本次结果的显式委托时自动接受，未读取项目归档策略。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "namePattern": "^(?:archives a complete Native Verify pass under the automatic project policy \\((?:source|bundle), result submission\\)|waits for user acceptance and rejects another session reporting the original task|does not pass acceptance with a (?:failed|not-run) platform check)$",
+          "requiredNames": [
+            "archives a complete Native Verify pass under the automatic project policy (source, result submission)",
+            "archives a complete Native Verify pass under the automatic project policy (bundle, result submission)",
+            "waits for user acceptance and rejects another session reporting the original task",
+            "does not pass acceptance with a failed platform check",
+            "does not pass acceptance with a not-run platform check"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-automatic-archive-resumes-original-wait",
+      "behavior": "改为 automatic 后，已完整通过且等待接受的 Native Change 可沿原 Run 归档。",
+      "sources": ["report:2026-11-23-native-automatic-archive-waits"],
+      "coverageLevel": "public-cli",
+      "reproduction": "先设 required 并提交通过结果，再改为 automatic。旧 Native status 继续要求用户决定，执行 next 后仍在同一个 Wait。",
+      "expected": "status 只读返回可执行的 next，随后按最新项目策略接受原 Verify Wait 并完成归档。",
+      "forbidden": "在 status 中写入 Run、创建第二个 Run 或绕过原 Verify 结果绑定。",
+      "rootCause": "SDK 展示和推进都把已有 verify.confirm 无条件当作逐次人工决定。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "namePattern": "^archives a complete Native Verify pass under the automatic project policy \\(bundle, resume\\)$",
+          "requiredNames": [
+            "archives a complete Native Verify pass under the automatic project policy (bundle, resume)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-586-merged-supervisor-archive-status",
+      "behavior": "按名称查询已合并的终态 Native Supervisor 归档时直接返回归档详情。",
+      "sources": ["https://github.com/rpamis/comet/issues/586"],
+      "coverageLevel": "public-cli",
+      "reproduction": "0.5.6 在含归档但没有本地 Run 的 checkout 中列出 archive/done；按名称调用 native status --details 返回 73。057 修复前的回归测试从合并后的 linked worktree 和独立 clone 复现相同结果。",
+      "expected": "归档收据与完成清理的 Run checkpoint 匹配时，status 返回 archive/done、归档路径和原 Run 的 completed 状态及详情。",
+      "forbidden": "要求恢复已经完成的 Run、写入本地 Run 或 owner，或将重复归档、身份冲突、损坏 checkpoint 和未完成清理识别为正常终态。",
+      "rootCause": "没有本地 owner 时，按名称查询会用工作区 Runtime 校验 checkpoint，并将有效终态也报告为需要恢复。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(merged-archive-inspection\\)$",
+          "requiredNames": [
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (merged-archive-inspection)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-586-merged-supervisor-archive-doctor",
+      "behavior": "按名称诊断已合并的终态 Native Supervisor 归档时报告 healthy。",
+      "sources": ["https://github.com/rpamis/comet/issues/586"],
+      "coverageLevel": "public-cli",
+      "reproduction": "0.5.6 和修复前的 057 在含归档但没有本地 Run 的 checkout 中均报告 healthy=false 和 runtime-recovery-required。",
+      "expected": "有效终态归档的只读 doctor 返回 healthy=true、repaired=false；缺失本地 Run 的非终态仍提示恢复。",
+      "forbidden": "为已完成归档建议修复、写入本地 Run 或 owner，或将重复归档、身份冲突、损坏 checkpoint 和未完成清理报告为健康。",
+      "rootCause": "没有本地 owner 时，doctor 只根据归档的受管标记报告 Run 丢失，未核对终态证据。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(merged-archive-inspection\\)$",
+          "requiredNames": [
+            "Native SDK Workflow Application handles parent repair, delivery, and cleanup after Supervisor DAG restart (merged-archive-inspection)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard-all-time-native-archive-checkpoint-traces",
+      "behavior": "Change 链路的全部时间范围展示项目中已完成的 Native Archive checkpoint。",
+      "sources": ["report:2026-11-23-dashboard-aevomi-change-traces"],
+      "coverageLevel": "runtime",
+      "reproduction": "Aevomi 主工作区的归档已保存独立 Change 和四个 Supervisor 的 Run checkpoint，但本地运行库只有三个 Run。旧链路会遗漏仅随项目归档保留的两个 Supervisor。",
+      "expected": "全部时间可打开有效归档的链路结构和结果，保留已采集的本地链路，归档快照的开始时间和耗时显示为未知。",
+      "forbidden": "忽略有效的归档 checkpoint、展示身份不匹配的归档、把未知时间造为实测时间，或在只读观察时恢复本地 Run。",
+      "rootCause": "历史链路仅从当前工作区 SQLite 和 SDK Run Store 收集，没有读取项目归档中的正式 Run checkpoint。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/change-traces.test.ts",
+          "namePattern": "^Change trace observation includes a copied Native archive checkpoint in all-time Change traces without restoring its Run$",
+          "requiredNames": [
+            "Change trace observation includes a copied Native archive checkpoint in all-time Change traces without restoring its Run"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard-change-trace-selector-beyond-record-limit",
+      "behavior": "Change 链路可选择当前范围内排在最近 100 条执行记录之外的 Change。",
+      "sources": ["report:2026-11-23-dashboard-aevomi-change-traces"],
+      "coverageLevel": "runtime",
+      "reproduction": "在 Aevomi 主工作区读取全部时间的链路：本地有 3 个 Change 的 200 条执行记录，最近 100 条只包含 2 个 Change，旧下拉框遗漏 aevomi-platform。",
+      "expected": "在现有可读索引里生成 Change 选项，选择某个 Change 后可读取其记录，时间与工作流范围继续生效。",
+      "forbidden": "让未出现在第一页的 Change 无法选择，或返回该 Change 在当前时间和工作流范围之外的记录。",
+      "rootCause": "前端从后端已截断的执行记录推导下拉选项，且后端不支持在截断前按 Change 筛选。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/change-traces.test.ts",
+          "namePattern": "^Change trace observation lists Changes beyond the first hundred traces and retrieves their scoped records$",
+          "requiredNames": [
+            "Change trace observation lists Changes beyond the first hundred traces and retrieves their scoped records"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "browser",
+          "status": "verified",
+          "evidence": [
+            "test/domains/dashboard/dashboard-browser.spec.ts: opens a Change whose traces are outside the first page of execution records"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard-eval-list-loading-skeleton",
+      "behavior": "Eval 切换筛选或首次读取记录时，在当前结果就绪前显示骨架。",
+      "sources": ["report:2026-11-23-dashboard-eval-list-flicker"],
+      "coverageLevel": "unit",
+      "reproduction": "在 057 的 Dashboard 切换 Eval 筛选，延迟新请求并先返回一页仍在索引的空结果。旧页面保留上一筛选的行，随后短暂显示蓝色同步条和空表格。",
+      "expected": "显示骨架直到当前筛选的结果可以渲染，再显示真实记录或空状态。",
+      "forbidden": "显示上一筛选的记录、空表格或 0 / 0 的同步提示作为加载状态。",
+      "rootCause": "加载状态未绑定当前列表请求，索引响应则无条件在表格上方渲染同步提示。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/eval-list-loading.test.ts",
+          "namePattern": "^Eval list loading holds the list in a skeleton until the selected results are ready$",
+          "requiredNames": [
+            "Eval list loading holds the list in a skeleton until the selected results are ready"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "browser",
+          "status": "verified",
+          "evidence": [
+            "test/domains/dashboard/dashboard-eval-browser.spec.ts: shows a skeleton across Eval filter changes until indexed results are ready"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard-eval-indexing-keeps-table-position",
+      "behavior": "Eval 在后台索引已有部分结果时，表格保持原位。",
+      "sources": ["report:2026-11-23-dashboard-eval-list-flicker"],
+      "coverageLevel": "unit",
+      "reproduction": "在 057 的浏览器隔离数据中先返回带列表项的索引响应，再返回索引完成。旧实现撤掉表格上方的蓝条时，表格向上移动。",
+      "expected": "已有结果保持可读，索引进度可由辅助技术读取，表格位置在同步结束前后相同。",
+      "forbidden": "为后台同步插入会移动表格的提示行，或用骨架覆盖已有结果。",
+      "rootCause": "同步进度占用文档中的独立提示行，索引完成时移除该行。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/eval-list-loading.test.ts",
+          "namePattern": "^Eval list loading keeps available results while reporting real indexing progress$",
+          "requiredNames": [
+            "Eval list loading keeps available results while reporting real indexing progress"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "browser",
+          "status": "verified",
+          "evidence": [
+            "test/domains/dashboard/dashboard-eval-browser.spec.ts: keeps partial Eval results in place while the list finishes indexing"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "windows-npm-upgrade-with-running-comet-daemon",
+      "behavior": "Windows 上，Comet 后台进程运行时，npm 可以替换全局安装目录。",
+      "sources": ["report:2026-11-23-windows-npm-comet-ebusy"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 Windows 使用 npm 发布的 0.5.5 或 057 分支修复前的 CLI 启动后台进程。进程运行时，npm 全局升级或直接重命名隔离安装目录会报 EBUSY。",
+      "expected": "后台进程仍运行时可以重命名安装目录和项目目录，恢复原路径后仍可查询并正常停止该进程。",
+      "forbidden": "后台进程的工作目录锁住 npm 安装目录或项目工作区，导致无法重命名。",
+      "rootCause": "后台进程以 npm 安装目录为当前工作目录，Windows 在进程退出前禁止重命名该目录。",
+      "tests": [
+        {
+          "file": "test/app/comet-daemon-router.test.ts",
+          "namePattern": "^CLI daemon router allows replacing the CLI installation and moving the project while its daemon runs$",
+          "requiredNames": [
+            "CLI daemon router allows replacing the CLI installation and moving the project while its daemon runs"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-resume-returns-pending-decision",
+      "behavior": "指定唯一 Native 需求恢复时，可直接识别原 Run 的待确认问题。",
+      "sources": ["report:2026-11-23-comet-workflow-guidance-review"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 c4aa7f91 的临时项目领取并提交 Native Shape，保持待用户决定。公开 resume-probe 只返回 /comet-native，status 文本只显示 await-user。",
+      "expected": "返回同一工作区、Run、待确认步骤和 Runtime 问题，status 文本提示同一决定。",
+      "forbidden": "将确认命令作为待执行动作，或在未指定目标的恢复请求中交付继续指引，或修改原 Run。",
+      "rootCause": "恢复输出只选择 Skill，状态文本只显示命令，没有呈现 Runtime 已有的用户决定。",
+      "tests": [
+        {
+          "file": "test/app/workflow-resume-guidance.test.ts",
+          "namePattern": "^resumes a Native change with the original pending user decision$",
+          "requiredNames": ["resumes a Native change with the original pending user decision"]
+        }
+      ]
+    },
+    {
+      "id": "native-resume-identifies-claimed-action",
+      "behavior": "Native 恢复能识别已领取动作并提示核对原执行。",
+      "sources": ["report:2026-11-23-comet-workflow-guidance-review"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 c4aa7f91 的临时项目通过 native next 领取 Shape，然后在另一次 CLI 调用中指名恢复。旧输出只有 Skill 和阶段。",
+      "expected": "返回原动作和工作区，说明需等待或核对原执行。",
+      "forbidden": "显示新的领取命令，或改变原 Run 的领取记录。",
+      "rootCause": "恢复探针读取了 Run，但没有投影其已领取动作和等待指引。",
+      "tests": [
+        {
+          "file": "test/app/workflow-resume-guidance.test.ts",
+          "namePattern": "^identifies the running Native Action for reconciliation without claiming it again$",
+          "requiredNames": [
+            "identifies the running Native Action for reconciliation without claiming it again"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-resume-returns-pending-sdk-decision",
+      "behavior": "Classic 恢复返回当前 SDK 提案的决策步骤和可选决定。",
+      "sources": ["report:2026-11-23-comet-workflow-guidance-review"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 c4aa7f91 的临时 Classic SDK 项目中批准隔离夹具 Open 并提交 Design 提案。resume-probe 仅返回 /comet-classic。",
+      "expected": "恢复输出返回原 Run、工作区、确认步骤和可选决定。",
+      "forbidden": "返回替用户批准的命令或修改待确认状态。",
+      "rootCause": "Classic 恢复发现阶段时没有携带已读 Run 的当前 Wait。",
+      "tests": [
+        {
+          "file": "test/app/workflow-resume-guidance.test.ts",
+          "namePattern": "^resumes Classic at the stored SDK decision and shows it in the Dashboard$",
+          "requiredNames": [
+            "resumes Classic at the stored SDK decision and shows it in the Dashboard"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-dashboard-shows-pending-sdk-decision",
+      "behavior": "Classic Dashboard 详情在 SDK 等待决定时显示明确的待确认建议。",
+      "sources": ["report:2026-11-23-comet-workflow-guidance-review"],
+      "coverageLevel": "runtime",
+      "reproduction": "在 c4aa7f91 用公开 CLI 提交 Classic Design 提案后收集 Dashboard 详情。旧详情使用 /comet-design；浏览器在无执行命令时只展示通用空提示。",
+      "expected": "详情使用当前 SDK Run 的决策状态，显示待用户确认。",
+      "forbidden": "继续把阶段 Skill 或通用无待办作为当前待确认决定的替代。",
+      "rootCause": "详情根据阶段和文档推导建议，页面在无命令时忽略具体原因。",
+      "tests": [
+        {
+          "file": "test/app/workflow-resume-guidance.test.ts",
+          "namePattern": "^resumes Classic at the stored SDK decision and shows it in the Dashboard$",
+          "requiredNames": [
+            "resumes Classic at the stored SDK decision and shows it in the Dashboard"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-shape-acceptance-input-retry",
+      "behavior": "Native 缺少 Shape 验收项时提示修正输入并重试原命令。",
+      "sources": ["report:2026-11-23-comet-workflow-guidance-review"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 c4aa7f91 新建 Native 需求并提交 Shape，保持 brief.md 的验收示例为空。错误正文要求补验收项，next 却指向 Doctor。",
+      "expected": "公开 CLI 和 next bundle 提供当前验收文档路径及原提交命令，补齐后可进入待确认。",
+      "forbidden": "将可就地修改的验收项错误引向 Doctor 或自动批准提案。",
+      "rootCause": "验收输入错误以普通 Error 抛出，被统一包装成 Runtime 恢复。",
+      "tests": [
+        {
+          "file": "test/app/workflow-resume-guidance.test.ts",
+          "namePattern": "^points missing Native Shape acceptance back to the original command and brief$",
+          "requiredNames": [
+            "points missing Native Shape acceptance back to the original command and brief"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-root-help-describes-check-guidance",
+      "behavior": "顶层帮助准确说明 Classic check 只提供平台检查指引。",
+      "sources": ["report:2026-11-23-comet-workflow-guidance-review"],
+      "coverageLevel": "public-cli",
+      "reproduction": "c4aa7f91 的 comet --help 宣称 check 执行并记录检查，comet check --help 说明命令只返回指引。",
+      "expected": "顶层帮助把 check 描述为 Agent 平台指引。",
+      "forbidden": "宣称命令自身会执行或记录检查。",
+      "rootCause": "命令列表沿用旧检查器描述，未随子命令行为更新。",
+      "tests": [
+        {
+          "file": "test/app/cli-help.test.ts",
+          "namePattern": "^CLI help text describes Classic check as guidance in the root help$",
+          "requiredNames": ["CLI help text describes Classic check as guidance in the root help"]
+        }
+      ]
+    },
+    {
+      "id": "issue-584-project-memory-source-edits",
+      "behavior": "项目记忆在来源文件无关章节编辑后仍可从任务索引定位并展开。",
+      "sources": ["https://github.com/rpamis/comet/issues/584"],
+      "coverageLevel": "public-cli",
+      "reproduction": "0.5.5 和 0.5.6 的公开 CLI 用带来源版本的记忆记录一个 Spec 中的经验，修改 Spec 的另一个章节。任务索引仍可见，展开返回 Unknown or unavailable context。",
+      "expected": "旧记忆可按原 slug 展开，保留正文和项目相对来源路径。",
+      "forbidden": "仅因来源文件内容变化拒绝展开，或要求重建原记录。",
+      "rootCause": "文件型记忆将整文件摘要作为读出条件，索引却只读取静态摘要。",
+      "tests": [
+        {
+          "file": "test/app/project-knowledge-source-references.test.ts",
+          "namePattern": "^expands legacy project memory after an unrelated source edit$",
+          "requiredNames": ["expands legacy project memory after an unrelated source edit"]
+        }
+      ]
+    },
+    {
+      "id": "issue-584-project-memory-missing-source",
+      "behavior": "项目记忆来源移走时可读历史正文，并给出来源路径和复核提示。",
+      "sources": ["https://github.com/rpamis/comet/issues/584"],
+      "coverageLevel": "public-cli",
+      "reproduction": "0.5.5 和 0.5.6 中将已记录为来源的 Spec 移走。已保存记忆与不存在的 slug 都得到通用展开错误。",
+      "expected": "已保存记忆仍可展开，显示当前工作区缺失的路径，可在复核后用原 slug 更新来源。",
+      "forbidden": "把找不到来源当成找不到记忆，或写入新的文件版本作为更新条件。",
+      "rootCause": "来源读取失败与版本不匹配共用一个判定，展开层丢弃正文和具体原因。",
+      "tests": [
+        {
+          "file": "test/app/project-knowledge-source-references.test.ts",
+          "namePattern": "^expands historical project memory with a missing source diagnostic$",
+          "requiredNames": ["expands historical project memory with a missing source diagnostic"]
+        }
+      ]
+    },
+    {
+      "id": "issue-584-project-knowledge-worktree-source-edits",
+      "behavior": "同仓库的另一 worktree 编辑知识来源后，展开经验不改变共享记录的生命周期。",
+      "sources": ["https://github.com/rpamis/comet/issues/584"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 0.5.6 发布包让两个 Git worktree 共享一条已成功应用的记录。只改第二个 worktree 的无关章节，展开失败并将共享记录写为 superseded，主 worktree 随后也无法展开。",
+      "expected": "两个 worktree 均可展开，记录保持原 ID、状态、更新时间和成功应用次数。",
+      "forbidden": "把当前工作区来源的哈希差异写成整个仓库的知识退役状态。",
+      "rootCause": "Local Provider 在查询和展开中运行刷新，整文件摘要差异会触发共享数据库的生命周期更新。",
+      "tests": [
+        {
+          "file": "test/app/project-knowledge-source-references.test.ts",
+          "namePattern": "^expands shared knowledge after a worktree source edit without retiring it$",
+          "requiredNames": [
+            "expands shared knowledge after a worktree source edit without retiring it"
+          ]
+        }
+      ]
+    },
+    {
       "id": "issue-569-fixed-application-distribution",
       "behavior": "Comet 升级后可导出旧固定包并安装到项目级或用户级，再从安装记录启动应用。",
       "sources": ["https://github.com/rpamis/comet/issues/569"],
@@ -12064,7 +12488,47 @@
             "checks completion receipts in the real helper process and refuses stale-source lessons"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "#584 撤下因来源普通内容编辑而拒绝已保存记忆回执的策略。真实 helper 验证可读记忆与删除后失效，保留 CLI 缺失记录的独立错误断言。",
+        "authorization": "report:2026-11-23-retire-stale-source-ci",
+        "record": "docs/research/2026-11-23-project-memory-source-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/app/comet-task-context-process.test.ts",
+            "namePattern": "an unavailable project memory expansion returns a CLI diagnostic without a Node stack",
+            "requiredNames": [
+              "an unavailable project memory expansion returns a CLI diagnostic without a Node stack"
+            ]
+          },
+          {
+            "file": "test/app/comet-task-context-process.test.ts",
+            "namePattern": "checks real helper receipts after source edits and rejects deleted memory",
+            "requiredNames": [
+              "checks real helper receipts after source edits and rejects deleted memory"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-23-project-memory-source-retirement-registry.json",
+            "sha256": "3225da38a2437ea9dcf6aae3f292ded010b225098eadf03b60afa18c21c2b372"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-23-project-memory-source-retirement-tests.json",
+            "sha256": "f3e1400b7a63b0d73f1c2882f6cd50f8dd27b14ed0f1edc5514881c5e434950f"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-23-project-memory-source-retirement-mapping.json",
+            "sha256": "1cb745f639b482616d6a18003eda2eaa8849a3b3e193c73897624dde35c326a1"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-23-project-memory-source-retirement.patch",
+            "sha256": "f71e7c32b55a2ad6c3da20249daa1526eb5490c4ef469dbb97991e9da9066c04"
+          }
+        }
+      }
     },
     {
       "id": "knowledge-get-without-index-refresh",

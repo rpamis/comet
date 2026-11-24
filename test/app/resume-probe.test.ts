@@ -7,6 +7,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { nativeProjectPaths } from '../../domains/comet-native/native-paths.js';
 import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
 import { resolveProjectLanguage } from '../../app/commands/resume-probe.js';
+import { writeClassicDelivery } from '../../domains/comet-classic/classic-progress.js';
+import { resolveClassicStateFile } from '../../domains/workflow-contract/classic-state-file.js';
 
 const repositoryRoot = path.resolve('.');
 const cli = path.join(repositoryRoot, 'bin', 'comet.js');
@@ -267,5 +269,126 @@ describe('resumeProbe command', () => {
 
     expect(result.status, result.stderr).toBe(0);
     expect(parseResult(result.stdout).action).toBe('out_of_scope');
+  });
+});
+
+describe('Classic resume-probe discovery', () => {
+  let projectRoot: string;
+
+  beforeAll(async () => {
+    await ensureCliBuilt(repositoryRoot);
+  }, 120_000);
+
+  beforeEach(async () => {
+    projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-resume-discovery-'));
+    await fs.mkdir(path.join(projectRoot, '.comet'));
+    await fs.writeFile(path.join(projectRoot, '.comet/config.yaml'), classicProjectConfig());
+  });
+
+  afterEach(async () => {
+    await fs.rm(projectRoot, { recursive: true, force: true });
+  });
+
+  async function archive(name: string, branchStatus?: 'handled' | 'pending', archived = true) {
+    const dir = path.join(projectRoot, 'openspec/changes/archive', `2026-11-24-${name}`);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, 'proposal.md'), '# Accepted proposal\n');
+    if (branchStatus)
+      await fs.writeFile(
+        path.join(dir, '.comet.yaml'),
+        [
+          'workflow: hotfix',
+          'phase: archive',
+          `archived: ${archived}`,
+          `branch_status: ${branchStatus}`,
+          'verify_result: pass',
+          'created_at: 2026-11-24T00:00:00.000Z',
+          'base_ref: main',
+          'design_doc: null',
+          'plan: null',
+          'build_mode: null',
+          'isolation: current',
+          'verify_mode: full',
+          'verified_at: 2026-11-24T00:00:00.000Z',
+          '',
+        ].join('\n'),
+      );
+    return dir;
+  }
+
+  function probe(utterance = '继续') {
+    const captured = runCli(projectRoot, ['resume-probe', '.', '--stdin', '--json'], utterance);
+    expect(captured.status, captured.stderr).toBe(0);
+    return parseResult(captured.stdout);
+  }
+
+  it('skips a legacy OpenSpec archive without Comet state', async () => {
+    const dir = await archive('plain-archive');
+    expect(probe()).toMatchObject({ action: 'none', changeName: null, nextCommand: null });
+    expect(await fs.readdir(dir)).toEqual(['proposal.md']);
+  });
+
+  it('excludes handled legacy archives without receipts and keeps pending delivery visible', async () => {
+    await archive('first-delivered', 'handled');
+    await archive('second-delivered', 'handled');
+    expect(probe()).toMatchObject({ action: 'none', changeName: null, nextCommand: null });
+
+    await archive('awaiting-delivery', 'pending');
+    expect(probe()).toMatchObject({
+      action: 'ask_user',
+      phase: 'archive',
+      changeName: 'awaiting-delivery',
+      reason: 'archived change has pending delivery',
+    });
+  });
+
+  it('retains pending sealed delivery even when archived YAML says handled', async () => {
+    const dir = await archive('sealed-delivery', 'handled', false);
+    await writeClassicDelivery(
+      projectRoot,
+      dir,
+      { action: 'archive-only' },
+      {
+        phase: 'archive',
+        verifyResult: 'pass',
+        archived: false,
+      },
+    );
+    const file = path.join(dir, '.comet.yaml');
+    const state = (await fs.readFile(file, 'utf8')).replace('archived: false', 'archived: true');
+    await fs.writeFile(file, state);
+    expect(probe()).toMatchObject({
+      action: 'ask_user',
+      phase: 'archive',
+      changeName: 'sealed-delivery',
+      reason: 'archived change has pending delivery',
+    });
+    expect(await fs.readFile(file, 'utf8')).toBe(state);
+  });
+
+  it('ignores unmanaged active OpenSpec changes in agreement with status', async () => {
+    const dir = path.join(projectRoot, 'openspec/changes/openspec-only');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, 'proposal.md'), '# OpenSpec only\n');
+    await fs.writeFile(path.join(dir, 'tasks.md'), '- [ ] Implement\n');
+    const status = runCli(projectRoot, ['status']);
+    expect(status.status, status.stderr).toBe(0);
+    expect(status.stdout).toMatch(/Unmanaged OpenSpec Changes:[\s\S]*openspec-only/);
+    expect(probe()).toMatchObject({ action: 'none', changeName: null, nextCommand: null });
+    expect(probe('继续 openspec-only')).toMatchObject({ action: 'none', changeName: null });
+  });
+
+  it('reports missing state for a change with a Classic runtime owner', async () => {
+    await fs.mkdir(path.join(projectRoot, 'openspec'));
+    state(projectRoot, ['init', 'owned-classic', 'full', '--runtime', 'compat']);
+    const dir = path.join(projectRoot, 'openspec/changes/owned-classic');
+    await fs.rm(await resolveClassicStateFile(dir));
+    expect(probe('继续 owned-classic')).toMatchObject({
+      action: 'ask_user',
+      changeName: 'owned-classic',
+      phase: 'invalid',
+      reason: 'active OpenSpec change is missing Comet state',
+      nextCommand: null,
+    });
   });
 });

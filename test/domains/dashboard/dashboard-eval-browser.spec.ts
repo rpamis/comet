@@ -741,29 +741,87 @@ test.describe('Dashboard Eval', () => {
     ).toBe(true);
   });
 
-  test('keeps partial indexing visible and refreshes the list when summaries become ready', async ({
+  test('shows a skeleton across Eval filter changes until indexed results are ready', async ({
     page,
   }) => {
+    const pendingResponse = Promise.withResolvers<void>();
+    const indexedResponse = Promise.withResolvers<void>();
+    const { config: _config, cases: _cases, ...summary } = run;
+    let calls = 0;
+    await page.route('**/eval/runs?*', async (route) => {
+      if (new URL(route.request().url()).searchParams.get('status') !== 'finished')
+        return route.fallback();
+      const indexing = ++calls === 1;
+      await (indexing ? pendingResponse.promise : indexedResponse.promise);
+      return route.fulfill({
+        json: {
+          items: indexing ? [] : [{ ...summary, target: { ...summary.target, name: 'history' } }],
+          total: indexing ? 0 : 1,
+          counts: { all: indexing ? 0 : 1, active: 0, finished: indexing ? 0 : 1, baseline: 0 },
+          indexing,
+          indexedCount: indexing ? 0 : 1,
+          sourceCount: indexing ? 0 : 1,
+          nextOffset: null,
+        },
+      });
+    });
+
+    const panel = page.getByRole('region', { name: 'Eval 工作台' });
+    const skeleton = panel.getByLabel('读取评估记录…', { exact: true });
+    await expect(panel.getByRole('button', { name: 'writer', exact: true })).toBeVisible();
+    await panel.getByTitle('已结束', { exact: true }).click();
+    try {
+      await expect.poll(() => calls).toBe(1);
+      await expect(skeleton).toBeVisible();
+      await expect(panel.getByRole('button', { name: 'writer', exact: true })).toHaveCount(0);
+      pendingResponse.resolve();
+      await expect.poll(() => calls).toBeGreaterThanOrEqual(2);
+      await expect(skeleton).toBeVisible();
+      await expect(panel.getByText('正在同步列表', { exact: true })).toHaveCount(0);
+      await expect(panel.getByText(/暂无数据|暂无评估记录/)).toHaveCount(0);
+    } finally {
+      pendingResponse.resolve();
+      indexedResponse.resolve();
+    }
+    await expect(panel.getByRole('button', { name: 'history', exact: true })).toBeVisible();
+    await expect(skeleton).toHaveCount(0);
+  });
+
+  test('keeps partial Eval results in place while the list finishes indexing', async ({ page }) => {
+    const ready = Promise.withResolvers<void>();
     let calls = 0;
     const { config: _config, cases: _cases, ...summary } = run;
-    await page.route('**/eval/runs?*', (route) => {
-      calls++;
+    await page.route('**/eval/runs?*', async (route) => {
+      const indexing = ++calls < 3;
+      if (!indexing) await ready.promise;
       return route.fulfill({
         json: {
           items: [{ ...summary, model: 'model-a', agent: 'codex' }],
           total: 1,
           counts: { all: 1, active: 0, finished: 1, baseline: 0 },
-          indexing: calls < 3,
-          indexedCount: calls < 3 ? 1 : 100,
+          indexing,
+          indexedCount: indexing ? 1 : 100,
           sourceCount: 100,
           nextOffset: null,
         },
       });
     });
     await page.reload();
-    await expect(page.getByText('正在同步列表', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'writer', exact: true })).toBeVisible();
-    await expect(page.getByText('正在同步列表', { exact: true })).toHaveCount(0);
+    const panel = page.getByRole('region', { name: 'Eval 工作台' });
+    const table = panel.getByRole('table');
+    const status = panel.getByRole('status').filter({ hasText: '正在同步列表' });
+    let tableY;
+    try {
+      await expect(status).toContainText('1 / 100');
+      await expect(status).toHaveCSS('position', 'absolute');
+      await expect(panel.getByRole('button', { name: 'writer', exact: true })).toBeVisible();
+      await expect(panel.getByRole('alert')).toHaveCount(0);
+      tableY = (await table.boundingBox())!.y;
+    } finally {
+      ready.resolve();
+    }
+    await expect(status).toHaveCount(0);
+    expect((await table.boundingBox())!.y).toBeCloseTo(tableY, 0);
     expect(calls).toBeGreaterThanOrEqual(3);
   });
 

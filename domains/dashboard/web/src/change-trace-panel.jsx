@@ -150,7 +150,9 @@ export function ChangeTracePanel({
   }, []);
   const localCache = useRef(new Map());
   const cache = cacheRef ?? localCache;
-  const indexKey = `index:${projectId}:${workflow}:${JSON.stringify(timeSelection)}`;
+  const indexScope = `index:${projectId}:${workflow}:${JSON.stringify(timeSelection)}`;
+  const indexKey = `${indexScope}:${change}`;
+  const changeQuery = change === 'all' ? '' : `&change=${encodeURIComponent(change)}`;
   useEffect(() => {
     if (demo) return undefined;
     const timer = setInterval(() => setTick((value) => value + 1), 15000);
@@ -160,9 +162,9 @@ export function ChangeTracePanel({
     if (demo) return undefined;
     const controller = new AbortController(),
       key = indexKey;
-    setIndexState({ key, data: cache.current.get(key), loading: true });
+    setIndexState({ key, data: cache.current.get(key) });
     fetch(
-      `/api/dashboard/projects/${encodeURIComponent(projectId)}/change-traces?workflow=${workflow}${rangeQuery}`,
+      `/api/dashboard/projects/${encodeURIComponent(projectId)}/change-traces?workflow=${workflow}${rangeQuery}${changeQuery}`,
       { cache: 'no-store', signal: controller.signal },
     )
       .then(async (response) => {
@@ -183,17 +185,21 @@ export function ChangeTracePanel({
         if (!controller.signal.aborted) setManualRefresh(false);
       });
     return () => controller.abort();
-  }, [projectId, demo, workflow, refreshToken, tick, rangeQuery, indexKey, cache]);
+  }, [projectId, demo, workflow, refreshToken, tick, rangeQuery, changeQuery, indexKey, cache]);
   const currentIndex = indexState?.key === indexKey ? indexState : null;
   const index = demo
     ? DEMO_CHANGE_TRACE_INDEX
     : (currentIndex?.data ?? cache.current.get(indexKey));
-  const traces = (index?.traces ?? []).filter(
-    (trace) =>
-      (workflow === 'all' || trace.workflow === workflow) &&
-      inObservabilityRange(trace.startedAt, timeRange),
-  );
-  const changes = [...new Set(traces.map((trace) => `${trace.workflow}:${trace.change}`))];
+  const inScope = (trace) =>
+    (workflow === 'all' || trace.workflow === workflow) &&
+    inObservabilityRange(trace.startedAt, timeRange);
+  const traces = (index?.traces ?? []).filter(inScope);
+  const catalog = index ?? cache.current.get(`${indexScope}:all`);
+  const changes = catalog?.changes ?? [
+    ...new Set(
+      (catalog?.traces ?? []).filter(inScope).map((trace) => `${trace.workflow}:${trace.change}`),
+    ),
+  ];
   const visible = traces.filter(
     (trace) =>
       (change === 'all' || `${trace.workflow}:${trace.change}` === change) &&
@@ -472,7 +478,7 @@ export function ChangeTracePanel({
       {(index?.truncated || index?.unreadable > 0) && (
         <Alert type="info" showIcon title={t('部分链路记录不可用或已截断，当前仅展示可读样本。')} />
       )}
-      {!index && currentIndex?.loading ? (
+      {!index && !currentIndex?.error ? (
         <Skeleton active />
       ) : !traces.length ? (
         <Empty

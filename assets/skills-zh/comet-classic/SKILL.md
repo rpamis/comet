@@ -43,9 +43,7 @@ comet state select <change-name> --json
 
 绑定工作区并取得 phase 后，以及阶段切换、换 Agent 或上下文恢复时，读取并执行 [任务上下文与产物语言](reference/scripts.md#任务上下文与产物语言)，优先使用当前 continuation 或已领取 Action 的 `contextRequest` 获取快照；同一阶段连续执行不重复获取。按配置确定产物语言；根据 Context Manifest（上下文清单）中的摘要，只展开当前步骤还缺少的内容。实际使用某条内容后如实记录使用结果，任务结束时保存检查点。
 
-记忆学习只提交可复用的用户信息；任务摘要、进展、命令输出和测试结果不写入个人记忆。任务结束前按任务上下文参考完成学习检查，并记录 `submitted`、`no-observation` 或 `not-run`。
-
-项目经验与个人偏好分开保存：任务结束前，把当前项目中已验证且未来可复用的经验用 `comet knowledge remember` 写入项目记忆；用户偏好和稳定协作习惯才进入个人记忆。命令和过滤条件见 [任务上下文与产物语言](reference/scripts.md#任务上下文与产物语言)。
+项目经验与个人偏好分开保存。已有经验可能省去排查时，按[任务上下文与产物语言](reference/scripts.md#任务上下文与产物语言)补查。修复复验通过且经验值得复用时，用 `comet knowledge remember` 保存。用户明确要求长期记住的偏好用 `comet memory remember` 保存。任务摘要、进展、命令输出和测试结果不写入个人记忆。
 
 - 新 full / open：`/comet-open`：澄清范围、创建必需产物、请用户检查并确认
 - design：`/comet-design`：完成技术取舍并确认正式设计

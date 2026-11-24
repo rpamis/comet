@@ -1,12 +1,27 @@
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import {
   readRuntimeTraceSpans,
   type RuntimeTraceSpan,
 } from '../../platform/process/runtime-trace.js';
+import { readChangeTraceSnapshots, workflowTraceId } from '../workflow-application/run-trace.js';
 import {
-  readChangeTraceSnapshots,
-  workflowRunTraceUpdates,
-  workflowTraceId,
-} from '../workflow-application/run-trace.js';
+  readNativeChangeTraceCheckpoint,
+  workflowRunTraceSnapshot,
+} from '../workflow-application/run-observation.js';
+import {
+  readNativeBoundedTextFile,
+  readNativeTextFilePrefix,
+} from '../comet-native/native-bounded-file.js';
+import { nativeProjectPaths } from '../comet-native/native-paths.js';
+import { parseNativePortableState } from '../comet-native/native-portable-state.js';
+import {
+  hasNativeManagedRunMarker,
+  NATIVE_MANAGED_RUN_MARKER,
+  parseNativeStateDocument,
+} from '../comet-native/native-state-document.js';
+import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
+import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
 import { withinObservationRange, type ObservabilityRange } from './observability-range.js';
 
 export type ChangeTraceNode = RuntimeTraceSpan & { timing?: 'measured' | 'range' | 'unknown' };
@@ -100,6 +115,94 @@ function traceSummary(nodes: RuntimeTraceSpan[], snapshot = false) {
   };
 }
 
+async function archivedNativeTraces(
+  projectRoot: string,
+  observed: ReadonlyMap<string, RuntimeTraceSpan[]>,
+  target?: string,
+) {
+  const traces: RuntimeTraceSpan[][] = [];
+  let unreadable = 0;
+  try {
+    const config = await readWorkflowProjectConfig(projectRoot);
+    if (!config?.native) return { traces, unreadable };
+    const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root, {
+      readOnly: true,
+    });
+    const archive = await inspectProtectedProjectPath(
+      projectRoot,
+      path.relative(projectRoot, paths.archiveDir),
+      {
+        label: 'Native Archive directory',
+        expected: 'directory',
+      },
+    );
+    if (!archive.exists) return { traces, unreadable };
+    const candidates = new Map<string, string[]>();
+    for (const entry of await fs.readdir(archive.target, { withFileTypes: true })) {
+      if (
+        !entry.isDirectory() ||
+        !/^\d{4}-\d{2}-\d{2}-[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u.test(entry.name)
+      )
+        continue;
+      const name = entry.name.slice(11);
+      if (
+        (target !== undefined && name !== target) ||
+        observed.has(workflowTraceId('native', name))
+      )
+        continue;
+      const directories = candidates.get(name) ?? [];
+      directories.push(entry.name);
+      candidates.set(name, directories);
+    }
+    for (const [name, directories] of candidates) {
+      if (directories.length !== 1) {
+        unreadable++;
+        continue;
+      }
+      const [archiveRef] = directories;
+      const ref = `archive/${archiveRef}/comet-state.yaml`;
+      try {
+        const prefix = await readNativeTextFilePrefix({
+          root: paths.nativeRoot,
+          ref,
+          maxBytes: NATIVE_MANAGED_RUN_MARKER.length + 1,
+        });
+        if (!hasNativeManagedRunMarker(prefix.text)) continue;
+        const { text } = await readNativeBoundedTextFile({
+          root: paths.nativeRoot,
+          ref,
+          includeHash: false,
+        });
+        const data = parseNativeStateDocument(text, 'Native Archive state') as {
+          run_checkpoint?: unknown;
+          archive_receipt?: { runId?: unknown; change?: unknown; archiveRef?: unknown };
+        };
+        const state = parseNativePortableState(data);
+        const receipt = data.archive_receipt;
+        if (
+          !state.archived ||
+          state.name !== name ||
+          receipt?.runId !== name ||
+          receipt.change !== name ||
+          receipt.archiveRef !== archiveRef
+        ) {
+          throw new Error('Native Archive receipt does not match its change');
+        }
+        const trace = readNativeChangeTraceCheckpoint(data.run_checkpoint, name);
+        if (!trace) {
+          throw new Error('Native Archive checkpoint does not contain a completed Native Run');
+        }
+        traces.push(trace);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') unreadable++;
+      }
+    }
+  } catch {
+    unreadable++;
+  }
+  return { traces, unreadable };
+}
+
 async function historicalRuns(projectRoot: string, workflow: 'all' | 'native' | 'classic') {
   const results = await Promise.allSettled(
     (['native', 'classic'] as const)
@@ -109,15 +212,7 @@ async function historicalRuns(projectRoot: string, workflow: 'all' | 'native' | 
   return {
     traces: results.flatMap((result) =>
       result.status === 'fulfilled'
-        ? result.value.runs.map((run) =>
-            workflowRunTraceUpdates({
-              workflow: result.value.name,
-              previous: null,
-              next: run,
-              initial: false,
-              observedAt: '',
-            }).map((node) => ({ ...node, startedAt: null, endedAt: null, updatedAt: '' })),
-          )
+        ? result.value.runs.map((run) => workflowRunTraceSnapshot(result.value.name, run))
         : [],
     ),
     truncated: results.some((result) => result.status === 'fulfilled' && result.value.truncated),
@@ -132,6 +227,7 @@ export async function collectChangeTraceIndex(
   projectRoot: string,
   workflow: 'all' | 'native' | 'classic' = 'all',
   range?: ObservabilityRange,
+  change?: string,
 ) {
   const [sample, history] = await Promise.all([
     readRuntimeTraceSpans(projectRoot),
@@ -147,6 +243,9 @@ export async function collectChangeTraceIndex(
   const measured = new Set(groups.keys());
   for (const nodes of history.traces)
     if (!groups.has(nodes[0].traceId)) groups.set(nodes[0].traceId, nodes);
+  const archived =
+    !range && workflow !== 'classic' ? await archivedNativeTraces(projectRoot, groups) : null;
+  for (const nodes of archived?.traces ?? []) groups.set(nodes[0].traceId, nodes);
   const traces = [...groups.values()]
     .map((nodes) => traceSummary(nodes, !measured.has(nodes[0].traceId)))
     .filter((trace) => withinObservationRange(trace.startedAt, range))
@@ -154,14 +253,17 @@ export async function collectChangeTraceIndex(
       (a, b) =>
         (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '') || a.traceId.localeCompare(b.traceId),
     );
+  const changeKey = (trace: (typeof traces)[number]) => `${trace.workflow}:${trace.change}`;
+  const selected = change ? traces.filter((trace) => changeKey(trace) === change) : traces;
   return {
-    traces: traces.slice(0, 100),
+    changes: [...new Set(traces.map(changeKey))],
+    traces: selected.slice(0, 100),
     truncated:
       sample.truncated ||
       history.truncated ||
-      traces.length > 100 ||
-      traces.some((trace) => trace.incomplete),
-    unreadable: history.unreadable,
+      selected.length > 100 ||
+      selected.some((trace) => trace.incomplete),
+    unreadable: history.unreadable + (archived?.unreadable ?? 0),
     days: sample.days,
     observedAt: new Date().toISOString(),
   };
@@ -181,6 +283,15 @@ export async function collectChangeTrace(projectRoot: string, traceId: string) {
     const history = await historicalRuns(projectRoot, workflow);
     nodes =
       history.traces.find((group) => workflowTraceId(workflow, group[0].runId) === traceId) ?? [];
+    if (!nodes.length && workflow === 'native') {
+      const nativeTracePrefix = 'workflow:native:';
+      const archive = await archivedNativeTraces(
+        projectRoot,
+        new Map(),
+        traceId.slice(nativeTracePrefix.length),
+      );
+      nodes = archive.traces[0] ?? [];
+    }
     snapshot = true;
   }
   if (!nodes.length) return null;

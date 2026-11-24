@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { parse as parseYaml } from 'yaml';
+import { parse as parseYaml, parseDocument as parseYamlDocument } from 'yaml';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { inspectNativeHookGuard } from '../../../domains/comet-native/native-hook-guard.js';
 import { inspectNativeSdkCancellation } from '../../../domains/comet-native/native-sdk-cancellation.js';
@@ -92,6 +92,7 @@ import {
 } from '../../../domains/engine/runtime.js';
 import {
   COMET_CHANGE_OWNER_SCHEMA,
+  readSdkChangeOwner,
   recoverSdkChangeOwnerToActive,
   registerSdkChangeOwner,
 } from '../../../domains/workflow-contract/change-runtime-owner.js';
@@ -273,7 +274,7 @@ async function fixture() {
   const config = defaultProjectConfig('docs', 'en');
   await writeProjectConfig(root, {
     ...config,
-    native: { ...config.native, document_writes: 'revert' },
+    native: { ...config.native, document_writes: 'revert', archive_confirmation: 'required' },
   });
   const paths = await nativeProjectPaths(root, 'docs');
   await ensureNativeDirectories(paths);
@@ -324,7 +325,7 @@ async function allowAgentDocumentReview(root: string) {
   const config = defaultProjectConfig('docs', 'en');
   await writeProjectConfig(root, {
     ...config,
-    native: { ...config.native, document_writes: 'allow' },
+    native: { ...config.native, document_writes: 'allow', archive_confirmation: 'required' },
   });
 }
 
@@ -1795,6 +1796,7 @@ children:
 
   it.each([
     'normal',
+    'merged-archive-inspection',
     'partial-recovery',
     'branch-lock-recovery',
     'delivery-recovery',
@@ -1805,6 +1807,7 @@ children:
   ] as const)(
     'handles parent repair, delivery, and cleanup after Supervisor DAG restart (%s)',
     async (scenario) => {
+      const inspectMergedArchive = scenario === 'merged-archive-inspection';
       const { root, paths, changeDir } = await fixture();
       await fs.writeFile(
         path.join(changeDir, 'children.yaml'),
@@ -1856,11 +1859,22 @@ children:
         },
       });
       const application = nativeApplication();
+      if (inspectMergedArchive)
+        await registerSdkChangeOwner(root, {
+          schema: COMET_CHANGE_OWNER_SCHEMA,
+          workflow: 'native',
+          change: 'sdk-shape',
+          format: 'sdk',
+          application: 'native',
+          runId: 'sdk-shape',
+        });
       const createSupervisorRuntime = () =>
         createRuntime({
-          store: createFileRuntimeStore<WorkflowRun>({
-            rootDir: path.join(resolveWorkspaceRuntimeRootSync(root), 'sdk-runs', 'native'),
-          }),
+          store: inspectMergedArchive
+            ? createNativeSdkStateStore(root)
+            : createFileRuntimeStore<WorkflowRun>({
+                rootDir: path.join(resolveWorkspaceRuntimeRootSync(root), 'sdk-runs', 'native'),
+              }),
           workflows: [application.workflow],
           transitionHandlers: [application.transitionHandler],
           validators: application.validators,
@@ -2907,7 +2921,14 @@ children:
         type: 'call_tool',
       });
       const cleanupAction = run.actions.at(-1)!;
-      if (scenario === 'normal' || scenario === 'delivery-recovery') {
+      const applied = run.outputs['archive.execute'].value as { archiveRef: string };
+      const pendingCleanupState = inspectMergedArchive
+        ? await fs.readFile(
+            path.join(paths.archiveDir, applied.archiveRef, 'comet-state.yaml'),
+            'utf8',
+          )
+        : null;
+      if (scenario === 'normal' || scenario === 'delivery-recovery' || inspectMergedArchive) {
         run = await runtime.execute({
           runId: run.runId,
           actionId: cleanupAction.id,
@@ -3115,6 +3136,14 @@ children:
       await expect(fs.access(nativeSupervisorStateFile(paths, 'sdk-shape'))).rejects.toMatchObject({
         code: 'ENOENT',
       });
+      if (pendingCleanupState)
+        await expectMergedSupervisorArchive(
+          root,
+          branch,
+          run,
+          applied.archiveRef,
+          pendingCleanupState,
+        );
     },
     240_000,
   );
@@ -5456,6 +5485,118 @@ async function expectArchivePrewriteFilesAbsent(
     ).rejects.toMatchObject({ code: 'ENOENT' });
   }
   await expect(fs.access(path.join(f.paths.specsDir, 'workflow/spec.md'))).rejects.toMatchObject({
+    code: 'ENOENT',
+  });
+}
+
+async function expectMergedSupervisorArchive(
+  execution: string,
+  branch: string,
+  run: WorkflowRun,
+  archiveRef: string,
+  pendingCleanupState: string,
+) {
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-sdk-merge-'));
+  roots.push(parent);
+  const linked = path.join(parent, 'linked');
+  const clone = path.join(parent, 'clone');
+  const name = run.runId;
+  execFileSync('git', ['worktree', 'add', '-b', 'receiving', linked, 'HEAD'], { cwd: execution });
+  execFileSync('git', ['add', '-A'], { cwd: execution });
+  execFileSync('git', ['commit', '-m', 'Archive Supervisor change'], { cwd: execution });
+  execFileSync('git', ['merge', '--ff-only', branch], { cwd: linked });
+  execFileSync('git', ['clone', '-b', 'receiving', execution, clone], { cwd: parent });
+  const query = async (projectRoot: string, args: string[]) =>
+    (await runArchivePrewriteCli(projectRoot, [...args, '--project-root', projectRoot, '--json']))
+      .dispatch;
+
+  const original = await query(execution, ['status', name, '--details']);
+  expect(original, JSON.stringify(original)).toMatchObject({
+    exitCode: 0,
+    data: { phase: 'archive', status: 'done', run: { id: name, status: 'completed' } },
+  });
+  const listed = await query(linked, ['status']);
+  expect(listed, JSON.stringify(listed)).toMatchObject({
+    exitCode: 0,
+    data: {
+      items: expect.arrayContaining([
+        expect.objectContaining({ name, phase: 'archive', status: 'done', archived: true }),
+      ]),
+    },
+  });
+  for (const receiving of [linked, clone]) {
+    const workspaceRuntimeRoot = resolveWorkspaceRuntimeRootSync(receiving);
+    await expect(fs.access(workspaceRuntimeRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+    const status = await query(receiving, ['status', name, '--details']);
+    expect.soft(status, JSON.stringify(status)).toMatchObject({
+      exitCode: 0,
+      data: {
+        phase: 'archive',
+        status: 'done',
+        archived: true,
+        archiveRef: `docs/comet/archive/${archiveRef}/comet-state.yaml`,
+        run: {
+          id: name,
+          revision: run.revision,
+          status: 'completed',
+          actions: expect.arrayContaining(
+            ['archive.prepare', 'archive.execute', 'archive.finalize', 'supervisor.cleanup'].map(
+              (stepId) => expect.objectContaining({ stepId, status: 'succeeded' }),
+            ),
+          ),
+        },
+        details: { state: { name, phase: 'archive', archived: true } },
+      },
+    });
+    const doctor = await query(receiving, ['doctor', name]);
+    expect.soft(doctor, JSON.stringify(doctor)).toMatchObject({
+      exitCode: 0,
+      data: { healthy: true, repaired: false, runtimeFormat: 'sdk' },
+    });
+    expect.soft(doctor.data).not.toHaveProperty('recovery');
+    expect(await readSdkChangeOwner(receiving, 'native', name, { readOnly: true })).toBeNull();
+    await expect(fs.access(workspaceRuntimeRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(
+      execFileSync('git', ['status', '--porcelain'], { cwd: receiving, encoding: 'utf8' }),
+    ).toBe('');
+  }
+
+  const archiveDir = path.join(clone, 'docs/comet/archive', archiveRef);
+  const archiveFile = path.join(archiveDir, 'comet-state.yaml');
+  const originalState = await fs.readFile(archiveFile, 'utf8');
+  const rejectArchive = async (diagnostic: RegExp) => {
+    for (const command of ['status', 'doctor']) {
+      const response = await query(clone, [command, name]);
+      expect(response.exitCode, JSON.stringify(response)).not.toBe(0);
+      expect(response.error?.message).toMatch(diagnostic);
+    }
+  };
+  const duplicate = path.join(path.dirname(archiveDir), `2000-01-01-${name}`);
+  await fs.cp(archiveDir, duplicate, { recursive: true });
+  await rejectArchive(/ambiguous|归档不唯一/u);
+  await fs.rename(duplicate, path.join(parent, 'duplicate-archive'));
+  for (const [key, value, diagnostic] of [
+    [['name'], 'different-name', /does not match its state/u],
+    [['archive_receipt', 'runId'], 'different-run', /completion record does not match/u],
+    [['run_checkpoint', 'hash'], '0'.repeat(64), /checkpoint.*invalid or changed/u],
+  ] as const) {
+    const document = parseYamlDocument(originalState);
+    document.setIn([...key], value);
+    await fs.writeFile(archiveFile, document.toString());
+    await rejectArchive(diagnostic);
+  }
+
+  await fs.writeFile(archiveFile, pendingCleanupState);
+  execFileSync('git', ['switch', '-c', branch], { cwd: clone, stdio: 'ignore' });
+  const pendingStatus = await query(clone, ['status', name]);
+  expect(pendingStatus.exitCode).not.toBe(0);
+  expect(pendingStatus.error?.message).toMatch(/Supervisor worktree unavailable/u);
+  const pendingDoctor = await query(clone, ['doctor', name]);
+  expect(pendingDoctor).toMatchObject({
+    exitCode: 0,
+    data: { healthy: false, repaired: false, recovery: { code: 'runtime-recovery-required' } },
+  });
+  await expect(fs.access(resolveWorkspaceRuntimeRootSync(clone))).rejects.toMatchObject({
     code: 'ENOENT',
   });
 }

@@ -1236,7 +1236,21 @@ Run focused Native checks.
     expect((await inspectNativeSdkRun(projectRoot, 'sdk-revise')).state.phase).toBe('shape');
   });
 
-  it('returns all ready Supervisor Child Actions after the public SDK Shape confirmation', async () => {
+  const supervisorChoices = [
+    {
+      language: 'zh-CN',
+      choice: '多会话/Agent Teams（推荐）',
+      suggestedReply: '确认 Shape，选择多会话/Agent Teams',
+    },
+    {
+      language: 'en',
+      choice: 'Multi-session / Agent Teams (recommended)',
+      suggestedReply: 'Confirm Shape with Multi-session / Agent Teams',
+    },
+  ];
+
+  it.each(supervisorChoices)('lists ready Supervisor children ($language)', async (row) => {
+    const { language, choice, suggestedReply } = row;
     execFileSync(
       'git',
       [
@@ -1252,7 +1266,16 @@ Run focused Native checks.
       { cwd: projectRoot, stdio: 'ignore' },
     );
     const created = json(
-      await runNativeCli(['new', 'sdk-supervisor', '--runtime', 'sdk', '--json', ...projectArgs()]),
+      await runNativeCli([
+        'new',
+        'sdk-supervisor',
+        '--runtime',
+        'sdk',
+        '--language',
+        language,
+        '--json',
+        ...projectArgs(),
+      ]),
     );
     expect(created.exitCode).toBe(0);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
@@ -1307,6 +1330,12 @@ children:
     expect(prepared, prepared.error?.message).toMatchObject({
       exitCode: 0,
       data: {
+        continuation: {
+          userCommunication: {
+            message: expect.stringContaining(choice),
+            suggestedReply,
+          },
+        },
         run: {
           waits: [{ stepId: 'supervisor.shape.confirm', status: 'pending' }],
         },

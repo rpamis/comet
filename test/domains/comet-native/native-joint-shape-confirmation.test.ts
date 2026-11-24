@@ -17,7 +17,7 @@ async function cli(root: string, args: string[], accepted = true) {
   return payload;
 }
 
-async function shape(supervisor = true) {
+async function shape(supervisor = true, language = 'en') {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-joint-shape-'));
   roots.push(root);
   execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'ignore' });
@@ -35,7 +35,7 @@ async function shape(supervisor = true) {
     ],
     { cwd: root, stdio: 'ignore' },
   );
-  await cli(root, ['new', 'joint-shape', '--runtime', 'compat']);
+  await cli(root, ['new', 'joint-shape', '--runtime', 'compat', '--language', language]);
   const dir = path.join(root, 'docs/comet/changes/joint-shape');
   await fs.writeFile(
     path.join(dir, 'brief.md'),
@@ -69,6 +69,18 @@ afterEach(async () => {
 });
 
 describe('Native joint Supervisor Shape decision', () => {
+  it.each([
+    ['zh-CN', 'A）多会话/Agent Teams（推荐），或 B）单会话推进'],
+    ['en', 'A) Multi-session / Agent Teams (recommended), or B) Single-session progression'],
+  ])('names Agent Teams in the recommended %s coordination choice', async (language, choice) => {
+    const { root } = await shape(true, language);
+    const prepared = await cli(root, ['next', 'joint-shape', '--summary', 'Shape is ready']);
+    expect(prepared.data.continuation.userCommunication.message).toContain(choice);
+    expect(command(prepared, 'multi-session')).toEqual(
+      expect.arrayContaining(['--coordination-mode', 'multi-session']),
+    );
+  });
+
   it('retains autolink Shape confirmation between bundled next and dist Doctor', async () => {
     const repository = path.resolve(import.meta.dirname, '../../..');
     await ensureCliBuilt(repository);

@@ -3,6 +3,7 @@ import { nativeCurrentShapeActions } from './native-build-workspace-record.js';
 import { randomUUID } from 'node:crypto';
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 import { reportCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
+import { readProjectConfig } from './native-config.js';
 import { hasNativeCompletedWork } from './native-experience.js';
 import { archiveNativeSdkChange } from './native-sdk-archive-command.js';
 import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
@@ -45,7 +46,10 @@ import {
   validateNativeSdkFailedChildVerifier,
   nativeSdkLegacyChildFailureForWait,
 } from './native-sdk-supervisor-verifier-recovery.js';
-import { nativeSdkVerifyDecisions } from './native-sdk-verify-decision.js';
+import {
+  nativeSdkArchiveApprovalWait,
+  nativeSdkVerifyDecisions,
+} from './native-sdk-verify-decision.js';
 /** 子任务可并行领取；已就绪的内部检查与集成继续按队列串行执行。 */
 function nextAutomaticAction(
   run: WorkflowRun,
@@ -632,6 +636,27 @@ export async function advanceNativeSdkChange(
   }
   const diagnostics = await inspectNativeSdkRunDiagnostics(projectRoot, run);
   if (!diagnostics.healthy) return nextResult(projectRoot, name, run, artifactRootRef, application);
+  if (!decision && !application) {
+    const wait = nativeSdkArchiveApprovalWait(run, state);
+    if (
+      wait &&
+      (await readProjectConfig(projectRoot))?.native.archive_confirmation === 'automatic'
+    ) {
+      return advanceNativeSdkChange(
+        projectRoot,
+        name,
+        {
+          expectedAction: 'accept-result',
+          expectedStateVersion: state.state_version,
+          proposalHash: wait.proposalHash,
+          summary: 'Project authorizes automatic Archive (native.archive_confirmation: automatic).',
+        },
+        { run, state, artifactRootRef, application },
+        taskProjection,
+        observeTaskResult,
+      );
+    }
+  }
   if (
     run.ready.length === 0 &&
     nextAutomaticAction(run, state, Boolean(application))?.type !== 'call_tool'

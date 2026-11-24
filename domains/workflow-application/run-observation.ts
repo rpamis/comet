@@ -6,7 +6,10 @@ import {
   readRuntimeProjection,
   iterateFileRuntimeStoreRunSources,
   hashRuntimeValue,
+  readPortableRunCheckpointProjection,
+  type WorkflowRun,
 } from '../engine/runtime.js';
+import { workflowRunTraceUpdates } from './run-trace.js';
 import { createApplicationStorageIndex } from './storage-index.js';
 import { readWorkspaceRuntimeRoots } from '../workflow-contract/workspace-runtime.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
@@ -37,6 +40,26 @@ export interface WorkflowApplicationRunObservation {
   runId: string | null;
   record: ApplicationRunRecord | null;
   error: { code: string; message: string } | null;
+}
+
+export function workflowRunTraceSnapshot(workflow: 'native' | 'classic', run: WorkflowRun) {
+  return workflowRunTraceUpdates({
+    workflow,
+    next: run,
+    previous: null,
+    initial: false,
+    observedAt: '',
+  }).map((node) => ({ ...node, startedAt: null, endedAt: null, updatedAt: '' }));
+}
+
+/** 只读展示完成的 Native 归档快照，保留未知的耗时。 */
+export function readNativeChangeTraceCheckpoint(checkpoint: unknown, change: string) {
+  const run = readPortableRunCheckpointProjection(checkpoint, change, {
+    preserveSourceRevision: true,
+  });
+  return run?.status === 'completed' && run.workflow.id === 'comet-native'
+    ? workflowRunTraceSnapshot('native', run)
+    : null;
 }
 
 export async function* iterateWorkflowApplicationRunSources(

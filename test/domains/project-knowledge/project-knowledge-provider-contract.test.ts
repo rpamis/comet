@@ -25,7 +25,6 @@ function record(): ProjectKnowledgeRecord {
     ],
     relations: [],
     verification: [],
-    sourceVersions: [{ source: 'docs/rule.md', size: 10, modifiedAt: 1 }],
     applicationCount: 0,
     successCount: 0,
     failureCount: 0,
@@ -102,7 +101,11 @@ describe('remote project knowledge provider contract', () => {
       record: record(),
       diagnostics: [],
     });
-    await applyProvider.instance.apply({ kind: 'upsert', record: record() });
+    const legacy = {
+      ...record(),
+      sourceVersions: [{ source: 'docs/legacy.md', size: 10, modifiedAt: 1, digest: 'legacy' }],
+    };
+    await applyProvider.instance.apply({ kind: 'upsert', record: legacy });
 
     const envelopes = [requests, queryProvider.requests, applyProvider.requests].map(
       (entries) => JSON.parse(String(entries[0]!.init?.body)) as Record<string, unknown>,
@@ -114,21 +117,43 @@ describe('remote project knowledge provider contract', () => {
     expect(envelopes.every((entry) => entry.scope === 'team-a')).toBe(true);
     expect(envelopes.every((entry) => entry.projectId === 'comet-remote')).toBe(true);
     expect(JSON.stringify(envelopes[2])).not.toContain('secret source excerpt');
+    expect(JSON.stringify(envelopes[2])).not.toContain('sourceVersions');
+    expect(JSON.stringify(envelopes[2])).toContain('"sourcePaths":["docs/legacy.md"]');
+  });
+
+  test('returns an apply diagnostic without sending an invalid upsert record', async () => {
+    const { instance, requests } = provider({});
+    const invalid = {
+      ...record(),
+      authority: 'unsupported' as ProjectKnowledgeRecord['authority'],
+    };
+    await expect(instance.apply({ kind: 'upsert', record: invalid })).resolves.toMatchObject({
+      kind: 'upsert',
+      changed: false,
+      diagnostics: [expect.objectContaining({ code: 'remote-schema' })],
+    });
+    expect(requests).toEqual([]);
   });
 
   test('parses Record query results and preserves bounded diagnostics', async () => {
     const { instance } = provider({
       kind: 'list',
-      records: [record()],
+      records: [
+        {
+          ...record(),
+          sourceVersions: [{ source: 'docs/legacy.md', size: 10, modifiedAt: 1 }],
+        },
+      ],
       truncated: false,
       diagnostics: [{ code: 'server-note', message: 'bounded' }],
     });
     const result = await instance.query({ kind: 'list', state: 'all' });
     expect(result).toMatchObject({
       kind: 'list',
-      records: [expect.objectContaining({ id: 'record-remote' })],
+      records: [expect.objectContaining({ id: 'record-remote', sourcePaths: ['docs/legacy.md'] })],
       diagnostics: [{ code: 'server-note', message: 'bounded' }],
     });
+    expect(JSON.stringify(result)).not.toContain('sourceVersions');
   });
 
   test('rejects records returned for a different project', async () => {

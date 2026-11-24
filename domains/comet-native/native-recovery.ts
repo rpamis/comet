@@ -4,6 +4,7 @@ import type { RuntimeValue } from '../engine/runtime.js';
 export type NativeRecoveryCode =
   | 'archive-blocked'
   | 'archive-preflight-blocked'
+  | 'acceptance-input-invalid'
   | 'candidate-drift'
   | 'verification-report-drift'
   | 'shape-drift'

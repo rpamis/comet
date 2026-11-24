@@ -435,6 +435,7 @@ async function handleRequest(
             project.path,
             workflow as 'all' | 'native' | 'classic',
             range,
+            url.searchParams.get('change') ?? undefined,
           ),
         );
       } else {

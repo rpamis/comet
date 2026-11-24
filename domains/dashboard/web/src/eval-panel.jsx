@@ -20,6 +20,7 @@ import {
   Popover,
   Select,
   Segmented,
+  Skeleton,
   Space,
   Spin,
   Steps,
@@ -56,6 +57,7 @@ import {
 } from './eval-guidance.jsx';
 import { EvalPresetControls } from './eval-preset-controls.jsx';
 import { EvalDatasets } from './eval-datasets.jsx';
+import { evalRunListLoading } from './eval-list-loading.js';
 import {
   EvalSection,
   EvalRunProgress,
@@ -197,7 +199,7 @@ export function EvalPanel({
   const [runPageInfo, setRunPageInfo] = useState(null);
   const [comparisonRuns, setComparisonRuns] = useState([]);
   const [detailRefreshRevision, setDetailRefreshRevision] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [settledListQuery, setSettledListQuery] = useState(null);
   const [error, setError] = useState(null);
   const [mode, setMode] = useState(() =>
     navigation.runId ? 'detail' : navigation.mode === 'new' ? 'new' : 'list',
@@ -210,6 +212,12 @@ export function EvalPanel({
   const [tab, setTab] = useDashboardViewState(stateScope, `${selectedId}:tab`, 'overview');
   const [runFilter, setRunFilter] = useDashboardViewState(stateScope, 'run-filter', 'all');
   const [runPage, setRunPage] = useDashboardViewState(stateScope, 'run-page', 1);
+  const listQuery = new URLSearchParams({
+    q: query ?? '',
+    status: runFilter,
+    limit: '15',
+    offset: String((runPage - 1) * 15),
+  }).toString();
   const [caseDetail, setCaseDetail] = useState(null);
   const caseRequest = useRef(0);
   const [artifact, setArtifact] = useState(null);
@@ -239,13 +247,10 @@ export function EvalPanel({
       inFlight.current = true;
       const current = new AbortController();
       controller.current = current;
-      if (manual) setLoading(true);
       try {
-        const data = await readJson(
-          base,
-          `/runs?${new URLSearchParams({ q: query ?? '', status: runFilter, limit: '15', offset: String((runPage - 1) * 15), ...(manual ? { refresh: '1' } : {}) })}`,
-          { signal: current.signal },
-        );
+        const data = await readJson(base, `/runs?${listQuery}${manual ? '&refresh=1' : ''}`, {
+          signal: current.signal,
+        });
         if (!active.current || current.signal.aborted) return;
         setRuns(data.items ?? []);
         setRunPageInfo(typeof data.total === 'number' ? data : null);
@@ -255,11 +260,11 @@ export function EvalPanel({
       } finally {
         if (controller.current === current) {
           inFlight.current = false;
-          if (active.current) setLoading(false);
+          if (active.current && !current.signal.aborted) setSettledListQuery(listQuery);
         }
       }
     },
-    [base, query, runFilter, runPage, readOnly, demo, readJson],
+    [base, listQuery, readOnly, demo, readJson],
   );
   useEffect(() => {
     active.current = true;
@@ -701,28 +706,45 @@ export function EvalPanel({
               ? run.isBaseline
               : true,
       );
+  const { listSkeleton, summarySkeleton, syncing } = evalRunListLoading(
+    listQuery,
+    settledListQuery,
+    runPageInfo,
+    filtered.length,
+  );
+  const runCount = runPageInfo?.counts?.all ?? runs.length;
   const list = (
     <div className="dashboard-eval-stack">
-      <div className="dashboard-eval-summary-band" aria-label={t('评估记录统计')}>
-        <Metric label={t('运行记录')} value={runPageInfo?.counts?.all ?? runs.length} />
-        <Metric
-          label={t('进行中')}
-          value={
-            runPageInfo?.counts?.active ??
-            runs.filter((run) => !terminal(run.executionStatus)).length
-          }
-        />
-        <Metric
-          label={t('已结束 / 历史')}
-          value={
-            runPageInfo?.counts?.finished ??
-            runs.filter((run) => terminal(run.executionStatus)).length
-          }
-        />
-        <Metric
-          label={t('基线组')}
-          value={runPageInfo?.counts?.baseline ?? runs.filter((run) => run.isBaseline).length}
-        />
+      <div
+        className="dashboard-eval-summary-band"
+        aria-label={t('评估记录统计')}
+        aria-busy={summarySkeleton}
+      >
+        {summarySkeleton ? (
+          <Skeleton.Input active size="small" aria-hidden="true" />
+        ) : (
+          <>
+            <Metric label={t('运行记录')} value={runCount} />
+            <Metric
+              label={t('进行中')}
+              value={
+                runPageInfo?.counts?.active ??
+                runs.filter((run) => !terminal(run.executionStatus)).length
+              }
+            />
+            <Metric
+              label={t('已结束 / 历史')}
+              value={
+                runPageInfo?.counts?.finished ??
+                runs.filter((run) => terminal(run.executionStatus)).length
+              }
+            />
+            <Metric
+              label={t('基线组')}
+              value={runPageInfo?.counts?.baseline ?? runs.filter((run) => run.isBaseline).length}
+            />
+          </>
+        )}
       </div>
       <div className="dashboard-eval-heading dashboard-eval-list-toolbar">
         <Segmented
@@ -774,13 +796,10 @@ export function EvalPanel({
           </Button>
         </Space>
       </div>
-      {runPageInfo?.indexing && (
-        <Alert
-          type="info"
-          showIcon
-          message={t('正在同步列表')}
-          description={`${runPageInfo.indexedCount} / ${runPageInfo.sourceCount}`}
-        />
+      {syncing && (
+        <span className="sr-only" role="status">
+          {t('正在同步列表')} {runPageInfo.indexedCount} / {runPageInfo.sourceCount}
+        </span>
       )}
       {runPageInfo?.errors?.length > 0 && (
         <Alert
@@ -790,17 +809,25 @@ export function EvalPanel({
           description={runPageInfo.errors.map(t).join('\n')}
         />
       )}
-      {!loading && !runPageInfo?.indexing && runs.length === 0 && <EvalFirstUse />}
-      {!loading && !runPageInfo?.indexing && !filtered.length ? (
-        <Empty description={runs.length ? t('没有符合筛选条件的记录') : t('暂无评估记录')}>
-          {!runs.length && (
+      {!listSkeleton && runCount === 0 && <EvalFirstUse />}
+      {listSkeleton ? (
+        <div
+          className="rounded-lg border border-border bg-bg px-6 py-8"
+          aria-label={t('读取评估记录…')}
+          aria-busy="true"
+        >
+          <Skeleton active title={{ width: '28%' }} paragraph={{ rows: 6 }} />
+        </div>
+      ) : !filtered.length ? (
+        <Empty description={runCount ? t('没有符合筛选条件的记录') : t('暂无评估记录')}>
+          {!runCount && (
             <Paragraph type="secondary">
               {readOnly
                 ? t('Eval 操作仅在本地 Dashboard 中提供')
                 : t('选择本地 Skill 或 SDK 应用，预检通过后开始第一次评估。')}
             </Paragraph>
           )}
-          {runs.length ? (
+          {runCount ? (
             <Button onClick={() => setRunFilter('all')}>{t('清除筛选')}</Button>
           ) : !readOnly ? (
             <Button type="primary" onClick={() => newRun()}>
@@ -812,7 +839,6 @@ export function EvalPanel({
         <Table
           className="dashboard-eval-history-table"
           rowKey="id"
-          loading={loading && !filtered.length}
           dataSource={filtered}
           pagination={{
             ...evalPagination,

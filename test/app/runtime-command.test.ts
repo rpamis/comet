@@ -1416,7 +1416,9 @@ describe('Runtime JSON command', () => {
   });
 
   it('records an actual platform check through separate Native SDK requests and preserves approval', async () => {
-    await writeProjectConfig(projectRoot, defaultProjectConfig('docs', 'en'));
+    const config = defaultProjectConfig('docs', 'en');
+    config.native.archive_confirmation = 'required';
+    await writeProjectConfig(projectRoot, config);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     await ensureNativeDirectories(paths);
     const changeDir = path.join(paths.changesDir, 'native-change');

@@ -131,8 +131,8 @@ function nativePortableUserCommunication(
         required: true,
         message: localized(
           state,
-          'Shape is ready. Confirm the complete plan and choose A) Multi-session coordination (recommended), or B) Single-session progression in one reply.',
-          'Shape 已整理完成。请确认完整方案，并在同一次回复中选择 A）多会话协作（推荐），或 B）单会话推进。',
+          'Shape is ready. Confirm the complete plan and choose A) Multi-session / Agent Teams (recommended), or B) Single-session progression in one reply.',
+          'Shape 已整理完成。请确认完整方案，并在同一次回复中选择 A）多会话/Agent Teams（推荐），或 B）单会话推进。',
         ),
         suggestedReply: localized(state, 'Confirm the plan and use A', '确认方案，按 A 开始'),
         agentInstruction: localized(

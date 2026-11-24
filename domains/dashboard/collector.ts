@@ -1,6 +1,10 @@
 import { resolveClassicStateFile } from '../workflow-contract/classic-state-file.js';
 import { inspectClassicProjectTarget } from '../comet-classic/classic-protected-path.js';
-import { inspectClassicSdkRun } from '../comet-classic/classic-sdk-status.js';
+import {
+  classicSdkNextAction,
+  hasClassicManagedRunMarker,
+  inspectClassicSdkRun,
+} from '../comet-classic/classic-sdk-status.js';
 import { readWorkflowApplicationRun } from '../workflow-application/application-run-record.js';
 import { readChangeRuntimeOwner } from '../workflow-contract/change-runtime-owner.js';
 import { promises as fs } from 'fs';
@@ -53,6 +57,7 @@ import type {
   DashboardOverview,
   DashboardSnapshot,
   GroupedArtifact,
+  NextAction,
   TasksSummary,
   VerifySummary,
 } from './types.js';
@@ -265,23 +270,11 @@ async function classicWorkflowAttention(
   let runId: string | null = null;
   let attention: WorkflowAttentionState | null;
   try {
-    const owner = await readChangeRuntimeOwner(change.projectRoot, 'classic', change.name, {
-      readOnly: true,
-    });
-    if (owner?.format === 'sdk') {
-      runId = owner.runId;
-      const run = ['classic-full', 'classic-hotfix', 'classic-tweak'].includes(owner.application)
-        ? (await inspectClassicSdkRun(change.projectRoot, change.name, { owner, readOnly: true }))
-            .run
-        : await readWorkflowApplicationRun(change.projectRoot, owner.application, owner.runId);
-      const input = run?.input as { change?: string; changeDir?: string } | undefined;
-      if (
-        !run ||
-        input?.change !== change.name ||
-        !input.changeDir ||
-        !sameDashboardPath(path.resolve(change.projectRoot, input.changeDir), change.dir)
-      )
-        return { ...item, runId, status: 'unknown-outcome', reason: 'unknown' };
+    const sdk = await readClassicDashboardRun(change);
+    if (sdk) {
+      runId = sdk.runId;
+      const { run } = sdk;
+      if (!run) return { ...item, runId, status: 'unknown-outcome', reason: 'unknown' };
       if (['completed', 'cancelled'].includes(run.status)) return null;
       const state = run.state as { verifyResult?: string; archived?: boolean };
       if (state.archived) return null;
@@ -305,6 +298,70 @@ async function classicWorkflowAttention(
     attention = { status: 'unknown-outcome', reason: 'unknown' };
   }
   return attention ? { ...item, runId, ...attention } : null;
+}
+
+async function readClassicDashboardRun(change: { projectRoot: string; name: string; dir: string }) {
+  const owner = await readChangeRuntimeOwner(change.projectRoot, 'classic', change.name, {
+    readOnly: true,
+  });
+  if (owner?.format !== 'sdk') return null;
+  const builtIn = ['classic-full', 'classic-hotfix', 'classic-tweak'].includes(owner.application);
+  const run = builtIn
+    ? (await inspectClassicSdkRun(change.projectRoot, change.name, { owner, readOnly: true })).run
+    : await readWorkflowApplicationRun(change.projectRoot, owner.application, owner.runId);
+  const input = run?.input as { change?: string; changeDir?: string } | undefined;
+  return {
+    runId: owner.runId,
+    builtIn,
+    run:
+      input?.change === change.name &&
+      input.changeDir &&
+      sameDashboardPath(path.resolve(change.projectRoot, input.changeDir), change.dir)
+        ? run
+        : null,
+  };
+}
+
+async function classicDashboardNextAction(change: BuildChangeInput): Promise<NextAction> {
+  const unavailable = {
+    command: null,
+    reason: '需要核对原工作流状态。',
+    description: '在原工作区检查当前 Run 和最近一次动作结果。',
+  };
+  try {
+    const sdk = await readClassicDashboardRun(change);
+    if (!sdk) return unavailable;
+    const { run } = sdk;
+    if (!run || run.status === 'failed') return unavailable;
+    if (run.status === 'completed' || run.status === 'cancelled')
+      return { command: null, reason: '当前 Run 已结束。', description: '' };
+    const next = classicSdkNextAction(run);
+    switch (next?.kind) {
+      case 'decision':
+        return {
+          command: null,
+          reason: '等待用户确认当前提案。',
+          description: '核对当前提案和授权范围，按原工作流记录用户决定。',
+        };
+      case 'reconcile':
+        return {
+          command: null,
+          reason: '需要核对原执行结果。',
+          description: '保留原任务，等待或核对已领取动作的实际结果。',
+        };
+      case 'action':
+      case 'evidence':
+        return {
+          command: sdk.builtIn ? `comet state next ${change.name} --json` : null,
+          reason: '原工作流有待处理步骤。',
+          description: '在所示工作区沿用当前 Run 的继续指引。',
+        };
+      default:
+        return unavailable;
+    }
+  } catch {
+    return unavailable;
+  }
 }
 
 async function collectDashboardChangePageUncached(
@@ -709,7 +766,7 @@ async function buildChangeCandidate(
   const proposalPath = path.join(input.dir, 'proposal.md');
   const designPath = path.join(input.dir, 'design.md');
   const localPlanPath = path.join(input.dir, 'plan.md');
-  const yaml: CometYaml = (await readProjectCometYaml(input.projectRoot, yamlPath)) ?? {};
+  const { yaml } = await readProjectCometState(input.projectRoot, yamlPath);
   const yamlPlanPath = stripNullish(yaml.plan);
   const explicitPlanPath = yamlPlanPath
     ? await resolveArtifactPointer(input.projectRoot, yamlPlanPath, 'Classic plan artifact')
@@ -1115,7 +1172,7 @@ async function buildChangeItem(input: BuildChangeInput): Promise<ChangeDashboard
   const proposalPath = path.join(input.dir, 'proposal.md');
   const localPlanPath = path.join(input.dir, 'plan.md');
 
-  const yaml: CometYaml = (await readProjectCometYaml(input.projectRoot, yamlPath)) ?? {};
+  const { yaml, managedRun } = await readProjectCometState(input.projectRoot, yamlPath);
 
   const projectRoot = input.projectRoot;
 
@@ -1281,7 +1338,9 @@ async function buildChangeItem(input: BuildChangeInput): Promise<ChangeDashboard
   };
 
   if (input.status === 'active') {
-    item.next = recommendNextAction({ phase, tasks, verify });
+    item.next = managedRun
+      ? await classicDashboardNextAction(input)
+      : recommendNextAction({ phase, tasks, verify });
   }
 
   return item;
@@ -1374,10 +1433,10 @@ async function safeProjectDirectoryExists(
   }
 }
 
-async function readProjectCometYaml(
+async function readProjectCometState(
   projectRoot: string,
   yamlPath: string,
-): Promise<CometYaml | null> {
+): Promise<{ yaml: CometYaml; managedRun: boolean }> {
   try {
     const result = await readProtectedProjectFile(
       projectRoot,
@@ -1385,10 +1444,11 @@ async function readProjectCometYaml(
       Number.MAX_SAFE_INTEGER,
       { label: 'Classic state artifact' },
     );
-    return parseCometYaml(result.bytes.toString('utf8'));
+    const source = result.bytes.toString('utf8');
+    return { yaml: parseCometYaml(source), managedRun: hasClassicManagedRunMarker(source) };
   } catch (error) {
     const code = (error as NodeJS.ErrnoException | undefined)?.code;
-    if (code === 'ENOENT' || code === 'ENOTDIR') return null;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return { yaml: {}, managedRun: false };
     throw error;
   }
 }

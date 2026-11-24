@@ -106,7 +106,7 @@ function sanitizeRecord(record: ProjectKnowledgeRecord): ProjectKnowledgeRecord 
 
 function sanitizeMutation(mutation: ProjectKnowledgeMutation): ProjectKnowledgeMutation {
   if (mutation.kind === 'upsert')
-    return { kind: 'upsert', record: sanitizeRecord(mutation.record) };
+    return { kind: 'upsert', record: sanitizeRecord(parseProjectKnowledgeRecord(mutation.record)) };
   if (mutation.kind !== 'experience-delta') return mutation;
   const delta = mutation.delta;
   let payload = delta.payload;
@@ -626,6 +626,18 @@ export class RemoteProjectKnowledgeProvider implements ProjectKnowledgeProvider 
   }
 
   public async apply(mutation: ProjectKnowledgeMutation): Promise<ProjectKnowledgeApplyResult> {
+    let sanitized: ProjectKnowledgeMutation;
+    try {
+      sanitized = sanitizeMutation(mutation);
+    } catch {
+      const message = 'Remote Project Knowledge apply 请求包含无效数据。';
+      this.report('remote-schema', message);
+      return {
+        kind: mutation.kind,
+        changed: false,
+        diagnostics: [{ code: 'remote-schema', message }],
+      };
+    }
     const expectedProjectId =
       (mutation.kind === 'upsert'
         ? mutation.record.projectId
@@ -634,7 +646,7 @@ export class RemoteProjectKnowledgeProvider implements ProjectKnowledgeProvider 
           : mutation.projectId) ?? this.projectId;
     const result = await this.request(
       'apply',
-      sanitizeMutation(mutation),
+      sanitized,
       mutation.kind === 'upsert'
         ? mutation.record.projectId
         : mutation.kind === 'experience-delta'

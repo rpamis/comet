@@ -1,0 +1,31 @@
+{
+  "schema": "comet.release.bad-cases.v1",
+  "cases": [
+    {
+      "id": "task-unavailable-context-cli-diagnostic",
+      "behavior": "不可用的 project-memory 展开返回可解析的 CLI 错误，不泄漏 Node 异常栈；有效记忆仍能完整展开。",
+      "sources": ["https://github.com/rpamis/comet/issues/506"],
+      "coverageLevel": "public-cli",
+      "reproduction": "真实 Node 进程通过 task facade 展开 project-memory:missing-lesson；修复前抛出文件路径和 Node 栈。",
+      "expected": "exit 1 并输出 TASK_FAILED 与目标 ID；有效、来源匹配的记忆可读。",
+      "forbidden": "以成功伪装失败、注入失效记忆，或输出未处理的异常栈。",
+      "rootCause": "task 快速入口绕过完整 CLI 的错误处理。",
+      "tests": [
+        {
+          "file": "test/app/comet-task-context-process.test.ts",
+          "namePattern": "an unavailable project memory expansion returns a CLI diagnostic without a Node stack",
+          "requiredNames": [
+            "an unavailable project memory expansion returns a CLI diagnostic without a Node stack"
+          ]
+        },
+        {
+          "file": "test/app/comet-task-context-process.test.ts",
+          "namePattern": "checks completion receipts in the real helper process and refuses stale-source lessons",
+          "requiredNames": [
+            "checks completion receipts in the real helper process and refuses stale-source lessons"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -6,6 +6,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+import {
+  readProjectConfig,
+  writeProjectConfig,
+} from '../../../domains/comet-native/native-config.js';
 
 import {
   createNativeSdkRuntime,
@@ -100,6 +104,11 @@ it.each(
   };
   // Current public v4 fixture: SIMULATED Agent/User reports only; no legacy factory or managed check.
   await cli('new', 'demo', '--runtime', 'sdk', '--isolation', 'current'); // Current public factory; no managed checks.
+  const config = (await readProjectConfig(root))!;
+  await writeProjectConfig(root, {
+    ...config,
+    native: { ...config.native, archive_confirmation: 'required' },
+  });
   const change = path.join(root, 'docs/comet/changes/demo');
   await fs.writeFile(
     path.join(change, 'brief.md'),

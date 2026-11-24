@@ -22,7 +22,7 @@ SDK 新 change 使用 `comet-state.yaml`，历史 `.comet.yaml` 原地保留。�
 
 1. 先核对当前目录、Runtime 归属和已有 OpenSpec change。已有 SDK Run 时直接恢复其当前 Action，补齐缺失产物，不再执行 OpenSpec `new change` 或 `state init`。
 2. 真正的新 change 先创建 OpenSpec 基础目录；仅在此分支加载下面的新建 Skill。已有基础目录但初始化中断时，用 OpenSpec `status --change <name> --json` 核对实际产物，确认属于当前需求后补做初始化，保留文件。
-3. 基础目录创建成功后，立即运行 `comet state init <name> <full|hotfix|tweak> --isolation <selected-isolation>`，再运行 `comet state select <name>`。不要先初始化 Runtime 再调用 OpenSpec `new change`，后者会拒绝已存在的目录。初始化失败时保留 OpenSpec 目录，恢复时只补未完成步骤。
+3. 基础目录创建成功后，运行 `comet state init <name> <full|hotfix|tweak> --isolation <selected-isolation> --select --json`，用同次响应继续 Open。OpenSpec `new change` 先于 Runtime 初始化执行。初始化失败时保留 OpenSpec 目录，恢复时只补未完成步骤。
 4. SDK Run 已存在后，通过 `status` 和 `instructions` 填充当前需要的产物，再按阶段入口预览 Open 并取得用户批准。已有目录无法确认归属时先停止核对，不覆盖或新建第二份 Run。
 
 真正的新 change 创建基础目录时：
@@ -107,7 +107,7 @@ review_mode 为 standard 或 thorough 时，由独立 reviewer 对最终 diff �
 
 技能加载后，OpenSpec 命令通过 `comet classic openspec -- <args...>`，路径使用已绑定的 `<classic-*>` 根目录。核对 tasks、proposal、能力场景、高层与技术设计，以及 delta spec 与设计的一致性。
 
-将实际结果、证据、独立审查结论、未执行项和已接受偏差写入报告。明确可修复的失败在前三次内按主 Skill 回 Build；CRITICAL/IMPORTANT 不可豁免。WARNING/SUGGESTION 涉及行为、范围或风险取舍时由用户决定；安全局部修复直接处理。已有 verify_failures >= 3 时，先让用户选择继续修复或停止流程寻求外部决定。失败、超时、阻塞和未执行均不算通过。
+将验收结论、证据、独立审查结论和已接受偏差写入报告。检查项和未运行原因只填写检查 JSON，按 Verify 主 Skill 提交并生成报告中的检查结果。明确可修复的失败在前三次内按主 Skill 回 Build；CRITICAL/IMPORTANT 不可豁免。WARNING/SUGGESTION 涉及行为、范围或风险取舍时由用户决定；安全局部修复直接处理。已有 verify_failures >= 3 时，先让用户选择继续修复或停止流程寻求外部决定。失败、超时、阻塞和未执行均不算通过。
 
 ## 检查复用
 

@@ -442,7 +442,7 @@ if (requestedArgs.includes('knowledge')) {
     .option('--source <source>', '经验来源，例如 change 标识')
     .option('--workflow <workflow>', '写入经验的工作流，与 --change 一起使用')
     .option('--change <id>', '写入经验的 change ID')
-    .option('--evidence <paths>', '绑定的项目来源文件，逗号分隔；来源变化后记忆需复核')
+    .option('--evidence <paths>', '用于核对项目经验的来源路径，逗号分隔')
     .option('--cache-root <dir>', '项目记忆缓存根目录')
     .option('--json', 'Output as JSON')
     .action(async (targetPath = '.', options) => {
@@ -695,7 +695,7 @@ const classicDescriptions: Record<PublicClassicCommand, string> = {
   guard: 'Validate Classic phase requirements; --apply advances after checks pass',
   handoff: 'Create or inspect Classic workflow handoffs',
   archive: 'Archive completed Classic workflow changes',
-  check: 'Execute and record Classic build or verification checks',
+  check: 'Show Agent platform guidance for Classic build or verification checks',
 };
 
 for (const command of PUBLIC_CLASSIC_COMMANDS) {
