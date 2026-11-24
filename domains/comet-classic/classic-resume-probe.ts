@@ -20,7 +20,10 @@ import {
   type ClassicState,
   type ClassicStateProjection,
 } from './classic-state.js';
-import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
+import {
+  readChangeRuntimeOwner,
+  readSdkChangeOwner,
+} from '../workflow-contract/change-runtime-owner.js';
 import { createFileRuntimeStore, type WorkflowRun } from '../engine/runtime.js';
 import { readClassicDelivery } from './classic-progress.js';
 import { inspectClassicActiveChangeDirectory, openSpecChangeNameError } from './classic-paths.js';
@@ -230,23 +233,6 @@ function diagnosticFromProjection(
   };
 }
 
-async function hasOpenSpecChangeFiles(projectRoot: string, changeDir: string): Promise<boolean> {
-  return (
-    (await classicProjectTargetExists(projectRoot, `${changeDir}/proposal.md`, {
-      label: 'Classic proposal',
-      expected: 'file',
-    })) ||
-    (await classicProjectTargetExists(projectRoot, `${changeDir}/design.md`, {
-      label: 'Classic design',
-      expected: 'file',
-    })) ||
-    (await classicProjectTargetExists(projectRoot, `${changeDir}/tasks.md`, {
-      label: 'Classic tasks',
-      expected: 'file',
-    }))
-  );
-}
-
 async function inspectManagedRun(
   projectRoot: string,
   name: string,
@@ -345,7 +331,19 @@ async function discoverActiveChanges(projectRoot: string): Promise<ActiveProbeCh
     const changeDir = active.directory;
     const hasCometState = active.stateExists;
     if (!hasCometState) {
-      if (!(await hasOpenSpecChangeFiles(projectRoot, changeDir))) continue;
+      const owner = await readChangeRuntimeOwner(projectRoot, 'classic', entry, { readOnly: true });
+      if (
+        !owner &&
+        !(await classicProjectTargetExists(
+          projectRoot,
+          path.join(changeDir, '.comet/run-state.json'),
+          {
+            label: 'Classic legacy Run state',
+            expected: 'file',
+          },
+        ))
+      )
+        continue;
       const missingStateChange: ActiveProbeChange = {
         name: entry,
         workflow: 'unknown',
@@ -448,12 +446,16 @@ async function discoverPendingArchivedChanges(projectRoot: string): Promise<Acti
         });
         if (!inspection.exists) return null;
 
+        const stateFile = await resolveClassicStateFile(inspection.target);
+        if (
+          !(await classicProjectTargetExists(projectRoot, stateFile, {
+            label: `Classic archived change ${entry} state`,
+            expected: 'file',
+          }))
+        )
+          return null;
         const projection = await readClassicState(inspection.target, { migrate: false });
-        const managed = await inspectManagedRun(
-          projectRoot,
-          name,
-          await resolveClassicStateFile(inspection.target),
-        );
+        const managed = await inspectManagedRun(projectRoot, name, stateFile);
         if (managed.cancellation === 'complete') return null;
         if (managed.state) projection.classic = managed.state;
         const classic = projection.classic;
@@ -462,6 +464,15 @@ async function discoverPendingArchivedChanges(projectRoot: string): Promise<Acti
           evidence: false,
         });
         if (['complete', 'local-verified'].includes(delivery.verification.status)) return null;
+        // Compatibility archives could record completion before delivery authorization existed.
+        if (
+          classic.branchStatus === 'handled' &&
+          !managed.state &&
+          !managed.lostRun &&
+          delivery.verification.status === 'needsAuthorization' &&
+          !('invalidated' in delivery.verification)
+        )
+          return null;
 
         const baseDiagnostic = diagnosticFromProjection(inspection.target, name, projection);
         const diagnostic = managed.lostRun

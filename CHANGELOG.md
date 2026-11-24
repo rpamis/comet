@@ -20,6 +20,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Native automatic Archive**: Built-in Native changes honor the project's automatic archive policy once all Verify criteria pass. Projects can still require explicit result acceptance.
 - **Merged Native Supervisor archives**: Use `comet native status` and `comet native doctor` to inspect a completed Supervisor archive from the receiving checkout without restoring its Run or original worktree ([#586](https://github.com/rpamis/comet/issues/586)).
+- **Classic resume discovery**: Skip archived OpenSpec changes without Comet state, completed legacy archives, and unmanaged active OpenSpec changes. Classic still surfaces pending delivery and managed changes that need recovery ([#587](https://github.com/rpamis/comet/issues/587)).
 - **Eval list loading**: Show a skeleton when changing Eval filters and keep existing results in place during background indexing.
 - **Change trace selection**: Find Changes outside the first 100 execution records and open completed Native archive snapshots in the all-time view.
 - **Windows npm upgrades**: Global npm upgrades can replace the installed Comet package while a daemon from this version is running.

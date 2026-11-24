@@ -2,6 +2,65 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "classic-587-resume-skips-archives-without-state",
+      "behavior": "Classic 自动恢复跳过不含 Comet 状态的旧 OpenSpec 归档。",
+      "sources": ["https://github.com/rpamis/comet/issues/587"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在启用 ambient_resume 的旧目录布局放入只有 proposal.md 的 OpenSpec 历史归档。向公开 resume-probe 传入“继续”，npm 0.5.6 和修复前 057 均返回 ENOENT 和 ask_user。",
+      "expected": "不存在其他候选时返回 action: none，并保留历史归档原样。",
+      "forbidden": "因无状态的 OpenSpec 归档中断整次扫描，或创建补位状态文件。",
+      "rootCause": "归档扫描在核对状态文件是否存在前就尝试读取受管 Run。",
+      "tests": [
+        {
+          "file": "test/app/resume-probe.test.ts",
+          "namePattern": "^Classic resume-probe discovery skips a legacy OpenSpec archive without Comet state$",
+          "requiredNames": [
+            "Classic resume-probe discovery skips a legacy OpenSpec archive without Comet state"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-587-resume-excludes-delivered-legacy-archives",
+      "behavior": "Classic 自动恢复尊重缺少现代交付记录的旧归档中已处理的交付状态。",
+      "sources": ["https://github.com/rpamis/comet/issues/587"],
+      "coverageLevel": "public-cli",
+      "reproduction": "放入两个 archived: true、branch_status: handled 且缺少现代交付记录的旧归档。npm 0.5.6 和修复前 057 将两者加入候选，要求用户指定变更名。",
+      "expected": "已处理的旧归档退出候选，待交付的旧归档和有现代待核验交付记录的归档仍显示。",
+      "forbidden": "把已处理的旧归档当作待交付，或用旧 YAML 标记掩盖现代待核验记录。",
+      "rootCause": "探针仅检查现代交付记录，未兼容没有该记录的旧归档。",
+      "tests": [
+        {
+          "file": "test/app/resume-probe.test.ts",
+          "namePattern": "^Classic resume-probe discovery (?:excludes handled legacy archives without receipts and keeps pending delivery visible|retains pending sealed delivery even when archived YAML says handled)$",
+          "requiredNames": [
+            "Classic resume-probe discovery excludes handled legacy archives without receipts and keeps pending delivery visible",
+            "Classic resume-probe discovery retains pending sealed delivery even when archived YAML says handled"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-587-resume-ignores-unmanaged-active-openspec",
+      "behavior": "Classic 自动恢复区分未托管 OpenSpec 变更和丢失状态的受管变更。",
+      "sources": ["https://github.com/rpamis/comet/issues/587"],
+      "coverageLevel": "public-cli",
+      "reproduction": "仅在活动目录中创建 OpenSpec proposal.md 和 tasks.md。npm 0.5.6 和修复前 057 的 status 显示未托管，resume-probe 却将其报告为 invalid。",
+      "expected": "未托管 OpenSpec 不进入恢复候选。存在 Classic 归属但丢失状态时仍只读报告缺失。",
+      "forbidden": "把普通 OpenSpec 变更当作损坏的 Classic 变更、自动继续缺状态的受管变更或为其构造可执行命令。",
+      "rootCause": "探针把普通 OpenSpec 文件当成了 Classic 归属证据。",
+      "tests": [
+        {
+          "file": "test/app/resume-probe.test.ts",
+          "namePattern": "^Classic resume-probe discovery (?:ignores unmanaged active OpenSpec changes in agreement with status|reports missing state for a change with a Classic runtime owner)$",
+          "requiredNames": [
+            "Classic resume-probe discovery ignores unmanaged active OpenSpec changes in agreement with status",
+            "Classic resume-probe discovery reports missing state for a change with a Classic runtime owner"
+          ]
+        }
+      ]
+    },
+    {
       "id": "native-automatic-archive-after-verify-pass",
       "behavior": "内置 Native Change 在项目设为 automatic 时，提交完整通过的 Verify 结果后继续归档。",
       "sources": ["report:2026-11-23-native-automatic-archive-waits"],
