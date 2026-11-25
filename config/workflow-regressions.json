@@ -2,6 +2,44 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "openspec-594-init-global-skill-scope",
+      "behavior": "通过 comet init 为 Cursor 全局安装 OpenSpec Skill 时，用户主目录只作为 Skill 安装位置。",
+      "sources": ["https://github.com/rpamis/comet/issues/594"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 Windows 用 OpenSpec 2.2.0 运行 comet init --platform cursor --scope global --workflow classic。npm 0.5.7 和修复前的 058 均报告主目录不能作为项目初始化。",
+      "expected": "初始化成功，Cursor 的 OpenSpec Skill 安装到用户目录中的 .cursor/skills。",
+      "forbidden": "在用户主目录或当前项目生成 OpenSpec 项目目录，或写入项目级 Cursor Skill 或全局共享 .agents 目录。",
+      "rootCause": "Comet 将 Global 安装的用户主目录用作 OpenSpec 的项目初始化目标，OpenSpec 2.1 起在全局 Skill 模式下拒绝该目标。",
+      "tests": [
+        {
+          "file": "test/app/openspec-2-init-cli.test.ts",
+          "namePattern": "^comet init with OpenSpec 2 shared \\.agents output installs Cursor OpenSpec 2\\.2 Skills only in the requested global scope$",
+          "requiredNames": [
+            "comet init with OpenSpec 2 shared .agents output installs Cursor OpenSpec 2.2 Skills only in the requested global scope"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "openspec-594-init-project-skill-scope",
+      "behavior": "通过 comet init 在项目中安装 Cursor 的 OpenSpec Skill 时，临时生成的 Skill 最终只安装到该项目。",
+      "sources": ["report:2026-11-25-openspec-project-scope"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 Windows 用 OpenSpec 2.2.0 运行 comet init --platform cursor --scope project --workflow classic。npm 0.5.7 和修复前的 058 都向用户目录写入共享 Skill，随后报告临时项目中没有 Cursor 产物。",
+      "expected": "初始化成功，Cursor 的 OpenSpec Skill 安装到项目的 .cursor/skills，OpenSpec 配置按项目布局创建。",
+      "forbidden": "项目安装写入用户级 Cursor Skill、共享 .agents 目录或 OpenSpec 项目目录。",
+      "rootCause": "Comet 未限制临时项目中的 OpenSpec Skill 生成范围，OpenSpec 2.1 起默认写到全局目录。",
+      "tests": [
+        {
+          "file": "test/app/openspec-2-init-cli.test.ts",
+          "namePattern": "^comet init with OpenSpec 2 shared \\.agents output installs Cursor OpenSpec 2\\.2 Skills only in the requested project scope$",
+          "requiredNames": [
+            "comet init with OpenSpec 2 shared .agents output installs Cursor OpenSpec 2.2 Skills only in the requested project scope"
+          ]
+        }
+      ]
+    },
+    {
       "id": "dashboard-591-codex-embedded-narrow-wheel-scroll",
       "behavior": "Codex 插件的内嵌工作台在窄窗口下可用鼠标滚轮访问 Native 变更详情和关键产物。",
       "sources": ["https://github.com/rpamis/comet/issues/591"],

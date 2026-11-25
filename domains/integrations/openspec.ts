@@ -76,13 +76,10 @@ function getNpmExecutable(platform: NodeJS.Platform = process.platform): string 
 }
 
 function buildOpenSpecInitInvocation(
-  projectPath: string,
+  targetPath: string,
   toolIds: readonly string[],
-  scope: InstallScope,
-  homeDir = os.homedir(),
   includeProfileFlag = true,
 ): { command: string; args: string[] } {
-  const targetPath = scope === 'global' ? homeDir : projectPath;
   const args = ['init', targetPath, '--tools', toolIds.join(',')];
   if (includeProfileFlag) {
     args.push('--profile', 'custom');
@@ -120,7 +117,7 @@ async function runOpenSpecInit(
   commandMayMutateProject = true,
 ): Promise<void> {
   const useShell = process.platform === 'win32';
-  const invocation = buildOpenSpecInitInvocation(targetPath, toolIds, 'project');
+  const invocation = buildOpenSpecInitInvocation(targetPath, toolIds);
   try {
     await assertProjectMutationAllowed(
       projectMutationGuard,
@@ -152,13 +149,7 @@ async function runOpenSpecInit(
       projectMutationAlreadyStarted || commandMayMutateProject,
     );
     console.warn('    OpenSpec does not support --profile flag, retrying without it...');
-    const fallbackInvocation = buildOpenSpecInitInvocation(
-      targetPath,
-      toolIds,
-      'project',
-      os.homedir(),
-      false,
-    );
+    const fallbackInvocation = buildOpenSpecInitInvocation(targetPath, toolIds, false);
     const fallbackArgs = useShell
       ? quoteArgsForShell(fallbackInvocation.args)
       : fallbackInvocation.args;
@@ -365,8 +356,13 @@ async function resolveGeneratedToolCopies(
       selectedPlatformIds.length > 0
         ? selectedPlatformIds.includes(generator.id)
         : mirrors.length === 0;
+    // Older OpenSpec versions can still generate under a platform's legacy root.
+    const generatorDestination =
+      scope === 'global' && generator.legacySkillsDirs?.includes(sourceDir)
+        ? sourceDir
+        : getPlatformSkillsDir(generator, scope);
     const destinations = [
-      ...(writeGenerator ? [path.join(destBase, getPlatformSkillsDir(generator, scope))] : []),
+      ...(writeGenerator ? [path.join(destBase, generatorDestination)] : []),
       ...mirrors.map((platform) => path.join(destBase, getPlatformSkillsDir(platform, scope))),
     ];
     for (const destination of destinations) {
@@ -463,6 +459,9 @@ function createOpenSpecAllWorkflowsEnv(): { env: NodeJS.ProcessEnv; configHome: 
       env: {
         ...process.env,
         XDG_CONFIG_HOME: configHome,
+        // OpenSpec 2.1+ defaults to global Skills. Generate into the project so
+        // Comet can install just the requested assets into its platform roots.
+        OPENSPEC_SKILLS_SCOPE: 'project',
       },
     };
   } catch (error) {
@@ -645,9 +644,8 @@ function migrateOpenCodeOpenSpecPaths(homeDir: string): void {
   const opencodePlatform = PLATFORMS.find((p) => p.id === 'opencode');
   if (!opencodePlatform?.globalSkillsDir) return;
 
-  // OpenSpec hardcodes skillsDir as '.opencode' in its AI_TOOLS, so it writes
-  // to ~/.opencode/ even for global installs. OpenCode actually reads from
-  // ~/.config/opencode/ (Comet's globalSkillsDir). Move the files over.
+  // Earlier global installs wrote to ~/.opencode/. Move those files to the
+  // directory OpenCode reads before installing the newly generated assets.
   migrateOpenSpecPaths(
     path.join(homeDir, opencodePlatform.skillsDir),
     path.join(homeDir, opencodePlatform.globalSkillsDir),
@@ -850,10 +848,7 @@ async function installOpenSpec(
 
     configBackup = writeAllWorkflowsToDefaultConfig();
     const destBase = scope === 'global' ? os.homedir() : projectPath;
-    const usesStagedToolCopy =
-      toolIds.length > 0 && (scope === 'project' || allMirrorPlatformIds.length > 0 || dshSelected);
-
-    if (usesStagedToolCopy) {
+    if (toolIds.length > 0) {
       stagingProject = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-tools-'));
       await runOpenSpecInit(
         stagingProject,
@@ -903,21 +898,14 @@ async function installOpenSpec(
         await copyDshOpenSpecPaths(stagingProject, projectPath, 'project', projectMutationGuard);
       }
       await assertProjectMutationAllowed(projectMutationGuard, 'after-external', true);
-    } else if (
-      (allMirrorPlatformIds.length > 0 || dshSelected) &&
-      stagingProject &&
-      generatedToolCopies
-    ) {
+    } else if (stagingProject && generatedToolCopies) {
+      if (toolIds.includes('opencode')) {
+        migrateOpenCodeOpenSpecPaths(destBase);
+      }
       await mergeGeneratedToolDirectories(generatedToolCopies, stagingProject, destBase);
       if (dshSelected) {
         await copyDshOpenSpecPaths(stagingProject, destBase, scope);
       }
-    } else {
-      await runOpenSpecInit(os.homedir(), toolIds, openspecEnv.env);
-    }
-
-    if (scope === 'global' && toolIds.includes('opencode')) {
-      migrateOpenCodeOpenSpecPaths(os.homedir());
     }
 
     return 'installed';

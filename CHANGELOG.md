@@ -6,6 +6,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **OpenSpec installation**: Install Classic Skills in the selected global or project directory with OpenSpec 2.1 and later. Project installs keep their Skills local, and global installs no longer try to initialize the home directory as a project ([#594](https://github.com/rpamis/comet/issues/594)).
 - **Classic resume discovery**: Completed historical SDK archives without a delivery record no longer block resuming the only active Classic change. Pending deliveries still appear in recovery ([#593](https://github.com/rpamis/comet/issues/593)).
 - **Codex Dashboard scrolling**: Scroll through change details and key artifacts in the embedded workbench when the window is narrower than 1024 pixels ([#591](https://github.com/rpamis/comet/issues/591)).
 

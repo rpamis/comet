@@ -1842,32 +1842,21 @@ describe('openspec', () => {
       expect(fs.existsSync(tempDir)).toBe(false);
     });
 
-    it('uses the home directory as the OpenSpec init target for global scope', async () => {
+    it('preserves the supplied OpenSpec init target, including spaces', async () => {
       const { buildOpenSpecInitInvocation } =
         await import('../../../domains/integrations/openspec.js');
 
-      expect(
-        buildOpenSpecInitInvocation('/tmp/project', ['codex'], 'global', '/Users/Test User'),
-      ).toEqual({
+      expect(buildOpenSpecInitInvocation('/tmp/Test Project', ['codex'])).toEqual({
         command: 'openspec',
-        args: ['init', '/Users/Test User', '--tools', 'codex', '--profile', 'custom'],
+        args: ['init', '/tmp/Test Project', '--tools', 'codex', '--profile', 'custom'],
       });
-      expect(
-        buildOpenSpecInitInvocation('/tmp/project', ['codex'], 'global', '/home/test user'),
-      ).toEqual({
+      expect(buildOpenSpecInitInvocation('/home/test user/project', ['codex'])).toEqual({
         command: 'openspec',
-        args: ['init', '/home/test user', '--tools', 'codex', '--profile', 'custom'],
+        args: ['init', '/home/test user/project', '--tools', 'codex', '--profile', 'custom'],
       });
-      expect(
-        buildOpenSpecInitInvocation(
-          'D:\\Project\\Comet',
-          ['codex'],
-          'global',
-          'C:\\Users\\Test User',
-        ),
-      ).toEqual({
+      expect(buildOpenSpecInitInvocation('D:\\Project\\Test Project', ['codex'])).toEqual({
         command: 'openspec',
-        args: ['init', 'C:\\Users\\Test User', '--tools', 'codex', '--profile', 'custom'],
+        args: ['init', 'D:\\Project\\Test Project', '--tools', 'codex', '--profile', 'custom'],
       });
     });
 
@@ -1875,14 +1864,7 @@ describe('openspec', () => {
       const { buildOpenSpecInitInvocation } =
         await import('../../../domains/integrations/openspec.js');
 
-      expect(
-        buildOpenSpecInitInvocation(
-          '/tmp/project',
-          ['future tool', 'codex'],
-          'project',
-          '/home/user',
-        ),
-      ).toEqual({
+      expect(buildOpenSpecInitInvocation('/tmp/project', ['future tool', 'codex'])).toEqual({
         command: 'openspec',
         args: ['init', '/tmp/project', '--tools', 'future tool,codex', '--profile', 'custom'],
       });
@@ -1892,9 +1874,7 @@ describe('openspec', () => {
       const { buildOpenSpecInitInvocation } =
         await import('../../../domains/integrations/openspec.js');
 
-      expect(
-        buildOpenSpecInitInvocation('/tmp/project', ['claude'], 'project', '/home/user', false),
-      ).toEqual({
+      expect(buildOpenSpecInitInvocation('/tmp/project', ['claude'], false)).toEqual({
         command: 'openspec',
         args: ['init', '/tmp/project', '--tools', 'claude'],
       });
@@ -2196,18 +2176,29 @@ describe('openspec', () => {
     });
 
     it('integrates with installOpenSpec for global scope with opencode tool', async () => {
-      mockedExecFileSync.mockReturnValue(Buffer.from('/usr/bin/openspec'));
-      mockedExecFileSync.mockReturnValue(Buffer.from('ok'));
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-install-test-'));
       const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(tmpDir);
+      try {
+        const legacySkills = path.join(tmpDir, '.opencode', 'skills');
+        const obsoleteSkill = path.join(legacySkills, 'openspec-propose');
+        fs.mkdirSync(obsoleteSkill, { recursive: true });
+        fs.writeFileSync(path.join(obsoleteSkill, 'SKILL.md'), 'obsolete');
+        fs.writeFileSync(path.join(legacySkills, 'other.md'), 'keep');
 
-      const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
-      const result = await installOpenSpec('/tmp/test', ['opencode', 'claude'], 'global');
+        const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+        const result = await installOpenSpec('/tmp/test', ['opencode', 'claude'], 'global');
 
-      expect(result).toBe('installed');
-
-      homedirSpy.mockRestore();
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+        expect(result).toBe('installed');
+        const globalSkills = path.join(tmpDir, '.config', 'opencode', 'skills');
+        expect(
+          fs.readFileSync(path.join(globalSkills, 'openspec-propose', 'SKILL.md'), 'utf8'),
+        ).toBe('# staged\n');
+        expect(fs.readFileSync(path.join(globalSkills, 'other.md'), 'utf8')).toBe('keep');
+        expect(fs.existsSync(legacySkills)).toBe(false);
+      } finally {
+        homedirSpy.mockRestore();
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
     });
 
     // Regression for issue #123: on Windows, project paths containing spaces
