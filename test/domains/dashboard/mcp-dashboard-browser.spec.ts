@@ -172,6 +172,37 @@ test('renders the packaged Dashboard without frames or browser network access un
         fullPage: true,
       });
     }
+    await test.step('scrolls the embedded Native workbench with the wheel across the desktop breakpoint', async () => {
+      const workspace = dashboard.locator('[data-dashboard-scroll="workspace"]');
+      const detail = workspace.locator('.native-change-detail');
+      const artifacts = detail.getByRole('heading', { name: '关键产物', exact: true });
+      const documentScroll = () =>
+        dashboard.locator('html').evaluate((element) => element.ownerDocument.defaultView!.scrollY);
+      const workspaceScroll = () => workspace.evaluate((element) => element.scrollTop);
+      for (const width of [1024, 908, 1023]) {
+        await page.setViewportSize({ width, height: 920 });
+        await workspace.evaluate((element) => {
+          element.ownerDocument.defaultView!.scrollTo(0, 0);
+          element.scrollTop = 0;
+        });
+        const bounds = (await workspace.boundingBox())!;
+        await page.mouse.move(bounds.x + 8, Math.min(460, bounds.y + bounds.height / 2));
+        await page.mouse.wheel(0, 640);
+        if (width < 1024) {
+          await expect
+            .poll(documentScroll, { message: `iframe document scroll at ${width}px` })
+            .toBeGreaterThan(0);
+          expect(await workspaceScroll()).toBe(0);
+        } else {
+          await expect
+            .poll(workspaceScroll, { message: `workspace scroll at ${width}px` })
+            .toBeGreaterThan(0);
+          expect(await documentScroll()).toBe(0);
+        }
+        await expect(artifacts).toBeInViewport();
+        expect(await page.evaluate(() => window.scrollY)).toBe(0);
+      }
+    });
     await page.setViewportSize({ width: 1280, height: 900 });
     const settings = dashboard.getByRole('button', { name: /^(设置|Settings)$/ });
     if (!(await settings.isVisible()))

@@ -7,6 +7,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Fixed
 
 - **Classic resume discovery**: Completed historical SDK archives without a delivery record no longer block resuming the only active Classic change. Pending deliveries still appear in recovery ([#593](https://github.com/rpamis/comet/issues/593)).
+- **Codex Dashboard scrolling**: Scroll through change details and key artifacts in the embedded workbench when the window is narrower than 1024 pixels ([#591](https://github.com/rpamis/comet/issues/591)).
 
 ## What's Changed [0.5.7] - 2026-11-24
 

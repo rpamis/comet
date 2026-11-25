@@ -2,6 +2,35 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "dashboard-591-codex-embedded-narrow-wheel-scroll",
+      "behavior": "Codex 插件的内嵌工作台在窄窗口下可用鼠标滚轮访问 Native 变更详情和关键产物。",
+      "sources": ["https://github.com/rpamis/comet/issues/591"],
+      "coverageLevel": "runtime",
+      "reproduction": "将 Codex 插件通过 MCP 返回的工作台放入固定高度 920 CSS 像素的 iframe，在有 Native 变更的临时仓库向下滚动正文。npm 0.5.7 和修复前 058 在 1024 像素下可滚动，到 908 像素时滚动位置保持在 0。",
+      "expected": "908 和 1023 像素下滚轮能滚动 iframe 文档并显示关键产物，1024 像素下仍由工作台正文滚动，外层页面保持原位。",
+      "forbidden": "嵌入模板覆盖窄屏文档的滚动能力，或导致桌面滚动时 iframe 文档与工作台正文一起移动。",
+      "rootCause": "MCP 模板在 Dashboard 样式之后对 html 和 body 统一设置 overflow: hidden，窄屏下锁住了原本负责纵向滚动的文档。",
+      "tests": [
+        {
+          "file": "test/scripts/codex-dashboard-mcp-template.test.ts",
+          "namePattern": "^Codex plugin package lets the Dashboard stylesheet control document overflow in the MCP resource$",
+          "requiredNames": [
+            "Codex plugin package lets the Dashboard stylesheet control document overflow in the MCP resource"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "browser",
+          "status": "verified",
+          "evidence": [
+            "test/domains/dashboard/mcp-dashboard-browser.spec.ts: renders the packaged Dashboard without frames or browser network access under desktop CSP > scrolls the embedded Native workbench with the wheel across the desktop breakpoint",
+            "Playwright Chromium on Windows, with the packaged MCP resource at 920 CSS pixels high. The npm 0.5.7 package and unmodified 058 package both failed at 908 pixels. The rebuilt package passed at 908, 1023, and 1024 pixels."
+          ]
+        }
+      ]
+    },
+    {
       "id": "classic-593-resume-excludes-completed-sdk-archives",
       "behavior": "Classic 自动恢复跳过 Run 已确认完成但没有现代交付记录的历史 SDK 归档。",
       "sources": [
