@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.5.8] - 2026-11-25
+
+### Fixed
+
+- **Classic resume discovery**: Completed historical SDK archives without a delivery record no longer block resuming the only active Classic change. Pending deliveries still appear in recovery ([#593](https://github.com/rpamis/comet/issues/593)).
+
 ## What's Changed [0.5.7] - 2026-11-24
 
 ### Added

@@ -2,6 +2,33 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "classic-593-resume-excludes-completed-sdk-archives",
+      "behavior": "Classic 自动恢复跳过 Run 已确认完成但没有现代交付记录的历史 SDK 归档。",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/593",
+        "https://github.com/rpamis/comet/issues/587#issuecomment-7128863498"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "启用 ambient_resume 并采用旧目录布局，放入一个活跃 Classic 变更，再放入一个 archived: true、branch_status: handled、Run 已完成但没有 delivery.json 的历史归档。向公开 resume-probe 传入“继续”，npm 0.5.7 和修复前 master 都提示有多个变更且候选为空。master 在本地 Run 及可移植 checkpoint 两种场景均复现。",
+      "expected": "通过匹配的已完成 Run 确认已处理的历史归档后将其排除。仅有一个活跃变更时提示确认该变更，没有其他候选时返回 action: none。",
+      "forbidden": "让已完成归档阻塞唯一活跃变更，修改归档状态，或用归档文件中的 handled 标记掩盖未完成的 Run、待交付或失效的交付授权。",
+      "rootCause": "探针读取受管 Run 后丢弃终态所提供的交付证据，只允许没有受管 Run 的归档使用历史交付兼容逻辑。",
+      "tests": [
+        {
+          "file": "test/app/resume-probe.test.ts",
+          "namePattern": "^Classic resume-probe discovery (?:excludes a completed handled SDK archive without delivery authorization \\((?:portable checkpoint|local Run store)\\)|retains a handled SDK archive when (?:the Run failed|the Run still records pending delivery)|retains (?:pending|invalidated) delivery authorization for a completed handled SDK archive)$",
+          "requiredNames": [
+            "Classic resume-probe discovery excludes a completed handled SDK archive without delivery authorization (portable checkpoint)",
+            "Classic resume-probe discovery excludes a completed handled SDK archive without delivery authorization (local Run store)",
+            "Classic resume-probe discovery retains a handled SDK archive when the Run failed",
+            "Classic resume-probe discovery retains a handled SDK archive when the Run still records pending delivery",
+            "Classic resume-probe discovery retains pending delivery authorization for a completed handled SDK archive",
+            "Classic resume-probe discovery retains invalidated delivery authorization for a completed handled SDK archive"
+          ]
+        }
+      ]
+    },
+    {
       "id": "classic-587-resume-skips-archives-without-state",
       "behavior": "Classic 自动恢复跳过不含 Comet 状态的旧 OpenSpec 归档。",
       "sources": ["https://github.com/rpamis/comet/issues/587"],

@@ -13,6 +13,7 @@ import { classicSdkNextAction } from './classic-sdk-status.js';
 import { PORTABLE_RUN_CHECKPOINT_KEY, readPortableRunCheckpoint } from '../engine/runtime.js';
 import { parseDocument } from 'yaml';
 import { inspectPristineClassicSdkState } from './classic-runtime-ownership.js';
+import { classicSdkRunMatchesProfile } from './classic-sdk-profile.js';
 import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
 import {
   classicStateToDocument,
@@ -240,6 +241,7 @@ async function inspectManagedRun(
 ): Promise<{
   state: ClassicState | null;
   lostRun: boolean;
+  completedDelivery?: boolean;
   cancellation?: 'complete' | 'pending';
   sdk?: ClassicResumeRun;
 }> {
@@ -248,17 +250,25 @@ async function inspectManagedRun(
   });
   const owner = await readSdkChangeOwner(projectRoot, 'classic', name);
   if (!hasClassicManagedRunMarker(source) && !owner) return { state: null, lostRun: false };
-  const observe = (run: WorkflowRun, state: ClassicState) => ({
-    state,
-    lostRun: false,
-    ...(run.status === 'cancelled'
-      ? {
-          cancellation: isClassicSdkCancellationComplete(run)
-            ? ('complete' as const)
-            : ('pending' as const),
-        }
-      : {}),
-  });
+  const observe = (run: WorkflowRun, state: ClassicState) => {
+    const runState = run.state as ClassicState | undefined;
+    return {
+      state,
+      lostRun: false,
+      completedDelivery:
+        run.status === 'completed' &&
+        runState?.archived === true &&
+        runState.branchStatus === 'handled' &&
+        classicSdkRunMatchesProfile(run, state.workflow),
+      ...(run.status === 'cancelled'
+        ? {
+            cancellation: isClassicSdkCancellationComplete(run)
+              ? ('complete' as const)
+              : ('pending' as const),
+          }
+        : {}),
+    };
+  };
   const checkpointState = () => {
     const document = parseDocument(source, { uniqueKeys: true });
     if (document.errors.length > 0) return null;
@@ -464,10 +474,11 @@ async function discoverPendingArchivedChanges(projectRoot: string): Promise<Acti
           evidence: false,
         });
         if (['complete', 'local-verified'].includes(delivery.verification.status)) return null;
-        // Compatibility archives could record completion before delivery authorization existed.
+        // A historical archive can predate delivery authorization. For SDK archives,
+        // confirm completion from the matching Run as well as the archived state.
         if (
           classic.branchStatus === 'handled' &&
-          !managed.state &&
+          (!managed.state || managed.completedDelivery) &&
           !managed.lostRun &&
           delivery.verification.status === 'needsAuthorization' &&
           !('invalidated' in delivery.verification)

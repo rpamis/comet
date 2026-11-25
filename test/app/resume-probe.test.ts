@@ -4,11 +4,27 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { parse, stringify } from 'yaml';
 import { nativeProjectPaths } from '../../domains/comet-native/native-paths.js';
 import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
 import { resolveProjectLanguage } from '../../app/commands/resume-probe.js';
-import { writeClassicDelivery } from '../../domains/comet-classic/classic-progress.js';
+import {
+  invalidateClassicDelivery,
+  writeClassicDelivery,
+} from '../../domains/comet-classic/classic-progress.js';
+import { parseClassicStateDocument } from '../../domains/comet-classic/classic-state.js';
+import {
+  createFileRuntimeStore,
+  createPortableRunCheckpoint,
+  type RuntimeValue,
+  type WorkflowRun,
+} from '../../domains/engine/runtime.js';
+import {
+  COMET_CHANGE_OWNER_SCHEMA,
+  registerSdkChangeOwner,
+} from '../../domains/workflow-contract/change-runtime-owner.js';
 import { resolveClassicStateFile } from '../../domains/workflow-contract/classic-state-file.js';
+import { resolveWorkspaceRuntimeRoot } from '../../domains/workflow-contract/workspace-runtime.js';
 
 const repositoryRoot = path.resolve('.');
 const cli = path.join(repositoryRoot, 'bin', 'comet.js');
@@ -59,6 +75,7 @@ function parseResult(stdout: string) {
     changeName: string | null;
     phase: string | null;
     confidence: string;
+    reasonCode: string;
     reason: string;
     nextCommand: string | null;
   };
@@ -321,6 +338,147 @@ describe('Classic resume-probe discovery', () => {
     expect(captured.status, captured.stderr).toBe(0);
     return parseResult(captured.stdout);
   }
+
+  async function recordArchivedRun(
+    dir: string,
+    name: string,
+    storage: 'portable checkpoint' | 'local Run store',
+    options: { status?: 'completed' | 'failed'; checkpointBranchStatus?: 'pending' } = {},
+  ) {
+    const file = path.join(dir, '.comet.yaml');
+    const data = parse(await fs.readFile(file, 'utf8')) as Record<string, unknown>;
+    const workflow = { id: 'comet-classic-hotfix', version: '1', hash: 'a'.repeat(64) };
+    const state = parseClassicStateDocument(data).classic;
+    const status = options.status ?? 'completed';
+    const run: WorkflowRun = {
+      protocolVersion: 1,
+      schemaVersion: 1,
+      runId: name,
+      revision: 1,
+      workflow,
+      definitionHashes: { [JSON.stringify([workflow.id, workflow.version])]: workflow.hash },
+      input: { change: name },
+      state: {
+        ...state,
+        ...(options.checkpointBranchStatus ? { branchStatus: options.checkpointBranchStatus } : {}),
+      } as RuntimeValue,
+      status,
+      ...(status === 'failed' ? { reason: 'Delivery action failed' } : {}),
+      sequence: 0,
+      actions: [],
+      actionContexts: {},
+      waits: [],
+      ready: [],
+      joins: {},
+      outputs: {},
+      children: [],
+      lineage: [],
+    };
+    if (storage === 'portable checkpoint') {
+      data.run_id = name;
+      data.run_checkpoint = createPortableRunCheckpoint(run);
+    } else {
+      await registerSdkChangeOwner(projectRoot, {
+        schema: COMET_CHANGE_OWNER_SCHEMA,
+        workflow: 'classic',
+        change: name,
+        format: 'sdk',
+        application: 'classic-hotfix',
+        runId: name,
+      });
+      const rootDir = path.join(await resolveWorkspaceRuntimeRoot(projectRoot), 'sdk-runs/classic');
+      const store = createFileRuntimeStore<WorkflowRun>({ rootDir });
+      expect(await store.compareAndSwap(name, null, run)).toBe(true);
+    }
+    const source = '# comet-execution: managed-run\n' + stringify(data);
+    await fs.writeFile(file, source);
+    return source;
+  }
+
+  it.each(['portable checkpoint', 'local Run store'] as const)(
+    'excludes a completed handled SDK archive without delivery authorization (%s)',
+    async (storage) => {
+      const name = 'historical-delivery';
+      const dir = await archive(name, 'handled');
+      const source = await recordArchivedRun(dir, name, storage);
+      const nameOfActiveChange = 'active-change';
+      const active = path.join(projectRoot, 'openspec/changes', nameOfActiveChange);
+      await fs.mkdir(active);
+      const docs = path.join(projectRoot, 'docs');
+      await fs.mkdir(docs);
+      await fs.writeFile(path.join(docs, 'design.md'), '# Design\n');
+      await fs.writeFile(path.join(docs, 'plan.md'), '- [ ] Implement\n');
+      await fs.writeFile(
+        path.join(active, '.comet.yaml'),
+        stringify({
+          workflow: 'full',
+          phase: 'build',
+          archived: false,
+          build_mode: 'executing-plans',
+          isolation: 'current',
+          verify_result: 'pending',
+          verify_mode: 'full',
+          verified_at: null,
+          design_doc: 'docs/design.md',
+          plan: 'docs/plan.md',
+        }),
+      );
+
+      const result = probe();
+      expect(result, result.reason).toMatchObject({
+        action: 'ask_user',
+        reasonCode: 'ambient-resume-confirmation-required',
+        changeName: nameOfActiveChange,
+        candidates: [{ name: nameOfActiveChange }],
+      });
+      await fs.rename(active, path.join(projectRoot, nameOfActiveChange));
+      expect(probe()).toMatchObject({ action: 'none', changeName: null, nextCommand: null });
+      expect(await fs.readdir(dir)).toEqual(['.comet.yaml', 'proposal.md']);
+      expect(await fs.readFile(path.join(dir, '.comet.yaml'), 'utf8')).toBe(source);
+    },
+  );
+
+  it.each([
+    ['the Run failed', { status: 'failed' }],
+    ['the Run still records pending delivery', { checkpointBranchStatus: 'pending' }],
+  ] as const)('retains a handled SDK archive when %s', async (_label, options) => {
+    const name = 'unresolved-delivery';
+    const dir = await archive(name, 'handled');
+    await recordArchivedRun(dir, name, 'portable checkpoint', options);
+    expect(probe()).toMatchObject({
+      action: 'ask_user',
+      phase: 'archive',
+      changeName: name,
+      reason: 'archived change has pending delivery',
+    });
+  });
+
+  it.each(['pending', 'invalidated'] as const)(
+    'retains %s delivery authorization for a completed handled SDK archive',
+    async (authorization) => {
+      const name = 'sealed-sdk-delivery';
+      const dir = await archive(name, 'handled', false);
+      await writeClassicDelivery(
+        projectRoot,
+        dir,
+        { action: 'archive-only' },
+        { phase: 'archive', verifyResult: 'pass', archived: false },
+      );
+      if (authorization === 'invalidated') await invalidateClassicDelivery(projectRoot, dir);
+      const file = path.join(dir, '.comet.yaml');
+      await fs.writeFile(
+        file,
+        (await fs.readFile(file, 'utf8')).replace('archived: false', 'archived: true'),
+      );
+      await recordArchivedRun(dir, name, 'portable checkpoint');
+      expect(probe()).toMatchObject({
+        action: 'ask_user',
+        phase: 'archive',
+        changeName: name,
+        reason: 'archived change has pending delivery',
+      });
+    },
+  );
 
   it('skips a legacy OpenSpec archive without Comet state', async () => {
     const dir = await archive('plain-archive');
