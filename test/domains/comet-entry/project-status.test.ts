@@ -301,6 +301,60 @@ describe('Comet project status', () => {
     ]);
   });
 
+  it('counts `*` task items so an open one keeps a plain OpenSpec change from archive', async () => {
+    await writeClassicOnlyConfig(projectRoot);
+    const changeDir = path.join(projectRoot, 'openspec', 'changes', 'star-tasks');
+    await fs.mkdir(changeDir, { recursive: true });
+    await fs.writeFile(
+      path.join(changeDir, 'tasks.md'),
+      '## 1. Work\n- [x] 1.1 Done step\n* [ ] 1.2 Still open\n  * [X] 1.3 Nested done\n',
+    );
+
+    const status = await inspectCometProjectStatus(projectRoot);
+
+    expect(status.unmanagedOpenSpec).toEqual([
+      expect.objectContaining({
+        name: 'star-tasks',
+        archiveReady: false,
+        tasksCompleted: 2,
+        tasksTotal: 3,
+      }),
+    ]);
+  });
+
+  it('counts task items with the Classic task parser rules, skipping fenced examples', async () => {
+    await writeClassicOnlyConfig(projectRoot);
+    const changeDir = path.join(projectRoot, 'openspec', 'changes', 'fenced-tasks');
+    await fs.mkdir(changeDir, { recursive: true });
+    const source = [
+      '## 1. Work',
+      '- [x] 1.1 Done step',
+      '```md',
+      '* [ ] example only',
+      '- [x] example only',
+      '```',
+      '+ [ ] plus marker',
+      '* [x]no space',
+      '- [ ] <!-- comet-task:dup -->',
+      '- [ ] 1.2 Dup id <!-- comet-task:dup -->',
+      '- [ ] 1.3 Dup id <!-- comet-task:dup -->',
+      '',
+    ].join('\n');
+    await fs.writeFile(path.join(changeDir, 'tasks.md'), source);
+
+    const status = await inspectCometProjectStatus(projectRoot);
+
+    // Same lines as parseClassicTasks, but status never throws on bad IDs.
+    expect(status.unmanagedOpenSpec).toEqual([
+      expect.objectContaining({
+        name: 'fenced-tasks',
+        archiveReady: false,
+        tasksCompleted: 1,
+        tasksTotal: 4,
+      }),
+    ]);
+  });
+
   it('fails closed for a valid Classic change name backed by a directory link', async () => {
     await writeClassicOnlyConfig(projectRoot);
     const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-project-status-outside-'));

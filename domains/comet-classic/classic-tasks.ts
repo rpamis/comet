@@ -10,10 +10,8 @@ export interface ClassicTask {
 const TASK = /^(\s*[-*]\s+\[)([ xX])(\]\s+)(.*)$/u;
 const ID = /\s*<!-- comet-task:([a-zA-Z0-9][a-zA-Z0-9_-]{0,79}) -->\s*$/u;
 
-/** One parser for completion and recovery; fenced examples are not work. */
-export function parseClassicTasks(source: string): ClassicTask[] {
-  const tasks: ClassicTask[] = [];
-  const ids = new Set<string>();
+/** Task checkbox lines outside fenced blocks; fenced examples are not work. */
+function* classicTaskLines(source: string): Generator<{ match: RegExpExecArray; index: number }> {
   let fence: { marker: string; length: number } | null = null;
   for (const [index, line] of source.split(/\r?\n/u).entries()) {
     const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/u.exec(line);
@@ -29,7 +27,26 @@ export function parseClassicTasks(source: string): ClassicTask[] {
     }
     if (fence) continue;
     const match = TASK.exec(line);
-    if (!match) continue;
+    if (match) yield { match, index };
+  }
+}
+
+/** Progress counts for read-only views; same lines as parseClassicTasks, without ID checks. */
+export function countClassicTasks(source: string): { done: number; total: number } {
+  let done = 0;
+  let total = 0;
+  for (const { match } of classicTaskLines(source)) {
+    total++;
+    if (match[2].toLowerCase() === 'x') done++;
+  }
+  return { done, total };
+}
+
+/** One parser for completion and recovery; fenced examples are not work. */
+export function parseClassicTasks(source: string): ClassicTask[] {
+  const tasks: ClassicTask[] = [];
+  const ids = new Set<string>();
+  for (const { match, index } of classicTaskLines(source)) {
     const idMatch = ID.exec(match[4]);
     const id = idMatch?.[1] ?? null;
     if (

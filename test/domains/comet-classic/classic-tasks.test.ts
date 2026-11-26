@@ -47,6 +47,7 @@ describe('Classic canonical tasks', () => {
       { id: null, text: 'parent', completed: false, line: 4 },
       { id: null, text: 'child', completed: true, line: 5 },
     ]);
+    expect(parseClassicTasks('+ [ ] plus marker\n* [x]no space\n')).toEqual([]);
   });
   it.each(['\n', '\r\n'])('preserves line endings %j and assigns persistent unique IDs', (eol) => {
     const source = `- [ ] same${eol}- [x] same${eol}`;

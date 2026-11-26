@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.5.8] - 2026-11-26
+
+### Fixed
+
+- **Status task counts**: `comet status` counts `* [ ]` and `* [x]` task items like `- [ ]` items. A plain OpenSpec change with an open `*` task is no longer reported as ready to archive, Classic task counts match what Classic reads, and checkbox examples inside fenced code blocks are no longer counted ([#596](https://github.com/rpamis/comet/issues/596)).
+
 ## What's Changed [0.5.7] - 2026-11-24
 
 ### Added
