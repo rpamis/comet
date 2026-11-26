@@ -55962,7 +55962,7 @@
       "reproduction": "临时项目中普通 OpenSpec change 的 tasks.md 为 `- [x] 1.1` 与 `* [ ] 1.2`；master 上 comet status --json 返回 archiveReady true、tasksCompleted 1、tasksTotal 1，文本输出推荐 comet classic openspec -- archive <name> -y。",
       "expected": "普通 OpenSpec change 显示 1/2 tasks、archiveReady 为 false 且不输出推荐归档命令；Classic change 的 tasksCompleted / tasksTotal 同时计入 `-` 与 `*` 任务项。",
       "forbidden": "忽略 `*` 任务项，使仍有未完成任务的 change 显示为 archiveReady 或输出推荐归档命令。",
-      "rootCause": "project-status.ts 的 countTasks 只匹配 `- [`，而 parseClassicTasks 与 OpenSpec 都接受 `-` 和 `*` 列表标记。",
+      "rootCause": "project-status.ts 的 countTasks 只匹配 `- [` 且不跳过围栏代码块，而 parseClassicTasks 接受 `-` 和 `*` 列表标记并忽略围栏示例；现在两者共用同一套任务行规则。",
       "tests": [
         {
           "file": "test/app/status.test.ts",
@@ -55976,6 +55976,13 @@
           "namePattern": "counts `\\*` task items so an open one keeps a plain OpenSpec change from archive",
           "requiredNames": [
             "Comet project status counts `*` task items so an open one keeps a plain OpenSpec change from archive"
+          ]
+        },
+        {
+          "file": "test/domains/comet-entry/project-status.test.ts",
+          "namePattern": "counts task items with the Classic task parser rules, skipping fenced examples",
+          "requiredNames": [
+            "Comet project status counts task items with the Classic task parser rules, skipping fenced examples"
           ]
         }
       ]

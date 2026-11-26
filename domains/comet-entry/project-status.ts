@@ -5,6 +5,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 import { latestCommandCheck } from '../comet-classic/classic-command-checks.js';
+import { countClassicTasks } from '../comet-classic/classic-tasks.js';
 import { inspectClassicChangeReadOnly } from '../comet-classic/classic-diagnostics.js';
 import { assertClassicLayoutReadable } from '../comet-classic/classic-layout.js';
 import {
@@ -70,12 +71,7 @@ async function countTasks(
     if (code === 'ENOENT' || code === 'ENOTDIR') return { done: 0, total: 0 };
     throw error;
   }
-  // Same list markers as parseClassicTasks and OpenSpec: `-` and `*`.
-  const lines = content.split('\n');
-  return {
-    done: lines.filter((line) => /^\s*[-*]\s+\[x\]/iu.test(line)).length,
-    total: lines.filter((line) => /^\s*[-*]\s+\[[ x]\]/iu.test(line)).length,
-  };
+  return countClassicTasks(content);
 }
 
 function unmanagedChange(name: string, done: number, total: number): ChangeStatus {

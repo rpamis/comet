@@ -496,6 +496,7 @@
       "domains/comet-classic/classic-resume-probe.ts",
       "domains/comet-classic/classic-store.ts",
       "domains/comet-classic/classic-sdk-status.ts",
+      "domains/comet-classic/classic-tasks.ts",
       "domains/comet-entry/legacy-runtime-import.ts",
       "domains/comet-entry/types.ts",
       "domains/comet-memory/index.ts",
