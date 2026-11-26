@@ -336,6 +336,57 @@ describe('status command', () => {
     expect(output.match(/recommended archive:/g)).toHaveLength(2);
   });
 
+  it('counts `*` task items and does not recommend archiving a change with an open one', async () => {
+    const changesDir = classicChangesDir(tmpDir);
+    await fs.mkdir(path.join(changesDir, 'open-star'), { recursive: true });
+    await fs.writeFile(
+      path.join(changesDir, 'open-star', 'tasks.md'),
+      '## 1. Work\n- [x] 1.1 Done step\n* [ ] 1.2 Still open\n',
+    );
+    state(tmpDir, 'init', 'comet-star', 'full', '--runtime', 'compat');
+    await fs.writeFile(
+      path.join(changesDir, 'comet-star', 'tasks.md'),
+      '* [x] first\n* [ ] second\n- [ ] third\n',
+    );
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let output: string;
+    try {
+      await statusCommand(tmpDir);
+      output = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(output).toContain('open-star [OpenSpec] [plain change [1/2 tasks]]');
+    expect(output).not.toContain(
+      'recommended archive: comet classic openspec -- archive open-star -y',
+    );
+
+    const jsonLog = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let parsed: {
+      workflows: { classic: { changes: Array<Record<string, unknown>> } };
+      unmanagedOpenSpec: Array<Record<string, unknown>>;
+    };
+    try {
+      await statusCommand(tmpDir, { json: true });
+      parsed = JSON.parse(String(jsonLog.mock.calls[0][0]));
+    } finally {
+      jsonLog.mockRestore();
+    }
+    expect(parsed.unmanagedOpenSpec).toEqual([
+      expect.objectContaining({
+        name: 'open-star',
+        archiveReady: false,
+        tasksCompleted: 1,
+        tasksTotal: 2,
+      }),
+    ]);
+    expect(parsed.workflows.classic.changes).toEqual([
+      expect.objectContaining({ name: 'comet-star', tasksCompleted: 1, tasksTotal: 3 }),
+    ]);
+  });
+
   it('prints the next command for active changes', async () => {
     const changeDir = path.join(classicChangesDir(tmpDir), 'next-build');
     state(tmpDir, 'init', 'next-build', 'full', '--runtime', 'compat');

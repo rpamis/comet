@@ -70,10 +70,11 @@ async function countTasks(
     if (code === 'ENOENT' || code === 'ENOTDIR') return { done: 0, total: 0 };
     throw error;
   }
+  // Same list markers as parseClassicTasks and OpenSpec: `-` and `*`.
   const lines = content.split('\n');
   return {
-    done: lines.filter((line) => /^\s*- \[x\]/iu.test(line)).length,
-    total: lines.filter((line) => /^\s*- \[[ x]\]/iu.test(line)).length,
+    done: lines.filter((line) => /^\s*[-*]\s+\[x\]/iu.test(line)).length,
+    total: lines.filter((line) => /^\s*[-*]\s+\[[ x]\]/iu.test(line)).length,
   };
 }
 
