@@ -2,6 +2,91 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "dashboard-601-native-scoped-overview",
+      "behavior": "首次打开 Native 工作台时，Native 总览不读取同一项目的 Classic 变更目录。",
+      "sources": ["https://github.com/rpamis/comet/issues/601"],
+      "coverageLevel": "runtime",
+      "reproduction": "在 Windows 临时 Git 项目混合 Native 与 Classic 记录，从 Dashboard HTTP 请求带 workflow=native 的项目总览。修复前 058 忽略该选项并读取 Classic 变更目录。0.5.7 发布包的浏览器总览也复现了混合项目的冷启动等待。",
+      "expected": "返回正确的 Native 数量和分页入口，跳过 Classic 变更目录。",
+      "forbidden": "因为同一项目的 Classic 活跃或归档扫描而阻塞 Native 工作台。",
+      "rootCause": "浏览器总览无条件并行启动两种工作流采集，并等待两者完成。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/server.test.ts",
+          "namePattern": "^startDashboardServer opens the Native overview without scanning Classic changes$",
+          "requiredNames": [
+            "startDashboardServer opens the Native overview without scanning Classic changes"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "browser",
+          "status": "verified",
+          "evidence": [
+            "Windows Playwright Chromium: dashboard-browser.spec.ts > uses each project default workflow during startup and project switching.",
+            "Windows Edge, three cold navigations per build via comet dashboard in one isolated Git project with 300 Classic and 150 Native archives. Native first detail median: 7.15 s at 058 baseline 8c8055bf and 1.84 s with this change."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard-601-classic-active-before-archive",
+      "behavior": "首次打开 Classic 工作台时，活跃内容可在归档统计完成前查看。",
+      "sources": ["https://github.com/rpamis/comet/issues/601"],
+      "coverageLevel": "runtime",
+      "reproduction": "在 Windows 临时项目放入活跃 Classic 记录、两条历史归档和 Native 记录。修复前 058 的 Classic 总览、活跃列表和摘要共用全量采集，必须等待历史归档。",
+      "expected": "先返回活跃列表与详情，归档总数待定时显示占位。稍后显示准确归档总数，归档和全部列表仍支持原有分页。",
+      "forbidden": "在活跃列表或活跃摘要请求中遍历归档目录，或将尚未读取的归档总数显示为零。",
+      "rootCause": "Classic 采集的缓存与刷新粒度是整个项目，每个列表状态都读取活跃与归档。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/server.test.ts",
+          "namePattern": "^startDashboardServer loads Classic active summaries before visiting archive or Native directories$",
+          "requiredNames": [
+            "startDashboardServer loads Classic active summaries before visiting archive or Native directories"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "browser",
+          "status": "verified",
+          "evidence": [
+            "Windows Playwright Chromium: dashboard-browser.spec.ts > shows Classic details while the archive count loads and then opens archive history. Held the archive summary response, verified visible active detail and an unresolved count, then released it and opened the archive tab. In the same Windows Edge CLI comparison, Classic first detail median decreased from 4.26 s to 1.08 s."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard-601-page-local-loading",
+      "behavior": "Any、应用、Eval 和插件页只请求各自的数据，项目设置和插件详情按需读取。",
+      "sources": ["https://github.com/rpamis/comet/issues/601"],
+      "coverageLevel": "unit",
+      "reproduction": "在修复前 058 的浏览器中挂起 Native 总览，切换到 Comet Any。即使 Any 列表接口可用，界面仍卡在总览加载占位，同时发出未打开的设置和插件详情请求。",
+      "expected": "Any 可在总览挂起时打开独立列表。进入项目只读取插件导航目录，在打开设置或插件后读取相应详情。",
+      "forbidden": "以其他工作流总览作为独立页面的前置条件，或在进入项目时预取未打开的设置和插件详情。",
+      "rootCause": "独立页面复用了工作流总览的加载条件，项目启动与插件目录刷新还预取配置和所有插件详情。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/dashboard-data.test.ts",
+          "namePattern": "^Dashboard data coordination only requests a workflow overview for the visible Native or Classic workspace$",
+          "requiredNames": [
+            "Dashboard data coordination only requests a workflow overview for the visible Native or Classic workspace"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "browser",
+          "status": "verified",
+          "evidence": [
+            "Windows Playwright Chromium: dashboard-any-browser.spec.ts > loads Any before an unfinished workflow overview and reads settings only on demand. Baseline fails while the overview is held. The updated build opens Any, requests neither configuration nor plugin details before opening settings, and then requests the selected plugin. In the same Windows Edge CLI comparison, the median Any list response decreased from 3.62 s to 1.20 s."
+          ]
+        }
+      ]
+    },
+    {
       "id": "dsh-600-plugin-update-above-minimum-version",
       "sources": [
         "https://github.com/rpamis/comet/issues/600",

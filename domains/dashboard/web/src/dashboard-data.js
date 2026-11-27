@@ -34,6 +34,16 @@ export function resolveDashboardProjectWorkflow(project) {
   return { workflow: 'classic', source: 'fallback' };
 }
 
+export function resolveDashboardOverviewWorkflow({
+  workflow,
+  evalOpen,
+  contextUsageOpen,
+  pluginSelection,
+}) {
+  if (evalOpen || contextUsageOpen || pluginSelection) return null;
+  return DASHBOARD_WORKFLOWS.has(workflow) ? workflow : null;
+}
+
 function abortError() {
   return Object.assign(new Error('Dashboard request was superseded'), { name: 'AbortError' });
 }

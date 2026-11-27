@@ -46,7 +46,8 @@ function refreshContext(tab = 'active') {
     detailRequestRef: { current: new AbortController() as AbortController | null },
     queryRef: { current: '' },
     tabRef: { current: tab },
-    workflowRef: { current: 'classic' },
+    overviewWorkflow: 'classic',
+    overviewWorkflowRef: { current: 'classic' },
     linkedChangeRef: { current: null as { workflow: string; locator: string } | null },
     selectedIdRef: { current: 'change-59' },
     lastLoadedQueryRef: { current: '' },
@@ -74,6 +75,7 @@ function refreshContext(tab = 'active') {
     pickSelectedFromPage: (page: { items: { id: string }[] }, id: string) =>
       page.items.some((item) => item.id === id) ? id : page.items[0]?.id,
     fetchDashboardOverview: vi.fn(async () => ({
+      summary: { archivedChanges: 0 as number | null },
       initialChanges: { items: items.slice(0, 5), total: 70, nextCursor: '5' },
     })),
     fetchDashboardChangePage: vi.fn(async () => ({
@@ -99,6 +101,7 @@ describe('Classic refresh callbacks', () => {
         tasks: { total: 1, completed: 0 },
       }));
       context.fetchDashboardOverview.mockResolvedValue({
+        summary: { archivedChanges: 0 },
         initialChanges: { items, total: count, nextCursor: null },
       });
       context.fetchDashboardChangePage.mockRejectedValue(new Error('Summary unavailable'));
@@ -129,7 +132,8 @@ describe('Classic refresh callbacks', () => {
 
   it('refreshes Native independently without querying Classic or caching active rows under archived', async () => {
     const context = refreshContext('archived');
-    context.workflowRef.current = 'native';
+    context.overviewWorkflow = 'native';
+    context.overviewWorkflowRef.current = 'native';
     const selected = { name: 'native-selected', status: 'archived' };
     const nativePage = { items: [selected], total: 1, nextCursor: null };
     const fetchDashboardNativeChangePage = vi.fn(async () => nativePage);
@@ -140,6 +144,7 @@ describe('Classic refresh callbacks', () => {
     const setNativeSelectedDetail = vi.fn();
     context.nativePagesRef.current = { archived: nativePage };
     context.fetchDashboardOverview.mockResolvedValue({
+      summary: { archivedChanges: null },
       initialChanges: { items: [], total: 0, nextCursor: null },
       native: {},
     });
@@ -227,9 +232,29 @@ describe('Classic refresh callbacks', () => {
     expect(context.toast).toHaveBeenCalledWith('状态已刷新');
   });
 
+  it('ignores an overview result after switching workflows in the same project', async () => {
+    const context = refreshContext();
+    const overview = await context.fetchDashboardOverview();
+    let release!: (value: typeof overview) => void;
+    context.fetchDashboardOverview.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const refresh = await dashboardCallback('refresh', context);
+    const pending = refresh(false);
+    context.overviewWorkflowRef.current = 'native';
+    release(overview);
+    await pending;
+    expect(context.setSnapshot).not.toHaveBeenCalled();
+    expect(context.fetchDashboardChangePage).not.toHaveBeenCalled();
+  });
+
   it('does not overwrite a changed search or tab after an overview completes', async () => {
     const context = refreshContext();
     let release!: (value: {
+      summary: { archivedChanges: number };
       initialChanges: { items: never[]; total: number; nextCursor: string };
     }) => void;
     context.fetchDashboardOverview.mockImplementationOnce(
@@ -242,7 +267,10 @@ describe('Classic refresh callbacks', () => {
     const pending = refresh(false);
     context.queryRef.current = 'new search';
     context.tabRef.current = 'archived';
-    release({ initialChanges: { items: [], total: 0, nextCursor: '' } });
+    release({
+      summary: { archivedChanges: 0 },
+      initialChanges: { items: [], total: 0, nextCursor: '' },
+    });
     await pending;
     expect(context.setSnapshot).not.toHaveBeenCalled();
     expect(context.setSelectedDetail).not.toHaveBeenCalled();

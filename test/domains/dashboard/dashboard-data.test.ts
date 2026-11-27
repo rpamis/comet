@@ -4,9 +4,27 @@ import {
   createDashboardRequestCoordinator,
   mergePartialPluginPage,
   resolveDashboardProjectWorkflow,
+  resolveDashboardOverviewWorkflow,
 } from '../../../domains/dashboard/web/src/dashboard-data.js';
 
 describe('Dashboard data coordination', () => {
+  it('only requests a workflow overview for the visible Native or Classic workspace', () => {
+    expect(resolveDashboardOverviewWorkflow({ workflow: 'native' })).toBe('native');
+    expect(resolveDashboardOverviewWorkflow({ workflow: 'classic' })).toBe('classic');
+    expect(resolveDashboardOverviewWorkflow({ workflow: 'any' })).toBeNull();
+    expect(resolveDashboardOverviewWorkflow({ workflow: 'application' })).toBeNull();
+    expect(resolveDashboardOverviewWorkflow({ workflow: 'native', evalOpen: true })).toBeNull();
+    expect(
+      resolveDashboardOverviewWorkflow({ workflow: 'classic', contextUsageOpen: true }),
+    ).toBeNull();
+    expect(
+      resolveDashboardOverviewWorkflow({
+        workflow: 'native',
+        pluginSelection: 'comet.project-knowledge',
+      }),
+    ).toBeNull();
+  });
+
   it('keeps only failed sections from the same plugin cache and clears stale content on recovery', () => {
     const previous = {
       pluginId: 'memory',

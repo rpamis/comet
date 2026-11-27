@@ -23,16 +23,28 @@ sequenceDiagram
     participant Query as 采集器
     participant Index as 摘要索引
     participant Source as 领域记录
-    UI->>Route: 打开项目列表
-    Route->>Query: 获取过滤条件和分页
-    Query->>Index: 查询摘要并安排刷新
-    Index->>Source: 发现并更新有变化的来源
-    Query-->>UI: 返回当前摘要和索引状态
+    UI->>Route: 打开当前工作区
+    alt Native 或 Classic
+        Route->>Query: 读取当前工作流的总览
+        Query-->>UI: 返回首屏所需数据
+        opt Classic
+            UI->>Route: 首屏加载后查询归档总数
+            Route->>Query: 单独读取归档摘要
+            Query-->>UI: 更新归档总数
+        end
+    else Any、应用或 Eval
+        Route->>Query: 查询当前页面的列表
+        Query->>Index: 查询摘要并安排刷新
+        Index->>Source: 发现并更新有变化的来源
+        Query-->>UI: 返回当前摘要和索引状态
+    end
     UI->>Route: 打开某个 Run 或工件
     Route->>Query: 获取当前选中的记录
     Query->>Source: 重读 Run 并核对固定身份
     Query-->>UI: 详情、证据或明确的读取诊断
 ```
+
+Native 和 Classic 的浏览器总览用 `/overview?workflow=native` 或 `/overview?workflow=classic`。Classic 活跃列表和摘要独立读取活跃目录，归档数量未读取时为 `null`，归档和全部页面继续使用原有分页。省略 `workflow` 时返回完整总览。`comet dashboard --json` 继续读取完整快照。插件目录用于导航，页面详情和项目配置在打开对应页面或设置时读取。
 
 列表索引可以重建。详情从实际记录解析动作、决定、证据和子流程，保留读取失败与记录尚未同步的差别。浏览器刷新后恢复当前选择，观测结果未知的 Action 继续显示未知。预览工件以当前记录保存的标识和允许路径为准，应用观察的 JSON 投影在返回浏览器前过滤领取凭据等敏感字段。
 

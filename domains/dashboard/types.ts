@@ -169,7 +169,7 @@ export interface NativeDashboardChangePage {
 
 export interface DashboardOverview {
   project: DashboardProject;
-  summary: DashboardSummary;
+  summary: Omit<DashboardSummary, 'archivedChanges'> & { archivedChanges: number | null };
   initialChanges: DashboardChangePage;
   git: GitSnapshot;
   risks: DashboardRisk[];

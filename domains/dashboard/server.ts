@@ -487,9 +487,13 @@ async function handleRequest(
       return;
     }
     if (subpath === '/overview') {
+      const workflow = url.searchParams.get('workflow');
+      if (workflow !== null && workflow !== 'native' && workflow !== 'classic')
+        throw new DashboardChangeQueryError('Invalid dashboard overview workflow');
       const overview = await collectDashboardOverview(project.path, {
         projectName: project.name,
         query: url.searchParams.get('q') ?? undefined,
+        workflow: workflow ?? undefined,
       });
       respondJson(res, req.method, 200, overview);
       return;

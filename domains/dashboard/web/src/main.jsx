@@ -132,6 +132,7 @@ import {
 import {
   createDashboardRequestCoordinator,
   mergePartialPluginPage,
+  resolveDashboardOverviewWorkflow,
   resolveDashboardProjectWorkflow,
 } from './dashboard-data.js';
 import './styles.css';
@@ -536,7 +537,7 @@ function DashboardApp({
   const useDemo = forceDemo || new URLSearchParams(window.location.search).has('demo');
   const cometUpdate = useDashboardUpdate(!embedded && !useDemo);
   const [updateOpen, setUpdateOpen] = useState(false);
-  const [snapshot, setSnapshot] = useState(null);
+  const [storedSnapshot, setSnapshot] = useState(null);
   const [activeProjectId, setActiveProjectId] = useState(null);
   const [workflow, setWorkflow] = useState(() => (useDemo ? 'classic' : null));
   const [attentionOpen, setAttentionOpen] = useState(false);
@@ -572,6 +573,20 @@ function DashboardApp({
   const [contextUsageOpen, setContextUsageOpen] = useState(
     () => !embedded && navigation.view === 'context-usage',
   );
+  const overviewWorkflow = resolveDashboardOverviewWorkflow({
+    workflow,
+    evalOpen,
+    contextUsageOpen,
+    pluginSelection,
+  });
+  const snapshot =
+    useDemo ||
+    (storedSnapshot?.overviewWorkflow === overviewWorkflow &&
+      storedSnapshot?.overviewProjectId === activeProjectId)
+      ? storedSnapshot
+      : null;
+  const overviewWorkflowRef = useRef(overviewWorkflow);
+  overviewWorkflowRef.current = overviewWorkflow;
   const contextUsageOpenRef = useRef(contextUsageOpen);
   contextUsageOpenRef.current = contextUsageOpen;
   const [evalRefreshToken, setEvalRefreshToken] = useState(0);
@@ -626,11 +641,7 @@ function DashboardApp({
     workflow,
     snapshot,
     demo: useDemo,
-    enabled:
-      !evalOpen &&
-      !contextUsageOpen &&
-      !pluginSelection &&
-      ['classic', 'native'].includes(workflow),
+    enabled: Boolean(overviewWorkflow),
   });
   useEffect(() => {
     setSummaryFilter(null);
@@ -686,6 +697,7 @@ function DashboardApp({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [artifact, setArtifact] = useState(null);
   const snapshotRequestRef = useRef(null);
+  const classicArchiveRequestRef = useRef(null);
   const pageRequestRef = useRef(null);
   const nativePageRequestRef = useRef(null);
   const nativeDetailRequestRef = useRef(null);
@@ -701,11 +713,9 @@ function DashboardApp({
 
   const queryRef = useRef(query);
   const tabRef = useRef(tab);
-  const workflowRef = useRef(workflow);
   const activePluginPageId = pluginSelection;
   queryRef.current = query;
   tabRef.current = tab;
-  workflowRef.current = workflow;
   nativeSelectedDetailRef.current = nativeSelectedDetail;
   pluginSelectionRef.current = pluginSelection;
   settingsSectionRef.current = settingsSection;
@@ -720,9 +730,39 @@ function DashboardApp({
     pagesRef.current = pages;
   }, [pages]);
 
+  const refreshClassicArchiveCount = useCallback(async (projectId, knownTotal) => {
+    if (classicArchiveRequestRef.current) return;
+    const controller = new AbortController();
+    classicArchiveRequestRef.current = controller;
+    const total =
+      knownTotal ??
+      (await fetchDashboardChangePage(projectId, 'archived', {
+        summaryLimit: 1,
+        signal: controller.signal,
+      }).then(
+        (page) => page.total,
+        () => null,
+      ));
+    if (classicArchiveRequestRef.current !== controller) return;
+    classicArchiveRequestRef.current = null;
+    if (controller.signal.aborted) return;
+    setSnapshot((previous) => {
+      if (previous?.overviewProjectId !== projectId || previous.overviewWorkflow !== 'classic')
+        return previous;
+      return {
+        ...previous,
+        summary: {
+          ...previous.summary,
+          archivedChanges: total ?? previous.summary.archivedChanges,
+        },
+        classicArchiveCountError: total === null,
+      };
+    });
+  }, []);
+
   const refresh = useCallback(
     async (manual = false) => {
-      if (!useDemo && !activeProjectId) return;
+      if (!useDemo && (!activeProjectId || !overviewWorkflow)) return;
       snapshotRequestRef.current?.abort();
       const controller = new AbortController();
       snapshotRequestRef.current = controller;
@@ -732,8 +772,18 @@ function DashboardApp({
       try {
         const next = useDemo
           ? await loadDemoSnapshot()
-          : await fetchDashboardOverview(activeProjectId, controller.signal, refreshQuery);
-        if (snapshotRequestRef.current !== controller || controller.signal.aborted) return;
+          : await fetchDashboardOverview(
+              activeProjectId,
+              controller.signal,
+              refreshQuery,
+              overviewWorkflow,
+            );
+        if (
+          snapshotRequestRef.current !== controller ||
+          controller.signal.aborted ||
+          overviewWorkflowRef.current !== overviewWorkflow
+        )
+          return;
 
         if (useDemo) {
           setSnapshot(next);
@@ -747,12 +797,25 @@ function DashboardApp({
           const currentQuery = queryRef.current;
           const queryChanged = currentQuery !== lastLoadedQueryRef.current;
           if (queryRef.current !== refreshQuery || tabRef.current !== refreshTab) return;
-          // overview 已成功，补齐已展开的 Classic 页不能阻断其他面板。
-          setSnapshot(materializeOverview(next, initialPage));
+          setSnapshot((previous) => {
+            const overview = materializeOverview(next, initialPage);
+            if (
+              overviewWorkflow === 'classic' &&
+              next.summary.archivedChanges === null &&
+              previous?.overviewWorkflow === overviewWorkflow &&
+              previous.overviewProjectId === activeProjectId
+            ) {
+              overview.summary = {
+                ...next.summary,
+                archivedChanges: previous.summary.archivedChanges,
+              };
+            }
+            return { ...overview, overviewWorkflow, overviewProjectId: activeProjectId };
+          });
           const loadedCount = queryChanged
             ? 5
             : Math.max(5, pagesRef.current[currentTab]?.items.length ?? 0);
-          const refreshingClassic = workflowRef.current === 'classic';
+          const refreshingClassic = overviewWorkflow === 'classic';
           const freshPage =
             !refreshingClassic ||
             (currentTab === 'active' &&
@@ -787,7 +850,7 @@ function DashboardApp({
             : nativePagesRef.current;
           nativePagesRef.current = nextNativePages;
           setNativePages(nextNativePages);
-          if (!queryChanged && workflowRef.current === 'native' && next.native) {
+          if (!queryChanged && overviewWorkflow === 'native' && next.native) {
             const selectedNative = nativeSelectedDetailRef.current;
             const selectedNativeKey = selectedNative
               ? nativeDashboardChangeKey(selectedNative)
@@ -894,6 +957,16 @@ function DashboardApp({
             }
           }
           lastLoadedQueryRef.current = currentQuery;
+          if (
+            refreshingClassic &&
+            next.summary.archivedChanges === null &&
+            !controller.signal.aborted
+          ) {
+            void refreshClassicArchiveCount(
+              activeProjectId,
+              currentTab === 'archived' && !currentQuery.trim() ? freshPage.total : undefined,
+            );
+          }
         }
         if (manual) toast(t('状态已刷新'));
       } catch (error) {
@@ -902,11 +975,11 @@ function DashboardApp({
       } finally {
         if (snapshotRequestRef.current === controller) {
           snapshotRequestRef.current = null;
-          if (manual) setLoading(false);
+          setLoading(false);
         }
       }
     },
-    [activeProjectId, toast, useDemo],
+    [activeProjectId, overviewWorkflow, refreshClassicArchiveCount, toast, useDemo],
   );
 
   useEffect(() => {
@@ -923,7 +996,14 @@ function DashboardApp({
       }
     }, AUTO_REFRESH_MS);
 
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(timer);
+      snapshotRequestRef.current?.abort();
+      pageRequestRef.current?.abort();
+      nativePageRequestRef.current?.abort();
+      classicArchiveRequestRef.current?.abort();
+      classicArchiveRequestRef.current = null;
+    };
   }, [activeProjectId, projectsReady, refresh, useDemo]);
 
   useEffect(
@@ -1034,17 +1114,6 @@ function DashboardApp({
     );
   }, []);
 
-  const preloadDashboardSettings = useCallback(
-    (projectId, pages) => {
-      const requests = pages
-        .filter((page) => !page.pending)
-        .map((page) => loadCachedPluginPage(projectId, page.pluginId));
-      requests.push(loadCachedProjectConfig(projectId));
-      return Promise.allSettled(requests);
-    },
-    [loadCachedPluginPage, loadCachedProjectConfig],
-  );
-
   const reloadPluginPages = useCallback(async () => {
     if (useDemo || !activeProjectId) return;
     const requestedProjectId = activeProjectId;
@@ -1053,23 +1122,16 @@ function DashboardApp({
       if (pluginProjectRef.current !== requestedProjectId) return;
       const availablePages = nextPages.pages ?? [];
       setPluginPages(availablePages);
-      void preloadDashboardSettings(requestedProjectId, availablePages);
       return availablePages;
     } catch (error) {
       toast(t('插件页面加载失败：{0}', [error.message]), 'error');
       return undefined;
     }
-  }, [activeProjectId, preloadDashboardSettings, toast, useDemo]);
-
-  useEffect(() => {
-    if (useDemo || !activeProjectId) return;
-    void loadCachedProjectConfig(activeProjectId).catch(() => undefined);
-  }, [activeProjectId, loadCachedProjectConfig, useDemo]);
+  }, [activeProjectId, toast, useDemo]);
 
   useEffect(() => {
     if (useDemo || !activeProjectId) return undefined;
     let cancelled = false;
-    setPluginSelection(null);
     setSettingsOpen(false);
     setSettingsPage(null);
     setSettingsError(null);
@@ -1077,11 +1139,8 @@ function DashboardApp({
     setPluginPage(null);
     setPluginError(null);
     void fetchDashboardPluginPages(activeProjectId)
-      .then(async (response) => {
-        if (cancelled) return;
-        const availablePages = response.pages ?? [];
-        setPluginPages(availablePages);
-        void preloadDashboardSettings(activeProjectId, availablePages);
+      .then((response) => {
+        if (!cancelled) setPluginPages(response.pages ?? []);
       })
       .catch((error) => {
         if (!cancelled) toast(t('插件页面加载失败：{0}', [error.message]), 'error');
@@ -1089,7 +1148,7 @@ function DashboardApp({
     return () => {
       cancelled = true;
     };
-  }, [activeProjectId, preloadDashboardSettings, toast, useDemo]);
+  }, [activeProjectId, toast, useDemo]);
 
   useEffect(() => {
     if (useDemo || !activeProjectId || !pluginSelection) return undefined;
@@ -1493,7 +1552,12 @@ function DashboardApp({
           query,
           signal: controller.signal,
         });
-        if (pageRequestRef.current !== controller || controller.signal.aborted) return;
+        if (
+          pageRequestRef.current !== controller ||
+          controller.signal.aborted ||
+          overviewWorkflowRef.current !== 'classic'
+        )
+          return;
         const merged =
           append && existing ? { ...page, items: [...existing.items, ...page.items] } : page;
         setPages((previous) => ({ ...previous, [nextTab]: merged }));
@@ -1515,9 +1579,10 @@ function DashboardApp({
   );
 
   useEffect(() => {
-    if (useDemo || workflow !== 'classic' || !snapshot || !activeProjectId || pages[tab]) return;
+    if (useDemo || overviewWorkflow !== 'classic' || !snapshot || !activeProjectId || pages[tab])
+      return;
     void loadPage(tab);
-  }, [activeProjectId, loadPage, pages, snapshot, tab, useDemo, workflow]);
+  }, [activeProjectId, loadPage, pages, snapshot, tab, useDemo, overviewWorkflow]);
 
   const loadNativePage = useCallback(
     async (nextTab, append = false) => {
@@ -1769,6 +1834,8 @@ function DashboardApp({
   const resetSelectedProject = useCallback((nextProjectId) => {
     requestedSearchRef.current = null;
     snapshotRequestRef.current?.abort();
+    classicArchiveRequestRef.current?.abort();
+    classicArchiveRequestRef.current = null;
     pageRequestRef.current?.abort();
     nativePageRequestRef.current?.abort();
     nativeDetailRequestRef.current?.abort();
@@ -1926,7 +1993,7 @@ function DashboardApp({
         className={`min-w-0${pluginSelection ? ' dashboard-main-section-plugin-center' : ''}`}
       >
         <Topbar
-          project={snapshot?.project}
+          project={snapshot?.project ?? activeProject}
           projects={projects}
           activeProjectId={activeProjectId}
           onProjectForget={async (entry) => {
@@ -1990,9 +2057,7 @@ function DashboardApp({
           }
           onMenu={() => setRailOpen(true)}
           onAttention={
-            !embedded && !useDemo && activeProjectId && snapshot
-              ? () => setAttentionOpen(true)
-              : undefined
+            !embedded && !useDemo && activeProjectId ? () => setAttentionOpen(true) : undefined
           }
           onRefresh={async () => {
             if (contextUsageOpen) {
@@ -2061,9 +2126,7 @@ function DashboardApp({
               />
             ) : !useDemo && projectsReady && !activeProjectId ? (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('暂无可用项目')} />
-            ) : !snapshot ? (
-              <LoadingState />
-            ) : pluginSelection ? (
+            ) : pluginSelection && (activeProjectId || useDemo) ? (
               <PluginCenterPage
                 key={`${activeProjectId}:${pluginSelection}`}
                 viewScope={workspaceScope}
@@ -2080,7 +2143,7 @@ function DashboardApp({
                   invokeActivePlugin(pluginSelection, capability, input)
                 }
               />
-            ) : ['any', 'application'].includes(workflow) ? (
+            ) : ['any', 'application'].includes(workflow) && (activeProjectId || useDemo) ? (
               <AnyWorkflowPanel
                 key={`${activeProjectId ?? 'demo'}:${workflow}`}
                 workspace={workflow}
@@ -2109,7 +2172,7 @@ function DashboardApp({
                     );
                 }}
                 projectId={activeProjectId}
-                projectPath={activeProject?.path ?? snapshot.project.path}
+                projectPath={activeProject?.path ?? snapshot?.project.path}
                 query={query}
                 onQuery={setQuery}
                 refreshToken={applicationRefreshToken}
@@ -2132,6 +2195,8 @@ function DashboardApp({
                   else await selectChange(related.locator);
                 }}
               />
+            ) : !snapshot ? (
+              <LoadingState />
             ) : workflow === 'native' ? (
               <NativeWorkflowPanel
                 native={snapshot.native}
@@ -2601,7 +2666,8 @@ function Dashboard({
     });
     return () => cancelAnimationFrame(frame);
   }, [linkedChange, summaryTarget, selected]);
-  const hasClassicChanges = snapshot.summary.activeChanges + snapshot.summary.archivedChanges > 0;
+  const hasClassicChanges =
+    snapshot.summary.activeChanges > 0 || snapshot.summary.archivedChanges > 0;
   const classicWarning = snapshot.classicError && hasClassicChanges;
   const detailPending = shouldShowDashboardDetailLoading({
     detailLoading,
@@ -4057,19 +4123,20 @@ function ClassicErrorState({ error }) {
 
 function ClassicWorkspaceEmptyDetail({ snapshot, tab, onTab }) {
   useDashboardLanguage();
-  const hasClassicChanges = snapshot.summary.activeChanges + snapshot.summary.archivedChanges > 0;
   const hasArchivedChanges = snapshot.summary.archivedChanges > 0;
   const hasActiveChanges = snapshot.summary.activeChanges > 0;
-  const showArchiveShortcut = tab === 'active' && hasArchivedChanges;
+  const archiveCountPending = snapshot.summary.archivedChanges === null;
+  const showArchiveShortcut = tab === 'active' && (hasArchivedChanges || archiveCountPending);
   const showActiveShortcut = tab === 'archived' && hasActiveChanges;
-  const title = !hasClassicChanges
+  const projectEmpty = !hasActiveChanges && !hasArchivedChanges && !archiveCountPending;
+  const title = projectEmpty
     ? t('当前没有 Classic change')
     : showArchiveShortcut
       ? t('当前没有活跃的 Classic change')
       : showActiveShortcut
         ? t('还没有已归档的 Classic change')
         : t('当前范围没有可展示的 Classic change');
-  const description = !hasClassicChanges
+  const description = projectEmpty
     ? t('Classic 变更出现后会在这里展示。')
     : showArchiveShortcut
       ? t('当前工作区没有进行中的变更，你可以继续查看已归档的历史记录。')
@@ -4424,12 +4491,11 @@ async function lifecycleDashboardPlugin(projectId, pluginId, action) {
   return res.json();
 }
 
-async function fetchDashboardOverview(projectId, signal, query = '') {
-  const params = new URLSearchParams();
+async function fetchDashboardOverview(projectId, signal, query, workflow) {
+  const params = new URLSearchParams({ workflow });
   if (query.trim()) params.set('q', query.trim());
-  const suffix = params.toString() ? `?${params.toString()}` : '';
   const res = await fetch(
-    `/api/dashboard/projects/${encodeURIComponent(projectId)}/overview${suffix}`,
+    `/api/dashboard/projects/${encodeURIComponent(projectId)}/overview?${params}`,
     { cache: 'no-store', signal },
   );
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -10013,7 +10079,11 @@ function AntSummaryCards({ snapshot, summaryData, selectedKey, onAction }) {
       t('已归档变更'),
       snapshot.summary.archivedChanges,
       t('历史变更已归档'),
-      t('已完成'),
+      snapshot.classicArchiveCountError
+        ? t('统计读取失败')
+        : snapshot.summary.archivedChanges === null
+          ? t('正在读取记录')
+          : t('已完成'),
       CheckCircleOutlined,
     ],
     [

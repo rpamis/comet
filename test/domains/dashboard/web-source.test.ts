@@ -374,8 +374,6 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('DASHBOARD_PLUGIN_NAV_PLACEHOLDERS');
     expect(source).toContain('loadCachedPluginPage');
     expect(source).toContain('loadCachedProjectConfig');
-    expect(source).toContain('preloadDashboardSettings');
-    expect(source).toContain('void preloadDashboardSettings(activeProjectId, availablePages)');
     expect(source).not.toContain('settingsReady={pluginPages.some((page) => !page.pending)}');
     expect(source).not.toContain('disabled={!settingsReady}');
     expect(source).toMatch(

@@ -6,6 +6,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Dashboard startup**: Load the current workspace first, then fill in Classic archive counts. Open Any, Eval, and plugin pages independently and load settings when needed ([#601](https://github.com/rpamis/comet/issues/601)).
 - **Native Shape confirmation**: Confirm an ordinary Native SDK Shape without waiting for automatic context retrieval or completion learning based on the approval note. Explicit task context remains available.
 
 ### Fixed

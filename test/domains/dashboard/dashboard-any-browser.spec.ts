@@ -18,6 +18,68 @@ async function chooseHistory(page: Page, runId: string) {
     .click();
 }
 
+test('loads Any before an unfinished workflow overview and reads settings only on demand', async ({
+  page,
+}) => {
+  const requests: string[] = [];
+  let finishOverview!: () => void;
+  const pendingOverview = new Promise<void>((resolve) => {
+    finishOverview = resolve;
+  });
+  await page.route('**/api/dashboard/**', async (route) => {
+    const { pathname } = new URL(route.request().url());
+    requests.push(pathname);
+    if (pathname.endsWith('/projects'))
+      return route.fulfill({
+        json: {
+          currentProjectId: 'fixture',
+          projects: [
+            {
+              id: 'fixture',
+              name: 'Cold project',
+              path: '/cold-project',
+              availability: 'available',
+              defaultWorkflow: 'native',
+              workflowSource: 'configured',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+    if (pathname.endsWith('/overview')) {
+      await pendingOverview;
+      return route.abort();
+    }
+    if (pathname.endsWith('/plugins'))
+      return route.fulfill({
+        json: {
+          pages: [{ pluginId: 'comet.personal-memory', label: '个人记忆', status: 'enabled' }],
+        },
+      });
+    if (pathname.endsWith('/application-runs'))
+      return route.fulfill({ json: { items: [], total: 0, nextCursor: null, indexing: false } });
+    return route.fulfill({ json: {} });
+  });
+
+  try {
+    const overview = page.waitForRequest('**/overview*');
+    await page.goto('/');
+    await overview;
+    await page.getByRole('menuitem', { name: /Comet Any$/u }).click();
+    await expect(page.getByText('暂无匹配的创作或应用运行', { exact: true })).toBeVisible();
+    expect(requests.filter((request) => request.endsWith('/overview'))).toHaveLength(1);
+    expect(
+      requests.some((request) => request.endsWith('/config') || request.includes('/plugins/')),
+    ).toBe(false);
+
+    const settingsRequest = page.waitForRequest('**/plugins/comet.personal-memory');
+    await page.getByRole('button', { name: '设置', exact: true }).click();
+    await settingsRequest;
+  } finally {
+    finishOverview();
+  }
+});
+
 test('searches grouped runs by ID and goal without losing the workspace', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));

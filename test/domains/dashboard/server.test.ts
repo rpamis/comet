@@ -645,6 +645,83 @@ describe('startDashboardServer', () => {
     });
   });
 
+  it('opens the Native overview without scanning Classic changes', async () => {
+    await writeProjectConfig(projectDir, defaultProjectConfig('docs'));
+    const native = await nativeProjectPaths(projectDir, 'docs');
+    await storedNativeChangeFixture({ paths: native, name: 'native-first', language: 'en' });
+    const changes = path.join(projectDir, 'openspec', 'changes');
+    await fs.mkdir(path.join(changes, 'archive', '2026-08-12-classic-history'), {
+      recursive: true,
+    });
+    const readdir = vi.spyOn(fs, 'readdir');
+
+    const handle = await startDashboardServer({
+      projectPath: projectDir,
+      port: 0,
+      webRoot: webDir,
+    });
+    handles.push(handle);
+    const directory = JSON.parse((await request(handle.port, '/api/dashboard/projects')).body);
+    const base = '/api/dashboard/projects/' + directory.currentProjectId;
+    const overview = await request(handle.port, base + '/overview?workflow=native');
+    expect(overview.status).toBe(200);
+    expect(JSON.parse(overview.body).native).toMatchObject({ activeChangeCount: 1 });
+    expect(readdir.mock.calls.map(([target]) => target)).not.toContain(changes);
+    expect((await request(handle.port, base + '/overview?workflow=any')).status).toBe(400);
+  });
+
+  it('loads Classic active summaries before visiting archive or Native directories', async () => {
+    await writeProjectConfig(projectDir, defaultProjectConfig('docs'));
+    const native = await nativeProjectPaths(projectDir, 'docs');
+    await storedNativeChangeFixture({ paths: native, name: 'other-workflow', language: 'en' });
+    const classic = path.join(projectDir, 'openspec', 'changes');
+    const archive = path.join(classic, 'archive');
+    for (const dir of [
+      path.join(classic, 'active-first'),
+      path.join(archive, '2026-08-12-history-one'),
+      path.join(archive, '2026-08-13-history-two'),
+    ]) {
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(path.join(dir, 'tasks.md'), '- [ ] Pending\n');
+    }
+    const readdir = vi.spyOn(fs, 'readdir');
+    const handle = await startDashboardServer({
+      projectPath: projectDir,
+      port: 0,
+      webRoot: webDir,
+    });
+    handles.push(handle);
+    const directory = JSON.parse((await request(handle.port, '/api/dashboard/projects')).body);
+    const base = '/api/dashboard/projects/' + directory.currentProjectId;
+    const overview = await request(handle.port, base + '/overview?workflow=classic');
+    expect(overview.status).toBe(200);
+    expect(JSON.parse(overview.body)).toMatchObject({
+      summary: { activeChanges: 1, archivedChanges: null, tasksIncomplete: 1 },
+      initialChanges: { total: 1, items: [{ name: 'active-first' }] },
+    });
+    for (const endpoint of ['/changes', '/change-summary']) {
+      const page = await request(handle.port, base + endpoint + '?status=active');
+      expect(page.status).toBe(200);
+      expect(JSON.parse(page.body)).toMatchObject({ total: 1, items: [{ name: 'active-first' }] });
+    }
+    expect(readdir.mock.calls.map(([target]) => target)).not.toContain(archive);
+    expect(readdir.mock.calls.map(([target]) => target)).not.toContain(native.changesDir);
+
+    const history = await request(handle.port, base + '/changes?status=archived&limit=1');
+    expect(JSON.parse(history.body)).toMatchObject({
+      total: 2,
+      items: [{ name: '2026-08-13-history-two' }],
+      nextCursor: expect.any(String),
+    });
+    const all = await request(handle.port, base + '/changes?status=all&limit=3');
+    expect(JSON.parse(all.body)).toMatchObject({ total: 3, nextCursor: null });
+    const full = await request(handle.port, base + '/overview');
+    expect(JSON.parse(full.body)).toMatchObject({
+      summary: { activeChanges: 1, archivedChanges: 2 },
+      native: { activeChangeCount: 1 },
+    });
+  });
+
   it('serves Native changes from a paginated endpoint instead of embedding them in overview', async () => {
     execFileSync('git', ['init', '-q', projectDir]);
     await writeProjectConfig(projectDir, defaultProjectConfig('docs'));

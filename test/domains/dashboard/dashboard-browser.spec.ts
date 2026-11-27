@@ -15,6 +15,75 @@ type DashboardTestWindow = typeof window & {
   summaryRefreshValues: (string | null)[];
 };
 
+test('shows Classic details while the archive count loads and then opens archive history', async ({
+  page,
+}) => {
+  const { DEMO_SNAPSHOT } = await import('../../../domains/dashboard/web/demo.js');
+  const active = DEMO_SNAPSHOT.changes.active[0];
+  const history = DEMO_SNAPSHOT.changes.archived[0];
+  const { changes: _changes, ...overview } = DEMO_SNAPSHOT;
+  let finishArchiveCount!: () => void;
+  const pendingArchiveCount = new Promise<void>((resolve) => {
+    finishArchiveCount = resolve;
+  });
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/projects'))
+      return route.fulfill({
+        json: {
+          currentProjectId: 'fixture',
+          projects: [
+            {
+              id: 'fixture',
+              name: 'Cold project',
+              path: '/cold-project',
+              availability: 'available',
+              defaultWorkflow: 'classic',
+              workflowSource: 'configured',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+    if (url.pathname.endsWith('/overview'))
+      return route.fulfill({
+        json: {
+          ...overview,
+          summary: { ...overview.summary, activeChanges: 1, archivedChanges: null },
+          initialChanges: { status: 'active', items: [active], total: 1, nextCursor: null },
+        },
+      });
+    if (url.pathname.endsWith('/change-summary') && url.searchParams.get('status') === 'archived') {
+      await pendingArchiveCount;
+      return route.fulfill({ json: { items: [history], total: 3, nextCursor: null } });
+    }
+    if (url.pathname.endsWith('/changes') && url.searchParams.get('status') === 'archived')
+      return route.fulfill({ json: { items: [history], total: 3, nextCursor: null } });
+    if (url.pathname.endsWith('/change-summary'))
+      return route.fulfill({ json: { items: [active], total: 1, nextCursor: null } });
+    if (url.pathname.endsWith('/change'))
+      return route.fulfill({
+        json: url.searchParams.get('changeLocator') === history.id ? history : active,
+      });
+    return route.fulfill({ json: { pages: [] } });
+  });
+  try {
+    await page.goto('/');
+    const card = page.getByRole('button', { name: /已归档变更/u });
+    const metric = card.locator('.dashboard-summary-metric');
+    await expect(page.locator('.classic-change-detail')).toContainText(active.displayName);
+    await expect(metric).toHaveText('—');
+    const counted = page.waitForResponse('**/change-summary?status=archived&limit=1');
+    finishArchiveCount();
+    await counted;
+    await expect(metric).toHaveText('3');
+    await page.getByRole('tab', { name: '已归档', exact: true }).click();
+    await expect(page.locator('.classic-changes-explorer')).toContainText(history.displayName);
+  } finally {
+    finishArchiveCount();
+  }
+});
+
 test('opens current-project attention, follows a Supervisor child evidence link, and restores it on reload', async ({
   page,
 }) => {
@@ -2817,9 +2886,19 @@ test('keeps cached settings visible when fresh revalidation fails', async ({ pag
   await expect(page.locator('.dashboard-workflow-menu .ant-menu-item-selected')).toContainText(
     'Native 工作流',
   );
-  await expect.poll(() => configLoads).toBe(1);
+  expect(configLoads).toBe(0);
   const settingsDialog = page.getByRole('dialog', { name: /Comet 设置/u });
-  await page.getByRole('button', { name: '设置' }).click();
+  const openSettings = page.getByRole('button', { name: '设置', exact: true });
+  const defaultWorkflow = settingsDialog
+    .locator('.dashboard-config-control')
+    .first()
+    .getByText('Native', { exact: true });
+  await openSettings.click();
+  await expect(defaultWorkflow).toBeVisible();
+  await expect.poll(() => configLoads).toBe(1);
+  await page.keyboard.press('Escape');
+  await expect(settingsDialog).not.toBeVisible();
+  await openSettings.click();
   await expect(
     settingsDialog
       .locator('.dashboard-config-control')

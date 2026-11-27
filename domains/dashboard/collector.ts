@@ -156,6 +156,7 @@ export interface DashboardOverviewOptions {
   now?: Date;
   projectName?: string;
   query?: string;
+  workflow?: 'native' | 'classic';
 }
 
 export class DashboardChangeQueryError extends Error {
@@ -220,17 +221,14 @@ export async function collectDashboardChangeSummary(
   options: { status?: DashboardChangeTab; query?: string; limit?: number } = {},
 ): Promise<DashboardChangePage> {
   return withDashboardReadScope(projectPath, async () => {
-    const collection = await collectClassicChangeCandidates(path.resolve(projectPath));
+    const status = options.status ?? 'active';
+    const collection = await collectClassicChangeCandidates(path.resolve(projectPath), status);
     if (collection.errors.length > 0)
       throw new DashboardChangeQueryError(collection.errors.join('\n'));
     const limit = options.limit ?? Number.MAX_SAFE_INTEGER;
     if (!Number.isSafeInteger(limit) || limit < 1)
       throw new DashboardChangeQueryError('Change summary limit must be a positive integer');
-    return buildDashboardChangePage(
-      collection,
-      { ...options, status: options.status ?? 'active' },
-      limit,
-    );
+    return buildDashboardChangePage(collection, { ...options, status }, limit);
   });
 }
 
@@ -240,7 +238,7 @@ export async function collectDashboardWorkflowAttention(
   return withDashboardReadScope(projectPath, async () => {
     const root = path.resolve(projectPath);
     const [classic, native] = await Promise.all([
-      collectClassicChangeCandidates(root).catch(() => null),
+      collectClassicChangeCandidates(root, 'active').catch(() => null),
       collectNativeDashboardWorkflowAttention(root).catch(() => null),
     ]);
     const classicRows = await Promise.all((classic?.active ?? []).map(classicWorkflowAttention));
@@ -368,7 +366,10 @@ async function collectDashboardChangePageUncached(
   projectPath: string,
   options: DashboardChangePageOptions,
 ): Promise<DashboardChangePage> {
-  const collection = await collectClassicChangeCandidates(path.resolve(projectPath));
+  const collection = await collectClassicChangeCandidates(
+    path.resolve(projectPath),
+    options.status,
+  );
   if (collection.errors.length > 0) {
     throw new DashboardChangeQueryError(collection.errors.join('\n'));
   }
@@ -391,17 +392,23 @@ async function collectDashboardOverviewUncached(
 ): Promise<DashboardOverview> {
   const resolvedRoot = path.resolve(projectPath);
   const [classic, git, nativeResult] = await Promise.all([
-    collectClassicChangeCandidates(resolvedRoot),
+    options.workflow === 'native'
+      ? { active: [], archived: [], errors: [] }
+      : collectClassicChangeCandidates(
+          resolvedRoot,
+          options.workflow === 'classic' ? 'active' : 'all',
+        ),
     collectGitSnapshot(resolvedRoot),
-    collectNativeDashboardOverview(resolvedRoot, { now: options.now })
-      .then((projection) => ({ projection, failed: false as const }))
-      .catch(() => ({ projection: null, failed: true as const })),
+    options.workflow === 'classic'
+      ? { projection: null, failed: false as const }
+      : collectNativeDashboardOverview(resolvedRoot, { now: options.now })
+          .then((projection) => ({ projection, failed: false as const }))
+          .catch(() => ({ projection: null, failed: true as const })),
   ]);
-  const active = sortActiveCandidates(classic.active);
-  const archived = sortArchivedCandidates(classic.archived);
+  const { active, archived } = classic;
   const summary = {
     activeChanges: active.length,
-    archivedChanges: archived.length,
+    archivedChanges: options.workflow === undefined ? archived.length : null,
     verifyFailed: active.filter((change) => change.verify.result === 'fail').length,
     tasksIncomplete: active.reduce(
       (sum, change) => sum + (change.tasks.total - change.tasks.completed),
@@ -511,13 +518,17 @@ function classicCollectionCacheBytes(collection: ClassicCandidateCollection): nu
   );
 }
 
-async function collectCachedClassicCandidates(root: string): Promise<ClassicCandidateCollection> {
+async function collectCachedClassicCandidates(
+  root: string,
+  status: 'active' | 'archived',
+  key: string,
+): Promise<ClassicCandidateCollection> {
   const sources = collectDashboardWorkspaceSources(root);
   const identity = JSON.stringify({
     workspaces: sources.map(({ id, branch, current }) => [id, branch, current]),
     runtimeDataRoot: process.env.COMET_DATA_DIR ?? path.join(os.homedir(), '.comet'),
   });
-  const cached = classicCandidateCache.get(root);
+  const cached = classicCandidateCache.get(key);
   const reusable = new Map<string, ClassicChangeCandidate>();
   if (cached?.identity === identity) {
     const candidates = cached.collection.candidates ?? [];
@@ -549,13 +560,13 @@ async function collectCachedClassicCandidates(root: string): Promise<ClassicCand
         ...CLASSIC_CHANGES_ROOTS.flatMap((relative) => [
           path.dirname(path.join(projectRoot, relative)),
           path.join(projectRoot, relative),
-          path.join(projectRoot, relative, ARCHIVE_SEGMENT),
+          ...(status === 'archived' ? [path.join(projectRoot, relative, ARCHIVE_SEGMENT)] : []),
         ]),
       ]),
     ),
   ].sort();
   const before = await fingerprintDashboardFiles(discoveryPaths, identity);
-  const collection = await collectClassicChangeCandidatesUncached(root, sources, reusable);
+  const collection = await collectClassicChangeCandidatesUncached(status, sources, reusable);
   if (
     before !== null &&
     collection.refreshStable &&
@@ -563,8 +574,8 @@ async function collectCachedClassicCandidates(root: string): Promise<ClassicCand
     before === (await fingerprintDashboardFiles(discoveryPaths, identity)) &&
     classicCollectionCacheBytes(collection) <= 16 * 1024 * 1024
   ) {
-    classicCandidateCache.delete(root);
-    classicCandidateCache.set(root, {
+    classicCandidateCache.delete(key);
+    classicCandidateCache.set(key, {
       collection,
       fingerprint: before,
       discoveryPaths,
@@ -572,78 +583,66 @@ async function collectCachedClassicCandidates(root: string): Promise<ClassicCand
     });
     while (classicCandidateCache.size > 4)
       classicCandidateCache.delete(classicCandidateCache.keys().next().value!);
-  } else classicCandidateCache.delete(root);
+  } else classicCandidateCache.delete(key);
   return collection;
 }
 
-function collectClassicChangeCandidates(projectRoot: string): Promise<ClassicCandidateCollection> {
+async function collectClassicChangeCandidates(
+  projectRoot: string,
+  status: DashboardChangeTab,
+): Promise<ClassicCandidateCollection> {
+  if (status === 'all') {
+    const [active, archived] = await Promise.all([
+      collectClassicChangeCandidates(projectRoot, 'active'),
+      collectClassicChangeCandidates(projectRoot, 'archived'),
+    ]);
+    return {
+      active: active.active,
+      archived: archived.archived,
+      errors: [...active.errors, ...archived.errors],
+    };
+  }
   const root = path.resolve(projectRoot);
-  const existing = classicCandidateCollections.get(root);
+  const key = `${status}:${root}`;
+  const existing = classicCandidateCollections.get(key);
   if (existing) return existing;
-  // Only this read-only scan shares path checks. Every request checks index
-  // dependencies again; path inspections are discarded when the scan ends.
-  const collection = runWithHookReadCache(() => collectCachedClassicCandidates(root)).finally(() =>
-    classicCandidateCollections.delete(root),
-  );
-  classicCandidateCollections.set(root, collection);
+  // Path inspections are shared within each read-only scan and discarded when it ends.
+  const collection = runWithHookReadCache(() =>
+    collectCachedClassicCandidates(root, status, key),
+  ).finally(() => classicCandidateCollections.delete(key));
+  classicCandidateCollections.set(key, collection);
   return collection;
 }
 
 async function collectClassicChangeCandidatesUncached(
-  projectRoot: string,
-  sources = collectDashboardWorkspaceSources(projectRoot),
-  reusable = new Map<string, ClassicChangeCandidate>(),
+  status: 'active' | 'archived',
+  sources: DashboardWorkspaceSource[],
+  reusable: Map<string, ClassicChangeCandidate>,
 ): Promise<ClassicCandidateCollection> {
-  const collections = (
-    await Promise.all(
-      sources.map((source) =>
-        Promise.all(
-          CLASSIC_CHANGES_ROOTS.map(async (changesRelative) => {
-            const changesRoot = path.join(source.projectRoot, ...changesRelative.split('/'));
-            const [active, archived] = await Promise.all([
-              collectCandidatesWithError({
-                changesRoot,
-                projectRoot: source.projectRoot,
-                changesRelative,
-                status: 'active',
-                source,
-                reusable,
-              }),
-              collectCandidatesWithError({
-                changesRoot: path.join(changesRoot, ARCHIVE_SEGMENT),
-                projectRoot: source.projectRoot,
-                changesRelative,
-                status: 'archived',
-                source,
-                reusable,
-              }),
-            ]);
-            return {
-              active: active.items,
-              archived: archived.items,
-              errors: [...active.errors, ...archived.errors],
-            };
-          }),
-        ),
-      ),
-    )
-  ).flat();
-
-  const active = selectClassicWorkspaceCandidates(
-    collections.flatMap((collection) => collection.active),
-  );
-  const archived = selectClassicWorkspaceCandidates(
-    collections.flatMap((collection) => collection.archived),
-  );
-
-  return {
-    candidates: collections.flatMap(({ active, archived }) => [...active, ...archived]),
-    refreshStable: collections.every(({ active, archived }) =>
-      [...active, ...archived].every(({ refreshStable }) => refreshStable),
+  const collections = await Promise.all(
+    sources.flatMap((source) =>
+      CLASSIC_CHANGES_ROOTS.map((changesRelative) => {
+        const changesRoot = path.join(source.projectRoot, ...changesRelative.split('/'));
+        return collectCandidatesWithError({
+          changesRoot:
+            status === 'archived' ? path.join(changesRoot, ARCHIVE_SEGMENT) : changesRoot,
+          projectRoot: source.projectRoot,
+          changesRelative,
+          status,
+          source,
+          reusable,
+        });
+      }),
     ),
-    active,
-    archived,
-    errors: collections.flatMap((collection) => collection.errors),
+  );
+  const candidates = collections.flatMap(({ items }) => items);
+  const selected = selectClassicWorkspaceCandidates(candidates);
+  return {
+    candidates,
+    refreshStable: candidates.every(({ refreshStable }) => refreshStable),
+    active: status === 'active' ? selected : [],
+    archived: status === 'archived' ? selected : [],
+    errors: collections.flatMap(({ errors }) => errors),
   };
 }
 
@@ -1091,7 +1090,7 @@ interface ClassicCollection {
 }
 
 async function collectClassicChanges(projectRoot: string): Promise<ClassicCollection> {
-  const candidates = await collectClassicChangeCandidates(projectRoot);
+  const candidates = await collectClassicChangeCandidates(projectRoot, 'all');
   const errors = [...candidates.errors];
   const collect = async (
     entries: readonly ClassicChangeCandidate[],
