@@ -14,7 +14,6 @@ import {
   type WorkflowApplicationRunObservation,
 } from '../workflow-application/run-observation.js';
 import type { ApplicationRunRecord } from '../workflow-application/application-run-record.js';
-import { readApplicationEvaluationEvidence } from '../workflow-application/evaluation-evidence.js';
 import {
   readProtectedProjectFile,
   inspectProtectedProjectPath,
@@ -24,7 +23,6 @@ import {
   SDK_APPLICATIONS,
 } from '../workflow-contract/change-runtime-owner.js';
 import {
-  readEvalRun,
   listEvalArchives,
   iterateEvalArchiveSources,
   readEvalArchive,
@@ -36,6 +34,13 @@ import {
 import { collectNativeDashboardChangePage } from './native-collector.js';
 import { collectDashboardChangePage } from './collector.js';
 import { DashboardSummaryIndex } from './summary-index.js';
+import { emptyEvidence, projectDashboardApplicationEvidence } from './application-evidence.js';
+import {
+  hash,
+  object,
+  sanitizeApplicationObservation,
+  text,
+} from './application-observation-values.js';
 import {
   projectDashboardApplicationDefinition,
   labelDashboardApplicationRecords,
@@ -47,9 +52,10 @@ import type {
   DashboardApplicationRunDetail,
   DashboardApplicationRecord,
   DashboardApplicationArtifact,
-  DashboardApplicationEvidence,
   DashboardApplicationIdentity,
 } from './application-types.js';
+
+export { sanitizeApplicationObservation } from './application-observation-values.js';
 
 type Run = ApplicationRunRecord['run'];
 type Entry = {
@@ -60,23 +66,6 @@ type Entry = {
   archive?: EvalArchiveObservation;
   archivedIdentity?: ApplicationRunRecord['application'] | null;
 };
-const object = (v: unknown): Record<string, unknown> =>
-  v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
-const text = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v : null);
-const canonical = (v: unknown): unknown =>
-  Array.isArray(v)
-    ? v.map(canonical)
-    : v && typeof v === 'object'
-      ? Object.fromEntries(
-          Object.entries(v)
-            .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-            .map(([k, item]) => [k, canonical(item)]),
-        )
-      : v;
-const hash = (v: unknown) =>
-  createHash('sha256')
-    .update(JSON.stringify(canonical(v)))
-    .digest('hex');
 const creatorLabels: Record<string, [string, string]> = {
   analyze: ['理解需求与调查 Skills', '准备方案'],
   prepare: ['整理创作方案', '准备方案'],
@@ -101,23 +90,6 @@ export class DashboardApplicationQueryError extends Error {
   ) {
     super(message);
   }
-}
-
-/** SDK 的领取凭据不能进入 JSON 预览或浏览器缓存。 */
-export function sanitizeApplicationObservation(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sanitizeApplicationObservation);
-  if (value && typeof value === 'object')
-    return Object.fromEntries(
-      Object.entries(value)
-        .filter(
-          ([key]) =>
-            !/^(?:claimToken|token|apiKey|api_key|password|secret|credentials?|authorization)$/iu.test(
-              key,
-            ),
-        )
-        .map(([key, item]) => [key, sanitizeApplicationObservation(item)]),
-    );
-  return value;
 }
 
 function candidate(run: Run): DashboardApplicationIdentity | null {
@@ -895,26 +867,8 @@ function artifacts(
     }
   return result;
 }
-const emptyEvidence = (
-  kind: DashboardApplicationEvidence['kind'],
-  identity: DashboardApplicationIdentity | null,
-): DashboardApplicationEvidence => ({
-  kind,
-  status: 'not-recorded',
-  version: identity?.version ?? null,
-  contentHash: identity?.contentHash ?? identity?.packageHash ?? null,
-  sourceLocator: null,
-  sourceRunId: null,
-  report: null,
-  evalRunId: null,
-  summary:
-    kind === 'host'
-      ? '没有独立 Agent 平台验证记录；本地校验和模型评估不能替代 Agent 平台验收'
-      : '当前固定内容没有此类验证记录',
-  details: null,
-});
 
-async function evidence(
+async function collectApplicationEvidence(
   projectRoot: string,
   entry: Entry,
   material: Awaited<ReturnType<typeof inspectWorkflowApplicationMaterial>> | null,
@@ -927,7 +881,7 @@ async function evidence(
       : null;
   let current = entry.creator ? entry : undefined;
   const history: ApplicationReference[] = [];
-  const failures: { ref: ApplicationReference; message: string }[] = [];
+  const failures: { summary: DashboardApplicationRunSummary; message: string }[] = [];
   if (identity) {
     const store = applicationSummaryIndex(projectRoot);
     history.push(
@@ -970,7 +924,7 @@ async function evidence(
         } catch (error) {
           if (failures.length < 10)
             failures.push({
-              ref,
+              summary: ref.summary,
               message: error instanceof Error ? error.message : String(error),
             });
         }
@@ -978,146 +932,14 @@ async function evidence(
       if (offset + creators.items.length >= creators.total || !creators.items.length) break;
     }
   }
-  const local = emptyEvidence('local', identity);
-  if (current?.run) {
-    const record = object(current.run.outputs.verify?.value);
-    const action = current.run.actions.filter((a) => a.stepId === 'verify').at(-1);
-    if (record.packageHash && record.packageHash === packageHash) {
-      local.status = 'passed';
-      local.summary = record.artifactVerification
-        ? '本地应用与阶段产物的正常、异常样例验收已完成'
-        : '本地应用、固定依赖与 Runtime 契约校验已完成';
-      local.details = sanitizeApplicationObservation(record);
-    } else if (action?.status === 'failed') {
-      local.status = 'failed';
-      local.summary = action.reason ?? action.outcome?.summary ?? '本地校验失败';
-      local.details = sanitizeApplicationObservation(action.outcome);
-    }
-    if (local.status !== 'not-recorded') {
-      local.sourceLocator = current.summary.locator;
-      local.sourceRunId = current.summary.runId;
-      local.contentHash = packageHash ?? null;
-    }
-  }
-  const model = emptyEvidence('model', identity);
-  if (identity && packageHash) {
-    try {
-      const result = await readApplicationEvaluationEvidence(projectRoot, identity.id, packageHash);
-      model.status = result.status === 'not-evaluated' ? 'not-recorded' : result.status;
-      model.summary = result.limitations.join('；') || '模型评估报告已绑定当前应用内容';
-      model.report = result.report ?? null;
-      model.details = sanitizeApplicationObservation(result);
-    } catch (error) {
-      model.status = 'unavailable';
-      model.summary = error instanceof Error ? error.message : String(error);
-    }
-  }
-  if (current?.run) {
-    const result = object(current.run.outputs.evaluate?.value);
-    const resultIdentity = object(result.application);
-    const selection = current.run.waits.filter((w) => w.stepId === 'confirm-eval').at(-1);
-    if (
-      !model.report &&
-      resultIdentity.contentHash === packageHash &&
-      resultIdentity.id === identity?.id &&
-      ['passed', 'failed', 'incomplete'].includes(String(result.status))
-    ) {
-      model.status = result.status as 'passed' | 'failed' | 'incomplete';
-      model.details = sanitizeApplicationObservation(result);
-      model.summary = '模型评估结果绑定当前候选';
-      const experimentId = text(result.experimentId);
-      if (!experimentId || !/^[A-Za-z0-9_-]{1,200}$/u.test(experimentId)) {
-        model.status = 'stale';
-        model.summary = '原 Eval 报告缺少有效实验身份，不能用于当前候选';
-      } else {
-        const ref = `.comet/eval/runs/${experimentId}/application-result.json`;
-        try {
-          const bytes = (
-            await readProtectedProjectFile(projectRoot, ref, 2 * 1024 * 1024, {
-              label: 'Creator Eval 报告',
-            })
-          ).bytes;
-          if (hash(JSON.parse(bytes.toString('utf8'))) !== hash(result))
-            throw new Error('原 Eval 报告内容已变化');
-          model.report = path.join(projectRoot, '.comet/eval/runs', experimentId, 'summary.md');
-        } catch (error) {
-          model.status = 'stale';
-          model.summary = error instanceof Error ? error.message : String(error);
-        }
-      }
-    }
-    if (selection?.decision?.choice === 'skip' && model.status === 'not-recorded') {
-      model.status = 'skipped';
-      model.summary = '本次创作明确跳过模型评估';
-    }
-    if (model.status !== 'not-recorded') {
-      model.sourceLocator = current.summary.locator;
-      model.sourceRunId = current.summary.runId;
-      model.contentHash = packageHash ?? null;
-    }
-  }
-  if (entry.creator && material && material.status !== 'matched') {
-    if (['passed', 'failed', 'incomplete'].includes(local.status)) {
-      local.status = 'stale';
-      local.summary = '原本地校验结果保留，当前候选包已变化或无法读取';
-    }
-    if (['passed', 'failed', 'incomplete'].includes(model.status)) {
-      model.status = 'stale';
-      model.summary = '原模型评估结果保留，当前候选包已变化或无法读取';
-    }
-  }
-  if (model.report) {
-    const ref = path.relative(projectRoot, model.report).replaceAll('\\', '/');
-    const match = /^\.comet\/eval\/runs\/([^/]+)\/(?:summary\.md|summary\.html)$/u.exec(ref);
-    if (match) {
-      const linked = await readEvalRun(projectRoot, match[1]).catch(() => null);
-      if (linked) model.evalRunId = match[1];
-    }
-  }
-  if (!current && failures.length) {
-    local.status = 'unavailable';
-    local.summary = `关联创作记录无法读取：${failures.map((failure) => failure.message).join('；')}`;
-    local.sourceLocator = failures[0].ref.summary.locator;
-    local.sourceRunId = failures[0].ref.summary.runId;
-    local.contentHash = packageHash ?? null;
-    if (model.status === 'not-recorded') {
-      model.status = 'unavailable';
-      model.summary = local.summary;
-      model.sourceLocator = local.sourceLocator;
-      model.sourceRunId = local.sourceRunId;
-      model.contentHash = packageHash ?? null;
-    }
-  }
-  const other: DashboardApplicationEvidence[] = history
-    .filter(
-      (ref) =>
-        ref.summary.locator !== current?.summary.locator &&
-        ref.summary.locator !== entry.summary.locator,
-    )
-    .flatMap((ref) =>
-      (ref.evidenceKinds ?? []).map((kind) => ({
-        ...emptyEvidence(kind, ref.summary.application),
-        contentHash: ref.summary.application?.packageHash ?? null,
-        status: 'stale' as const,
-        sourceLocator: ref.summary.locator,
-        sourceRunId: ref.summary.runId,
-        summary: '原验收结果保留；打开时读取对应创作记录，不能用于当前候选',
-      })),
-    );
-  return {
-    evidence: [local, model, emptyEvidence('host', identity)],
-    otherEvidence: other,
-    sourceCreators:
-      current?.creator && current.summary.runId && current.summary.application
-        ? [
-            {
-              locator: current.summary.locator,
-              runId: current.summary.runId,
-              version: current.summary.application.version,
-            },
-          ]
-        : [],
-  };
+  return projectDashboardApplicationEvidence(projectRoot, {
+    summary: entry.summary,
+    packageHash,
+    creatorMaterialChanged: Boolean(entry.creator && material && material.status !== 'matched'),
+    current,
+    history,
+    failures,
+  });
 }
 
 /** 分发只使用保存的完整应用身份，不接受浏览器指定源文件，也不推进 Run。 */
@@ -1358,7 +1180,7 @@ export async function collectDashboardApplicationRunDetail(
       };
     }
   }
-  const proof = await evidence(projectRoot, entry, material);
+  const proof = await collectApplicationEvidence(projectRoot, entry, material);
   if (data.indexing && !entry.creator) {
     for (const item of proof.evidence)
       if (item.status === 'not-recorded' && item.kind !== 'host') {

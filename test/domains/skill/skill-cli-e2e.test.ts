@@ -74,6 +74,17 @@ describe('comet skill CLI end to end', () => {
   });
 
   it('runs, resumes, upgrades, and evaluates a project Skill through bin/comet.js', async () => {
+    const shown = runCli('skill', 'show', 'demo', '--project', projectRoot, '--json');
+    expect(shown.status, shown.stderr).toBe(0);
+    expect(JSON.parse(shown.stdout)).toMatchObject({
+      valid: true,
+      name: 'demo',
+      version: '1',
+      origin: 'project',
+      orchestration: { mode: 'deterministic', entry: 'finish' },
+      checks: [{ checkId: 'report', scope: 'completion' }],
+    });
+
     const started = runCli(
       'skill',
       'run',

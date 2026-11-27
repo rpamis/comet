@@ -172,6 +172,8 @@ Comet的许多能力都能够在海内外大厂实践中找到相似之处，想
 - **如何基于科学的评估驱动演进Skill**— Comet Eval支持Rubric结构化评分，并支持Pass@k、Pass^k指标，用最科学的方式演进Skill，而不是靠人工感觉和评估，支持Local和Langsmith评估，让Eval真正走进企业生产环境
 - **如何创建可恢复的工作流应用** — `/comet-any` 调查真实 Skill、固定依赖与执行契约，用户确认后编译应用，分别记录本地检查与真实宿主验收范围。
 
+开发者可从 [Comet 现行架构](docs/architecture/README.md) 查看五个模块的领域、运行流程和源码入口。
+
 ## 安装
 
 前置要求：

@@ -320,6 +320,7 @@ describe('skill validate and inspect commands', () => {
       skills: [],
       agents: [],
       tools: [],
+      guardrails: { allowedSkills: [], allowedAgents: [], allowedTools: [] },
       checks: [],
     });
     expect(await fs.readFile(path.join(skillRoot, 'comet', 'skill.yaml'), 'utf8')).toBe(before);

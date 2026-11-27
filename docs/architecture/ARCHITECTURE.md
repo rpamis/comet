@@ -1,5 +1,7 @@
 # Comet 0.4.0 架构概览
 
+> 本页记录 0.4.0-beta 的设计与迁移。当前实现见 [Comet 现行架构](./README.md)。
+
 > 版本状态：0.4.0-beta（相对 0.3.x 的架构跃迁）
 
 ## 概述
@@ -195,6 +197,6 @@ tweak 重新定位为「串联 OpenSpec 的轻量预设路径」，delta spec �
 
 ## 相关文档
 
-- [上下文压缩](CONTEXT-COMPRESSION.md) — Design → Build 阶段交接的 token 优化机制
-- [自动衔接](AUTO-TRANSITION.md) — 阶段守卫推进后的下一 skill 路由协议
+- [上下文压缩](../operations/CONTEXT-COMPRESSION.md) — Design → Build 阶段交接的 token 优化机制
+- [自动衔接](../operations/AUTO-TRANSITION.md) — 阶段守卫推进后的下一 skill 路由协议
 - 设计与计划文档：`docs/superpowers/specs/` 与 `docs/superpowers/plans/`

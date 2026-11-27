@@ -11,7 +11,7 @@ import {
   startStandaloneRun,
   upgradeStandaloneRun,
 } from '../../domains/engine/standalone-run.js';
-import { resolveSkill } from '../../domains/skill/discovery.js';
+import { resolveSkill, type ResolvedSkill } from '../../domains/skill/discovery.js';
 import { installProjectSkill } from '../../domains/skill/install.js';
 
 interface SkillCommandOptions {
@@ -114,37 +114,8 @@ function runText(result: {
   ].join('\n');
 }
 
-function inspectResult(selector: string, options: SkillCommandOptions) {
-  return resolveSkill(selector, { projectRoot: projectRoot(options) }).then((resolved) => {
-    const { definition, guardrails, evals } = resolved.package;
-    return {
-      valid: true,
-      name: resolved.name,
-      version: resolved.version,
-      origin: resolved.origin,
-      root: resolved.root,
-      hash: resolved.hash,
-      description: definition.metadata.description,
-      goal: definition.goal,
-      orchestration: definition.orchestration,
-      skills: definition.skills,
-      agents: definition.agents,
-      tools: definition.tools,
-      guardrails,
-      checks: evals.map(({ id, ...evaluation }) => ({
-        checkId: id,
-        ...evaluation,
-      })),
-    };
-  });
-}
-
-export async function skillValidateCommand(
-  selector: string,
-  options: SkillCommandOptions = {},
-): Promise<void> {
-  const resolved = await resolveSkill(selector, { projectRoot: projectRoot(options) });
-  const result = {
+function skillIdentity(resolved: ResolvedSkill) {
+  return {
     valid: true,
     name: resolved.name,
     version: resolved.version,
@@ -152,6 +123,44 @@ export async function skillValidateCommand(
     root: resolved.root,
     hash: resolved.hash,
   };
+}
+
+async function inspectSkill(selector: string, options: SkillCommandOptions) {
+  const resolved = await resolveSkill(selector, { projectRoot: projectRoot(options) });
+  const { definition, guardrails, evals } = resolved.package;
+  return {
+    ...skillIdentity(resolved),
+    description: definition.metadata.description,
+    goal: definition.goal,
+    orchestration: definition.orchestration,
+    skills: definition.skills,
+    agents: definition.agents,
+    tools: definition.tools,
+    guardrails,
+    checks: evals.map(({ id, ...evaluation }) => ({
+      checkId: id,
+      ...evaluation,
+    })),
+  };
+}
+
+function skillDetailLines(result: Awaited<ReturnType<typeof inspectSkill>>): string[] {
+  return [
+    `Orchestration: ${result.orchestration.mode}`,
+    `Steps: ${result.orchestration.steps?.length ?? 0}`,
+    `Skills: ${result.skills.length}`,
+    `Agents: ${result.agents.length}`,
+    `Tools: ${result.tools.length}`,
+    `Runtime checks: ${result.checks.length}`,
+  ];
+}
+
+// Keep the original output contracts for package consumers using the command module.
+export async function skillValidateCommand(
+  selector: string,
+  options: SkillCommandOptions = {},
+): Promise<void> {
+  const result = skillIdentity(await resolveSkill(selector, { projectRoot: projectRoot(options) }));
   emit(
     result,
     options.json,
@@ -163,7 +172,7 @@ export async function skillInspectCommand(
   selector: string,
   options: SkillCommandOptions = {},
 ): Promise<void> {
-  const result = await inspectResult(selector, options);
+  const result = await inspectSkill(selector, options);
   emit(
     result,
     options.json,
@@ -171,13 +180,7 @@ export async function skillInspectCommand(
       `${result.name}@${result.version} (${result.origin})`,
       result.description,
       `Root: ${result.root}`,
-      `Hash: ${result.hash}`,
-      `Orchestration: ${result.orchestration.mode}`,
-      `Steps: ${result.orchestration.steps?.length ?? 0}`,
-      `Skills: ${result.skills.length}`,
-      `Agents: ${result.agents.length}`,
-      `Tools: ${result.tools.length}`,
-      `Runtime checks: ${result.checks.length}`,
+      ...skillDetailLines(result),
     ].join('\n'),
   );
 }
@@ -186,7 +189,7 @@ export async function skillShowCommand(
   selector: string,
   options: SkillCommandOptions = {},
 ): Promise<void> {
-  const result = await inspectResult(selector, options);
+  const result = await inspectSkill(selector, options);
   emit(
     result,
     options.json,
@@ -195,12 +198,7 @@ export async function skillShowCommand(
       result.description,
       `Root: ${result.root}`,
       `Hash: ${result.hash}`,
-      `Orchestration: ${result.orchestration.mode}`,
-      `Steps: ${result.orchestration.steps?.length ?? 0}`,
-      `Skills: ${result.skills.length}`,
-      `Agents: ${result.agents.length}`,
-      `Tools: ${result.tools.length}`,
-      `Runtime checks: ${result.checks.length}`,
+      ...skillDetailLines(result),
     ].join('\n'),
   );
 }
