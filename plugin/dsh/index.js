@@ -12,6 +12,7 @@
  * PATH.
  */
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { createRequire } from 'node:module';
@@ -19,26 +20,11 @@ import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { preparePluginIntegration } from '../../domains/skill/plugin-integration.js';
+import { hashPluginRuntime } from '../../domains/skill/plugin-integration.js';
+import { getDshHome } from '../../platform/install/platforms.js';
 
 export const name = 'comet';
 export const inject = ['skills'];
-
-/** 优先使用插件依赖的官方桥接，也兼容发行版已提供的副本。 */
-export async function resolveDshHookBridge() {
-  const roots = [import.meta.url];
-  if (process.argv[1]) roots.push(pathToFileURL(path.resolve(process.argv[1])).href);
-  for (const root of roots) {
-    const runtimeRequire = createRequire(root);
-    try {
-      runtimeRequire.resolve('@deepseek-ai/dsh-hooks-claude-code');
-    } catch {
-      continue;
-    }
-    return runtimeRequire('@deepseek-ai/dsh-hooks-claude-code');
-  }
-  throw new Error('Comet 缺少官方 dsh-hooks-claude-code 依赖，请重新安装插件');
-}
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const skillRoot = path.join(packageRoot, 'skills');
@@ -49,6 +35,93 @@ const dashboardSchema = 'comet.dsh-dashboard.v1';
 const version = JSON.parse(readFileSync(path.join(packageRoot, 'package.json'), 'utf8')).version;
 const dashboardTimeoutMs = 30_000;
 const probeTimeoutMs = 1_500;
+
+function mountWorkflowHooks(ctx, integration) {
+  const hookEntry = path.join(skillRoot, 'comet/scripts/comet-plugin-hook.mjs');
+  const configRoot = getDshHome();
+  const lifetime = new globalThis.AbortController();
+  ctx.effect(() => () => lifetime.abort(), 'comet: workflow hooks');
+  const prepared = Promise.all([
+    hashPluginRuntime(packageRoot),
+    import(pathToFileURL(hookEntry).href),
+  ]).then(
+    ([fingerprint, { runPluginHook }]) => {
+      integration.status = 'ready';
+      return { fingerprint, runPluginHook };
+    },
+    (error) => {
+      integration.status = 'failed';
+      integration.message = String(error?.message ?? error);
+      ctx.logger?.warn?.(`Comet 自动接入失败：${integration.message}`);
+    },
+  );
+
+  async function run(event, agent, signal, input = {}) {
+    const hook = await prepared;
+    if (!hook) throw new Error(integration.message);
+    const cwd = agent ? await ctx.workingDirectory.ensure(agent, signal) : process.cwd();
+    signal.throwIfAborted();
+    const result = await hook.runPluginHook(
+      [
+        '--platform',
+        'dsh',
+        '--plugin-root',
+        packageRoot,
+        '--config-root',
+        configRoot,
+        '--package-hash',
+        hook.fingerprint,
+        '--event',
+        event,
+      ],
+      JSON.stringify({
+        ...input,
+        cwd,
+        session_id: agent?.session.header.id,
+        hook_event_name: event,
+      }),
+    );
+    if (result.stderr) ctx.logger?.warn?.(result.stderr.trim());
+    if (result.exitCode !== 0) throw new Error('Comet Hook 未能完成检查');
+    return result.stdout ? JSON.parse(result.stdout).hookSpecificOutput : undefined;
+  }
+
+  ctx.on('agent/created', async ({ agent, source, signal }) => {
+    const ownerSignal = signal
+      ? globalThis.AbortSignal.any([signal, lifetime.signal])
+      : lifetime.signal;
+    try {
+      const result = await run('SessionStart', agent, ownerSignal, { source });
+      if (result?.additionalContext && !ownerSignal.aborted) {
+        agent.inject({
+          id: randomUUID(),
+          role: 'user',
+          source: { kind: 'comet', form: 'instructions' },
+          content: [{ type: 'text', text: result.additionalContext }],
+        });
+      }
+    } catch (error) {
+      if (!ownerSignal.aborted) ctx.logger?.warn?.(`Comet 会话规则注入失败：${error.message}`);
+    }
+  });
+
+  ctx.on('tools/pre-execute', async (exec, next) => {
+    if (exec.name !== 'write' && exec.name !== 'edit') return next();
+    try {
+      const result = await run('PreToolUse', exec.agent, exec.signal, {
+        tool_name: exec.name,
+        tool_input: exec.arguments,
+        tool_use_id: exec.callId,
+      });
+      if (result?.permissionDecision === 'deny') {
+        return { kind: 'deny', reason: result.permissionDecisionReason };
+      }
+    } catch (error) {
+      return { kind: 'deny', reason: `Comet 插件 Hook 失败：${error.message}` };
+    }
+    return next();
+  });
+}
 
 /** Strip a single YAML quote pair without interpreting the rest of the scalar. */
 function unquote(value) {
@@ -602,38 +675,7 @@ export function apply(ctx) {
   }
 
   ctx.inject(['agents', 'workingDirectory', 'subprocess', 'webServer'], (scoped) => {
-    let disposed = false;
-    let bridge;
-    scoped.effect(
-      () => () => {
-        disposed = true;
-        bridge?.dispose();
-      },
-      'comet: workflow bridge',
-    );
-    if (typeof scoped.plugin !== 'function') {
-      integration.status = 'unavailable';
-      integration.message = '当前 DSH 未提供 Cordis 插件挂载入口';
-    } else {
-      void (async () => {
-        const prepared = await preparePluginIntegration({
-          platform: 'dsh',
-          pluginRoot: packageRoot,
-        });
-        const module = await resolveDshHookBridge();
-        if (disposed) return;
-        bridge = scoped.plugin(module, {
-          configPath: prepared.hookConfigPath,
-          pluginRoot: packageRoot,
-        });
-        integration.status = 'ready';
-        integration.hookConfigPath = prepared.hookConfigPath;
-      })().catch((error) => {
-        integration.status = 'failed';
-        integration.message = String(error?.message ?? error);
-        ctx.logger?.warn?.(`Comet 自动接入失败：${integration.message}`);
-      });
-    }
+    mountWorkflowHooks(scoped, integration);
     const services = {
       agents: scoped.agents,
       workingDirectory: scoped.workingDirectory,

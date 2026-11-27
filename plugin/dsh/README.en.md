@@ -14,13 +14,15 @@ The plugin includes Comet Skill, workflow guards, the local Dashboard and a matc
 It registers Comet Skill in DeepSeek Harness and adds a Comet sidebar entry that opens the
 current session workspace's Dashboard in the main column. An npm or private-registry
 install brings the matching Comet CLI and exposes `comet` in the current DSH process;
-without a bundled copy, it uses the CLI on PATH. Activation mounts the official Hook
-bridge without requiring a manual `comet init`. Classic dependencies follow the project
-configuration.
+without a bundled copy, it uses the CLI on PATH. Activation subscribes to DSH's session
+and tool events without requiring a manual `comet init`. Classic dependencies follow the
+project configuration.
 
 Source, documentation and issue tracker: [https://github.com/rpamis/comet](https://github.com/rpamis/comet)
 
 ## Prepare the execution environment
+
+The plugin requires DSH `0.2.2-rc.1` or later.
 
 Installing the plugin from npm or a private registry installs `@rpamis/comet` as a plugin
 dependency at the same version, so no global CLI install is needed:
@@ -139,12 +141,10 @@ main column instead of failing silently. Viewing the Dashboard grants no Eval ru
 
 ## Existing file-based installs
 
-Installation also brings the official `@deepseek-ai/dsh-hooks-claude-code` bridge and
-its runtime dependencies. Activation mounts `SessionStart` and `PreToolUse` for this
-profile: new sessions receive the workflow rules and writes use the existing Comet
-Router. No manual `comet init` is required. Private configuration lives under
-`DSH_HOME/comet-plugin/` (default `~/.dsh/comet-plugin/`); the plugin does not rewrite
-profile patches or copy project rules. Disabling or uninstalling it disposes the bridge.
+The plugin listens for session creation and tool execution in the current profile. New
+sessions receive the workflow rules, and the existing Comet Router checks `write` and
+`edit` calls. Disabling or uninstalling the plugin removes its listeners. Project rules
+and user profile patches require no additional configuration.
 The `integration` field in `/comet-plugin/status` reports preparation failures.
 
 Only after the new Hook actually executes does it remove old Comet-owned Router/Guard

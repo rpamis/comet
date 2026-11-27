@@ -140,23 +140,14 @@ describe('DeepSeek Harness plugin package', () => {
       });
       expect(built.status, built.stderr).toBe(0);
       const { pluginRoot } = JSON.parse(built.stdout);
-      // 只替代平台模块装载；真实官方桥接事件另在安装后的 Harness 运行时验证。
-      const bridgeRoot = path.join(pluginRoot, 'node_modules/@deepseek-ai/dsh-hooks-claude-code');
-      await mkdir(bridgeRoot, { recursive: true });
-      await writeFile(path.join(bridgeRoot, 'package.json'), '{"main":"index.cjs"}');
-      await writeFile(
-        path.join(bridgeRoot, 'index.cjs'),
-        'exports.name="official-bridge-fixture"; exports.apply=()=>{};',
-      );
       const host = (await import(
         pathToFileURL(path.join(pluginRoot, 'index.js')).href
       )) as HostModule;
-      const disposers = new Map<string, () => void>();
-      const dispose = vi.fn();
-      const mounted = vi.fn(() => ({ dispose }));
-      const effect = (register: () => () => void, label: string) => {
-        disposers.set(label, register());
-      };
+      const disposers: (() => void)[] = [];
+      const onStart = vi.fn<(event: unknown) => Promise<void>>();
+      const onTool = vi.fn<(event: unknown, next: () => Promise<unknown>) => Promise<unknown>>();
+      const listeners = new Set<string>();
+      const effect = (register: () => () => void) => disposers.push(register());
       host.apply({
         skills: { register: () => () => {}, list: async () => [] },
         effect,
@@ -164,24 +155,121 @@ describe('DeepSeek Harness plugin package', () => {
         inject: (_dependencies: string[], callback: (ctx: unknown) => void) =>
           callback({
             effect,
-            plugin: mounted,
+            on: (event: string, listener: never) => {
+              listeners.add(event);
+              if (event === 'agent/created') onStart.mockImplementation(listener);
+              if (event === 'tools/pre-execute') onTool.mockImplementation(listener);
+              disposers.push(() => listeners.delete(event));
+            },
             agents: {},
-            workingDirectory: {},
+            workingDirectory: { ensure: async () => temporary },
             subprocess: {},
             webServer: { register: () => () => {} },
           }),
       });
-      await vi.waitFor(() => expect(mounted).toHaveBeenCalledOnce(), { timeout: 10_000 });
-      const config = (mounted.mock.calls[0] as unknown as [unknown, { configPath: string }])[1];
-      const hooks = (await readJson(config.configPath)).hooks;
-      expect(hooks.SessionStart).toHaveLength(1);
-      expect(hooks.PreToolUse[0].matcher).toBe('write|edit');
+      expect([...listeners].sort()).toEqual(['agent/created', 'tools/pre-execute']);
+      const inject = vi.fn();
+      const agent = { session: { header: { id: 'test-session' } }, inject };
+      const signal = new AbortController().signal;
+      await onStart({ agent, source: 'startup', signal });
+      expect(inject).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          role: 'user',
+          content: [{ type: 'text', text: expect.stringContaining('完整 Rule') }],
+        }),
+      );
       expect(existsSync(path.join(temporary, 'dsh/profiles'))).toBe(false);
       expect(existsSync(path.join(temporary, '.comet'))).toBe(false);
-      disposers.get('comet: workflow bridge')!();
-      expect(dispose).toHaveBeenCalledOnce();
+
+      await mkdir(path.join(temporary, '.git'));
+      await mkdir(path.join(temporary, '.comet'));
+      await writeFile(
+        path.join(temporary, '.comet/config.yaml'),
+        'schema: comet.project.v1\ndefault_workflow: classic\nworkflows: [classic]\nclassic:\n  artifact_layout: legacy\n',
+      );
+      await writeFile(
+        path.join(temporary, '.comet/current-change.json'),
+        JSON.stringify({
+          schema: 'comet.selection.v2',
+          workflow: 'classic',
+          change: 'selected',
+          branch: null,
+        }),
+      );
+      for (const change of ['selected', 'other']) {
+        const changeRoot = path.join(temporary, 'openspec/changes', change);
+        await mkdir(changeRoot, { recursive: true });
+        await writeFile(
+          path.join(changeRoot, '.comet.yaml'),
+          'workflow: hotfix\nphase: build\ndesign_doc: null\nplan: null\nverification_report: null\nbuild_mode: direct\nisolation: null\nverify_mode: null\nverify_result: pending\nverified_at: null\narchived: false\n',
+        );
+      }
+      const next = vi.fn(async () => ({ kind: 'allow' }));
+      await expect(
+        onTool(
+          {
+            name: 'write',
+            arguments: { path: 'openspec/changes/other/tasks.md' },
+            callId: 'blocked',
+            agent,
+            signal,
+          },
+          next,
+        ),
+      ).resolves.toMatchObject({
+        kind: 'deny',
+        reason: expect.stringContaining("belongs to Classic change 'other'"),
+      });
+      expect(next).not.toHaveBeenCalled();
+      await expect(
+        onTool(
+          {
+            name: 'write',
+            arguments: { path: 'src/feature.ts' },
+            callId: 'allowed',
+            agent,
+            signal,
+          },
+          next,
+        ),
+      ).resolves.toEqual({ kind: 'allow' });
+      expect(next).toHaveBeenCalledOnce();
+      await expect(
+        onTool(
+          {
+            name: 'read',
+            arguments: { path: 'openspec/changes/other/tasks.md' },
+            callId: 'read',
+            agent,
+            signal,
+          },
+          next,
+        ),
+      ).resolves.toEqual({ kind: 'allow' });
+      expect(next).toHaveBeenCalledTimes(2);
+      for (const dispose of disposers.reverse()) dispose();
+      expect([...listeners]).toEqual([]);
     } finally {
       vi.unstubAllEnvs();
+      await rm(temporary, { recursive: true, force: true });
+    }
+  }, 30_000);
+  it('keeps the published manifest compatible with DSH versions above rc.1', async () => {
+    const temporary = await mkdtemp(path.join(os.tmpdir(), 'comet dsh compatibility '));
+    try {
+      const built = spawnSync(process.execPath, [builder, '--output-root', temporary], {
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+      expect(built.status, built.stderr).toBe(0);
+      const { pluginRoot } = JSON.parse(built.stdout);
+      const metadata = await readJson(path.join(pluginRoot, 'package.json'));
+      // DSH Market intersects the engine range with ordinary DSH core dependencies.
+      expect(metadata.engines.dsh).toBe('>=0.2.2-rc.1');
+      expect(
+        Object.keys(metadata.dependencies).filter((key) => /^@deepseek-ai\/dsh(?:-|$)/u.test(key)),
+      ).toEqual([]);
+    } finally {
       await rm(temporary, { recursive: true, force: true });
     }
   }, 30_000);
@@ -244,10 +332,6 @@ describe('DeepSeek Harness plugin package', () => {
       });
       expect(packed.status, packed.stderr).toBe(0);
       const files = JSON.parse(packed.stdout)[0].files.map((file: { path: string }) => file.path);
-      const metadata = await readJson(path.join(pluginRoot, 'package.json'));
-      expect(metadata.dependencies['@deepseek-ai/dsh-hooks-claude-code']).toBe('0.2.2-rc.1');
-      expect(metadata.dependencies['@deepseek-ai/dsh-hook-protocol']).toBe('0.2.2-rc.1');
-      expect(metadata.dependencies['@deepseek-ai/dsh-llm']).toBe('0.2.2-rc.1');
       expect(files).toContain('rules/comet-workflow-guard.md');
       expect(files).toContain('rules/migration-assets.json');
       expect(files).toContain('skills/comet/scripts/comet-plugin-hook.mjs');
@@ -383,6 +467,7 @@ describe('DeepSeek Harness plugin package', () => {
       >();
       expect(whenServices).toBeDefined();
       whenServices!({
+        on: () => {},
         agents: {
           get: (id: string) => (id === 'live-session' ? { id } : undefined),
         },

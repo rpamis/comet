@@ -2,6 +2,35 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "dsh-600-plugin-update-above-minimum-version",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/600",
+        "https://github.com/rpamis/comet/issues/514#issuecomment-7207299899"
+      ],
+      "behavior": "在最低支持版本 0.2.2-rc.1 及更新的 DSH 上，Comet 插件清单允许安装或更新，打包后的插件能注册会话规则与写入检查。",
+      "coverageLevel": "runtime",
+      "reproduction": "用 DSH Market 1.82.0 的兼容判定读取 npm 0.5.7 或修复前 058 构建包的清单，传入 DSH 0.2.2-rc.5，结果为 >=0.2.2-rc.1 与精确 0.2.2-rc.1 的交集并拒绝更新。",
+      "expected": "打包清单保留 DSH 0.2.2-rc.1 的最低版本。插件启用后注入会话规则，拦截跨 change 写入，并让合法工具继续执行。",
+      "forbidden": "通过普通 DSH 依赖锁死发布清单的有效版本范围，或在没有独立桥接依赖时丢失会话规则及写入检查。",
+      "rootCause": "旧插件加载固定 rc.1 的 Hook 桥并直接声明同版本 DSH 核心依赖，DSH Market 把核心依赖与 engines.dsh 一并检查。",
+      "tests": [
+        {
+          "file": "test/scripts/dsh-plugin-build.test.ts",
+          "namePattern": "^DeepSeek Harness plugin package keeps the published manifest compatible with DSH versions above rc\\.1$",
+          "requiredNames": [
+            "DeepSeek Harness plugin package keeps the published manifest compatible with DSH versions above rc.1"
+          ]
+        },
+        {
+          "file": "test/scripts/dsh-plugin-build.test.ts",
+          "namePattern": "^DeepSeek Harness plugin package mounts and disposes its hook bridge without rewriting a profile or initializing projects$",
+          "requiredNames": [
+            "DeepSeek Harness plugin package mounts and disposes its hook bridge without rewriting a profile or initializing projects"
+          ]
+        }
+      ]
+    },
+    {
       "id": "openspec-594-init-global-skill-scope",
       "behavior": "通过 comet init 为 Cursor 全局安装 OpenSpec Skill 时，用户主目录只作为 Skill 安装位置。",
       "sources": ["https://github.com/rpamis/comet/issues/594"],

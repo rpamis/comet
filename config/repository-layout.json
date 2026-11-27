@@ -473,6 +473,12 @@
     ],
     "runtimeImports": [
       {
+        "from": "plugin/dsh/index.js",
+        "expression": "pathToFileURL(hookEntry).href",
+        "to": "domains/skill/plugin-hook-entry.ts",
+        "reason": "The DSH plugin runs the shared Hook shipped with its installed package in response to DSH events."
+      },
+      {
         "from": "domains/skill/plugin-hook-entry.ts",
         "expression": "pathToFileURL(router).href",
         "to": "domains/comet-entry/hook-router-entry.ts",

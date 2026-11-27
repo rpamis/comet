@@ -12,12 +12,14 @@ Comet 是一个面向 Agent 的可恢复长程任务工作流与 Skill 平台，
 插件包含 Comet Skill、工作流 Guard、本地 Dashboard 和配套 CLI。Comet Skill 注册到
 DeepSeek Harness 的技能目录；左侧的 Comet 入口在主内容区打开当前会话工作区的 Dashboard。
 从 npm 或私有包安装时，插件会一并安装匹配版本的 Comet CLI，并在当前 DSH 进程中提供
-`comet` 命令；没有自带副本时使用 PATH 中已有的 CLI。启用时自动接入官方 Hook 桥接，
+`comet` 命令；没有自带副本时使用 PATH 中已有的 CLI。启用时自动接入 DSH 的会话和工具事件，
 无需先手动运行 `comet init`。Classic 依赖沿用项目配置。
 
 源码、文档与问题反馈：[https://github.com/rpamis/comet](https://github.com/rpamis/comet)
 
 ## 准备执行环境
+
+插件要求 DSH `0.2.2-rc.1` 或更高版本。
 
 从 npm 或私有包安装插件时，`@rpamis/comet` 会作为插件依赖一起安装，版本与插件一致，
 不需要再全局安装 CLI：
@@ -125,10 +127,9 @@ CLI 缺失、工作区不可用或 Dashboard 启动失败时，主内容区会�
 
 ## 既有文件式安装
 
-插件安装时一并安装官方 `@deepseek-ai/dsh-hooks-claude-code`，启用后为当前 profile
-自动挂载 `SessionStart` 与 `PreToolUse`。规则通过新会话事件提供，写入交由原有 Router
-检查；配置位于 `DSH_HOME/comet-plugin/`（默认 `~/.dsh/comet-plugin/`）的独立目录，
-不向项目复制 Rule，也不改写用户的 profile patch。禁用或卸载插件会解除桥接。
+插件在当前 profile 注册会话创建和工具执行前的事件。创建会话时注入规则，`write` 和 `edit`
+由现有 Comet Router 检查。禁用或卸载插件会移除这些监听。项目 Rule 和用户 profile patch
+无需额外配置。
 `/comet-plugin/status` 的 `integration` 字段报告准备结果；失败会保留原因，不视为保护已生效。
 
 新 Hook 实际执行后，会移除当前 Git 项目里旧的 Comet Router/Guard 定义，保留其他用户

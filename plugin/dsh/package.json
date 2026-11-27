@@ -15,9 +15,6 @@
     "dsh": ">=0.2.2-rc.1"
   },
   "dependencies": {
-    "@deepseek-ai/dsh-hooks-claude-code": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-hook-protocol": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-llm": "0.2.2-rc.1",
     "@rpamis/comet": "__COMET_CLI_SPEC__"
   },
   "exports": {
