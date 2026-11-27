@@ -4,6 +4,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ## What's Changed [0.5.8] - 2026-11-25
 
+### Changed
+
+- **Native Shape confirmation**: Confirm an ordinary Native SDK Shape without waiting for automatic context retrieval or completion learning based on the approval note. Explicit task context remains available.
+
 ### Fixed
 
 - **OpenSpec installation**: Install Classic Skills in the selected global or project directory with OpenSpec 2.1 and later. Project installs keep their Skills local, and global installs no longer try to initialize the home directory as a project ([#594](https://github.com/rpamis/comet/issues/594)).

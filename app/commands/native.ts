@@ -17,24 +17,31 @@ export async function runNativeFacade(args: readonly string[]): Promise<number> 
   const outputArgs = splitCompactOutputArgs(args);
   const integration = splitIntegrationArgs(outputArgs.args);
   const projectRoot = path.resolve(integration.projectRoot ?? process.cwd());
-  await emitContext(projectRoot, integration);
+  if (!integration.deferShapeApprovalContext) await emitContext(projectRoot, integration);
   const detailed =
     typeof nativeCli.runNativeCliDetailed === 'function'
       ? await nativeCli.runNativeCliDetailed(integration.cliArgs)
       : undefined;
   const result = detailed?.output ?? (await nativeCli.runNativeCli(integration.cliArgs));
-  await recordNativeResult(
-    integration.cliArgs,
-    result,
-    integration.workflow,
-    detailed,
-    Boolean(
-      integration.task?.trim() ||
-      integration.contextPath ||
-      integration.phase ||
+  // Compat may dispatch children using a previously selected mode without
+  // reporting whether the invocation completed work.
+  const skipPluginWork =
+    integration.deferShapeApprovalContext && detailed?.dispatch?.workflowCompleted === false;
+  if (!skipPluginWork) {
+    if (integration.deferShapeApprovalContext) await emitContext(projectRoot, integration);
+    await recordNativeResult(
+      integration.cliArgs,
+      result,
       integration.workflow,
-    ),
-  );
+      detailed,
+      Boolean(
+        integration.task?.trim() ||
+        integration.contextPath ||
+        integration.phase ||
+        integration.workflow,
+      ),
+    );
+  }
   if (result.stdout) process.stdout.write(compactCliStdout(result.stdout, outputArgs.compact)!);
   if (result.stderr)
     process.stderr.write(result.stderr + (result.stderr.endsWith('\n') ? '' : '\n'));
@@ -48,19 +55,17 @@ async function recordNativeResult(
   detailed?: NativeCliDetailedResult,
   explicitContext = false,
 ): Promise<void> {
-  const command = args.find((value) => ['next', 'archive', 'handoff', 'check'].includes(value));
+  const commandIndex = findNativePositional(args);
+  const command = args[commandIndex];
   if (!command || !['next', 'archive', 'handoff', 'check'].includes(command)) return;
   if (command === 'next' && detailed?.dispatch?.workflowCompleted === false && !explicitContext)
     return;
   if (args.includes('--dry-run')) return;
   if (result.exitCode !== 0 && command !== 'check') return;
-  const commandIndex = args.indexOf(command);
   const projectIndex = args.indexOf('--project-root');
   const projectRoot = projectIndex >= 0 ? args[projectIndex + 1] : process.cwd();
   if (!projectRoot) return;
-  const changeId = args
-    .slice(commandIndex + 1, projectIndex >= 0 ? projectIndex : args.length)
-    .find((value) => !value.startsWith('--'));
+  const changeId = args[findNativePositional(args, commandIndex + 1)];
   try {
     const verificationCommand = command === 'check' ? 'comet native check' : undefined;
     const evidence = detailed?.experience.lifecycle ?? parseNativeLifecycleEvidence(result.stdout);
@@ -114,6 +119,14 @@ interface NativeIntegrationArgs {
   readonly contextPath?: string;
   readonly phase?: string;
   readonly workflow?: string;
+  readonly deferShapeApprovalContext: boolean;
+}
+
+function findNativePositional(args: readonly string[], startIndex = 0): number {
+  return args.findIndex(
+    (value, index) =>
+      index >= startIndex && !value.startsWith('-') && args[index - 1] !== '--project-root',
+  );
 }
 
 function splitIntegrationArgs(args: readonly string[]): NativeIntegrationArgs {
@@ -124,6 +137,7 @@ function splitIntegrationArgs(args: readonly string[]): NativeIntegrationArgs {
   let phase: string | undefined;
   let workflow: string | undefined;
   let summary: string | undefined;
+  let expectedAction: string | undefined;
   for (let index = 0; index < args.length; index += 1) {
     const value = args[index];
     const next = args[index + 1];
@@ -144,14 +158,30 @@ function splitIntegrationArgs(args: readonly string[]): NativeIntegrationArgs {
     cliArgs.push(value);
     if (value === '--project-root' && next !== undefined) projectRoot = next;
     if (value === '--summary' && next !== undefined) summary = next;
+    if (value === '--expected-action') expectedAction = next;
   }
+  const requestedTask = task ?? process.env.COMET_TASK;
+  const command = cliArgs[findNativePositional(cliArgs)];
+  // The approval note describes the decision. Supervisor and Compat runner work
+  // can finish real actions during the same invocation.
+  const deferShapeApprovalContext =
+    command === 'next' &&
+    expectedAction === 'confirm-shape' &&
+    cliArgs.includes('--confirmed') &&
+    !cliArgs.includes('--coordination-mode') &&
+    !cliArgs.includes('--runner-input') &&
+    !requestedTask?.trim() &&
+    !contextPath &&
+    !phase &&
+    !workflow;
   return {
     cliArgs,
     projectRoot,
-    task: task ?? process.env.COMET_TASK ?? summary,
+    task: requestedTask ?? summary,
     contextPath,
     phase,
     workflow,
+    deferShapeApprovalContext,
   };
 }
 

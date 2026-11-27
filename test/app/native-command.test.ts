@@ -13,6 +13,19 @@ vi.mock('../../app/commands/comet-task-context.js', () => ({
   collectCometTaskContext: collectCometPluginContext,
 }));
 
+const shapeConfirmationArgs = [
+  'next',
+  'change-name',
+  '--summary',
+  'User approved the current Shape.',
+  '--confirmed',
+  '--expected-state-version',
+  '2',
+  '--expected-action',
+  'confirm-shape',
+  '--json',
+];
+
 describe('Native command facade', () => {
   it('does not learn a claim or repeated outcome without new completed work', async () => {
     runNativeCliDetailed.mockResolvedValue({
@@ -38,10 +51,125 @@ describe('Native command facade', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     runNativeCli.mockReset();
     runNativeCliDetailed.mockReset();
     recordCometWorkflowResult.mockReset();
     collectCometPluginContext.mockReset();
+  });
+
+  it.each([
+    { layout: 'trailing options', argv: shapeConfirmationArgs },
+    {
+      layout: 'leading options',
+      argv: ['--json', '--project-root', 'D:/repo', ...shapeConfirmationArgs.slice(0, -1)],
+    },
+  ])('passes a Shape approval through without plugin work with $layout', async ({ argv }) => {
+    vi.stubEnv('COMET_TASK', undefined);
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const output = '{"exitCode":0,"data":{"state":{"phase":"build"}}}\n';
+    runNativeCliDetailed.mockResolvedValue({
+      dispatch: { command: 'next', exitCode: 0, workflowCompleted: false },
+      output: { exitCode: 0, stdout: output },
+    });
+    const { runNativeFacade } = await import('../../app/commands/native.js');
+
+    expect(await runNativeFacade(argv)).toBe(0);
+    expect(runNativeCliDetailed).toHaveBeenCalledExactlyOnceWith(argv);
+    expect(stdout).toHaveBeenCalledWith(output);
+    expect(collectCometPluginContext).not.toHaveBeenCalled();
+    expect(recordCometWorkflowResult).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      title: 'Supervisor preparation',
+      extra: ['--coordination-mode', 'multi-session'],
+      workflowCompleted: true,
+      reviewResolved: false,
+      eventType: 'episode.completed',
+    },
+    {
+      title: 'Compat runner response',
+      extra: ['--runner-input', 'response.json'],
+      workflowCompleted: undefined,
+      reviewResolved: true,
+      eventType: 'review.resolved',
+    },
+    {
+      title: 'Compat with a previously selected coordination mode',
+      extra: [],
+      workflowCompleted: undefined,
+      reviewResolved: false,
+      eventType: 'episode.completed',
+    },
+  ])(
+    'keeps plugin processing when Shape flags accompany $title',
+    async ({ extra, workflowCompleted, reviewResolved, eventType }) => {
+      vi.stubEnv('COMET_TASK', undefined);
+      runNativeCliDetailed.mockResolvedValue({
+        dispatch: { command: 'next', exitCode: 0, workflowCompleted },
+        output: { exitCode: 0 },
+        experience: {
+          lifecycle: { changedPaths: [], artifactRefs: [] },
+          outcome: { reviewResolved, failureResolved: false },
+        },
+      });
+      const { runNativeFacade } = await import('../../app/commands/native.js');
+
+      expect(await runNativeFacade([...shapeConfirmationArgs, ...extra])).toBe(0);
+      expect(collectCometPluginContext).toHaveBeenCalledOnce();
+      expect(recordCometWorkflowResult).toHaveBeenCalledWith(
+        expect.objectContaining({ eventType }),
+      );
+    },
+  );
+
+  it.each([
+    { layout: 'trailing project root', argv: [...shapeConfirmationArgs, '--project-root', '.'] },
+    { layout: 'leading project root', argv: ['--project-root', '.', ...shapeConfirmationArgs] },
+    {
+      layout: 'command-shaped project root between command and change',
+      argv: ['next', '--project-root', 'archive', ...shapeConfirmationArgs.slice(1)],
+    },
+  ])(
+    'records completed work reported by the Runtime for the change with $layout',
+    async ({ argv }) => {
+      vi.stubEnv('COMET_TASK', undefined);
+      runNativeCliDetailed.mockResolvedValue({
+        dispatch: { command: 'next', exitCode: 0, workflowCompleted: true },
+        output: { exitCode: 0 },
+        experience: {
+          lifecycle: { changedPaths: [], artifactRefs: [] },
+          outcome: { reviewResolved: false, failureResolved: false },
+        },
+      });
+      const { runNativeFacade } = await import('../../app/commands/native.js');
+
+      expect(await runNativeFacade(argv)).toBe(0);
+      expect(collectCometPluginContext).toHaveBeenCalledOnce();
+      expect(recordCometWorkflowResult).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ changeId: 'change-name', eventType: 'episode.completed' }),
+      );
+    },
+  );
+
+  it.each([
+    { task: 'Explicit task from flag', flag: true },
+    { task: 'Explicit task from environment', flag: false },
+  ])('preserves context and learning on Shape approval with $task', async ({ task, flag }) => {
+    vi.stubEnv('COMET_TASK', flag ? undefined : task);
+    runNativeCli.mockResolvedValue({ exitCode: 0 });
+    const { runNativeFacade } = await import('../../app/commands/native.js');
+
+    expect(
+      await runNativeFacade(
+        flag ? [...shapeConfirmationArgs, '--comet-task', task] : shapeConfirmationArgs,
+      ),
+    ).toBe(0);
+    expect(runNativeCli).toHaveBeenCalledExactlyOnceWith(shapeConfirmationArgs);
+    expect(collectCometPluginContext).toHaveBeenCalledExactlyOnceWith(expect.any(String), { task });
+    expect(recordCometWorkflowResult).toHaveBeenCalledTimes(1);
   });
 
   it('forwards exact argv, stdout, stderr, and exit code', async () => {
