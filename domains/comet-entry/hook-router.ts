@@ -43,6 +43,7 @@ export interface ActiveHookChange {
 interface StaleHookSelection {
   code: 'target-missing';
   reason: string;
+  legacy: boolean;
 }
 
 export type HookWorkflowOwnerResolution =
@@ -279,6 +280,7 @@ export async function resolveHookWorkflowOwner(
       const staleSelection: StaleHookSelection = {
         code: 'target-missing',
         reason: `selected ${selection.workflow} change '${selection.change}' is missing or archived`,
+        legacy: current.legacy,
       };
       try {
         const candidates = await listEnabledActiveChanges(projectRoot, enabled, dependencies, {

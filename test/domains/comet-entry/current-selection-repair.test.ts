@@ -101,6 +101,7 @@ describe('shared Comet current selection repair', () => {
             staleSelection: {
               code: 'target-missing',
               reason: 'missing',
+              legacy: false,
             },
           }),
           clearSelection: async () => {

@@ -3,6 +3,7 @@ import { resolveHookWorkflowOwner } from './hook-router.js';
 
 export interface RepairCometCurrentSelectionOptions {
   migrateLegacyClassic: boolean;
+  preserveLegacyClassic?: boolean;
 }
 
 export interface RepairCometCurrentSelectionResult {
@@ -32,7 +33,8 @@ export async function repairCometCurrentSelection(
     : false;
 
   const resolution = await dependencies.resolveOwner(projectRoot);
-  if (!('staleSelection' in resolution) || resolution.staleSelection?.code !== 'target-missing') {
+  const stale = 'staleSelection' in resolution ? resolution.staleSelection : undefined;
+  if (stale?.code !== 'target-missing' || (stale.legacy && options.preserveLegacyClassic)) {
     return { migratedLegacyClassic, clearedStaleSelection: false };
   }
 

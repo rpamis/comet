@@ -2029,20 +2029,17 @@ describe('doctor command', () => {
   it('repairs the ZCode project Router without clearing selection while trust is unverified', async () => {
     const home = path.join(tmpDir, 'home');
     await installManagedCometSkills(tmpDir, '.zcode');
-    await writeProjectConfig(tmpDir, defaultProjectConfig('.'));
+    await writeHealthyDocsClassicProject(tmpDir);
     const { configPath, userSettings } = await writeLegacyZcodeUserHook(home);
-    await writeCometCurrentSelection(tmpDir, {
-      schema: 'comet.selection.v2',
-      workflow: 'native',
-      change: 'missing-change',
-      branch: null,
-    });
+    const selectionPath = path.join(tmpDir, '.comet/current-change.json');
+    const legacy = `${JSON.stringify({ version: 1, change: 'missing-change', branch: null })}\n`;
+    await fs.writeFile(selectionPath, legacy);
     const repair = () =>
       doctorCommand(tmpDir, { json: true, repair: true, scope: 'project', homeDir: home });
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
       await repair();
-      expect((await readCometCurrentSelection(tmpDir)).status).toBe('selected');
+      await expect(fs.readFile(selectionPath, 'utf8')).resolves.toBe(legacy);
       const projectConfigPath = path.join(tmpDir, '.zcode/config.json');
       const config = JSON.parse(await fs.readFile(projectConfigPath, 'utf8'));
       const router = config.hooks.events.PreToolUse[0].hooks[0];
@@ -2054,7 +2051,8 @@ describe('doctor command', () => {
       router.enabled = true;
       await fs.writeFile(projectConfigPath, JSON.stringify(config));
       await repair();
-      expect((await readCometCurrentSelection(tmpDir)).status).toBe('selected');
+      await expect(fs.readFile(selectionPath, 'utf8')).resolves.toBe(legacy);
+      expect(JSON.parse(await fs.readFile(projectConfigPath, 'utf8'))).toEqual(config);
     } finally {
       log.mockRestore();
     }

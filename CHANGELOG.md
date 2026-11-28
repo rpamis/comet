@@ -6,7 +6,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Added
 
-- **ZCode project Hooks**: Install the Comet workflow Router disabled in `.zcode/config.json`. Review, trust, and enable it in ZCode's workspace Hook settings. First-time `/comet` activation prints these steps. Updates and repairs preserve Router activation settings when rebinding a moved project or restoring the default matcher.
+- **ZCode project Hooks**: Install the Comet workflow Router disabled in `.zcode/config.json`. Review, trust, and enable it in ZCode's workspace Hook settings. First-time `/comet` activation prints these steps. Updates and repairs rebind the Router to the current project even when its old location still has a Comet installation. They preserve Router activation settings when rebinding the project or restoring the default matcher. Project Doctor repair clears confirmed stale workflow selections while the Router awaits trust.
 
 ### Fixed
 

@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { promises as fs } from 'fs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { existsSync, promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
@@ -11,6 +11,7 @@ import {
 import {
   copyCometRulesForPlatform,
   installCometHooksForPlatform,
+  matchesZcodeRouterInvocation,
 } from '../../../domains/skill/platform-install.js';
 import {
   removeCometHooksForPlatform,
@@ -21,6 +22,11 @@ import {
   readNodeHookArguments,
 } from '../../../platform/process/hook-command.js';
 import { PLATFORMS, type Platform } from '../../../platform/install/platforms.js';
+
+vi.mock('fs', async (importOriginal) => {
+  const original = await importOriginal<typeof import('fs')>();
+  return { ...original, existsSync: vi.fn(original.existsSync) };
+});
 
 function mapHookConfigStrings(value: unknown, map: (value: string) => string): unknown {
   if (typeof value === 'string') return map(value);
@@ -327,6 +333,30 @@ describe('platform component inspection', () => {
       );
     },
   );
+
+  it('matches moved ZCode project Routers without probing the old script', () => {
+    const skillsDir = '.zcode';
+    const routerPath = 'skills/comet/scripts/comet-hook-router.mjs';
+    const previousRoot = path.join(tmpDir, 'old');
+    const args = (root: string) => [
+      path.join(root, skillsDir, routerPath),
+      '--platform',
+      'zcode',
+      '--project-root',
+      root,
+    ];
+    const previous = { type: 'process', command: 'node', args: args(previousRoot) };
+    const current = { command: 'node', args: args(tmpDir) };
+    const probe = vi.mocked(existsSync);
+    probe.mockClear();
+    probe.withImplementation(
+      () => false,
+      () => {
+        expect(matchesZcodeRouterInvocation(previous, current, skillsDir)).toBe(true);
+        expect(probe).not.toHaveBeenCalled();
+      },
+    );
+  });
 
   it('ignores user-owned ZCode process Hooks during inspection, install, and uninstall', async () => {
     const target = platform('zcode');

@@ -1734,6 +1734,7 @@ async function repairDoctorState(
     }
   }
 
+  let projectRouterInstalled = projectedProjectPlatforms.size > 0;
   let projectRouterReady = PLATFORMS.some(
     (platform) => projectedProjectPlatforms.has(platform.id) && !platform.projectHookTrustMessage,
   );
@@ -1759,12 +1760,9 @@ async function repairDoctorState(
         `failed to repair Hook for ${target.platform.name} (${target.scope}): ${hookResult.reason}`,
       );
     }
-    if (
-      target.scope === 'project' &&
-      hookResult.status === 'installed' &&
-      !target.platform.projectHookTrustMessage
-    ) {
-      projectRouterReady = true;
+    if (target.scope === 'project' && hookResult.status === 'installed') {
+      projectRouterInstalled = true;
+      projectRouterReady ||= !target.platform.projectHookTrustMessage;
     }
     repaired.push(`${target.platform.name} (${target.scope}) Hook`);
   }
@@ -1783,12 +1781,9 @@ async function repairDoctorState(
         `failed to repair Hook for ${platform.name} (${targetScope}): ${hookResult.reason}`,
       );
     }
-    if (
-      targetScope === 'project' &&
-      hookResult.status === 'installed' &&
-      !platform.projectHookTrustMessage
-    ) {
-      projectRouterReady = true;
+    if (targetScope === 'project' && hookResult.status === 'installed') {
+      projectRouterInstalled = true;
+      projectRouterReady ||= !platform.projectHookTrustMessage;
     }
   }
 
@@ -1810,9 +1805,10 @@ async function repairDoctorState(
       }
     }
   }
-  if (scope !== 'global' && projectRouterReady) {
+  if (scope !== 'global' && (projectRouterInstalled || projectRouterReady)) {
     const selectionRepair = await repairCometCurrentSelection(projectPath, {
-      migrateLegacyClassic: workflows.includes('classic'),
+      migrateLegacyClassic: projectRouterReady && workflows.includes('classic'),
+      preserveLegacyClassic: !projectRouterReady,
     });
     if (selectionRepair.migratedLegacyClassic) repaired.push('Classic selection v1');
     if (selectionRepair.clearedStaleSelection) repaired.push('stale current selection');

@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -195,6 +195,75 @@ it('migrates the ZCode user Router when the project is HOME', async () => {
   }
 }, 30_000);
 
+it('clears a missing selection on public ZCode Doctor repair before Hook trust', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-zcode-stale-selection-'));
+  const project = path.join(root, 'project');
+  const home = path.join(root, 'home');
+  const cli = (...args: string[]) =>
+    zcodeProjectCli(project, home, path.join(root, 'data'), ...args);
+  const selectionPath = path.join(project, '.comet/current-change.json');
+  const configPath = path.join(project, '.zcode/config.json');
+  const doctor = (...args: string[]) => cli('doctor', '--scope', 'project', ...args);
+  try {
+    await fs.mkdir(project);
+    await fs.mkdir(home);
+    cli(...projectInit);
+    const stale = JSON.stringify({
+      schema: 'comet.selection.v2',
+      workflow: 'native',
+      change: 'missing-change',
+      branch: null,
+    });
+    await fs.writeFile(selectionPath, stale);
+    expect(doctor().results).toContainEqual(
+      expect.objectContaining({
+        check: 'current selection',
+        status: 'warn',
+        message: expect.stringContaining('missing-change'),
+      }),
+    );
+    await expect(fs.readFile(selectionPath, 'utf8')).resolves.toBe(stale);
+    expect(cli('doctor', '--scope', 'global', '--repair').repaired).not.toContain(
+      'stale current selection',
+    );
+    await expect(fs.readFile(selectionPath, 'utf8')).resolves.toBe(stale);
+    const config = await fs.readFile(configPath, 'utf8');
+    expect(JSON.parse(config).hooks.events.PreToolUse[0].hooks[0].enabled).toBe(false);
+
+    expect.soft(doctor('--repair').repaired).toContain('stale current selection');
+    await expect.soft(fs.access(selectionPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.readFile(configPath, 'utf8')).resolves.toBe(config);
+    expect(doctor('--repair').repaired).not.toContain('stale current selection');
+
+    const none = JSON.stringify({
+      schema: 'comet.selection.v2',
+      workflow: 'none',
+      change: null,
+      branch: null,
+    });
+    await fs.writeFile(selectionPath, none);
+    expect(doctor('--repair').repaired).not.toContain('stale current selection');
+    await expect(fs.readFile(selectionPath, 'utf8')).resolves.toBe(none);
+
+    execFileSync('git', ['init', '-q'], { cwd: project, env: isolatedBenchmarkEnvironment(home) });
+    cli('native', 'new', 'active-change');
+    const active = await fs.readFile(selectionPath, 'utf8');
+    const repaired = doctor('--repair');
+    expect(repaired.repaired).not.toContain('stale current selection');
+    expect(repaired.results).toContainEqual(
+      expect.objectContaining({
+        check: 'current selection',
+        status: 'pass',
+        message: expect.stringContaining('native:active-change'),
+      }),
+    );
+    await expect(fs.readFile(selectionPath, 'utf8')).resolves.toBe(active);
+    await expect(fs.readFile(configPath, 'utf8')).resolves.toBe(config);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+}, 60_000);
+
 it('preserves the enabled state of an existing ZCode Router with no enabled field on update and repair', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-zcode-omitted-enabled-'));
   const home = path.join(root, 'home');
@@ -248,7 +317,7 @@ it('repairs and uninstalls a ZCode Router after moving its project through the p
     const sharedProject = path.join(root, 'shared project');
     const sharedRouter = path.join(
       sharedProject,
-      '.zcode/skills/comet/scripts/comet-hook-router.mjs',
+      'tools/skills/comet/scripts/comet-hook-router.mjs',
     );
     await fs.mkdir(path.dirname(sharedRouter), { recursive: true });
     await fs.copyFile(
@@ -345,6 +414,67 @@ it('repairs and uninstalls a ZCode Router after moving its project through the p
         events: { PreToolUse: [{ matcher: group.matcher, hooks: userHooks }] },
       },
     });
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+}, 60_000);
+
+it('rebinds a ZCode project Router when another install occupies the old root', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-zcode-reused-root-'));
+  const home = path.join(root, 'home');
+  const original = path.join(root, 'original project');
+  const project = path.join(root, 'moved project');
+  const dataDir = path.join(root, 'data');
+  const cli = (...args: string[]) => zcodeProjectCli(project, home, dataDir, ...args);
+  const configPath = path.join(project, '.zcode/config.json');
+  const originalConfigPath = path.join(original, '.zcode/config.json');
+  const routerPath = '.zcode/skills/comet/scripts/comet-hook-router.mjs';
+  const readConfig = async () => JSON.parse(await fs.readFile(configPath, 'utf8'));
+  try {
+    await fs.mkdir(home);
+    await fs.mkdir(original);
+    zcodeProjectCli(original, home, dataDir, ...projectInit);
+    await fs.rename(original, project);
+    await fs.mkdir(original);
+    zcodeProjectCli(original, home, dataDir, ...projectInit);
+    const otherRouterPath = path.join(original, routerPath);
+    const otherConfig = await fs.readFile(originalConfigPath, 'utf8');
+    const otherRouter = await fs.readFile(otherRouterPath, 'utf8');
+    const expectOtherInstallUnchanged = async () => {
+      await expect(fs.readFile(originalConfigPath, 'utf8')).resolves.toBe(otherConfig);
+      await expect(fs.readFile(otherRouterPath, 'utf8')).resolves.toBe(otherRouter);
+    };
+
+    const stale = await readConfig();
+    stale.hooks.enabled = true;
+    const group = stale.hooks.events.PreToolUse[0];
+    const previous = group.hooks[0];
+    previous.enabled = true;
+    const userHook = { ...previous, args: [...previous.args, '--team-option'] };
+    group.hooks.push(userHook);
+    const staleConfig = JSON.stringify(stale);
+    const installed = {
+      ...previous,
+      args: [path.join(project, routerPath), '--platform', 'zcode', '--project-root', project],
+    };
+    const keptGroup = { matcher: group.matcher, hooks: [userHook] };
+    for (const action of [projectUpdate, ['doctor', '--scope', 'project', '--repair']]) {
+      await fs.writeFile(configPath, staleConfig);
+      cli(...action);
+      const repaired = await readConfig();
+      expect.soft(repaired.hooks.enabled).toBe(true);
+      expect
+        .soft(repaired.hooks.events.PreToolUse)
+        .toEqual([keptGroup, { matcher: group.matcher, hooks: [installed] }]);
+      await expectOtherInstallUnchanged();
+    }
+
+    await fs.writeFile(configPath, staleConfig);
+    cli('uninstall', '--current-project', '--scope', 'project', '--force');
+    expect.soft(await readConfig()).toEqual({
+      hooks: { enabled: true, events: { PreToolUse: [keptGroup] } },
+    });
+    await expectOtherInstallUnchanged();
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

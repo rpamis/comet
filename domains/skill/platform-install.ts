@@ -17,7 +17,6 @@ import {
   type Platform,
 } from '../../platform/install/platforms.js';
 import type { InstallScope, InstallMode } from '../../platform/install/types.js';
-import { samePath } from '../../platform/paths/git-worktree.js';
 import { resolveArtifactLanguage } from './languages.js';
 import type { LanguageConfig, SkillLanguageId } from './languages.js';
 import { installCometProjectInstructions } from './project-instructions.js';
@@ -2165,20 +2164,16 @@ export function matchesZcodeRouterInvocation(
   skillsDir: string,
 ): hook is Record<string, unknown> {
   if (matchesZcodeHookInvocation(hook, invocation)) return true;
-  // Project Routers bind both the script and --project-root to the same install root.
   if (invocation.args[3] !== '--project-root' || !hook || typeof hook !== 'object') return false;
   const args = (hook as Record<string, unknown>).args;
   if (!Array.isArray(args) || typeof args[4] !== 'string' || !path.isAbsolute(args[4]))
     return false;
+  // In workspace settings, a standard Comet Router belongs to this workspace even after a move.
   const previous = buildHookInvocation(args[4], skillsDir, HOOK_ROUTER_SCRIPT, {
     platformId: 'zcode',
     scope: 'project',
   });
-  // Keep explicit references to an existing Router in a different project.
-  return (
-    matchesZcodeHookInvocation(hook, previous) &&
-    (!existsSync(previous.args[0]!) || samePath(args[4], invocation.args[4]!))
-  );
+  return matchesZcodeHookInvocation(hook, previous);
 }
 
 export function buildLegacyZcodeGuardInvocation(

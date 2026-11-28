@@ -49687,7 +49687,7 @@
       ],
       "testMigration": {
         "kind": "feature-removed",
-        "reason": "Comet 撤下项目更新复用用户级 Router 的策略。项目写入失败时保留旧 Router。Doctor 无法核实 ZCode 信任，即使两个项目 Hook 开关都打开，也会保留工作流选择。",
+        "reason": "Comet 撤下项目更新复用用户级 Router 的策略。项目写入失败时保留旧 Router。Doctor 在 ZCode 信任无法核实时保留 Classic v1 和有效选择，只清理确认缺失或已归档的 v2 选择。替代测试验证两个 Hook 开关都打开时仍保留 Classic v1 原文。",
         "authorization": "report:2026-11-27-zcode-align-claude-hook-scope",
         "record": "docs/research/zcode-project-hook-migration/README.zh.md",
         "tests": [
@@ -49962,7 +49962,7 @@
       "coverageLevel": "public-cli",
       "reproduction": "使用 8a574885 的公开 CLI 初始化临时项目，搬迁目录后分别运行 update、doctor --repair 和 uninstall。更新和修复留下旧绝对路径并追加关闭的新条目，卸载也留下旧条目。",
       "expected": "更新和修复以当前项目路径注册唯一一条 Comet Router，保留启用状态且可处理普通 Write。旧目录留有指向当前项目的链接时也可清理。新旧条目并存时，只读 Doctor 提示重复，修复保留当前条目的开关。直接卸载可移除旧条目。",
-      "forbidden": "留下旧 Comet Router，因当前条目关闭而漏报重复，删除自定义脚本、参数或仍指向独立项目的有效 Router，或改变工作区总开关。",
+      "forbidden": "留下旧 Comet Router，因当前条目关闭而漏报重复，删除自定义脚本或参数的 Hook，修改其他项目的 Router 配置，或改变工作区总开关。",
       "rootCause": "安装、诊断和卸载都要求完整参数与当前项目根一致，因而无法识别搬迁前生成的调用。Doctor 此外依赖 Router 已启用才显示重复告警。",
       "tests": [
         {
@@ -49989,6 +49989,86 @@
           "namePattern": "^preserves ZCode Router activation when restoring the default matcher through update and repair$",
           "requiredNames": [
             "preserves ZCode Router activation when restoring the default matcher through update and repair"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "zcode-rebinds-router-when-old-root-is-reused",
+      "sources": ["https://github.com/rpamis/comet/pull/602#pullrequestreview-6095767611"],
+      "behavior": "项目搬迁后，即使旧位置另装了 Comet，项目级标准 Router 也绑定当前项目。",
+      "coverageLevel": "public-cli",
+      "reproduction": "用 f94cfe04 的公开 CLI 初始化临时项目，搬迁目录后在原路径初始化第二个项目。update 和 doctor --repair 留下旧的启用条目并新增一条关闭的 Router，uninstall 也留下旧条目。",
+      "expected": "更新和修复将脚本路径和 --project-root 绑定到新位置，并保留原 Router 的启用状态。卸载清理当前配置中的标准 Comet 条目。旧位置项目的配置和脚本、自定义 Hook 及当前项目总开关保持原样。",
+      "forbidden": "因旧脚本仍存在而保留指向旧项目的标准 Comet Router，或修改另一项目的配置和脚本。",
+      "rootCause": "上一版用旧位置的脚本是否存在推断当前项目配置中标准 Router 的归属。",
+      "tests": [
+        {
+          "file": "test/app/zcode-project-hooks.test.ts",
+          "namePattern": "^rebinds a ZCode project Router when another install occupies the old root$",
+          "requiredNames": [
+            "rebinds a ZCode project Router when another install occupies the old root"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "ZCode v4 搬迁后的工作区 Hook 派发",
+          "status": "verified",
+          "evidence": [
+            "Windows 临时项目搬迁后在原路径另装 Comet，再运行公开 update。ZCode a4b44451 配置加载器只加载一条绑定新路径的 Router，信任前启动零次，临时信任后每个匹配事件启动一次。见 docs/research/zcode-project-hook-migration/README.zh.md。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "zcode-router-ownership-without-old-path-probe",
+      "sources": ["https://github.com/rpamis/comet/pull/602#pullrequestreview-6095767611"],
+      "behavior": "ZCode 项目 Router 的归属不依赖旧脚本路径能否访问。",
+      "coverageLevel": "unit",
+      "reproduction": "对搬迁前的标准 Router 声明运行归属匹配，将 existsSync 的返回值设为 false，模拟旧路径不可探测。旧实现访问了旧路径。测试覆盖探测边界，未使用真实离线目录或权限故障。",
+      "expected": "当前项目识别旧的标准声明，无需探测旧脚本。公开 CLI 仍保留自定义 Hook 和其他项目的文件。",
+      "forbidden": "访问旧脚本来判定 Router 的归属，或使用存在探测的真假值推断条目是否由 Comet 管理。",
+      "rootCause": "旧实现把 existsSync 的结果用于归属匹配，该接口无法区分文件不存在和无法访问。",
+      "tests": [
+        {
+          "file": "test/domains/skill/platform-inspect.test.ts",
+          "namePattern": "^platform component inspection matches moved ZCode project Routers without probing the old script$",
+          "requiredNames": [
+            "platform component inspection matches moved ZCode project Routers without probing the old script"
+          ]
+        },
+        {
+          "file": "test/app/zcode-project-hooks.test.ts",
+          "namePattern": "^rebinds a ZCode project Router when another install occupies the old root$",
+          "requiredNames": [
+            "rebinds a ZCode project Router when another install occupies the old root"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "zcode-doctor-clears-stale-project-selection",
+      "sources": ["https://github.com/rpamis/comet/pull/602#pullrequestreview-6095767611"],
+      "behavior": "ZCode 项目 Doctor 显式修复时清理确认缺失的当前选择。",
+      "coverageLevel": "public-cli",
+      "reproduction": "用 f94cfe04 的公开 CLI 初始化仅安装 ZCode 的临时项目，选中不存在的 Native change。只读 Doctor 报告警告，项目 doctor --repair 只报告修复 ZCode 安装，选择文件仍存在。",
+      "expected": "项目 doctor --repair 清理指向缺失或已归档 change 的 v2 选择，即使 Router 尚未信任。只读检查和全局修复保留项目选择。",
+      "forbidden": "清理有效选择或显式无选择，在未核实信任时迁移或删除 Classic v1 选择，改变 Hook 开关，或在后续修复重复报告清理。",
+      "rootCause": "Doctor 将失效选择清理和 Classic v1 迁移绑定到同一个 Router 就绪条件，排除了需用户授信的 ZCode 项目。",
+      "tests": [
+        {
+          "file": "test/app/zcode-project-hooks.test.ts",
+          "namePattern": "^clears a missing selection on public ZCode Doctor repair before Hook trust$",
+          "requiredNames": [
+            "clears a missing selection on public ZCode Doctor repair before Hook trust"
+          ]
+        },
+        {
+          "file": "test/app/doctor.test.ts",
+          "namePattern": "^doctor command repairs the ZCode project Router without clearing selection while trust is unverified$",
+          "requiredNames": [
+            "doctor command repairs the ZCode project Router without clearing selection while trust is unverified"
           ]
         }
       ]
