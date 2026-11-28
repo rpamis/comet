@@ -147,7 +147,7 @@ ZCode 的项目 Skill 和 Rule 分别安装到 `.zcode/skills/` 和 `.zcode/rule
 
 Comet 的 ZCode Router 只在项目级安装。全局安装仍提供 Skill 和 Rule。显式安装、更新或修复项目时，成功写入项目 Router 后会从 `~/.zcode/cli/config.json` 清理旧版 Comet 用户级 Router。全局安装、更新和 `comet doctor --repair --scope global` 也会清理该旧条目，保留用户自己的 Hook 和开关。此前依赖用户级 Router 的项目，需要各自在 ZCode 中完成项目级启用。
 
-`comet doctor --scope project` 检查本地 Router 及其 Guard 文件，并提示在 ZCode 中确认信任和启用状态。可用 `--repair` 恢复缺失的运行文件。`comet uninstall --scope project` 移除项目中的 Comet 条目。
+`comet doctor --scope project` 检查本地 Router 及其 Guard 文件，并提示在 ZCode 中确认信任和启用状态。可用 `--repair` 恢复缺失的运行文件。项目移动或重命名后，更新或修复会替换旧路径。恢复默认 matcher 时也会保留 Router 的启用状态。如果 ZCode 将路径、matcher 或分组位置变化的 Hook 标为待信任，请在工作区设置中重新审核。`comet uninstall --scope project` 可以直接移除搬迁前的 Comet 条目。
 
 ## 六、Classic 渐进 Engine-native 收敛
 

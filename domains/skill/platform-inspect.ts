@@ -18,6 +18,7 @@ import {
   computeRuleDestPath,
   isManagedHookCommand,
   matchesZcodeHookInvocation,
+  matchesZcodeRouterInvocation,
   type HookInvocation,
   OMP_HOOK_MARKER,
   OMP_HOOK_RELATIVE_PATH,
@@ -223,6 +224,7 @@ async function inspectZcodeHooks(
       : [],
   );
   const legacyPresent = handlers.some(({ hook }) => matchesZcodeHookInvocation(hook, legacyGuard));
+  const skillsDir = getPlatformSkillsDir(platform, scope);
   const routers = expectedHooks.map((expected) => {
     const invocation = { command: expected.command, args: expected.args ?? [] };
     const matcher = resolveInstalledHookMatcher(platform, expected.matcher);
@@ -230,9 +232,10 @@ async function inspectZcodeHooks(
     let configured = false;
     let enabled = false;
     for (const entry of handlers) {
-      if (!matchesZcodeHookInvocation(entry.hook, invocation)) continue;
+      if (!matchesZcodeRouterInvocation(entry.hook, invocation, skillsDir)) continue;
       owned++;
-      if (entry.matcher !== matcher) continue;
+      if (entry.matcher !== matcher || !matchesZcodeHookInvocation(entry.hook, invocation))
+        continue;
       configured = true;
       enabled ||= entry.hook.enabled === true || entry.hook.enabled === undefined;
     }

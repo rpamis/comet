@@ -17,6 +17,7 @@ import {
   type Platform,
 } from '../../platform/install/platforms.js';
 import type { InstallScope, InstallMode } from '../../platform/install/types.js';
+import { samePath } from '../../platform/paths/git-worktree.js';
 import { resolveArtifactLanguage } from './languages.js';
 import type { LanguageConfig, SkillLanguageId } from './languages.js';
 import { installCometProjectInstructions } from './project-instructions.js';
@@ -2158,6 +2159,28 @@ export function matchesZcodeHookInvocation(
   );
 }
 
+export function matchesZcodeRouterInvocation(
+  hook: unknown,
+  invocation: HookInvocation,
+  skillsDir: string,
+): hook is Record<string, unknown> {
+  if (matchesZcodeHookInvocation(hook, invocation)) return true;
+  // Project Routers bind both the script and --project-root to the same install root.
+  if (invocation.args[3] !== '--project-root' || !hook || typeof hook !== 'object') return false;
+  const args = (hook as Record<string, unknown>).args;
+  if (!Array.isArray(args) || typeof args[4] !== 'string' || !path.isAbsolute(args[4]))
+    return false;
+  const previous = buildHookInvocation(args[4], skillsDir, HOOK_ROUTER_SCRIPT, {
+    platformId: 'zcode',
+    scope: 'project',
+  });
+  // Keep explicit references to an existing Router in a different project.
+  return (
+    matchesZcodeHookInvocation(hook, previous) &&
+    (!existsSync(previous.args[0]!) || samePath(args[4], invocation.args[4]!))
+  );
+}
+
 export function buildLegacyZcodeGuardInvocation(
   baseDir: string,
   skillsDir: string,
@@ -2170,18 +2193,26 @@ function zcodeRouterEnabled(
   groups: unknown[],
   matcher: string,
   invocation: HookInvocation,
+  skillsDir: string,
 ): boolean | undefined {
-  let enabled = false;
+  const currentDefault: Record<string, unknown>[] = [];
+  const current: Record<string, unknown>[] = [];
+  const previous: Record<string, unknown>[] = [];
   for (const group of groups) {
     const record = group as { matcher?: unknown; hooks?: unknown } | null;
-    if (record?.matcher !== matcher) continue;
-    for (const hook of asHookGroup(record.hooks)) {
-      if (!matchesZcodeHookInvocation(hook, invocation)) continue;
-      if (hook.enabled === undefined) return undefined;
-      if (hook.enabled === true) enabled = true;
+    for (const hook of asHookGroup(record?.hooks)) {
+      if (matchesZcodeHookInvocation(hook, invocation)) {
+        current.push(hook);
+        if (record?.matcher === matcher) currentDefault.push(hook);
+      } else if (matchesZcodeRouterInvocation(hook, invocation, skillsDir)) {
+        previous.push(hook);
+      }
     }
   }
-  return enabled;
+  // Prefer the current project setting even if an old declaration is still enabled.
+  const candidates = [currentDefault, current, previous].find((hooks) => hooks.length > 0) ?? [];
+  if (candidates.some((hook) => hook.enabled === undefined)) return undefined;
+  return candidates.some((hook) => hook.enabled === true);
 }
 
 async function installZcodeHooks(
@@ -2209,12 +2240,13 @@ async function installZcodeHooks(
     string,
     Array<HookInvocation & { type: 'process'; timeoutMs: number; enabled?: boolean }>
   > = {};
-  const managedInvocations = [buildLegacyZcodeGuardInvocation(baseDir, skillsDir)];
+  const legacyGuard = buildLegacyZcodeGuardInvocation(baseDir, skillsDir);
+  const routerInvocations: HookInvocation[] = [];
   for (const [scriptRelPath, config] of Object.entries(hooksConfig)) {
     const matcher = resolveInstalledHookMatcher(context, config.matcher);
     const invocation = buildHookInvocation(baseDir, skillsDir, scriptRelPath, context);
-    managedInvocations.push(invocation);
-    const enabled = zcodeRouterEnabled(existingPreToolUse, matcher, invocation);
+    routerInvocations.push(invocation);
+    const enabled = zcodeRouterEnabled(existingPreToolUse, matcher, invocation, skillsDir);
     matcherGroups[matcher] ??= [];
     matcherGroups[matcher].push({
       type: 'process',
@@ -2224,8 +2256,13 @@ async function installZcodeHooks(
     });
   }
 
-  const { groups } = removeManagedHookGroups(existingPreToolUse, (hook) =>
-    managedInvocations.some((invocation) => matchesZcodeHookInvocation(hook, invocation)),
+  const { groups } = removeManagedHookGroups(
+    existingPreToolUse,
+    (hook) =>
+      matchesZcodeHookInvocation(hook, legacyGuard) ||
+      routerInvocations.some((invocation) =>
+        matchesZcodeRouterInvocation(hook, invocation, skillsDir),
+      ),
   );
   const merged = [
     ...groups,

@@ -226,6 +226,169 @@ it('preserves the enabled state of an existing ZCode Router with no enabled fiel
   }
 }, 60_000);
 
+it('repairs and uninstalls a ZCode Router after moving its project through the public CLI', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-zcode-move-'));
+  const home = path.join(root, 'home');
+  const original = path.join(root, 'original project');
+  const project = path.join(root, 'moved project');
+  const dataDir = path.join(root, 'data');
+  const cli = (...args: string[]) => zcodeProjectCli(project, home, dataDir, ...args);
+  const configPath = path.join(project, '.zcode/config.json');
+  const readConfig = async () => JSON.parse(await fs.readFile(configPath, 'utf8'));
+  try {
+    await fs.mkdir(home);
+    await fs.mkdir(original);
+    zcodeProjectCli(original, home, dataDir, ...projectInit);
+    await fs.rename(original, project);
+    const moved = await readConfig();
+    moved.hooks.enabled = true;
+    const group = moved.hooks.events.PreToolUse[0];
+    const originalRouter = group.hooks[0];
+    originalRouter.enabled = true;
+    const sharedProject = path.join(root, 'shared project');
+    const sharedRouter = path.join(
+      sharedProject,
+      '.zcode/skills/comet/scripts/comet-hook-router.mjs',
+    );
+    await fs.mkdir(path.dirname(sharedRouter), { recursive: true });
+    await fs.copyFile(
+      path.join(project, '.zcode/skills/comet/scripts/comet-hook-router.mjs'),
+      sharedRouter,
+    );
+    const userHooks = [
+      {
+        ...originalRouter,
+        args: [sharedRouter, '--platform', 'zcode', '--project-root', sharedProject],
+      },
+      { ...originalRouter, args: [...originalRouter.args, '--team-option'] },
+      {
+        ...originalRouter,
+        args: [originalRouter.args[0], '--platform', 'zcode', '--project-root', project],
+      },
+      {
+        ...originalRouter,
+        args: [
+          path.join(original, 'tools/skills/comet/scripts/comet-hook-router.mjs'),
+          ...originalRouter.args.slice(1),
+        ],
+      },
+    ];
+    group.hooks.push(...userHooks);
+    const installed = {
+      ...originalRouter,
+      args: [
+        path.join(project, '.zcode/skills/comet/scripts/comet-hook-router.mjs'),
+        '--platform',
+        'zcode',
+        '--project-root',
+        project,
+      ],
+    };
+    for (const action of [projectUpdate, ['doctor', '--scope', 'project', '--repair']]) {
+      await fs.writeFile(configPath, JSON.stringify(moved));
+      cli(...action);
+      const config = await readConfig();
+      expect.soft(config.hooks.enabled).toBe(true);
+      expect
+        .soft(config.hooks.events.PreToolUse.flatMap(({ hooks }: { hooks: unknown[] }) => hooks))
+        .toEqual([...userHooks, installed]);
+    }
+    const launch = spawnSync(process.execPath, installed.args, {
+      cwd: project,
+      env: { ...isolatedBenchmarkEnvironment(home), COMET_DATA_DIR: dataDir },
+      input: JSON.stringify({
+        cwd: project,
+        tool_name: 'Write',
+        tool_input: { file_path: 'README.md' },
+      }),
+      encoding: 'utf8',
+      timeout: 30_000,
+    });
+    expect(launch.status, launch.stderr).toBe(0);
+
+    const current = await readConfig();
+    const disabled = { ...installed, enabled: false };
+    current.hooks.events.PreToolUse[1] = {
+      matcher: 'Write|Edit|ApplyPatch',
+      hooks: [disabled, originalRouter],
+    };
+    const duplicateConfig = JSON.stringify(current);
+    await fs.writeFile(configPath, duplicateConfig);
+    const report = cli('doctor', '--scope', 'project');
+    expect.soft(report.results).toContainEqual(
+      expect.objectContaining({
+        check: 'hooks: ZCode (project)',
+        status: 'warn',
+        message: expect.stringContaining('duplicate managed Router Hooks'),
+      }),
+    );
+    await expect(fs.readFile(configPath, 'utf8')).resolves.toBe(duplicateConfig);
+    cli('doctor', '--scope', 'project', '--repair');
+    expect.soft((await readConfig()).hooks.events.PreToolUse).toEqual([
+      { matcher: group.matcher, hooks: userHooks },
+      { matcher: group.matcher, hooks: [disabled] },
+    ]);
+
+    await fs.symlink(project, original, process.platform === 'win32' ? 'junction' : 'dir');
+    await fs.writeFile(configPath, JSON.stringify(moved));
+    cli(...projectUpdate);
+    expect.soft((await readConfig()).hooks.events.PreToolUse).toEqual([
+      { matcher: group.matcher, hooks: userHooks },
+      { matcher: group.matcher, hooks: [installed] },
+    ]);
+
+    await fs.writeFile(configPath, JSON.stringify(moved));
+    cli('uninstall', '--current-project', '--scope', 'project', '--force');
+    expect(await readConfig()).toEqual({
+      hooks: {
+        enabled: true,
+        events: { PreToolUse: [{ matcher: group.matcher, hooks: userHooks }] },
+      },
+    });
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+}, 60_000);
+
+it('preserves ZCode Router activation when restoring the default matcher through update and repair', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-zcode-matcher-'));
+  const home = path.join(root, 'home');
+  const project = path.join(root, 'project');
+  const configPath = path.join(project, '.zcode/config.json');
+  const cli = (...args: string[]) =>
+    zcodeProjectCli(project, home, path.join(root, 'data'), ...args);
+  try {
+    await fs.mkdir(home);
+    await fs.mkdir(project);
+    cli(...projectInit);
+    const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
+    config.hooks.enabled = true;
+    const group = config.hooks.events.PreToolUse[0];
+    const defaultMatcher = group.matcher;
+    const router = group.hooks[0];
+    group.matcher = 'Write|Edit|ApplyPatch';
+    const userHook = { type: 'process', command: 'node', args: ['team-hook.mjs'] };
+    group.hooks.push(userHook);
+    for (const [enabled, action] of [
+      [true, projectUpdate],
+      [undefined, ['doctor', '--scope', 'project', '--repair']],
+      [false, projectUpdate],
+    ] as const) {
+      router.enabled = enabled;
+      await fs.writeFile(configPath, JSON.stringify(config));
+      cli(...action);
+      const updated = JSON.parse(await fs.readFile(configPath, 'utf8'));
+      expect.soft(updated.hooks.enabled).toBe(true);
+      expect.soft(updated.hooks.events.PreToolUse).toEqual([
+        { matcher: group.matcher, hooks: [userHook] },
+        { matcher: defaultMatcher, hooks: [JSON.parse(JSON.stringify(router))] },
+      ]);
+    }
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+}, 60_000);
+
 it('preserves user-owned ZCode Hooks with a Comet Router path suffix during project migration', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-zcode-user-hook-'));
   const home = path.join(root, 'home');

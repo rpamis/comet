@@ -44,6 +44,7 @@ import {
   buildHookInvocation,
   buildLegacyZcodeGuardInvocation,
   matchesZcodeHookInvocation,
+  matchesZcodeRouterInvocation,
   type HookInvocation,
   removeManagedHookGroups,
   removeManagedCopilotHookEntries,
@@ -1193,8 +1194,12 @@ async function removeCometHooksForPlatform(
             scope,
           }),
         );
-        invocations.push(buildLegacyZcodeGuardInvocation(baseDir, skillsDir));
-        return await removeZcodeHooks(platformBase, invocations);
+        return await removeZcodeHooks(
+          platformBase,
+          invocations,
+          buildLegacyZcodeGuardInvocation(baseDir, skillsDir),
+          skillsDir,
+        );
       }
       case 'copilot':
         return await removeCopilotHooks(platformBase, scriptRelPaths);
@@ -1401,7 +1406,9 @@ async function removeTraeHooks(
  */
 async function removeZcodeHooks(
   platformBase: string,
-  invocations: HookInvocation[],
+  routerInvocations: HookInvocation[],
+  legacyGuard: HookInvocation,
+  skillsDir: string,
 ): Promise<RemovalResult> {
   const configPath = path.join(platformBase, 'config.json');
   if (!(await fileExists(configPath))) return { removed: 0, failed: 0 };
@@ -1425,8 +1432,13 @@ async function removeZcodeHooks(
   }
   if (!Array.isArray(existingEvents.PreToolUse)) return { removed: 0, failed: 0 };
 
-  const { groups, removed } = removeManagedHookGroups(existingEvents.PreToolUse, (hook) =>
-    invocations.some((invocation) => matchesZcodeHookInvocation(hook, invocation)),
+  const { groups, removed } = removeManagedHookGroups(
+    existingEvents.PreToolUse,
+    (hook) =>
+      matchesZcodeHookInvocation(hook, legacyGuard) ||
+      routerInvocations.some((invocation) =>
+        matchesZcodeRouterInvocation(hook, invocation, skillsDir),
+      ),
   );
   if (removed === 0) return { removed: 0, failed: 0 };
 

@@ -938,7 +938,7 @@ async function checkHookComponents(
           ? platform.hookFormat === 'zcode'
             ? 'The Comet Router is enabled in the ZCode workspace configuration. ZCode still requires workspace trust in Settings → Hooks → Workspace. Start a new session or run /reload after confirming trust.'
             : (platform.projectHookTrustMessage ?? 'exactly one managed Router Hook present')
-          : inspection.present && inspection.duplicatePresent
+          : inspection.duplicatePresent && !inspection.error
             ? `duplicate managed Router Hooks remain — run: comet doctor --repair --scope ${scope}`
             : inspection.present && inspection.legacyPresent
               ? `Router Hook and legacy managed Hook coexist — run: comet doctor --repair --scope ${scope}`

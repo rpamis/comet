@@ -49956,6 +49956,44 @@
       ]
     },
     {
+      "id": "zcode-rebinds-router-after-project-move",
+      "sources": ["https://github.com/rpamis/comet/pull/602#discussion_r4725279063"],
+      "behavior": "ZCode 项目搬迁后，更新和修复重新绑定 Router，卸载清理旧 Router。",
+      "coverageLevel": "public-cli",
+      "reproduction": "使用 8a574885 的公开 CLI 初始化临时项目，搬迁目录后分别运行 update、doctor --repair 和 uninstall。更新和修复留下旧绝对路径并追加关闭的新条目，卸载也留下旧条目。",
+      "expected": "更新和修复以当前项目路径注册唯一一条 Comet Router，保留启用状态且可处理普通 Write。旧目录留有指向当前项目的链接时也可清理。新旧条目并存时，只读 Doctor 提示重复，修复保留当前条目的开关。直接卸载可移除旧条目。",
+      "forbidden": "留下旧 Comet Router，因当前条目关闭而漏报重复，删除自定义脚本、参数或仍指向独立项目的有效 Router，或改变工作区总开关。",
+      "rootCause": "安装、诊断和卸载都要求完整参数与当前项目根一致，因而无法识别搬迁前生成的调用。Doctor 此外依赖 Router 已启用才显示重复告警。",
+      "tests": [
+        {
+          "file": "test/app/zcode-project-hooks.test.ts",
+          "namePattern": "^repairs and uninstalls a ZCode Router after moving its project through the public CLI$",
+          "requiredNames": [
+            "repairs and uninstalls a ZCode Router after moving its project through the public CLI"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "zcode-preserves-router-activation-when-restoring-matcher",
+      "sources": ["https://github.com/rpamis/comet/pull/602#discussion_r4725279066"],
+      "behavior": "ZCode Router 恢复默认 matcher 时保留条目的启用状态。",
+      "coverageLevel": "public-cli",
+      "reproduction": "使用 8a574885 的公开 CLI 初始化后修改 Router 的 matcher。公开 update 将显式开启的条目改为关闭，doctor --repair 也将缺省启用的条目改为关闭。",
+      "expected": "恢复默认 matcher 时，Router 分别保留显式启用、缺省启用和显式关闭。",
+      "forbidden": "改变 Router 的启用状态、工作区总开关或同组用户 Hook 的 matcher。",
+      "rootCause": "清理按完整调用识别条目，启用状态继承额外要求旧条目已经使用默认 matcher。",
+      "tests": [
+        {
+          "file": "test/app/zcode-project-hooks.test.ts",
+          "namePattern": "^preserves ZCode Router activation when restoring the default matcher through update and repair$",
+          "requiredNames": [
+            "preserves ZCode Router activation when restoring the default matcher through update and repair"
+          ]
+        }
+      ]
+    },
+    {
       "id": "issue-542-cancelled-history-projection",
       "sources": ["https://github.com/rpamis/comet/issues/542"],
       "behavior": "Doctor reads closed cancelled legacy Native history after active document cleanup.",
