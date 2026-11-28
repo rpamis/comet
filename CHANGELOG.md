@@ -26,11 +26,11 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Removed
 
-- **ZCode user-level Comet Router**: Explicit installation, update, and Doctor repair migrate legacy Comet entries to project scope while preserving user-owned Hooks. If cleanup fails, Comet disables the project Router and reports how to retry. First-time `/comet` activation keeps the legacy entry and explains how to migrate before enabling the project Router. Global Skill and Rule installation remains available.
+- **ZCode user-level Comet Router**: Explicit project installation, update, and Doctor repair migrate the legacy Router while preserving user-owned Hooks. If cleanup fails, Comet disables the project Router and explains how to retry. First-time `/comet` activation keeps the legacy entry and explains how to migrate. Global installation, update, and Doctor repair remove the legacy user-level Router without installing project Hooks. Install, review, trust, and enable a Router in each workspace that needs one. Global Skill and Rule installation remains available.
 
 ### Security
 
-- **ZCode project configuration**: Refuse linked project Hook configuration files and directories so project maintenance cannot rewrite configuration outside the workspace.
+- **ZCode project Hook files**: Preserve existing POSIX permissions when updating the Hook configuration. Reject linked project configuration paths and keep Router and Guard repair and first-time activation writes inside the workspace.
 
 ## What's Changed [0.5.7] - 2026-11-24
 

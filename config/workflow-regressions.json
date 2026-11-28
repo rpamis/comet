@@ -49687,7 +49687,7 @@
       ],
       "testMigration": {
         "kind": "feature-removed",
-        "reason": "Comet 撤下项目更新复用用户级 Router 的策略。项目写入失败时保留旧 Router。Doctor 在 ZCode 信任无法核实时保留 Classic v1 和有效选择，只清理确认缺失或已归档的 v2 选择。替代测试验证两个 Hook 开关都打开时仍保留 Classic v1 原文。",
+        "reason": "Comet 撤下项目更新复用用户级 Router 的策略。项目写入失败时保留旧 Router。Doctor 在 ZCode 信任无法核实时保留 Classic v1 和有效选择。清理确认失效的 v2 选择时，保留仍待交付或无法核实交付的 Classic 归档选择。替代测试验证两个 Hook 开关都打开时仍保留 Classic v1 原文。",
         "authorization": "report:2026-11-27-zcode-align-claude-hook-scope",
         "record": "docs/research/zcode-project-hook-migration/README.zh.md",
         "tests": [
@@ -50053,7 +50053,7 @@
       "behavior": "ZCode 项目 Doctor 显式修复时清理确认缺失的当前选择。",
       "coverageLevel": "public-cli",
       "reproduction": "用 f94cfe04 的公开 CLI 初始化仅安装 ZCode 的临时项目，选中不存在的 Native change。只读 Doctor 报告警告，项目 doctor --repair 只报告修复 ZCode 安装，选择文件仍存在。",
-      "expected": "项目 doctor --repair 清理指向缺失或已归档 change 的 v2 选择，即使 Router 尚未信任。只读检查和全局修复保留项目选择。",
+      "expected": "项目 doctor --repair 即使在 Router 尚未信任时也清理确认失效的 v2 选择，包括已完成交付的 Classic 归档选择。仍待交付或无法核实交付的 Classic 归档选择保留。只读检查和全局修复保留项目选择。",
       "forbidden": "清理有效选择或显式无选择，在未核实信任时迁移或删除 Classic v1 选择，改变 Hook 开关，或在后续修复重复报告清理。",
       "rootCause": "Doctor 将失效选择清理和 Classic v1 迁移绑定到同一个 Router 就绪条件，排除了需用户授信的 ZCode 项目。",
       "tests": [
@@ -50143,7 +50143,7 @@
       "sources": ["report:2026-11-28-zcode-doctor-enabling-pending-legacy-router"],
       "behavior": "旧用户级 Router 清理仍未完成时，Doctor 提示先重试迁移，不引导用户启用项目 Router。",
       "coverageLevel": "public-cli",
-      "reproduction": "在 36f5d2a1 的临时项目中保留有效旧用户 Router，将用户配置设为只读并运行公开 update。更新关闭项目 Router 后运行项目 Doctor，仍提示手动启用。",
+      "reproduction": "在隔离项目中保留有效旧用户 Router。使用已包含迁移失败关闭项目 Router、但尚未修改 Doctor 提示的本地候选，将旧用户配置设为只读并运行公开 update。更新关闭项目 Router 后，项目 Doctor 仍提示手动启用。",
       "expected": "Doctor 说明旧用户 Hook 可能仍有效，并要求先修复或移除旧 Hook、重试项目更新，再启用项目 Router。",
       "forbidden": "旧用户 Router 仍待清理时提示用户启用项目 Router。",
       "rootCause": "项目 Doctor 只检查项目配置，没有将待清理的用户级 ZCode Router 纳入提示选择。",
@@ -50174,6 +50174,106 @@
             "doctor command handles an archived Classic v2 selection with pending delivery through the public Doctor CLI",
             "doctor command handles an archived Classic v2 selection with completed delivery through the public Doctor CLI",
             "doctor command handles an archived Classic v2 selection with unreadable delivery through the public Doctor CLI"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "zcode-project-doctor-validates-both-runtime-destinations",
+      "sources": [
+        "https://github.com/rpamis/comet/pull/602#discussion_r4726785027",
+        "https://github.com/rpamis/comet/pull/602#issuecomment-7239062429"
+      ],
+      "behavior": "ZCode 项目 Doctor 修复先核对 Router 和 Guard 的两个写入目标。",
+      "coverageLevel": "unit",
+      "reproduction": "评审指出 8786e0f4 的 Doctor 在配置路径检查后逐个复制资产，未预检运行文件目标。旧版本未执行外部写入复现；定向测试替换复制函数并检查拒绝时没有复制调用。",
+      "expected": "链接将 Guard 的目标带到项目外时拒绝修复，两份运行文件都没有写入。",
+      "forbidden": "只检查配置文件，或发现 Guard 目标越界前已经复制 Router。",
+      "rootCause": "共享复制函数跟随目标链接，Doctor 没有对两个运行文件做项目范围预检。",
+      "tests": [
+        {
+          "file": "test/app/doctor.test.ts",
+          "namePattern": "^doctor command validates the ZCode Guard directory link before copying either runtime file during project repair$",
+          "requiredNames": [
+            "doctor command validates the ZCode Guard directory link before copying either runtime file during project repair"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "zcode-project-projection-validates-both-runtime-destinations",
+      "sources": ["https://github.com/rpamis/comet/pull/602#issuecomment-7239062429"],
+      "behavior": "ZCode 首次激活和关联工作树投影在复制运行文件前拒绝项目外目标。",
+      "coverageLevel": "unit",
+      "reproduction": "对 8786e0f4 的投影调用链进行静态核对。旧版本未执行外部写入复现。新测试在隔离目录内验证入口在调用复制函数前拒绝越界。",
+      "expected": "首次激活和关联工作树投影预检 Router 与 Guard 目标，允许指向工作区内的链接。",
+      "forbidden": "在发现越界前复制任一文件或写入项目 Hook 配置。",
+      "rootCause": "投影复制资产前只检查了项目 Hook 配置路径。",
+      "tests": [
+        {
+          "file": "test/domains/skill/project-hook-projection.test.ts",
+          "namePattern": "^project Hook projection (?:rejects a ZCode runtime directory outside the workspace before copying during (?:first activation|worktree projection)|keeps ZCode runtime directory links whose targets stay inside the workspace)$",
+          "requiredNames": [
+            "project Hook projection rejects a ZCode runtime directory outside the workspace before copying during first activation",
+            "project Hook projection rejects a ZCode runtime directory outside the workspace before copying during worktree projection",
+            "project Hook projection keeps ZCode runtime directory links whose targets stay inside the workspace"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "zcode-project-hook-config-preserves-posix-mode",
+      "sources": ["https://github.com/rpamis/comet/pull/602#issuecomment-7239062429"],
+      "behavior": "ZCode 项目 Hook 配置重写时保留现有 POSIX 权限。",
+      "coverageLevel": "public-cli",
+      "reproduction": "用 Linux 隔离项目验证 0600 配置。评审中的旧候选在普通 umask 下重写后变为 0644。原子写入定向对照中，8786e0f4 在 umask 0777 下首次写入前的临时文件是 000，新实现为 0600。",
+      "expected": "公开 init 和 uninstall 保留原有项目设置，且 POSIX 上重写后仍为 0600。临时文件写入内容前已应用原权限。",
+      "forbidden": "重写时丢失用户设置、在 POSIX 上替换成 umask 默认权限，或写入内容后才应用原权限。",
+      "rootCause": "原子重写以默认权限创建临时文件，没有继承现有目标的权限。",
+      "tests": [
+        {
+          "file": "test/app/zcode-project-hooks.test.ts",
+          "namePattern": "^preserves ZCode project settings and POSIX mode when rewriting Hook configuration$",
+          "requiredNames": [
+            "preserves ZCode project settings and POSIX mode when rewriting Hook configuration"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "zcode-project-maintenance-preserves-foreign-router",
+      "sources": ["https://github.com/rpamis/comet/pull/602#issuecomment-7239062429"],
+      "behavior": "ZCode 项目维护保留配置中显式引用的其他项目 Router。",
+      "coverageLevel": "public-cli",
+      "reproduction": "在 Windows 临时目录中安装两个 ZCode 项目，把其中一个项目的标准 Router 加到另一个项目的配置。8786e0f4 的公开 update 删除了外部条目。",
+      "expected": "项目更新、Doctor 和卸载保留其他项目的 Router。只有当前项目或与本项目安装记录匹配的旧路径可由 Comet 维护。",
+      "forbidden": "因跨项目条目的参数形状与标准 Router 相同就改写或移除它。",
+      "rootCause": "旧实现用条目自身的 project-root 重建调用并推断归属。",
+      "tests": [
+        {
+          "file": "test/app/zcode-project-hooks.test.ts",
+          "namePattern": "^preserves a live foreign ZCode project Router through public update, repair, and uninstall$",
+          "requiredNames": [
+            "preserves a live foreign ZCode project Router through public update, repair, and uninstall"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "zcode-router-matcher-maintenance-preserves-user-hook-indexes",
+      "sources": ["https://github.com/rpamis/comet/pull/602#issuecomment-7239062429"],
+      "behavior": "ZCode Router matcher 维护保留用户 Hook 的组间和组内索引。",
+      "coverageLevel": "public-cli",
+      "reproduction": "用 8786e0f4 的公开 CLI 更新项目中带自定义 matcher 的 Router，后面还有一组用户 Hook。旧实现移除原组并追加默认组，用户组前移。",
+      "expected": "独立 Router 组原位恢复默认 matcher，共享组保留原 matcher 和组内索引，Router 启用状态保持原样。",
+      "forbidden": "移动后续用户组、改写共享 matcher 或移动组内用户 Hook。",
+      "rootCause": "旧实现只对默认 matcher 组做原位更新，向末尾追加其他 Router。",
+      "tests": [
+        {
+          "file": "test/app/zcode-project-hooks.test.ts",
+          "namePattern": "^preserves ZCode Router activation when restoring the default matcher through update and repair$",
+          "requiredNames": [
+            "preserves ZCode Router activation when restoring the default matcher through update and repair"
           ]
         }
       ]

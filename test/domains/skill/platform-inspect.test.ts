@@ -327,7 +327,10 @@ describe('platform component inspection', () => {
       await expect(installCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
         status: 'installed',
       });
-      await expect(fs.readFile(configPath, 'utf8')).resolves.toBe(source);
+      expect(JSON.parse(await fs.readFile(configPath, 'utf8'))).toEqual({
+        ...config,
+        cometRouterProjectRoot: tmpDir,
+      });
       await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toMatchObject(
         enabled === false ? { present: false, activationRequired: true } : { present: true },
       );
@@ -392,7 +395,8 @@ describe('platform component inspection', () => {
     probe.withImplementation(
       () => false,
       () => {
-        expect(matchesZcodeRouterInvocation(previous, current, skillsDir)).toBe(true);
+        expect(matchesZcodeRouterInvocation(previous, current, skillsDir, previousRoot)).toBe(true);
+        expect(matchesZcodeRouterInvocation(previous, current, skillsDir, tmpDir)).toBe(false);
         expect(probe).not.toHaveBeenCalled();
       },
     );

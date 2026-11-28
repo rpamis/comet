@@ -92,6 +92,23 @@ export async function isCometHookTargetWithin(root: string, target: string): Pro
   return physicalRoot !== null && physicalTarget !== null && isWithin(physicalRoot, physicalTarget);
 }
 
+/** Resolve all write destinations before copying, including links to missing files. */
+export async function resolveProjectHookDestinations(
+  projectRoot: string,
+  destinations: readonly string[],
+): Promise<string[]> {
+  const physicalRoot = await fs.realpath(projectRoot);
+  return Promise.all(
+    destinations.map(async (destination) => {
+      const target = await physicalPathForPossiblyMissingTarget(destination);
+      if (!isWithin(physicalRoot, target)) {
+        throw new Error(`Hook runtime destination must stay inside the workspace: ${destination}`);
+      }
+      return target;
+    }),
+  );
+}
+
 export async function scopeCometHookTargets(
   projectRoot: string,
   targets: readonly string[],

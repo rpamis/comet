@@ -8,7 +8,7 @@ import path from 'path';
 import os from 'os';
 import { promises as fs } from 'fs';
 import type { BigIntStats, Dirent } from 'fs';
-import { copyFile, fileExists, readDir } from '../../platform/fs/file-system.js';
+import { fileExists, readDir } from '../../platform/fs/file-system.js';
 import { sameFileObject, type FileObjectIdentity } from '../../platform/fs/file-identity.js';
 import {
   getOpenSpecVersion,
@@ -29,7 +29,6 @@ import {
   getAssetsDir,
   getManagedSkillPaths,
   getManagedSkillPathsForSelection,
-  inspectZcodeProjectConfigPath,
 } from '../../domains/skill/platform-install.js';
 import {
   reconcileCometHooksForPlatform,
@@ -42,7 +41,6 @@ import {
 } from '../../domains/skill/platform-inspect.js';
 import {
   PLATFORMS,
-  getPlatformSkillsDir,
   getPlatformSkillsDirs,
   type Platform,
 } from '../../platform/install/platforms.js';
@@ -88,7 +86,11 @@ import { inspectSelectedWorkflowApplicationStatus } from '../../domains/workflow
 import { resolveHookWorkflowOwner } from '../../domains/comet-entry/hook-router.js';
 import type { InitWorkflowSelection } from '../../domains/comet-entry/types.js';
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
-import { projectCometHooksFromInstalledScope } from '../../domains/skill/project-hook-projection.js';
+import {
+  copyHookRouterRuntime,
+  hookRouterRuntimePaths,
+  projectCometHooksFromInstalledScope,
+} from '../../domains/skill/project-hook-projection.js';
 import { hasDshInstruction } from '../../domains/skill/dsh-adapter.js';
 
 interface CheckResult {
@@ -158,7 +160,6 @@ const SUPERPOWERS_SENTINELS = [
   'test-driven-development/SKILL.md',
   'writing-plans/SKILL.md',
 ] as const;
-const HOOK_ROUTER_RUNTIME_FILES = ['comet-hook-router.mjs', 'comet-hook-router-guard.mjs'];
 const CLASSIC_PLATFORM_TOOL_SCAN_MAX_ENTRIES = 4096;
 const CLASSIC_PLATFORM_TOOL_SCAN_MAX_DEPTH = 8;
 const CLASSIC_PLATFORM_TOOL_SCAN_MAX_FINDINGS = 128;
@@ -193,16 +194,6 @@ function configuredSkillLanguage(
   return 'en';
 }
 
-function hookRouterRuntimePaths(baseDir: string, platform: Platform, scope: InstallScope) {
-  const installedSkills = path.join(baseDir, getPlatformSkillsDir(platform, scope), 'skills');
-  const bundledSkills = path.join(getAssetsDir(), 'skills');
-  return HOOK_ROUTER_RUNTIME_FILES.map((file) => ({
-    file,
-    source: path.join(bundledSkills, 'comet', 'scripts', file),
-    destination: path.join(installedSkills, 'comet', 'scripts', file),
-  }));
-}
-
 function usesHookRouterRuntime(platform: Platform, scope: InstallScope): boolean {
   return (
     platform.supportsHooks === true &&
@@ -215,10 +206,7 @@ function usesHookRouterRuntime(platform: Platform, scope: InstallScope): boolean
 
 async function repairHookRouterRuntime(baseDir: string, platform: Platform, scope: InstallScope) {
   if (!usesHookRouterRuntime(platform, scope)) return;
-  await inspectZcodeProjectConfigPath(baseDir, platform, scope);
-  for (const { source, destination } of hookRouterRuntimePaths(baseDir, platform, scope)) {
-    await copyFile(source, destination);
-  }
+  await copyHookRouterRuntime(baseDir, platform, scope);
 }
 
 function checkCometCli(): CheckResult {

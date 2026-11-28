@@ -1,8 +1,11 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { atomicLinkContainedFile } from '../../../domains/workflow-contract/contained-atomic-write.js';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  atomicLinkContainedFile,
+  atomicWriteContainedJson,
+} from '../../../domains/workflow-contract/contained-atomic-write.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   atomicWriteContainedText,
@@ -58,6 +61,53 @@ describe('contained atomic write', () => {
     ).rejects.toThrow();
     await expect(fs.access(target)).rejects.toMatchObject({ code: 'ENOENT' });
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'preserves an existing POSIX 0600 mode despite a restrictive umask',
+    async () => {
+      const target = path.join(root, 'config.json');
+      const original = { hooks: { enabled: false } };
+      const updated = { hooks: { enabled: true } };
+      await fs.writeFile(target, JSON.stringify(original));
+      await fs.chmod(target, 0o600);
+      expect((await fs.stat(target)).mode & 0o777).toBe(0o600);
+
+      const originalUmask = process.umask();
+      let umaskRestored = false;
+      const modesAtWrite: number[] = [];
+      const open = fs.open.bind(fs);
+      const openSpy = vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+        const handle = await open(...args);
+        if (args[1] === 'wx') {
+          const writeFile = handle.writeFile.bind(handle);
+          handle.writeFile = async (...writeArgs) => {
+            modesAtWrite.push((await handle.stat()).mode & 0o777);
+            return writeFile(...writeArgs);
+          };
+        }
+        return handle;
+      });
+      try {
+        await atomicWriteContainedJson(target, updated, {
+          containedRoot: root,
+          preserveMode: true,
+          beforeTemporaryOpen: () => process.umask(0o777),
+          afterTemporaryClose: () => {
+            process.umask(originalUmask);
+            umaskRestored = true;
+          },
+        });
+      } finally {
+        if (!umaskRestored) process.umask(originalUmask);
+        openSpy.mockRestore();
+      }
+
+      expect(modesAtWrite).toEqual([0o600]);
+      expect(JSON.parse(await fs.readFile(target, 'utf8'))).toEqual(updated);
+      expect((await fs.stat(target)).mode & 0o777).toBe(0o600);
+      expect(await temporaryFiles(root)).toEqual([]);
+    },
+  );
 
   it('commits a normal write even though writing changes size and ctime', async () => {
     const target = path.join(root, 'state.yaml');

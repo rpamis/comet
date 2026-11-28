@@ -46,6 +46,7 @@ import {
   buildLegacyZcodeGuardInvocation,
   matchesZcodeHookInvocation,
   matchesZcodeRouterInvocation,
+  ZCODE_ROUTER_PROJECT_ROOT,
   inspectZcodeProjectConfigPath,
   type HookInvocation,
   removeManagedHookGroups,
@@ -1442,7 +1443,12 @@ async function removeZcodeHooks(
     (hook) =>
       matchesZcodeHookInvocation(hook, legacyGuard) ||
       routerInvocations.some((invocation) =>
-        matchesZcodeRouterInvocation(hook, invocation, skillsDir),
+        matchesZcodeRouterInvocation(
+          hook,
+          invocation,
+          skillsDir,
+          projectRoot ? settings[ZCODE_ROUTER_PROJECT_ROOT] : undefined,
+        ),
       ),
   );
   if (removed === 0) return { removed: 0, failed: 0 };
@@ -1462,7 +1468,11 @@ async function removeZcodeHooks(
 
   try {
     if (projectRoot) {
-      await atomicWriteContainedJson(configPath, settings, { containedRoot: projectRoot });
+      delete settings[ZCODE_ROUTER_PROJECT_ROOT];
+      await atomicWriteContainedJson(configPath, settings, {
+        containedRoot: projectRoot,
+        preserveMode: true,
+      });
     } else {
       await writeFile(configPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
     }

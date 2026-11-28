@@ -19,6 +19,8 @@ import {
   isManagedHookCommand,
   matchesZcodeHookInvocation,
   matchesZcodeRouterInvocation,
+  zcodeMatcherCoversRouter,
+  ZCODE_ROUTER_PROJECT_ROOT,
   type HookInvocation,
   OMP_HOOK_MARKER,
   OMP_HOOK_RELATIVE_PATH,
@@ -232,9 +234,20 @@ async function inspectZcodeHooks(
     let configured = false;
     let enabled = false;
     for (const entry of handlers) {
-      if (!matchesZcodeRouterInvocation(entry.hook, invocation, skillsDir)) continue;
+      if (
+        !matchesZcodeRouterInvocation(
+          entry.hook,
+          invocation,
+          skillsDir,
+          scope === 'project' ? result.value[ZCODE_ROUTER_PROJECT_ROOT] : undefined,
+        )
+      )
+        continue;
       owned++;
-      if (entry.matcher !== matcher || !matchesZcodeHookInvocation(entry.hook, invocation))
+      if (
+        !zcodeMatcherCoversRouter(entry.matcher, matcher) ||
+        !matchesZcodeHookInvocation(entry.hook, invocation)
+      )
         continue;
       configured = true;
       enabled ||= entry.hook.enabled === true || entry.hook.enabled === undefined;

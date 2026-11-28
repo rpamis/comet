@@ -149,7 +149,7 @@ ZCode 的项目 Skill 和 Rule 分别安装到 `.zcode/skills/` 和 `.zcode/rule
 
 `comet doctor --scope project` 检查本地 Router 及其 Guard 文件，并提示在 ZCode 中确认信任和启用状态；若旧用户级 Comet Router 仍存在或无法检查，则先修复配置并重试项目迁移，再启用项目 Router。可用 `--repair` 恢复缺失的运行文件。项目 Router 写入成功后，修复会清理确认失效的 v2 工作流选择，并保留 Classic 归档后仍待交付的选择。未核实信任时保留 Classic v1 选择。
 
-项目移动或重命名后，更新或修复会在原位置重新绑定默认 matcher 下的标准 Router，即使旧位置仍有另一套 Comet 安装。配置内容无变化时跳过写入。恢复默认 matcher 时也保留 Router 的启用状态。ZCode 若要求重新审核，请在工作区设置中操作。项目维护拒绝经过符号链接或 junction 的 `.zcode/config.json`。`comet uninstall --scope project` 可以清理搬迁前的 Comet 条目。
+项目移动或重命名后，更新和修复根据随配置移动的安装路径记录原位重绑 Router。用户显式引用的其他项目 Router 保持原样。早期候选安装若在搬迁前未写入归属记录，搬迁后需在 ZCode 中手动处理旧条目。独立 Router 组原位恢复默认 matcher。共享组保留原 matcher 和索引，避免用户 Hook 丢失信任。配置内容无变化时跳过写入。项目维护拒绝经过符号链接或 junction 的 `.zcode/config.json`，并保留现有配置的 POSIX 权限。Doctor 和首次激活在复制前检查 Router 与 Guard 的目标都在项目内。
 
 ## 六、Classic 渐进 Engine-native 收敛
 

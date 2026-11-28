@@ -1,4 +1,6 @@
 import { readNodeHookArguments } from '../../platform/process/hook-command.js';
+import * as fileSystem from '../../platform/fs/file-system.js';
+import { requireFileSymlink } from '../helpers/file-symlink.js';
 import { writeLegacyZcodeUserHook } from '../helpers/zcode-hook-config.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'crypto';
@@ -2157,6 +2159,50 @@ describe('doctor command', () => {
       await expect(fs.readFile(stateFile, 'utf8')).resolves.toBe(archivedState);
     },
     45_000,
+  );
+
+  it.for(['directory link', 'dangling file link'] as const)(
+    'validates the ZCode Guard %s before copying either runtime file during project repair',
+    async (link, context) => {
+      if (link === 'dangling file link') await requireFileSymlink(context);
+      const project = path.join(tmpDir, 'project');
+      const homeDir = path.join(tmpDir, 'home');
+      const scripts = path.join(project, '.zcode', 'skills', 'comet', 'scripts');
+      const router = path.join(scripts, 'comet-hook-router.mjs');
+      const guard = path.join(scripts, 'comet-hook-router-guard.mjs');
+      const external = path.join(tmpDir, 'external');
+      await fs.mkdir(homeDir);
+      await installManagedCometSkills(project, '.zcode');
+      await fs.writeFile(router, 'existing Router fixture\n');
+      await fs.rm(guard, { force: true });
+      const fileLink = link === 'dangling file link';
+      if (!fileLink) await fs.mkdir(external);
+      await fs.symlink(
+        external,
+        guard,
+        fileLink ? 'file' : process.platform === 'win32' ? 'junction' : 'dir',
+      );
+
+      // Exercise Doctor's validation without allowing the runtime copy to write anything.
+      const copy = vi.spyOn(fileSystem, 'copyFile').mockResolvedValue(undefined);
+      try {
+        await expect(
+          doctorCommand(project, { json: true, repair: true, scope: 'project', homeDir }),
+        ).rejects.toThrow(`Hook runtime destination must stay inside the workspace: ${guard}`);
+        expect(copy).not.toHaveBeenCalled();
+        await expect(fs.readFile(router, 'utf8')).resolves.toBe('existing Router fixture\n');
+        if (fileLink) {
+          await expect(fs.access(external)).rejects.toMatchObject({ code: 'ENOENT' });
+        } else {
+          await expect(fs.readdir(external)).resolves.toEqual([]);
+        }
+        await expect(fs.access(path.join(project, '.zcode', 'config.json'))).rejects.toMatchObject({
+          code: 'ENOENT',
+        });
+      } finally {
+        copy.mockRestore();
+      }
+    },
   );
 
   it('repairs the ZCode project Router without clearing selection while trust is unverified', async () => {
