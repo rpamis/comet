@@ -86,11 +86,23 @@ export async function reconcileProjectCometHooksForPlatform(
     'global',
   );
   if (globalCleanup.failed > 0) {
-    return {
-      status: 'failed',
-      cleanupFailed: globalCleanup.failed,
-      reason: `project Router installed, but failed to remove ${globalCleanup.failed} historical global Hook configuration(s)`,
-    };
+    let reason = `project Router installed, but failed to remove ${globalCleanup.failed} historical global Hook configuration(s)`;
+    if (platform.hookFormat === 'zcode') {
+      const disabled = await installCometHooksForPlatform(
+        projectRoot,
+        platform,
+        'project',
+        workflowSelection,
+        { disableZcodeRouter: true },
+      );
+      const cleanupError = globalCleanup.reason ? ` at ${globalCleanup.reason}` : '';
+      const activation =
+        disabled.status === 'installed'
+          ? 'The project Router is disabled until you enable it in ZCode.'
+          : `Disable the project Router in ZCode before continuing. Comet could not disable it: ${disabled.reason}`;
+      reason = `Legacy ZCode user Hook cleanup failed${cleanupError}. ${activation} Fix the user configuration and rerun \`comet update --platform zcode --scope project --current-project --skip-self-update --yes\` before enabling the project Router.`;
+    }
+    return { status: 'failed', cleanupFailed: globalCleanup.failed, reason };
   }
   return activationMessage && globalCleanup.removed > 0
     ? { ...installed, reason: `Removed the legacy user-scoped Comet Hook. ${activationMessage}` }

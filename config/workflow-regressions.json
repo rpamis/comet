@@ -50074,6 +50074,111 @@
       ]
     },
     {
+      "id": "zcode-project-config-contained",
+      "sources": ["https://github.com/rpamis/comet/pull/602#issuecomment-7236209842"],
+      "behavior": "项目级 init 和 update 遇到链接配置文件或目录时，停止项目安装且保留工作区外文件。",
+      "coverageLevel": "public-cli",
+      "reproduction": "在 36f5d2a1 的 Windows 临时项目里，用文件符号链接或目录 junction 将 ZCode 配置指向外部临时目录。公开 init 和 update 未拒绝，并改写了外部配置。",
+      "expected": "命令报告 ZCode 项目 Hook 配置路径和链接问题，外部配置与目录内容保持原样。",
+      "forbidden": "通过项目配置的文件链接或父目录链接修改外部配置，或在外部配置目录安装 Router 资产。",
+      "rootCause": "Hook 配置读写和前置资产复制直接使用项目内的字面路径，文件系统会解析链接。",
+      "tests": [
+        {
+          "file": "test/app/zcode-project-hooks.test.ts",
+          "namePattern": "^keeps external ZCode files unchanged when the project configuration (file|directory) is linked$",
+          "requiredNames": [
+            "keeps external ZCode files unchanged when the project configuration file is linked",
+            "keeps external ZCode files unchanged when the project configuration directory is linked"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "zcode-project-router-update-preserves-hook-order",
+      "sources": ["https://github.com/rpamis/comet/pull/602#issuecomment-7236209842"],
+      "behavior": "更新在标准项目 Router 的原位置修复配置，没有变化时保持文件原样。",
+      "coverageLevel": "public-cli",
+      "reproduction": "在 36f5d2a1 安装后，将用户 Hook 放在 Router 的同一组及后续组，再运行公开 update。用户 Hook 移位，配置被重写。",
+      "expected": "同组及后续组用户 Hook 位置保持原样。修复 Router 超时值时仅替换原条目，无实质变化时不改写配置。",
+      "forbidden": "为刷新标准 Router 改变用户 Hook 的分组或条目索引，或改写无需变更的配置。",
+      "rootCause": "更新先删除所有受管 Hook，再把 Router 组追加到末尾。ZCode 信任记录包含分组和条目索引。",
+      "tests": [
+        {
+          "file": "test/app/zcode-project-hooks.test.ts",
+          "namePattern": "^preserves ZCode Router and user Hook positions through public update$",
+          "requiredNames": ["preserves ZCode Router and user Hook positions through public update"]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "ZCode v4 工作区 Hook 授信和派发",
+          "status": "verified",
+          "evidence": [
+            "ZCode a4b44451 为 Router 后一组的用户 Hook 保存持久信任。公开 update 保持项目配置原字节。重新加载时原授信依然生效，匹配事件执行一次用户 Hook，Node 进程退出码为 0。见 docs/research/zcode-project-hook-migration/README.zh.md。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "zcode-project-router-disabled-on-legacy-cleanup-failure",
+      "sources": ["report:2026-11-28-zcode-legacy-router-cleanup-failure"],
+      "behavior": "旧用户级 Hook 清理失败时，关闭项目 Router 并提供恢复路径。",
+      "coverageLevel": "public-cli",
+      "reproduction": "用 36f5d2a1 的公开 CLI 更新已启用的项目 Router，临时 HOME 中的旧配置无法解析。命令报未完成，但项目 Router 保持启用。回归另验证旧配置可读但无法写入的情况。",
+      "expected": "报出旧配置的路径和失败原因，仅关闭项目 Router，保留总开关、用户 Hook 及旧配置。修复旧配置后重试可以清理旧条目，项目 Router 等待手动启用。",
+      "forbidden": "清理失败后保留可派发的项目 Router，覆写无法解析的用户配置，或在重试时自动启用项目 Router。",
+      "rootCause": "迁移在项目 Router 更新完成后清理旧条目，失败时只返回错误，没有关闭项目 Router。",
+      "tests": [
+        {
+          "file": "test/app/zcode-project-hooks.test.ts",
+          "namePattern": "^keeps the ZCode project Router disabled when legacy user Hook cleanup fails$",
+          "requiredNames": [
+            "keeps the ZCode project Router disabled when legacy user Hook cleanup fails"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "zcode-doctor-warns-before-enabling-project-router",
+      "sources": ["report:2026-11-28-zcode-doctor-enabling-pending-legacy-router"],
+      "behavior": "旧用户级 Router 清理仍未完成时，Doctor 提示先重试迁移，不引导用户启用项目 Router。",
+      "coverageLevel": "public-cli",
+      "reproduction": "在 36f5d2a1 的临时项目中保留有效旧用户 Router，将用户配置设为只读并运行公开 update。更新关闭项目 Router 后运行项目 Doctor，仍提示手动启用。",
+      "expected": "Doctor 说明旧用户 Hook 可能仍有效，并要求先修复或移除旧 Hook、重试项目更新，再启用项目 Router。",
+      "forbidden": "旧用户 Router 仍待清理时提示用户启用项目 Router。",
+      "rootCause": "项目 Doctor 只检查项目配置，没有将待清理的用户级 ZCode Router 纳入提示选择。",
+      "tests": [
+        {
+          "file": "test/app/zcode-project-hooks.test.ts",
+          "namePattern": "^warns against enabling the project Router while legacy user Hook cleanup is pending$",
+          "requiredNames": [
+            "warns against enabling the project Router while legacy user Hook cleanup is pending"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "zcode-doctor-preserves-archived-classic-delivery-selection",
+      "sources": ["report:2026-11-28-zcode-doctor-archived-classic-selection"],
+      "behavior": "Doctor 修复保留 Classic 归档后等待交付的当前选择。",
+      "coverageLevel": "public-cli",
+      "reproduction": "在 36f5d2a1 的 Windows 临时 Classic 项目完成归档并留下待交付记录。公开 state current 能找到选择，doctor --repair 删除选择后，state current 无法找到它。",
+      "expected": "待交付或交付无法核实的 Classic 归档保留选择和交付材料，已完成交付的失效选择仍可清理。",
+      "forbidden": "因归档退出 Guard 的活跃范围而删除仍需交付的选择，或改变归档及交付材料。",
+      "rootCause": "选择修复把 Guard 的活跃归属用于判断归档交付是否结束。",
+      "tests": [
+        {
+          "file": "test/app/doctor.test.ts",
+          "namePattern": "^doctor command handles an archived Classic v2 selection with (pending|completed|unreadable) delivery through the public Doctor CLI$",
+          "requiredNames": [
+            "doctor command handles an archived Classic v2 selection with pending delivery through the public Doctor CLI",
+            "doctor command handles an archived Classic v2 selection with completed delivery through the public Doctor CLI",
+            "doctor command handles an archived Classic v2 selection with unreadable delivery through the public Doctor CLI"
+          ]
+        }
+      ]
+    },
+    {
       "id": "issue-542-cancelled-history-projection",
       "sources": ["https://github.com/rpamis/comet/issues/542"],
       "behavior": "Doctor reads closed cancelled legacy Native history after active document cleanup.",

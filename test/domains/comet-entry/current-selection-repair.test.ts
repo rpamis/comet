@@ -102,6 +102,8 @@ describe('shared Comet current selection repair', () => {
               code: 'target-missing',
               reason: 'missing',
               legacy: false,
+              workflow: 'native',
+              change: 'missing-change',
             },
           }),
           clearSelection: async () => {

@@ -1,4 +1,8 @@
-import { clearCometCurrentSelection, migrateLegacyClassicSelection } from './current-selection.js';
+import {
+  clearCometCurrentSelectionIf,
+  migrateLegacyClassicSelection,
+} from './current-selection.js';
+import { hasPendingArchivedClassicDelivery } from '../comet-classic/classic-current-change.js';
 import { resolveHookWorkflowOwner } from './hook-router.js';
 
 export interface RepairCometCurrentSelectionOptions {
@@ -14,13 +18,17 @@ export interface RepairCometCurrentSelectionResult {
 interface RepairCometCurrentSelectionDependencies {
   migrateLegacyClassic: typeof migrateLegacyClassicSelection;
   resolveOwner: typeof resolveHookWorkflowOwner;
-  clearSelection: typeof clearCometCurrentSelection;
+  clearSelection: (
+    projectRoot: string,
+    workflow: 'native' | 'classic',
+    change: string,
+  ) => Promise<boolean | void>;
 }
 
 const DEFAULT_DEPENDENCIES: RepairCometCurrentSelectionDependencies = {
   migrateLegacyClassic: migrateLegacyClassicSelection,
   resolveOwner: resolveHookWorkflowOwner,
-  clearSelection: clearCometCurrentSelection,
+  clearSelection: clearCometCurrentSelectionIf,
 };
 
 export async function repairCometCurrentSelection(
@@ -37,7 +45,12 @@ export async function repairCometCurrentSelection(
   if (stale?.code !== 'target-missing' || (stale.legacy && options.preserveLegacyClassic)) {
     return { migratedLegacyClassic, clearedStaleSelection: false };
   }
-
-  await dependencies.clearSelection(projectRoot);
-  return { migratedLegacyClassic, clearedStaleSelection: true };
+  if (
+    stale.workflow === 'classic' &&
+    (await hasPendingArchivedClassicDelivery(projectRoot, stale.change))
+  ) {
+    return { migratedLegacyClassic, clearedStaleSelection: false };
+  }
+  const cleared = await dependencies.clearSelection(projectRoot, stale.workflow, stale.change);
+  return { migratedLegacyClassic, clearedStaleSelection: cleared !== false };
 }

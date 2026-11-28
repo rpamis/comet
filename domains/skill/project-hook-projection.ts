@@ -10,7 +10,7 @@ import {
   reconcileProjectCometHooksForPlatform,
 } from './hook-lifecycle.js';
 import { inspectCometHooksForPlatform } from './platform-inspect.js';
-import { getAssetsDir } from './platform-install.js';
+import { getAssetsDir, inspectZcodeProjectConfigPath } from './platform-install.js';
 
 const HOOK_ROUTER_RUNTIME = ['comet', 'scripts', 'comet-hook-router.mjs'] as const;
 
@@ -51,6 +51,7 @@ export async function projectCometHooksFromInstalledScope(
     if (!(await fileExists(installedRouter))) continue;
 
     try {
+      await inspectZcodeProjectConfigPath(targetProjectRoot, platform, 'project');
       const projectRouter = path.join(
         targetProjectRoot,
         getPlatformSkillsDir(platform, 'project'),

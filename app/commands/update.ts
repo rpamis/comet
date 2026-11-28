@@ -20,6 +20,7 @@ import {
   getManifestSkills,
   mergeProjectConfig,
   prepareManagedSkillCopyTarget,
+  inspectZcodeProjectConfigPath,
 } from '../../domains/skill/platform-install.js';
 import {
   reconcileCometHooksForPlatform,
@@ -1607,6 +1608,7 @@ async function updateSingleProject(
     const languageSkillsDir = languageToSkillsDir(languageId);
     const targetInstallMode = installModeFor(target);
     const nativeProjectTarget = nativeProject && target.scope === 'project';
+    await inspectZcodeProjectConfigPath(baseDir, target.platform, target.scope);
     const targetSkillWorkflowSelection = await skillWorkflowSelectionFor(target);
     if (target.scope === 'project') {
       await assertClassicProjectMutationAllowed?.();

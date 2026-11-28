@@ -35,7 +35,11 @@ import {
 } from '../workflow-contract/project-config.js';
 import { readWorkflowProjectConfigSnapshot } from '../workflow-contract/project-config-reader.js';
 import { writeWorkflowProjectConfigSource } from '../workflow-contract/project-config-writer.js';
-import { ensureProtectedProjectDirectory } from '../workflow-contract/protected-project-path.js';
+import {
+  ensureProtectedProjectDirectory,
+  inspectProtectedProjectPath,
+} from '../workflow-contract/protected-project-path.js';
+import { atomicWriteContainedJson } from '../workflow-contract/contained-atomic-write.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1385,6 +1389,7 @@ async function installCometHooksForPlatform(
   platform: Platform,
   scope: InstallScope = 'project',
   workflowSelection: InitWorkflowSelection = 'classic',
+  options: { disableZcodeRouter?: boolean } = {},
 ): Promise<HookInstallResult> {
   if (!platform.supportsHooks) {
     return { status: 'skipped', reason: 'platform does not support hooks' };
@@ -1573,6 +1578,8 @@ async function installCometHooksForPlatform(
           hooksConfig,
           platform.name,
           { platformId: platform.id, scope, hookMatcher: platform.hookMatcher },
+          await inspectZcodeProjectConfigPath(baseDir, platform, scope),
+          options.disableZcodeRouter === true,
         );
       default:
         return { status: 'failed', reason: `unsupported hook format: ${hookFormat}` };
@@ -2184,15 +2191,18 @@ export function buildLegacyZcodeGuardInvocation(
   return buildHookInvocation(baseDir, skillsDir, LEGACY_HOOK_SCRIPTS[0]);
 }
 
-function zcodeRouterEnabled(
+type ZcodeProcessHook = HookInvocation & { type: 'process'; timeoutMs: number; enabled?: boolean };
+
+function findZcodeRouter(
   groups: unknown[],
   matcher: string,
   invocation: HookInvocation,
   skillsDir: string,
-): boolean | undefined {
+): { existing?: Record<string, unknown>; enabled?: boolean } {
   const currentDefault: Record<string, unknown>[] = [];
   const current: Record<string, unknown>[] = [];
   const previous: Record<string, unknown>[] = [];
+  let previousDefault: Record<string, unknown> | undefined;
   for (const group of groups) {
     const record = group as { matcher?: unknown; hooks?: unknown } | null;
     for (const hook of asHookGroup(record?.hooks)) {
@@ -2201,13 +2211,31 @@ function zcodeRouterEnabled(
         if (record?.matcher === matcher) currentDefault.push(hook);
       } else if (matchesZcodeRouterInvocation(hook, invocation, skillsDir)) {
         previous.push(hook);
+        if (record?.matcher === matcher) previousDefault ??= hook;
       }
     }
   }
   // Prefer the current project setting even if an old declaration is still enabled.
   const candidates = [currentDefault, current, previous].find((hooks) => hooks.length > 0) ?? [];
-  if (candidates.some((hook) => hook.enabled === undefined)) return undefined;
-  return candidates.some((hook) => hook.enabled === true);
+  return {
+    existing: currentDefault[0] ?? previousDefault,
+    enabled: candidates.some((hook) => hook.enabled === undefined)
+      ? undefined
+      : candidates.some((hook) => hook.enabled === true),
+  };
+}
+
+export async function inspectZcodeProjectConfigPath(
+  baseDir: string,
+  platform: Platform,
+  scope: InstallScope,
+): Promise<{ projectRoot: string; target: string; exists: boolean } | undefined> {
+  if (scope !== 'project' || platform.hookFormat !== 'zcode') return undefined;
+  return inspectProtectedProjectPath(
+    await realpath(baseDir),
+    path.join(getPlatformConfigDir(platform, scope), 'config.json'),
+    { label: 'ZCode project Hook configuration', expected: 'file' },
+  );
 }
 
 async function installZcodeHooks(
@@ -2217,9 +2245,10 @@ async function installZcodeHooks(
   hooksConfig: Record<string, HookConfig>,
   platformName: string,
   context: HookCommandContext,
+  protectedPath: { projectRoot: string; target: string; exists: boolean } | undefined,
+  disableRouter: boolean,
 ): Promise<HookInstallResult> {
-  const configPath = path.join(platformBase, 'config.json');
-
+  const configPath = protectedPath?.target ?? path.join(platformBase, 'config.json');
   const settings = await readSettingsJsonObject(configPath, platformName);
   const existingHooks = (settings.hooks as Record<string, unknown>) ?? {};
   const existingEvents =
@@ -2231,36 +2260,52 @@ async function installZcodeHooks(
   const existingPreToolUse = asHookGroup(existingEvents.PreToolUse);
 
   // ZCode process Hooks pass arguments directly to Node, including on Windows.
-  const matcherGroups: Record<
-    string,
-    Array<HookInvocation & { type: 'process'; timeoutMs: number; enabled?: boolean }>
-  > = {};
+  const matcherGroups: Record<string, ZcodeProcessHook[]> = {};
+  const replacements = new Map<unknown, ZcodeProcessHook>();
   const legacyGuard = buildLegacyZcodeGuardInvocation(baseDir, skillsDir);
   const routerInvocations: HookInvocation[] = [];
   for (const [scriptRelPath, config] of Object.entries(hooksConfig)) {
     const matcher = resolveInstalledHookMatcher(context, config.matcher);
     const invocation = buildHookInvocation(baseDir, skillsDir, scriptRelPath, context);
     routerInvocations.push(invocation);
-    const enabled = zcodeRouterEnabled(existingPreToolUse, matcher, invocation, skillsDir);
-    matcherGroups[matcher] ??= [];
-    matcherGroups[matcher].push({
+    const { existing, enabled } = findZcodeRouter(
+      existingPreToolUse,
+      matcher,
+      invocation,
+      skillsDir,
+    );
+    const hook: ZcodeProcessHook = {
       type: 'process',
       ...invocation,
       timeoutMs: 60_000,
-      ...(enabled === undefined ? {} : { enabled }),
-    });
+      ...(disableRouter ? { enabled: false } : enabled === undefined ? {} : { enabled }),
+    };
+    if (existing) {
+      replacements.set(existing, hook);
+    } else {
+      matcherGroups[matcher] ??= [];
+      matcherGroups[matcher].push(hook);
+    }
   }
 
+  // ZCode includes both indexes in each Hook's trust digest.
   const { groups } = removeManagedHookGroups(
     existingPreToolUse,
     (hook) =>
-      matchesZcodeHookInvocation(hook, legacyGuard) ||
-      routerInvocations.some((invocation) =>
-        matchesZcodeRouterInvocation(hook, invocation, skillsDir),
-      ),
+      !replacements.has(hook) &&
+      (matchesZcodeHookInvocation(hook, legacyGuard) ||
+        routerInvocations.some((invocation) =>
+          matchesZcodeRouterInvocation(hook, invocation, skillsDir),
+        )),
   );
   const merged = [
-    ...groups,
+    ...groups.map((group) => {
+      const record = group as { hooks?: unknown } | null;
+      const hooks = asHookGroup(record?.hooks);
+      return hooks.some((hook) => replacements.has(hook))
+        ? { ...record, hooks: hooks.map((hook) => replacements.get(hook) ?? hook) }
+        : group;
+    }),
     ...Object.entries(matcherGroups).map(([matcher, hooks]) => ({ matcher, hooks })),
   ];
   if (isDeepStrictEqual(merged, existingEvents.PreToolUse)) return { status: 'installed' };
@@ -2269,8 +2314,15 @@ async function installZcodeHooks(
     ...existingHooks,
     events: { ...existingEvents, PreToolUse: merged },
   };
-  await ensureDir(path.dirname(configPath));
-  await writeFile(configPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
+  if (protectedPath) {
+    await atomicWriteContainedJson(configPath, settings, {
+      containedRoot: protectedPath.projectRoot,
+      exclusive: !protectedPath.exists,
+    });
+  } else {
+    await ensureDir(path.dirname(configPath));
+    await writeFile(configPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
+  }
   return { status: 'installed' };
 }
 

@@ -11,6 +11,7 @@ import {
 import { classicLayoutPaths } from '../comet-classic/classic-layout.js';
 import { resolveArtifactRoot } from '../comet-native/native-paths.js';
 import { isWorkspaceRuntimeMigrationFence } from '../workflow-contract/workspace-runtime.js';
+import { atomicWriteContainedJson } from '../workflow-contract/contained-atomic-write.js';
 import {
   readWorkflowProjectConfigIdentity,
   readWorkflowProjectConfigSnapshot,
@@ -45,6 +46,7 @@ import {
   buildLegacyZcodeGuardInvocation,
   matchesZcodeHookInvocation,
   matchesZcodeRouterInvocation,
+  inspectZcodeProjectConfigPath,
   type HookInvocation,
   removeManagedHookGroups,
   removeManagedCopilotHookEntries,
@@ -1187,6 +1189,7 @@ async function removeCometHooksForPlatform(
       case 'trae':
         return await removeTraeHooks(platformBase, scriptRelPaths);
       case 'zcode': {
+        const config = await inspectZcodeProjectConfigPath(baseDir, platform, scope);
         const skillsDir = getPlatformSkillsDir(platform, scope);
         const invocations = Object.keys(manifest.hooks ?? {}).map((scriptRelPath) =>
           buildHookInvocation(baseDir, skillsDir, scriptRelPath, {
@@ -1195,10 +1198,11 @@ async function removeCometHooksForPlatform(
           }),
         );
         return await removeZcodeHooks(
-          platformBase,
+          config?.target ?? path.join(platformBase, 'config.json'),
           invocations,
           buildLegacyZcodeGuardInvocation(baseDir, skillsDir),
           skillsDir,
+          config?.projectRoot,
         );
       }
       case 'copilot':
@@ -1405,16 +1409,17 @@ async function removeTraeHooks(
  * and an enabled runner without events is inert.
  */
 async function removeZcodeHooks(
-  platformBase: string,
+  configPath: string,
   routerInvocations: HookInvocation[],
   legacyGuard: HookInvocation,
   skillsDir: string,
+  projectRoot?: string,
 ): Promise<RemovalResult> {
-  const configPath = path.join(platformBase, 'config.json');
-  if (!(await fileExists(configPath))) return { removed: 0, failed: 0 };
   const readResult = await readJsonObjectFile(configPath);
   if (readResult.status === 'missing') return { removed: 0, failed: 0 };
-  if (readResult.status === 'error') return { removed: 0, failed: 1 };
+  if (readResult.status === 'error') {
+    return { removed: 0, failed: 1, reason: `${configPath}: ${readResult.error.message}` };
+  }
   const settings = readResult.value;
 
   const existingHooks = settings.hooks as Record<string, unknown> | undefined;
@@ -1455,7 +1460,15 @@ async function removeZcodeHooks(
     delete settings.hooks;
   }
 
-  await writeFile(configPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
+  try {
+    if (projectRoot) {
+      await atomicWriteContainedJson(configPath, settings, { containedRoot: projectRoot });
+    } else {
+      await writeFile(configPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
+    }
+  } catch (error) {
+    return { removed: 0, failed: 1, reason: `${configPath}: ${(error as Error).message}` };
+  }
   return { removed, failed: 0 };
 }
 

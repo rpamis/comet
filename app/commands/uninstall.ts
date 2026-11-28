@@ -17,6 +17,7 @@ import {
   removeOpenSpecSkillsForPlatform,
   removeSuperpowersSkillsForPlatforms,
 } from '../../domains/skill/uninstall.js';
+import { inspectZcodeProjectConfigPath } from '../../domains/skill/platform-install.js';
 import { detectInstalledCometTargets, type InstalledCometTarget } from './update.js';
 import {
   listProjectRegistryEntries,
@@ -431,6 +432,7 @@ async function uninstallSingleProject(
     companionSkills,
   } of targetWorkflowSelections) {
     const baseDir = getBaseDir(target.scope, projectPath);
+    await inspectZcodeProjectConfigPath(baseDir, target.platform, target.scope);
     const retainedWorkflows = installedWorkflows.filter(
       (workflow) => !workflows.includes(workflow),
     );

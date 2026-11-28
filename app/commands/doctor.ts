@@ -29,6 +29,7 @@ import {
   getAssetsDir,
   getManagedSkillPaths,
   getManagedSkillPathsForSelection,
+  inspectZcodeProjectConfigPath,
 } from '../../domains/skill/platform-install.js';
 import {
   reconcileCometHooksForPlatform,
@@ -214,6 +215,7 @@ function usesHookRouterRuntime(platform: Platform, scope: InstallScope): boolean
 
 async function repairHookRouterRuntime(baseDir: string, platform: Platform, scope: InstallScope) {
   if (!usesHookRouterRuntime(platform, scope)) return;
+  await inspectZcodeProjectConfigPath(baseDir, platform, scope);
   for (const { source, destination } of hookRouterRuntimePaths(baseDir, platform, scope)) {
     await copyFile(source, destination);
   }
@@ -906,6 +908,17 @@ async function checkHookComponents(
     scope,
     workflowSelection,
   );
+  const legacyZcodeUserInspection =
+    scope === 'project' && platform.hookFormat === 'zcode'
+      ? await inspectCometHooksForPlatform(context.homeDir, platform, 'global', workflowSelection)
+      : undefined;
+  const legacyZcodeUserCleanupPending = Boolean(
+    legacyZcodeUserInspection &&
+    (legacyZcodeUserInspection.error ||
+      legacyZcodeUserInspection.present ||
+      legacyZcodeUserInspection.managedPresent ||
+      legacyZcodeUserInspection.legacyPresent),
+  );
   const results: CheckResult[] = [];
   if (usesHookRouterRuntime(platform, scope)) {
     results.push(await checkHookRouterRuntime(baseDir, platform, scope, assets));
@@ -917,6 +930,7 @@ async function checkHookComponents(
   results.push({
     check: `hooks: ${platform.name} (${scope})`,
     status:
+      !legacyZcodeUserCleanupPending &&
       inspection.present &&
       !inspection.error &&
       !inspection.legacyPresent &&
@@ -924,11 +938,23 @@ async function checkHookComponents(
       !inspection.activationRequired
         ? 'pass'
         : 'warn',
-    message:
-      inspection.activationRequired &&
-      !inspection.error &&
-      !inspection.legacyPresent &&
-      !inspection.duplicatePresent
+    message: legacyZcodeUserCleanupPending
+      ? [
+          legacyZcodeUserInspection?.error
+            ? `Cannot verify whether a legacy ZCode user Hook is configured: ${legacyZcodeUserInspection.error}.`
+            : 'A legacy ZCode user Hook remains configured.',
+          inspection.present
+            ? 'Disable the project Router, fix the user configuration, and rerun'
+            : 'Fix the user configuration and rerun',
+          "'comet update --platform zcode --scope project --current-project --skip-self-update --yes'",
+          inspection.present
+            ? 'before enabling the project Router again.'
+            : 'before enabling the project Router.',
+        ].join(' ')
+      : inspection.activationRequired &&
+          !inspection.error &&
+          !inspection.legacyPresent &&
+          !inspection.duplicatePresent
         ? (inspection.activationMessage ??
           'Load the DSH bridge and restart the host to activate the Hook')
         : inspection.present &&

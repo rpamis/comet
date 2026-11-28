@@ -25,6 +25,12 @@ import {
 import { writeWorkflowProjectConfig } from '../../domains/workflow-contract/project-config-writer.js';
 import { planClassicRootMove } from '../../domains/comet-classic/classic-root-move.js';
 import {
+  readClassicDelivery,
+  recordClassicDocumentArchive,
+  writeClassicDelivery,
+} from '../../domains/comet-classic/classic-progress.js';
+import { isolatedBenchmarkEnvironment } from '../../scripts/benchmark/runtime-coldstart-benchmark.mjs';
+import {
   assertClassicLayoutInitializationSafe,
   beginClassicLayoutInitialization,
   checkpointClassicLayoutInitialization,
@@ -1304,6 +1310,7 @@ describe('doctor command', () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
@@ -2025,6 +2032,132 @@ describe('doctor command', () => {
 
     await expect(readCometCurrentSelection(tmpDir)).resolves.toEqual({ status: 'missing' });
   });
+
+  it.each([
+    ['pending delivery', false],
+    ['completed delivery', true],
+    ['unreadable delivery', false],
+  ] as const)(
+    'handles an archived Classic v2 selection with %s through the public Doctor CLI',
+    async (delivery, shouldClear) => {
+      const project = path.join(tmpDir, 'project');
+      const projectHome = path.join(tmpDir, 'home');
+      await fs.mkdir(project);
+      await fs.mkdir(projectHome);
+      const environment = isolatedBenchmarkEnvironment(projectHome);
+      vi.stubEnv('COMET_DATA_DIR', path.join(tmpDir, 'data'));
+      const initialized = spawnSync(
+        process.execPath,
+        [
+          path.resolve('bin/comet.js'),
+          'init',
+          '--platform',
+          'zcode',
+          '--scope',
+          'project',
+          '--workflow',
+          'native',
+          '--codegraph',
+          'skip',
+          '--yes',
+        ],
+        {
+          cwd: project,
+          encoding: 'utf8',
+          timeout: 30_000,
+          env: { ...environment, COMET_DATA_DIR: path.join(tmpDir, 'data') },
+        },
+      );
+      expect(initialized.status, initialized.stderr + initialized.stdout).toBe(0);
+      await writeHealthyDocsClassicProject(project);
+      const change = 'classic-delivery';
+      const archive = path.join(project, 'docs/openspec/changes/archive', `2026-11-24-${change}`);
+      const stateFile = path.join(archive, '.comet.yaml');
+      const state = [
+        'workflow: hotfix',
+        'phase: archive',
+        'design_doc: null',
+        'plan: null',
+        'build_mode: null',
+        'isolation: null',
+        'verify_mode: full',
+        'verify_result: pass',
+        'verified_at: 2026-11-24T00:00:00.000Z',
+        'created_at: 2026-11-24T00:00:00.000Z',
+        'base_ref: null',
+        'branch_status: pending',
+        'archived: false',
+        '',
+      ].join('\n');
+      await fs.mkdir(archive);
+      await fs.writeFile(stateFile, state);
+      await writeClassicDelivery(
+        project,
+        archive,
+        { action: 'archive-only' },
+        { phase: 'archive', verifyResult: 'pass', archived: false },
+      );
+      const archivedState = state.replace('archived: false', 'archived: true');
+      await fs.writeFile(stateFile, archivedState);
+      if (delivery === 'completed delivery') {
+        await recordClassicDocumentArchive(project, archive);
+        await expect(readClassicDelivery(project, archive)).resolves.toMatchObject({
+          verification: { status: 'complete', archiveVerified: true },
+        });
+      }
+      if (delivery === 'unreadable delivery') {
+        await fs.writeFile(path.join(archive, '.comet/delivery.json'), '{broken');
+      }
+      const selectionPath = path.join(project, '.comet/current-change.json');
+      await writeCometCurrentSelection(project, {
+        schema: 'comet.selection.v2',
+        workflow: 'classic',
+        change,
+        branch: null,
+      });
+      const selectionBytes = await fs.readFile(selectionPath, 'utf8');
+      const runtimeEnv = { ...environment, COMET_DATA_DIR: path.join(tmpDir, 'data') };
+      if (delivery === 'pending delivery') {
+        const current = spawnSync(
+          process.execPath,
+          [path.resolve('assets/skills/comet/scripts/comet-state.mjs'), 'current', '--json'],
+          { cwd: project, encoding: 'utf8', env: runtimeEnv },
+        );
+        expect(current.status, current.stderr).toBe(0);
+        expect(current.stdout).toMatch(/classic-delivery/u);
+      }
+      const result = spawnSync(
+        process.execPath,
+        [path.resolve('bin/comet.js'), 'doctor', '--scope', 'project', '--repair', '--json'],
+        {
+          cwd: project,
+          encoding: 'utf8',
+          timeout: 30_000,
+          env: runtimeEnv,
+        },
+      );
+      expect(result.error).toBeUndefined();
+      const payload = JSON.parse(result.stdout) as DoctorPayload;
+      expect(result.status, result.stderr).toBe(payload.healthy ? 0 : 1);
+      expect(payload.repaired.includes('stale current selection')).toBe(shouldClear);
+      if (shouldClear) {
+        await expect(fs.access(selectionPath)).rejects.toMatchObject({ code: 'ENOENT' });
+      } else {
+        await expect(fs.readFile(selectionPath, 'utf8')).resolves.toBe(selectionBytes);
+      }
+      if (delivery === 'pending delivery') {
+        const current = spawnSync(
+          process.execPath,
+          [path.resolve('assets/skills/comet/scripts/comet-state.mjs'), 'current', '--json'],
+          { cwd: project, encoding: 'utf8', env: runtimeEnv },
+        );
+        expect(current.status, current.stderr).toBe(0);
+        expect(current.stdout).toMatch(/classic-delivery/u);
+      }
+      await expect(fs.readFile(stateFile, 'utf8')).resolves.toBe(archivedState);
+    },
+    45_000,
+  );
 
   it('repairs the ZCode project Router without clearing selection while trust is unverified', async () => {
     const home = path.join(tmpDir, 'home');

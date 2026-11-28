@@ -334,6 +334,46 @@ describe('platform component inspection', () => {
     },
   );
 
+  it.each(['dedicated', 'shared'])(
+    'keeps the ZCode project Router in place in a %s group',
+    async (layout) => {
+      const target = platform('zcode');
+      const install = () => installCometHooksForPlatform(tmpDir, target, 'project');
+      await installManagedHookScripts(tmpDir, target);
+      await expect(install()).resolves.toEqual({ status: 'installed' });
+
+      const configPath = hookConfigPath(tmpDir, 'zcode');
+      const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
+      const [routerGroup] = config.hooks.events.PreToolUse;
+      const [router] = routerGroup.hooks;
+      const userHook = (script: string) => ({ type: 'process', command: 'node', args: [script] });
+      const readGroup = { matcher: 'Read', hooks: [userHook('read.mjs')] };
+      const writeGroup = { matcher: 'Write|Edit', hooks: [userHook('write.mjs')] };
+      config.hooks.events.PreToolUse =
+        layout === 'dedicated'
+          ? [routerGroup, writeGroup]
+          : [
+              readGroup,
+              {
+                ...routerGroup,
+                hooks: [userHook('before.mjs'), router, userHook('after.mjs')],
+              },
+              writeGroup,
+            ];
+      const source = JSON.stringify(config);
+      await fs.writeFile(configPath, source, 'utf8');
+
+      await expect(install()).resolves.toEqual({ status: 'installed' });
+      await expect.soft(fs.readFile(configPath, 'utf8')).resolves.toBe(source);
+
+      router.timeoutMs = 1_000;
+      await fs.writeFile(configPath, JSON.stringify(config), 'utf8');
+      router.timeoutMs = 60_000;
+      await expect(install()).resolves.toEqual({ status: 'installed' });
+      expect(JSON.parse(await fs.readFile(configPath, 'utf8'))).toEqual(config);
+    },
+  );
+
   it('matches moved ZCode project Routers without probing the old script', () => {
     const skillsDir = '.zcode';
     const routerPath = 'skills/comet/scripts/comet-hook-router.mjs';

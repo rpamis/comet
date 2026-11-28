@@ -30,6 +30,7 @@ import {
   copyCometRulesForPlatform,
   createWorkingDirs,
   prepareNativeSkillInstallTarget,
+  inspectZcodeProjectConfigPath,
   type HookInstallResult,
 } from '../../domains/skill/platform-install.js';
 import {
@@ -774,6 +775,11 @@ export async function initCommand(
   }
 
   await assertBundledAssetsComplete();
+  for (const { platform, cmAction, osAction, spAction } of plans) {
+    if (cmAction !== 'skip' || osAction !== 'skip' || spAction !== 'skip') {
+      await inspectZcodeProjectConfigPath(baseDir, platform, scope);
+    }
+  }
 
   if (includesWorkflow(workflowSelection, 'native')) {
     for (const plan of plans) {
