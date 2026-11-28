@@ -82,7 +82,8 @@ stylesheet.append(`
   pointer-events: none;
 }
 
-#portal-root > * {
+/* Ant Design manages pointer events on the drawer mask and panel. */
+#portal-root > :not(.ant-drawer) {
   pointer-events: auto;
 }
 `);
