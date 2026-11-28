@@ -40,7 +40,9 @@ export async function workflowResolveCommand(
   const resolution = options.activate
     ? {
         schema: COMET_WORKFLOW_RESOLUTION_SCHEMA,
-        ...(await resolveOrActivateCometEntry(absoluteTarget)),
+        ...(await resolveOrActivateCometEntry(absoluteTarget, {
+          onNotice: (message) => process.stderr.write(`${message}\n`),
+        })),
       }
     : await resolveCometWorkflowResolution(absoluteTarget);
   if (options.json) {

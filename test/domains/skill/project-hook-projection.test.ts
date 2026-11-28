@@ -44,7 +44,7 @@ describe('project Hook projection', () => {
       projectCometHooksFromInstalledScope(projectRoot, sourceRoot, 'global', 'native', {
         globalBaseDir: sourceRoot,
       }),
-    ).resolves.toEqual({ installedPlatforms: ['codex'], failures: [] });
+    ).resolves.toEqual({ installedPlatforms: ['codex'], failures: [], notices: [] });
 
     const projectHooks = await fs.readFile(path.join(projectRoot, '.codex', 'hooks.json'), 'utf8');
     const command = JSON.parse(projectHooks).hooks.PreToolUse[0].hooks[0].command;
@@ -90,7 +90,11 @@ describe('project Hook projection', () => {
         projectCometHooksFromInstalledScope(projectRoot, sourceRoot, scope, 'native', {
           globalBaseDir: scope === 'global' ? sourceRoot : path.join(sourceRoot, 'home'),
         }),
-      ).resolves.toEqual({ installedPlatforms: ['zcode'], failures: [] });
+      ).resolves.toEqual({
+        installedPlatforms: ['zcode'],
+        failures: [],
+        notices: [expect.stringContaining('Manually enable the Router')],
+      });
 
       const configPath = path.join(projectRoot, '.zcode/config.json');
       const config = JSON.parse(await fs.readFile(configPath, 'utf8'));

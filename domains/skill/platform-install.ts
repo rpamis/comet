@@ -6,6 +6,7 @@ import {
 import { existsSync } from 'fs';
 import { readFile, writeFile, lstat, unlink, symlink, rm, readdir, realpath } from 'fs/promises';
 import { fileURLToPath } from 'url';
+import { isDeepStrictEqual } from 'node:util';
 
 import { fileExists, readJson, copyFile, ensureDir } from '../../platform/fs/file-system.js';
 import {
@@ -1735,30 +1736,39 @@ function removeManagedCopilotHookEntries(
   return { entries: cleaned, removed, detachedMetadata };
 }
 
+export function removeManagedHookGroups(
+  existingGroups: unknown[],
+  isManaged: (hook: unknown) => boolean,
+): { groups: unknown[]; removed: number } {
+  let removed = 0;
+  const groups = existingGroups.flatMap((group) => {
+    if (!group || typeof group !== 'object' || Array.isArray(group)) return [group];
+    const record = group as Record<string, unknown>;
+    if (!Array.isArray(record.hooks)) return [record];
+
+    const hooks = record.hooks.filter((hook) => !isManaged(hook));
+    if (hooks.length === record.hooks.length) return [record];
+    removed += record.hooks.length - hooks.length;
+    const isPlainManagedGroup = Object.keys(record).every(
+      (key) => key === 'matcher' || key === 'hooks',
+    );
+    if (hooks.length === 0 && isPlainManagedGroup) return [];
+
+    return [{ ...record, hooks }];
+  });
+  return { groups, removed };
+}
+
 function mergeHookGroups<T extends { command: string }>(
   existingGroups: unknown[],
   newGroups: Array<{ matcher: string; hooks: T[] }>,
   scriptRelPaths: string[],
 ): unknown[] {
-  const mergedGroups = existingGroups.flatMap((group) => {
-    if (!group || typeof group !== 'object' || Array.isArray(group)) return [group];
-    const record = group as Record<string, unknown>;
-    if (!Array.isArray(record.hooks)) return [record];
-
-    const hooks = record.hooks.filter((hook) => {
-      const hookRecord = hook && typeof hook === 'object' ? (hook as Record<string, unknown>) : {};
-      return !isManagedHookCommand(hookRecord.command, scriptRelPaths, hookRecord.args);
-    });
-    const removedManagedHook = hooks.length !== record.hooks.length;
-    const isPlainManagedGroup = Object.keys(record).every(
-      (key) => key === 'matcher' || key === 'hooks',
-    );
-    if (removedManagedHook && hooks.length === 0 && isPlainManagedGroup) return [];
-
-    return [{ ...record, hooks }];
+  const { groups } = removeManagedHookGroups(existingGroups, (hook) => {
+    const hookRecord = hook && typeof hook === 'object' ? (hook as Record<string, unknown>) : {};
+    return isManagedHookCommand(hookRecord.command, scriptRelPaths, hookRecord.args);
   });
-
-  return [...mergedGroups, ...newGroups];
+  return [...groups, ...newGroups];
 }
 
 /**
@@ -2135,6 +2145,45 @@ async function installTraeHooks(
   return { status: 'installed' };
 }
 
+export function matchesZcodeHookInvocation(
+  hook: unknown,
+  invocation: HookInvocation,
+): hook is Record<string, unknown> {
+  if (!hook || typeof hook !== 'object' || Array.isArray(hook)) return false;
+  const handler = hook as Record<string, unknown>;
+  return (
+    handler.type === 'process' &&
+    handler.command === invocation.command &&
+    isDeepStrictEqual(handler.args, invocation.args)
+  );
+}
+
+export function buildLegacyZcodeGuardInvocation(
+  baseDir: string,
+  skillsDir: string,
+): HookInvocation {
+  // Use the pre-Router Classic Guard argv for legacy entries in the ZCode install root.
+  return buildHookInvocation(baseDir, skillsDir, LEGACY_HOOK_SCRIPTS[0]);
+}
+
+function zcodeRouterEnabled(
+  groups: unknown[],
+  matcher: string,
+  invocation: HookInvocation,
+): boolean | undefined {
+  let enabled = false;
+  for (const group of groups) {
+    const record = group as { matcher?: unknown; hooks?: unknown } | null;
+    if (record?.matcher !== matcher) continue;
+    for (const hook of asHookGroup(record.hooks)) {
+      if (!matchesZcodeHookInvocation(hook, invocation)) continue;
+      if (hook.enabled === undefined) return undefined;
+      if (hook.enabled === true) enabled = true;
+    }
+  }
+  return enabled;
+}
+
 async function installZcodeHooks(
   baseDir: string,
   platformBase: string,
@@ -2158,46 +2207,31 @@ async function installZcodeHooks(
   // ZCode process Hooks pass arguments directly to Node, including on Windows.
   const matcherGroups: Record<
     string,
-    Array<{ type: string; command: string; args: string[]; timeoutMs: number; enabled: boolean }>
+    Array<HookInvocation & { type: 'process'; timeoutMs: number; enabled?: boolean }>
   > = {};
+  const managedInvocations = [buildLegacyZcodeGuardInvocation(baseDir, skillsDir)];
   for (const [scriptRelPath, config] of Object.entries(hooksConfig)) {
     const matcher = resolveInstalledHookMatcher(context, config.matcher);
-    matcherGroups[matcher] ??= [];
     const invocation = buildHookInvocation(baseDir, skillsDir, scriptRelPath, context);
-    const wasEnabled = existingPreToolUse.some((group) => {
-      const record = group as { matcher?: unknown; hooks?: unknown } | null;
-      return (
-        record?.matcher === matcher &&
-        asHookGroup(record.hooks).some((hook) => {
-          const handler = hook as Record<string, unknown> | null;
-          return (
-            handler?.enabled === true &&
-            handler.type === 'process' &&
-            handler.command === invocation.command &&
-            JSON.stringify(handler.args) === JSON.stringify(invocation.args)
-          );
-        })
-      );
-    });
+    managedInvocations.push(invocation);
+    const enabled = zcodeRouterEnabled(existingPreToolUse, matcher, invocation);
+    matcherGroups[matcher] ??= [];
     matcherGroups[matcher].push({
       type: 'process',
-      command: invocation.command,
-      args: invocation.args,
+      ...invocation,
       timeoutMs: 60_000,
-      enabled: wasEnabled,
+      ...(enabled === undefined ? {} : { enabled }),
     });
   }
 
-  const preToolUseEntries = Object.entries(matcherGroups).map(([matcher, hooks]) => ({
-    matcher,
-    hooks,
-  }));
-
-  const merged = mergeHookGroups(
-    existingPreToolUse,
-    preToolUseEntries,
-    managedHookScriptPaths(hooksConfig),
+  const { groups } = removeManagedHookGroups(existingPreToolUse, (hook) =>
+    managedInvocations.some((invocation) => matchesZcodeHookInvocation(hook, invocation)),
   );
+  const merged = [
+    ...groups,
+    ...Object.entries(matcherGroups).map(([matcher, hooks]) => ({ matcher, hooks })),
+  ];
+  if (isDeepStrictEqual(merged, existingEvents.PreToolUse)) return { status: 'installed' };
 
   settings.hooks = {
     ...existingHooks,

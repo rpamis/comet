@@ -13,7 +13,7 @@ import {
   installCometHooksForPlatform,
 } from '../../domains/skill/platform-install.js';
 import * as platformInstall from '../../domains/skill/platform-install.js';
-import { PLATFORMS } from '../../platform/install/platforms.js';
+import { getPlatformSkillsDir, PLATFORMS } from '../../platform/install/platforms.js';
 import {
   readCometCurrentSelection,
   writeCometCurrentSelection,
@@ -1662,6 +1662,175 @@ describe('doctor command', () => {
     expect(
       after.find((result) => result.check === 'hook runtime: Claude Code (project)'),
     ).toMatchObject({ status: 'pass', message: 'current' });
+  });
+
+  it('detects and repairs the ZCode Router sibling Guard through public doctor', async () => {
+    const homeDir = path.join(tmpDir, 'home');
+    const project = path.join(tmpDir, 'project with spaces');
+    await fs.mkdir(homeDir);
+    await fs.mkdir(project);
+    await writeProjectConfig(project, defaultProjectConfig('.'));
+    const zcode = PLATFORMS.find(({ id }) => id === 'zcode')!;
+    await copyCometSkillsForPlatform(project, zcode, true, 'skills', 'project', 'copy', 'native');
+    expect(await installCometHooksForPlatform(project, zcode, 'project')).toMatchObject({
+      status: 'installed',
+    });
+
+    const processOptions = {
+      cwd: project,
+      encoding: 'utf8',
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        HOME: homeDir,
+        USERPROFILE: homeDir,
+        COMET_DATA_DIR: path.join(homeDir, 'data'),
+      },
+    } as const;
+    const doctor = (...args: string[]) => {
+      const result = spawnSync(
+        process.execPath,
+        [path.resolve('bin/comet.js'), 'doctor', '--scope', 'project', '--json', ...args],
+        processOptions,
+      );
+      expect(result.status, result.stderr + result.stdout).toBe(0);
+      const { results } = JSON.parse(result.stdout) as DoctorPayload;
+      return results.find(({ check }) => check === 'hook runtime: ZCode (project)');
+    };
+    const scripts = path.join(project, '.zcode/skills/comet/scripts');
+    const runWriteHook = () =>
+      spawnSync(
+        process.execPath,
+        [
+          path.join(scripts, 'comet-hook-router.mjs'),
+          '--platform',
+          'zcode',
+          '--project-root',
+          project,
+        ],
+        {
+          ...processOptions,
+          input: JSON.stringify({
+            tool_name: 'Write',
+            cwd: project,
+            tool_input: { file_path: path.join(project, 'README.md') },
+          }),
+        },
+      );
+    const installedGuard = path.join(scripts, 'comet-hook-router-guard.mjs');
+    const bundledGuard = await fs.readFile(
+      path.join(
+        platformInstall.getAssetsDir(),
+        'skills',
+        'comet/scripts/comet-hook-router-guard.mjs',
+      ),
+    );
+    await expect(fs.readFile(installedGuard)).resolves.toEqual(bundledGuard);
+    expect(doctor()).toMatchObject({ status: 'pass', message: 'current' });
+
+    await fs.unlink(installedGuard);
+    const blockedWrite = runWriteHook();
+    expect(blockedWrite.status, blockedWrite.stderr + blockedWrite.stdout).toBe(2);
+    expect(blockedWrite.stderr).toContain('comet-hook-router-guard.mjs');
+    expect.soft(doctor()).toMatchObject({
+      status: 'warn',
+      message: expect.stringContaining('comet-hook-router-guard.mjs'),
+    });
+    await expect(fs.access(installedGuard)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect.soft(doctor('--repair')).toMatchObject({ status: 'pass', message: 'current' });
+    await expect.soft(fs.readFile(installedGuard)).resolves.toEqual(bundledGuard);
+    const allowedWrite = runWriteHook();
+    expect.soft(allowedWrite.status, allowedWrite.stderr + allowedWrite.stdout).toBe(0);
+
+    const staleGuard = '// outdated Guard\n';
+    await fs.writeFile(installedGuard, staleGuard);
+    expect.soft(doctor()).toMatchObject({
+      status: 'warn',
+      message: expect.stringContaining('outdated (comet-hook-router-guard.mjs)'),
+    });
+    await expect(fs.readFile(installedGuard, 'utf8')).resolves.toBe(staleGuard);
+    expect.soft(doctor('--repair')).toMatchObject({ status: 'pass', message: 'current' });
+    await expect(fs.readFile(installedGuard)).resolves.toEqual(bundledGuard);
+  });
+
+  describe.each([
+    { scope: 'project', platformId: 'claude' },
+    { scope: 'global', platformId: 'oh-my-pi' },
+  ] as const)('$scope $platformId hook-only Router runtime', ({ scope, platformId }) => {
+    const platform = PLATFORMS.find(({ id }) => id === platformId)!;
+    const bundledScripts = path.join(platformInstall.getAssetsDir(), 'skills', 'comet', 'scripts');
+    const bundledGuard = path.join(bundledScripts, 'comet-hook-router-guard.mjs');
+    const runtimeCheck = `hook runtime: ${platform.name} (${scope})`;
+    let homeDir: string;
+    let installedGuard: string;
+
+    beforeEach(async () => {
+      homeDir = path.join(tmpDir, 'home');
+      const baseDir = scope === 'project' ? tmpDir : homeDir;
+      const skillsDir = getPlatformSkillsDir(platform, scope);
+      const scripts = path.join(baseDir, skillsDir, 'skills', 'comet', 'scripts');
+      await fs.mkdir(scripts, { recursive: true });
+      await fs.copyFile(
+        path.join(bundledScripts, 'comet-hook-router.mjs'),
+        path.join(scripts, 'comet-hook-router.mjs'),
+      );
+      installedGuard = path.join(scripts, 'comet-hook-router-guard.mjs');
+      expect(await installCometHooksForPlatform(baseDir, platform, scope)).toMatchObject({
+        status: 'installed',
+      });
+    });
+
+    it('warns when the sibling Guard is missing or outdated', async () => {
+      await fs.rm(installedGuard, { force: true });
+      const missing = await collectDoctorPayload(tmpDir, scope, homeDir);
+      expect.soft(missing.results.find(({ check }) => check === runtimeCheck)).toMatchObject({
+        status: 'warn',
+        message: expect.stringContaining('comet-hook-router-guard.mjs'),
+      });
+      await expect(fs.access(installedGuard)).rejects.toMatchObject({ code: 'ENOENT' });
+
+      const staleGuard = '// outdated Guard\n';
+      await fs.writeFile(installedGuard, staleGuard);
+      const outdated = await collectDoctorPayload(tmpDir, scope, homeDir);
+      expect.soft(outdated.results.find(({ check }) => check === runtimeCheck)).toMatchObject({
+        status: 'warn',
+        message: expect.stringContaining('outdated (comet-hook-router-guard.mjs)'),
+      });
+      await expect(fs.readFile(installedGuard, 'utf8')).resolves.toBe(staleGuard);
+    });
+
+    it('restores the bundled sibling Guard on repair', async () => {
+      await fs.rm(installedGuard, { force: true });
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        await doctorCommand(tmpDir, { json: true, repair: true, scope, homeDir });
+      } finally {
+        log.mockRestore();
+      }
+
+      const expectedGuard = await fs.readFile(bundledGuard);
+      await expect(fs.readFile(installedGuard)).resolves.toEqual(expectedGuard);
+      const after = await collectDoctorPayload(tmpDir, scope, homeDir);
+      expect(after.results.find(({ check }) => check === runtimeCheck)).toMatchObject({
+        status: 'pass',
+        message: 'current',
+      });
+    });
+  });
+
+  it('skips global Router runtime checks for platforms with project-only Hooks', async () => {
+    const homeDir = path.join(tmpDir, 'home');
+    await installManagedCometSkills(homeDir, '.zcode');
+    await fs.rm(path.join(homeDir, '.zcode/skills/comet/scripts/comet-hook-router-guard.mjs'));
+
+    const { results } = await collectDoctorPayload(tmpDir, 'global', homeDir);
+
+    expect(results.some(({ check }) => check === 'hook runtime: ZCode (global)')).toBe(false);
+    expect(results).toContainEqual({
+      check: 'hooks: ZCode (global)',
+      status: 'pass',
+      message: 'no global blocking Hook present',
+    });
   });
 
   it('uses the Classic-only project language when repairing managed Rules', async () => {

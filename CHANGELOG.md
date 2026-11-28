@@ -6,11 +6,15 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Added
 
-- **ZCode project Hooks**: Install the Comet workflow Router disabled in `.zcode/config.json`. Review, trust, and enable it in ZCode's workspace Hook settings. Project updates and repairs preserve your activation settings.
+- **ZCode project Hooks**: Install the Comet workflow Router disabled in `.zcode/config.json`. Review, trust, and enable it in ZCode's workspace Hook settings. First-time `/comet` activation prints these steps, and project updates and repairs preserve your activation settings.
+
+### Fixed
+
+- **Hook runtime repair**: Doctor detects and restores the Guard file the Router needs to evaluate write requests.
 
 ### Removed
 
-- **ZCode user-level Comet Router**: Manage the Router per project to avoid duplicate execution. Installation, updates, and Doctor repair remove legacy Comet user-level entries while preserving user-owned Hooks. Global Skill and Rule installation remains available.
+- **ZCode user-level Comet Router**: Manage the Router per project to avoid duplicate execution. Explicit installation, updates, and Doctor repair remove legacy Comet user-level entries while preserving user-owned Hooks. First-time `/comet` activation keeps the legacy entry and prompts you to migrate it before enabling the project Router. Global Skill and Rule installation remains available.
 
 ## What's Changed [0.5.7] - 2026-11-24
 

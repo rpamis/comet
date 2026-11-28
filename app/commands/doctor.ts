@@ -106,13 +106,13 @@ type ManagedInstallAvailability = 'ready' | 'partial' | 'missing';
 interface DoctorAssetInspection {
   manifest: Awaited<ReturnType<typeof readManifest>>;
   skillPresent(file: string): Promise<boolean>;
-  bundledHookRuntime(): Promise<Buffer>;
+  bundledHookRuntime(file: string): Promise<Buffer>;
 }
 
 async function createDoctorAssetInspection(): Promise<DoctorAssetInspection> {
   const manifest = await readManifest();
   const presence = new Map<string, Promise<boolean>>();
-  let bundledRuntime: Promise<Buffer> | undefined;
+  const bundledRuntime = new Map<string, Promise<Buffer>>();
   return {
     manifest,
     skillPresent(file) {
@@ -124,10 +124,13 @@ async function createDoctorAssetInspection(): Promise<DoctorAssetInspection> {
       }
       return result;
     },
-    bundledHookRuntime() {
-      return (bundledRuntime ??= fs.readFile(
-        path.join(getAssetsDir(), 'skills', ...HOOK_ROUTER_RUNTIME.split('/')),
-      ));
+    bundledHookRuntime(file) {
+      let result = bundledRuntime.get(file);
+      if (!result) {
+        result = fs.readFile(file);
+        bundledRuntime.set(file, result);
+      }
+      return result;
     },
   };
 }
@@ -154,7 +157,7 @@ const SUPERPOWERS_SENTINELS = [
   'test-driven-development/SKILL.md',
   'writing-plans/SKILL.md',
 ] as const;
-const HOOK_ROUTER_RUNTIME = 'comet/scripts/comet-hook-router.mjs';
+const HOOK_ROUTER_RUNTIME_FILES = ['comet-hook-router.mjs', 'comet-hook-router-guard.mjs'];
 const CLASSIC_PLATFORM_TOOL_SCAN_MAX_ENTRIES = 4096;
 const CLASSIC_PLATFORM_TOOL_SCAN_MAX_DEPTH = 8;
 const CLASSIC_PLATFORM_TOOL_SCAN_MAX_FINDINGS = 128;
@@ -189,20 +192,31 @@ function configuredSkillLanguage(
   return 'en';
 }
 
-function hookRouterRuntimePaths(
-  baseDir: string,
-  platform: Platform,
-  scope: InstallScope,
-): { source: string; destination: string } {
-  return {
-    source: path.join(getAssetsDir(), 'skills', ...HOOK_ROUTER_RUNTIME.split('/')),
-    destination: path.join(
-      baseDir,
-      getPlatformSkillsDir(platform, scope),
-      'skills',
-      ...HOOK_ROUTER_RUNTIME.split('/'),
-    ),
-  };
+function hookRouterRuntimePaths(baseDir: string, platform: Platform, scope: InstallScope) {
+  const installedSkills = path.join(baseDir, getPlatformSkillsDir(platform, scope), 'skills');
+  const bundledSkills = path.join(getAssetsDir(), 'skills');
+  return HOOK_ROUTER_RUNTIME_FILES.map((file) => ({
+    file,
+    source: path.join(bundledSkills, 'comet', 'scripts', file),
+    destination: path.join(installedSkills, 'comet', 'scripts', file),
+  }));
+}
+
+function usesHookRouterRuntime(platform: Platform, scope: InstallScope): boolean {
+  return (
+    platform.supportsHooks === true &&
+    Boolean(platform.hookFormat) &&
+    (scope === 'project'
+      ? platform.supportsProjectHooks !== false
+      : platform.supportsGlobalHooks === true)
+  );
+}
+
+async function repairHookRouterRuntime(baseDir: string, platform: Platform, scope: InstallScope) {
+  if (!usesHookRouterRuntime(platform, scope)) return;
+  for (const { source, destination } of hookRouterRuntimePaths(baseDir, platform, scope)) {
+    await copyFile(source, destination);
+  }
 }
 
 function checkCometCli(): CheckResult {
@@ -838,6 +852,34 @@ async function checkPlatformComponents(
   return results;
 }
 
+async function checkHookRouterRuntime(
+  baseDir: string,
+  platform: Platform,
+  scope: InstallScope,
+  assets: DoctorAssetInspection,
+): Promise<CheckResult> {
+  const problems: string[] = [];
+  for (const { file, source, destination } of hookRouterRuntimePaths(baseDir, platform, scope)) {
+    try {
+      const [expected, installed] = await Promise.all([
+        assets.bundledHookRuntime(source),
+        fs.readFile(destination),
+      ]);
+      if (!expected.equals(installed)) problems.push(`outdated (${file})`);
+    } catch (error) {
+      problems.push(`unable to verify ${file} (${(error as Error).message})`);
+    }
+  }
+  return {
+    check: `hook runtime: ${platform.name} (${scope})`,
+    status: problems.length > 0 ? 'warn' : 'pass',
+    message:
+      problems.length > 0
+        ? `${problems.join(', ')} — run: comet doctor --repair --scope ${scope}`
+        : 'current',
+  };
+}
+
 async function checkHookComponents(
   baseDir: string,
   platform: Platform,
@@ -865,25 +907,8 @@ async function checkHookComponents(
     workflowSelection,
   );
   const results: CheckResult[] = [];
-  const runtime = hookRouterRuntimePaths(baseDir, platform, scope);
-  try {
-    const [expected, installed] = await Promise.all([
-      assets.bundledHookRuntime(),
-      fs.readFile(runtime.destination),
-    ]);
-    results.push({
-      check: `hook runtime: ${platform.name} (${scope})`,
-      status: expected.equals(installed) ? 'pass' : 'warn',
-      message: expected.equals(installed)
-        ? 'current'
-        : `outdated — run: comet doctor --repair --scope ${scope}`,
-    });
-  } catch (error) {
-    results.push({
-      check: `hook runtime: ${platform.name} (${scope})`,
-      status: 'warn',
-      message: `unable to verify current Router runtime (${(error as Error).message}) — run: comet doctor --repair --scope ${scope}`,
-    });
+  if (usesHookRouterRuntime(platform, scope)) {
+    results.push(await checkHookRouterRuntime(baseDir, platform, scope, assets));
   }
   if (scope === 'global') {
     results.push(globalHookCheckResult(platform, scope, inspection));
@@ -910,7 +935,9 @@ async function checkHookComponents(
             !inspection.error &&
             !inspection.legacyPresent &&
             !inspection.duplicatePresent
-          ? (platform.projectHookTrustMessage ?? 'exactly one managed Router Hook present')
+          ? platform.hookFormat === 'zcode'
+            ? 'The Comet Router is enabled in the ZCode workspace configuration. ZCode still requires workspace trust in Settings → Hooks → Workspace. Start a new session or run /reload after confirming trust.'
+            : (platform.projectHookTrustMessage ?? 'exactly one managed Router Hook present')
           : inspection.present && inspection.duplicatePresent
             ? `duplicate managed Router Hooks remain — run: comet doctor --repair --scope ${scope}`
             : inspection.present && inspection.legacyPresent
@@ -1712,10 +1739,7 @@ async function repairDoctorState(
   );
 
   for (const target of hookOnlyTargets) {
-    if (target.scope === 'project') {
-      const runtime = hookRouterRuntimePaths(target.baseDir, target.platform, target.scope);
-      await copyFile(runtime.source, runtime.destination);
-    }
+    await repairHookRouterRuntime(target.baseDir, target.platform, target.scope);
     const hookResult =
       target.scope === 'project'
         ? await reconcileProjectCometHooksForPlatform(
@@ -1747,10 +1771,7 @@ async function repairDoctorState(
 
   for (const target of targets) {
     const { baseDir, scope: targetScope, platform } = target;
-    if (platform.supportsHooks && platform.hookFormat) {
-      const runtime = hookRouterRuntimePaths(baseDir, platform, targetScope);
-      await copyFile(runtime.source, runtime.destination);
-    }
+    await repairHookRouterRuntime(baseDir, platform, targetScope);
     const hookResult =
       targetScope === 'project'
         ? await reconcileProjectCometHooksForPlatform(baseDir, platform, workflowSelection, {

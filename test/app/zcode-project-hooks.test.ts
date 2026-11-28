@@ -3,7 +3,42 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, it } from 'vitest';
+import { isolatedBenchmarkEnvironment } from '../../scripts/benchmark/runtime-coldstart-benchmark.mjs';
 import { writeLegacyZcodeUserHook } from '../helpers/zcode-hook-config.js';
+
+function zcodeProjectCli(project: string, home: string, dataDir: string, ...args: string[]) {
+  const result = spawnSync(process.execPath, [path.resolve('bin/comet.js'), ...args, '--json'], {
+    cwd: project,
+    encoding: 'utf8',
+    timeout: 30_000,
+    env: { ...isolatedBenchmarkEnvironment(home), COMET_DATA_DIR: dataDir },
+  });
+  expect(result.status, result.stderr + result.stdout).toBe(0);
+  return JSON.parse(result.stdout);
+}
+
+const projectInit = [
+  'init',
+  '--platform',
+  'zcode',
+  '--scope',
+  'project',
+  '--workflow',
+  'native',
+  '--codegraph',
+  'skip',
+  '--yes',
+];
+const projectUpdate = [
+  'update',
+  '--current-project',
+  '--platform',
+  'zcode',
+  '--scope',
+  'project',
+  '--skip-self-update',
+  '--yes',
+];
 
 it('installs, repairs, updates and uninstalls a ZCode project Router through the public CLI', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-zcode-project-'));
@@ -14,21 +49,8 @@ it('installs, repairs, updates and uninstalls a ZCode project Router through the
   const userSettings = {
     hooks: { enabled: false, events: { PostToolUse: [{ matcher: '*', hooks: [userHook] }] } },
   };
-  const cli = (...args: string[]) => {
-    const result = spawnSync(process.execPath, [path.resolve('bin/comet.js'), ...args, '--json'], {
-      cwd: project,
-      encoding: 'utf8',
-      timeout: 30_000,
-      env: {
-        ...process.env,
-        HOME: home,
-        USERPROFILE: home,
-        COMET_DATA_DIR: path.join(home, 'data'),
-      },
-    });
-    expect(result.status, result.stderr + result.stdout).toBe(0);
-    return JSON.parse(result.stdout);
-  };
+  const cli = (...args: string[]) =>
+    zcodeProjectCli(project, home, path.join(home, 'data'), ...args);
   const readConfig = async () => JSON.parse(await fs.readFile(configFile, 'utf8'));
   const doctor = (...args: string[]) =>
     cli('doctor', '--scope', 'project', ...args).results.find(
@@ -40,18 +62,7 @@ it('installs, repairs, updates and uninstalls a ZCode project Router through the
     await fs.mkdir(path.dirname(configFile), { recursive: true });
     await fs.writeFile(configFile, JSON.stringify(userSettings));
 
-    const init = cli(
-      'init',
-      '--platform',
-      'zcode',
-      '--scope',
-      'project',
-      '--workflow',
-      'native',
-      '--codegraph',
-      'skip',
-      '--yes',
-    );
+    const init = cli(...projectInit);
     expect(init.results).toContainEqual(
       expect.objectContaining({
         platform: 'zcode',
@@ -100,19 +111,14 @@ it('installs, repairs, updates and uninstalls a ZCode project Router through the
       const original = await fs.readFile(configFile, 'utf8');
       expect(doctor('--repair')).toMatchObject({
         status: workspaceEnabled && routerEnabled ? 'pass' : 'warn',
-        message: expect.stringContaining('/reload'),
+        message: expect.stringContaining(
+          workspaceEnabled && routerEnabled
+            ? 'enabled in the ZCode workspace configuration'
+            : 'Manually enable the Router',
+        ),
       });
       expect(await fs.readFile(configFile, 'utf8')).toBe(original);
-      cli(
-        'update',
-        '--current-project',
-        '--platform',
-        'zcode',
-        '--scope',
-        'project',
-        '--skip-self-update',
-        '--yes',
-      );
+      cli(...projectUpdate);
       expect(await fs.readFile(configFile, 'utf8')).toBe(original);
     }
     const projectBeforeGlobal = await fs.readFile(configFile, 'utf8');
@@ -163,3 +169,85 @@ it('installs, repairs, updates and uninstalls a ZCode project Router through the
     await fs.rm(root, { recursive: true, force: true });
   }
 }, 60_000);
+
+it('migrates the ZCode user Router when the project is HOME', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-zcode-home-project-'));
+  const home = path.join(root, 'home');
+  try {
+    const { configPath, userSettings } = await writeLegacyZcodeUserHook(home);
+    const init = zcodeProjectCli(home, home, path.join(root, 'data'), ...projectInit);
+    expect(init.results).toContainEqual(
+      expect.objectContaining({
+        platform: 'zcode',
+        hook: { status: 'installed', reason: expect.stringContaining('Hooks → Workspace') },
+      }),
+    );
+    const project = JSON.parse(await fs.readFile(path.join(home, '.zcode/config.json'), 'utf8'));
+    expect(project.hooks.events.PreToolUse[0].hooks).toEqual([
+      expect.objectContaining({
+        enabled: false,
+        args: expect.arrayContaining(['--project-root', home]),
+      }),
+    ]);
+    expect(JSON.parse(await fs.readFile(configPath, 'utf8'))).toEqual(userSettings);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+}, 30_000);
+
+it('preserves the enabled state of an existing ZCode Router with no enabled field on update and repair', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-zcode-omitted-enabled-'));
+  const home = path.join(root, 'home');
+  const project = path.join(root, 'project');
+  const configPath = path.join(project, '.zcode/config.json');
+  const cli = (...args: string[]) =>
+    zcodeProjectCli(project, home, path.join(root, 'data'), ...args);
+  try {
+    await fs.mkdir(home);
+    await fs.mkdir(project);
+    cli(...projectInit);
+    const legacy = JSON.parse(await fs.readFile(configPath, 'utf8'));
+    legacy.hooks.enabled = true;
+    const router = legacy.hooks.events.PreToolUse[0].hooks[0];
+    delete router.enabled;
+    const settings = JSON.stringify(legacy, null, 2) + '\n';
+    const check = (result: { results: Array<{ check: string }> }) =>
+      result.results.find(({ check }) => check === 'hooks: ZCode (project)');
+
+    for (const action of [projectUpdate, ['doctor', '--scope', 'project', '--repair']]) {
+      await fs.writeFile(configPath, settings);
+      expect(check(cli('doctor', '--scope', 'project'))).toMatchObject({ status: 'pass' });
+      cli(...action);
+      expect.soft(await fs.readFile(configPath, 'utf8')).toBe(settings);
+      expect.soft(check(cli('doctor', '--scope', 'project'))).toMatchObject({ status: 'pass' });
+    }
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+}, 60_000);
+
+it('preserves user-owned ZCode Hooks with a Comet Router path suffix during project migration', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-zcode-user-hook-'));
+  const home = path.join(root, 'home');
+  const project = path.join(root, 'project');
+  try {
+    const { configPath, legacySettings, userSettings } = await writeLegacyZcodeUserHook(home);
+    const legacy = legacySettings.hooks.events.PreToolUse[0]!.hooks[1]!;
+    const custom = {
+      ...legacy,
+      args: [
+        path.join(root, 'team-tools', 'skills/comet/scripts/comet-hook-router.mjs'),
+        ...legacy.args.slice(1),
+      ],
+    };
+    const customArgs = { ...legacy, args: [...legacy.args, '--team-option'] };
+    userSettings.hooks.events.PreToolUse[0]!.hooks.push(custom, customArgs);
+    legacySettings.hooks.events.PreToolUse[0]!.hooks.push(custom, customArgs);
+    await fs.writeFile(configPath, JSON.stringify(legacySettings));
+    await fs.mkdir(project);
+    zcodeProjectCli(project, home, path.join(root, 'data'), ...projectInit);
+    expect(JSON.parse(await fs.readFile(configPath, 'utf8'))).toEqual(userSettings);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+}, 30_000);

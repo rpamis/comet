@@ -41,6 +41,11 @@ import {
   getManagedSkillPathsForSelection,
   computeRuleDestPath,
   isManagedHookCommand,
+  buildHookInvocation,
+  buildLegacyZcodeGuardInvocation,
+  matchesZcodeHookInvocation,
+  type HookInvocation,
+  removeManagedHookGroups,
   removeManagedCopilotHookEntries,
   removeManagedHooksFromJsonFile,
   removeManagedWindsurfHooksFromJsonFile,
@@ -1180,8 +1185,17 @@ async function removeCometHooksForPlatform(
       }
       case 'trae':
         return await removeTraeHooks(platformBase, scriptRelPaths);
-      case 'zcode':
-        return await removeZcodeHooks(platformBase, scriptRelPaths);
+      case 'zcode': {
+        const skillsDir = getPlatformSkillsDir(platform, scope);
+        const invocations = Object.keys(manifest.hooks ?? {}).map((scriptRelPath) =>
+          buildHookInvocation(baseDir, skillsDir, scriptRelPath, {
+            platformId: platform.id,
+            scope,
+          }),
+        );
+        invocations.push(buildLegacyZcodeGuardInvocation(baseDir, skillsDir));
+        return await removeZcodeHooks(platformBase, invocations);
+      }
       case 'copilot':
         return await removeCopilotHooks(platformBase, scriptRelPaths);
       case 'kiro':
@@ -1387,7 +1401,7 @@ async function removeTraeHooks(
  */
 async function removeZcodeHooks(
   platformBase: string,
-  scriptRelPaths: string[],
+  invocations: HookInvocation[],
 ): Promise<RemovalResult> {
   const configPath = path.join(platformBase, 'config.json');
   if (!(await fileExists(configPath))) return { removed: 0, failed: 0 };
@@ -1409,37 +1423,17 @@ async function removeZcodeHooks(
   if (!existingEvents) {
     return { removed: 0, failed: 0 };
   }
-  const existingPreToolUse = existingEvents.PreToolUse as
-    Array<Record<string, unknown>> | undefined;
-  if (!existingPreToolUse || !Array.isArray(existingPreToolUse)) {
-    return { removed: 0, failed: 0 };
-  }
+  if (!Array.isArray(existingEvents.PreToolUse)) return { removed: 0, failed: 0 };
 
-  let removed = 0;
-  const filtered = existingPreToolUse.flatMap((group) => {
-    if (!Array.isArray(group?.hooks)) return [group];
-
-    const hooks = (group.hooks as Array<Record<string, unknown>>).filter((hook) => {
-      const managed = isManagedHookCommand(hook?.command, scriptRelPaths, hook?.args);
-      if (managed) removed++;
-      return !managed;
-    });
-    if (hooks.length === group.hooks.length) return [group];
-
-    if (hooks.length === 0) {
-      const hasUnknownMetadata = Object.keys(group).some(
-        (key) => key !== 'matcher' && key !== 'hooks',
-      );
-      return hasUnknownMetadata ? [{ ...group, hooks: [] }] : [];
-    }
-    return [{ ...group, hooks }];
-  });
+  const { groups, removed } = removeManagedHookGroups(existingEvents.PreToolUse, (hook) =>
+    invocations.some((invocation) => matchesZcodeHookInvocation(hook, invocation)),
+  );
   if (removed === 0) return { removed: 0, failed: 0 };
 
-  if (filtered.length === 0) {
+  if (groups.length === 0) {
     delete existingEvents.PreToolUse;
   } else {
-    existingEvents.PreToolUse = filtered;
+    existingEvents.PreToolUse = groups;
   }
 
   if (Object.keys(existingEvents).length === 0) {

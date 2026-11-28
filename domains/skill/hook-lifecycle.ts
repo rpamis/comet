@@ -1,6 +1,6 @@
 import path from 'path';
 
-import type { Platform } from '../../platform/install/platforms.js';
+import { getPlatformConfigDir, type Platform } from '../../platform/install/platforms.js';
 import type { InstallScope } from '../../platform/install/types.js';
 import type { InitWorkflowSelection } from '../comet-entry/types.js';
 import { installCometHooksForPlatform, type HookInstallResult } from './platform-install.js';
@@ -71,7 +71,14 @@ export async function reconcileProjectCometHooksForPlatform(
   if (project.status !== 'installed') return project;
   const activationMessage = platform.projectHookTrustMessage;
   const installed = activationMessage ? { ...project, reason: activationMessage } : project;
-  if (path.resolve(projectRoot) === path.resolve(options.globalBaseDir)) return installed;
+  if (
+    path.relative(
+      path.resolve(projectRoot, getPlatformConfigDir(platform, 'project')),
+      path.resolve(options.globalBaseDir, getPlatformConfigDir(platform, 'global')),
+    ) === ''
+  ) {
+    return installed;
+  }
 
   const globalCleanup = await removeCometHooksForPlatform(
     options.globalBaseDir,

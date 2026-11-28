@@ -44,6 +44,7 @@ import {
   mergeProjectConfig,
   prepareManagedSkillCopyTarget,
 } from '../../../domains/skill/platform-install.js';
+import { inspectCometHooksForPlatform } from '../../../domains/skill/platform-inspect.js';
 import {
   reconcileCometHooksForPlatform,
   reconcileProjectCometHooksForPlatform,
@@ -2196,6 +2197,15 @@ describe('skills', () => {
     it('writes a disabled ZCode project Hook without enabling existing events', async () => {
       const platform = PLATFORMS.find((candidate) => candidate.id === 'zcode')!;
       const configPath = path.join(tmpDir, '.zcode', 'config.json');
+      const legacyGuard = {
+        type: 'process',
+        command: 'node',
+        args: [
+          path.join(tmpDir, '.zcode', 'skills', 'comet', 'scripts', 'comet-hook-guard.mjs'),
+          '--project-root',
+          tmpDir,
+        ],
+      };
       const initialConfig = {
         mcp: { servers: { keep: { command: 'keep' } } },
         hooks: {
@@ -2232,6 +2242,7 @@ describe('skills', () => {
                     ],
                     timeoutMs: 60000,
                   },
+                  legacyGuard,
                 ],
               },
             ],
@@ -2241,6 +2252,11 @@ describe('skills', () => {
       await fs.mkdir(path.dirname(configPath), { recursive: true });
       await fs.writeFile(configPath, JSON.stringify(initialConfig), 'utf-8');
 
+      await expect(inspectCometHooksForPlatform(tmpDir, platform, 'project')).resolves.toEqual({
+        present: false,
+        managedPresent: true,
+        legacyPresent: true,
+      });
       await configureNativeBuildChange(tmpDir);
       await copyCometSkillsForPlatform(tmpDir, platform, false, 'skills', 'project');
       await expect(installCometHooksForPlatform(tmpDir, platform, 'project')).resolves.toEqual({
@@ -2255,9 +2271,7 @@ describe('skills', () => {
       expect(firstInstall.hooks.events.PreToolUse).toEqual([
         {
           matcher: 'Write|Edit',
-          hooks: [
-            { type: 'process', command: 'node', args: ['user-write-check.mjs'], timeoutMs: 5000 },
-          ],
+          hooks: initialConfig.hooks.events.PreToolUse[0].hooks.slice(0, 2),
         },
         {
           matcher: 'Write|Edit',
@@ -2293,12 +2307,31 @@ describe('skills', () => {
       await installCometHooksForPlatform(tmpDir, platform, 'project');
       const secondInstall = JSON.parse(await fs.readFile(configPath, 'utf-8'));
       expect(secondInstall).toEqual(firstInstall);
+
+      secondInstall.hooks.events.PreToolUse[1].hooks.push(legacyGuard);
+      await fs.writeFile(configPath, JSON.stringify(secondInstall), 'utf-8');
+      await expect(removeCometHooksForPlatform(tmpDir, platform, 'project')).resolves.toEqual({
+        removed: 2,
+        failed: 0,
+      });
+      const cleaned = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+      expect(cleaned.hooks.events.PreToolUse).toEqual([firstInstall.hooks.events.PreToolUse[0]]);
     });
 
     it('cleans a legacy ZCode Router from the user CLI config without rewriting user-only Hooks', async () => {
       const platform = PLATFORMS.find((candidate) => candidate.id === 'zcode')!;
       const home = path.join(tmpDir, 'home');
-      const { configPath, userSettings } = await writeLegacyZcodeUserHook(home);
+      const { configPath, legacySettings, userSettings } = await writeLegacyZcodeUserHook(home);
+      const legacyRouter = legacySettings.hooks.events.PreToolUse[0].hooks[1];
+      const [script, ...args] = legacyRouter.args;
+      const userHooks = [
+        { ...legacyRouter, args: [script.replace('.zcode', '.other'), ...args] },
+        { ...legacyRouter, args: [script, ...args, '--team-option'] },
+        { ...legacyRouter, args: [script, ...args, '--project-root', home] },
+      ];
+      legacySettings.hooks.events.PreToolUse[0].hooks.push(...userHooks);
+      userSettings.hooks.events.PreToolUse[0].hooks.push(...userHooks);
+      await fs.writeFile(configPath, JSON.stringify(legacySettings));
 
       await expect(installCometHooksForPlatform(home, platform, 'global')).resolves.toMatchObject({
         status: 'skipped',

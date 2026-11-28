@@ -49863,6 +49863,99 @@
       ]
     },
     {
+      "id": "zcode-first-activation-preserves-legacy-user-router",
+      "sources": ["https://github.com/rpamis/comet/pull/602"],
+      "behavior": "首次 Comet 激活提示 ZCode 项目 Router 的迁移和手动启用步骤，并保留旧用户级 Router。",
+      "coverageLevel": "public-cli",
+      "reproduction": "在隔离 HOME 安装全局 ZCode Skill 和旧用户级 Router，用 ea272b5f 执行 comet workflow resolve . --activate --json。新 Router 关闭，旧条目被删除，stderr 为空。",
+      "expected": "首次激活保留用户配置原文，安装默认关闭的项目 Router，通过 stderr 提示先显式迁移再信任和启用，stdout 保持原 JSON 结构。",
+      "forbidden": "首次激活静默删除账号级 Router，自动打开开关或写入信任，或污染 stdout JSON。",
+      "rootCause": "首次激活复用显式迁移逻辑，投影只返回平台 ID 并丢失启用提示。",
+      "tests": [
+        {
+          "file": "test/app/workflow-activation-cli.test.ts",
+          "namePattern": "^built workflow activation fast path prints ZCode activation and migration instructions without removing the user Router on first activation$",
+          "requiredNames": [
+            "built workflow activation fast path prints ZCode activation and migration instructions without removing the user Router on first activation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "zcode-migration-preserves-user-owned-router-lookalikes",
+      "sources": ["https://github.com/rpamis/comet/pull/602"],
+      "behavior": "显式迁移只删除 Comet 安装在 ZCode 用户级配置中的旧 Router。",
+      "coverageLevel": "public-cli",
+      "reproduction": "对有实际旧 Router、另一个目录同后缀脚本及同脚本自定义参数的隔离 HOME，用 ea272b5f 执行项目 init，三条都被删除。",
+      "expected": "清理实际旧条目，并保留其他路径或自定义参数的 Hook、其他事件及工作区配置。",
+      "forbidden": "仅凭脚本路径后缀归属 Router，或删除用户自定义调用。",
+      "rootCause": "ZCode 的清理逻辑使用共享的脚本后缀匹配，未绑定作用域安装路径与完整历史参数。",
+      "tests": [
+        {
+          "file": "test/app/zcode-project-hooks.test.ts",
+          "namePattern": "^preserves user-owned ZCode Hooks with a Comet Router path suffix during project migration$",
+          "requiredNames": [
+            "preserves user-owned ZCode Hooks with a Comet Router path suffix during project migration"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "zcode-preserves-implicit-router-enablement",
+      "sources": ["https://github.com/rpamis/comet/pull/602"],
+      "behavior": "ZCode 项目 update 和 doctor --repair 保留已有条目缺省 enabled 时的启用状态。",
+      "coverageLevel": "public-cli",
+      "reproduction": "用 0.5.2 公开 CLI 生成缺省 enabled 的项目条目，再用 ea272b5f 项目 update 或 doctor --repair，条目被写成 enabled: false，Doctor 由 pass 变为 warn。等价配置在公开 CLI 回归中独立重现。",
+      "expected": "更新和修复后同一条 Router 仍启用，工作区总开关保留，新 Router 仍默认关闭。",
+      "forbidden": "把省略 enabled 的现有声明当作新条目并禁用。",
+      "rootCause": "安装器只识别显式 enabled: true，ZCode 和 Doctor 将缺省值视为启用。",
+      "tests": [
+        {
+          "file": "test/app/zcode-project-hooks.test.ts",
+          "namePattern": "^preserves the enabled state of an existing ZCode Router with no enabled field on update and repair$",
+          "requiredNames": [
+            "preserves the enabled state of an existing ZCode Router with no enabled field on update and repair"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "doctor-detects-and-restores-hook-router-guard",
+      "sources": ["https://github.com/rpamis/comet/pull/602"],
+      "behavior": "Doctor 检查 Router 依赖的 Guard，并在修复时恢复正确的运行文件。",
+      "coverageLevel": "public-cli",
+      "reproduction": "在 0.5.7 全局安装和 ea272b5f ZCode 项目安装中单独删除同目录 comet-hook-router-guard.mjs。Doctor 显示 current，修复不恢复文件，普通 Write 的 Router 进程由退出 0 变为退出 2。",
+      "expected": "只读 Doctor 指出缺失或过期的 Guard，doctor --repair 恢复包里的 Guard，实际 Router 恢复普通写入判定。",
+      "forbidden": "Guard 不可用时报告运行文件完好，或在只读检查中写入。",
+      "rootCause": "共享运行文件检查和修复只处理主 Router，遗漏它动态加载的 Guard。",
+      "tests": [
+        {
+          "file": "test/app/doctor.test.ts",
+          "namePattern": "^doctor command detects and repairs the ZCode Router sibling Guard through public doctor$",
+          "requiredNames": [
+            "doctor command detects and repairs the ZCode Router sibling Guard through public doctor"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "zcode-migrates-legacy-router-when-home-is-project",
+      "sources": ["https://github.com/rpamis/comet/pull/602"],
+      "behavior": "项目目录就是 HOME 时，显式 ZCode 项目安装仍迁移独立的旧用户级 Router。",
+      "coverageLevel": "public-cli",
+      "reproduction": "在隔离 HOME 设置项目外的 COMET_DATA_DIR，再用 ea272b5f 执行公开项目 init。两个不同配置文件都保留了 Comet Router。",
+      "expected": "项目配置写入默认关闭的 Router，独立用户配置移除旧 Router 并保留其他条目。",
+      "forbidden": "因两种作用域的基目录相同而跳过对独立用户配置的清理。",
+      "rootCause": "项目迁移用基目录相等判断配置是否重合，忽略 ZCode 的作用域配置目录不同。",
+      "tests": [
+        {
+          "file": "test/app/zcode-project-hooks.test.ts",
+          "namePattern": "^migrates the ZCode user Router when the project is HOME$",
+          "requiredNames": ["migrates the ZCode user Router when the project is HOME"]
+        }
+      ]
+    },
+    {
       "id": "issue-542-cancelled-history-projection",
       "sources": ["https://github.com/rpamis/comet/issues/542"],
       "behavior": "Doctor reads closed cancelled legacy Native history after active document cleanup.",

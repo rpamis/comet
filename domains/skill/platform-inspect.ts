@@ -13,9 +13,12 @@ import type { InstallScope } from '../../platform/install/types.js';
 import { fileExists } from '../../platform/fs/file-system.js';
 import {
   buildHookCommand,
+  buildHookInvocation,
+  buildLegacyZcodeGuardInvocation,
   computeRuleDestPath,
   isManagedHookCommand,
-  buildHookInvocation,
+  matchesZcodeHookInvocation,
+  type HookInvocation,
   OMP_HOOK_MARKER,
   OMP_HOOK_RELATIVE_PATH,
   readManifest,
@@ -200,62 +203,55 @@ function countGroupedHookMatches(
   }, 0);
 }
 
-/** ZCode nests event groups under `hooks.events` instead of `hooks` directly. */
-function collectZcodeGroupedCommands(config: Record<string, unknown>): unknown[] {
-  const hooks = config.hooks;
-  if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return [];
-  const events = (hooks as Record<string, unknown>).events;
-  if (!events || typeof events !== 'object' || Array.isArray(events)) return [];
-  const groups = (events as Record<string, unknown>).PreToolUse;
-  if (!Array.isArray(groups)) return [];
+async function inspectZcodeHooks(
+  configPath: string,
+  expectedHooks: ExpectedHookDescriptor[],
+  legacyGuard: HookInvocation,
+  platform: Platform,
+  scope: InstallScope,
+): Promise<HookInspectionResult> {
+  const result = await readHookJson(configPath);
+  if (result.status === 'missing') return { present: false };
+  if (result.status === 'error') return { present: false, error: result.error };
 
-  return groups.flatMap((group) => {
-    if (!group || typeof group !== 'object' || Array.isArray(group)) return [];
-    const handlers = (group as Record<string, unknown>).hooks;
-    if (!Array.isArray(handlers)) return [];
-    return handlers.map((handler): CollectedHookCommand => {
-      if (!handler || typeof handler !== 'object' || Array.isArray(handler)) {
-        return { command: undefined };
-      }
-      const record = handler as Record<string, unknown>;
-      return { command: record.command, args: record.args };
-    });
-  });
-}
-
-function countZcodeHookMatches(
-  config: Record<string, unknown>,
-  expected: ExpectedHookDescriptor,
-  expectedMatcher: (matcher: string) => string,
-  requireEnabled = true,
-): number {
-  const hooks = config.hooks;
-  if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return 0;
-  if (requireEnabled && (hooks as Record<string, unknown>).enabled !== true) return 0;
-  const events = (hooks as Record<string, unknown>).events;
-  if (!events || typeof events !== 'object' || Array.isArray(events)) return 0;
-  const groups = (events as Record<string, unknown>).PreToolUse;
-  if (!Array.isArray(groups)) return 0;
-  return groups.reduce((count, group) => {
-    if (!group || typeof group !== 'object' || Array.isArray(group)) return count;
-    const record = group as Record<string, unknown>;
-    if (record.matcher !== expectedMatcher(expected.matcher) || !Array.isArray(record.hooks)) {
-      return count;
+  const hooks = result.value.hooks as Record<string, unknown> | undefined;
+  const events = hooks?.events as Record<string, unknown> | undefined;
+  if (!Array.isArray(events?.PreToolUse)) return { present: false };
+  const handlers: Array<{ matcher: unknown; hook: unknown }> = events.PreToolUse.flatMap((group) =>
+    Array.isArray(group?.hooks)
+      ? group.hooks.map((hook: unknown) => ({ matcher: group.matcher, hook }))
+      : [],
+  );
+  const legacyPresent = handlers.some(({ hook }) => matchesZcodeHookInvocation(hook, legacyGuard));
+  const routers = expectedHooks.map((expected) => {
+    const invocation = { command: expected.command, args: expected.args ?? [] };
+    const matcher = resolveInstalledHookMatcher(platform, expected.matcher);
+    let owned = 0;
+    let configured = false;
+    let enabled = false;
+    for (const entry of handlers) {
+      if (!matchesZcodeHookInvocation(entry.hook, invocation)) continue;
+      owned++;
+      if (entry.matcher !== matcher) continue;
+      configured = true;
+      enabled ||= entry.hook.enabled === true || entry.hook.enabled === undefined;
     }
-    return (
-      count +
-      record.hooks.filter(
-        (handler) =>
-          handler !== null &&
-          typeof handler === 'object' &&
-          !Array.isArray(handler) &&
-          (handler as Record<string, unknown>).type === 'process' &&
-          (!requireEnabled || (handler as Record<string, unknown>).enabled !== false) &&
-          (handler as Record<string, unknown>).command === expected.command &&
-          equalStringArray((handler as Record<string, unknown>).args, expected.args ?? []),
-      ).length
-    );
-  }, 0);
+    return { owned, configured, enabled };
+  });
+  const present = hooks?.enabled === true && routers.every((router) => router.enabled);
+  const managedPresent = legacyPresent || routers.some((router) => router.owned > 0);
+  const duplicatePresent = routers.some((router) => router.owned > 1);
+  const activationMessage =
+    scope === 'project' && !present && routers.every((router) => router.configured)
+      ? platform.projectHookTrustMessage
+      : undefined;
+  return {
+    present,
+    ...(!present && managedPresent ? { managedPresent: true } : {}),
+    ...(legacyPresent ? { legacyPresent: true } : {}),
+    ...(duplicatePresent ? { duplicatePresent: true } : {}),
+    ...(activationMessage ? { activationRequired: true, activationMessage } : {}),
+  };
 }
 
 function collectCommandArray(config: Record<string, unknown>, groupName: string): unknown[] {
@@ -384,7 +380,6 @@ async function inspectSingleHookJson(
   collectManagedCommands: (config: Record<string, unknown>) => unknown[],
   countMatches: (config: Record<string, unknown>, expected: ExpectedHookDescriptor) => number,
   expectedCommandCopiesPerHook = 1,
-  activation?: { message: string; countConfigured: typeof countMatches },
 ): Promise<HookInspectionResult> {
   const result = await readHookJson(configPath);
   if (result.status === 'missing') return { present: false };
@@ -408,18 +403,11 @@ async function inspectSingleHookJson(
     containsDuplicateManagedHook(result.value, expectedHooks, countMatches) ||
     containsExtraManagedCommandCopies(managedCommands, expectedHooks, expectedCommandCopiesPerHook);
   const present = containsAllManagedHooks(result.value, expectedHooks, countMatches);
-  const activationMessage =
-    activation &&
-    !present &&
-    containsAllManagedHooks(result.value, expectedHooks, activation.countConfigured)
-      ? activation.message
-      : undefined;
   return {
     present,
     ...(!present && managedPresent ? { managedPresent: true } : {}),
     ...(legacyPresent ? { legacyPresent: true } : {}),
     ...(duplicatePresent ? { duplicatePresent: true } : {}),
-    ...(activationMessage ? { activationRequired: true, activationMessage } : {}),
   };
 }
 
@@ -683,24 +671,15 @@ export async function inspectCometHooksForPlatform(
           ),
       );
       break;
-    case 'zcode': {
-      const matcher = (value: string) => resolveInstalledHookMatcher(platform, value);
-      inspection = await inspectSingleHookJson(
+    case 'zcode':
+      inspection = await inspectZcodeHooks(
         path.join(platformBase, 'config.json'),
         expectedHooks,
-        collectZcodeGroupedCommands,
-        (config, expected) => countZcodeHookMatches(config, expected, matcher),
-        1,
-        scope === 'project' && platform.projectHookTrustMessage
-          ? {
-              message: platform.projectHookTrustMessage,
-              countConfigured: (config, expected) =>
-                countZcodeHookMatches(config, expected, matcher, false),
-            }
-          : undefined,
+        buildLegacyZcodeGuardInvocation(baseDir, skillsDir),
+        platform,
+        scope,
       );
       break;
-    }
     case 'copilot':
       inspection = await inspectSingleHookJson(
         path.join(platformBase, 'hooks', 'comet-guard.json'),
