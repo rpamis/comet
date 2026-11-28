@@ -2,19 +2,35 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## Unreleased
+## What's Changed [0.5.8] - 2026-11-25
 
 ### Added
 
-- **ZCode project Hooks**: Install the Comet workflow Router disabled in `.zcode/config.json`. Review, trust, and enable it in ZCode's workspace Hook settings. First-time `/comet` activation prints these steps. Updates and repairs rebind the Router to the current project even when its old location still has a Comet installation. They preserve Router activation settings when rebinding the project or restoring the default matcher. Project Doctor repair clears confirmed stale workflow selections while the Router awaits trust.
+- **ZCode project Hooks**: Install the Comet workflow Router disabled in `.zcode/config.json`. Review, trust, and enable it in ZCode's workspace Hook settings. Updates and repairs rebind the Router in place after a project move and leave the configuration file untouched when nothing changes. Project Doctor repair clears confirmed stale workflow selections before the Router is trusted and preserves Classic changes awaiting delivery ([#599](https://github.com/rpamis/comet/issues/599)).
+
+### Changed
+
+- **ZCode Doctor**: Warn when legacy user Router cleanup is still pending and tell users to retry migration before enabling the project Router.
+- **Dashboard Git changes**: See the file count, paths, and Git statuses in a compact list that wraps long paths on narrow screens.
+- **Dashboard startup**: Load the current workspace first, then fill in Classic archive counts. Open Any, Eval, and plugin pages independently and load settings when needed ([#601](https://github.com/rpamis/comet/issues/601)).
+- **Native Shape confirmation**: Confirm an ordinary Native SDK Shape without waiting for automatic context retrieval or completion learning based on the approval note. Explicit task context remains available.
 
 ### Fixed
 
+- **Dashboard task summaries**: Keep the task and acceptance lists aligned when expanding a change makes the dialog scroll. The dialog shows a total and a clearer breakdown by change.
+- **DSH plugin updates**: Install and update Comet on DSH 0.2.2-rc.1 and later without exact DSH dependency pins. Session rules and write checks run through the installed DSH's plugin events ([#600](https://github.com/rpamis/comet/issues/600)).
+- **OpenSpec installation**: Install Classic Skills in the selected global or project directory with OpenSpec 2.1 and later. Project installs keep their Skills local, and global installs no longer try to initialize the home directory as a project ([#594](https://github.com/rpamis/comet/issues/594)).
+- **Classic resume discovery**: Completed historical SDK archives without a delivery record no longer block resuming the only active Classic change. Pending deliveries still appear in recovery ([#593](https://github.com/rpamis/comet/issues/593)).
+- **Codex Dashboard scrolling**: Scroll through change details and key artifacts in the embedded workbench when the window is narrower than 1024 pixels ([#591](https://github.com/rpamis/comet/issues/591)).
 - **Hook runtime repair**: Doctor detects and restores the Guard file the Router needs to evaluate write requests.
 
 ### Removed
 
-- **ZCode user-level Comet Router**: Manage the Router per project to avoid duplicate execution. Explicit installation, updates, and Doctor repair remove legacy Comet user-level entries while preserving user-owned Hooks. First-time `/comet` activation keeps the legacy entry and prompts you to migrate it before enabling the project Router. Global Skill and Rule installation remains available.
+- **ZCode user-level Comet Router**: Explicit installation, update, and Doctor repair migrate legacy Comet entries to project scope while preserving user-owned Hooks. If cleanup fails, Comet disables the project Router and reports how to retry. First-time `/comet` activation keeps the legacy entry and explains how to migrate before enabling the project Router. Global Skill and Rule installation remains available.
+
+### Security
+
+- **ZCode project configuration**: Refuse linked project Hook configuration files and directories so project maintenance cannot rewrite configuration outside the workspace.
 
 ## What's Changed [0.5.7] - 2026-11-24
 
