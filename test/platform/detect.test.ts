@@ -192,7 +192,7 @@ describe('detect', () => {
       expect(zcode?.skillsDir).toBe('.zcode');
       expect(zcode?.globalSkillsDir).toBe('.zcode');
       expect(zcode?.supportsHooks).toBe(true);
-      expect(zcode?.supportsGlobalHooks).toBe(true);
+      expect(zcode?.supportsGlobalHooks).toBeFalsy();
       expect(zcode?.hookFormat).toBe('zcode');
       expect(zcode?.globalConfigDir).toBe('.zcode/cli');
       expect(zcode?.openspecToolId).toBe('opencode');

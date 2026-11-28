@@ -49617,7 +49617,47 @@
             "keeps a valid ZCode global Hook healthy through public doctor repair and repairs disabled or duplicate Hooks"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "Comet 撤下对 ZCode 用户级 Router 的有效安装诊断和重新启用。公开 Doctor 继续区分没有旧条目与有旧条目，并验证清理时保留用户自己的 Hook。",
+        "authorization": "report:2026-11-27-zcode-align-claude-hook-scope",
+        "record": "docs/research/zcode-project-hook-migration/README.zh.md",
+        "tests": [
+          {
+            "file": "test/app/doctor-zcode-global.test.ts",
+            "namePattern": "^reports and removes old ZCode user Routers through public doctor without touching user Hooks$",
+            "requiredNames": [
+              "reports and removes old ZCode user Routers through public doctor without touching user Hooks"
+            ]
+          },
+          {
+            "file": "test/app/zcode-project-hooks.test.ts",
+            "namePattern": "^installs, repairs, updates and uninstalls a ZCode project Router through the public CLI$",
+            "requiredNames": [
+              "installs, repairs, updates and uninstalls a ZCode project Router through the public CLI"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/zcode-project-hook-migration/registry-before.json",
+            "sha256": "23dbfe951ce67c0385dc81cd69f38ee688e5f62b7717bd44e2903b43b58947b7"
+          },
+          "patch": {
+            "file": "docs/research/zcode-project-hook-migration/tests.patch",
+            "sha256": "5d7a0e79d074075d17c5a86b7ba0e47476a82395ef64eb646cb0ae67f5b94fab"
+          },
+          "mapping": {
+            "file": "docs/research/zcode-project-hook-migration/case-migrations.json",
+            "sha256": "2dfed8a4f360db611225f140dee0529b6c1496cb353ced858d5a434072921b63"
+          },
+          "tests": {
+            "file": "docs/research/zcode-project-hook-migration/test-snapshots.json",
+            "sha256": "ea20844c835b808e1afa78612a1552c3186017b4dd64641a16eaaf6ed5c990ae"
+          }
+        }
+      }
     },
     {
       "id": "issue-541-project-preserves-user-hook",
@@ -49642,6 +49682,182 @@
           "requiredNames": [
             "doctor command repairs a ZCode project selection only with a ready user Router (ready=true)",
             "doctor command repairs a ZCode project selection only with a ready user Router (ready=false)"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "Comet 撤下项目更新复用用户级 Router 的策略。项目写入失败时保留旧 Router。Doctor 无法核实 ZCode 信任，即使两个项目 Hook 开关都打开，也会保留工作流选择。",
+        "authorization": "report:2026-11-27-zcode-align-claude-hook-scope",
+        "record": "docs/research/zcode-project-hook-migration/README.zh.md",
+        "tests": [
+          {
+            "file": "test/app/update-user-content.test.ts",
+            "namePattern": "^preserves custom ignore rules and YAML comments through repeated public project updates$",
+            "requiredNames": [
+              "preserves custom ignore rules and YAML comments through repeated public project updates"
+            ]
+          },
+          {
+            "file": "test/app/doctor.test.ts",
+            "namePattern": "^doctor command repairs the ZCode project Router without clearing selection while trust is unverified$",
+            "requiredNames": [
+              "doctor command repairs the ZCode project Router without clearing selection while trust is unverified"
+            ]
+          },
+          {
+            "file": "test/domains/skill/skills.test.ts",
+            "namePattern": "^skills installCometHooksForPlatform preserves a legacy ZCode user Router if its project replacement cannot be installed$",
+            "requiredNames": [
+              "skills installCometHooksForPlatform preserves a legacy ZCode user Router if its project replacement cannot be installed"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/zcode-project-hook-migration/registry-before.json",
+            "sha256": "23dbfe951ce67c0385dc81cd69f38ee688e5f62b7717bd44e2903b43b58947b7"
+          },
+          "patch": {
+            "file": "docs/research/zcode-project-hook-migration/tests.patch",
+            "sha256": "5d7a0e79d074075d17c5a86b7ba0e47476a82395ef64eb646cb0ae67f5b94fab"
+          },
+          "mapping": {
+            "file": "docs/research/zcode-project-hook-migration/case-migrations.json",
+            "sha256": "2dfed8a4f360db611225f140dee0529b6c1496cb353ced858d5a434072921b63"
+          },
+          "tests": {
+            "file": "docs/research/zcode-project-hook-migration/test-snapshots.json",
+            "sha256": "ea20844c835b808e1afa78612a1552c3186017b4dd64641a16eaaf6ed5c990ae"
+          }
+        }
+      }
+    },
+    {
+      "id": "zcode-router-project-scope-only",
+      "sources": [
+        "report:2026-11-27-zcode-align-claude-hook-scope",
+        "https://github.com/rpamis/comet/issues/599"
+      ],
+      "behavior": "Comet 只通过项目级入口安装 ZCode Router。",
+      "coverageLevel": "public-cli",
+      "reproduction": "0.5.7 公开 CLI 支持用户级 Router，初版 0.5.8 候选仍保留该入口，并在隔离 HOME 把有效的用户级 Router 判为健康。",
+      "expected": "全局 init 可安装 Skill。全局 update 和 doctor --repair 清理旧 Comet Router，保留用户自定义 Hook。",
+      "forbidden": "创建或重新启用用户级 Comet Router，或覆盖已有项目 Router 的设置。",
+      "rootCause": "ZCode 同时声明了用户级和项目级 Hook 安装能力，派发器会分别执行匹配的条目。",
+      "tests": [
+        {
+          "file": "test/app/zcode-project-hooks.test.ts",
+          "namePattern": "^installs, repairs, updates and uninstalls a ZCode project Router through the public CLI$",
+          "requiredNames": [
+            "installs, repairs, updates and uninstalls a ZCode project Router through the public CLI"
+          ]
+        },
+        {
+          "file": "test/app/doctor-zcode-global.test.ts",
+          "namePattern": "^reports and removes old ZCode user Routers through public doctor without touching user Hooks$",
+          "requiredNames": [
+            "reports and removes old ZCode user Routers through public doctor without touching user Hooks"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "zcode-migrates-legacy-router-to-project",
+      "sources": [
+        "report:2026-11-27-zcode-align-claude-hook-scope",
+        "https://github.com/rpamis/comet/issues/599"
+      ],
+      "behavior": "ZCode 项目更新写入项目 Router 后清理旧用户级 Comet Router。",
+      "coverageLevel": "public-cli",
+      "reproduction": "在临时 HOME 安装旧用户级 Router 后，用修订前的 0.5.8 公开 CLI 执行项目 update。项目更新保留并复用了旧条目。",
+      "expected": "项目更新安装默认关闭的项目 Router 并清理旧用户级条目。项目写入失败时保留旧条目。",
+      "forbidden": "同时保留两个可派发的 Comet Router、在项目写入失败时删除旧 Router，或清理用户自定义 Hook。",
+      "rootCause": "项目安装遇到已有有效用户级 Router 时会跳过项目写入与旧条目清理。",
+      "tests": [
+        {
+          "file": "test/app/update-user-content.test.ts",
+          "namePattern": "^preserves custom ignore rules and YAML comments through repeated public project updates$",
+          "requiredNames": [
+            "preserves custom ignore rules and YAML comments through repeated public project updates"
+          ]
+        },
+        {
+          "file": "test/domains/skill/skills.test.ts",
+          "namePattern": "^skills installCometHooksForPlatform preserves a legacy ZCode user Router if its project replacement cannot be installed$",
+          "requiredNames": [
+            "skills installCometHooksForPlatform preserves a legacy ZCode user Router if its project replacement cannot be installed"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "ZCode v4 工作区 Hook 派发",
+          "status": "verified",
+          "evidence": [
+            "Windows 临时 HOME 使用最终 Comet CLI 和 ZCode a4b44451 的配置加载器、信任接口与 PreToolUse 派发器。迁移移除旧用户级 Router。项目 Router 经用户信任和启用后，每个匹配事件只启动一个 Router 子进程。受保护的写入请求拒绝，普通写入请求放行。见 docs/research/zcode-project-hook-migration/README.zh.md。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "zcode-project-hooks-preserve-workspace-switch",
+      "sources": [
+        "report:2026-11-27-zcode-project-hook-manual-activation",
+        "https://github.com/rpamis/comet/issues/599"
+      ],
+      "behavior": "Comet 安装和维护 ZCode 项目 Router 时保留工作区 Hook 总开关。",
+      "coverageLevel": "public-cli",
+      "reproduction": "在已有且关闭工作区 Hook 的临时项目运行公开 comet init。修正前的 0.5.8 候选把 hooks.enabled 从 false 改为 true；master 0.5.7 会跳过项目 Hook 安装。",
+      "expected": "init、update 和 doctor --repair 保留 hooks.enabled 的原值；uninstall 移除 Router 后保留用户 Hook 及其设置。",
+      "forbidden": "安装、更新或修复 Router 时打开原本关闭的工作区 Hook，或随 Router 移除用户 Hook。",
+      "rootCause": "项目安装沿用用户级安装的设置写入逻辑，无条件写入 hooks.enabled: true。",
+      "tests": [
+        {
+          "file": "test/app/zcode-project-hooks.test.ts",
+          "namePattern": "^installs, repairs, updates and uninstalls a ZCode project Router through the public CLI$",
+          "requiredNames": [
+            "installs, repairs, updates and uninstalls a ZCode project Router through the public CLI"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "ZCode v4 工作区 Hook 派发",
+          "status": "verified",
+          "evidence": [
+            "Windows 上使用 ZCode a4b44451 的配置加载器与 PreToolUse 派发器读取 Comet 0.5.8 CLI 安装产物。临时项目首次安装保留缺省总开关；显式信任 Router 后关闭总开关，Write 事件未启动 Router。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "zcode-project-router-requires-manual-activation",
+      "sources": [
+        "report:2026-11-27-zcode-project-hook-manual-activation",
+        "https://github.com/rpamis/comet/issues/599"
+      ],
+      "behavior": "ZCode 项目 Router 默认关闭，由用户手动信任和启用。",
+      "coverageLevel": "public-cli",
+      "reproduction": "在临时项目运行公开 comet init 并查看 .zcode/config.json 与 doctor。修正前的 0.5.8 候选省略 Router 的 enabled 字段，doctor 把初装条目判为 pass；master 0.5.7 会跳过项目 Hook 安装。",
+      "expected": "初装显式禁用 Router 并提示用户在 ZCode 中手动启用和信任。update 和 doctor --repair 保留同一条 Router 的显式开关。",
+      "forbidden": "让新 Router 默认参与派发、由 Comet 写入工作区信任记录，或在更新和修复时覆盖同一条 Router 的开关。",
+      "rootCause": "写入 Router 声明时没有区分项目级和用户级，项目条目沿用了 ZCode 的缺省启用语义。",
+      "tests": [
+        {
+          "file": "test/app/zcode-project-hooks.test.ts",
+          "namePattern": "^installs, repairs, updates and uninstalls a ZCode project Router through the public CLI$",
+          "requiredNames": [
+            "installs, repairs, updates and uninstalls a ZCode project Router through the public CLI"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "ZCode v4 工作区 Hook 信任与派发",
+          "status": "verified",
+          "evidence": [
+            "Windows 上使用 ZCode a4b44451 的信任接口与 PreToolUse 派发器检查 Comet 0.5.8 CLI 安装产物。初装无信任记录，只打开总开关时无进程。打开两处开关但未信任时，Write 和 ApplyPatch 均未派发；在临时信任存储显式授权后，实际 Router 进程拒绝受保护写入并放行普通写入。再次关闭 Router 条目后无进程。"
           ]
         }
       ]
@@ -55956,6 +56172,43 @@
     }
   ],
   "historicalTestMigrations": [
+    {
+      "id": "issue-438-zcode-hook",
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "Comet 撤下 ZCode 用户级 Router 安装。保留项目路径、项目安装和卸载的配置保护，以及识别并清理旧用户级 Router 的能力。",
+        "authorization": "report:2026-11-27-zcode-align-claude-hook-scope",
+        "record": "docs/research/zcode-project-hook-migration/README.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/skill/skills.test.ts",
+            "namePattern": "^skills installCometHooksForPlatform writes and removes ZCode project hooks while preserving unrelated config$|^skills installCometHooksForPlatform cleans a legacy ZCode Router from the user CLI config without rewriting user-only Hooks$",
+            "requiredNames": [
+              "skills installCometHooksForPlatform writes and removes ZCode project hooks while preserving unrelated config",
+              "skills installCometHooksForPlatform cleans a legacy ZCode Router from the user CLI config without rewriting user-only Hooks"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/zcode-project-hook-migration/registry-before.json",
+            "sha256": "23dbfe951ce67c0385dc81cd69f38ee688e5f62b7717bd44e2903b43b58947b7"
+          },
+          "patch": {
+            "file": "docs/research/zcode-project-hook-migration/tests.patch",
+            "sha256": "5d7a0e79d074075d17c5a86b7ba0e47476a82395ef64eb646cb0ae67f5b94fab"
+          },
+          "mapping": {
+            "file": "docs/research/zcode-project-hook-migration/case-migrations.json",
+            "sha256": "2dfed8a4f360db611225f140dee0529b6c1496cb353ced858d5a434072921b63"
+          },
+          "tests": {
+            "file": "docs/research/zcode-project-hook-migration/test-snapshots.json",
+            "sha256": "ea20844c835b808e1afa78612a1552c3186017b4dd64641a16eaaf6ed5c990ae"
+          }
+        }
+      }
+    },
     {
       "id": "issue-436-large-check-input",
       "testMigration": {

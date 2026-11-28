@@ -1,0 +1,69 @@
+{
+  "baseline": "2e33ae49fcf9bcd490153987d2095a3c6c08bd42",
+  "cases": [
+    {
+      "id": "issue-438-zcode-hook",
+      "behavior": "ZCode Hook使用平台真实配置路径，保留无关配置并识别写入。",
+      "status": "covered",
+      "reason": "0.5.0 保留此行为；所列确定性测试直接断言该契约。covered 表示已映射，不表示本次清单审计已执行。",
+      "coverageLayer": "installer",
+      "evidence": ["test/domains/skill/skills.test.ts"],
+      "tests": [
+        {
+          "file": "test/domains/skill/skills.test.ts",
+          "namePattern": "writes and removes ZCode project hooks while preserving unrelated config|writes ZCode global hooks to the user CLI config directory",
+          "requiredNames": [
+            "writes and removes ZCode project hooks while preserving unrelated config",
+            "writes ZCode global hooks to the user CLI config directory"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-541-global-hook-diagnosis",
+      "sources": ["https://github.com/rpamis/comet/issues/541"],
+      "behavior": "Public doctor accepts valid ZCode user Hooks and repairs disabled or duplicate entries.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Reproduced on npm 0.5.2 and pre-fix 00a47ebc in isolated projects; see docs/architecture/issue-540-542-and-dashboard-settings.zh.md.",
+      "expected": "A valid Hook passes before and after repair; invalid entries warn and can be repaired.",
+      "forbidden": "Treating every global Hook as residue or accepting disabled and duplicate entries.",
+      "rootCause": "Doctor ignored the supported global Hook policy used by installation.",
+      "tests": [
+        {
+          "file": "test/app/doctor-zcode-global.test.ts",
+          "namePattern": "keeps a valid ZCode global Hook healthy through public doctor repair and repairs disabled or duplicate Hooks",
+          "requiredNames": [
+            "keeps a valid ZCode global Hook healthy through public doctor repair and repairs disabled or duplicate Hooks"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-541-project-preserves-user-hook",
+      "sources": ["https://github.com/rpamis/comet/issues/541"],
+      "behavior": "Project update preserves the effective ZCode user Hook without installing ignored project Hooks.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Reproduced on npm 0.5.2 and pre-fix 00a47ebc in isolated projects; see docs/architecture/issue-540-542-and-dashboard-settings.zh.md.",
+      "expected": "Leave user configuration unchanged and explain the user-scoped install command.",
+      "forbidden": "Deleting the user Hook or reporting an ignored project Hook as installed.",
+      "rootCause": "Project reconciliation installed locally and removed the global Hook.",
+      "tests": [
+        {
+          "file": "test/app/update-user-content.test.ts",
+          "namePattern": "preserves custom ignore rules and YAML comments through repeated public project updates",
+          "requiredNames": [
+            "preserves custom ignore rules and YAML comments through repeated public project updates"
+          ]
+        },
+        {
+          "file": "test/app/doctor.test.ts",
+          "namePattern": "repairs a ZCode project selection only with a ready user Router",
+          "requiredNames": [
+            "doctor command repairs a ZCode project selection only with a ready user Router (ready=true)",
+            "doctor command repairs a ZCode project selection only with a ready user Router (ready=false)"
+          ]
+        }
+      ]
+    }
+  ]
+}

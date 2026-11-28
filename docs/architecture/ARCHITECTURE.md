@@ -137,7 +137,15 @@ comet skill check     # 运行 Engine Run runtime checks
 
 ## 五、平台支持扩展
 
-0.4.0 新增 ZCode 平台支持（`comet init` 新增选项），将 skills 和 rules 安装到项目级 `.zcode/skills/` 或全局 `~/.zcode/skills/`。ZCode 基于 OpenCode，OpenSpec 通过 `opencode` tool id 安装后镜像到 `.zcode/`，Superpowers 通过 `claude-code` staging 模式安装，并抽出通用 staging 函数供 Lingma/ZCode 复用。
+ZCode 的项目 Skill 和 Rule 分别安装到 `.zcode/skills/` 和 `.zcode/rules/`。Classic 安装通过 OpenSpec 的 `opencode` 目标生成所需文件并镜像到 `.zcode/`。
+
+用 `comet init --platform zcode --scope project --workflow native --yes` 初始化项目，已有安装可用 `comet update --platform zcode --scope project --current-project --skip-self-update --yes` 刷新。Comet 在 `.zcode/config.json` 中添加默认关闭的 `PreToolUse` Router，并保留工作区 Hook 总开关。更新和修复保留同一条 Router 的启用状态。
+
+在支持工作区 Hook 的 ZCode 中，打开「设置 → 钩子 → 工作区」，审核并信任 Comet Router，再手动打开该条目。ZCode 保存这个操作时会同时打开工作区 Hook 总开关。新建会话或运行 `/reload` 后生效。若 ZCode 将条目标为待信任，请重新审核。
+
+Comet 的 ZCode Router 只在项目级安装。全局安装仍提供 Skill 和 Rule。项目安装或更新成功写入项目 Router 后，会从 `~/.zcode/cli/config.json` 清理旧版 Comet 用户级 Router。全局安装、更新和 `comet doctor --repair --scope global` 也会清理该旧条目，保留用户自己的 Hook 和开关。此前依赖用户级 Router 的项目，需要各自在 ZCode 中完成项目级启用。
+
+`comet doctor --scope project` 检查本地 Router 并提示手动启用，`comet uninstall --scope project` 移除项目中的 Comet 条目。
 
 ## 六、Classic 渐进 Engine-native 收敛
 

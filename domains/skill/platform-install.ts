@@ -2135,12 +2135,6 @@ async function installTraeHooks(
   return { status: 'installed' };
 }
 
-/**
- * ZCode format:
- * Writes to .zcode/config.json with { hooks: { enabled: true, events: { PreToolUse: [...] } } }.
- * ZCode nests event groups under `hooks.events` and only runs configuration-file
- * hooks when `hooks.enabled` is true, so install forces the flag on.
- */
 async function installZcodeHooks(
   baseDir: string,
   platformBase: string,
@@ -2151,31 +2145,7 @@ async function installZcodeHooks(
 ): Promise<HookInstallResult> {
   const configPath = path.join(platformBase, 'config.json');
 
-  // ZCode `process` hooks run an argument vector without a shell (the most
-  // portable form on Windows) and accept only command/args/timeoutMs.
-  const matcherGroups: Record<
-    string,
-    Array<{ type: string; command: string; args: string[]; timeoutMs: number }>
-  > = {};
-  for (const [scriptRelPath, config] of Object.entries(hooksConfig)) {
-    const matcher = resolveInstalledHookMatcher(context, config.matcher);
-    matcherGroups[matcher] ??= [];
-    const invocation = buildHookInvocation(baseDir, skillsDir, scriptRelPath, context);
-    matcherGroups[matcher].push({
-      type: 'process',
-      command: invocation.command,
-      args: invocation.args,
-      timeoutMs: 60_000,
-    });
-  }
-
-  const preToolUseEntries = Object.entries(matcherGroups).map(([matcher, hooks]) => ({
-    matcher,
-    hooks,
-  }));
-
   const settings = await readSettingsJsonObject(configPath, platformName);
-
   const existingHooks = (settings.hooks as Record<string, unknown>) ?? {};
   const existingEvents =
     existingHooks.events &&
@@ -2184,6 +2154,45 @@ async function installZcodeHooks(
       ? (existingHooks.events as Record<string, unknown>)
       : {};
   const existingPreToolUse = asHookGroup(existingEvents.PreToolUse);
+
+  // ZCode process Hooks pass arguments directly to Node, including on Windows.
+  const matcherGroups: Record<
+    string,
+    Array<{ type: string; command: string; args: string[]; timeoutMs: number; enabled: boolean }>
+  > = {};
+  for (const [scriptRelPath, config] of Object.entries(hooksConfig)) {
+    const matcher = resolveInstalledHookMatcher(context, config.matcher);
+    matcherGroups[matcher] ??= [];
+    const invocation = buildHookInvocation(baseDir, skillsDir, scriptRelPath, context);
+    const wasEnabled = existingPreToolUse.some((group) => {
+      const record = group as { matcher?: unknown; hooks?: unknown } | null;
+      return (
+        record?.matcher === matcher &&
+        asHookGroup(record.hooks).some((hook) => {
+          const handler = hook as Record<string, unknown> | null;
+          return (
+            handler?.enabled === true &&
+            handler.type === 'process' &&
+            handler.command === invocation.command &&
+            JSON.stringify(handler.args) === JSON.stringify(invocation.args)
+          );
+        })
+      );
+    });
+    matcherGroups[matcher].push({
+      type: 'process',
+      command: invocation.command,
+      args: invocation.args,
+      timeoutMs: 60_000,
+      enabled: wasEnabled,
+    });
+  }
+
+  const preToolUseEntries = Object.entries(matcherGroups).map(([matcher, hooks]) => ({
+    matcher,
+    hooks,
+  }));
+
   const merged = mergeHookGroups(
     existingPreToolUse,
     preToolUseEntries,
@@ -2192,7 +2201,6 @@ async function installZcodeHooks(
 
   settings.hooks = {
     ...existingHooks,
-    enabled: true,
     events: { ...existingEvents, PreToolUse: merged },
   };
   await ensureDir(path.dirname(configPath));

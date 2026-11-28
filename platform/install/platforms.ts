@@ -44,6 +44,8 @@ export interface Platform {
   supportsGlobalHooks?: boolean;
   /** False when the platform ignores workspace Hook configuration. */
   supportsProjectHooks?: boolean;
+  /** Activation instructions when Comet cannot verify project Hook trust. */
+  projectHookTrustMessage?: string;
   /** Hook configuration format. Determines how installCometHooksForPlatform writes the hook config. */
   hookFormat?:
     | 'claude-code'
@@ -439,20 +441,17 @@ export const PLATFORMS: Platform[] = [
     name: 'ZCode',
     skillsDir: '.zcode',
     globalSkillsDir: '.zcode',
-    // ZCode keeps its user-scope configuration under ~/.zcode/cli/ (not
-    // ~/.zcode/), so hooks written with the global scope target that file.
+    // User-scope inspection and cleanup target ~/.zcode/cli/config.json.
     globalConfigDir: '.zcode/cli',
-    // openspec CLI has no zcode tool id; zcode is built on opencode (it shares the
-    // opencode.ai config schema), so we reuse openspec's opencode support and migrate
-    // the .opencode/{skills,commands} output to .zcode/ after install.
+    // OpenSpec has no ZCode tool id; mirror its OpenCode output into .zcode/.
     openspecToolId: 'opencode',
     openspecMirrorFrom: 'opencode',
     rulesDir: 'rules',
     rulesFormat: 'md',
     supportsHooks: true,
-    supportsGlobalHooks: true,
     hookFormat: 'zcode',
-    supportsProjectHooks: false,
+    projectHookTrustMessage:
+      'Review and trust the Comet Router in ZCode Settings → Hooks → Workspace. Manually enable the Router there, then start a new session or run /reload.',
   },
   {
     id: 'mimocode',

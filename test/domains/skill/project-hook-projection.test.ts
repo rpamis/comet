@@ -77,6 +77,42 @@ describe('project Hook projection', () => {
     expect(result.status, result.stderr).toBe(0);
   });
 
+  it.each(['project', 'global'] as const)(
+    'projects a disabled ZCode project Router from %s Skills',
+    async (scope) => {
+      const sourceRouter = path.join(
+        sourceRoot,
+        '.zcode/skills/comet/scripts/comet-hook-router.mjs',
+      );
+      await fs.mkdir(path.dirname(sourceRouter), { recursive: true });
+      await fs.writeFile(sourceRouter, '// installed Router\n', 'utf8');
+      await expect(
+        projectCometHooksFromInstalledScope(projectRoot, sourceRoot, scope, 'native', {
+          globalBaseDir: scope === 'global' ? sourceRoot : path.join(sourceRoot, 'home'),
+        }),
+      ).resolves.toEqual({ installedPlatforms: ['zcode'], failures: [] });
+
+      const configPath = path.join(projectRoot, '.zcode/config.json');
+      const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
+      expect(config.hooks).not.toHaveProperty('enabled');
+      expect(config.hooks.events.PreToolUse[0].hooks[0]).toMatchObject({
+        enabled: false,
+        args: [
+          path.join(projectRoot, '.zcode/skills/comet/scripts/comet-hook-router.mjs'),
+          '--platform',
+          'zcode',
+          '--project-root',
+          projectRoot,
+        ],
+      });
+      await expect(
+        fs.access(path.join(sourceRoot, '.zcode/cli/config.json')),
+      ).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    },
+  );
+
   it('reports a user-owned Kiro canonical Hook collision', async () => {
     const sourceRouter = path.join(
       sourceRoot,

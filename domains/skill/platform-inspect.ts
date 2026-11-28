@@ -32,7 +32,7 @@ export interface HookInspectionResult {
   managedPresent?: boolean;
   legacyPresent?: boolean;
   duplicatePresent?: boolean;
-  /** dsh has the config/patch, but the active profile still needs the bridge loaded. */
+  /** The managed configuration requires an additional step in the Agent platform. */
   activationRequired?: boolean;
   activationMessage?: string;
   error?: string;
@@ -226,13 +226,12 @@ function collectZcodeGroupedCommands(config: Record<string, unknown>): unknown[]
 function countZcodeHookMatches(
   config: Record<string, unknown>,
   expected: ExpectedHookDescriptor,
-  expectedMatcher: (matcher: string) => string = (matcher) => matcher,
+  expectedMatcher: (matcher: string) => string,
+  requireEnabled = true,
 ): number {
   const hooks = config.hooks;
   if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return 0;
-  // ZCode keeps configuration-file hooks dormant until hooks.enabled is true,
-  // so an installed-but-disabled Hook must not report as present.
-  if ((hooks as Record<string, unknown>).enabled !== true) return 0;
+  if (requireEnabled && (hooks as Record<string, unknown>).enabled !== true) return 0;
   const events = (hooks as Record<string, unknown>).events;
   if (!events || typeof events !== 'object' || Array.isArray(events)) return 0;
   const groups = (events as Record<string, unknown>).PreToolUse;
@@ -251,6 +250,7 @@ function countZcodeHookMatches(
           typeof handler === 'object' &&
           !Array.isArray(handler) &&
           (handler as Record<string, unknown>).type === 'process' &&
+          (!requireEnabled || (handler as Record<string, unknown>).enabled !== false) &&
           (handler as Record<string, unknown>).command === expected.command &&
           equalStringArray((handler as Record<string, unknown>).args, expected.args ?? []),
       ).length
@@ -384,6 +384,7 @@ async function inspectSingleHookJson(
   collectManagedCommands: (config: Record<string, unknown>) => unknown[],
   countMatches: (config: Record<string, unknown>, expected: ExpectedHookDescriptor) => number,
   expectedCommandCopiesPerHook = 1,
+  activation?: { message: string; countConfigured: typeof countMatches },
 ): Promise<HookInspectionResult> {
   const result = await readHookJson(configPath);
   if (result.status === 'missing') return { present: false };
@@ -407,11 +408,18 @@ async function inspectSingleHookJson(
     containsDuplicateManagedHook(result.value, expectedHooks, countMatches) ||
     containsExtraManagedCommandCopies(managedCommands, expectedHooks, expectedCommandCopiesPerHook);
   const present = containsAllManagedHooks(result.value, expectedHooks, countMatches);
+  const activationMessage =
+    activation &&
+    !present &&
+    containsAllManagedHooks(result.value, expectedHooks, activation.countConfigured)
+      ? activation.message
+      : undefined;
   return {
     present,
     ...(!present && managedPresent ? { managedPresent: true } : {}),
     ...(legacyPresent ? { legacyPresent: true } : {}),
     ...(duplicatePresent ? { duplicatePresent: true } : {}),
+    ...(activationMessage ? { activationRequired: true, activationMessage } : {}),
   };
 }
 
@@ -675,17 +683,24 @@ export async function inspectCometHooksForPlatform(
           ),
       );
       break;
-    case 'zcode':
+    case 'zcode': {
+      const matcher = (value: string) => resolveInstalledHookMatcher(platform, value);
       inspection = await inspectSingleHookJson(
         path.join(platformBase, 'config.json'),
         expectedHooks,
         collectZcodeGroupedCommands,
-        (config, expected) =>
-          countZcodeHookMatches(config, expected, (matcher) =>
-            resolveInstalledHookMatcher(platform, matcher),
-          ),
+        (config, expected) => countZcodeHookMatches(config, expected, matcher),
+        1,
+        scope === 'project' && platform.projectHookTrustMessage
+          ? {
+              message: platform.projectHookTrustMessage,
+              countConfigured: (config, expected) =>
+                countZcodeHookMatches(config, expected, matcher, false),
+            }
+          : undefined,
       );
       break;
+    }
     case 'copilot':
       inspection = await inspectSingleHookJson(
         path.join(platformBase, 'hooks', 'comet-guard.json'),

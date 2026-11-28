@@ -858,6 +858,12 @@ async function checkHookComponents(
     );
   }
 
+  const inspection = await inspectCometHooksForPlatform(
+    baseDir,
+    platform,
+    scope,
+    workflowSelection,
+  );
   const results: CheckResult[] = [];
   const runtime = hookRouterRuntimePaths(baseDir, platform, scope);
   try {
@@ -879,12 +885,6 @@ async function checkHookComponents(
       message: `unable to verify current Router runtime (${(error as Error).message}) — run: comet doctor --repair --scope ${scope}`,
     });
   }
-  const inspection = await inspectCometHooksForPlatform(
-    baseDir,
-    platform,
-    scope,
-    workflowSelection,
-  );
   if (scope === 'global') {
     results.push(globalHookCheckResult(platform, scope, inspection));
     return results;
@@ -910,7 +910,7 @@ async function checkHookComponents(
             !inspection.error &&
             !inspection.legacyPresent &&
             !inspection.duplicatePresent
-          ? 'exactly one managed Router Hook present'
+          ? (platform.projectHookTrustMessage ?? 'exactly one managed Router Hook present')
           : inspection.present && inspection.duplicatePresent
             ? `duplicate managed Router Hooks remain — run: comet doctor --repair --scope ${scope}`
             : inspection.present && inspection.legacyPresent
@@ -1707,7 +1707,9 @@ async function repairDoctorState(
     }
   }
 
-  let projectRouterReady = projectedProjectPlatforms.size > 0;
+  let projectRouterReady = PLATFORMS.some(
+    (platform) => projectedProjectPlatforms.has(platform.id) && !platform.projectHookTrustMessage,
+  );
 
   for (const target of hookOnlyTargets) {
     if (target.scope === 'project') {
@@ -1733,7 +1735,11 @@ async function repairDoctorState(
         `failed to repair Hook for ${target.platform.name} (${target.scope}): ${hookResult.reason}`,
       );
     }
-    if (target.scope === 'project' && hookResult.status === 'installed') {
+    if (
+      target.scope === 'project' &&
+      hookResult.status === 'installed' &&
+      !target.platform.projectHookTrustMessage
+    ) {
       projectRouterReady = true;
     }
     repaired.push(`${target.platform.name} (${target.scope}) Hook`);
@@ -1756,7 +1762,11 @@ async function repairDoctorState(
         `failed to repair Hook for ${platform.name} (${targetScope}): ${hookResult.reason}`,
       );
     }
-    if (targetScope === 'project' && hookResult.status === 'installed') {
+    if (
+      targetScope === 'project' &&
+      hookResult.status === 'installed' &&
+      !platform.projectHookTrustMessage
+    ) {
       projectRouterReady = true;
     }
   }

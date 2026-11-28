@@ -69,7 +69,9 @@ export async function reconcileProjectCometHooksForPlatform(
     workflowSelection,
   );
   if (project.status !== 'installed') return project;
-  if (path.resolve(projectRoot) === path.resolve(options.globalBaseDir)) return project;
+  const activationMessage = platform.projectHookTrustMessage;
+  const installed = activationMessage ? { ...project, reason: activationMessage } : project;
+  if (path.resolve(projectRoot) === path.resolve(options.globalBaseDir)) return installed;
 
   const globalCleanup = await removeCometHooksForPlatform(
     options.globalBaseDir,
@@ -83,5 +85,7 @@ export async function reconcileProjectCometHooksForPlatform(
       reason: `project Router installed, but failed to remove ${globalCleanup.failed} historical global Hook configuration(s)`,
     };
   }
-  return project;
+  return activationMessage && globalCleanup.removed > 0
+    ? { ...installed, reason: `Removed the legacy user-scoped Comet Hook. ${activationMessage}` }
+    : installed;
 }

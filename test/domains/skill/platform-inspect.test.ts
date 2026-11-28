@@ -255,9 +255,11 @@ describe('platform component inspection', () => {
       status: 'installed',
     });
 
-    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
-      present: true,
-    });
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toMatchObject(
+      id === 'zcode'
+        ? { present: false, managedPresent: true, activationRequired: true }
+        : { present: true },
+    );
     expect(await fs.readFile(configPath, 'utf8')).toBe(before);
   });
 
@@ -269,15 +271,22 @@ describe('platform component inspection', () => {
     });
 
     const configPath = hookConfigPath(tmpDir, 'zcode');
-    const config = JSON.parse(await fs.readFile(configPath, 'utf8')) as {
-      hooks: { enabled: boolean };
-    };
+    const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
+    config.hooks.events.PreToolUse[0].hooks[0].enabled = true;
     config.hooks.enabled = false;
     await fs.writeFile(configPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
 
     await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
       present: false,
       managedPresent: true,
+      activationRequired: true,
+      activationMessage: expect.stringContaining('Manually enable'),
+    });
+
+    config.hooks.enabled = true;
+    await fs.writeFile(configPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      present: true,
     });
   });
 

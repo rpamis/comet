@@ -1600,6 +1600,7 @@ async function updateSingleProject(
   const targetResults: SingleProjectUpdateResult['skills']['targets'] = [];
   const ruleTargetResults: SingleProjectUpdateResult['rules']['targets'] = [];
   const hookTargetResults: SingleProjectUpdateResult['hooks']['targets'] = [];
+  let projectRouterReady = false;
   for (const target of targets) {
     const baseDir = getBaseDir(target.scope, projectPath);
     const languageId = resolveTargetLanguage(options.language, target.language);
@@ -1767,6 +1768,9 @@ async function updateSingleProject(
         reason,
       });
       if (status === 'installed') {
+        if (target.scope === 'project' && !target.platform.projectHookTrustMessage) {
+          projectRouterReady = true;
+        }
         totalHooksInstalled++;
         log(`  Comet hooks -> ${target.platform.name}: ${t(lang, 'hooksUpdated')}`);
         if (reason) {
@@ -1795,15 +1799,12 @@ async function updateSingleProject(
     }
   }
 
-  const projectRouterInstalled = hookTargetResults.some(
-    (target) => target.scope === 'project' && target.status === 'installed',
-  );
   const projectHookFailed = hookTargetResults.some(
     (target) => target.scope === 'project' && target.status === 'failed',
   );
   if (
     includesProjectScope &&
-    projectRouterInstalled &&
+    projectRouterReady &&
     !projectHookFailed &&
     (projectWorkflowSelection === 'classic' || projectWorkflowSelection === 'both')
   ) {

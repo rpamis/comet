@@ -1417,13 +1417,14 @@ async function removeZcodeHooks(
 
   let removed = 0;
   const filtered = existingPreToolUse.flatMap((group) => {
-    if (!Array.isArray(group.hooks)) return [group];
+    if (!Array.isArray(group?.hooks)) return [group];
 
     const hooks = (group.hooks as Array<Record<string, unknown>>).filter((hook) => {
-      const managed = isManagedHookCommand(hook.command, scriptRelPaths, hook.args);
+      const managed = isManagedHookCommand(hook?.command, scriptRelPaths, hook?.args);
       if (managed) removed++;
       return !managed;
     });
+    if (hooks.length === group.hooks.length) return [group];
 
     if (hooks.length === 0) {
       const hasUnknownMetadata = Object.keys(group).some(
@@ -1433,6 +1434,7 @@ async function removeZcodeHooks(
     }
     return [{ ...group, hooks }];
   });
+  if (removed === 0) return { removed: 0, failed: 0 };
 
   if (filtered.length === 0) {
     delete existingEvents.PreToolUse;
