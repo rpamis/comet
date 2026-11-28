@@ -88,6 +88,18 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('JSON.stringify({ css:');
   });
 
+  it('reserves the workflow summary scrollbar gutter while allowing vertical scrolling', async () => {
+    const styles = postcss.parse(await readDashboardStyles());
+    const properties = new Map<string, string>();
+    styles.walkRules('.dashboard-summary-work-modal .dashboard-summary-details', (rule) => {
+      rule.walkDecls((decl) => {
+        properties.set(decl.prop, decl.value);
+      });
+    });
+    expect(properties.get('scrollbar-gutter')).toBe('stable');
+    expect(properties.get('overflow-y')).toBe('auto');
+  });
+
   it('cycles the phase wave through complete multi-color palettes', async () => {
     const styles = await readDashboardStyles();
 

@@ -9693,6 +9693,85 @@ body {
   max-height: 65dvh;
   overflow: auto;
 }
+.dashboard-summary-work-modal .dashboard-summary-details {
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+.dashboard-summary-work-list.ant-collapse {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-bg);
+}
+.dashboard-summary-work-list .ant-collapse-item + .ant-collapse-item {
+  border-top: 1px solid var(--color-border-soft);
+}
+.dashboard-summary-work-list .dashboard-summary-work-header {
+  align-items: center;
+  padding: 10px 14px;
+}
+.dashboard-summary-work-list .dashboard-summary-work-header:hover,
+.dashboard-summary-work-list .ant-collapse-item-active > .dashboard-summary-work-header {
+  background: var(--color-surface-warm);
+}
+.dashboard-summary-work-name {
+  min-width: 0;
+  color: var(--color-fg);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.dashboard-summary-work-count.ant-tag {
+  min-width: 28px;
+  padding: 2px 7px;
+  margin: 0;
+  border-radius: 6px;
+  background: var(--color-warn-soft);
+  color: color-mix(in oklab, var(--color-warn) 42%, var(--color-fg));
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  text-align: center;
+}
+.dashboard-summary-work-list .dashboard-summary-work-body {
+  padding: 8px 14px 10px;
+  border-top: 1px solid var(--color-border-soft);
+}
+.dashboard-summary-work-group .dashboard-summary-items {
+  padding: 0;
+  margin-bottom: 0;
+  list-style: none;
+}
+.dashboard-summary-work-group .dashboard-summary-items li + li {
+  margin-top: 1px;
+}
+.dashboard-summary-work-group .dashboard-summary-item-link {
+  display: grid;
+  width: 100%;
+  align-items: baseline;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 5px 6px;
+  border-radius: 6px;
+}
+.dashboard-summary-work-group .dashboard-summary-item-link:hover {
+  background: var(--color-accent-softer);
+}
+.dashboard-summary-work-marker {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-muted);
+  transform: translateY(-2px);
+}
+.dashboard-summary-work-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
 .dashboard-summary-items {
   padding-left: 22px;
   margin: 0 0 12px;
@@ -9703,8 +9782,98 @@ body {
 .dashboard-summary-items li + li {
   margin-top: 8px;
 }
+.dashboard-summary-work-modal .ant-modal-header,
+.dashboard-summary-git-modal .ant-modal-header {
+  margin-bottom: 16px;
+}
+.dashboard-summary-work-modal .ant-modal-footer,
+.dashboard-summary-git-modal .ant-modal-footer {
+  padding-top: 12px;
+  margin-top: 16px;
+  border-top: 1px solid var(--color-border-soft);
+}
+.dashboard-summary-git-note {
+  margin: 0 0 10px;
+  color: var(--color-fg-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.dashboard-summary-git {
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  list-style: none;
+}
+.dashboard-summary-git li {
+  display: grid;
+  align-items: center;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 9px 12px;
+  background: var(--color-bg);
+}
+.dashboard-summary-git li + li {
+  border-top: 1px solid var(--color-border-soft);
+}
+.dashboard-summary-git-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 7px;
+  background: var(--color-surface-warm);
+  color: var(--color-fg-2);
+  font-size: 14px;
+}
 .dashboard-summary-git code {
+  color: var(--color-fg-2);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+.dashboard-summary-git code strong {
+  color: var(--color-fg);
+  font-weight: 600;
+}
+.dashboard-summary-git-status.ant-tag {
+  --file-status-accent: var(--color-fg-2);
+  padding: 2px 8px;
+  margin: 0;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--file-status-accent) 12%, var(--color-bg));
+  color: color-mix(in oklab, var(--file-status-accent) 42%, var(--color-fg));
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.dashboard-summary-git-status[data-tone='changed'] {
+  --file-status-accent: var(--color-accent);
+}
+.dashboard-summary-git-status[data-tone='added'] {
+  --file-status-accent: var(--color-success);
+}
+.dashboard-summary-git-status[data-tone='removed'] {
+  --file-status-accent: var(--color-danger);
+}
+.dashboard-summary-git-status[data-tone='warning'] {
+  --file-status-accent: var(--color-warn);
+}
+
+@media (max-width: 540px) {
+  .dashboard-summary-git li {
+    align-items: start;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 5px 10px;
+  }
+  .dashboard-summary-git-status.ant-tag {
+    grid-column: 2;
+    justify-self: start;
+  }
 }
 
 .dashboard-summary-item-link {

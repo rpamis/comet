@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Collapse, Empty, Skeleton, Tag } from 'antd';
+import { ArrowRightOutlined, FileOutlined } from '@ant-design/icons';
 import { t } from './dashboard-i18n.js';
 import { useDashboardLanguage } from './dashboard-language.jsx';
 import { DashboardModal } from './dashboard-modal.jsx';
@@ -174,8 +175,8 @@ function SummaryGroup({ change, kind, loadDetail, onLocate }) {
           .filter((item) => item.result === 'pending')
           .map((item) => item.id + ' · ' + item.text);
   return (
-    <div>
-      <ul className="dashboard-summary-items">
+    <div className="dashboard-summary-work-group">
+      <ul className="dashboard-summary-items" role="list">
         {items.map((item, index) => (
           <li key={index}>
             <button
@@ -183,7 +184,8 @@ function SummaryGroup({ change, kind, loadDetail, onLocate }) {
               className="dashboard-summary-item-link"
               onClick={() => onLocate(change)}
             >
-              {item}
+              <span className="dashboard-summary-work-marker" aria-hidden="true" />
+              <span>{item}</span>
             </button>
           </li>
         ))}
@@ -191,57 +193,106 @@ function SummaryGroup({ change, kind, loadDetail, onLocate }) {
       {!items.length && (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('暂无待处理条目')} />
       )}
-      <Button type="link" onClick={() => onLocate(change)}>
-        {t('定位到变更详情')}
-      </Button>
+      <div className="dashboard-summary-work-actions">
+        <Button
+          type="link"
+          icon={<ArrowRightOutlined aria-hidden="true" />}
+          onClick={() => onLocate(change)}
+        >
+          {t('定位到变更详情')}
+        </Button>
+      </div>
     </div>
   );
 }
 
-function gitStatusLabel(status) {
-  if (!status) return '未提交';
-  if (status.includes('U') || ['AA', 'DD'].includes(status)) return '冲突';
-  if (status.includes('R')) return '重命名';
-  if (status.includes('D')) return '删除';
-  if (status === '??' || status.includes('A')) return '新增';
-  if (status.includes('C')) return '复制';
-  return '修改';
+function pendingItemCount(change, kind) {
+  return kind === 'tasks'
+    ? Math.max(0, (change.tasks?.total ?? 0) - (change.tasks?.completed ?? 0))
+    : (change.acceptance?.pending ?? 0);
+}
+
+function gitFileStatus(status) {
+  if (!status) return { label: '未提交', tone: 'neutral' };
+  if (status.includes('U') || ['AA', 'DD'].includes(status))
+    return { label: '冲突', tone: 'warning' };
+  if (status.includes('R')) return { label: '重命名', tone: 'changed' };
+  if (status.includes('D')) return { label: '删除', tone: 'removed' };
+  if (status === '??' || status.includes('A')) return { label: '新增', tone: 'added' };
+  if (status.includes('C')) return { label: '复制', tone: 'changed' };
+  return { label: '修改', tone: 'changed' };
+}
+
+function GitFileDetails({ git }) {
+  const files =
+    git?.dirtyEntries ?? (git?.dirtyFileList ?? []).map((path) => ({ path, status: null }));
+  if (git?.dirtyFiles === null) return <Empty description={t('Git 状态未知')} />;
+  if (files.length === 0) return <Empty description={t('工作区没有未提交文件')} />;
+
+  return (
+    <>
+      {git?.dirtyEntriesTruncated && (
+        <p className="dashboard-summary-git-note">
+          {t('仅显示前 {0} 项，共 {1} 个未提交文件', [files.length, git.dirtyFiles])}
+        </p>
+      )}
+      <ul className="dashboard-summary-git" role="list">
+        {files.map(({ path, status }) => {
+          const { label, tone } = gitFileStatus(status);
+          const nameStart = path.lastIndexOf('/') + 1;
+          return (
+            <li key={path}>
+              <span className="dashboard-summary-git-icon" aria-hidden="true">
+                <FileOutlined />
+              </span>
+              <code>
+                <span>{path.slice(0, nameStart)}</span>
+                <wbr />
+                <strong>{path.slice(nameStart)}</strong>
+              </code>
+              <Tag className="dashboard-summary-git-status" variant="filled" data-tone={tone}>
+                {t(label)}
+              </Tag>
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
 }
 
 export function SummaryDetails({ kind, rows, summary, git, loadDetail, onClose, onLocate }) {
   useDashboardLanguage();
-  const files =
-    git?.dirtyEntries ?? (git?.dirtyFileList ?? []).map((path) => ({ path, status: null }));
+  const isGit = kind === 'git';
+  const fileCount = git?.dirtyFiles ?? 0;
+  const itemCount =
+    !isGit && kind && summary.ready && !summary.error
+      ? rows.reduce((total, change) => total + pendingItemCount(change, kind), 0)
+      : 0;
   return (
     <DashboardModal
       open={Boolean(kind)}
       title={t(summaryLabels[kind] ?? '')}
+      subtitle={
+        isGit && fileCount > 0
+          ? fileCount === 1
+            ? t('1 个文件')
+            : t('{0} 个文件', [fileCount])
+          : itemCount > 0
+            ? itemCount === 1
+              ? t('1 项')
+              : t('{0} 项', [itemCount])
+            : undefined
+      }
       onClose={onClose}
       showFullscreen={false}
-      width={760}
-      footer={<Button onClick={onClose}>{t('关闭')}</Button>}
+      className={isGit ? 'dashboard-summary-git-modal' : 'dashboard-summary-work-modal'}
+      width={isGit ? 668 : 720}
+      footer={<Button onClick={onClose}>{t('关闭窗口')}</Button>}
     >
       <div className="dashboard-summary-details">
-        {kind === 'git' ? (
-          <>
-            {git?.dirtyEntriesTruncated && (
-              <p>{t('仅显示前 {0} 项，共 {1} 个未提交文件', [files.length, git.dirtyFiles])}</p>
-            )}
-            {git?.dirtyFiles === null ? (
-              <Empty description={t('Git 状态未知')} />
-            ) : files.length ? (
-              <ul className="dashboard-summary-items dashboard-summary-git">
-                {files.map((file, i) => (
-                  <li key={i}>
-                    <Tag>{t(gitStatusLabel(file.status))}</Tag>
-                    <code>{file.path}</code>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <Empty description={t('工作区没有未提交文件')} />
-            )}
-          </>
+        {isGit ? (
+          <GitFileDetails git={git} />
         ) : summary.loading && !summary.ready ? (
           <Skeleton active />
         ) : summary.error ? (
@@ -252,14 +303,19 @@ export function SummaryDetails({ kind, rows, summary, git, loadDetail, onClose, 
           />
         ) : rows.length ? (
           <Collapse
+            ghost
+            className="dashboard-summary-work-list"
+            classNames={{
+              header: 'dashboard-summary-work-header',
+              body: 'dashboard-summary-work-body',
+              title: 'dashboard-summary-work-name',
+            }}
             items={rows.map((change) => ({
               key: change.locator ?? change.id ?? change.name,
               label: change.displayName ?? change.name,
               extra: (
-                <Tag>
-                  {kind === 'tasks'
-                    ? Math.max(0, (change.tasks?.total ?? 0) - (change.tasks?.completed ?? 0))
-                    : (change.acceptance?.pending ?? 0)}
+                <Tag variant="filled" className="dashboard-summary-work-count">
+                  {pendingItemCount(change, kind)}
                 </Tag>
               ),
               children: (

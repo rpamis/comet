@@ -475,6 +475,12 @@ function addCometArtifacts(change) {
   return change;
 }
 
+const demoGitChanges = [
+  { path: 'domains/dashboard/web/index.html', status: ' M' },
+  { path: 'domains/dashboard/web/styles.css', status: ' M' },
+  { path: 'domains/dashboard/collector.ts', status: '??' },
+];
+
 /** @type {import('./types.js').DashboardSnapshot} */
 export const DEMO_SNAPSHOT = {
   project: {
@@ -487,17 +493,14 @@ export const DEMO_SNAPSHOT = {
     archivedChanges: 3,
     verifyFailed: 1,
     tasksIncomplete: 15,
-    dirtyFiles: 3,
+    dirtyFiles: demoGitChanges.length,
   },
   git: {
     branch: 'feat/dashboard-redesign',
     head: '8f3a2c1',
-    dirtyFiles: 3,
-    dirtyFileList: [
-      'domains/dashboard/web/index.html',
-      'domains/dashboard/web/styles.css',
-      'domains/dashboard/collector.ts',
-    ],
+    dirtyFiles: demoGitChanges.length,
+    dirtyFileList: demoGitChanges.map(({ path }) => path),
+    dirtyEntries: demoGitChanges,
     // recentCommits is a string[] in the contract; the frontend formats these.
     recentCommits: [
       '8f3a2c1 重构 dashboard 采集逻辑',

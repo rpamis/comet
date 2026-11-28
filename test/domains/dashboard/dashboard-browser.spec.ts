@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { chromium, expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -5918,7 +5918,7 @@ test('keeps Classic and Native overview metrics visually aligned and selectable'
   await classicCards.nth(3).click();
   await expect(classicCards.nth(3)).toHaveClass(/dashboard-summary-primary/);
   await expect(classicCards.first()).not.toHaveClass(/dashboard-summary-primary/);
-  const pendingDialog = page.getByRole('dialog', { name: '未完成任务', exact: true });
+  const pendingDialog = page.getByRole('dialog', { name: /^未完成任务/u });
   await expect(pendingDialog).toBeVisible();
   await pendingDialog.getByRole('button', { name: /关.*闭/ }).click();
   await expect(pendingDialog).toBeHidden();
@@ -8421,6 +8421,148 @@ test('explains external memory and knowledge service fields before saving', asyn
   }
 });
 
+for (const width of [1600, 1280, 390]) {
+  test(`Git file details keep paths readable at ${width}px`, async ({ page }, testInfo) => {
+    const { DEMO_SNAPSHOT } = await import('../../../domains/dashboard/web/demo.js');
+    const mobile = width === 390;
+    const firstPath = mobile
+      ? 'domains/dashboard/web/src/' + 'workspace-settings-'.repeat(5) + 'collector.ts'
+      : 'domains/dashboard/web/src/workflow-summary.jsx';
+    const dirtyEntries = [
+      { path: firstPath, status: ' M' },
+      { path: 'test/domains/dashboard/dashboard-browser.spec.ts', status: '??' },
+      { path: 'domains/dashboard/web/styles.css', status: ' D' },
+      ...(mobile
+        ? Array.from({ length: 16 }, (_, index) => ({
+            path: 'docs/architecture/change-' + (index + 1) + '.md',
+            status: 'R ',
+          }))
+        : []),
+    ];
+    const dirtyFiles = dirtyEntries.length + (mobile ? 4 : 0);
+    await page.setViewportSize({ width, height: mobile ? 780 : 960 });
+    if (mobile) {
+      await page.addInitScript(() => {
+        localStorage.setItem('comet-theme', 'dark');
+        localStorage.setItem('comet-dashboard-language', 'en');
+        localStorage.setItem('comet-dashboard-font-scale', '125');
+      });
+    }
+    const { changes, ...overview } = DEMO_SNAPSHOT;
+    await page.route('**/api/dashboard/**', async (route) => {
+      const { pathname } = new URL(route.request().url());
+      if (pathname.endsWith('/projects'))
+        return route.fulfill({
+          json: {
+            currentProjectId: 'fixture',
+            projects: [
+              {
+                id: 'fixture',
+                name: 'Comet',
+                path: '/fixture/comet',
+                availability: 'available',
+                isCurrent: true,
+                workflowSource: 'configured',
+                defaultWorkflow: 'classic',
+              },
+            ],
+          },
+        });
+      if (pathname.endsWith('/overview'))
+        return route.fulfill({
+          json: {
+            ...overview,
+            summary: { ...overview.summary, activeChanges: 0, dirtyFiles },
+            git: { ...overview.git, dirtyFiles, dirtyEntries, dirtyEntriesTruncated: mobile },
+            initialChanges: { items: [], total: 0, status: 'active', nextCursor: null },
+          },
+        });
+      if (pathname.endsWith('/changes') || pathname.endsWith('/change-summary'))
+        return route.fulfill({ json: { items: changes.active, total: changes.active.length } });
+      return route.fulfill({ json: { pages: [] } });
+    });
+    await page.goto('/');
+    await page
+      .getByRole('button', { name: mobile ? /Uncommitted Git changes/i : /^Git 未提交/ })
+      .click();
+    const dialog = page.getByRole('dialog', {
+      name: mobile ? /^Uncommitted Git changes/i : /^Git 未提交/,
+    });
+    await expect(dialog.getByText(mobile ? '23 files' : '3 个文件', { exact: true })).toBeVisible();
+    const rows = dialog.getByRole('listitem');
+    await expect(rows).toHaveCount(dirtyEntries.length);
+    const path = rows.first().locator('code');
+    await expect(path).toHaveText(firstPath);
+    await expect(path).toHaveCSS('font-size', mobile ? '17.5px' : '14px');
+    await expect(path.locator('strong')).toHaveText(firstPath.split('/').at(-1)!);
+    await expect(rows.first()).toContainText(mobile ? 'Modified' : '修改');
+    await expect(rows.nth(1)).toContainText(mobile ? 'Added' : '新增');
+    await expect(rows.nth(2)).toContainText(mobile ? 'Deleted' : '删除');
+    expect(await path.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(
+      true,
+    );
+    if (mobile) {
+      expect((await path.boundingBox())?.width ?? 0).toBeGreaterThan(200);
+      await expect(dialog.getByText('Showing the first 19 of 23 uncommitted files')).toBeVisible();
+      await rows.last().scrollIntoViewIfNeeded();
+      await expect(rows.last()).toBeInViewport();
+      await expect(dialog.getByRole('button', { name: 'Close', exact: true })).toBeInViewport();
+      await rows.first().scrollIntoViewIfNeeded();
+    }
+    await dialog.screenshot({
+      path: testInfo.outputPath('git-file-details.png'),
+      animations: 'disabled',
+    });
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+  });
+}
+
+test('keeps the task list and Dashboard width stable when expansion adds scrolling', async ({
+  baseURL,
+}, testInfo) => {
+  const browser = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });
+  try {
+    const page = await browser.newPage({ baseURL });
+    await page.setViewportSize({ width: 1600, height: 1000 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('/?demo');
+    await page.getByRole('button', { name: /^未完成任务/u }).click();
+    const dialog = page.getByRole('dialog', { name: /^未完成任务/u });
+    const list = dialog.locator('.dashboard-summary-details');
+    const groups = dialog.locator('.ant-collapse-header');
+    const readLayout = () =>
+      list.evaluate((region) => ({
+        availableWidth: region.clientWidth,
+        headingWidth: region.querySelector<HTMLElement>('.ant-collapse-header')!.offsetWidth,
+        workbenchWidth: document.querySelector<HTMLElement>('.dashboard-workbench')!.offsetWidth,
+        overflowing: region.scrollHeight > region.clientHeight,
+      }));
+
+    await expect(groups).toHaveCount(12);
+    const collapsed = await readLayout();
+    expect(collapsed.overflowing).toBe(false);
+    await groups.first().click();
+    await expect(dialog.locator('.dashboard-summary-item-link').first()).toBeVisible();
+    await expect.poll(async () => (await readLayout()).overflowing).toBe(true);
+    const expanded = await readLayout();
+    expect(expanded.availableWidth).toBe(collapsed.availableWidth);
+    expect(expanded.headingWidth).toBe(collapsed.headingWidth);
+    expect(expanded.workbenchWidth).toBe(collapsed.workbenchWidth);
+    await expect(dialog.getByRole('button', { name: /关.*闭/u })).toBeInViewport();
+    await dialog.screenshot({
+      path: testInfo.outputPath('workflow-summary-expanded.png'),
+      animations: 'disabled',
+    });
+
+    await groups.first().click();
+    await expect.poll(async () => (await readLayout()).overflowing).toBe(false);
+    expect((await readLayout()).availableWidth).toBe(collapsed.availableWidth);
+  } finally {
+    await browser.close();
+  }
+});
+
 test('workflow summary cards filter changes, open pending items and respect dark hover', async ({
   page,
 }) => {
@@ -8442,14 +8584,14 @@ test('workflow summary cards filter changes, open pending items and respect dark
   await page.getByRole('button', { name: '清除筛选', exact: true }).click();
   await expect(page.locator('.dashboard-summary-filter')).toHaveCount(0);
   await cards.getByRole('button', { name: /未完成任务/ }).click();
-  let dialog = page.getByRole('dialog', { name: '未完成任务', exact: true });
+  let dialog = page.getByRole('dialog', { name: /^未完成任务/u });
   await expect(dialog).toBeVisible();
   await dialog.locator('.ant-collapse-header').first().click();
   await expect(dialog.locator('.dashboard-summary-items li').first()).toBeVisible();
   await dialog.locator('.dashboard-summary-item-link').first().click();
   await expect(dialog).toBeHidden();
   await cards.getByRole('button', { name: /Git 未提交/ }).click();
-  dialog = page.getByRole('dialog', { name: 'Git 未提交', exact: true });
+  dialog = page.getByRole('dialog', { name: /^Git 未提交/u });
   await expect(dialog.locator('.dashboard-summary-git li')).toHaveCount(3);
   await dialog.getByRole('button', { name: /关.*闭/ }).click();
   await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
@@ -8458,7 +8600,7 @@ test('workflow summary cards filter changes, open pending items and respect dark
   await cards.getByRole('button', { name: /正在执行/ }).click();
   await expect(page.locator('.dashboard-summary-filter')).toHaveCount(0);
   await cards.getByRole('button', { name: /待验收项/ }).click();
-  dialog = page.getByRole('dialog', { name: '待验收项', exact: true });
+  dialog = page.getByRole('dialog', { name: /^待验收项/u });
   await expect(dialog).toBeVisible();
   const pendingGroup = dialog.locator('.ant-collapse-header').last();
   const targetName = await pendingGroup.evaluate((element) => {

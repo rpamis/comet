@@ -6,11 +6,13 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Dashboard Git changes**: See the file count, paths, and Git statuses in a compact list that wraps long paths on narrow screens.
 - **Dashboard startup**: Load the current workspace first, then fill in Classic archive counts. Open Any, Eval, and plugin pages independently and load settings when needed ([#601](https://github.com/rpamis/comet/issues/601)).
 - **Native Shape confirmation**: Confirm an ordinary Native SDK Shape without waiting for automatic context retrieval or completion learning based on the approval note. Explicit task context remains available.
 
 ### Fixed
 
+- **Dashboard task summaries**: Keep the task and acceptance lists aligned when expanding a change makes the dialog scroll. The dialog shows a total and a clearer breakdown by change.
 - **DSH plugin updates**: Install and update Comet on DSH 0.2.2-rc.1 and later without exact DSH dependency pins. Session rules and write checks run through the installed DSH's plugin events ([#600](https://github.com/rpamis/comet/issues/600)).
 - **OpenSpec installation**: Install Classic Skills in the selected global or project directory with OpenSpec 2.1 and later. Project installs keep their Skills local, and global installs no longer try to initialize the home directory as a project ([#594](https://github.com/rpamis/comet/issues/594)).
 - **Classic resume discovery**: Completed historical SDK archives without a delivery record no longer block resuming the only active Classic change. Pending deliveries still appear in recovery ([#593](https://github.com/rpamis/comet/issues/593)).

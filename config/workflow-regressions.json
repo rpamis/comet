@@ -2,6 +2,35 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "dashboard-summary-expansion-stable-width",
+      "behavior": "展开未完成任务或待验收项分组后，新增的纵向滚动条不改变列表行的可用宽度。",
+      "sources": ["report:2026-11-28-dashboard-summary-scrollbar-shift"],
+      "coverageLevel": "unit",
+      "reproduction": "Windows Chromium 1600×1000，启用可见滚动条。在 npm 0.5.7 和当前 058 修改前的 Dashboard 演示打开未完成任务，再展开第一组，列表可用宽度从 712px 变为 704px。同一行为在 comet-introduce 首页演示复现。",
+      "expected": "展开或收起使列表跨过可滚动阈值时，列表行和外层工作台的宽度保持稳定。展开项仍可以滚动并定位到变更详情。",
+      "forbidden": "随着纵向滚动条出现临时挤窄列表，或隐藏容器溢出的任务和关闭按钮。",
+      "rootCause": "弹窗列表用 overflow:auto，展开跨过最大高度时滚动条首次占用横向空间。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/web-source.test.ts",
+          "namePattern": "^dashboard web source contracts reserves the workflow summary scrollbar gutter while allowing vertical scrolling$",
+          "requiredNames": [
+            "dashboard web source contracts reserves the workflow summary scrollbar gutter while allowing vertical scrolling"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "browser",
+          "status": "verified",
+          "evidence": [
+            "test/domains/dashboard/dashboard-browser.spec.ts > keeps the task list and Dashboard width stable when expansion adds scrolling. Windows Chromium with visible scrollbars reproduced 712px → 704px before the fix. The updated build asserts unchanged list and workbench widths through expand and collapse, vertical scrolling, and a visible close action.",
+            "test/domains/dashboard/dashboard-browser.spec.ts > workflow summary cards filter changes, open pending items and respect dark hover. Verified the Classic task link and Native acceptance detail action still locate the selected change."
+          ]
+        }
+      ]
+    },
+    {
       "id": "dashboard-601-native-scoped-overview",
       "behavior": "首次打开 Native 工作台时，Native 总览不读取同一项目的 Classic 变更目录。",
       "sources": ["https://github.com/rpamis/comet/issues/601"],
