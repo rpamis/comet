@@ -1,0 +1,412 @@
+diff --git a/test/app/doctor-zcode-global.test.ts b/test/app/doctor-zcode-global.test.ts
+index e77d4aa0..206e2ee3 100644
+--- a/test/app/doctor-zcode-global.test.ts
++++ b/test/app/doctor-zcode-global.test.ts
+@@ -3,19 +3,14 @@ import { spawnSync } from 'node:child_process';
+ import os from 'node:os';
+ import path from 'node:path';
+ import { expect, it } from 'vitest';
+-import {
+-  copyCometSkillsForPlatform,
+-  installCometHooksForPlatform,
+-} from '../../domains/skill/platform-install.js';
++import { copyCometSkillsForPlatform } from '../../domains/skill/platform-install.js';
+ import { PLATFORMS } from '../../platform/install/platforms.js';
++import { writeLegacyZcodeUserHook } from '../helpers/zcode-hook-config.js';
+
+-it('keeps a valid ZCode global Hook healthy through public doctor repair and repairs disabled or duplicate Hooks', async () => {
++it('reports and removes old ZCode user Routers through public doctor without touching user Hooks', async () => {
+   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-doctor-zcode-'));
+   try {
+     const platform = PLATFORMS.find((item) => item.id === 'zcode')!;
+-    await copyCometSkillsForPlatform(home, platform, true, 'skills', 'global', 'copy', 'native');
+-    await installCometHooksForPlatform(home, platform, 'global', 'native');
+-    const file = path.join(home, '.zcode/cli/config.json');
+     const doctor = (repair = false) => {
+       const result = spawnSync(
+         process.execPath,
+@@ -40,21 +35,45 @@ it('keeps a valid ZCode global Hook healthy through public doctor repair and rep
+         },
+       );
+       expect(result.status, result.stderr + result.stdout).toBe(0);
+-      return JSON.parse(result.stdout).results.find(
++      return JSON.parse(result.stdout);
++    };
++    const globalHook = (repair = false) =>
++      doctor(repair).results.find(
+         (item: { check: string }) => item.check === 'hooks: ZCode (global)',
+       );
+-    };
+-    expect(doctor()).toMatchObject({ status: 'pass' });
+-    expect(doctor(true)).toMatchObject({ status: 'pass' });
+-    for (const defect of ['disabled', 'duplicate']) {
+-      const config = JSON.parse(await fs.readFile(file, 'utf8'));
+-      config.team = { keep: true };
+-      if (defect === 'disabled') config.hooks.enabled = false;
+-      else config.hooks.events.PreToolUse.push(structuredClone(config.hooks.events.PreToolUse[0]));
+-      await fs.writeFile(file, JSON.stringify(config));
+-      expect(doctor()).toMatchObject({ status: 'warn' });
+-      expect(doctor(true)).toMatchObject({ status: 'pass' });
+-      expect(JSON.parse(await fs.readFile(file, 'utf8')).team).toEqual({ keep: true });
++
++    const hookOnly = await writeLegacyZcodeUserHook(home);
++    expect(doctor(true).repaired).toContain('ZCode (global) Hook');
++    expect(JSON.parse(await fs.readFile(hookOnly.configPath, 'utf8'))).toEqual(
++      hookOnly.userSettings,
++    );
++
++    await copyCometSkillsForPlatform(home, platform, true, 'skills', 'global', 'copy', 'native');
++    expect
++      .soft(globalHook())
++      .toMatchObject({ status: 'pass', message: 'no global blocking Hook present' });
++    for (const state of ['enabled', 'disabled', 'duplicate']) {
++      const { configPath, legacySettings, userSettings } = await writeLegacyZcodeUserHook(home);
++      if (state === 'disabled') {
++        legacySettings.hooks.enabled = false;
++        userSettings.hooks.enabled = false;
++      } else if (state === 'duplicate') {
++        legacySettings.hooks.events.PreToolUse[0].hooks.push(
++          legacySettings.hooks.events.PreToolUse[0].hooks[1],
++        );
++      }
++      const original = JSON.stringify(legacySettings);
++      await fs.writeFile(configPath, original);
++      expect(globalHook()).toMatchObject({
++        status: 'warn',
++        message: expect.stringContaining('remains'),
++      });
++      await expect(fs.readFile(configPath, 'utf8')).resolves.toBe(original);
++      expect(globalHook(true)).toMatchObject({
++        status: 'pass',
++        message: 'no global blocking Hook present',
++      });
++      expect(JSON.parse(await fs.readFile(configPath, 'utf8'))).toEqual(userSettings);
+     }
+   } finally {
+     await fs.rm(home, { recursive: true, force: true });
+diff --git a/test/app/doctor.test.ts b/test/app/doctor.test.ts
+index e5e29370..28a30e18 100644
+--- a/test/app/doctor.test.ts
++++ b/test/app/doctor.test.ts
+@@ -1,4 +1,5 @@
+ import { readNodeHookArguments } from '../../platform/process/hook-command.js';
++import { writeLegacyZcodeUserHook } from '../helpers/zcode-hook-config.js';
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+ import { createHash } from 'crypto';
+ import { spawnSync } from 'child_process';
+@@ -130,38 +131,6 @@ async function collectDoctorResults(
+   return (await collectDoctorPayload(targetPath, scope)).results;
+ }
+
+-it('accepts a valid ZCode user Hook before and after global repair while diagnosing disabled Hooks', async () => {
+-  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'doctor-zcode-global-'));
+-  const platform = PLATFORMS.find((item) => item.id === 'zcode')!;
+-  try {
+-    await installManagedCometSkills(home, '.zcode');
+-    await installCometHooksForPlatform(home, platform, 'global', 'native');
+-    const hook = (payload: DoctorPayload) =>
+-      payload.results.find((item) => item.check === 'hooks: ZCode (global)');
+-    expect(hook(await collectDoctorPayload(home, 'global', home))).toMatchObject({
+-      status: 'pass',
+-    });
+-    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+-    try {
+-      await doctorCommand(home, { json: true, repair: true, scope: 'global', homeDir: home });
+-    } finally {
+-      log.mockRestore();
+-    }
+-    expect(hook(await collectDoctorPayload(home, 'global', home))).toMatchObject({
+-      status: 'pass',
+-    });
+-    const file = path.join(home, '.zcode/cli/config.json');
+-    const config = JSON.parse(await fs.readFile(file, 'utf8'));
+-    config.hooks.enabled = false;
+-    await fs.writeFile(file, JSON.stringify(config));
+-    expect(hook(await collectDoctorPayload(home, 'global', home))).toMatchObject({
+-      status: 'warn',
+-    });
+-  } finally {
+-    await fs.rm(home, { recursive: true, force: true });
+-  }
+-});
+-
+ function sha256(value: string): string {
+   return createHash('sha256').update(value).digest('hex');
+ }
+@@ -1888,40 +1857,39 @@ describe('doctor command', () => {
+     await expect(readCometCurrentSelection(tmpDir)).resolves.toEqual({ status: 'missing' });
+   });
+
+-  it.each([true, false])(
+-    'repairs a ZCode project selection only with a ready user Router (ready=%s)',
+-    async (ready) => {
+-      const platform = PLATFORMS.find((item) => item.id === 'zcode')!;
+-      const home = path.join(tmpDir, 'home');
+-      await installManagedCometSkills(tmpDir, '.zcode');
+-      await writeProjectConfig(tmpDir, defaultProjectConfig('.'));
+-      if (ready) {
+-        await copyCometSkillsForPlatform(
+-          home,
+-          platform,
+-          true,
+-          'skills',
+-          'global',
+-          'copy',
+-          'native',
+-        );
+-        await installCometHooksForPlatform(home, platform, 'global', 'native');
+-      }
+-      await writeCometCurrentSelection(tmpDir, {
+-        schema: 'comet.selection.v2',
+-        workflow: 'native',
+-        change: 'missing-change',
+-        branch: null,
+-      });
+-      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+-      try {
+-        await doctorCommand(tmpDir, { json: true, repair: true, scope: 'project', homeDir: home });
+-      } finally {
+-        log.mockRestore();
+-      }
+-      expect((await readCometCurrentSelection(tmpDir)).status).toBe(ready ? 'missing' : 'selected');
+-    },
+-  );
++  it('repairs the ZCode project Router without clearing selection while trust is unverified', async () => {
++    const home = path.join(tmpDir, 'home');
++    await installManagedCometSkills(tmpDir, '.zcode');
++    await writeProjectConfig(tmpDir, defaultProjectConfig('.'));
++    const { configPath, userSettings } = await writeLegacyZcodeUserHook(home);
++    await writeCometCurrentSelection(tmpDir, {
++      schema: 'comet.selection.v2',
++      workflow: 'native',
++      change: 'missing-change',
++      branch: null,
++    });
++    const repair = () =>
++      doctorCommand(tmpDir, { json: true, repair: true, scope: 'project', homeDir: home });
++    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
++    try {
++      await repair();
++      expect((await readCometCurrentSelection(tmpDir)).status).toBe('selected');
++      const projectConfigPath = path.join(tmpDir, '.zcode/config.json');
++      const config = JSON.parse(await fs.readFile(projectConfigPath, 'utf8'));
++      const router = config.hooks.events.PreToolUse[0].hooks[0];
++      expect(config.hooks).not.toHaveProperty('enabled');
++      expect(router).toMatchObject({ args: expect.arrayContaining([tmpDir]), enabled: false });
++      expect(JSON.parse(await fs.readFile(configPath, 'utf8'))).toEqual(userSettings);
++
++      config.hooks.enabled = true;
++      router.enabled = true;
++      await fs.writeFile(projectConfigPath, JSON.stringify(config));
++      await repair();
++      expect((await readCometCurrentSelection(tmpDir)).status).toBe('selected');
++    } finally {
++      log.mockRestore();
++    }
++  });
+
+   it('reports a Hook JSON parse failure without rewriting the canonical config', async () => {
+     const hookPath = path.join(tmpDir, '.claude', 'settings.local.json');
+diff --git a/test/app/update-user-content.test.ts b/test/app/update-user-content.test.ts
+index f7a7fade..77b966ef 100644
+--- a/test/app/update-user-content.test.ts
++++ b/test/app/update-user-content.test.ts
+@@ -7,12 +7,10 @@ import {
+   defaultProjectConfig,
+   writeProjectConfig,
+ } from '../../domains/comet-native/native-config.js';
+-import {
+-  copyCometSkillsForPlatform,
+-  installCometHooksForPlatform,
+-} from '../../domains/skill/platform-install.js';
++import { copyCometSkillsForPlatform } from '../../domains/skill/platform-install.js';
+ import { PLATFORMS } from '../../platform/install/platforms.js';
+ import { renderCometProjectGitignore } from '../../domains/workflow-contract/project-gitignore.js';
++import { writeLegacyZcodeUserHook } from '../helpers/zcode-hook-config.js';
+
+ it('preserves custom ignore rules and YAML comments through repeated public project updates', async () => {
+   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-update-user-content-'));
+@@ -30,9 +28,9 @@ it('preserves custom ignore rules and YAML comments through repeated public proj
+       'copy',
+       'native',
+     );
+-    await installCometHooksForPlatform(home, platform, 'global', 'native');
+-    const globalHookFile = path.join(home, '.zcode/cli/config.json');
+-    const globalHookSource = await fs.readFile(globalHookFile, 'utf8');
++    await copyCometSkillsForPlatform(home, platform, true, 'skills-zh', 'global', 'copy', 'native');
++    const { configPath: globalHookFile, userSettings } = await writeLegacyZcodeUserHook(home);
++    const projectHookFile = path.join(root, '.zcode/config.json');
+     const file = path.join(root, '.comet/config.yaml');
+     await fs.appendFile(
+       file,
+@@ -80,10 +78,15 @@ it('preserves custom ignore rules and YAML comments through repeated public proj
+       expect(source).toContain('Team configuration note');
+       expect(source).toContain('Inline extension note');
+       expect(source).toContain('team_extension: keep');
+-      expect(await fs.readFile(globalHookFile, 'utf8')).toBe(globalHookSource);
+-      await expect(fs.access(path.join(root, '.zcode/config.json'))).rejects.toMatchObject({
+-        code: 'ENOENT',
+-      });
++      expect(JSON.parse(await fs.readFile(globalHookFile, 'utf8'))).toEqual(userSettings);
++      const projectConfig = JSON.parse(await fs.readFile(projectHookFile, 'utf8'));
++      expect(projectConfig.hooks).not.toHaveProperty('enabled');
++      expect(projectConfig.hooks.events.PreToolUse[0].hooks).toEqual([
++        expect.objectContaining({
++          enabled: false,
++          args: expect.arrayContaining(['--project-root', root]),
++        }),
++      ]);
+     }
+   } finally {
+     await fs.rm(root, { recursive: true, force: true });
+diff --git a/test/domains/skill/skills.test.ts b/test/domains/skill/skills.test.ts
+index dc481354..369ce777 100644
+--- a/test/domains/skill/skills.test.ts
++++ b/test/domains/skill/skills.test.ts
+@@ -3,6 +3,7 @@ import {
+   readNodeHookArguments,
+ } from '../../../platform/process/hook-command.js';
+ import { readSkillWithCompat } from '../../helpers/skill-content.js';
++import { writeLegacyZcodeUserHook } from '../../helpers/zcode-hook-config.js';
+ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+ import { spawnSync } from 'child_process';
+ import { promises as fs } from 'fs';
+@@ -1496,24 +1497,21 @@ describe('skills', () => {
+       expect(updated.hooks.PreToolUse[1]).toEqual({ matcher: 'Write|Edit', hooks: [] });
+     });
+
+-    it('preserves the ZCode user Hook when reconciling a project that cannot execute project Hooks', async () => {
++    it('preserves a legacy ZCode user Router if its project replacement cannot be installed', async () => {
+       const platform = PLATFORMS.find((item) => item.id === 'zcode')!;
+       const home = path.join(tmpDir, 'home');
+       const project = path.join(tmpDir, 'project');
+-      await installCometHooksForPlatform(home, platform, 'global', 'native');
+-      const file = path.join(home, '.zcode/cli/config.json');
+-      const source = await fs.readFile(file, 'utf8');
+-      const result = await reconcileProjectCometHooksForPlatform(project, platform, 'native', {
+-        globalBaseDir: home,
+-      });
+-      expect(await fs.readFile(file, 'utf8')).toBe(source);
+-      expect(result).toMatchObject({
+-        status: 'skipped',
+-        reason: expect.stringContaining('--scope global'),
+-      });
+-      await expect(fs.access(path.join(project, '.zcode/config.json'))).rejects.toMatchObject({
+-        code: 'ENOENT',
+-      });
++      const projectConfig = path.join(project, '.zcode', 'config.json');
++      const { configPath } = await writeLegacyZcodeUserHook(home);
++      const source = await fs.readFile(configPath, 'utf8');
++      const reconcile = () =>
++        reconcileProjectCometHooksForPlatform(project, platform, 'native', { globalBaseDir: home });
++
++      await fs.mkdir(path.dirname(projectConfig), { recursive: true });
++      await fs.writeFile(projectConfig, '{');
++      await expect(reconcile()).resolves.toMatchObject({ status: 'failed' });
++      await expect(fs.readFile(configPath, 'utf8')).resolves.toBe(source);
++      await expect(fs.readFile(projectConfig, 'utf8')).resolves.toBe('{');
+     });
+
+     it('installs a project Router and removes the historical global Router atomically', async () => {
+@@ -2195,7 +2193,7 @@ describe('skills', () => {
+       });
+     });
+
+-    it('writes ZCode project hooks to .zcode/config.json under enabled events', async () => {
++    it('writes a disabled ZCode project Hook without enabling existing events', async () => {
+       const platform = PLATFORMS.find((candidate) => candidate.id === 'zcode')!;
+       const configPath = path.join(tmpDir, '.zcode', 'config.json');
+       const initialConfig = {
+@@ -2251,7 +2249,7 @@ describe('skills', () => {
+       const firstInstall = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+
+       expect(firstInstall.mcp).toEqual(initialConfig.mcp);
+-      expect(firstInstall.hooks.enabled).toBe(true);
++      expect(firstInstall.hooks.enabled).toBe(false);
+       expect(firstInstall.hooks.timeoutMs).toBe(30000);
+       expect(firstInstall.hooks.events.Stop).toEqual(initialConfig.hooks.events.Stop);
+       expect(firstInstall.hooks.events.PreToolUse).toEqual([
+@@ -2275,6 +2273,7 @@ describe('skills', () => {
+                 tmpDir,
+               ],
+               timeoutMs: 60000,
++              enabled: false,
+             },
+           ],
+         },
+@@ -2296,50 +2295,27 @@ describe('skills', () => {
+       expect(secondInstall).toEqual(firstInstall);
+     });
+
+-    it('writes ZCode global hooks to the user CLI config directory', async () => {
++    it('cleans a legacy ZCode Router from the user CLI config without rewriting user-only Hooks', async () => {
+       const platform = PLATFORMS.find((candidate) => candidate.id === 'zcode')!;
+-      const globalRoot = path.join(tmpDir, 'home');
+-      const configPath = path.join(globalRoot, '.zcode', 'cli', 'config.json');
++      const home = path.join(tmpDir, 'home');
++      const { configPath, userSettings } = await writeLegacyZcodeUserHook(home);
+
+-      await configureNativeBuildChange(tmpDir);
+-      await copyCometSkillsForPlatform(globalRoot, platform, false, 'skills', 'global');
+-      await expect(installCometHooksForPlatform(globalRoot, platform, 'global')).resolves.toEqual({
+-        status: 'installed',
++      await expect(installCometHooksForPlatform(home, platform, 'global')).resolves.toMatchObject({
++        status: 'skipped',
+       });
++      await expect(reconcileCometHooksForPlatform(home, platform, 'global')).resolves.toEqual({
++        status: 'skipped',
++        reason: 'blocking Hooks are project-scoped; removed 1 legacy global Hook',
++      });
++      expect(JSON.parse(await fs.readFile(configPath, 'utf-8'))).toEqual(userSettings);
+
+-      const config = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+-      expect(config.hooks.enabled).toBe(true);
+-      expect(config.hooks.events.PreToolUse).toEqual([
+-        {
+-          matcher: 'Write|Edit',
+-          hooks: [
+-            {
+-              type: 'process',
+-              command: 'node',
+-              args: [
+-                path.join(
+-                  globalRoot,
+-                  '.zcode',
+-                  'skills',
+-                  'comet',
+-                  'scripts',
+-                  'comet-hook-router.mjs',
+-                ),
+-                '--platform',
+-                'zcode',
+-              ],
+-              timeoutMs: 60000,
+-            },
+-          ],
+-        },
+-      ]);
+-
+-      await expect(removeCometHooksForPlatform(globalRoot, platform, 'global')).resolves.toEqual({
+-        removed: 1,
+-        failed: 0,
++      const source = JSON.stringify(userSettings);
++      await fs.writeFile(configPath, source);
++      await expect(reconcileCometHooksForPlatform(home, platform, 'global')).resolves.toEqual({
++        status: 'skipped',
++        reason: 'blocking Hooks are project-scoped',
+       });
+-      const cleanedConfig = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+-      expect(cleanedConfig.hooks).toEqual({ enabled: true });
++      await expect(fs.readFile(configPath, 'utf-8')).resolves.toBe(source);
+     });
+
+     it('writes and removes ZCode project hooks while preserving unrelated config', async () => {
+@@ -2372,7 +2348,7 @@ describe('skills', () => {
+       const cleaned = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+       expect(cleaned.mcp).toEqual(initialConfig.mcp);
+       expect(cleaned.hooks.events.PreToolUse).toEqual(initialConfig.hooks.events.PreToolUse);
+-      expect(cleaned.hooks.enabled).toBe(true);
++      expect(cleaned.hooks).not.toHaveProperty('enabled');
+     });
+
+     it('leaves invalid ZCode config byte-for-byte unchanged', async () => {

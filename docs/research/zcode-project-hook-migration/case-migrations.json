@@ -1,0 +1,71 @@
+{
+  "cases": [
+    {
+      "id": "issue-438-zcode-hook",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-27-zcode-align-claude-hook-scope",
+      "record": "docs/research/zcode-project-hook-migration/README.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/skill/skills.test.ts",
+          "namePattern": "^skills installCometHooksForPlatform writes and removes ZCode project hooks while preserving unrelated config$|^skills installCometHooksForPlatform cleans a legacy ZCode Router from the user CLI config without rewriting user-only Hooks$",
+          "requiredNames": [
+            "skills installCometHooksForPlatform writes and removes ZCode project hooks while preserving unrelated config",
+            "skills installCometHooksForPlatform cleans a legacy ZCode Router from the user CLI config without rewriting user-only Hooks"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-541-global-hook-diagnosis",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-27-zcode-align-claude-hook-scope",
+      "record": "docs/research/zcode-project-hook-migration/README.zh.md",
+      "tests": [
+        {
+          "file": "test/app/doctor-zcode-global.test.ts",
+          "namePattern": "^reports and removes old ZCode user Routers through public doctor without touching user Hooks$",
+          "requiredNames": [
+            "reports and removes old ZCode user Routers through public doctor without touching user Hooks"
+          ]
+        },
+        {
+          "file": "test/app/zcode-project-hooks.test.ts",
+          "namePattern": "^installs, repairs, updates and uninstalls a ZCode project Router through the public CLI$",
+          "requiredNames": [
+            "installs, repairs, updates and uninstalls a ZCode project Router through the public CLI"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-541-project-preserves-user-hook",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-27-zcode-align-claude-hook-scope",
+      "record": "docs/research/zcode-project-hook-migration/README.zh.md",
+      "tests": [
+        {
+          "file": "test/app/update-user-content.test.ts",
+          "namePattern": "^preserves custom ignore rules and YAML comments through repeated public project updates$",
+          "requiredNames": [
+            "preserves custom ignore rules and YAML comments through repeated public project updates"
+          ]
+        },
+        {
+          "file": "test/app/doctor.test.ts",
+          "namePattern": "^doctor command repairs the ZCode project Router without clearing selection while trust is unverified$",
+          "requiredNames": [
+            "doctor command repairs the ZCode project Router without clearing selection while trust is unverified"
+          ]
+        },
+        {
+          "file": "test/domains/skill/skills.test.ts",
+          "namePattern": "^skills installCometHooksForPlatform preserves a legacy ZCode user Router if its project replacement cannot be installed$",
+          "requiredNames": [
+            "skills installCometHooksForPlatform preserves a legacy ZCode user Router if its project replacement cannot be installed"
+          ]
+        }
+      ]
+    }
+  ]
+}

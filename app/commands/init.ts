@@ -30,6 +30,8 @@ import {
   copyCometRulesForPlatform,
   createWorkingDirs,
   prepareNativeSkillInstallTarget,
+  inspectZcodeProjectConfigPath,
+  type HookInstallResult,
 } from '../../domains/skill/platform-install.js';
 import {
   reconcileCometHooksForPlatform,
@@ -199,6 +201,7 @@ interface PlatformResult {
   superpowers: InstallStatus;
   comet: InstallStatus;
   codegraph: InstallStatus;
+  hook?: HookInstallResult;
   failures: InitFailureDetail[];
 }
 
@@ -772,6 +775,11 @@ export async function initCommand(
   }
 
   await assertBundledAssetsComplete();
+  for (const { platform, cmAction, osAction, spAction } of plans) {
+    if (cmAction !== 'skip' || osAction !== 'skip' || spAction !== 'skip') {
+      await inspectZcodeProjectConfigPath(baseDir, platform, scope);
+    }
+  }
 
   if (includesWorkflow(workflowSelection, 'native')) {
     for (const plan of plans) {
@@ -918,7 +926,7 @@ export async function initCommand(
   }
 
   const results: PlatformResult[] = [];
-  let projectRouterInstalled = false;
+  let projectRouterReady = false;
 
   for (const plan of plans) {
     const { platform, cmAction } = plan;
@@ -929,6 +937,7 @@ export async function initCommand(
         : `${scope === 'global' ? '~/' : ''}${platformSkillsDir}/skills/`;
 
     let cmStatus: InstallStatus = 'skipped';
+    let hook: HookInstallResult | undefined;
     const platformFailures: InitFailureDetail[] = [];
     let cometComponentInstalled = false;
     let skillFailed = false;
@@ -1006,18 +1015,18 @@ export async function initCommand(
 
     if (cmAction !== 'skip' && !skillFailed) {
       try {
-        const {
-          status,
-          reason,
-          cleanupFailed = 0,
-        } = scope === 'project'
-          ? await reconcileProjectCometHooksForPlatform(baseDir, platform, workflowSelection, {
-              globalBaseDir: os.homedir(),
-            })
-          : await reconcileCometHooksForPlatform(baseDir, platform, scope, workflowSelection);
+        hook =
+          scope === 'project'
+            ? await reconcileProjectCometHooksForPlatform(baseDir, platform, workflowSelection, {
+                globalBaseDir: os.homedir(),
+              })
+            : await reconcileCometHooksForPlatform(baseDir, platform, scope, workflowSelection);
+        const { status, reason, cleanupFailed = 0 } = hook;
         cometComponentInstalled ||= status === 'installed';
         if (status === 'installed') {
-          if (scope === 'project') projectRouterInstalled = true;
+          if (scope === 'project' && !platform.projectHookTrustMessage) {
+            projectRouterReady = true;
+          }
           log(`  Comet hooks -> ${platform.name}: ${t(lang, 'hooksInstalled')}`);
           if (reason) {
             log(`  Comet hooks -> ${platform.name}: ${reason}`);
@@ -1071,6 +1080,7 @@ export async function initCommand(
       superpowers: plan.spAction !== 'skip' ? spGlobalStatus : 'skipped',
       comet: cmStatus,
       codegraph: 'skipped',
+      hook,
       failures: [
         ...((osToolIds.includes(platform.openspecToolId) || requiresClassicArtifactRoot) &&
         osGlobalStatus === 'failed'
@@ -1201,7 +1211,7 @@ export async function initCommand(
 
   if (
     scope === 'project' &&
-    projectRouterInstalled &&
+    projectRouterReady &&
     projectInitializationComplete &&
     includesWorkflow(workflowSelection, 'classic')
   ) {
@@ -1438,6 +1448,7 @@ export async function initCommand(
             superpowers: result.superpowers,
             comet: result.comet,
             codegraph: result.codegraph,
+            hook: result.hook,
           })),
           workingDirsCreated,
         },

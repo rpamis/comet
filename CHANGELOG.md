@@ -2,6 +2,36 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.5.8] - 2026-11-25
+
+### Added
+
+- **ZCode project Hooks**: Install the Comet workflow Router disabled in `.zcode/config.json`. Review, trust, and enable it in ZCode's workspace Hook settings. Updates and repairs rebind the Router in place after a project move and leave the configuration file untouched when nothing changes. Project Doctor repair clears confirmed stale workflow selections before the Router is trusted and preserves Classic changes awaiting delivery ([#599](https://github.com/rpamis/comet/issues/599)).
+
+### Changed
+
+- **ZCode Doctor**: Warn when legacy user Router cleanup is still pending and tell users to retry migration before enabling the project Router.
+- **Dashboard Git changes**: See the file count, paths, and Git statuses in a compact list that wraps long paths on narrow screens.
+- **Dashboard startup**: Load the current workspace first, then fill in Classic archive counts. Open Any, Eval, and plugin pages independently and load settings when needed ([#601](https://github.com/rpamis/comet/issues/601)).
+- **Native Shape confirmation**: Confirm an ordinary Native SDK Shape without waiting for automatic context retrieval or completion learning based on the approval note. Explicit task context remains available.
+
+### Fixed
+
+- **Dashboard task summaries**: Keep the task and acceptance lists aligned when expanding a change makes the dialog scroll. The dialog shows a total and a clearer breakdown by change.
+- **DSH plugin updates**: Install and update Comet on DSH 0.2.2-rc.1 and later without exact DSH dependency pins. Session rules and write checks run through the installed DSH's plugin events ([#600](https://github.com/rpamis/comet/issues/600)).
+- **OpenSpec installation**: Install Classic Skills in the selected global or project directory with OpenSpec 2.1 and later. Project installs keep their Skills local, and global installs no longer try to initialize the home directory as a project ([#594](https://github.com/rpamis/comet/issues/594)).
+- **Classic resume discovery**: Completed historical SDK archives without a delivery record no longer block resuming the only active Classic change. Pending deliveries still appear in recovery ([#593](https://github.com/rpamis/comet/issues/593)).
+- **Codex Dashboard scrolling**: Scroll through change details and key artifacts in the embedded workbench when the window is narrower than 1024 pixels ([#591](https://github.com/rpamis/comet/issues/591)).
+- **Hook runtime repair**: Doctor detects and restores the Guard file the Router needs to evaluate write requests.
+
+### Removed
+
+- **ZCode user-level Comet Router**: Explicit project installation, update, and Doctor repair migrate the legacy Router while preserving user-owned Hooks. If cleanup fails, Comet disables the project Router and explains how to retry. First-time `/comet` activation keeps the legacy entry and explains how to migrate. Global installation, update, and Doctor repair remove the legacy user-level Router without installing project Hooks. Install, review, trust, and enable a Router in each workspace that needs one. Global Skill and Rule installation remains available.
+
+### Security
+
+- **ZCode project Hook files**: Preserve existing POSIX permissions when updating the Hook configuration. Reject linked project configuration paths and keep Router and Guard repair and first-time activation writes inside the workspace.
+
 ## What's Changed [0.5.7] - 2026-11-24
 
 ### Added

@@ -15,6 +15,8 @@ export interface ContainedAtomicWriteOptions {
   afterTemporaryClose?: () => void | Promise<void>;
   beforeCommit?: () => void | Promise<void>;
   exclusive?: boolean;
+  /** Preserve an existing regular file's POSIX permission bits on replacement. */
+  preserveMode?: boolean;
   /** Refuse copy-based exclusive publication on filesystems without hard links. */
   requireAtomicPublication?: boolean;
 }
@@ -209,6 +211,17 @@ async function syncDirectory(directory: string): Promise<void> {
   }
 }
 
+async function existingPosixFileMode(file: string): Promise<number | undefined> {
+  if (process.platform === 'win32') return undefined;
+  try {
+    const stat = await fs.lstat(file);
+    return stat.isFile() && !stat.isSymbolicLink() ? stat.mode & 0o777 : undefined;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw error;
+  }
+}
+
 async function atomicWriteContained(
   file: string,
   content: string | Uint8Array,
@@ -216,6 +229,8 @@ async function atomicWriteContained(
 ): Promise<void> {
   const directory = path.dirname(file);
   const directoryChain = await prepareContainedDirectoryChain(options.containedRoot, directory);
+  const preservedMode =
+    options.preserveMode && !options.exclusive ? await existingPosixFileMode(file) : undefined;
   const temporary = path.join(directory, `.${path.basename(file)}.${randomUUID()}.tmp`);
   let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
   let temporaryIdentity: import('fs').Stats | undefined;
@@ -238,6 +253,7 @@ async function atomicWriteContained(
       throw new Error('Contained atomic write temporary file opened outside its managed parent');
     }
 
+    if (preservedMode !== undefined) await handle.chmod(preservedMode);
     if (typeof content === 'string') await handle.writeFile(content, 'utf8');
     else await handle.writeFile(content);
     await handle.sync();

@@ -20,6 +20,7 @@ import {
   getManifestSkills,
   mergeProjectConfig,
   prepareManagedSkillCopyTarget,
+  inspectZcodeProjectConfigPath,
 } from '../../domains/skill/platform-install.js';
 import {
   reconcileCometHooksForPlatform,
@@ -1600,12 +1601,14 @@ async function updateSingleProject(
   const targetResults: SingleProjectUpdateResult['skills']['targets'] = [];
   const ruleTargetResults: SingleProjectUpdateResult['rules']['targets'] = [];
   const hookTargetResults: SingleProjectUpdateResult['hooks']['targets'] = [];
+  let projectRouterReady = false;
   for (const target of targets) {
     const baseDir = getBaseDir(target.scope, projectPath);
     const languageId = resolveTargetLanguage(options.language, target.language);
     const languageSkillsDir = languageToSkillsDir(languageId);
     const targetInstallMode = installModeFor(target);
     const nativeProjectTarget = nativeProject && target.scope === 'project';
+    await inspectZcodeProjectConfigPath(baseDir, target.platform, target.scope);
     const targetSkillWorkflowSelection = await skillWorkflowSelectionFor(target);
     if (target.scope === 'project') {
       await assertClassicProjectMutationAllowed?.();
@@ -1767,6 +1770,9 @@ async function updateSingleProject(
         reason,
       });
       if (status === 'installed') {
+        if (target.scope === 'project' && !target.platform.projectHookTrustMessage) {
+          projectRouterReady = true;
+        }
         totalHooksInstalled++;
         log(`  Comet hooks -> ${target.platform.name}: ${t(lang, 'hooksUpdated')}`);
         if (reason) {
@@ -1795,15 +1801,12 @@ async function updateSingleProject(
     }
   }
 
-  const projectRouterInstalled = hookTargetResults.some(
-    (target) => target.scope === 'project' && target.status === 'installed',
-  );
   const projectHookFailed = hookTargetResults.some(
     (target) => target.scope === 'project' && target.status === 'failed',
   );
   if (
     includesProjectScope &&
-    projectRouterInstalled &&
+    projectRouterReady &&
     !projectHookFailed &&
     (projectWorkflowSelection === 'classic' || projectWorkflowSelection === 'both')
   ) {

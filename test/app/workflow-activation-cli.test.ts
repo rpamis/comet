@@ -12,6 +12,7 @@ import {
 import { writeWorkflowGlobalConfig } from '../../domains/workflow-contract/global-config.js';
 import { isolatedBenchmarkEnvironment } from '../../scripts/benchmark/runtime-coldstart-benchmark.mjs';
 import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
+import { writeLegacyZcodeUserHook } from '../helpers/zcode-hook-config.js';
 
 const repositoryRoot = path.resolve('.');
 const publicCli = path.join(repositoryRoot, 'bin/comet.js');
@@ -117,6 +118,72 @@ describe('built workflow activation fast path', () => {
       expect(await snapshot(project)).toEqual(before);
     },
   );
+
+  it('prints ZCode activation and migration instructions without removing the user Router on first activation', async () => {
+    const { home, project, env } = await fixture();
+    const config = defaultProjectConfig('docs', 'en');
+    config.workflows = ['native'];
+    await writeWorkflowGlobalConfig(home, { ...config, schema: 'comet.global.v1' });
+    const { configPath, userSettings } = await writeLegacyZcodeUserHook(home);
+    const sourceRouter = path.join(home, '.zcode/skills/comet/scripts/comet-hook-router.mjs');
+    await fs.mkdir(path.dirname(sourceRouter), { recursive: true });
+    await fs.copyFile(
+      path.join(repositoryRoot, 'assets/skills/comet/scripts/comet-hook-router.mjs'),
+      sourceRouter,
+    );
+    const legacyBefore = await fs.readFile(configPath, 'utf8');
+
+    const result = run(publicCli, project, env);
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({
+      schema: 'comet.workflow-resolution.v1',
+      workflow: 'native',
+      skill: 'comet-native',
+      source: 'global-config',
+    });
+    expect.soft(result.stderr).toContain('legacy user-scoped Comet Hook');
+    expect.soft(result.stderr).toContain('comet update --platform zcode --scope project');
+    expect.soft(result.stderr).toContain('ZCode Settings → Hooks → Workspace');
+    expect.soft(result.stderr).toContain('Manually enable the Router');
+    const projectConfig = JSON.parse(
+      await fs.readFile(path.join(project, '.zcode/config.json'), 'utf8'),
+    );
+    expect(projectConfig.hooks).not.toHaveProperty('enabled');
+    expect(projectConfig.hooks.events.PreToolUse[0].hooks[0]).toMatchObject({
+      enabled: false,
+      args: [
+        path.join(project, '.zcode/skills/comet/scripts/comet-hook-router.mjs'),
+        '--platform',
+        'zcode',
+        '--project-root',
+        project,
+      ],
+    });
+    expect.soft(await fs.readFile(configPath, 'utf8')).toBe(legacyBefore);
+    expect(run(publicCli, project, env).stderr).toBe('');
+
+    const update = spawnSync(
+      process.execPath,
+      [
+        publicCli,
+        'update',
+        '--platform',
+        'zcode',
+        '--scope',
+        'project',
+        '--current-project',
+        '--skip-self-update',
+        '--yes',
+        '--json',
+      ],
+      { cwd: project, env, encoding: 'utf8', timeout: 30_000 },
+    );
+    expect(update.status, update.stderr + update.stdout).toBe(0);
+    expect(JSON.parse(await fs.readFile(configPath, 'utf8'))).toEqual(userSettings);
+    expect(JSON.parse(await fs.readFile(path.join(project, '.zcode/config.json'), 'utf8'))).toEqual(
+      projectConfig,
+    );
+  }, 30_000);
 
   it('uses the full activation path to materialize Native roots and the installed platform Hook', async () => {
     for (const cli of [publicCli, fullCli]) {

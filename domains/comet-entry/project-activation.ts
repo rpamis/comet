@@ -33,6 +33,7 @@ import { resolveInitWorkflow } from './init-workflow.js';
 
 export interface ProjectActivationOptions {
   homeDir?: string;
+  onNotice?: (message: string) => void;
 }
 
 export interface ProjectActivationResult {
@@ -145,7 +146,7 @@ export async function activateCometProject(
     options.homeDir ?? os.homedir(),
     'global',
     workflowSelection,
-    { globalBaseDir: options.homeDir ?? os.homedir() },
+    { globalBaseDir: options.homeDir ?? os.homedir(), migrateLegacyZcode: false },
   );
   if (hookProjection.failures.length > 0) {
     const details = hookProjection.failures
@@ -158,6 +159,7 @@ export async function activateCometProject(
   if (classicPermit) {
     await completeClassicLayoutInitialization(projectRoot, classicPermit);
   }
+  for (const notice of hookProjection.notices) options.onNotice?.(notice);
   return { config, source };
 }
 

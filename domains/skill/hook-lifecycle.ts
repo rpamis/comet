@@ -1,6 +1,6 @@
 import path from 'path';
 
-import type { Platform } from '../../platform/install/platforms.js';
+import { getPlatformConfigDir, type Platform } from '../../platform/install/platforms.js';
 import type { InstallScope } from '../../platform/install/types.js';
 import type { InitWorkflowSelection } from '../comet-entry/types.js';
 import { installCometHooksForPlatform, type HookInstallResult } from './platform-install.js';
@@ -69,7 +69,16 @@ export async function reconcileProjectCometHooksForPlatform(
     workflowSelection,
   );
   if (project.status !== 'installed') return project;
-  if (path.resolve(projectRoot) === path.resolve(options.globalBaseDir)) return project;
+  const activationMessage = platform.projectHookTrustMessage;
+  const installed = activationMessage ? { ...project, reason: activationMessage } : project;
+  if (
+    path.relative(
+      path.resolve(projectRoot, getPlatformConfigDir(platform, 'project')),
+      path.resolve(options.globalBaseDir, getPlatformConfigDir(platform, 'global')),
+    ) === ''
+  ) {
+    return installed;
+  }
 
   const globalCleanup = await removeCometHooksForPlatform(
     options.globalBaseDir,
@@ -77,11 +86,25 @@ export async function reconcileProjectCometHooksForPlatform(
     'global',
   );
   if (globalCleanup.failed > 0) {
-    return {
-      status: 'failed',
-      cleanupFailed: globalCleanup.failed,
-      reason: `project Router installed, but failed to remove ${globalCleanup.failed} historical global Hook configuration(s)`,
-    };
+    let reason = `project Router installed, but failed to remove ${globalCleanup.failed} historical global Hook configuration(s)`;
+    if (platform.hookFormat === 'zcode') {
+      const disabled = await installCometHooksForPlatform(
+        projectRoot,
+        platform,
+        'project',
+        workflowSelection,
+        { disableZcodeRouter: true },
+      );
+      const cleanupError = globalCleanup.reason ? ` at ${globalCleanup.reason}` : '';
+      const activation =
+        disabled.status === 'installed'
+          ? 'The project Router is disabled until you enable it in ZCode.'
+          : `Disable the project Router in ZCode before continuing. Comet could not disable it: ${disabled.reason}`;
+      reason = `Legacy ZCode user Hook cleanup failed${cleanupError}. ${activation} Fix the user configuration and rerun \`comet update --platform zcode --scope project --current-project --skip-self-update --yes\` before enabling the project Router.`;
+    }
+    return { status: 'failed', cleanupFailed: globalCleanup.failed, reason };
   }
-  return project;
+  return activationMessage && globalCleanup.removed > 0
+    ? { ...installed, reason: `Removed the legacy user-scoped Comet Hook. ${activationMessage}` }
+    : installed;
 }

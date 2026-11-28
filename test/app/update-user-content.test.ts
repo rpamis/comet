@@ -7,12 +7,10 @@ import {
   defaultProjectConfig,
   writeProjectConfig,
 } from '../../domains/comet-native/native-config.js';
-import {
-  copyCometSkillsForPlatform,
-  installCometHooksForPlatform,
-} from '../../domains/skill/platform-install.js';
+import { copyCometSkillsForPlatform } from '../../domains/skill/platform-install.js';
 import { PLATFORMS } from '../../platform/install/platforms.js';
 import { renderCometProjectGitignore } from '../../domains/workflow-contract/project-gitignore.js';
+import { writeLegacyZcodeUserHook } from '../helpers/zcode-hook-config.js';
 
 it('preserves custom ignore rules and YAML comments through repeated public project updates', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-update-user-content-'));
@@ -30,9 +28,9 @@ it('preserves custom ignore rules and YAML comments through repeated public proj
       'copy',
       'native',
     );
-    await installCometHooksForPlatform(home, platform, 'global', 'native');
-    const globalHookFile = path.join(home, '.zcode/cli/config.json');
-    const globalHookSource = await fs.readFile(globalHookFile, 'utf8');
+    await copyCometSkillsForPlatform(home, platform, true, 'skills-zh', 'global', 'copy', 'native');
+    const { configPath: globalHookFile, userSettings } = await writeLegacyZcodeUserHook(home);
+    const projectHookFile = path.join(root, '.zcode/config.json');
     const file = path.join(root, '.comet/config.yaml');
     await fs.appendFile(
       file,
@@ -80,10 +78,15 @@ it('preserves custom ignore rules and YAML comments through repeated public proj
       expect(source).toContain('Team configuration note');
       expect(source).toContain('Inline extension note');
       expect(source).toContain('team_extension: keep');
-      expect(await fs.readFile(globalHookFile, 'utf8')).toBe(globalHookSource);
-      await expect(fs.access(path.join(root, '.zcode/config.json'))).rejects.toMatchObject({
-        code: 'ENOENT',
-      });
+      expect(JSON.parse(await fs.readFile(globalHookFile, 'utf8'))).toEqual(userSettings);
+      const projectConfig = JSON.parse(await fs.readFile(projectHookFile, 'utf8'));
+      expect(projectConfig.hooks).not.toHaveProperty('enabled');
+      expect(projectConfig.hooks.events.PreToolUse[0].hooks).toEqual([
+        expect.objectContaining({
+          enabled: false,
+          args: expect.arrayContaining(['--project-root', root]),
+        }),
+      ]);
     }
   } finally {
     await fs.rm(root, { recursive: true, force: true });

@@ -1,4 +1,7 @@
-import { ClassicStateFileConflictError } from '../workflow-contract/classic-state-file.js';
+import {
+  ClassicStateFileConflictError,
+  resolveClassicStateFile,
+} from '../workflow-contract/classic-state-file.js';
 import {
   clearCometCurrentSelection,
   clearCometCurrentSelectionIf,
@@ -17,16 +20,19 @@ import {
   resolveBranchBinding,
   unboundDetachedMessage,
 } from './classic-branch-binding.js';
-import { inspectClassicSdkRun } from './classic-sdk-status.js';
+import { hasClassicManagedRunMarker, inspectClassicSdkRun } from './classic-sdk-status.js';
+import { classicProjectTargetExists, readClassicProjectFile } from './classic-protected-path.js';
+import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
 import {
   assertOpenSpecChangeName,
   findClassicArchiveChangeDirectory,
   inspectClassicActiveChangeDirectory,
+  inspectClassicArchiveChangeNames,
 } from './classic-paths.js';
 import { readClassicDelivery } from './classic-progress.js';
 import { readClassicState } from './classic-store.js';
 import { resolveClassicWorkspace } from './classic-workspace.js';
-import { ClassicLayoutUnavailableError } from './classic-layout.js';
+import { ClassicLayoutUnavailableError, assertClassicLayoutReadable } from './classic-layout.js';
 
 // Share the current-selection read with the router layer when both execute
 // inside one Hook decision. The clear/write paths below keep the raw reader
@@ -52,6 +58,69 @@ export type CurrentChangeResolution =
 
 export function currentChangeFile(projectRoot: string): string {
   return cometCurrentSelectionFile(projectRoot);
+}
+
+/** Doctor 清理选择前确认同名归档未留有待完成的交付。 */
+export async function hasPendingArchivedClassicDelivery(
+  projectRoot: string,
+  changeName: string,
+): Promise<boolean> {
+  assertOpenSpecChangeName(changeName);
+  try {
+    const owner = await readSdkChangeOwner(projectRoot, 'classic', changeName, { readOnly: true });
+    if (owner) {
+      const { run, state } = await inspectClassicSdkRun(projectRoot, changeName, {
+        readOnly: true,
+        owner,
+      });
+      return run.status !== 'completed' && !isClassicSdkCancellationComplete(run) && state.archived;
+    }
+
+    const layout = await assertClassicLayoutReadable(projectRoot);
+    const entries = await inspectClassicArchiveChangeNames(
+      projectRoot,
+      layout.archiveDir,
+      changeName,
+    );
+    if (!entries?.length) return false;
+    const preferredArchiveName = entries.includes(changeName)
+      ? changeName
+      : entries.slice().sort((left, right) => right.localeCompare(left))[0];
+    const archive = await findClassicArchiveChangeDirectory(changeName, projectRoot, {
+      preferredArchiveName,
+    });
+    if (!archive) return true;
+    const stateFile = await resolveClassicStateFile(archive.directory);
+    if (
+      !(await classicProjectTargetExists(projectRoot, stateFile, {
+        label: 'Classic archived change state',
+        expected: 'file',
+      }))
+    )
+      return true;
+    const source = await readClassicProjectFile(projectRoot, stateFile, {
+      label: 'Classic archived change state',
+    });
+    if (hasClassicManagedRunMarker(source)) {
+      // Managed state without its Run owner has no trustworthy delivery verdict.
+      return true;
+    }
+
+    const projection = await readClassicState(archive.directory, { migrate: false });
+    if (!projection.classic?.archived) return false;
+    const delivery = await readClassicDelivery(projectRoot, archive.directory);
+    if (['complete', 'local-verified'].includes(delivery.verification.status)) return false;
+    if (
+      projection.classic.branchStatus === 'handled' &&
+      delivery.verification.status === 'needsAuthorization' &&
+      !('invalidated' in delivery.verification)
+    )
+      return false;
+    return true;
+  } catch {
+    // If repair cannot read a candidate's delivery evidence, preserve the selection.
+    return true;
+  }
 }
 
 async function sdkSelectionBranch(projectRoot: string, changeName: string): Promise<string | null> {

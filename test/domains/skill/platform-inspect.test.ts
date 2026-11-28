@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { promises as fs } from 'fs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { existsSync, promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
@@ -11,6 +11,7 @@ import {
 import {
   copyCometRulesForPlatform,
   installCometHooksForPlatform,
+  matchesZcodeRouterInvocation,
 } from '../../../domains/skill/platform-install.js';
 import {
   removeCometHooksForPlatform,
@@ -21,6 +22,11 @@ import {
   readNodeHookArguments,
 } from '../../../platform/process/hook-command.js';
 import { PLATFORMS, type Platform } from '../../../platform/install/platforms.js';
+
+vi.mock('fs', async (importOriginal) => {
+  const original = await importOriginal<typeof import('fs')>();
+  return { ...original, existsSync: vi.fn(original.existsSync) };
+});
 
 function mapHookConfigStrings(value: unknown, map: (value: string) => string): unknown {
   if (typeof value === 'string') return map(value);
@@ -255,9 +261,11 @@ describe('platform component inspection', () => {
       status: 'installed',
     });
 
-    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
-      present: true,
-    });
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toMatchObject(
+      id === 'zcode'
+        ? { present: false, managedPresent: true, activationRequired: true }
+        : { present: true },
+    );
     expect(await fs.readFile(configPath, 'utf8')).toBe(before);
   });
 
@@ -269,16 +277,200 @@ describe('platform component inspection', () => {
     });
 
     const configPath = hookConfigPath(tmpDir, 'zcode');
-    const config = JSON.parse(await fs.readFile(configPath, 'utf8')) as {
-      hooks: { enabled: boolean };
-    };
+    const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
+    config.hooks.events.PreToolUse[0].hooks[0].enabled = true;
     config.hooks.enabled = false;
     await fs.writeFile(configPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
 
     await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
       present: false,
       managedPresent: true,
+      activationRequired: true,
+      activationMessage: expect.stringContaining('Manually enable'),
     });
+
+    config.hooks.enabled = true;
+    await fs.writeFile(configPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      present: true,
+    });
+  });
+
+  it.each([undefined, true, false])(
+    'preserves the ZCode project Router when its enabled field is %s',
+    async (enabled) => {
+      const target = platform('zcode');
+      await installManagedHookScripts(tmpDir, target);
+      const configPath = hookConfigPath(tmpDir, 'zcode');
+      const router = {
+        type: 'process',
+        command: 'node',
+        args: [
+          path.join(tmpDir, '.zcode', 'skills', 'comet', 'scripts', 'comet-hook-router.mjs'),
+          '--platform',
+          'zcode',
+          '--project-root',
+          tmpDir,
+        ],
+        timeoutMs: 60_000,
+        ...(enabled === undefined ? {} : { enabled }),
+      };
+      const config = {
+        hooks: {
+          enabled: true,
+          events: { PreToolUse: [{ matcher: 'Write|Edit', hooks: [router] }] },
+        },
+      };
+      const source = JSON.stringify(config);
+      await fs.writeFile(configPath, source, 'utf8');
+
+      await expect(installCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+        status: 'installed',
+      });
+      expect(JSON.parse(await fs.readFile(configPath, 'utf8'))).toEqual({
+        ...config,
+        cometRouterProjectRoot: tmpDir,
+      });
+      await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toMatchObject(
+        enabled === false ? { present: false, activationRequired: true } : { present: true },
+      );
+    },
+  );
+
+  it.each(['dedicated', 'shared'])(
+    'keeps the ZCode project Router in place in a %s group',
+    async (layout) => {
+      const target = platform('zcode');
+      const install = () => installCometHooksForPlatform(tmpDir, target, 'project');
+      await installManagedHookScripts(tmpDir, target);
+      await expect(install()).resolves.toEqual({ status: 'installed' });
+
+      const configPath = hookConfigPath(tmpDir, 'zcode');
+      const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
+      const [routerGroup] = config.hooks.events.PreToolUse;
+      const [router] = routerGroup.hooks;
+      const userHook = (script: string) => ({ type: 'process', command: 'node', args: [script] });
+      const readGroup = { matcher: 'Read', hooks: [userHook('read.mjs')] };
+      const writeGroup = { matcher: 'Write|Edit', hooks: [userHook('write.mjs')] };
+      config.hooks.events.PreToolUse =
+        layout === 'dedicated'
+          ? [routerGroup, writeGroup]
+          : [
+              readGroup,
+              {
+                ...routerGroup,
+                hooks: [userHook('before.mjs'), router, userHook('after.mjs')],
+              },
+              writeGroup,
+            ];
+      const source = JSON.stringify(config);
+      await fs.writeFile(configPath, source, 'utf8');
+
+      await expect(install()).resolves.toEqual({ status: 'installed' });
+      await expect.soft(fs.readFile(configPath, 'utf8')).resolves.toBe(source);
+
+      router.timeoutMs = 1_000;
+      await fs.writeFile(configPath, JSON.stringify(config), 'utf8');
+      router.timeoutMs = 60_000;
+      await expect(install()).resolves.toEqual({ status: 'installed' });
+      expect(JSON.parse(await fs.readFile(configPath, 'utf8'))).toEqual(config);
+    },
+  );
+
+  it('matches moved ZCode project Routers without probing the old script', () => {
+    const skillsDir = '.zcode';
+    const routerPath = 'skills/comet/scripts/comet-hook-router.mjs';
+    const previousRoot = path.join(tmpDir, 'old');
+    const args = (root: string) => [
+      path.join(root, skillsDir, routerPath),
+      '--platform',
+      'zcode',
+      '--project-root',
+      root,
+    ];
+    const previous = { type: 'process', command: 'node', args: args(previousRoot) };
+    const current = { command: 'node', args: args(tmpDir) };
+    const probe = vi.mocked(existsSync);
+    probe.mockClear();
+    probe.withImplementation(
+      () => false,
+      () => {
+        expect(matchesZcodeRouterInvocation(previous, current, skillsDir, previousRoot)).toBe(true);
+        expect(matchesZcodeRouterInvocation(previous, current, skillsDir, tmpDir)).toBe(false);
+        expect(probe).not.toHaveBeenCalled();
+      },
+    );
+  });
+
+  it('ignores user-owned ZCode process Hooks during inspection, install, and uninstall', async () => {
+    const target = platform('zcode');
+    const configPath = hookConfigPath(tmpDir, 'zcode');
+    const routerPath = path.join(
+      tmpDir,
+      '.zcode',
+      'skills',
+      'comet',
+      'scripts',
+      'comet-hook-router.mjs',
+    );
+    const router = {
+      type: 'process',
+      command: 'node',
+      args: [routerPath, '--platform', 'zcode', '--project-root', tmpDir],
+    };
+    const userHooks = [
+      {
+        ...router,
+        args: [path.join(tmpDir, 'tools', 'comet-hook-router.mjs'), ...router.args.slice(1)],
+      },
+      { ...router, args: [routerPath.replace('.zcode', '.other'), ...router.args.slice(1)] },
+      { ...router, args: [...router.args, '--custom'] },
+      { ...router, args: router.args.slice(0, 3) },
+      {
+        ...router,
+        args: [routerPath, '--platform', 'zcode', '--project-root', path.join(tmpDir, 'other')],
+      },
+      { ...router, type: 'command' },
+    ];
+    const userGroup = { matcher: 'Write|Edit', hooks: userHooks };
+    const config = { hooks: { enabled: true, events: { PreToolUse: [userGroup] } } };
+    await installManagedHookScripts(tmpDir, target);
+    await fs.writeFile(configPath, JSON.stringify(config), 'utf8');
+
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      present: false,
+    });
+    await expect(installCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      status: 'installed',
+    });
+    const installed = JSON.parse(await fs.readFile(configPath, 'utf8'));
+    const groups = installed.hooks.events.PreToolUse;
+    expect(groups[0]).toEqual(userGroup);
+    expect(groups[1].hooks[0].enabled).toBe(false);
+
+    groups[1].hooks = [{ ...router, enabled: false }, router];
+    groups.push({ matcher: 'Read', hooks: [{ ...router, enabled: true }] });
+    await fs.writeFile(configPath, JSON.stringify(installed), 'utf8');
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      present: true,
+      duplicatePresent: true,
+    });
+    await expect(installCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      status: 'installed',
+    });
+    const repaired = JSON.parse(await fs.readFile(configPath, 'utf8'));
+    expect(repaired.hooks.events.PreToolUse).toEqual([
+      userGroup,
+      { matcher: 'Write|Edit', hooks: [{ ...router, timeoutMs: 60_000 }] },
+    ]);
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      present: true,
+    });
+    await expect(removeCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      removed: 1,
+      failed: 0,
+    });
+    expect(JSON.parse(await fs.readFile(configPath, 'utf8'))).toEqual(config);
   });
 
   it('reports dsh Hook config as awaiting the profile bridge', async () => {

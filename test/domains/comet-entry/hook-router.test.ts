@@ -767,6 +767,9 @@ describe('Comet Hook Router', () => {
       staleSelection: {
         code: 'target-missing',
         reason: "selected native change 'missing-change' is missing or archived",
+        legacy: false,
+        workflow: 'native',
+        change: 'missing-change',
       },
     });
   });
@@ -793,6 +796,9 @@ describe('Comet Hook Router', () => {
       staleSelection: {
         code: 'target-missing',
         reason: "selected native change 'missing-change' is missing or archived",
+        legacy: false,
+        workflow: 'native',
+        change: 'missing-change',
       },
     });
   });
@@ -820,6 +826,9 @@ describe('Comet Hook Router', () => {
       staleSelection: {
         code: 'target-missing',
         reason: "selected native change 'missing-change' is missing or archived",
+        legacy: false,
+        workflow: 'native',
+        change: 'missing-change',
       },
     });
   });

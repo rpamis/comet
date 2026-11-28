@@ -13,9 +13,15 @@ import type { InstallScope } from '../../platform/install/types.js';
 import { fileExists } from '../../platform/fs/file-system.js';
 import {
   buildHookCommand,
+  buildHookInvocation,
+  buildLegacyZcodeGuardInvocation,
   computeRuleDestPath,
   isManagedHookCommand,
-  buildHookInvocation,
+  matchesZcodeHookInvocation,
+  matchesZcodeRouterInvocation,
+  zcodeMatcherCoversRouter,
+  ZCODE_ROUTER_PROJECT_ROOT,
+  type HookInvocation,
   OMP_HOOK_MARKER,
   OMP_HOOK_RELATIVE_PATH,
   readManifest,
@@ -32,7 +38,7 @@ export interface HookInspectionResult {
   managedPresent?: boolean;
   legacyPresent?: boolean;
   duplicatePresent?: boolean;
-  /** dsh has the config/patch, but the active profile still needs the bridge loaded. */
+  /** The managed configuration requires an additional step in the Agent platform. */
   activationRequired?: boolean;
   activationMessage?: string;
   error?: string;
@@ -200,62 +206,68 @@ function countGroupedHookMatches(
   }, 0);
 }
 
-/** ZCode nests event groups under `hooks.events` instead of `hooks` directly. */
-function collectZcodeGroupedCommands(config: Record<string, unknown>): unknown[] {
-  const hooks = config.hooks;
-  if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return [];
-  const events = (hooks as Record<string, unknown>).events;
-  if (!events || typeof events !== 'object' || Array.isArray(events)) return [];
-  const groups = (events as Record<string, unknown>).PreToolUse;
-  if (!Array.isArray(groups)) return [];
+async function inspectZcodeHooks(
+  configPath: string,
+  expectedHooks: ExpectedHookDescriptor[],
+  legacyGuard: HookInvocation,
+  platform: Platform,
+  scope: InstallScope,
+): Promise<HookInspectionResult> {
+  const result = await readHookJson(configPath);
+  if (result.status === 'missing') return { present: false };
+  if (result.status === 'error') return { present: false, error: result.error };
 
-  return groups.flatMap((group) => {
-    if (!group || typeof group !== 'object' || Array.isArray(group)) return [];
-    const handlers = (group as Record<string, unknown>).hooks;
-    if (!Array.isArray(handlers)) return [];
-    return handlers.map((handler): CollectedHookCommand => {
-      if (!handler || typeof handler !== 'object' || Array.isArray(handler)) {
-        return { command: undefined };
-      }
-      const record = handler as Record<string, unknown>;
-      return { command: record.command, args: record.args };
-    });
-  });
-}
-
-function countZcodeHookMatches(
-  config: Record<string, unknown>,
-  expected: ExpectedHookDescriptor,
-  expectedMatcher: (matcher: string) => string = (matcher) => matcher,
-): number {
-  const hooks = config.hooks;
-  if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return 0;
-  // ZCode keeps configuration-file hooks dormant until hooks.enabled is true,
-  // so an installed-but-disabled Hook must not report as present.
-  if ((hooks as Record<string, unknown>).enabled !== true) return 0;
-  const events = (hooks as Record<string, unknown>).events;
-  if (!events || typeof events !== 'object' || Array.isArray(events)) return 0;
-  const groups = (events as Record<string, unknown>).PreToolUse;
-  if (!Array.isArray(groups)) return 0;
-  return groups.reduce((count, group) => {
-    if (!group || typeof group !== 'object' || Array.isArray(group)) return count;
-    const record = group as Record<string, unknown>;
-    if (record.matcher !== expectedMatcher(expected.matcher) || !Array.isArray(record.hooks)) {
-      return count;
+  const hooks = result.value.hooks as Record<string, unknown> | undefined;
+  const events = hooks?.events as Record<string, unknown> | undefined;
+  if (!Array.isArray(events?.PreToolUse)) return { present: false };
+  const handlers: Array<{ matcher: unknown; hook: unknown }> = events.PreToolUse.flatMap((group) =>
+    Array.isArray(group?.hooks)
+      ? group.hooks.map((hook: unknown) => ({ matcher: group.matcher, hook }))
+      : [],
+  );
+  const legacyPresent = handlers.some(({ hook }) => matchesZcodeHookInvocation(hook, legacyGuard));
+  const skillsDir = getPlatformSkillsDir(platform, scope);
+  const routers = expectedHooks.map((expected) => {
+    const invocation = { command: expected.command, args: expected.args ?? [] };
+    const matcher = resolveInstalledHookMatcher(platform, expected.matcher);
+    let owned = 0;
+    let configured = false;
+    let enabled = false;
+    for (const entry of handlers) {
+      if (
+        !matchesZcodeRouterInvocation(
+          entry.hook,
+          invocation,
+          skillsDir,
+          scope === 'project' ? result.value[ZCODE_ROUTER_PROJECT_ROOT] : undefined,
+        )
+      )
+        continue;
+      owned++;
+      if (
+        !zcodeMatcherCoversRouter(entry.matcher, matcher) ||
+        !matchesZcodeHookInvocation(entry.hook, invocation)
+      )
+        continue;
+      configured = true;
+      enabled ||= entry.hook.enabled === true || entry.hook.enabled === undefined;
     }
-    return (
-      count +
-      record.hooks.filter(
-        (handler) =>
-          handler !== null &&
-          typeof handler === 'object' &&
-          !Array.isArray(handler) &&
-          (handler as Record<string, unknown>).type === 'process' &&
-          (handler as Record<string, unknown>).command === expected.command &&
-          equalStringArray((handler as Record<string, unknown>).args, expected.args ?? []),
-      ).length
-    );
-  }, 0);
+    return { owned, configured, enabled };
+  });
+  const present = hooks?.enabled === true && routers.every((router) => router.enabled);
+  const managedPresent = legacyPresent || routers.some((router) => router.owned > 0);
+  const duplicatePresent = routers.some((router) => router.owned > 1);
+  const activationMessage =
+    scope === 'project' && !present && routers.every((router) => router.configured)
+      ? platform.projectHookTrustMessage
+      : undefined;
+  return {
+    present,
+    ...(!present && managedPresent ? { managedPresent: true } : {}),
+    ...(legacyPresent ? { legacyPresent: true } : {}),
+    ...(duplicatePresent ? { duplicatePresent: true } : {}),
+    ...(activationMessage ? { activationRequired: true, activationMessage } : {}),
+  };
 }
 
 function collectCommandArray(config: Record<string, unknown>, groupName: string): unknown[] {
@@ -676,14 +688,12 @@ export async function inspectCometHooksForPlatform(
       );
       break;
     case 'zcode':
-      inspection = await inspectSingleHookJson(
+      inspection = await inspectZcodeHooks(
         path.join(platformBase, 'config.json'),
         expectedHooks,
-        collectZcodeGroupedCommands,
-        (config, expected) =>
-          countZcodeHookMatches(config, expected, (matcher) =>
-            resolveInstalledHookMatcher(platform, matcher),
-          ),
+        buildLegacyZcodeGuardInvocation(baseDir, skillsDir),
+        platform,
+        scope,
       );
       break;
     case 'copilot':

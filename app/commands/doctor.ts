@@ -8,7 +8,7 @@ import path from 'path';
 import os from 'os';
 import { promises as fs } from 'fs';
 import type { BigIntStats, Dirent } from 'fs';
-import { copyFile, fileExists, readDir } from '../../platform/fs/file-system.js';
+import { fileExists, readDir } from '../../platform/fs/file-system.js';
 import { sameFileObject, type FileObjectIdentity } from '../../platform/fs/file-identity.js';
 import {
   getOpenSpecVersion,
@@ -41,7 +41,6 @@ import {
 } from '../../domains/skill/platform-inspect.js';
 import {
   PLATFORMS,
-  getPlatformSkillsDir,
   getPlatformSkillsDirs,
   type Platform,
 } from '../../platform/install/platforms.js';
@@ -87,7 +86,11 @@ import { inspectSelectedWorkflowApplicationStatus } from '../../domains/workflow
 import { resolveHookWorkflowOwner } from '../../domains/comet-entry/hook-router.js';
 import type { InitWorkflowSelection } from '../../domains/comet-entry/types.js';
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
-import { projectCometHooksFromInstalledScope } from '../../domains/skill/project-hook-projection.js';
+import {
+  copyHookRouterRuntime,
+  hookRouterRuntimePaths,
+  projectCometHooksFromInstalledScope,
+} from '../../domains/skill/project-hook-projection.js';
 import { hasDshInstruction } from '../../domains/skill/dsh-adapter.js';
 
 interface CheckResult {
@@ -106,13 +109,13 @@ type ManagedInstallAvailability = 'ready' | 'partial' | 'missing';
 interface DoctorAssetInspection {
   manifest: Awaited<ReturnType<typeof readManifest>>;
   skillPresent(file: string): Promise<boolean>;
-  bundledHookRuntime(): Promise<Buffer>;
+  bundledHookRuntime(file: string): Promise<Buffer>;
 }
 
 async function createDoctorAssetInspection(): Promise<DoctorAssetInspection> {
   const manifest = await readManifest();
   const presence = new Map<string, Promise<boolean>>();
-  let bundledRuntime: Promise<Buffer> | undefined;
+  const bundledRuntime = new Map<string, Promise<Buffer>>();
   return {
     manifest,
     skillPresent(file) {
@@ -124,10 +127,13 @@ async function createDoctorAssetInspection(): Promise<DoctorAssetInspection> {
       }
       return result;
     },
-    bundledHookRuntime() {
-      return (bundledRuntime ??= fs.readFile(
-        path.join(getAssetsDir(), 'skills', ...HOOK_ROUTER_RUNTIME.split('/')),
-      ));
+    bundledHookRuntime(file) {
+      let result = bundledRuntime.get(file);
+      if (!result) {
+        result = fs.readFile(file);
+        bundledRuntime.set(file, result);
+      }
+      return result;
     },
   };
 }
@@ -154,7 +160,6 @@ const SUPERPOWERS_SENTINELS = [
   'test-driven-development/SKILL.md',
   'writing-plans/SKILL.md',
 ] as const;
-const HOOK_ROUTER_RUNTIME = 'comet/scripts/comet-hook-router.mjs';
 const CLASSIC_PLATFORM_TOOL_SCAN_MAX_ENTRIES = 4096;
 const CLASSIC_PLATFORM_TOOL_SCAN_MAX_DEPTH = 8;
 const CLASSIC_PLATFORM_TOOL_SCAN_MAX_FINDINGS = 128;
@@ -189,20 +194,19 @@ function configuredSkillLanguage(
   return 'en';
 }
 
-function hookRouterRuntimePaths(
-  baseDir: string,
-  platform: Platform,
-  scope: InstallScope,
-): { source: string; destination: string } {
-  return {
-    source: path.join(getAssetsDir(), 'skills', ...HOOK_ROUTER_RUNTIME.split('/')),
-    destination: path.join(
-      baseDir,
-      getPlatformSkillsDir(platform, scope),
-      'skills',
-      ...HOOK_ROUTER_RUNTIME.split('/'),
-    ),
-  };
+function usesHookRouterRuntime(platform: Platform, scope: InstallScope): boolean {
+  return (
+    platform.supportsHooks === true &&
+    Boolean(platform.hookFormat) &&
+    (scope === 'project'
+      ? platform.supportsProjectHooks !== false
+      : platform.supportsGlobalHooks === true)
+  );
+}
+
+async function repairHookRouterRuntime(baseDir: string, platform: Platform, scope: InstallScope) {
+  if (!usesHookRouterRuntime(platform, scope)) return;
+  await copyHookRouterRuntime(baseDir, platform, scope);
 }
 
 function checkCometCli(): CheckResult {
@@ -838,6 +842,34 @@ async function checkPlatformComponents(
   return results;
 }
 
+async function checkHookRouterRuntime(
+  baseDir: string,
+  platform: Platform,
+  scope: InstallScope,
+  assets: DoctorAssetInspection,
+): Promise<CheckResult> {
+  const problems: string[] = [];
+  for (const { file, source, destination } of hookRouterRuntimePaths(baseDir, platform, scope)) {
+    try {
+      const [expected, installed] = await Promise.all([
+        assets.bundledHookRuntime(source),
+        fs.readFile(destination),
+      ]);
+      if (!expected.equals(installed)) problems.push(`outdated (${file})`);
+    } catch (error) {
+      problems.push(`unable to verify ${file} (${(error as Error).message})`);
+    }
+  }
+  return {
+    check: `hook runtime: ${platform.name} (${scope})`,
+    status: problems.length > 0 ? 'warn' : 'pass',
+    message:
+      problems.length > 0
+        ? `${problems.join(', ')} — run: comet doctor --repair --scope ${scope}`
+        : 'current',
+  };
+}
+
 async function checkHookComponents(
   baseDir: string,
   platform: Platform,
@@ -858,33 +890,27 @@ async function checkHookComponents(
     );
   }
 
-  const results: CheckResult[] = [];
-  const runtime = hookRouterRuntimePaths(baseDir, platform, scope);
-  try {
-    const [expected, installed] = await Promise.all([
-      assets.bundledHookRuntime(),
-      fs.readFile(runtime.destination),
-    ]);
-    results.push({
-      check: `hook runtime: ${platform.name} (${scope})`,
-      status: expected.equals(installed) ? 'pass' : 'warn',
-      message: expected.equals(installed)
-        ? 'current'
-        : `outdated — run: comet doctor --repair --scope ${scope}`,
-    });
-  } catch (error) {
-    results.push({
-      check: `hook runtime: ${platform.name} (${scope})`,
-      status: 'warn',
-      message: `unable to verify current Router runtime (${(error as Error).message}) — run: comet doctor --repair --scope ${scope}`,
-    });
-  }
   const inspection = await inspectCometHooksForPlatform(
     baseDir,
     platform,
     scope,
     workflowSelection,
   );
+  const legacyZcodeUserInspection =
+    scope === 'project' && platform.hookFormat === 'zcode'
+      ? await inspectCometHooksForPlatform(context.homeDir, platform, 'global', workflowSelection)
+      : undefined;
+  const legacyZcodeUserCleanupPending = Boolean(
+    legacyZcodeUserInspection &&
+    (legacyZcodeUserInspection.error ||
+      legacyZcodeUserInspection.present ||
+      legacyZcodeUserInspection.managedPresent ||
+      legacyZcodeUserInspection.legacyPresent),
+  );
+  const results: CheckResult[] = [];
+  if (usesHookRouterRuntime(platform, scope)) {
+    results.push(await checkHookRouterRuntime(baseDir, platform, scope, assets));
+  }
   if (scope === 'global') {
     results.push(globalHookCheckResult(platform, scope, inspection));
     return results;
@@ -892,6 +918,7 @@ async function checkHookComponents(
   results.push({
     check: `hooks: ${platform.name} (${scope})`,
     status:
+      !legacyZcodeUserCleanupPending &&
       inspection.present &&
       !inspection.error &&
       !inspection.legacyPresent &&
@@ -899,19 +926,33 @@ async function checkHookComponents(
       !inspection.activationRequired
         ? 'pass'
         : 'warn',
-    message:
-      inspection.activationRequired &&
-      !inspection.error &&
-      !inspection.legacyPresent &&
-      !inspection.duplicatePresent
+    message: legacyZcodeUserCleanupPending
+      ? [
+          legacyZcodeUserInspection?.error
+            ? `Cannot verify whether a legacy ZCode user Hook is configured: ${legacyZcodeUserInspection.error}.`
+            : 'A legacy ZCode user Hook remains configured.',
+          inspection.present
+            ? 'Disable the project Router, fix the user configuration, and rerun'
+            : 'Fix the user configuration and rerun',
+          "'comet update --platform zcode --scope project --current-project --skip-self-update --yes'",
+          inspection.present
+            ? 'before enabling the project Router again.'
+            : 'before enabling the project Router.',
+        ].join(' ')
+      : inspection.activationRequired &&
+          !inspection.error &&
+          !inspection.legacyPresent &&
+          !inspection.duplicatePresent
         ? (inspection.activationMessage ??
           'Load the DSH bridge and restart the host to activate the Hook')
         : inspection.present &&
             !inspection.error &&
             !inspection.legacyPresent &&
             !inspection.duplicatePresent
-          ? 'exactly one managed Router Hook present'
-          : inspection.present && inspection.duplicatePresent
+          ? platform.hookFormat === 'zcode'
+            ? 'The Comet Router is enabled in the ZCode workspace configuration. ZCode still requires workspace trust in Settings → Hooks → Workspace. Start a new session or run /reload after confirming trust.'
+            : (platform.projectHookTrustMessage ?? 'exactly one managed Router Hook present')
+          : inspection.duplicatePresent && !inspection.error
             ? `duplicate managed Router Hooks remain — run: comet doctor --repair --scope ${scope}`
             : inspection.present && inspection.legacyPresent
               ? `Router Hook and legacy managed Hook coexist — run: comet doctor --repair --scope ${scope}`
@@ -1707,13 +1748,13 @@ async function repairDoctorState(
     }
   }
 
-  let projectRouterReady = projectedProjectPlatforms.size > 0;
+  let projectRouterInstalled = projectedProjectPlatforms.size > 0;
+  let projectRouterReady = PLATFORMS.some(
+    (platform) => projectedProjectPlatforms.has(platform.id) && !platform.projectHookTrustMessage,
+  );
 
   for (const target of hookOnlyTargets) {
-    if (target.scope === 'project') {
-      const runtime = hookRouterRuntimePaths(target.baseDir, target.platform, target.scope);
-      await copyFile(runtime.source, runtime.destination);
-    }
+    await repairHookRouterRuntime(target.baseDir, target.platform, target.scope);
     const hookResult =
       target.scope === 'project'
         ? await reconcileProjectCometHooksForPlatform(
@@ -1734,17 +1775,15 @@ async function repairDoctorState(
       );
     }
     if (target.scope === 'project' && hookResult.status === 'installed') {
-      projectRouterReady = true;
+      projectRouterInstalled = true;
+      projectRouterReady ||= !target.platform.projectHookTrustMessage;
     }
     repaired.push(`${target.platform.name} (${target.scope}) Hook`);
   }
 
   for (const target of targets) {
     const { baseDir, scope: targetScope, platform } = target;
-    if (platform.supportsHooks && platform.hookFormat) {
-      const runtime = hookRouterRuntimePaths(baseDir, platform, targetScope);
-      await copyFile(runtime.source, runtime.destination);
-    }
+    await repairHookRouterRuntime(baseDir, platform, targetScope);
     const hookResult =
       targetScope === 'project'
         ? await reconcileProjectCometHooksForPlatform(baseDir, platform, workflowSelection, {
@@ -1757,7 +1796,8 @@ async function repairDoctorState(
       );
     }
     if (targetScope === 'project' && hookResult.status === 'installed') {
-      projectRouterReady = true;
+      projectRouterInstalled = true;
+      projectRouterReady ||= !platform.projectHookTrustMessage;
     }
   }
 
@@ -1779,9 +1819,10 @@ async function repairDoctorState(
       }
     }
   }
-  if (scope !== 'global' && projectRouterReady) {
+  if (scope !== 'global' && (projectRouterInstalled || projectRouterReady)) {
     const selectionRepair = await repairCometCurrentSelection(projectPath, {
-      migrateLegacyClassic: workflows.includes('classic'),
+      migrateLegacyClassic: projectRouterReady && workflows.includes('classic'),
+      preserveLegacyClassic: !projectRouterReady,
     });
     if (selectionRepair.migratedLegacyClassic) repaired.push('Classic selection v1');
     if (selectionRepair.clearedStaleSelection) repaired.push('stale current selection');
